@@ -87,8 +87,8 @@
   --ark-ink: #17130f;
   --ark-muted-ink: #756f65;
   --ark-line: #e3ded3;
-  --ark-accent: #7c3aed;
-  --ark-accent-soft: #ede9fe;
+  --ark-accent: var(--ark-ink);
+  --ark-accent-soft: var(--ark-titlebar-hover);
   --ark-stage-border: #d8d1c4;
   --ark-titlebar: #eceae6;
   --ark-titlebar-border: #d8d4cc;
