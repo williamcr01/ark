@@ -6,7 +6,31 @@ import {
   type PreviewMode,
 } from '@/lib/deck-preview'
 
-const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
+const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
+const PRESENT_NEXT_KEYS = new Set([
+  'ArrowRight',
+  'ArrowDown',
+  ' ',
+  'Spacebar',
+  'Enter',
+  'PageDown',
+])
+const PRESENT_PREV_KEYS = new Set([
+  'ArrowLeft',
+  'ArrowUp',
+  'Backspace',
+  'PageUp',
+])
+
+type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
+
+export type DeckNavOptions = {
+  previewMode?: PreviewMode
+  initialSlideIndex?: number
+  keyboardMode?: DeckNavKeyboardMode
+  onSlideChange?: (index: number) => void
+  syncOnLoad?: boolean
+}
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -26,6 +50,14 @@ function isTypingTarget(target: EventTarget | null) {
   return Boolean(target.closest('[contenteditable="true"], [role="textbox"]'))
 }
 
+function isActivatableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return Boolean(target.closest('button, a[href], [role="button"]'))
+}
+
 function clampSlideIndex(index: number, slideCount: number) {
   if (!Number.isFinite(index) || slideCount <= 0) {
     return 0
@@ -34,25 +66,91 @@ function clampSlideIndex(index: number, slideCount: number) {
   return Math.max(0, Math.min(slideCount - 1, Math.floor(index)))
 }
 
+function getPreviewKeyboardTargetIndex(
+  key: string,
+  currentIndex: number,
+  slideCount: number,
+) {
+  if (!PREVIEW_NAV_KEYS.has(key)) {
+    return null
+  }
+
+  const delta = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1
+
+  return clampSlideIndex(currentIndex + delta, slideCount)
+}
+
+function getPresentKeyboardTargetIndex(
+  key: string,
+  currentIndex: number,
+  slideCount: number,
+) {
+  if (PRESENT_NEXT_KEYS.has(key)) {
+    return clampSlideIndex(currentIndex + 1, slideCount)
+  }
+
+  if (PRESENT_PREV_KEYS.has(key)) {
+    return clampSlideIndex(currentIndex - 1, slideCount)
+  }
+
+  if (key === 'Home') {
+    return 0
+  }
+
+  if (key === 'End') {
+    return clampSlideIndex(slideCount - 1, slideCount)
+  }
+
+  return null
+}
+
 export function useDeckSlideNavigation(
   iframeRef: RefObject<HTMLIFrameElement | null>,
   slideCount: number,
   html: string,
   enabled: boolean,
-  previewMode: PreviewMode = 'css-only',
+  options: DeckNavOptions = {},
 ) {
-  const [activeSlideIndex, setActiveSlideIndex] = useState(0)
-  const [prevHtml, setPrevHtml] = useState(html)
+  const {
+    initialSlideIndex = 0,
+    keyboardMode = 'preview',
+    onSlideChange,
+    syncOnLoad = true,
+  } = options
+  const [activeSlideIndex, setActiveSlideIndex] = useState(() =>
+    clampSlideIndex(initialSlideIndex, slideCount),
+  )
+  const prevHtmlRef = useRef(html)
   const activeSlideIndexRef = useRef(activeSlideIndex)
 
-  if (prevHtml !== html) {
-    setPrevHtml(html)
-    setActiveSlideIndex(0)
-  }
+  const commitSlideIndex = useCallback(
+    (index: number) => {
+      const clampedIndex = clampSlideIndex(index, slideCount)
+
+      if (activeSlideIndexRef.current === clampedIndex) {
+        setActiveSlideIndex(clampedIndex)
+        return
+      }
+
+      activeSlideIndexRef.current = clampedIndex
+      setActiveSlideIndex(clampedIndex)
+      onSlideChange?.(clampedIndex)
+    },
+    [onSlideChange, slideCount],
+  )
 
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
+
+  useEffect(() => {
+    if (prevHtmlRef.current === html) {
+      return
+    }
+
+    prevHtmlRef.current = html
+    commitSlideIndex(initialSlideIndex)
+  }, [commitSlideIndex, html, initialSlideIndex])
 
   const goToSlide = useCallback(
     (index: number) => {
@@ -60,10 +158,9 @@ export function useDeckSlideNavigation(
         return
       }
 
-      if (previewMode === 'css-only') {
-        setActiveSlideIndex(index)
-        activeSlideIndexRef.current = index
-      }
+      const clampedIndex = clampSlideIndex(index, slideCount)
+
+      commitSlideIndex(clampedIndex)
 
       const iframeWindow = iframeRef.current?.contentWindow
 
@@ -71,9 +168,12 @@ export function useDeckSlideNavigation(
         return
       }
 
-      iframeWindow.postMessage({ type: DECK_GOTO_MESSAGE_TYPE, index }, '*')
+      iframeWindow.postMessage(
+        { type: DECK_GOTO_MESSAGE_TYPE, index: clampedIndex },
+        '*',
+      )
     },
-    [iframeRef, previewMode, slideCount],
+    [commitSlideIndex, iframeRef, slideCount],
   )
 
   useEffect(() => {
@@ -95,9 +195,7 @@ export function useDeckSlideNavigation(
         typeof data.index === 'number' &&
         Number.isFinite(data.index)
       ) {
-        const clampedIndex = clampSlideIndex(data.index, slideCount)
-        setActiveSlideIndex(clampedIndex)
-        activeSlideIndexRef.current = clampedIndex
+        commitSlideIndex(data.index)
       }
     }
 
@@ -106,29 +204,44 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [enabled, iframeRef, slideCount])
+  }, [commitSlideIndex, enabled, iframeRef])
 
   useEffect(() => {
-    if (!enabled || slideCount === 0) {
+    if (!enabled || slideCount === 0 || keyboardMode === 'off') {
       return
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!NAV_KEYS.has(event.key) || isTypingTarget(event.target)) {
+      if (isTypingTarget(event.target)) {
+        return
+      }
+
+      if (keyboardMode === 'present' && isActivatableTarget(event.target)) {
+        return
+      }
+
+      const targetIndex =
+        keyboardMode === 'present'
+          ? getPresentKeyboardTargetIndex(
+            event.key,
+            activeSlideIndexRef.current,
+            slideCount,
+          )
+          : getPreviewKeyboardTargetIndex(
+            event.key,
+            activeSlideIndexRef.current,
+            slideCount,
+          )
+
+      if (targetIndex === null) {
         return
       }
 
       event.preventDefault()
+      event.stopPropagation()
 
-      const delta =
-        event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
-      const nextIndex = Math.max(
-        0,
-        Math.min(slideCount - 1, activeSlideIndexRef.current + delta),
-      )
-
-      if (nextIndex !== activeSlideIndexRef.current) {
-        goToSlide(nextIndex)
+      if (targetIndex !== activeSlideIndexRef.current) {
+        goToSlide(targetIndex)
       }
     }
 
@@ -137,10 +250,10 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [enabled, goToSlide, slideCount])
+  }, [enabled, goToSlide, keyboardMode, slideCount])
 
   useEffect(() => {
-    if (!enabled || slideCount === 0) {
+    if (!enabled || slideCount === 0 || !syncOnLoad) {
       return
     }
 
@@ -159,7 +272,7 @@ export function useDeckSlideNavigation(
     return () => {
       iframe.removeEventListener('load', handleLoad)
     }
-  }, [enabled, goToSlide, html, iframeRef, slideCount])
+  }, [enabled, goToSlide, html, iframeRef, slideCount, syncOnLoad])
 
   return { activeSlideIndex, goToSlide }
 }

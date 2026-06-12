@@ -577,7 +577,7 @@ function DeckPreview({
     parsedDeck.slideCount,
     html,
     html.length > 0 && parsedDeck.slideCount > 0,
-    previewMode,
+    { previewMode },
   )
   const previewFrameScale = getPreviewFrameScale(previewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
