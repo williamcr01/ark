@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import { toast } from 'sonner'
 import {
   AlertCircleIcon,
@@ -6,6 +13,8 @@ import {
   FileCode2Icon,
   Loader2Icon,
   MonitorPlayIcon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
   PresentationIcon,
   RefreshCwIcon,
   UploadIcon,
@@ -32,10 +41,9 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from '@/components/ai-elements/prompt-input'
-import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
+import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import {
   Card,
   CardContent,
@@ -49,6 +57,7 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import {
@@ -57,12 +66,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-
-const starterPrompts = [
-  'Create a 7-slide investor pitch deck for Ark, an AI presentation builder where decks are single HTML files.',
-  'Turn these notes into a clean product strategy presentation: problem, audience, solution, roadmap, risks, next steps.',
-  'Make a concise sales proposal deck for a design studio pitching a website redesign to a fintech startup.',
-]
 
 type ChatMessage = {
   id: string
@@ -203,11 +206,62 @@ function getPreviewHtml(html: string) {
   return `${previewFillStyle}\n${html}`
 }
 
+type TitleBarButtonProps = {
+  active?: boolean
+  children: ReactNode
+  disabled?: boolean
+  label: string
+  onClick?: () => void
+  primary?: boolean
+} & Pick<
+  React.ComponentProps<'button'>,
+  'aria-controls' | 'aria-expanded' | 'type'
+>
+
+function TitleBarButton({
+  active = false,
+  children,
+  disabled,
+  label,
+  onClick,
+  primary = false,
+  ...props
+}: TitleBarButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={label}
+          aria-pressed={active}
+          className={cn(
+            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+            'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
+            'hover:bg-[var(--ark-titlebar-hover)]',
+            'disabled:text-[var(--ark-titlebar-muted)]/50',
+            active && 'bg-[var(--ark-titlebar-active)]',
+            primary &&
+            !disabled &&
+            'text-[var(--ark-accent)] hover:bg-[var(--ark-accent-soft)]',
+          )}
+          disabled={disabled}
+          onClick={onClick}
+          type="button"
+          {...props}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function App() {
   const [generatedHtml, setGeneratedHtml] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isChatOpen, setIsChatOpen] = useState(true)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -354,7 +408,7 @@ function App() {
   return (
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
-        <header className="flex shrink-0 items-center justify-between border-b bg-white/85 px-5 py-3 backdrop-blur-xl">
+        <header className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-2 text-[var(--ark-titlebar-fg)]">
           <input
             accept=".html,.htm,text/html"
             className="hidden"
@@ -362,69 +416,114 @@ function App() {
             ref={fileInputRef}
             type="file"
           />
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-2xl bg-[var(--ark-ink)] text-white shadow-sm">
-              <PresentationIcon className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-lg font-semibold tracking-tight">Ark</h1>
-                <Badge variant={isGenerating ? 'secondary' : hasDeck ? 'default' : 'outline'}>
-                  {isGenerating ? 'Generating' : hasDeck ? 'Deck ready' : 'New deck'}
-                </Badge>
-              </div>
-              <p className="truncate text-sm text-muted-foreground">
-                Describe the presentation. Ark writes the HTML deck.
-              </p>
-            </div>
+          <div className="flex min-w-0 items-center gap-2 px-1">
+            <PresentationIcon
+              aria-hidden
+              className="size-4 shrink-0 text-[var(--ark-titlebar-muted)]"
+            />
+            <span className="truncate text-[13px] leading-none">Ark</span>
+            <span
+              aria-hidden
+              className="text-[var(--ark-titlebar-muted)]"
+            >
+              ·
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
+              <span
+                aria-hidden
+                className={cn(
+                  'size-1.5 shrink-0 rounded-full',
+                  isGenerating
+                    ? 'animate-pulse bg-amber-500'
+                    : hasDeck
+                      ? 'bg-emerald-500'
+                      : 'bg-[var(--ark-titlebar-muted)]/50',
+                )}
+              />
+              {isGenerating ? 'Generating…' : hasDeck ? 'Deck ready' : 'New deck'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  disabled={isGenerating}
-                  onClick={handleUploadClick}
-                  type="button"
-                  variant="outline"
-                >
-                  <UploadIcon data-icon="inline-start" />
-                  Upload HTML
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Load an existing single-page HTML deck</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  disabled={!hasDeck || isGenerating}
-                  onClick={handleReset}
-                  type="button"
-                  variant="outline"
-                >
-                  <RefreshCwIcon data-icon="inline-start" />
-                  Start over
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Clear the current preview and chat</TooltipContent>
-            </Tooltip>
-            <Button disabled={!hasDeck} onClick={handleDownload} type="button">
-              <DownloadIcon data-icon="inline-start" />
-              Download HTML
-            </Button>
-          </div>
+          <div className="min-w-0 flex-1" aria-hidden />
+
+          <ButtonGroup className="shrink-0">
+            <TitleBarButton
+              disabled={!hasDeck || isGenerating}
+              label="Start over"
+              onClick={handleReset}
+            >
+              <RefreshCwIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!hasDeck}
+              label="Download HTML"
+              onClick={handleDownload}
+              primary
+            >
+              <DownloadIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={isGenerating}
+              label="Upload HTML"
+              onClick={handleUploadClick}
+            >
+              <UploadIcon />
+            </TitleBarButton>
+            <ButtonGroupSeparator className="mx-0.5 h-4 bg-[var(--ark-titlebar-border)]" />
+            <TitleBarButton
+              active={isChatOpen}
+              aria-controls="ark-chat-panel-desktop ark-chat-panel-mobile"
+              aria-expanded={isChatOpen}
+              label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
+              onClick={() => setIsChatOpen((current) => !current)}
+            >
+              {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+            </TitleBarButton>
+          </ButtonGroup>
         </header>
 
-        <main className="hidden min-h-0 flex-1 p-4 lg:block">
+        <main className="hidden min-h-0 flex-1 lg:block">
           <ResizablePanelGroup
-            className="min-h-0 overflow-hidden rounded-3xl border bg-white shadow-sm"
+            className="min-h-0 overflow-hidden"
+            key={isChatOpen ? 'deck-with-chat' : 'deck-only'}
             orientation="horizontal"
           >
-            <ResizablePanel defaultSize={72} minSize={55}>
+            <ResizablePanel
+              defaultSize={isChatOpen ? 72 : 100}
+              minSize={isChatOpen ? 55 : 100}
+            >
               <DeckPreview html={generatedHtml} isGenerating={isGenerating} />
             </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={28} minSize={24}>
+            {isChatOpen ? (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={28} id="ark-chat-panel-desktop" minSize={24}>
+                  <ChatPanel
+                    error={error}
+                    input={input}
+                    isGenerating={isGenerating}
+                    messages={messages}
+                    onInputChange={setInput}
+                    onPromptSubmit={handlePromptSubmit}
+                  />
+                </ResizablePanel>
+              </>
+            ) : null}
+          </ResizablePanelGroup>
+        </main>
+
+        <main
+          className={
+            isChatOpen
+              ? 'grid min-h-0 flex-1 grid-rows-[minmax(320px,0.9fr)_minmax(420px,1fr)] lg:hidden'
+              : 'grid min-h-0 flex-1 lg:hidden'
+          }
+        >
+          <div className="min-h-0 overflow-hidden">
+            <DeckPreview html={generatedHtml} isGenerating={isGenerating} />
+          </div>
+          {isChatOpen ? (
+            <div className="min-h-0 overflow-hidden" id="ark-chat-panel-mobile">
               <ChatPanel
                 error={error}
                 input={input}
@@ -432,27 +531,9 @@ function App() {
                 messages={messages}
                 onInputChange={setInput}
                 onPromptSubmit={handlePromptSubmit}
-                onSuggestionClick={(suggestion) => void generateDeck(suggestion)}
               />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </main>
-
-        <main className="grid min-h-0 flex-1 grid-rows-[minmax(320px,0.9fr)_minmax(420px,1fr)] gap-4 p-4 lg:hidden">
-          <div className="min-h-0 overflow-hidden rounded-3xl border bg-white shadow-sm">
-            <DeckPreview html={generatedHtml} isGenerating={isGenerating} />
-          </div>
-          <div className="min-h-0 overflow-hidden rounded-3xl border bg-white shadow-sm">
-            <ChatPanel
-              error={error}
-              input={input}
-              isGenerating={isGenerating}
-              messages={messages}
-              onInputChange={setInput}
-              onPromptSubmit={handlePromptSubmit}
-              onSuggestionClick={(suggestion) => void generateDeck(suggestion)}
-            />
-          </div>
+            </div>
+          ) : null}
         </main>
       </div>
       <Toaster position="bottom-center" />
@@ -473,22 +554,24 @@ function DeckPreview({ html, isGenerating }: DeckPreviewProps) {
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
-      <div className="flex shrink-0 items-center justify-between border-b bg-white px-5 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-[var(--ark-accent-soft)] text-[var(--ark-accent)]">
-            <MonitorPlayIcon className="size-5" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-medium">Live preview</h2>
-            <p className="truncate text-xs text-muted-foreground">
-              The generated single-page HTML deck renders here.
-            </p>
-          </div>
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
+        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
+          <MonitorPlayIcon
+            aria-hidden
+            className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
+          />
+          <span className="truncate text-xs font-medium">Preview</span>
+          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
+            ›
+          </span>
+          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
+            HTML deck
+          </span>
         </div>
-        <Badge variant="outline">
-          <FileCode2Icon data-icon="inline-start" />
-          iframe srcDoc
-        </Badge>
+        <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
+          <FileCode2Icon className="size-3" />
+          srcDoc
+        </span>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -583,7 +666,6 @@ type ChatPanelProps = {
   error: string
   onInputChange: (value: string) => void
   onPromptSubmit: (message: PromptInputMessage) => Promise<void>
-  onSuggestionClick: (suggestion: string) => void
 }
 
 function ChatPanel({
@@ -593,35 +675,24 @@ function ChatPanel({
   error,
   onInputChange,
   onPromptSubmit,
-  onSuggestionClick,
 }: ChatPanelProps) {
   return (
-    <Card className="flex h-full min-h-0 rounded-none border-0 shadow-none">
-      <CardHeader className="shrink-0 gap-3 border-b px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <SparklesIcon className="size-4 text-[var(--ark-accent)]" />
-              AI presentation agent
-            </CardTitle>
-            <CardDescription>
-              Generate a full deck, then ask for edits in plain language.
-            </CardDescription>
-          </div>
-          <Badge variant="secondary">HTML output</Badge>
+    <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
+        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
+          <SparklesIcon
+            aria-hidden
+            className="size-3.5 shrink-0 text-[var(--ark-accent)]"
+          />
+          <span className="truncate text-xs font-medium">Chat</span>
+          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
+            ›
+          </span>
+          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
+            AI agent
+          </span>
         </div>
-        <Suggestions className="pb-1">
-          {starterPrompts.map((suggestion) => (
-            <Suggestion
-              disabled={isGenerating}
-              key={suggestion}
-              onClick={onSuggestionClick}
-              suggestion={suggestion}
-              variant="outline"
-            />
-          ))}
-        </Suggestions>
-      </CardHeader>
+      </div>
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <Conversation>
