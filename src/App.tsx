@@ -656,6 +656,7 @@ function DeckPreview({
           <SlideThumbnailStrip
             activeIndex={activeSlideIndex}
             id="ark-slide-strip"
+            key={html}
             onSelect={goToSlide}
             orientation={stripOrientation}
             parsedDeck={parsedDeck}

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,8 +18,9 @@ import type { ParsedDeck } from '@/lib/deck-slides'
 import { cn } from '@/lib/utils'
 
 const THUMBNAIL_STRIP_WIDTH_PX = 168
-const MAX_MOUNTED_THUMBNAILS = 12
-const NEAR_VIEWPORT_ROOT_MARGIN = '120px'
+const THUMBNAIL_MOUNT_BUFFER = 5
+const ACTIVE_MOUNT_RADIUS = 3
+const MAX_MOUNTED_THUMBNAILS = 24
 
 type SlideThumbnailStripProps = {
   activeIndex: number
@@ -25,22 +33,65 @@ type SlideThumbnailStripProps = {
 type LazyThumbnailProps = {
   active: boolean
   index: number
+  mountIframe: boolean
   onSelect: (index: number) => void
+  onVisibilityChange: (index: number, isVisible: boolean) => void
   orientation: 'horizontal' | 'vertical'
-  shouldMount: boolean
   srcDoc: string
+}
+
+function computeMountedIndices(
+  slideCount: number,
+  activeIndex: number,
+  visibleIndices: Set<number>,
+) {
+  const indices = new Set<number>()
+
+  let rangeMin = activeIndex
+  let rangeMax = activeIndex
+
+  if (visibleIndices.size > 0) {
+    rangeMin = Math.min(...visibleIndices)
+    rangeMax = Math.max(...visibleIndices)
+  }
+
+  const bufferedStart = Math.max(0, rangeMin - THUMBNAIL_MOUNT_BUFFER)
+  const bufferedEnd = Math.min(slideCount - 1, rangeMax + THUMBNAIL_MOUNT_BUFFER)
+
+  for (let index = bufferedStart; index <= bufferedEnd; index += 1) {
+    indices.add(index)
+  }
+
+  for (
+    let index = Math.max(0, activeIndex - ACTIVE_MOUNT_RADIUS);
+    index <= Math.min(slideCount - 1, activeIndex + ACTIVE_MOUNT_RADIUS);
+    index += 1
+  ) {
+    indices.add(index)
+  }
+
+  if (indices.size <= MAX_MOUNTED_THUMBNAILS) {
+    return indices
+  }
+
+  const sorted = [...indices].sort(
+    (left, right) =>
+      Math.abs(left - activeIndex) - Math.abs(right - activeIndex) || left - right,
+  )
+
+  return new Set(sorted.slice(0, MAX_MOUNTED_THUMBNAILS))
 }
 
 function LazyThumbnail({
   active,
   index,
+  mountIframe,
   onSelect,
+  onVisibilityChange,
   orientation,
-  shouldMount,
   srcDoc,
 }: LazyThumbnailProps) {
   const containerRef = useRef<HTMLButtonElement>(null)
-  const [isNearViewport, setIsNearViewport] = useState(false)
 
   useEffect(() => {
     const element = containerRef.current
@@ -51,9 +102,9 @@ function LazyThumbnail({
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setIsNearViewport(entry.isIntersecting)
+        onVisibilityChange(index, entry.isIntersecting)
       },
-      { rootMargin: NEAR_VIEWPORT_ROOT_MARGIN },
+      { threshold: 0 },
     )
 
     observer.observe(element)
@@ -61,9 +112,7 @@ function LazyThumbnail({
     return () => {
       observer.disconnect()
     }
-  }, [])
-
-  const mountIframe = shouldMount && isNearViewport
+  }, [index, onVisibilityChange])
 
   return (
     <button
@@ -124,25 +173,37 @@ export function SlideThumbnailStrip({
 }: SlideThumbnailStripProps) {
   const activeItemRef = useRef<HTMLDivElement>(null)
   const { slideCount, thumbnailSrcDocs } = parsedDeck
+  const [visibleIndices, setVisibleIndices] = useState<Set<number>>(
+    () => new Set([0]),
+  )
 
-  const mountedIndices = new Set<number>()
+  const handleVisibilityChange = useCallback(
+    (index: number, isVisible: boolean) => {
+      setVisibleIndices((current) => {
+        const hasIndex = current.has(index)
 
-  for (
-    let index = Math.max(0, activeIndex - 3);
-    index <= Math.min(slideCount - 1, activeIndex + 3);
-    index += 1
-  ) {
-    mountedIndices.add(index)
-  }
+        if (isVisible === hasIndex) {
+          return current
+        }
 
-  let mountedCount = mountedIndices.size
+        const next = new Set(current)
 
-  for (let index = 0; index < slideCount && mountedCount < MAX_MOUNTED_THUMBNAILS; index += 1) {
-    if (!mountedIndices.has(index)) {
-      mountedIndices.add(index)
-      mountedCount += 1
-    }
-  }
+        if (isVisible) {
+          next.add(index)
+        } else {
+          next.delete(index)
+        }
+
+        return next
+      })
+    },
+    [],
+  )
+
+  const mountedIndices = useMemo(
+    () => computeMountedIndices(slideCount, activeIndex, visibleIndices),
+    [activeIndex, slideCount, visibleIndices],
+  )
 
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({
@@ -196,9 +257,10 @@ export function SlideThumbnailStrip({
               <LazyThumbnail
                 active={index === activeIndex}
                 index={index}
+                mountIframe={mountedIndices.has(index)}
                 onSelect={onSelect}
+                onVisibilityChange={handleVisibilityChange}
                 orientation={orientation}
-                shouldMount={mountedIndices.has(index)}
                 srcDoc={srcDoc}
               />
             </div>
