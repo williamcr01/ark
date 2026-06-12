@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -13,6 +14,8 @@ import {
   FileCode2Icon,
   Loader2Icon,
   MonitorPlayIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
   PresentationIcon,
@@ -56,8 +59,16 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
-import { useDeckKeyboardNavigation } from '@/hooks/useDeckKeyboardNavigation'
-import { getPreviewHtml } from '@/lib/deck-preview'
+import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
+import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import {
+  getPreviewHtml,
+  PREVIEW_FRAME_ASPECT_RATIO,
+  PREVIEW_FRAME_HEIGHT,
+  PREVIEW_FRAME_WIDTH,
+} from '@/lib/deck-preview'
+import { parseDeckSlides } from '@/lib/deck-slides'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
@@ -93,9 +104,6 @@ function downloadHtml(html: string) {
   URL.revokeObjectURL(url)
 }
 
-const PREVIEW_FRAME_WIDTH = 1600
-const PREVIEW_FRAME_HEIGHT = 900
-const PREVIEW_FRAME_ASPECT_RATIO = `${PREVIEW_FRAME_WIDTH} / ${PREVIEW_FRAME_HEIGHT}`
 const CHAT_PANEL_MIN_WIDTH_PX = 280
 const CHAT_PANEL_DEFAULT_PERCENT = 20
 
@@ -263,14 +271,18 @@ function App() {
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(true)
+  const [isStripOpen, setIsStripOpen] = useState(true)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [desktopMainRef, desktopMainSize] = useElementSize<HTMLElement>()
+  const [mainRef, mainSize] = useElementSize<HTMLElement>()
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
 
   const hasDeck = generatedHtml.length > 0
-  const chatDefaultSize = getChatPanelDefaultSize(desktopMainSize.width)
+  const parsedDeck = useMemo(() => parseDeckSlides(generatedHtml), [generatedHtml])
+  const hasSlides = parsedDeck.slideCount > 0
+  const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(
-    desktopMainSize.width,
+    mainSize.width,
     chatDefaultSize,
   )
 
@@ -476,10 +488,21 @@ function App() {
             >
               <UploadIcon />
             </TitleBarButton>
+            {hasSlides ? (
+              <TitleBarButton
+                active={isStripOpen}
+                aria-controls="ark-slide-strip"
+                aria-expanded={isStripOpen}
+                label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
+                onClick={() => setIsStripOpen((current) => !current)}
+              >
+                {isStripOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
+              </TitleBarButton>
+            ) : null}
             <ButtonGroupSeparator className="mx-0.5 h-4 bg-[var(--ark-titlebar-border)]" />
             <TitleBarButton
               active={isChatOpen}
-              aria-controls="ark-chat-panel-desktop ark-chat-panel-mobile"
+              aria-controls="ark-chat-panel"
               aria-expanded={isChatOpen}
               label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
               onClick={() => setIsChatOpen((current) => !current)}
@@ -489,30 +512,68 @@ function App() {
           </ButtonGroup>
         </header>
 
-        <main className="hidden min-h-0 flex-1 lg:block" ref={desktopMainRef}>
-          <ResizablePanelGroup
-            className="min-h-0 overflow-hidden"
-            key={
-              isChatOpen
-                ? `deck-with-chat-${String(chatDefaultSize)}`
-                : 'deck-only'
-            }
-            orientation="horizontal"
-          >
-            <ResizablePanel
-              defaultSize={isChatOpen ? deckDefaultSizeWithChat : '100%'}
-              minSize={isChatOpen ? '45%' : '100%'}
+        <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
+          {isDesktop ? (
+            <ResizablePanelGroup
+              className="min-h-0 overflow-hidden"
+              key={
+                isChatOpen
+                  ? `deck-with-chat-${String(chatDefaultSize)}`
+                  : 'deck-only'
+              }
+              orientation="horizontal"
             >
-              <DeckPreview html={generatedHtml} isGenerating={isGenerating} />
-            </ResizablePanel>
-            {isChatOpen ? (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel
-                  defaultSize={chatDefaultSize}
-                  id="ark-chat-panel-desktop"
-                  minSize={CHAT_PANEL_MIN_WIDTH_PX}
-                >
+              <ResizablePanel
+                defaultSize={isChatOpen ? deckDefaultSizeWithChat : '100%'}
+                minSize={isChatOpen ? '45%' : '100%'}
+              >
+                <DeckPreview
+                  html={generatedHtml}
+                  isGenerating={isGenerating}
+                  isStripOpen={isStripOpen}
+                  layout="desktop"
+                  parsedDeck={parsedDeck}
+                />
+              </ResizablePanel>
+              {isChatOpen ? (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel
+                    defaultSize={chatDefaultSize}
+                    id="ark-chat-panel"
+                    minSize={CHAT_PANEL_MIN_WIDTH_PX}
+                  >
+                    <ChatPanel
+                      error={error}
+                      input={input}
+                      isGenerating={isGenerating}
+                      messages={messages}
+                      onInputChange={setInput}
+                      onPromptSubmit={handlePromptSubmit}
+                    />
+                  </ResizablePanel>
+                </>
+              ) : null}
+            </ResizablePanelGroup>
+          ) : (
+            <div
+              className={
+                isChatOpen
+                  ? 'grid h-full min-h-0 grid-rows-[minmax(320px,0.9fr)_minmax(420px,1fr)]'
+                  : 'h-full min-h-0'
+              }
+            >
+              <div className="min-h-0 overflow-hidden">
+                <DeckPreview
+                  html={generatedHtml}
+                  isGenerating={isGenerating}
+                  isStripOpen={isStripOpen}
+                  layout="mobile"
+                  parsedDeck={parsedDeck}
+                />
+              </div>
+              {isChatOpen ? (
+                <div className="min-h-0 overflow-hidden" id="ark-chat-panel">
                   <ChatPanel
                     error={error}
                     input={input}
@@ -521,34 +582,10 @@ function App() {
                     onInputChange={setInput}
                     onPromptSubmit={handlePromptSubmit}
                   />
-                </ResizablePanel>
-              </>
-            ) : null}
-          </ResizablePanelGroup>
-        </main>
-
-        <main
-          className={
-            isChatOpen
-              ? 'grid min-h-0 flex-1 grid-rows-[minmax(320px,0.9fr)_minmax(420px,1fr)] lg:hidden'
-              : 'grid min-h-0 flex-1 lg:hidden'
-          }
-        >
-          <div className="min-h-0 overflow-hidden">
-            <DeckPreview html={generatedHtml} isGenerating={isGenerating} />
-          </div>
-          {isChatOpen ? (
-            <div className="min-h-0 overflow-hidden" id="ark-chat-panel-mobile">
-              <ChatPanel
-                error={error}
-                input={input}
-                isGenerating={isGenerating}
-                messages={messages}
-                onInputChange={setInput}
-                onPromptSubmit={handlePromptSubmit}
-              />
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          )}
         </main>
       </div>
       <Toaster position="bottom-center" />
@@ -559,15 +596,31 @@ function App() {
 type DeckPreviewProps = {
   html: string
   isGenerating: boolean
+  isStripOpen: boolean
+  layout: 'desktop' | 'mobile'
+  parsedDeck: ReturnType<typeof parseDeckSlides>
 }
 
-function DeckPreview({ html, isGenerating }: DeckPreviewProps) {
+function DeckPreview({
+  html,
+  isGenerating,
+  isStripOpen,
+  layout,
+  parsedDeck,
+}: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
-  useDeckKeyboardNavigation(iframeRef, html.length > 0)
+  const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
+    iframeRef,
+    parsedDeck.slideCount,
+    html,
+    html.length > 0 && parsedDeck.slideCount > 0,
+  )
   const previewFrameScale = getPreviewFrameScale(previewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
+  const showStrip = isStripOpen && parsedDeck.slideCount > 0
+  const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
@@ -582,7 +635,9 @@ function DeckPreview({ html, isGenerating }: DeckPreviewProps) {
             ›
           </span>
           <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
-            HTML deck
+            {parsedDeck.slideCount > 0
+              ? `Slide ${activeSlideIndex + 1} of ${parsedDeck.slideCount}`
+              : 'HTML deck'}
           </span>
         </div>
         <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
@@ -591,37 +646,54 @@ function DeckPreview({ html, isGenerating }: DeckPreviewProps) {
         </span>
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div
-          className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden"
-          ref={previewViewportRef}
-        >
-          {html ? (
-            <div
-              className="relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
-              style={previewStageStyle}
-            >
-              <iframe
-                className="absolute left-0 top-0 block border-0 bg-white"
-                ref={iframeRef}
-                referrerPolicy="no-referrer"
-                sandbox="allow-scripts"
-                srcDoc={getPreviewHtml(html)}
-                style={previewFrameStyle}
-                title="Generated Ark presentation preview"
-              />
-              {isGenerating ? (
-                <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-                  <Loader2Icon className="size-3.5 animate-spin" />
-                  Updating preview
-                </div>
-              ) : null}
-            </div>
-          ) : isGenerating ? (
-            <PreviewSkeleton scale={previewFrameScale} />
-          ) : (
-            <EmptyPreview />
-          )}
+      <div
+        className={cn(
+          'relative min-h-0 flex-1 overflow-hidden',
+          layout === 'desktop' ? 'flex flex-row' : 'flex flex-col',
+        )}
+      >
+        {showStrip ? (
+          <SlideThumbnailStrip
+            activeIndex={activeSlideIndex}
+            id="ark-slide-strip"
+            onSelect={goToSlide}
+            orientation={stripOrientation}
+            parsedDeck={parsedDeck}
+          />
+        ) : null}
+
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div
+            className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden"
+            ref={previewViewportRef}
+          >
+            {html ? (
+              <div
+                className="relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
+                style={previewStageStyle}
+              >
+                <iframe
+                  className="absolute left-0 top-0 block border-0 bg-white"
+                  ref={iframeRef}
+                  referrerPolicy="no-referrer"
+                  sandbox="allow-scripts"
+                  srcDoc={getPreviewHtml(html)}
+                  style={previewFrameStyle}
+                  title="Generated Ark presentation preview"
+                />
+                {isGenerating ? (
+                  <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
+                    <Loader2Icon className="size-3.5 animate-spin" />
+                    Updating preview
+                  </div>
+                ) : null}
+              </div>
+            ) : isGenerating ? (
+              <PreviewSkeleton scale={previewFrameScale} />
+            ) : (
+              <EmptyPreview />
+            )}
+          </div>
         </div>
       </div>
     </section>
