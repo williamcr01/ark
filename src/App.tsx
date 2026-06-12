@@ -56,6 +56,8 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
+import { useDeckKeyboardNavigation } from '@/hooks/useDeckKeyboardNavigation'
+import { getPreviewHtml } from '@/lib/deck-preview'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
@@ -203,37 +205,6 @@ function getPreviewFrameStyle(scale: number): CSSProperties {
     transformOrigin: 'top left',
     visibility: scale > 0 ? 'visible' : 'hidden',
   }
-}
-
-const previewFillStyle = `
-<style data-ark-preview-fill>
-  html,
-  body {
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-  }
-
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box;
-  }
-
-</style>`
-
-function getPreviewHtml(html: string) {
-  if (!html) {
-    return ''
-  }
-
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `${previewFillStyle}\n</head>`)
-  }
-
-  return `${previewFillStyle}\n${html}`
 }
 
 type TitleBarButtonProps = {
@@ -591,7 +562,9 @@ type DeckPreviewProps = {
 }
 
 function DeckPreview({ html, isGenerating }: DeckPreviewProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
+  useDeckKeyboardNavigation(iframeRef, html.length > 0)
   const previewFrameScale = getPreviewFrameScale(previewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
@@ -630,6 +603,7 @@ function DeckPreview({ html, isGenerating }: DeckPreviewProps) {
             >
               <iframe
                 className="absolute left-0 top-0 block border-0 bg-white"
+                ref={iframeRef}
                 referrerPolicy="no-referrer"
                 sandbox="allow-scripts"
                 srcDoc={getPreviewHtml(html)}
