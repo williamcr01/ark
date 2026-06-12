@@ -27,8 +27,10 @@ Hard requirements:
 - Design for a 16:9 presentation viewport.
 - Set html and body to width: 100%; height: 100%; margin: 0; overflow: hidden.
 - Make the active slide fill the viewport exactly: width: 100vw; height: 100vh.
-- Make each slide a clearly separated <section class="slide"> with useful semantic content.
-- Include a simple self-contained slide navigation script only if useful. No network requests.
+- Make each slide a clearly separated <section class="slide"> with useful semantic content. Do not nest slide sections inside other slide sections.
+- Put all slides in the DOM at once. Do not inject slides dynamically.
+- Do not include <script> tags or inline event handler attributes. The Ark shell handles slide navigation in preview; decks should rely on CSS for layout.
+- Optional CSS for .slide.active or [data-active] is fine, but navigation logic must not be in JavaScript.
 - Keep copy concise, presentation-grade, and visually scannable.
 - Use a coherent visual system: typography, spacing, color palette, hierarchy, and slide rhythm.
 - Avoid generic AI filler, fake citations, lorem ipsum, and vague business jargon.
@@ -37,7 +39,7 @@ Hard requirements:
 Safety and portability:
 - Do not include analytics, tracking, forms, iframes, remote scripts, or inline event handler attributes.
 - External fonts or CSS imports are allowed only if the deck still looks good without them.
-- Prefer pure HTML/CSS with a tiny inline script for slide navigation when needed.`
+- Prefer pure HTML/CSS only. No JavaScript.`
 
 const buildPrompt = ({ prompt, currentHtml }: { prompt: string; currentHtml: string }) => {
   if (currentHtml.trim()) {
