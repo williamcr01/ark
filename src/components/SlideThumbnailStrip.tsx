@@ -25,6 +25,7 @@ const MAX_MOUNTED_THUMBNAILS = 24
 type SlideThumbnailStripProps = {
   activeIndex: number
   id?: string
+  isOpen: boolean
   onSelect: (index: number) => void
   orientation: 'horizontal' | 'vertical'
   parsedDeck: ParsedDeck
@@ -38,6 +39,7 @@ type LazyThumbnailProps = {
   onVisibilityChange: (index: number, isVisible: boolean) => void
   orientation: 'horizontal' | 'vertical'
   srcDoc: string
+  trackVisibility: boolean
 }
 
 function computeMountedIndices(
@@ -90,10 +92,15 @@ function LazyThumbnail({
   onVisibilityChange,
   orientation,
   srcDoc,
+  trackVisibility,
 }: LazyThumbnailProps) {
   const containerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
+    if (!trackVisibility) {
+      return
+    }
+
     const element = containerRef.current
 
     if (!element) {
@@ -112,7 +119,7 @@ function LazyThumbnail({
     return () => {
       observer.disconnect()
     }
-  }, [index, onVisibilityChange])
+  }, [index, onVisibilityChange, trackVisibility])
 
   return (
     <button
@@ -167,6 +174,7 @@ function LazyThumbnail({
 export function SlideThumbnailStrip({
   activeIndex,
   id,
+  isOpen,
   onSelect,
   orientation,
   parsedDeck,
@@ -176,6 +184,29 @@ export function SlideThumbnailStrip({
   const [visibleIndices, setVisibleIndices] = useState<Set<number>>(
     () => new Set([0]),
   )
+  const [collapsedMountedIndices, setCollapsedMountedIndices] =
+    useState<Set<number> | null>(null)
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+
+  const computedMountedIndices = useMemo(
+    () => computeMountedIndices(slideCount, activeIndex, visibleIndices),
+    [activeIndex, slideCount, visibleIndices],
+  )
+
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen)
+
+    if (!isOpen) {
+      setCollapsedMountedIndices(new Set(computedMountedIndices))
+    } else {
+      setCollapsedMountedIndices(null)
+    }
+  }
+
+  const mountedIndices =
+    isOpen || !collapsedMountedIndices
+      ? computedMountedIndices
+      : collapsedMountedIndices
 
   const handleVisibilityChange = useCallback(
     (index: number, isVisible: boolean) => {
@@ -200,18 +231,17 @@ export function SlideThumbnailStrip({
     [],
   )
 
-  const mountedIndices = useMemo(
-    () => computeMountedIndices(slideCount, activeIndex, visibleIndices),
-    [activeIndex, slideCount, visibleIndices],
-  )
-
   useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
     activeItemRef.current?.scrollIntoView({
       behavior: 'smooth',
       block: orientation === 'vertical' ? 'nearest' : 'center',
       inline: orientation === 'horizontal' ? 'center' : 'nearest',
     })
-  }, [activeIndex, orientation])
+  }, [activeIndex, isOpen, orientation])
 
   if (slideCount === 0) {
     return null
@@ -224,11 +254,13 @@ export function SlideThumbnailStrip({
 
   return (
     <aside
+      aria-hidden={!isOpen}
       className={cn(
         'flex min-h-0 shrink-0 flex-col border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)]',
         orientation === 'vertical'
           ? 'w-[168px] border-r'
           : 'h-[132px] border-b',
+        !isOpen && 'hidden',
       )}
       id={id}
       style={{ '--ark-thumb-scale': thumbScale } as CSSProperties}
@@ -262,6 +294,7 @@ export function SlideThumbnailStrip({
                 onVisibilityChange={handleVisibilityChange}
                 orientation={orientation}
                 srcDoc={srcDoc}
+                trackVisibility={isOpen}
               />
             </div>
           ))}

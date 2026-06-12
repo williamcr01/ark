@@ -619,7 +619,7 @@ function DeckPreview({
   const previewFrameScale = getPreviewFrameScale(previewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
-  const showStrip = isStripOpen && parsedDeck.slideCount > 0
+  const hasStrip = parsedDeck.slideCount > 0
   const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
 
   return (
@@ -652,10 +652,11 @@ function DeckPreview({
           layout === 'desktop' ? 'flex flex-row' : 'flex flex-col',
         )}
       >
-        {showStrip ? (
+        {hasStrip ? (
           <SlideThumbnailStrip
             activeIndex={activeSlideIndex}
             id="ark-slide-strip"
+            isOpen={isStripOpen}
             key={html}
             onSelect={goToSlide}
             orientation={stripOrientation}
