@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
+  type PreviewMode,
 } from '@/lib/deck-preview'
 
 const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -25,11 +26,20 @@ function isTypingTarget(target: EventTarget | null) {
   return Boolean(target.closest('[contenteditable="true"], [role="textbox"]'))
 }
 
+function clampSlideIndex(index: number, slideCount: number) {
+  if (!Number.isFinite(index) || slideCount <= 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(slideCount - 1, Math.floor(index)))
+}
+
 export function useDeckSlideNavigation(
   iframeRef: RefObject<HTMLIFrameElement | null>,
   slideCount: number,
   html: string,
   enabled: boolean,
+  previewMode: PreviewMode = 'css-only',
 ) {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0)
   const [prevHtml, setPrevHtml] = useState(html)
@@ -50,8 +60,10 @@ export function useDeckSlideNavigation(
         return
       }
 
-      setActiveSlideIndex(index)
-      activeSlideIndexRef.current = index
+      if (previewMode === 'css-only') {
+        setActiveSlideIndex(index)
+        activeSlideIndexRef.current = index
+      }
 
       const iframeWindow = iframeRef.current?.contentWindow
 
@@ -61,7 +73,7 @@ export function useDeckSlideNavigation(
 
       iframeWindow.postMessage({ type: DECK_GOTO_MESSAGE_TYPE, index }, '*')
     },
-    [iframeRef, slideCount],
+    [iframeRef, previewMode, slideCount],
   )
 
   useEffect(() => {
@@ -80,9 +92,12 @@ export function useDeckSlideNavigation(
 
       if (
         data?.type === DECK_SLIDE_CHANGE_MESSAGE_TYPE &&
-        typeof data.index === 'number'
+        typeof data.index === 'number' &&
+        Number.isFinite(data.index)
       ) {
-        setActiveSlideIndex(data.index)
+        const clampedIndex = clampSlideIndex(data.index, slideCount)
+        setActiveSlideIndex(clampedIndex)
+        activeSlideIndexRef.current = clampedIndex
       }
     }
 
@@ -91,7 +106,7 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [enabled, iframeRef])
+  }, [enabled, iframeRef, slideCount])
 
   useEffect(() => {
     if (!enabled || slideCount === 0) {

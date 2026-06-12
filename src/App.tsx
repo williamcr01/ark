@@ -63,6 +63,7 @@ import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
+  detectPreviewMode,
   getPreviewHtml,
   PREVIEW_FRAME_ASPECT_RATIO,
   PREVIEW_FRAME_HEIGHT,
@@ -610,11 +611,13 @@ function DeckPreview({
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
+  const previewMode = useMemo(() => detectPreviewMode(html), [html])
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
     html,
     html.length > 0 && parsedDeck.slideCount > 0,
+    previewMode,
   )
   const previewFrameScale = getPreviewFrameScale(previewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
@@ -640,9 +643,16 @@ function DeckPreview({
               : 'HTML deck'}
           </span>
         </div>
-        <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
-          <FileCode2Icon className="size-3" />
-          srcDoc
+        <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
+          {previewMode === 'full-js' ? (
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+              Scripts running
+            </span>
+          ) : null}
+          <span className="flex items-center gap-1">
+            <FileCode2Icon className="size-3" />
+            srcDoc
+          </span>
         </span>
       </div>
 
