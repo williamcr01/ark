@@ -1,4 +1,4 @@
-import { SLIDE_SELECTOR_CHAIN } from '@/lib/deck-slides'
+import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from '@/lib/deck-slides'
 
 export const PREVIEW_FRAME_WIDTH = 1600
 export const PREVIEW_FRAME_HEIGHT = 900
@@ -34,6 +34,57 @@ const previewNavScript = `
 
   var slides = [];
   var currentIndex = 0;
+  var hudPadWidth = 0;
+
+  function padNum(n, width) {
+    var s = String(n);
+
+    while (s.length < width) {
+      s = '0' + s;
+    }
+
+    return s;
+  }
+
+  function syncCommonHud(index, count) {
+    var currentEl = document.getElementById('currentSlide');
+    var totalEl = document.getElementById('totalSlides');
+    var progressEl = document.getElementById('progressBar');
+    var prevEl = document.getElementById('prevSlide');
+    var nextEl = document.getElementById('nextSlide');
+
+    if (currentEl) {
+      if (!hudPadWidth) {
+        var initial = (currentEl.textContent || '').trim();
+        hudPadWidth = initial.length > 0 ? initial.length : 2;
+      }
+
+      currentEl.textContent = padNum(index + 1, hudPadWidth);
+    }
+
+    if (totalEl) {
+      var padWidth = hudPadWidth;
+
+      if (!padWidth) {
+        var totalInitial = (totalEl.textContent || '').trim();
+        padWidth = totalInitial.length > 0 ? totalInitial.length : 2;
+      }
+
+      totalEl.textContent = padNum(count, padWidth);
+    }
+
+    if (progressEl && count > 0) {
+      progressEl.style.width = ((index + 1) / count) * 100 + '%';
+    }
+
+    if (prevEl) {
+      prevEl.disabled = index === 0;
+    }
+
+    if (nextEl) {
+      nextEl.disabled = index === count - 1;
+    }
+  }
 
   function findSlides() {
     for (var i = 0; i < SELECTORS.length; i++) {
@@ -81,6 +132,8 @@ const previewNavScript = `
         slide.style.removeProperty('display');
       }
     }
+
+    syncCommonHud(nextIndex, slides.length);
 
     if (window.parent !== window) {
       window.parent.postMessage({ type: CHANGE, index: nextIndex }, '*');
@@ -131,7 +184,7 @@ export function getPreviewHtml(html: string) {
     return ''
   }
 
-  let previewHtml = html
+  let previewHtml = stripDeckScriptsForPreview(html)
 
   if (/<\/head>/i.test(previewHtml)) {
     previewHtml = previewHtml.replace(/<\/head>/i, `${previewFillStyle}\n</head>`)

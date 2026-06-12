@@ -66,6 +66,41 @@ function stripScriptsFromHead(head: HTMLHeadElement) {
   return clone.innerHTML
 }
 
+export function stripDeckScriptsForPreview(html: string): string {
+  if (!html.trim()) {
+    return ''
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  if (doc.head) {
+    stripScripts(doc.head)
+    stripInlineHandlers(doc.head)
+  }
+
+  if (doc.body) {
+    stripScripts(doc.body)
+    stripInlineHandlers(doc.body)
+  }
+
+  const htmlAttrs = doc.documentElement ? serializeElementAttrs(doc.documentElement) : ''
+  const bodyAttrs = doc.body ? serializeElementAttrs(doc.body) : ''
+  const headHtml = doc.head?.innerHTML ?? ''
+  const bodyHtml = doc.body?.innerHTML ?? ''
+  const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
+  const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
+
+  return `<!DOCTYPE html>
+${htmlOpen}
+<head>
+${headHtml}
+</head>
+${bodyOpen}
+${bodyHtml}
+</body>
+</html>`
+}
+
 export function findSlideElements(root: ParentNode) {
   for (const selector of SLIDE_SELECTOR_CHAIN) {
     const slides = [...root.querySelectorAll(selector)]

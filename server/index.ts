@@ -29,17 +29,25 @@ Hard requirements:
 - Make the active slide fill the viewport exactly: width: 100vw; height: 100vh.
 - Make each slide a clearly separated <section class="slide"> with useful semantic content. Do not nest slide sections inside other slide sections.
 - Put all slides in the DOM at once. Do not inject slides dynamically.
-- Do not include <script> tags or inline event handler attributes. The Ark shell handles slide navigation in preview; decks should rely on CSS for layout.
-- Optional CSS for .slide.active or [data-active] is fine, but navigation logic must not be in JavaScript.
 - Keep copy concise, presentation-grade, and visually scannable.
 - Use a coherent visual system: typography, spacing, color palette, hierarchy, and slide rhythm.
 - Avoid generic AI filler, fake citations, lorem ipsum, and vague business jargon.
 - If the user asks for edits and current HTML is provided, revise the deck and return the full updated HTML document.
 
+Optional navigation and HUD (for downloaded presentations):
+- You may include one small self-contained inline <script> that toggles .slide.active (or similar), updates an in-deck HUD, and wires prev/next controls via addEventListener. Prefer addEventListener over inline onclick attributes.
+- Ark preview strips deck scripts and injects its own navigation shim, so deck JavaScript is for the downloaded .html file opened in a browser.
+- When including in-deck HUD or prev/next controls, use these element IDs so preview and download stay aligned:
+  - id="currentSlide" — current slide number (zero-padded text, e.g. 01)
+  - id="totalSlides" — total slide count
+  - id="progressBar" — progress bar fill element (set style.width as a percentage)
+  - id="prevSlide" — previous button (disable on first slide)
+  - id="nextSlide" — next button (disable on last slide)
+- CSS-only decks without HUD are fine; Ark shell navigation works without any JavaScript.
+
 Safety and portability:
-- Do not include analytics, tracking, forms, iframes, remote scripts, or inline event handler attributes.
-- External fonts or CSS imports are allowed only if the deck still looks good without them.
-- Prefer pure HTML/CSS only. No JavaScript.`
+- Do not include analytics, tracking, forms, nested iframes, remote scripts, or external JavaScript libraries.
+- External fonts or CSS imports are allowed only if the deck still looks good without them.`
 
 const buildPrompt = ({ prompt, currentHtml }: { prompt: string; currentHtml: string }) => {
   if (currentHtml.trim()) {
