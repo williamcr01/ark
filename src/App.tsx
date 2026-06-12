@@ -56,7 +56,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
-import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
@@ -95,6 +94,37 @@ function downloadHtml(html: string) {
 const PREVIEW_FRAME_WIDTH = 1600
 const PREVIEW_FRAME_HEIGHT = 900
 const PREVIEW_FRAME_ASPECT_RATIO = `${PREVIEW_FRAME_WIDTH} / ${PREVIEW_FRAME_HEIGHT}`
+const CHAT_PANEL_MIN_WIDTH_PX = 280
+const CHAT_PANEL_DEFAULT_PERCENT = 20
+
+function getChatPanelDefaultSize(containerWidth: number) {
+  if (containerWidth <= 0) {
+    return `${CHAT_PANEL_DEFAULT_PERCENT}%`
+  }
+
+  const percentWidth = containerWidth * (CHAT_PANEL_DEFAULT_PERCENT / 100)
+
+  if (percentWidth < CHAT_PANEL_MIN_WIDTH_PX) {
+    return CHAT_PANEL_MIN_WIDTH_PX
+  }
+
+  return `${CHAT_PANEL_DEFAULT_PERCENT}%`
+}
+
+function getDeckPanelDefaultSizeWithChat(
+  containerWidth: number,
+  chatDefaultSize: number | string,
+) {
+  if (typeof chatDefaultSize === 'number') {
+    if (containerWidth <= 0) {
+      return `${100 - CHAT_PANEL_DEFAULT_PERCENT}%`
+    }
+
+    return containerWidth - chatDefaultSize
+  }
+
+  return `${100 - CHAT_PANEL_DEFAULT_PERCENT}%`
+}
 
 type ElementSize = {
   width: number
@@ -264,8 +294,14 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [desktopMainRef, desktopMainSize] = useElementSize<HTMLElement>()
 
   const hasDeck = generatedHtml.length > 0
+  const chatDefaultSize = getChatPanelDefaultSize(desktopMainSize.width)
+  const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(
+    desktopMainSize.width,
+    chatDefaultSize,
+  )
 
   const generateDeck = async (rawPrompt: string) => {
     const prompt = rawPrompt.trim()
@@ -482,22 +518,30 @@ function App() {
           </ButtonGroup>
         </header>
 
-        <main className="hidden min-h-0 flex-1 lg:block">
+        <main className="hidden min-h-0 flex-1 lg:block" ref={desktopMainRef}>
           <ResizablePanelGroup
             className="min-h-0 overflow-hidden"
-            key={isChatOpen ? 'deck-with-chat' : 'deck-only'}
+            key={
+              isChatOpen
+                ? `deck-with-chat-${String(chatDefaultSize)}`
+                : 'deck-only'
+            }
             orientation="horizontal"
           >
             <ResizablePanel
-              defaultSize={isChatOpen ? 72 : 100}
-              minSize={isChatOpen ? 55 : 100}
+              defaultSize={isChatOpen ? deckDefaultSizeWithChat : '100%'}
+              minSize={isChatOpen ? '45%' : '100%'}
             >
               <DeckPreview html={generatedHtml} isGenerating={isGenerating} />
             </ResizablePanel>
             {isChatOpen ? (
               <>
                 <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={28} id="ark-chat-panel-desktop" minSize={24}>
+                <ResizablePanel
+                  defaultSize={chatDefaultSize}
+                  id="ark-chat-panel-desktop"
+                  minSize={CHAT_PANEL_MIN_WIDTH_PX}
+                >
                   <ChatPanel
                     error={error}
                     input={input}
@@ -745,12 +789,7 @@ function ChatPanel({
                 value={input}
               />
             </PromptInputBody>
-            <PromptInputFooter>
-              <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                <span>Enter to send</span>
-                <Separator className="h-3" orientation="vertical" />
-                <span>Shift + Enter for a new line</span>
-              </div>
+            <PromptInputFooter className="justify-end">
               <PromptInputSubmit
                 disabled={!input.trim() || isGenerating}
                 status={isGenerating ? 'submitted' : 'ready'}
