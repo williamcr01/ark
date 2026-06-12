@@ -34,19 +34,59 @@ Hard requirements:
 - Avoid generic AI filler, fake citations, lorem ipsum, and vague business jargon.
 - If the user asks for edits and current HTML is provided, revise the deck and return the full updated HTML document.
 
-Optional navigation and HUD (for downloaded presentations):
-- You may include one small self-contained inline <script> that toggles .slide.active (or similar), updates an in-deck HUD, and wires prev/next controls via addEventListener. Prefer addEventListener over inline onclick attributes.
-- Ark preview strips deck scripts and injects its own navigation shim, so deck JavaScript is for the downloaded .html file opened in a browser.
-- When including in-deck HUD or prev/next controls, use these element IDs so preview and download stay aligned:
-  - id="currentSlide" — current slide number (zero-padded text, e.g. 01)
-  - id="totalSlides" — total slide count
-  - id="progressBar" — progress bar fill element (set style.width as a percentage)
-  - id="prevSlide" — previous button (disable on first slide)
-  - id="nextSlide" — next button (disable on last slide)
-- CSS-only decks without HUD are fine; Ark shell navigation works without any JavaScript.
+Preview modes:
+- Default (no marker): Ark preview strips deck scripts and injects its own navigation shim. Shell arrow keys and thumbnails work without deck JavaScript. Uploaded decks without an Ark marker always use this path.
+- Full-JS (explicit opt-in only): set data-ark-deck="nav" on <html> when the deck owns navigation, or data-ark-preview="full-js" for libraries/charts without nav ownership. Ark runs deck JavaScript and injects only a thin bridge. Preview is download-like but not identical (sandbox may block history.replaceState, storage, popups, etc.).
+- Thumbnails always strip scripts and remain static.
+
+When including navigation script (data-ark-deck="nav"), follow this exact pattern:
+- Use zero-based slide index, clamp in setSlide.
+- Listen for document CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
+- Dispatch document CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
+- Avoid history.replaceState / history.pushState for slide URLs (they fail in sandboxed preview); use in-memory index only.
+- Update standard HUD IDs when present: currentSlide, totalSlides, progressBar, prevSlide, nextSlide.
+
+Canonical navigation script:
+
+<html data-ark-deck="nav">
+...
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('section.slide')];
+  const currentEl = document.getElementById('currentSlide');
+  const totalEl = document.getElementById('totalSlides');
+  const progressEl = document.getElementById('progressBar');
+  const prevEl = document.getElementById('prevSlide');
+  const nextEl = document.getElementById('nextSlide');
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  let index = 0;
+
+  function setSlide(nextIndex) {
+    index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+    slides.forEach((slide, i) => {
+      const active = i === index;
+      slide.classList.toggle('active', active);
+      slide.setAttribute('aria-hidden', String(!active));
+    });
+    if (currentEl) currentEl.textContent = pad(index + 1);
+    if (totalEl) totalEl.textContent = pad(slides.length);
+    if (progressEl) progressEl.style.width = \`\${((index + 1) / slides.length) * 100}%\`;
+    if (prevEl) prevEl.disabled = index === 0;
+    if (nextEl) nextEl.disabled = index === slides.length - 1;
+    document.dispatchEvent(new CustomEvent('ark:deck-slide-change', { detail: { index } }));
+  }
+
+  document.addEventListener('ark:deck-goto', (e) => setSlide(e.detail.index));
+  if (prevEl) prevEl.addEventListener('click', () => setSlide(index - 1));
+  if (nextEl) nextEl.addEventListener('click', () => setSlide(index + 1));
+  setSlide(0);
+})();
+</script>
+
+External JavaScript libraries (e.g. Chart.js, reveal.js via CDN script tags) are allowed when data-ark-deck="nav" or data-ark-preview="full-js" is set. Prefer self-contained inline scripts for navigation.
 
 Safety and portability:
-- Do not include analytics, tracking, forms, nested iframes, remote scripts, or external JavaScript libraries.
+- Do not include analytics, tracking, forms, or nested iframes.
 - External fonts or CSS imports are allowed only if the deck still looks good without them.`
 
 const buildPrompt = ({ prompt, currentHtml }: { prompt: string; currentHtml: string }) => {
