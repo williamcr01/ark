@@ -12,6 +12,7 @@ import {
   DownloadIcon,
   FileCode2Icon,
   Loader2Icon,
+  Maximize2Icon,
   MonitorPlayIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
@@ -58,6 +59,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
+import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
@@ -571,19 +573,37 @@ function DeckPreview({
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
+  const [isPresentOpen, setIsPresentOpen] = useState(false)
+  const pendingPresentExitIndexRef = useRef<number | null>(null)
   const previewMode = useMemo(() => detectPreviewMode(html), [html])
+  const hasSlides = parsedDeck.slideCount > 0
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
     html,
-    html.length > 0 && parsedDeck.slideCount > 0,
-    { previewMode },
+    html.length > 0 && hasSlides && !isPresentOpen,
+    {
+      previewMode,
+      keyboardMode: isPresentOpen ? 'off' : 'preview',
+    },
   )
+
+  useEffect(() => {
+    if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
+      return
+    }
+
+    const finalIndex = pendingPresentExitIndexRef.current
+    pendingPresentExitIndexRef.current = null
+    goToSlide(finalIndex)
+  }, [goToSlide, isPresentOpen])
+
   const previewFrameScale = getPreviewFrameScale(previewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
-  const hasStrip = parsedDeck.slideCount > 0
+  const hasStrip = hasSlides
   const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
+  const canPresent = html.length > 0 && hasSlides && !isGenerating
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
@@ -604,7 +624,17 @@ function DeckPreview({
           </span>
         </div>
         <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
-{previewMode === 'full-js' ? (
+          <button
+            aria-label="Present fullscreen"
+            className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canPresent || isPresentOpen}
+            onClick={() => setIsPresentOpen(true)}
+            type="button"
+          >
+            <Maximize2Icon className="size-3" />
+            Present
+          </button>
+          {previewMode === 'full-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
@@ -669,6 +699,18 @@ function DeckPreview({
         </div>
       </div>
 
+      {isPresentOpen ? (
+        <PresentMode
+          html={html}
+          initialSlideIndex={activeSlideIndex}
+          onExit={(finalIndex) => {
+            pendingPresentExitIndexRef.current = finalIndex
+            setIsPresentOpen(false)
+          }}
+          previewMode={previewMode}
+          slideCount={parsedDeck.slideCount}
+        />
+      ) : null}
     </section>
   )
 }
