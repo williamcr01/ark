@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type CSSProperties,
   type ReactNode,
 } from 'react'
 import { toast } from 'sonner'
@@ -64,10 +63,11 @@ import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
   detectPreviewMode,
+  getPreviewFrameScale,
+  getPreviewFrameStyle,
   getPreviewHtml,
-  PREVIEW_FRAME_ASPECT_RATIO,
-  PREVIEW_FRAME_HEIGHT,
-  PREVIEW_FRAME_WIDTH,
+  getPreviewStageStyle,
+  type ElementSize,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
 import { cn } from '@/lib/utils'
@@ -137,11 +137,6 @@ function getDeckPanelDefaultSizeWithChat(
   return `${100 - CHAT_PANEL_DEFAULT_PERCENT}%`
 }
 
-type ElementSize = {
-  width: number
-  height: number
-}
-
 function useElementSize<T extends HTMLElement>() {
   const elementRef = useRef<T>(null)
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
@@ -179,41 +174,6 @@ function useElementSize<T extends HTMLElement>() {
   }, [])
 
   return [elementRef, size] as const
-}
-
-function getPreviewFrameScale({ width, height }: ElementSize) {
-  const scale = Math.min(width / PREVIEW_FRAME_WIDTH, height / PREVIEW_FRAME_HEIGHT)
-
-  if (!Number.isFinite(scale) || scale <= 0) {
-    return 0
-  }
-
-  return scale
-}
-
-function getPreviewStageStyle(scale: number): CSSProperties {
-  if (scale <= 0) {
-    return {
-      aspectRatio: PREVIEW_FRAME_ASPECT_RATIO,
-      width: '100%',
-      maxHeight: '100%',
-    }
-  }
-
-  return {
-    width: PREVIEW_FRAME_WIDTH * scale,
-    height: PREVIEW_FRAME_HEIGHT * scale,
-  }
-}
-
-function getPreviewFrameStyle(scale: number): CSSProperties {
-  return {
-    width: PREVIEW_FRAME_WIDTH,
-    height: PREVIEW_FRAME_HEIGHT,
-    transform: `scale(${scale || 1})`,
-    transformOrigin: 'top left',
-    visibility: scale > 0 ? 'visible' : 'hidden',
-  }
 }
 
 type TitleBarButtonProps = {
@@ -644,7 +604,7 @@ function DeckPreview({
           </span>
         </div>
         <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
-          {previewMode === 'full-js' ? (
+{previewMode === 'full-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
@@ -708,6 +668,7 @@ function DeckPreview({
           </div>
         </div>
       </div>
+
     </section>
   )
 }
