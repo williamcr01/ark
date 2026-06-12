@@ -7,6 +7,61 @@ export const PREVIEW_FRAME_ASPECT_RATIO = `${PREVIEW_FRAME_WIDTH} / ${PREVIEW_FR
 export const DECK_GOTO_MESSAGE_TYPE = 'ark:deck-goto' as const
 export const DECK_SLIDE_CHANGE_MESSAGE_TYPE = 'ark:deck-slide-change' as const
 
+export const DECK_GOTO_EVENT = DECK_GOTO_MESSAGE_TYPE
+export const DECK_SLIDE_CHANGE_EVENT = DECK_SLIDE_CHANGE_MESSAGE_TYPE
+
+export type PreviewMode = 'css-only' | 'full-js'
+
+function hasFullJsMarker(doc: Document) {
+  for (const element of [doc.documentElement, doc.body]) {
+    if (!element) {
+      continue
+    }
+
+    if (element.getAttribute('data-ark-deck') === 'nav') {
+      return true
+    }
+
+    if (element.getAttribute('data-ark-preview') === 'full-js') {
+      return true
+    }
+  }
+
+  return false
+}
+
+export function detectPreviewMode(html: string): PreviewMode {
+  if (!html.trim()) {
+    return 'css-only'
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  return hasFullJsMarker(doc) ? 'full-js' : 'css-only'
+}
+
+const previewHistoryShim = `
+<script data-ark-preview-history-shim>
+(function () {
+  function safeHistoryCall(method) {
+    var original = history[method];
+
+    if (typeof original !== 'function') {
+      return;
+    }
+
+    history[method] = function () {
+      try {
+        return original.apply(history, arguments);
+      } catch (error) {}
+    };
+  }
+
+  safeHistoryCall('replaceState');
+  safeHistoryCall('pushState');
+})();
+</script>`
+
 const previewFillStyle = `
 <style data-ark-preview-fill>
   html,
@@ -23,6 +78,64 @@ const previewFillStyle = `
   }
 
 </style>`
+
+const previewBridgeScript = `
+<script data-ark-preview-bridge>
+(function () {
+  var GOTO = ${JSON.stringify(DECK_GOTO_MESSAGE_TYPE)};
+  var CHANGE = ${JSON.stringify(DECK_SLIDE_CHANGE_MESSAGE_TYPE)};
+  var SELECTORS = ${JSON.stringify([...SLIDE_SELECTOR_CHAIN])};
+
+  function findSlideCount() {
+    for (var i = 0; i < SELECTORS.length; i++) {
+      var found = document.querySelectorAll(SELECTORS[i]);
+
+      if (found.length) {
+        return found.length;
+      }
+    }
+
+    return 0;
+  }
+
+  function clampIndex(index, count) {
+    if (!Number.isFinite(index)) {
+      return 0;
+    }
+
+    if (count <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(count - 1, Math.floor(index)));
+  }
+
+  window.addEventListener('message', function (event) {
+    if (event.source !== window.parent) {
+      return;
+    }
+
+    var data = event.data;
+
+    if (data && data.type === GOTO && typeof data.index === 'number') {
+      document.dispatchEvent(new CustomEvent(GOTO, {
+        detail: { index: data.index },
+      }));
+    }
+  });
+
+  document.addEventListener(CHANGE, function (event) {
+    var detail = event.detail || {};
+    var index = detail.index;
+    var count = findSlideCount();
+    var clamped = clampIndex(index, count);
+
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: CHANGE, index: clamped }, '*');
+    }
+  });
+})();
+</script>`
 
 const previewNavScript = `
 <script data-ark-preview-nav>
@@ -179,22 +292,39 @@ const previewNavScript = `
 })();
 </script>`
 
+function injectPreviewFill(html: string, options: { historyShim?: boolean } = {}) {
+  const headInjection = `${options.historyShim ? `${previewHistoryShim}\n` : ''}${previewFillStyle}`
+
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `${headInjection}\n</head>`)
+  }
+
+  return `${headInjection}\n${html}`
+}
+
+function injectBeforeBodyClose(html: string, injection: string) {
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${injection}\n</body>`)
+  }
+
+  return `${html}\n${injection}`
+}
+
 export function getPreviewHtml(html: string) {
   if (!html) {
     return ''
   }
 
-  let previewHtml = stripDeckScriptsForPreview(html)
+  const mode = detectPreviewMode(html)
 
-  if (/<\/head>/i.test(previewHtml)) {
-    previewHtml = previewHtml.replace(/<\/head>/i, `${previewFillStyle}\n</head>`)
-  } else {
-    previewHtml = `${previewFillStyle}\n${previewHtml}`
+  if (mode === 'full-js') {
+    return injectBeforeBodyClose(
+      injectPreviewFill(html, { historyShim: true }),
+      previewBridgeScript,
+    )
   }
 
-  if (/<\/body>/i.test(previewHtml)) {
-    return previewHtml.replace(/<\/body>/i, `${previewNavScript}\n</body>`)
-  }
+  const strippedHtml = stripDeckScriptsForPreview(html)
 
-  return `${previewHtml}\n${previewNavScript}`
+  return injectBeforeBodyClose(injectPreviewFill(strippedHtml), previewNavScript)
 }
