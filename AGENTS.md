@@ -121,18 +121,23 @@ Ark replays the **full visible chat history** on every `/api/generate` request (
 - **Assistant messages**: Store summary text and tool activity (`list_slides`, `read_deck`, `edit_deck`, `write_deck`). The model reads the deck via tools instead of receiving the full HTML on every turn.
 - **Token/cost**: Follow-up edits use `edit_deck` patches instead of re-emitting the entire document. Long chats still replay prior text linearly; compaction is not implemented yet.
 
+### Deck parser (issue #37)
+
+Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml` extracts title, runtime markers, slide structure (plain vs reveal), per-slide notes, style blocks, scripts, and asset references. Generation/editing services consume it via `server/deck-html.ts` and the `parse_deck` agent tool.
+
 ### Agent tool loop (issue #58)
 
 Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools` + `stopWhen: stepCountIs(12)`), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
 
 | Tool | Purpose |
 |------|---------|
+| `parse_deck` | Structured deck metadata (title, runtime, slides, notes, styles, scripts, assets) |
 | `list_slides` | Enumerate slide boundaries and titles |
 | `read_deck` | Read full HTML by line offset/limit or a single slide by index |
 | `edit_deck` | Apply exact `oldText` → `newText` patches (pi-style; each match must be unique) |
 | `write_deck` | Replace the entire deck (new decks or explicit full rewrites) |
 
-Server implementation: `server/deck-tools.ts`, `server/deck-agent.ts`. The client shows tool calls/results in chat and applies deck updates from tool results (final HTML returned in the API response).
+Server implementation: `server/deck-parser.ts`, `server/deck-tools.ts`, `server/deck-agent.ts`. The client shows tool calls/results in chat and applies deck updates from tool results (final HTML returned in the API response).
 
 One user message → one agent run → up to 12 tool/model steps → deck update + assistant summary.
 

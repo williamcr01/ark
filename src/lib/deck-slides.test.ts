@@ -5,6 +5,7 @@ import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 
+import { STRICT_DECK_CSP } from './deck-runtime'
 import {
   parseDeckSlides,
   stripDeckScriptsForPreview,
@@ -58,8 +59,8 @@ describe('parseDeckSlides', () => {
       const slides = thumbnailDoc.querySelectorAll('section.slide')
 
       expect(srcDoc).toContain('data-ark-thumb-fill')
-      expect(srcDoc).toContain('Content-Security-Policy')
-      expect(srcDoc).toContain("connect-src 'none'")
+      expect(srcDoc).toContain('http-equiv="Content-Security-Policy"')
+      expect(srcDoc).toContain(STRICT_DECK_CSP)
       expect(slides).toHaveLength(1)
       expect(slides[0].classList.contains('active')).toBe(true)
       expect(slides[0].getAttribute('aria-hidden')).toBe('false')

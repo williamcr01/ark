@@ -7,8 +7,8 @@ import {
   isDeckRuntimeErrorMessage,
   isDeckSlideChangeMessage,
   type DeckMetadata,
-  type PreviewMode,
 } from '../../shared/deck-bridge.ts'
+import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
 const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 const PRESENT_NEXT_KEYS = new Set([
@@ -29,7 +29,7 @@ const PRESENT_PREV_KEYS = new Set([
 type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
 
 export type DeckNavOptions = {
-  previewMode?: PreviewMode
+  runtimeMode?: DeckRuntimeMode
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
   onSlideChange?: (index: number) => void

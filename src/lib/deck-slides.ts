@@ -1,4 +1,8 @@
-import { injectPreviewCsp } from '../../shared/deck-network.ts'
+import {
+  detectRuntimeModeFromDocument,
+  injectRuntimeCsp,
+  type DeckRuntimeMode,
+} from './deck-runtime'
 
 export const SLIDE_SELECTOR_CHAIN = [
   'section.slide',
@@ -145,12 +149,12 @@ function buildThumbnailSrcDoc(
   headHtml: string,
   htmlAttrs: string,
   bodyAttrs: string,
+  runtimeMode: DeckRuntimeMode,
 ) {
   const bodyHtml = prepareThumbnailBody(doc, slideIndex)
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
   const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
-
-  return injectPreviewCsp(`<!DOCTYPE html>
+  const srcDoc = `<!DOCTYPE html>
 ${htmlOpen}
 <head>
 ${headHtml}
@@ -159,7 +163,9 @@ ${thumbnailFillStyle}
 ${bodyOpen}
 ${bodyHtml}
 </body>
-</html>`)
+</html>`
+
+  return injectRuntimeCsp(srcDoc, runtimeMode)
 }
 
 const emptyParsedDeck: ParsedDeck = {
@@ -193,8 +199,10 @@ export function parseDeckSlides(html: string): ParsedDeck {
     outerHTML: element.outerHTML,
   }))
 
+  const runtimeMode = detectRuntimeModeFromDocument(doc)
+
   const thumbnailSrcDocs = slides.map((slide) =>
-    buildThumbnailSrcDoc(doc, slide.index, headHtml, htmlAttrs, bodyAttrs),
+    buildThumbnailSrcDoc(doc, slide.index, headHtml, htmlAttrs, bodyAttrs, runtimeMode),
   )
 
   return {

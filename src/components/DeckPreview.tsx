@@ -21,10 +21,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
-  detectPreviewMode,
+  detectRuntimeMode,
   getPreviewFrameScale,
   getPreviewFrameStyle,
   getPreviewHtml,
+  getPreviewSandbox,
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
@@ -50,7 +51,7 @@ export function DeckPreview({
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
-  const previewMode = useMemo(() => detectPreviewMode(html), [html])
+  const runtimeMode = useMemo(() => detectRuntimeMode(html), [html])
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
@@ -62,7 +63,7 @@ export function DeckPreview({
     html,
     html.length > 0 && hasSlides && !isPresentOpen,
     {
-      previewMode,
+      runtimeMode,
       keyboardMode: isPresentOpen ? 'off' : 'preview',
     },
   )
@@ -113,7 +114,7 @@ export function DeckPreview({
             <Maximize2Icon className="size-3" />
             Present
           </button>
-          {previewMode === 'full-js' ? (
+          {runtimeMode === 'custom-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
@@ -157,7 +158,7 @@ export function DeckPreview({
                   className="absolute left-0 top-0 block border-0 bg-white"
                   ref={iframeRef}
                   referrerPolicy="no-referrer"
-                  sandbox="allow-scripts"
+                  sandbox={getPreviewSandbox(runtimeMode)}
                   srcDoc={getPreviewHtml(html)}
                   style={previewFrameStyle}
                   title="Generated Ark presentation preview"
@@ -197,7 +198,7 @@ export function DeckPreview({
             pendingPresentExitIndexRef.current = finalIndex
             setIsPresentOpen(false)
           }}
-          previewMode={previewMode}
+          runtimeMode={runtimeMode}
           slideCount={parsedDeck.slideCount}
         />
       ) : null}
