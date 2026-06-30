@@ -12,23 +12,26 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
+import type { MessageResponseProps as MessageResponseInnerProps } from "./message-response";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
-  memo,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { Streamdown } from "streamdown";
+
+const LazyMessageResponse = lazy(() =>
+  import("./message-response").then((module) => ({
+    default: module.MessageResponse,
+  }))
+);
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -319,27 +322,30 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type { MessageResponseProps } from "./message-response";
 
-const streamdownPlugins = { cjk, code, math, mermaid };
-
-export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      plugins={streamdownPlugins}
-      {...props}
-    />
-  ),
-  (prevProps, nextProps) =>
-    prevProps.children === nextProps.children &&
-    nextProps.isAnimating === prevProps.isAnimating
+export const MessageResponse = ({
+  children,
+  className,
+  ...props
+}: MessageResponseInnerProps) => (
+  <Suspense
+    fallback={
+      <div
+        className={cn(
+          "size-full whitespace-pre-wrap text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          className
+        )}
+      >
+        {children}
+      </div>
+    }
+  >
+    <LazyMessageResponse className={className} {...props}>
+      {children}
+    </LazyMessageResponse>
+  </Suspense>
 );
-
-MessageResponse.displayName = "MessageResponse";
 
 export type MessageToolbarProps = ComponentProps<"div">;
 
