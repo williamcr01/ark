@@ -1,20 +1,21 @@
 import 'dotenv/config'
 
-import { openai } from '@ai-sdk/openai'
-import { generateText } from 'ai'
+import { generateText, type LanguageModel } from 'ai'
 import express, { type Request, type Response } from 'express'
 
 import {
-  ensureModelInList,
-  fetchOpenAIModels,
-  getDefaultModel,
-} from './models.ts'
-import {
-  getConfiguredApiKey,
+  hasAnyConfiguredProvider,
   missingApiKeyError,
   parseProviderError,
+  getProviderStatus,
   type ApiErrorPayload,
-} from './api-key.ts'
+} from './credentials.ts'
+import {
+  ensureModelInList,
+  fetchAllAvailableModels,
+  getDefaultModel,
+} from './models.ts'
+import { createLanguageModel } from './provider-runtime.ts'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
@@ -169,31 +170,41 @@ const getApiErrorFromUnknown = (error: unknown): ApiErrorPayload => {
 }
 
 app.get('/api/health', (_request: Request, response: Response) => {
-  const apiKey = getConfiguredApiKey()
+  const configured = hasAnyConfiguredProvider()
 
   response.json({
     ok: true,
     model: defaultModel,
     apiKey: {
-      configured: Boolean(apiKey),
+      configured,
     },
+    providers: getProviderStatus(),
   })
 })
 
 app.get('/api/models', async (_request: Request, response: Response) => {
-  const apiKey = getConfiguredApiKey()
-
-  if (!apiKey) {
+  if (!hasAnyConfiguredProvider()) {
     sendApiError(response, 503, missingApiKeyError())
     return
   }
 
   try {
-    const models = ensureModelInList(await fetchOpenAIModels(apiKey), defaultModel)
+    const { models, warnings } = await fetchAllAvailableModels()
+
+    if (models.length === 0) {
+      sendApiError(response, 500, {
+        code: 'provider_error',
+        error:
+          warnings.join(' ') ||
+          'No models were returned from the configured providers. Check your API keys and restart the dev server.',
+      })
+      return
+    }
 
     response.json({
       defaultModel,
-      models,
+      models: ensureModelInList(models, defaultModel),
+      warnings,
     })
   } catch (error) {
     sendApiError(response, 500, getApiErrorFromUnknown(error))
@@ -204,22 +215,23 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
   const prompt = request.body.prompt?.trim() ?? ''
   const currentHtml = request.body.currentHtml ?? ''
   const requestedModel = request.body.model?.trim()
-  const model = requestedModel || defaultModel
-  const apiKey = getConfiguredApiKey()
+  const modelRef = requestedModel || defaultModel
 
-  if (!apiKey) {
+  if (!hasAnyConfiguredProvider()) {
     sendApiError(response, 503, missingApiKeyError())
     return
   }
 
   if (!prompt) {
-    response.status(400).json({ error: 'Prompt is required.', code: 'openai_error' })
+    response.status(400).json({ error: 'Prompt is required.', code: 'provider_error' })
     return
   }
 
   try {
+    const { model } = createLanguageModel(modelRef)
+
     const result = await generateText({
-      model: openai(model),
+      model: model as LanguageModel,
       system: deckSystemPrompt,
       prompt: buildPrompt({ prompt, currentHtml }),
       maxOutputTokens: 12_000,
@@ -231,14 +243,14 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
     if (!isHtmlDocument(html)) {
       response.status(502).json({
         error: 'The model did not return a complete HTML document. Try again with a more specific prompt.',
-        code: 'openai_error',
+        code: 'provider_error',
       })
       return
     }
 
     response.json({ html })
   } catch (error) {
-    sendApiError(response, 500, parseProviderError(error))
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
   }
 })
 

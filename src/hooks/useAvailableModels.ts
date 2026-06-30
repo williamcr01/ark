@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 
+export type ProviderId = 'openai' | 'anthropic' | 'google'
+
 export type AvailableModel = {
   id: string
+  provider: ProviderId
+  modelId: string
   name?: string
-  ownedBy?: string
 }
 
 export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
@@ -11,13 +14,14 @@ export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
 export type ApiErrorCode =
   | 'missing_api_key'
   | 'invalid_api_key'
-  | 'openai_error'
+  | 'provider_error'
 
 type ModelsResponse = {
   models?: AvailableModel[]
   defaultModel?: string
   error?: string
   code?: ApiErrorCode
+  warnings?: string[]
 }
 
 type HealthResponse = {
@@ -27,9 +31,13 @@ type HealthResponse = {
   apiKey?: {
     configured?: boolean
   }
+  providers?: Partial<Record<ProviderId, { configured?: boolean }>>
 }
 
 const SELECTED_MODEL_STORAGE_KEY = 'ark:selected-model'
+
+const MISSING_KEY_MESSAGE =
+  'No API keys configured. Add at least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY to .env and restart the dev server.'
 
 const readStoredModel = () => {
   try {
@@ -59,6 +67,19 @@ const toApiKeyStatus = (code?: ApiErrorCode): ApiKeyStatus => {
   return 'valid'
 }
 
+const resolveStoredModel = (models: AvailableModel[], storedModel: string | null) => {
+  if (!storedModel) {
+    return null
+  }
+
+  if (models.some((model) => model.id === storedModel)) {
+    return storedModel
+  }
+
+  const legacyMatch = models.find((model) => model.modelId === storedModel)
+  return legacyMatch?.id ?? null
+}
+
 async function fetchHealth() {
   const response = await fetch('/api/health')
   const data = (await response.json().catch(() => ({}))) as HealthResponse
@@ -85,6 +106,7 @@ async function fetchAvailableModels() {
   return {
     defaultModel: data.defaultModel ?? data.models?.[0]?.id ?? '',
     models: data.models ?? [],
+    warnings: data.warnings ?? [],
   }
 }
 
@@ -95,14 +117,12 @@ export function useAvailableModels() {
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>('checking')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [warnings, setWarnings] = useState<string[]>([])
 
   const applyModels = useCallback(
     (nextModels: AvailableModel[], nextDefault: string) => {
-      const storedModel = readStoredModel()
-      const nextSelected =
-        storedModel && nextModels.some((model) => model.id === storedModel)
-          ? storedModel
-          : nextDefault
+      const storedModel = resolveStoredModel(nextModels, readStoredModel())
+      const nextSelected = storedModel ?? nextDefault
 
       setModels(nextModels)
       setDefaultModel(nextDefault)
@@ -118,6 +138,7 @@ export function useAvailableModels() {
   const loadModels = useCallback(async () => {
     setIsLoading(true)
     setError('')
+    setWarnings([])
 
     try {
       const health = await fetchHealth()
@@ -127,16 +148,18 @@ export function useAvailableModels() {
         setModels([])
         setSelectedModelState('')
         setDefaultModel(health.model ?? '')
-        setError(
-          'Missing OPENAI_API_KEY. Copy .env.example to .env, add your key, and restart the dev server.',
-        )
+        setError(MISSING_KEY_MESSAGE)
         return
       }
 
-      const { defaultModel: nextDefault, models: nextModels } =
-        await fetchAvailableModels()
+      const {
+        defaultModel: nextDefault,
+        models: nextModels,
+        warnings: nextWarnings,
+      } = await fetchAvailableModels()
 
       setApiKeyStatus('valid')
+      setWarnings(nextWarnings)
       applyModels(nextModels, nextDefault)
     } catch (loadError) {
       const code =
@@ -166,6 +189,7 @@ export function useAvailableModels() {
     const load = async () => {
       setIsLoading(true)
       setError('')
+      setWarnings([])
 
       try {
         const health = await fetchHealth()
@@ -179,20 +203,22 @@ export function useAvailableModels() {
           setModels([])
           setSelectedModelState('')
           setDefaultModel(health.model ?? '')
-          setError(
-            'Missing OPENAI_API_KEY. Copy .env.example to .env, add your key, and restart the dev server.',
-          )
+          setError(MISSING_KEY_MESSAGE)
           return
         }
 
-        const { defaultModel: nextDefault, models: nextModels } =
-          await fetchAvailableModels()
+        const {
+          defaultModel: nextDefault,
+          models: nextModels,
+          warnings: nextWarnings,
+        } = await fetchAvailableModels()
 
         if (cancelled) {
           return
         }
 
         setApiKeyStatus('valid')
+        setWarnings(nextWarnings)
         applyModels(nextModels, nextDefault)
       } catch (loadError) {
         if (cancelled) {
@@ -246,5 +272,14 @@ export function useAvailableModels() {
     models,
     selectedModel,
     setSelectedModel,
+    warnings,
   }
+}
+
+export const formatModelLabel = (model: AvailableModel) => {
+  if (model.name) {
+    return `${model.provider} · ${model.name}`
+  }
+
+  return model.id
 }
