@@ -12,7 +12,16 @@ import {
 
 import { buttonVariants } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { cn } from '@/lib/utils'
 
 type TitleBarButtonProps = {
@@ -64,6 +73,72 @@ function TitleBarButton({
   )
 }
 
+function DownloadTitleBarButton({
+  disabled,
+  onDownload,
+  showSanitizedDownload,
+}: {
+  disabled?: boolean
+  onDownload: (variant: DeckDownloadVariant) => void
+  showSanitizedDownload: boolean
+}) {
+  if (!showSanitizedDownload) {
+    return (
+      <TitleBarButton
+        disabled={disabled}
+        label="Download HTML"
+        onClick={() => onDownload('original')}
+        primary
+      >
+        <DownloadIcon />
+      </TitleBarButton>
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="Download HTML"
+              className={cn(
+                buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+                'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
+                'hover:bg-[var(--ark-accent-soft)]',
+                'disabled:text-[var(--ark-titlebar-muted)]/50',
+              )}
+              disabled={disabled}
+              type="button"
+            >
+              <span aria-hidden className="inline-flex">
+                <DownloadIcon />
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Download HTML</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel>Export deck</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => onDownload('original')}>
+          <div className="flex flex-col gap-0.5">
+            <span>Original HTML</span>
+            <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
+          <div className="flex flex-col gap-0.5">
+            <span>Sanitized HTML</span>
+            <span className="text-xs text-muted-foreground">Matches static preview</span>
+          </div>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export type DeckSaveStatus =
   'loading' | 'new' | 'generating' | 'saving' | 'dirty' | 'saved' | 'error'
 
@@ -75,12 +150,13 @@ export type AppTitleBarProps = {
   isChatOpen: boolean
   isGenerating: boolean
   isStripOpen: boolean
-  onDownload: () => void
+  onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onReset: () => void
   onToggleChat: () => void
   onToggleStrip: () => void
   onUploadClick: () => void
+  showSanitizedDownload: boolean
 }
 
 export function AppTitleBar({
@@ -97,6 +173,7 @@ export function AppTitleBar({
   onToggleChat,
   onToggleStrip,
   onUploadClick,
+  showSanitizedDownload,
 }: AppTitleBarProps) {
   const statusLabel =
     deckSaveStatus === 'loading'
@@ -160,9 +237,11 @@ export function AppTitleBar({
         <TitleBarButton disabled={!hasDeck || isGenerating} label="Start over" onClick={onReset}>
           <RefreshCwIcon />
         </TitleBarButton>
-        <TitleBarButton disabled={!hasDeck} label="Download HTML" onClick={onDownload} primary>
-          <DownloadIcon />
-        </TitleBarButton>
+        <DownloadTitleBarButton
+          disabled={!hasDeck}
+          onDownload={onDownload}
+          showSanitizedDownload={showSanitizedDownload}
+        />
         <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
           <UploadIcon />
         </TitleBarButton>

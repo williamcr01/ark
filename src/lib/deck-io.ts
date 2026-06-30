@@ -1,9 +1,26 @@
-export function downloadHtml(html: string) {
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+import { resolveDownloadHtml, type DeckDownloadVariant } from '@/lib/deck-export'
+import {
+  formatDeckValidationSummary,
+  validateDeckHtmlInBrowser,
+  type DeckValidationReport,
+} from '@/lib/deck-validate'
+
+export type DownloadHtmlOptions = {
+  variant?: DeckDownloadVariant
+  baseName?: string
+}
+
+export function downloadHtml(html: string, options: DownloadHtmlOptions = {}) {
+  const variant = options.variant ?? 'original'
+  const content = resolveDownloadHtml(html, variant)
+  const date = new Date().toISOString().slice(0, 10)
+  const baseName = options.baseName ?? `ark-presentation-${date}`
+  const suffix = variant === 'sanitized' ? '-sanitized' : ''
+  const blob = new Blob([content], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `ark-presentation-${new Date().toISOString().slice(0, 10)}.html`
+  link.download = `${baseName}${suffix}.html`
   document.body.append(link)
   link.click()
   link.remove()
@@ -17,12 +34,6 @@ export function isHtmlDeckFile(file: File) {
     file.name.toLowerCase().endsWith('.htm')
   )
 }
-
-import {
-  formatDeckValidationSummary,
-  validateDeckHtmlInBrowser,
-  type DeckValidationReport,
-} from '@/lib/deck-validate'
 
 export function validateUploadedDeck(html: string): DeckValidationReport {
   return validateDeckHtmlInBrowser(html)
