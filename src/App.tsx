@@ -69,6 +69,7 @@ import {
 import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import {
+  formatModelLabel,
   useAvailableModels,
   type ApiKeyStatus,
   type AvailableModel,
@@ -103,7 +104,7 @@ type ChatMessage = {
 type GenerateResponse = {
   html?: string
   error?: string
-  code?: 'missing_api_key' | 'invalid_api_key' | 'openai_error'
+  code?: 'missing_api_key' | 'invalid_api_key' | 'provider_error'
 }
 
 const newId = () => crypto.randomUUID()
@@ -261,6 +262,7 @@ function App() {
     models,
     selectedModel,
     setSelectedModel,
+    warnings: modelWarnings,
   } = useAvailableModels()
 
   const hasDeck = generatedHtml.length > 0
@@ -544,6 +546,7 @@ function App() {
                       messages={messages}
                       models={models}
                       modelsError={modelsError}
+                      modelWarnings={modelWarnings}
                       onInputChange={setInput}
                       onModelChange={setSelectedModel}
                       onPromptSubmit={handlePromptSubmit}
@@ -583,6 +586,7 @@ function App() {
                     messages={messages}
                     models={models}
                     modelsError={modelsError}
+                    modelWarnings={modelWarnings}
                     onInputChange={setInput}
                     onModelChange={setSelectedModel}
                     onPromptSubmit={handlePromptSubmit}
@@ -817,6 +821,7 @@ type ChatPanelProps = {
   selectedModel: string
   isLoadingModels: boolean
   modelsError: string
+  modelWarnings: string[]
   apiKeyStatus: ApiKeyStatus
   canGenerate: boolean
   onInputChange: (value: string) => void
@@ -829,8 +834,8 @@ function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
   if (apiKeyStatus === 'missing') {
     return {
       description:
-        'Copy .env.example to .env, set OPENAI_API_KEY to your key, then restart pnpm dev.',
-      title: 'OpenAI API key required',
+        'Copy .env.example to .env, add at least one provider API key (OpenAI, Claude, or Gemini), then restart pnpm dev.',
+      title: 'API key required',
     }
   }
 
@@ -838,8 +843,8 @@ function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
     return {
       description:
         modelsError ||
-        'The key in .env was rejected by OpenAI. Check OPENAI_API_KEY and restart pnpm dev.',
-      title: 'Invalid OpenAI API key',
+        'A provider API key in .env was rejected. Check your keys and restart pnpm dev.',
+      title: 'Invalid API key',
     }
   }
 
@@ -862,6 +867,7 @@ function ChatPanel({
   selectedModel,
   isLoadingModels,
   modelsError,
+  modelWarnings,
   apiKeyStatus,
   canGenerate,
   onInputChange,
@@ -938,6 +944,14 @@ function ChatPanel({
             </Alert>
           ) : null}
 
+          {modelWarnings.length > 0 ? (
+            <Alert className="mb-3">
+              <AlertCircleIcon />
+              <AlertTitle>Some providers could not be scanned</AlertTitle>
+              <AlertDescription>{modelWarnings.join(' ')}</AlertDescription>
+            </Alert>
+          ) : null}
+
           <PromptInput onSubmit={onPromptSubmit}>
             <PromptInputBody>
               <PromptInputTextarea
@@ -949,7 +963,7 @@ function ChatPanel({
                     ? 'Describe the deck you want, or ask for an edit…'
                     : apiKeyStatus === 'checking'
                       ? 'Checking API key…'
-                      : 'Add a valid OPENAI_API_KEY in .env to start generating decks…'
+                      : 'Add a provider API key in .env to start generating decks…'
                 }
                 value={input}
               />
@@ -961,7 +975,7 @@ function ChatPanel({
                   onValueChange={onModelChange}
                   value={selectedModel}
                 >
-                  <PromptInputSelectTrigger className="max-w-[220px]">
+                  <PromptInputSelectTrigger className="max-w-[280px]">
                     <PromptInputSelectValue
                       placeholder={
                         apiKeyStatus === 'checking'
@@ -975,7 +989,7 @@ function ChatPanel({
                   <PromptInputSelectContent>
                     {models.map((model) => (
                       <PromptInputSelectItem key={model.id} value={model.id}>
-                        {model.id}
+                        {formatModelLabel(model)}
                       </PromptInputSelectItem>
                     ))}
                   </PromptInputSelectContent>
