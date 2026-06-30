@@ -1,3 +1,5 @@
+import { injectPreviewCsp } from '../../shared/deck-network.ts'
+
 export const SLIDE_SELECTOR_CHAIN = [
   'section.slide',
   'body > section',
@@ -148,7 +150,7 @@ function buildThumbnailSrcDoc(
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
   const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
 
-  return `<!DOCTYPE html>
+  return injectPreviewCsp(`<!DOCTYPE html>
 ${htmlOpen}
 <head>
 ${headHtml}
@@ -157,7 +159,7 @@ ${thumbnailFillStyle}
 ${bodyOpen}
 ${bodyHtml}
 </body>
-</html>`
+</html>`)
 }
 
 const emptyParsedDeck: ParsedDeck = {

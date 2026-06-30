@@ -59,8 +59,16 @@ When creating or editing presentation files in `presentations/`:
 1. **Self-contained**: One `.html` file per deck. Inline or `<style>` CSS; CDN scripts only when needed (e.g. reveal.js).
 2. **Modern and polished**: Clean typography, consistent spacing, intentional color palette. Avoid generic “AI slop” aesthetics.
 3. **Agent-friendly structure**: Use clear section/slide boundaries (e.g. `<section>` per slide for reveal.js, or commented `<!-- slide -->` markers for plain HTML).
-4. **Safe preview**: Prefer `addEventListener` over inline handlers; assets use relative paths or well-known CDNs.
+4. **Safe preview**: Prefer `addEventListener` over inline handlers; use inline CSS, data URIs, and SVG — no external http(s) resource URLs.
 5. **Incremental edits**: Prefer patching specific slides over rewriting the entire file when the user asks for small changes.
+
+### Preview network isolation
+
+Deck preview blocks all network access from generated or uploaded HTML:
+
+- **CSP** — Ark injects `Content-Security-Policy` with `connect-src 'none'` and `default-src 'none'` into preview and thumbnail `srcDoc` iframes. Inline styles/scripts are allowed; external scripts, stylesheets, fonts, and images are blocked at runtime.
+- **Validation** — `external_url` is a blocking error on upload, save, and generation. The preview chrome shows a clear banner when a loaded deck still contains external URLs.
+- **Asset proxy** — `GET /api/deck-assets?url=...` can fetch allowlisted remote assets server-side when `ARK_DECK_ASSET_ALLOWLIST` is set. With no allowlist (default), all proxied requests return 403.
 
 ### Preview JavaScript
 
@@ -69,7 +77,7 @@ The shell uses two preview modes (see `detectPreviewMode` in `src/lib/deck-previ
 - **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for decks without executable `<script>`.
 - **Full-JS** — deck scripts run only when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set (explicit opt-in). Without a marker, scripts are stripped even if present. Ark injects only a bridge (`postMessage` ↔ DOM `CustomEvent`). The deck owns navigation; shell state syncs on `ark:deck-slide-change` acknowledgements.
 
-Thumbnails always strip scripts (`sandbox=""`). Main preview uses `sandbox="allow-scripts"` without `allow-same-origin` — user-provided code can run network requests; the UI shows a "Scripts running" indicator in full-JS mode. Preview is download-like, not identical (storage, popups, and permissions may differ).
+Thumbnails always strip scripts (`sandbox=""`). Main preview uses `sandbox="allow-scripts"` without `allow-same-origin`. Ark injects a strict CSP so deck scripts cannot make network requests; the UI shows a "Scripts running" indicator in full-JS mode. Preview is download-like, not identical (storage, popups, and permissions may differ).
 
 Scripted decks with navigation must use `data-ark-deck="nav"` and the Ark DOM event convention documented in `server/index.ts`.
 

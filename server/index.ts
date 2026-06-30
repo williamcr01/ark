@@ -16,6 +16,7 @@ import {
   type ApiErrorPayload,
 } from './credentials.ts'
 import { finalizeGeneratedDeck } from './generate-response.ts'
+import { handleDeckAssetRequest } from './deck-assets.ts'
 import { deckStore, isValidDeckId } from './deck-store.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import {
@@ -46,6 +47,8 @@ Hard requirements:
 - Return only the complete HTML document. Do not wrap it in markdown fences.
 - Include <!DOCTYPE html>, <html>, <head>, and <body>.
 - Use inline CSS inside a <style> tag. Do not require Tailwind, npm packages, external JavaScript, or build tooling.
+- Decks must be fully self-contained: no http(s) URLs for scripts, stylesheets, fonts, or images. Use inline CSS, system fonts, inline SVG, or data: URIs instead.
+- Ark preview blocks all deck network requests. External assets are rejected at validation time.
 - The deck must work inside an iframe via srcdoc and as a downloaded .html file.
 - Design for a 16:9 presentation viewport.
 - Set html and body to width: 100%; height: 100%; margin: 0; overflow: hidden.
@@ -106,11 +109,11 @@ Canonical navigation script:
 })();
 </script>
 
-External JavaScript libraries (e.g. Chart.js, reveal.js via CDN script tags) are allowed when data-ark-deck="nav" or data-ark-preview="full-js" is set. Prefer self-contained inline scripts for navigation.
+External JavaScript libraries (e.g. Chart.js, reveal.js via CDN script tags) are allowed only when data-ark-deck="nav" or data-ark-preview="full-js" is set, and only if they are inlined or bundled in the HTML — never via external script URLs.
 
 Safety and portability:
-- Do not include analytics, tracking, forms, or nested iframes.
-- External fonts or CSS imports are allowed only if the deck still looks good without them.`
+- Do not include analytics, tracking, forms, nested iframes, or external http(s) resource URLs.
+- Do not use @import url(https://...) in CSS.`
 
 const sendApiError = (
   response: Response,
@@ -147,6 +150,14 @@ const getApiErrorFromUnknown = (error: unknown): ApiErrorPayload => {
 
   return parseProviderError(error)
 }
+
+app.get('/api/deck-assets', async (request: Request, response: Response) => {
+  try {
+    await handleDeckAssetRequest(request, response)
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
 
 app.get('/api/health', (_request: Request, response: Response) => {
   const configured = hasAnyConfiguredProvider()

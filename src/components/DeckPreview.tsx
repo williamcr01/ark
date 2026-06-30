@@ -4,6 +4,7 @@ import {
   Loader2Icon,
   Maximize2Icon,
   MonitorPlayIcon,
+  ShieldAlertIcon,
   WandSparklesIcon,
 } from 'lucide-react'
 
@@ -27,6 +28,7 @@ import {
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
 import { cn } from '@/lib/utils'
 
 export type DeckPreviewProps = {
@@ -49,6 +51,10 @@ export function DeckPreview({
   const [isPresentOpen, setIsPresentOpen] = useState(false)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const previewMode = useMemo(() => detectPreviewMode(html), [html])
+  const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
+  const networkIssues = validation.issues.filter(
+    (issue) => issue.code === 'external_url' && issue.severity === 'error',
+  )
   const hasSlides = parsedDeck.slideCount > 0
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
@@ -156,6 +162,17 @@ export function DeckPreview({
                   style={previewFrameStyle}
                   title="Generated Ark presentation preview"
                 />
+                {networkIssues.length > 0 ? (
+                  <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
+                    <div className="flex items-start gap-2">
+                      <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="font-medium">Network access blocked</p>
+                        <p>{networkIssues[0]?.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {isGenerating ? (
                   <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
                     <Loader2Icon className="size-3.5 animate-spin" />
