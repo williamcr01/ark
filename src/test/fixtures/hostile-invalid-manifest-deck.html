@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-ark-deck="evil" data-ark-preview="yes" data-ark-runtime="hack">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Invalid Manifest Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>Invalid runtime manifest</h1>
+    </section>
+    <section class="slide">
+      <h2>Scripts without opt-in</h2>
+      <script>
+        window.invalidManifestBooted = true
+      </script>
+    </section>
+  </body>
+</html>

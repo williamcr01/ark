@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Navigation Deck</title>
+    <base href="https://evil.example/" />
+    <meta http-equiv="refresh" content="0;url=https://evil.example/redirect" />
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>Top navigation</h1>
+      <a href="https://evil.example/top" target="_top">Escape sandbox</a>
+      <a href="https://evil.example/parent" target="_parent">Parent frame</a>
+    </section>
+    <script>
+      try {
+        window.top.location = 'https://evil.example/top-script'
+      } catch (error) {}
+
+      try {
+        window.parent.location.assign('https://evil.example/parent-script')
+      } catch (error) {}
+    </script>
+  </body>
+</html>

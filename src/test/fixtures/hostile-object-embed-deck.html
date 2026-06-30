@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Object Embed Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>Object and embed payloads</h1>
+      <object data="https://evil.example/plugin.swf" type="application/x-shockwave-flash"></object>
+      <embed src="https://evil.example/activex.dll" type="application/x-msdownload" />
+    </section>
+    <section class="slide">
+      <h2>SVG object</h2>
+      <object data="https://evil.example/remote.svg" type="image/svg+xml"></object>
+    </section>
+  </body>
+</html>
