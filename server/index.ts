@@ -30,7 +30,6 @@ const defaultModel = getDefaultModel()
 app.use(express.json({ limit: '4mb' }))
 
 type GenerateRequest = {
-  prompt?: string
   messages?: ApiChatMessage[]
   currentHtml?: string | null
   model?: string
@@ -186,7 +185,7 @@ app.get('/api/models', async (_request: Request, response: Response) => {
 })
 
 app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
-  const messages = normalizeGenerateMessages(request.body)
+  const messages = normalizeGenerateMessages(request.body.messages)
   const currentHtml = request.body.currentHtml ?? ''
   const requestedModel = request.body.model?.trim()
   const modelRef = requestedModel || defaultModel

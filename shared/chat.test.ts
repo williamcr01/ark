@@ -7,16 +7,14 @@ import {
 } from './chat.ts'
 
 describe('normalizeGenerateMessages', () => {
-  it('prefers the messages array when provided', () => {
+  it('trims and filters empty messages', () => {
     expect(
-      normalizeGenerateMessages({
-        prompt: 'ignored',
-        messages: [
-          { role: 'user', content: 'First turn' },
-          { role: 'assistant', content: 'Done.' },
-          { role: 'user', content: 'Second turn' },
-        ],
-      }),
+      normalizeGenerateMessages([
+        { role: 'user', content: '  First turn  ' },
+        { role: 'assistant', content: 'Done.' },
+        { role: 'user', content: '   ' },
+        { role: 'user', content: 'Second turn' },
+      ]),
     ).toEqual([
       { role: 'user', content: 'First turn' },
       { role: 'assistant', content: 'Done.' },
@@ -24,10 +22,8 @@ describe('normalizeGenerateMessages', () => {
     ])
   })
 
-  it('falls back to prompt for backward compatibility', () => {
-    expect(normalizeGenerateMessages({ prompt: '  Make a deck  ' })).toEqual([
-      { role: 'user', content: 'Make a deck' },
-    ])
+  it('returns an empty array when messages are missing', () => {
+    expect(normalizeGenerateMessages(undefined)).toEqual([])
   })
 })
 

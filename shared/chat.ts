@@ -26,25 +26,19 @@ export const CHAT_CONTEXT_POLICY = {
   assistantMessagesExcludeHtml: true,
 } as const
 
-export function normalizeGenerateMessages(body: {
-  prompt?: string
-  messages?: ApiChatMessage[]
-}): ApiChatMessage[] {
-  if (body.messages?.length) {
-    return body.messages
-      .map((message) => ({
-        role: message.role,
-        content: message.content.trim(),
-      }))
-      .filter((message) => message.content.length > 0)
+export function normalizeGenerateMessages(
+  messages: ApiChatMessage[] | undefined,
+): ApiChatMessage[] {
+  if (!messages?.length) {
+    return []
   }
 
-  const prompt = body.prompt?.trim()
-  if (prompt) {
-    return [{ role: 'user', content: prompt }]
-  }
-
-  return []
+  return messages
+    .map((message) => ({
+      role: message.role,
+      content: message.content.trim(),
+    }))
+    .filter((message) => message.content.length > 0)
 }
 
 export function wrapUserPromptForGeneration(prompt: string, currentHtml: string) {
