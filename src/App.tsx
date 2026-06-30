@@ -98,7 +98,9 @@ function App() {
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
   const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
-    const prompt = rawPrompt.trim() || (attachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
+    const prompt =
+      rawPrompt.trim() ||
+      (attachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
 
     if ((!prompt && attachments.length === 0) || isGenerating || !canGenerate) {
       return

@@ -17,17 +17,10 @@ import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { cn } from '@/lib/utils'
 
-export type AttachmentData =
-  | (FileUIPart & { id: string })
-  | (SourceDocumentUIPart & { id: string })
+export type AttachmentData = (FileUIPart & { id: string }) | (SourceDocumentUIPart & { id: string })
 
 export type AttachmentMediaCategory =
-  | 'image'
-  | 'video'
-  | 'audio'
-  | 'document'
-  | 'source'
-  | 'unknown'
+  'image' | 'video' | 'audio' | 'document' | 'source' | 'unknown'
 
 export type AttachmentVariant = 'grid' | 'inline' | 'list'
 
@@ -72,11 +65,7 @@ export const getAttachmentLabel = (data: AttachmentData): string => {
   return data.filename || (category === 'image' ? 'Image' : 'Attachment')
 }
 
-const renderAttachmentImage = (
-  url: string,
-  filename: string | undefined,
-  isGrid: boolean,
-) =>
+const renderAttachmentImage = (url: string, filename: string | undefined, isGrid: boolean) =>
   isGrid ? (
     <img
       alt={filename || 'Image'}
@@ -155,13 +144,7 @@ export type AttachmentProps = HTMLAttributes<HTMLDivElement> & {
   onRemove?: () => void
 }
 
-export const Attachment = ({
-  data,
-  onRemove,
-  className,
-  children,
-  ...props
-}: AttachmentProps) => {
+export const Attachment = ({ data, onRemove, className, children, ...props }: AttachmentProps) => {
   const { variant } = useAttachmentsContext()
   const mediaCategory = getMediaCategory(data)
 

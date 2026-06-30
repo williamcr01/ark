@@ -229,11 +229,7 @@ ${prompt}
 Return the complete HTML document only.`
 }
 
-export function wrapUserPromptForAgent(
-  prompt: string,
-  currentHtml: string,
-  attachmentCount = 0,
-) {
+export function wrapUserPromptForAgent(prompt: string, currentHtml: string, attachmentCount = 0) {
   const effectivePrompt =
     prompt.trim() ||
     (attachmentCount > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
