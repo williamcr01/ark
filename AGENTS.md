@@ -64,14 +64,14 @@ When creating or editing presentation files in `presentations/`:
 
 ### Preview JavaScript
 
-The shell uses two preview modes (see `detectPreviewMode` in `src/lib/deck-preview.ts`):
+The shell uses two preview modes (see `detectPreviewMode` in `src/lib/deck-preview.ts`). The parent ↔ iframe contract is defined in `shared/deck-bridge.ts` and documented in `docs/deck-bridge.md`.
 
 - **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for decks without executable `<script>`.
 - **Full-JS** — deck scripts run only when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set (explicit opt-in). Without a marker, scripts are stripped even if present. Ark injects only a bridge (`postMessage` ↔ DOM `CustomEvent`). The deck owns navigation; shell state syncs on `ark:deck-slide-change` acknowledgements.
 
 Thumbnails always strip scripts (`sandbox=""`). Main preview uses `sandbox="allow-scripts"` without `allow-same-origin` — user-provided code can run network requests; the UI shows a "Scripts running" indicator in full-JS mode. Preview is download-like, not identical (storage, popups, and permissions may differ).
 
-Scripted decks with navigation must use `data-ark-deck="nav"` and the Ark DOM event convention documented in `server/index.ts`.
+Scripted decks with navigation must use `data-ark-deck="nav"` and the Ark bridge protocol (`ark:deck-goto`, `ark:deck-slide-change`, `ark:deck-ready`, etc.) documented in `docs/deck-bridge.md`.
 
 Example skeleton (plain HTML):
 
