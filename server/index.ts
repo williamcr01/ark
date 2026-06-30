@@ -14,6 +14,7 @@ import {
   getProviderStatus,
   type ApiErrorPayload,
 } from './credentials.ts'
+import { handleDeckAssetRequest } from './deck-assets.ts'
 import { runDeckAgent } from './deck-agent.ts'
 import { deckStore, isValidDeckId } from './deck-store.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
@@ -72,6 +73,14 @@ const getApiErrorFromUnknown = (error: unknown): ApiErrorPayload => {
 
   return parseProviderError(error)
 }
+
+app.get('/api/deck-assets', async (request: Request, response: Response) => {
+  try {
+    await handleDeckAssetRequest(request, response)
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
 
 app.get('/api/health', (_request: Request, response: Response) => {
   const configured = hasAnyConfiguredProvider()

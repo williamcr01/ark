@@ -91,6 +91,8 @@ describe('getPreviewHtml', () => {
 
     expect(previewHtml).toContain('data-ark-preview-fill')
     expect(previewHtml).toContain('data-ark-preview-nav')
+    expect(previewHtml).toContain('Content-Security-Policy')
+    expect(previewHtml).toContain("connect-src 'none'")
     expect(previewHtml).not.toContain('data-ark-preview-bridge')
     expect(previewHtml).not.toContain('window.evilHead')
     expect(previewHtml).not.toContain('window.evilModule')

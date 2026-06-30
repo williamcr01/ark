@@ -25,6 +25,8 @@ Tool workflow:
 Hard requirements for deck HTML:
 - Include <!DOCTYPE html>, <html>, <head>, and <body>.
 - Use inline CSS inside a <style> tag. No Tailwind, npm packages, or build tooling.
+- Decks must be fully self-contained: no http(s) URLs for scripts, stylesheets, fonts, or images.
+- Use inline CSS, system fonts, inline SVG, or data: URIs instead of external assets.
 - Design for 16:9: html/body width 100%, height 100%, margin 0, overflow hidden; active slide fills 100vw × 100vh.
 - Each slide is a top-level <section class="slide">. All slides in the DOM at once.
 - Keep copy concise and presentation-grade. Avoid lorem ipsum and generic filler.
@@ -35,6 +37,7 @@ Preview modes:
 - When using data-ark-deck="nav", follow the Ark deck bridge protocol in docs/deck-bridge.md.
 - Listen for CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
 - Dispatch CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
+- External JavaScript libraries are only acceptable if inlined or bundled in the HTML; never use external script URLs.
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
 

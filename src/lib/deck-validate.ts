@@ -1,3 +1,8 @@
+import {
+  collectExternalUrls,
+  NETWORK_REQUEST_ERROR_MESSAGE,
+} from '../../shared/deck-network.ts'
+
 import { findSlideElements } from './deck-slides'
 import {
   detectRuntimeModeFromDocument,
@@ -57,50 +62,6 @@ export type DeckValidationReport = {
 
 const TRACKING_PATTERN =
   /(?:google-analytics|googletagmanager|gtag\s*\(|ga\s*\(|mixpanel|segment\.com|hotjar|plausible|analytics\.js|fbevents\.js)/i
-
-const EXTERNAL_URL_PATTERN = /^https?:\/\//i
-
-function isExternalUrl(value: string | null | undefined) {
-  return Boolean(value?.trim() && EXTERNAL_URL_PATTERN.test(value.trim()))
-}
-
-function collectExternalUrls(doc: Document) {
-  const urls = new Set<string>()
-
-  for (const element of doc.querySelectorAll('[src], [href]')) {
-    const src = element.getAttribute('src')
-    const href = element.getAttribute('href')
-
-    if (isExternalUrl(src)) {
-      urls.add(src!.trim())
-    }
-
-    if (
-      isExternalUrl(href) &&
-      (element.tagName === 'LINK' ||
-        element.tagName === 'A' ||
-        element.tagName === 'SCRIPT' ||
-        element.tagName === 'IMG' ||
-        element.tagName === 'IFRAME')
-    ) {
-      urls.add(href!.trim())
-    }
-  }
-
-  for (const style of doc.querySelectorAll('style')) {
-    const importMatches = style.textContent?.matchAll(/@import\s+url\((['"]?)(https?:\/\/[^)'"]+)\1\)/gi)
-
-    if (importMatches) {
-      for (const match of importMatches) {
-        if (match[2]) {
-          urls.add(match[2])
-        }
-      }
-    }
-  }
-
-  return [...urls].sort()
-}
 
 function readRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
   const html = doc.documentElement
@@ -294,8 +255,8 @@ export function validateDeckDocument(
   if (externalUrls.length > 0) {
     pushIssue(issues, {
       code: 'external_url',
-      message: `Found ${externalUrls.length} external URL${externalUrls.length === 1 ? '' : 's'}.`,
-      severity: 'warning',
+      message: `${NETWORK_REQUEST_ERROR_MESSAGE} Found ${externalUrls.length} external URL${externalUrls.length === 1 ? '' : 's'}: ${externalUrls.slice(0, 3).join(', ')}${externalUrls.length > 3 ? ', …' : ''}.`,
+      severity: 'error',
     })
   }
 
