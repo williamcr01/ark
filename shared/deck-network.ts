@@ -41,6 +41,24 @@ export function isExternalUrl(value: string | null | undefined) {
   return Boolean(value?.trim() && EXTERNAL_URL_PATTERN.test(value.trim()))
 }
 
+const CSS_URL_PATTERN = /url\(\s*(['"]?)(https?:\/\/[^)'"]+)\1\s*\)/gi
+
+export function collectUrlsFromCss(cssText: string | null | undefined) {
+  const urls: string[] = []
+
+  if (!cssText) {
+    return urls
+  }
+
+  for (const match of cssText.matchAll(CSS_URL_PATTERN)) {
+    if (match[2]) {
+      urls.push(match[2])
+    }
+  }
+
+  return urls
+}
+
 export function collectExternalUrls(doc: Document) {
   const urls = new Set<string>()
 
@@ -65,14 +83,14 @@ export function collectExternalUrls(doc: Document) {
   }
 
   for (const style of doc.querySelectorAll('style')) {
-    const importMatches = style.textContent?.matchAll(/@import\s+url\((['"]?)(https?:\/\/[^)'"]+)\1\)/gi)
+    for (const url of collectUrlsFromCss(style.textContent)) {
+      urls.add(url)
+    }
+  }
 
-    if (importMatches) {
-      for (const match of importMatches) {
-        if (match[2]) {
-          urls.add(match[2])
-        }
-      }
+  for (const element of doc.querySelectorAll('[style]')) {
+    for (const url of collectUrlsFromCss(element.getAttribute('style'))) {
+      urls.add(url)
     }
   }
 

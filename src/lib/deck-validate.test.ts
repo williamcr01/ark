@@ -96,6 +96,29 @@ describe('validateDeckHtmlInBrowser', () => {
     expect(report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error')).toBe(true)
   })
 
+  it('rejects external URLs in CSS background-image and inline style url()', () => {
+    const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <style>
+    .slide { background-image: url("https://example.com/hero.png"); }
+  </style>
+</head>
+<body>
+  <section class="slide" style="background: url('https://example.com/bg.jpg')">Title</section>
+</body>
+</html>`)
+
+    expect(report.valid).toBe(false)
+    expect(report.externalUrls).toEqual(
+      expect.arrayContaining([
+        'https://example.com/hero.png',
+        'https://example.com/bg.jpg',
+      ]),
+    )
+    expect(report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error')).toBe(true)
+  })
+
   it('rejects empty HTML', () => {
     const report = validateDeckHtmlInBrowser('')
 

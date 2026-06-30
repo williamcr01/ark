@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDeckAssetProxyUrl,
   collectExternalUrls,
+  collectUrlsFromCss,
   injectPreviewCsp,
   isAllowedAssetHost,
   isExternalUrl,
@@ -34,6 +35,37 @@ describe('deck-network', () => {
     expect(collectExternalUrls(doc)).toEqual([
       'https://example.com/logo.png',
       'https://fonts.googleapis.com/css2?family=Inter',
+    ])
+  })
+
+  it('collects external URLs from CSS url() in style blocks and inline styles', () => {
+    const doc = new DOMParser().parseFromString(`<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    .slide { background-image: url("https://example.com/hero.png"); }
+    @import url(https://fonts.googleapis.com/css2?family=Inter);
+  </style>
+</head>
+<body>
+  <section class="slide" style="background: url('https://example.com/bg.jpg')">Hi</section>
+</body>
+</html>`, 'text/html')
+
+    expect(collectExternalUrls(doc)).toEqual([
+      'https://example.com/bg.jpg',
+      'https://example.com/hero.png',
+      'https://fonts.googleapis.com/css2?family=Inter',
+    ])
+  })
+
+  it('extracts external URLs from raw CSS text', () => {
+    expect(collectUrlsFromCss(`
+      .hero { background-image: url(https://example.com/hero.png); }
+      .logo { list-style-image: url("https://example.com/icon.svg"); }
+    `)).toEqual([
+      'https://example.com/hero.png',
+      'https://example.com/icon.svg',
     ])
   })
 
