@@ -1,6 +1,5 @@
 import { findSlideElements } from './deck-slides'
 import {
-  detectRuntimeMode,
   detectRuntimeModeFromDocument,
   runtimeModeAllowsDeckScripts,
   type DeckRuntimeMode,
@@ -105,7 +104,7 @@ function collectExternalUrls(doc: Document) {
   return [...urls].sort()
 }
 
-function readRuntimeMarkers(doc: Document, rawHtml?: string): DeckRuntimeMarkers {
+function readRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
   const html = doc.documentElement
   const body = doc.body
   const arkDeck =
@@ -114,12 +113,9 @@ function readRuntimeMarkers(doc: Document, rawHtml?: string): DeckRuntimeMarkers
   html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
   const arkRuntime =
   html?.getAttribute('data-ark-runtime') ?? body?.getAttribute('data-ark-runtime') ?? null
-  const runtimeMode = rawHtml
-    ? detectRuntimeMode(rawHtml)
-    : detectRuntimeModeFromDocument(doc)
 
   return {
-    runtimeMode,
+    runtimeMode: detectRuntimeModeFromDocument(doc),
     arkDeck,
     arkPreview,
     arkRuntime,
@@ -276,7 +272,7 @@ export function validateDeckDocument(
   }
 
   const scripts = collectScripts(doc)
-  const runtimeMarkers = readRuntimeMarkers(doc, rawHtml)
+  const runtimeMarkers = readRuntimeMarkers(doc)
 
   if (scripts.length > 0 && !runtimeModeAllowsDeckScripts(runtimeMarkers.runtimeMode)) {
     pushIssue(issues, {
