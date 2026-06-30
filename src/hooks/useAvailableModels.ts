@@ -8,6 +8,7 @@ export type AvailableModel = {
   modelId: string
   name?: string
   available: boolean
+  unavailableReason?: 'missing_api_key' | 'not_found'
 }
 
 export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
@@ -288,6 +289,10 @@ export const formatModelLabel = (model: AvailableModel) => {
 
   if (model.available) {
     return label
+  }
+
+  if (model.unavailableReason === 'not_found') {
+    return `${label} (unavailable)`
   }
 
   return `${label} (add API key)`

@@ -4,12 +4,15 @@ import {
   type ProviderId,
 } from './credentials.ts'
 
+export type ModelUnavailableReason = 'missing_api_key' | 'not_found'
+
 export type ModelInfo = {
   id: string
   provider: ProviderId
   modelId: string
   name?: string
   available: boolean
+  unavailableReason?: ModelUnavailableReason
 }
 
 const OPENAI_CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i
@@ -44,12 +47,14 @@ const toModelRef = (
   modelId: string,
   name?: string,
   available = true,
+  unavailableReason?: ModelUnavailableReason,
 ): ModelInfo => ({
   id: `${provider}:${modelId}`,
   provider,
   modelId,
   name,
   available,
+  unavailableReason: available ? undefined : unavailableReason,
 })
 
 const PROVIDER_SEED_MODELS: Record<
@@ -76,7 +81,7 @@ const PROVIDER_SEED_MODELS: Record<
 
 const seedModelsForProvider = (provider: ProviderId) =>
   PROVIDER_SEED_MODELS[provider].map((entry) =>
-    toModelRef(provider, entry.modelId, entry.name, false),
+    toModelRef(provider, entry.modelId, entry.name, false, 'missing_api_key'),
   )
 
 const sortModels = (models: ModelInfo[]) =>
@@ -310,9 +315,30 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
   }
 
   const { provider, modelId } = parseModelRef(modelRef)
-  const configured = Boolean(getProviderApiKey(provider))
+  const unavailableReason: ModelUnavailableReason = getProviderApiKey(provider)
+    ? 'not_found'
+    : 'missing_api_key'
+
   return sortModels([
     ...models,
-    toModelRef(provider, modelId, undefined, configured),
+    toModelRef(provider, modelId, undefined, false, unavailableReason),
   ])
+}
+
+export function getDefaultModelWarning(
+  models: ModelInfo[],
+  defaultModel: string,
+): string | undefined {
+  const entry = models.find((model) => model.id === defaultModel)
+  if (!entry || entry.available) {
+    return undefined
+  }
+
+  const { provider } = parseModelRef(defaultModel)
+
+  if (entry.unavailableReason === 'missing_api_key') {
+    return `Configured default model "${defaultModel}" requires a ${provider} API key. Add the key to .env and restart the dev server.`
+  }
+
+  return `Configured default model "${defaultModel}" is not available from ${provider}. Update ARK_DEFAULT_MODEL or OPENAI_MODEL in .env and restart the dev server.`
 }

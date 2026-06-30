@@ -947,7 +947,7 @@ function ChatPanel({
           {modelWarnings.length > 0 ? (
             <Alert className="mb-3">
               <AlertCircleIcon />
-              <AlertTitle>Some providers could not be scanned</AlertTitle>
+              <AlertTitle>Model configuration notice</AlertTitle>
               <AlertDescription>{modelWarnings.join(' ')}</AlertDescription>
             </Alert>
           ) : null}
