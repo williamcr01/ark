@@ -33,7 +33,7 @@ ARK_DEFAULT_MODEL=anthropic:claude-sonnet-4-20250514
 
 `OPENAI_MODEL` is still supported as a legacy OpenAI-only default.
 
-Optional API port (Vite proxies `/api` to this by default):
+Optional API port (default `8787`). Both the Express API and Vite's `/api` proxy read `PORT` from `.env` or your shell environment — keep them in sync by setting it once and restarting `pnpm dev`:
 
 ```env
 PORT=8787
@@ -59,8 +59,10 @@ pnpm dev
 
 This starts both:
 
-- Vite app: `http://localhost:5173`
-- local API server: `http://localhost:8787`
+- Vite app: `http://localhost:5173` (proxies `/api` to the port below)
+- local API server: `http://localhost:${PORT:-8787}`
+
+To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then open the app on port `5173` — not the API port directly.
 
 ## Checks
 
