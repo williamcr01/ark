@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 
+import { injectPreviewCsp } from '../../shared/deck-network.ts'
 import {
   buildDeckBridgeRuntimeScript,
   buildDeckCssNavRuntimeScript,
@@ -119,11 +120,11 @@ function wrapRuntimeScript(source: string, marker: string) {
 function injectPreviewFill(html: string, options: { historyShim?: boolean } = {}) {
   const headInjection = `${options.historyShim ? `${previewHistoryShim}\n` : ''}${previewFillStyle}`
 
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `${headInjection}\n</head>`)
-  }
+  const withHeadInjection = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, `${headInjection}\n</head>`)
+    : `${headInjection}\n${html}`
 
-  return `${headInjection}\n${html}`
+  return injectPreviewCsp(withHeadInjection)
 }
 
 function injectBeforeBodyClose(html: string, injection: string) {
