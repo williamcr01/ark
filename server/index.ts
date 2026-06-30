@@ -62,7 +62,7 @@ Preview modes:
 - Full-JS (explicit opt-in only): set data-ark-deck="nav" on <html> when the deck owns navigation, or data-ark-preview="full-js" for libraries/charts without nav ownership. Ark runs deck JavaScript and injects only a thin bridge. Preview is download-like but not identical (sandbox may block history.replaceState, storage, popups, etc.).
 - Thumbnails always strip scripts and remain static.
 
-When including navigation script (data-ark-deck="nav"), follow this exact pattern:
+When including navigation script (data-ark-deck="nav"), follow the Ark deck bridge protocol in docs/deck-bridge.md:
 - Use zero-based slide index, clamp in setSlide.
 - Listen for document CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
 - Dispatch document CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
