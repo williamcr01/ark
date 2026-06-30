@@ -9,6 +9,13 @@ import {
   wrapUserPromptForGeneration,
 } from './chat.ts'
 
+const sampleAttachment = {
+  type: 'file' as const,
+  mediaType: 'image/png',
+  filename: 'logo.png',
+  url: 'data:image/png;base64,AAAA',
+}
+
 describe('parseGenerateMessages', () => {
   it('trims and filters empty messages', () => {
     expect(
@@ -57,6 +64,63 @@ describe('parseGenerateMessages', () => {
       error: 'messages[0].content must be a string.',
     })
   })
+
+  it('accepts user messages with data URL attachments', () => {
+    expect(
+      parseGenerateMessages([
+        {
+          role: 'user',
+          content: 'Use this logo',
+          attachments: [sampleAttachment],
+        },
+      ]),
+    ).toEqual({
+      ok: true,
+      messages: [
+        {
+          role: 'user',
+          content: 'Use this logo',
+          attachments: [sampleAttachment],
+        },
+      ],
+    })
+  })
+
+  it('keeps attachment-only user turns', () => {
+    expect(
+      parseGenerateMessages([
+        {
+          role: 'user',
+          content: '   ',
+          attachments: [sampleAttachment],
+        },
+      ]),
+    ).toEqual({
+      ok: true,
+      messages: [
+        {
+          role: 'user',
+          content: '',
+          attachments: [sampleAttachment],
+        },
+      ],
+    })
+  })
+
+  it('rejects non-data attachment URLs', () => {
+    expect(
+      parseGenerateMessages([
+        {
+          role: 'user',
+          content: 'hi',
+          attachments: [{ ...sampleAttachment, url: 'https://example.com/logo.png' }],
+        },
+      ]),
+    ).toEqual({
+      ok: false,
+      error: 'messages[0].attachments[0].url must be a data URL.',
+    })
+  })
 })
 
 describe('buildModelMessages', () => {
@@ -92,9 +156,34 @@ describe('buildAgentModelMessages', () => {
       '<html><body><section class="slide">cats</section></body></html>',
     )
 
+    expect(messages[0]?.role).toBe('user')
     expect(messages[0]?.content).toContain('Make the title larger')
     expect(messages[0]?.content).toContain('read_deck')
-    expect(messages[0]?.content).not.toContain('<section class="slide">')
+    expect(JSON.stringify(messages[0]?.content)).not.toContain('<section class="slide">')
+  })
+
+  it('includes file parts for attached user turns', () => {
+    const messages = buildAgentModelMessages(
+      [
+        {
+          role: 'user',
+          content: 'Match this branding',
+          attachments: [sampleAttachment],
+        },
+      ],
+      '',
+    )
+
+    expect(messages).toHaveLength(1)
+    expect(Array.isArray(messages[0]?.content)).toBe(true)
+
+    const content = messages[0]?.content as Array<{ type: string; text?: string }>
+    expect(content[0]).toMatchObject({
+      type: 'file',
+      mediaType: 'image/png',
+    })
+    expect(content[1]?.type).toBe('text')
+    expect(content[1]?.text).toContain('attached 1 file')
   })
 })
 
