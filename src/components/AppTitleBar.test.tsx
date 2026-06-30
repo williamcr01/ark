@@ -26,6 +26,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
         onToggleChat={vi.fn()}
         onToggleStrip={vi.fn()}
         onUploadClick={vi.fn()}
+        showSanitizedDownload={false}
         {...overrides}
       />
     </TooltipProvider>,
@@ -70,5 +71,19 @@ describe('AppTitleBar accessibility', () => {
     await user.keyboard('{Enter}')
 
     expect(onToggleChat).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers original and sanitized download choices when scripts are present', async () => {
+    const user = userEvent.setup()
+    const onDownload = vi.fn()
+    renderTitleBar({ onDownload, showSanitizedDownload: true })
+
+    await user.click(screen.getByRole('button', { name: 'Download HTML' }))
+    await user.click(screen.getByText('Original HTML'))
+    await user.click(screen.getByRole('button', { name: 'Download HTML' }))
+    await user.click(screen.getByText('Sanitized HTML'))
+
+    expect(onDownload).toHaveBeenNthCalledWith(1, 'original')
+    expect(onDownload).toHaveBeenNthCalledWith(2, 'sanitized')
   })
 })
