@@ -25,6 +25,7 @@ pnpm install    # install dependencies
 pnpm dev        # start dev server
 pnpm build      # typecheck + production build
 pnpm lint       # run ESLint
+pnpm test       # run unit tests (Vitest)
 pnpm preview    # preview production build
 ```
 
@@ -49,6 +50,7 @@ ark/
 - Keep the shell thin: presentation rendering lives in HTML files, not in React components.
 - Prefer extracting reusable logic into hooks under `src/hooks/`.
 - Run `pnpm lint` after substantive changes.
+- CI runs `pnpm lint`, `pnpm build`, and `pnpm test` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
 
 ## Presentation HTML conventions
 
@@ -131,4 +133,4 @@ Standard commands live in the `## Commands` section above and in `README.md`. No
 - **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generate`. Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
-- **No automated test suite.** Verification is `pnpm lint`, `pnpm build` (runs `tsc -b` then `vite build`), plus manual browser checks. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
+- **No browser automation in CI yet.** Verification is `pnpm lint`, `pnpm build`, and `pnpm test` (also enforced in GitHub Actions), plus manual browser checks. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
