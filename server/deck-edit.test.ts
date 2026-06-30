@@ -46,4 +46,25 @@ describe('applyDeckEdits', () => {
       applyDeckEdits(plainCssDeck, [{ oldText: 'section', newText: 'article' }]),
     ).toMatchObject({ ok: false })
   })
+
+  it('applies disjoint edits using original match positions', () => {
+    const result = applyDeckEdits('hello world', [
+      { oldText: 'hello', newText: 'hi' },
+      { oldText: 'world', newText: 'earth' },
+    ])
+
+    expect(result).toEqual({ ok: true, html: 'hi earth', appliedCount: 2 })
+  })
+
+  it('rejects overlapping edits that would silently no-op', () => {
+    expect(
+      applyDeckEdits('abc', [
+        { oldText: 'abc', newText: 'a' },
+        { oldText: 'b', newText: 'B' },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('overlap'),
+    })
+  })
 })
