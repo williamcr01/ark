@@ -31,6 +31,7 @@ const thumbnailFillStyle = `
 
 function serializeElementAttrs(element: Element) {
   return [...element.attributes]
+    .filter((attribute) => !INLINE_HANDLER_PATTERN.test(attribute.name))
     .map((attribute) => `${attribute.name}="${attribute.value.replace(/"/g, '&quot;')}"`)
     .join(' ')
 }
