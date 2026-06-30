@@ -34,7 +34,9 @@ Hard requirements for deck HTML:
 Preview modes:
 - Default: no marker — Ark injects navigation; scripts may be stripped.
 - Full-JS: set data-ark-deck="nav" on <html> when the deck owns navigation.
-- When using data-ark-deck="nav", listen for CustomEvent "ark:deck-goto" and dispatch "ark:deck-slide-change" on slide changes.
+- When using data-ark-deck="nav", follow the Ark deck bridge protocol in docs/deck-bridge.md.
+- Listen for CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
+- Dispatch CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
 - External JavaScript libraries are only acceptable if inlined or bundled in the HTML; never use external script URLs.
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
