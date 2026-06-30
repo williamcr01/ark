@@ -33,10 +33,66 @@ import {
   type ApiKeyStatus,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
-import type { ChatMessage } from '../../shared/chat.ts'
+import type { ChatMessage, ChatMessagePart } from '../../shared/chat.ts'
 import { cn } from '@/lib/utils'
 
 export type { ChatMessage } from '../../shared/chat.ts'
+
+function formatToolLabel(toolName: string) {
+  return toolName.replace(/_/g, ' ')
+}
+
+function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {parts.map((part, index) => {
+        if (part.type === 'text') {
+          return (
+            <MessageResponse key={`text-${index}`}>{part.content}</MessageResponse>
+          )
+        }
+
+        if (part.type === 'tool-call') {
+          return (
+            <div
+              className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+              key={`tool-call-${index}`}
+            >
+              <span className="font-medium text-foreground">
+                {formatToolLabel(part.toolName)}
+              </span>
+              {part.summary ? (
+                <span className="text-muted-foreground"> — {part.summary}</span>
+              ) : null}
+            </div>
+          )
+        }
+
+        return (
+          <div
+            className={cn(
+              'rounded-md border px-3 py-2 text-xs',
+              part.error
+                ? 'border-destructive/30 bg-destructive/5 text-destructive'
+                : 'border-emerald-500/20 bg-emerald-500/5 text-muted-foreground',
+            )}
+            key={`tool-result-${index}`}
+          >
+            <span className={cn('font-medium', part.error ? 'text-destructive' : 'text-foreground')}>
+              {formatToolLabel(part.toolName)}
+            </span>
+            {part.summary ? (
+              <span className={part.error ? 'text-destructive/90' : 'text-muted-foreground'}>
+                {' '}
+                — {part.summary}
+              </span>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export type ChatPanelProps = {
   messages: ChatMessage[]
@@ -134,7 +190,11 @@ export function ChatPanel({
               messages.map((message) => (
                 <Message from={message.role} key={message.id}>
                   <MessageContent>
-                    <MessageResponse>{message.content}</MessageResponse>
+                    {message.parts?.length ? (
+                      <ChatMessageParts parts={message.parts} />
+                    ) : (
+                      <MessageResponse>{message.content}</MessageResponse>
+                    )}
                   </MessageContent>
                 </Message>
               ))
@@ -144,7 +204,7 @@ export function ChatPanel({
                 <MessageContent>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2Icon className="size-4 animate-spin" />
-                    Designing the deck, writing HTML, and preparing the preview…
+                    Designing the deck and running agent tools…
                   </div>
                 </MessageContent>
               </Message>
