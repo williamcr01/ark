@@ -9,9 +9,10 @@ import {
   getPreviewFrameScale,
   getPreviewFrameStyle,
   getPreviewHtml,
+  getPreviewSandbox,
   getPreviewStageStyle,
   type ElementSize,
-  type PreviewMode,
+  type DeckRuntimeMode,
 } from '@/lib/deck-preview'
 import { cn } from '@/lib/utils'
 
@@ -20,7 +21,7 @@ const CONTROLS_IDLE_MS = 2500
 type PresentModeProps = {
   html: string
   slideCount: number
-  previewMode: PreviewMode
+  runtimeMode: DeckRuntimeMode
   initialSlideIndex: number
   onExit: (finalSlideIndex: number) => void
 }
@@ -67,7 +68,7 @@ function useElementSize<T extends HTMLElement>() {
 export function PresentMode({
   html,
   slideCount,
-  previewMode,
+  runtimeMode,
   initialSlideIndex,
   onExit,
 }: PresentModeProps) {
@@ -119,7 +120,7 @@ export function PresentMode({
     html,
     slideCount > 0,
     {
-      previewMode,
+      runtimeMode,
       initialSlideIndex,
       keyboardMode: 'present',
       syncOnLoad: true,
@@ -254,7 +255,7 @@ export function PresentMode({
             className="absolute left-0 top-0 block border-0 bg-white"
             ref={iframeRef}
             referrerPolicy="no-referrer"
-            sandbox="allow-scripts"
+            sandbox={getPreviewSandbox(runtimeMode)}
             srcDoc={getPreviewHtml(html)}
             style={previewFrameStyle}
             tabIndex={-1}

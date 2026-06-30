@@ -15,7 +15,7 @@ describe('PresentMode', () => {
         html={plainCssDeck}
         initialSlideIndex={0}
         onExit={onExit}
-        previewMode="css-only"
+        runtimeMode="static"
         slideCount={3}
       />,
     )
@@ -45,7 +45,7 @@ describe('PresentMode', () => {
         html={plainCssDeck}
         initialSlideIndex={2}
         onExit={onExit}
-        previewMode="css-only"
+        runtimeMode="static"
         slideCount={3}
       />,
     )
