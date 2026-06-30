@@ -4,7 +4,9 @@ import {
   agentStepsToChatParts,
   buildAssistantMessageContent,
   toApiMessages,
+  toChatAttachments,
   type AgentStep,
+  type ChatAttachment,
 } from '../shared/chat.ts'
 import { toast } from 'sonner'
 
@@ -61,6 +63,7 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
   const [error, setError] = useState('')
+  const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -94,19 +97,25 @@ function App() {
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
-  const generateDeck = async (rawPrompt: string) => {
-    const prompt = rawPrompt.trim()
+  const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
+    const prompt = rawPrompt.trim() || (attachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
 
-    if (!prompt || isGenerating || !canGenerate) {
+    if ((!prompt && attachments.length === 0) || isGenerating || !canGenerate) {
       return
     }
 
     const editingExistingDeck = hasDeck
     setError('')
+    setAttachmentError('')
     setIsGenerating(true)
     const nextMessages: ChatMessage[] = [
       ...messages,
-      { id: newId(), role: 'user', content: prompt },
+      {
+        id: newId(),
+        role: 'user',
+        content: rawPrompt.trim(),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      },
     ]
     setMessages(nextMessages)
 
@@ -192,12 +201,15 @@ function App() {
   }
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
-    if (!message.text.trim() || !canGenerate) {
+    const attachments = toChatAttachments(message.files)
+    const hasContent = Boolean(message.text.trim() || attachments.length > 0)
+
+    if (!hasContent || !canGenerate) {
       return
     }
 
     setInput('')
-    await generateDeck(message.text)
+    await generateDeck(message.text, attachments)
   }
 
   const handleDownload = () => {
@@ -313,6 +325,7 @@ function App() {
                   >
                     <ChatPanel
                       apiKeyStatus={apiKeyStatus}
+                      attachmentError={attachmentError}
                       canGenerate={canGenerate}
                       error={error}
                       input={input}
@@ -322,6 +335,7 @@ function App() {
                       models={models}
                       modelsError={modelsError}
                       modelWarnings={modelWarnings}
+                      onAttachmentError={setAttachmentError}
                       onInputChange={setInput}
                       onModelChange={setSelectedModel}
                       onPromptSubmit={handlePromptSubmit}
@@ -353,6 +367,7 @@ function App() {
                 <div className="min-h-0 overflow-hidden" id="ark-chat-panel">
                   <ChatPanel
                     apiKeyStatus={apiKeyStatus}
+                    attachmentError={attachmentError}
                     canGenerate={canGenerate}
                     error={error}
                     input={input}
@@ -362,6 +377,7 @@ function App() {
                     models={models}
                     modelsError={modelsError}
                     modelWarnings={modelWarnings}
+                    onAttachmentError={setAttachmentError}
                     onInputChange={setInput}
                     onModelChange={setSelectedModel}
                     onPromptSubmit={handlePromptSubmit}
