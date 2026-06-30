@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { applyDeckEdits } from './deck-edit.ts'
 import {
   listDeckSlides,
+  parseDeckStructure,
   readDeckHtmlSlice,
   readDeckSlideHtml,
 } from './deck-html.ts'
@@ -18,8 +19,50 @@ const editSchema = z.object({
   newText: z.string().describe('Replacement text.'),
 })
 
+function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
+  return {
+    title: parsed.title,
+    structure: parsed.structure,
+    runtime: parsed.runtime,
+    slideSelector: parsed.slideSelector,
+    slideCount: parsed.slideCount,
+    slides: parsed.slides.map((slide) => ({
+      index: slide.index,
+      title: slide.title,
+      preview: slide.preview,
+      notes: slide.notes,
+    })),
+    styles: parsed.styles.map((style) => ({
+      index: style.index,
+      inline: style.inline,
+      href: style.href,
+      media: style.media,
+      contentLength: style.content.length,
+    })),
+    scripts: parsed.scripts,
+    assets: parsed.assets,
+  }
+}
+
 export function createDeckTools(workspace: DeckWorkspace) {
   return {
+    parse_deck: tool({
+      description:
+        'Parse the deck into structured metadata: title, runtime, slides, notes, styles, scripts, and asset references. Use before edits to understand deck shape.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (!workspace.html.trim()) {
+          return {
+            error: 'No deck HTML is loaded yet. Use write_deck to create one.',
+          }
+        }
+
+        const parsed = parseDeckStructure(workspace.html)
+
+        return projectParsedDeck(parsed)
+      },
+    }),
+
     list_slides: tool({
       description:
         'List slide boundaries and titles in the current deck. Use before targeted edits.',
@@ -85,6 +128,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
             index: slide.index,
             title: slide.title,
             content: slide.content,
+            notes: slide.notes,
           }
         }
 

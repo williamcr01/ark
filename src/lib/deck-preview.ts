@@ -4,9 +4,15 @@ import { injectPreviewCsp } from '../../shared/deck-network.ts'
 import {
   buildDeckBridgeRuntimeScript,
   buildDeckCssNavRuntimeScript,
-  type DeckPreviewMode,
 } from '../../shared/deck-bridge.ts'
 import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from '@/lib/deck-slides'
+import {
+  detectRuntimeMode,
+  injectRuntimeCsp,
+  runtimeModeAllowsDeckScripts,
+  runtimeModeToBridgePreviewMode,
+  type DeckRuntimeMode,
+} from '@/lib/deck-runtime'
 
 export {
   DECK_GOTO_EVENT,
@@ -59,34 +65,13 @@ export function getPreviewFrameStyle(scale: number): CSSProperties {
   }
 }
 
-export type PreviewMode = DeckPreviewMode
+export type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
-function hasFullJsMarker(doc: Document) {
-  for (const element of [doc.documentElement, doc.body]) {
-    if (!element) {
-      continue
-    }
+export { detectRuntimeMode, getPreviewSandbox, getThumbnailSandbox } from '@/lib/deck-runtime'
 
-    if (element.getAttribute('data-ark-deck') === 'nav') {
-      return true
-    }
-
-    if (element.getAttribute('data-ark-preview') === 'full-js') {
-      return true
-    }
-  }
-
-  return false
-}
-
-export function detectPreviewMode(html: string): PreviewMode {
-  if (!html.trim()) {
-    return 'css-only'
-  }
-
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-
-  return hasFullJsMarker(doc) ? 'full-js' : 'css-only'
+/** @deprecated Use {@link detectRuntimeMode} instead. */
+export function detectPreviewMode(html: string): DeckRuntimeMode {
+  return detectRuntimeMode(html)
 }
 
 const previewHistoryShim = `
@@ -155,15 +140,16 @@ export function getPreviewHtml(html: string) {
     return ''
   }
 
-  const mode = detectPreviewMode(html)
+  const mode = detectRuntimeMode(html)
+  const withCsp = injectRuntimeCsp(html, mode)
   const runtimeOptions = {
     slideSelectors: SLIDE_SELECTOR_CHAIN,
-    previewMode: mode,
+    previewMode: runtimeModeToBridgePreviewMode(mode),
   }
 
-  if (mode === 'full-js') {
+  if (runtimeModeAllowsDeckScripts(mode)) {
     return injectBeforeBodyClose(
-      injectPreviewFill(html, { historyShim: true }),
+      injectPreviewFill(withCsp, { historyShim: true }),
       wrapRuntimeScript(
         buildDeckBridgeRuntimeScript(runtimeOptions),
         'data-ark-preview-bridge',
@@ -171,7 +157,7 @@ export function getPreviewHtml(html: string) {
     )
   }
 
-  const strippedHtml = stripDeckScriptsForPreview(html)
+  const strippedHtml = stripDeckScriptsForPreview(withCsp)
 
   return injectBeforeBodyClose(
     injectPreviewFill(strippedHtml),
