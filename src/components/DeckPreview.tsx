@@ -5,6 +5,7 @@ import {
   Maximize2Icon,
   MonitorPlayIcon,
   ShieldAlertIcon,
+  ShieldCheckIcon,
   WandSparklesIcon,
 } from 'lucide-react'
 
@@ -23,6 +24,7 @@ import {
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
 import { cn } from '@/lib/utils'
 
@@ -47,6 +49,7 @@ export function DeckPreview({
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const runtimeMode = useMemo(() => detectRuntimeMode(html), [html])
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
+  const usesStaticPreview = useMemo(() => previewStripsDeckScripts(html), [html])
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
@@ -112,6 +115,10 @@ export function DeckPreview({
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
+          ) : usesStaticPreview ? (
+            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
+              Static preview
+            </span>
           ) : null}
           <span className="flex items-center gap-1">
             <FileCode2Icon className="size-3" />
@@ -157,8 +164,28 @@ export function DeckPreview({
                   style={previewFrameStyle}
                   title="Generated Ark presentation preview"
                 />
+                {usesStaticPreview ? (
+                  <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
+                    <div className="flex items-start gap-2">
+                      <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="font-medium">Static preview</p>
+                        <p>
+                          Scripts and inline handlers were removed for preview. Download the
+                          original HTML to keep executable code, or choose sanitized export to match
+                          this preview.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {networkIssues.length > 0 ? (
-                  <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
+                  <div
+                    className={cn(
+                      'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
+                      usesStaticPreview ? 'top-24' : 'top-4',
+                    )}
+                  >
                     <div className="flex items-start gap-2">
                       <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
                       <div className="space-y-1">
