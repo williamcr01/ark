@@ -183,23 +183,8 @@ app.get('/api/health', (_request: Request, response: Response) => {
 })
 
 app.get('/api/models', async (_request: Request, response: Response) => {
-  if (!hasAnyConfiguredProvider()) {
-    sendApiError(response, 503, missingApiKeyError())
-    return
-  }
-
   try {
     const { models, warnings } = await fetchAllAvailableModels()
-
-    if (models.length === 0) {
-      sendApiError(response, 500, {
-        code: 'provider_error',
-        error:
-          warnings.join(' ') ||
-          'No models were returned from the configured providers. Check your API keys and restart the dev server.',
-      })
-      return
-    }
 
     response.json({
       defaultModel,
