@@ -971,11 +971,16 @@ function ChatPanel({
             <PromptInputFooter>
               <PromptInputTools>
                 <PromptInputSelect
-                  disabled={isInputDisabled || isLoadingModels || models.length === 0}
+                  disabled={isGenerating || isLoadingModels}
                   onValueChange={onModelChange}
                   value={selectedModel}
                 >
-                  <PromptInputSelectTrigger className="max-w-[280px]">
+                  <PromptInputSelectTrigger
+                    className={cn(
+                      'max-w-[300px]',
+                      !canGenerate && 'text-muted-foreground',
+                    )}
+                  >
                     <PromptInputSelectValue
                       placeholder={
                         apiKeyStatus === 'checking'
@@ -988,7 +993,12 @@ function ChatPanel({
                   </PromptInputSelectTrigger>
                   <PromptInputSelectContent>
                     {models.map((model) => (
-                      <PromptInputSelectItem key={model.id} value={model.id}>
+                      <PromptInputSelectItem
+                        className={cn(!model.available && 'text-muted-foreground')}
+                        disabled={!model.available}
+                        key={model.id}
+                        value={model.id}
+                      >
                         {formatModelLabel(model)}
                       </PromptInputSelectItem>
                     ))}
@@ -996,7 +1006,7 @@ function ChatPanel({
                 </PromptInputSelect>
                 <PromptInputButton
                   aria-label="Refresh available models"
-                  disabled={isGenerating || isLoadingModels || apiKeyStatus === 'missing'}
+                  disabled={isGenerating || isLoadingModels}
                   onClick={() => {
                     void onRefreshModels()
                   }}

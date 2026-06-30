@@ -1,5 +1,4 @@
 import {
-  getConfiguredProviders,
   getProviderApiKey,
   parseProviderHttpError,
   type ProviderId,
@@ -10,6 +9,7 @@ export type ModelInfo = {
   provider: ProviderId
   modelId: string
   name?: string
+  available: boolean
 }
 
 const OPENAI_CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i
@@ -39,12 +39,45 @@ const isOpenAIChatModel = (id: string) => {
   return OPENAI_CHAT_MODEL_PATTERN.test(normalized)
 }
 
-const toModelRef = (provider: ProviderId, modelId: string, name?: string): ModelInfo => ({
+const toModelRef = (
+  provider: ProviderId,
+  modelId: string,
+  name?: string,
+  available = true,
+): ModelInfo => ({
   id: `${provider}:${modelId}`,
   provider,
   modelId,
   name,
+  available,
 })
+
+const PROVIDER_SEED_MODELS: Record<
+  ProviderId,
+  Array<{ modelId: string; name: string }>
+> = {
+  openai: [
+    { modelId: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+    { modelId: 'gpt-4o', name: 'GPT-4o' },
+    { modelId: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+    { modelId: 'gpt-4.1', name: 'GPT-4.1' },
+  ],
+  anthropic: [
+    { modelId: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+    { modelId: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
+    { modelId: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku' },
+  ],
+  google: [
+    { modelId: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { modelId: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { modelId: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  ],
+}
+
+const seedModelsForProvider = (provider: ProviderId) =>
+  PROVIDER_SEED_MODELS[provider].map((entry) =>
+    toModelRef(provider, entry.modelId, entry.name, false),
+  )
 
 const sortModels = (models: ModelInfo[]) =>
   [...models].sort((left, right) => {
@@ -117,7 +150,7 @@ async function fetchOpenAIModels(apiKey: string): Promise<ModelInfo[]> {
     (payload.data ?? [])
       .map((entry) => entry.id?.trim() ?? '')
       .filter((id) => id.length > 0 && isOpenAIChatModel(id))
-      .map((modelId) => toModelRef('openai', modelId)),
+      .map((modelId) => toModelRef('openai', modelId, undefined, true)),
   )
 }
 
@@ -157,7 +190,7 @@ async function fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
         continue
       }
 
-      models.push(toModelRef('anthropic', modelId, entry.display_name?.trim()))
+      models.push(toModelRef('anthropic', modelId, entry.display_name?.trim(), true))
     }
 
     afterId = payload.has_more ? payload.last_id : undefined
@@ -205,7 +238,7 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
       }
 
       models.push(
-        toModelRef('google', modelId, entry.displayName?.trim() || undefined),
+        toModelRef('google', modelId, entry.displayName?.trim() || undefined, true),
       )
     }
 
@@ -233,18 +266,26 @@ export async function fetchProviderModels(provider: ProviderId): Promise<ModelIn
   return PROVIDER_FETCHERS[provider](apiKey)
 }
 
+const ALL_PROVIDERS: ProviderId[] = ['openai', 'anthropic', 'google']
+
 export async function fetchAllAvailableModels(): Promise<{
   models: ModelInfo[]
   warnings: string[]
 }> {
-  const providers = getConfiguredProviders()
   const warnings: string[] = []
   const models: ModelInfo[] = []
 
   await Promise.all(
-    providers.map(async (provider) => {
+    ALL_PROVIDERS.map(async (provider) => {
+      const apiKey = getProviderApiKey(provider)
+
+      if (!apiKey) {
+        models.push(...seedModelsForProvider(provider))
+        return
+      }
+
       try {
-        const providerModels = await fetchProviderModels(provider)
+        const providerModels = await PROVIDER_FETCHERS[provider](apiKey)
         models.push(...providerModels)
       } catch (error) {
         const message =
@@ -252,6 +293,7 @@ export async function fetchAllAvailableModels(): Promise<{
             ? error.message
             : `Could not load ${provider} models.`
         warnings.push(message)
+        models.push(...seedModelsForProvider(provider))
       }
     }),
   )
@@ -268,5 +310,9 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
   }
 
   const { provider, modelId } = parseModelRef(modelRef)
-  return sortModels([...models, toModelRef(provider, modelId)])
+  const configured = Boolean(getProviderApiKey(provider))
+  return sortModels([
+    ...models,
+    toModelRef(provider, modelId, undefined, configured),
+  ])
 }
