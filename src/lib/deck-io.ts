@@ -18,6 +18,26 @@ export function isHtmlDeckFile(file: File) {
   )
 }
 
+import {
+  formatDeckValidationSummary,
+  validateDeckHtmlInBrowser,
+  type DeckValidationReport,
+} from '@/lib/deck-validate'
+
+export function validateUploadedDeck(html: string): DeckValidationReport {
+  return validateDeckHtmlInBrowser(html)
+}
+
 export function isCompleteHtmlDeck(html: string) {
-  return /<html[\s>]/i.test(html) && /<body[\s>]/i.test(html)
+  return validateDeckHtmlInBrowser(html).valid
+}
+
+export function describeDeckValidation(report: DeckValidationReport) {
+  const warnings = report.issues.filter((issue) => issue.severity === 'warning')
+
+  if (warnings.length === 0) {
+    return formatDeckValidationSummary(report)
+  }
+
+  return `${formatDeckValidationSummary(report)}. ${warnings.map((issue) => issue.message).join(' ')}`
 }

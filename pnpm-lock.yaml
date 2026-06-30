@@ -50,6 +50,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.7)
@@ -135,9 +138,6 @@ importers:
       globals:
         specifier: ^17.6.0
         version: 17.6.0
-      jsdom:
-        specifier: ^29.1.1
-        version: 29.1.1(@noble/hashes@1.8.0)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
