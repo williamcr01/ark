@@ -1,0 +1,187 @@
+import type { ChangeEvent, ReactNode } from 'react'
+import {
+  DownloadIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
+  PresentationIcon,
+  RefreshCwIcon,
+  UploadIcon,
+} from 'lucide-react'
+
+import { buttonVariants } from '@/components/ui/button'
+import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
+type TitleBarButtonProps = {
+  active?: boolean
+  children: ReactNode
+  disabled?: boolean
+  label: string
+  onClick?: () => void
+  primary?: boolean
+} & Pick<
+  React.ComponentProps<'button'>,
+  'aria-controls' | 'aria-expanded' | 'type'
+>
+
+function TitleBarButton({
+  active = false,
+  children,
+  disabled,
+  label,
+  onClick,
+  primary = false,
+  ...props
+}: TitleBarButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={label}
+          aria-pressed={active}
+          className={cn(
+            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+            'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
+            'hover:bg-[var(--ark-titlebar-hover)]',
+            'disabled:text-[var(--ark-titlebar-muted)]/50',
+            active && 'bg-[var(--ark-titlebar-active)]',
+            primary &&
+            !disabled &&
+            'text-[var(--ark-accent)] hover:bg-[var(--ark-accent-soft)]',
+          )}
+          disabled={disabled}
+          onClick={onClick}
+          type="button"
+          {...props}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export type AppTitleBarProps = {
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  hasDeck: boolean
+  hasSlides: boolean
+  isChatOpen: boolean
+  isGenerating: boolean
+  isStripOpen: boolean
+  onDownload: () => void
+  onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
+  onReset: () => void
+  onToggleChat: () => void
+  onToggleStrip: () => void
+  onUploadClick: () => void
+}
+
+export function AppTitleBar({
+  fileInputRef,
+  hasDeck,
+  hasSlides,
+  isChatOpen,
+  isGenerating,
+  isStripOpen,
+  onDownload,
+  onHtmlUpload,
+  onReset,
+  onToggleChat,
+  onToggleStrip,
+  onUploadClick,
+}: AppTitleBarProps) {
+  return (
+    <header className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-2 text-[var(--ark-titlebar-fg)]">
+      <input
+        accept=".html,.htm,text/html"
+        className="hidden"
+        onChange={onHtmlUpload}
+        ref={fileInputRef}
+        type="file"
+      />
+      <div className="flex min-w-0 items-center gap-2 px-1">
+        <PresentationIcon
+          aria-hidden
+          className="size-4 shrink-0 text-[var(--ark-titlebar-muted)]"
+        />
+        <span className="truncate text-[13px] leading-none">Ark</span>
+        <span
+          aria-hidden
+          className="text-[var(--ark-titlebar-muted)]"
+        >
+          ·
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
+          <span
+            aria-hidden
+            className={cn(
+              'size-1.5 shrink-0 rounded-full',
+              isGenerating
+                ? 'animate-pulse bg-amber-500'
+                : hasDeck
+                  ? 'bg-emerald-500'
+                  : 'bg-[var(--ark-titlebar-muted)]/50',
+            )}
+          />
+          {isGenerating ? 'Generating…' : hasDeck ? 'Deck ready' : 'New deck'}
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1" aria-hidden />
+
+      <ButtonGroup className="shrink-0">
+        <TitleBarButton
+          disabled={!hasDeck || isGenerating}
+          label="Start over"
+          onClick={onReset}
+        >
+          <RefreshCwIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={!hasDeck}
+          label="Download HTML"
+          onClick={onDownload}
+          primary
+        >
+          <DownloadIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={isGenerating}
+          label="Upload HTML"
+          onClick={onUploadClick}
+        >
+          <UploadIcon />
+        </TitleBarButton>
+        {hasSlides ? (
+          <TitleBarButton
+            active={isStripOpen}
+            aria-controls="ark-slide-strip"
+            aria-expanded={isStripOpen}
+            label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
+            onClick={onToggleStrip}
+          >
+            {isStripOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
+          </TitleBarButton>
+        ) : null}
+        <ButtonGroupSeparator className="mx-0.5 h-4 bg-[var(--ark-titlebar-border)]" />
+        <TitleBarButton
+          active={isChatOpen}
+          aria-controls="ark-chat-panel"
+          aria-expanded={isChatOpen}
+          label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
+          onClick={onToggleChat}
+        >
+          {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+        </TitleBarButton>
+      </ButtonGroup>
+    </header>
+  )
+}
