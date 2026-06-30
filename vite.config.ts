@@ -38,6 +38,11 @@ export default defineConfig(({ mode }) => {
         },
       },
       setupFiles: './src/test/setup.ts',
+      include: [
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'shared/**/*.{test,spec}.ts',
+        'server/**/*.{test,spec}.ts',
+      ],
     },
   }
 })

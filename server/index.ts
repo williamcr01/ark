@@ -4,20 +4,26 @@ import { generateText, type LanguageModel } from 'ai'
 import express, { type Request, type Response } from 'express'
 
 import {
+  buildModelMessages,
+  parseGenerateMessages,
+  type ApiChatMessage,
+} from '../shared/chat.ts'
+import {
   hasAnyConfiguredProvider,
   missingApiKeyError,
   parseProviderError,
   getProviderStatus,
   type ApiErrorPayload,
 } from './credentials.ts'
+import { finalizeGeneratedDeck } from './generate-response.ts'
+import { deckStore, isValidDeckId } from './deck-store.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import {
   ensureModelInList,
   fetchAllAvailableModels,
   getDefaultModel,
   getDefaultModelWarning,
 } from './models.ts'
-import { deckStore, isValidDeckId } from './deck-store.ts'
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import { createLanguageModel } from './provider-runtime.ts'
 
 const app = express()
@@ -27,7 +33,7 @@ const defaultModel = getDefaultModel()
 app.use(express.json({ limit: '4mb' }))
 
 type GenerateRequest = {
-  prompt?: string
+  messages?: unknown
   currentHtml?: string | null
   model?: string
 }
@@ -105,45 +111,6 @@ External JavaScript libraries (e.g. Chart.js, reveal.js via CDN script tags) are
 Safety and portability:
 - Do not include analytics, tracking, forms, or nested iframes.
 - External fonts or CSS imports are allowed only if the deck still looks good without them.`
-
-const buildPrompt = ({ prompt, currentHtml }: { prompt: string; currentHtml: string }) => {
-  if (currentHtml.trim()) {
-    return `The user wants to revise the existing Ark HTML deck.
-
-User instruction:
-${prompt}
-
-Current full HTML deck:
-${currentHtml}
-
-Return the complete revised HTML document only.`
-  }
-
-  return `Create a new complete Ark HTML slide deck from this user request:
-
-${prompt}
-
-Return the complete HTML document only.`
-}
-
-const extractHtmlDocument = (text: string) => {
-  const withoutFence = text
-    .replace(/^```(?:html)?\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim()
-
-  const doctypeIndex = withoutFence.search(/<!doctype html>/i)
-  if (doctypeIndex >= 0) {
-    return withoutFence.slice(doctypeIndex).trim()
-  }
-
-  const htmlIndex = withoutFence.search(/<html[\s>]/i)
-  if (htmlIndex >= 0) {
-    return `<!DOCTYPE html>\n${withoutFence.slice(htmlIndex).trim()}`
-  }
-
-  return withoutFence
-}
 
 const sendApiError = (
   response: Response,
@@ -331,18 +298,33 @@ app.delete('/api/decks/:id', async (request: Request<{ id: string }>, response: 
 })
 
 app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
-  const prompt = request.body.prompt?.trim() ?? ''
+  const parsedMessages = parseGenerateMessages(request.body.messages)
   const currentHtml = request.body.currentHtml ?? ''
   const requestedModel = request.body.model?.trim()
   const modelRef = requestedModel || defaultModel
+
+  if (!parsedMessages.ok) {
+    response.status(400).json({ error: parsedMessages.error, code: 'provider_error' })
+    return
+  }
+
+  const messages: ApiChatMessage[] = parsedMessages.messages
 
   if (!hasAnyConfiguredProvider()) {
     sendApiError(response, 503, missingApiKeyError())
     return
   }
 
-  if (!prompt) {
-    response.status(400).json({ error: 'Prompt is required.', code: 'provider_error' })
+  if (messages.length === 0) {
+    response.status(400).json({ error: 'At least one user message is required.', code: 'provider_error' })
+    return
+  }
+
+  if (messages.at(-1)?.role !== 'user') {
+    response.status(400).json({
+      error: 'The latest chat message must be from the user.',
+      code: 'provider_error',
+    })
     return
   }
 
@@ -352,28 +334,23 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
     const result = await generateText({
       model: model as LanguageModel,
       system: deckSystemPrompt,
-      prompt: buildPrompt({ prompt, currentHtml }),
+      messages: buildModelMessages(messages, currentHtml),
       maxOutputTokens: 12_000,
       temperature: 0.7,
     })
 
-    const html = extractHtmlDocument(result.text)
-    const validation = validateDeckHtmlOnServer(html)
+    const finalized = finalizeGeneratedDeck(result.text)
 
-    if (!validation.valid) {
-      const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
-
+    if (!finalized.ok) {
       response.status(502).json({
-        error:
-          primaryIssue?.message ??
-          'The model did not return a valid Ark HTML deck. Try again with a more specific prompt.',
+        error: finalized.error,
         code: 'provider_error',
-        validation,
+        validation: finalized.validation,
       })
       return
     }
 
-    response.json({ html, validation })
+    response.json({ html: finalized.html, validation: finalized.validation })
   } catch (error) {
     sendApiError(response, 500, getApiErrorFromUnknown(error))
   }

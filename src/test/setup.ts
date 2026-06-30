@@ -72,7 +72,7 @@ Object.defineProperty(document, 'exitFullscreen', {
 installTestLocalStorage()
 
 afterEach(() => {
+  getTestLocalStorage().clear()
   cleanup()
   vi.clearAllMocks()
-  getTestLocalStorage().clear()
 })
