@@ -4,6 +4,7 @@ import fullJsDeck from '@/test/fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 
 import {
   formatDeckValidationSummary,
@@ -19,20 +20,29 @@ describe('validateDeckHtmlInBrowser', () => {
     expect(report.scripts).toEqual([])
     expect(report.forms).toBe(0)
     expect(report.iframes).toBe(0)
-    expect(report.runtimeMarkers.previewMode).toBe('css-only')
+    expect(report.runtimeMarkers.runtimeMode).toBe('static')
     expect(report.issues).toEqual([])
     expect(formatDeckValidationSummary(report)).toBe('3 slides')
   })
 
-  it('reports scripts and full-js runtime markers for opted-in decks', () => {
+  it('reports scripts and custom-js runtime markers for opted-in decks', () => {
     const report = validateDeckHtmlInBrowser(fullJsDeck)
 
     expect(report.valid).toBe(true)
     expect(report.slideCount).toBeGreaterThan(0)
     expect(report.scripts.length).toBeGreaterThan(0)
-    expect(report.runtimeMarkers.previewMode).toBe('full-js')
+    expect(report.runtimeMarkers.runtimeMode).toBe('custom-js')
     expect(report.runtimeMarkers.arkDeck).toBe('nav')
     expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(false)
+  })
+
+  it('detects reveal decks from structure', () => {
+    const report = validateDeckHtmlInBrowser(revealDeck)
+
+    expect(report.valid).toBe(true)
+    expect(report.slideCount).toBe(2)
+    expect(report.runtimeMarkers.runtimeMode).toBe('reveal')
+    expect(formatDeckValidationSummary(report)).toBe('2 slides, reveal runtime')
   })
 
   it('flags hostile scripts without an Ark runtime marker', () => {
@@ -40,7 +50,7 @@ describe('validateDeckHtmlInBrowser', () => {
 
     expect(report.valid).toBe(true)
     expect(report.scripts.length).toBeGreaterThan(0)
-    expect(report.runtimeMarkers.previewMode).toBe('css-only')
+    expect(report.runtimeMarkers.runtimeMode).toBe('static')
     expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(true)
   })
 

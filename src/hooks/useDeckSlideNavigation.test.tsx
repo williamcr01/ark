@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-  type PreviewMode,
+  type DeckRuntimeMode,
 } from '@/lib/deck-preview'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 
@@ -21,7 +21,7 @@ type HarnessProps = {
   initialSlideIndex?: number
   keyboardMode?: DeckNavOptions['keyboardMode']
   onSlideChange?: (index: number) => void
-  previewMode?: PreviewMode
+  runtimeMode?: DeckRuntimeMode
   slideCount?: number
   syncOnLoad?: boolean
 }
@@ -32,7 +32,7 @@ function NavigationHarness({
   initialSlideIndex = 0,
   keyboardMode = 'preview',
   onSlideChange,
-  previewMode = 'css-only',
+  runtimeMode = 'static',
   slideCount = 3,
   syncOnLoad = false,
 }: HarnessProps) {
@@ -46,7 +46,7 @@ function NavigationHarness({
       initialSlideIndex,
       keyboardMode,
       onSlideChange,
-      previewMode,
+      runtimeMode,
       syncOnLoad,
     },
   )

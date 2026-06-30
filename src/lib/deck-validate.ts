@@ -1,6 +1,12 @@
 import { findSlideElements } from './deck-slides'
+import {
+  detectRuntimeMode,
+  detectRuntimeModeFromDocument,
+  runtimeModeAllowsDeckScripts,
+  type DeckRuntimeMode,
+} from './deck-runtime'
 
-export type DeckPreviewMode = 'css-only' | 'full-js'
+export type DeckPreviewMode = DeckRuntimeMode
 
 export type DeckScriptInfo = {
   inline: boolean
@@ -14,9 +20,10 @@ export type DeckMalformedSlide = {
 }
 
 export type DeckRuntimeMarkers = {
-  previewMode: DeckPreviewMode
+  runtimeMode: DeckRuntimeMode
   arkDeck: string | null
   arkPreview: string | null
+  arkRuntime: string | null
 }
 
 export type DeckValidationIssueCode =
@@ -98,20 +105,24 @@ function collectExternalUrls(doc: Document) {
   return [...urls].sort()
 }
 
-function readRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
+function readRuntimeMarkers(doc: Document, rawHtml?: string): DeckRuntimeMarkers {
   const html = doc.documentElement
   const body = doc.body
   const arkDeck =
   html?.getAttribute('data-ark-deck') ?? body?.getAttribute('data-ark-deck') ?? null
   const arkPreview =
   html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
-  const previewMode: DeckPreviewMode =
-    arkDeck === 'nav' || arkPreview === 'full-js' ? 'full-js' : 'css-only'
+  const arkRuntime =
+  html?.getAttribute('data-ark-runtime') ?? body?.getAttribute('data-ark-runtime') ?? null
+  const runtimeMode = rawHtml
+    ? detectRuntimeMode(rawHtml)
+    : detectRuntimeModeFromDocument(doc)
 
   return {
-    previewMode,
+    runtimeMode,
     arkDeck,
     arkPreview,
+    arkRuntime,
   }
 }
 
@@ -265,9 +276,9 @@ export function validateDeckDocument(
   }
 
   const scripts = collectScripts(doc)
-  const runtimeMarkers = readRuntimeMarkers(doc)
+  const runtimeMarkers = readRuntimeMarkers(doc, rawHtml)
 
-  if (scripts.length > 0 && runtimeMarkers.previewMode !== 'full-js') {
+  if (scripts.length > 0 && !runtimeModeAllowsDeckScripts(runtimeMarkers.runtimeMode)) {
     pushIssue(issues, {
       code: 'script_without_marker',
       message:
@@ -323,9 +334,10 @@ export function validateDeckHtml(
       externalUrls: [],
       malformedSlides: [],
       runtimeMarkers: {
-        previewMode: 'css-only',
+        runtimeMode: 'static',
         arkDeck: null,
         arkPreview: null,
+        arkRuntime: null,
       },
       issues: [
         {
@@ -365,8 +377,10 @@ export function formatDeckValidationSummary(report: DeckValidationReport) {
     parts.push(`${report.externalUrls.length} external URL${report.externalUrls.length === 1 ? '' : 's'}`)
   }
 
-  if (report.runtimeMarkers.previewMode === 'full-js') {
-    parts.push('full-JS preview')
+  if (runtimeModeAllowsDeckScripts(report.runtimeMarkers.runtimeMode)) {
+    parts.push('custom-JS preview')
+  } else if (report.runtimeMarkers.runtimeMode === 'reveal') {
+    parts.push('reveal runtime')
   }
 
   return parts.join(', ')

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-  type PreviewMode,
+  type DeckRuntimeMode,
 } from '@/lib/deck-preview'
 
 const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -25,7 +25,7 @@ const PRESENT_PREV_KEYS = new Set([
 type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
 
 export type DeckNavOptions = {
-  previewMode?: PreviewMode
+  runtimeMode?: DeckRuntimeMode
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
   onSlideChange?: (index: number) => void

@@ -5,12 +5,15 @@ import fullJsDeck from '@/test/fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 
+import { STRICT_DECK_CSP } from './deck-runtime'
 import {
   DECK_GOTO_EVENT,
   DECK_GOTO_MESSAGE_TYPE,
-  detectPreviewMode,
+  detectRuntimeMode,
   getPreviewHtml,
+  getPreviewSandbox,
 } from './deck-preview'
 
 function loadExecutablePreview(html: string) {
@@ -25,25 +28,37 @@ function loadExecutablePreview(html: string) {
   })
 }
 
-describe('detectPreviewMode', () => {
-  it('defaults blank, plain CSS, malformed, and hostile-script decks to css-only', () => {
-    expect(detectPreviewMode('')).toBe('css-only')
-    expect(detectPreviewMode(plainCssDeck)).toBe('css-only')
-    expect(detectPreviewMode(malformedDeck)).toBe('css-only')
-    expect(detectPreviewMode(hostileScriptsDeck)).toBe('css-only')
+describe('detectRuntimeMode', () => {
+  it('defaults blank, plain CSS, malformed, and hostile-script decks to static', () => {
+    expect(detectRuntimeMode('')).toBe('static')
+    expect(detectRuntimeMode(plainCssDeck)).toBe('static')
+    expect(detectRuntimeMode(malformedDeck)).toBe('static')
+    expect(detectRuntimeMode(hostileScriptsDeck)).toBe('static')
   })
 
-  it('enables full-js only when an explicit Ark marker is present', () => {
-    expect(detectPreviewMode(fullJsDeck)).toBe('full-js')
-    expect(detectPreviewMode('<html><body data-ark-preview="full-js"></body></html>'))
-      .toBe('full-js')
-    expect(detectPreviewMode('<html><body><script>window.x = 1</script></body></html>'))
-      .toBe('css-only')
+  it('detects reveal decks from structure', () => {
+    expect(detectRuntimeMode(revealDeck)).toBe('reveal')
+  })
+
+  it('enables custom-js only when an explicit Ark marker is present', () => {
+    expect(detectRuntimeMode(fullJsDeck)).toBe('custom-js')
+    expect(detectRuntimeMode('<html><body data-ark-preview="full-js"></body></html>'))
+      .toBe('custom-js')
+    expect(detectRuntimeMode('<html><body><script>window.x = 1</script></body></html>'))
+      .toBe('static')
   })
 })
 
 describe('getPreviewHtml', () => {
-  it('strips deck scripts and injects the CSS-only navigation shim by default', () => {
+  it('injects strict CSP for every preview document', () => {
+    const previewHtml = getPreviewHtml(plainCssDeck)
+
+    expect(previewHtml).toContain('http-equiv="Content-Security-Policy"')
+    expect(previewHtml).toContain(STRICT_DECK_CSP)
+    expect(previewHtml).toContain("connect-src 'none'")
+  })
+
+  it('strips deck scripts and injects the static navigation shim by default', () => {
     const previewHtml = getPreviewHtml(hostileScriptsDeck)
 
     expect(previewHtml).toContain('data-ark-preview-fill')
@@ -56,7 +71,7 @@ describe('getPreviewHtml', () => {
     expect(previewHtml).not.toContain('onerror=')
   })
 
-  it('keeps deck scripts and injects only the bridge for explicit full-js decks', () => {
+  it('keeps deck scripts and injects only the bridge for explicit custom-js decks', () => {
     const previewHtml = getPreviewHtml(fullJsDeck)
 
     expect(previewHtml).toContain('data-ark-preview-fill')
@@ -66,7 +81,7 @@ describe('getPreviewHtml', () => {
     expect(previewHtml).toContain('window.fullJsDeckBooted = true')
   })
 
-  it('runs the CSS-only navigation shim for keyboard navigation', async () => {
+  it('runs the static navigation shim for keyboard navigation', async () => {
     const dom = await loadExecutablePreview(getPreviewHtml(plainCssDeck))
     const { document } = dom.window
     const slides = [...document.querySelectorAll('section.slide')]
@@ -86,7 +101,7 @@ describe('getPreviewHtml', () => {
     expect(slides[1].getAttribute('aria-hidden')).toBe('false')
   })
 
-  it('bridges parent goto messages into deck CustomEvents for full-js previews', async () => {
+  it('bridges parent goto messages into deck CustomEvents for custom-js previews', async () => {
     const dom = await loadExecutablePreview(getPreviewHtml(fullJsDeck))
     const receivedIndexes: number[] = []
 
@@ -104,5 +119,14 @@ describe('getPreviewHtml', () => {
 
   it('returns an empty preview for empty HTML', () => {
     expect(getPreviewHtml('')).toBe('')
+  })
+})
+
+describe('getPreviewSandbox', () => {
+  it('allows scripts without same-origin or other risky permissions', () => {
+    expect(getPreviewSandbox('static')).toBe('allow-scripts')
+    expect(getPreviewSandbox('reveal')).toBe('allow-scripts')
+    expect(getPreviewSandbox('custom-js')).toBe('allow-scripts')
+    expect(getPreviewSandbox('custom-js')).not.toContain('allow-same-origin')
   })
 })
