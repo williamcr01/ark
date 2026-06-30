@@ -1,3 +1,5 @@
+import { parseOpenAIHttpError } from './api-key.ts'
+
 export type ModelInfo = {
   id: string
   name?: string
@@ -46,9 +48,8 @@ export async function fetchOpenAIModels(apiKey: string): Promise<ModelInfo[]> {
 
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    throw new Error(
-      body.trim() || `OpenAI models request failed with status ${response.status}.`,
-    )
+    const apiError = parseOpenAIHttpError(response.status, body)
+    throw Object.assign(new Error(apiError.error), { apiError })
   }
 
   const payload = (await response.json()) as {

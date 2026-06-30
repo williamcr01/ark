@@ -35,6 +35,10 @@ PORT=8787
 
 Only `OPENAI_API_KEY` is required. `OPENAI_MODEL` and `PORT` are optional.
 
+### API key errors
+
+If `.env` is missing `OPENAI_API_KEY`, still has the placeholder value, or the key is rejected by OpenAI, the chat panel shows a clear error and disables generation until you fix it. After updating `.env`, restart `pnpm dev` and use the model refresh button in chat if needed.
+
 ## Development
 
 ```bash
