@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../../shared/chat.ts'
+import type { ChatAttachment, ChatMessage } from '../../shared/chat.ts'
 
 const CHAT_SESSION_STORAGE_KEY = 'ark:chat-session'
 const LEGACY_DECK_SESSION_STORAGE_KEY = 'ark:deck-session'
@@ -8,12 +8,22 @@ export type ChatSession = {
   updatedAt: string
 }
 
+const isChatAttachment = (value: unknown): value is ChatAttachment =>
+  typeof value === 'object' &&
+  value !== null &&
+  (value as ChatAttachment).type === 'file' &&
+  typeof (value as ChatAttachment).mediaType === 'string' &&
+  typeof (value as ChatAttachment).url === 'string'
+
 const isChatMessage = (value: unknown): value is ChatMessage =>
   typeof value === 'object' &&
   value !== null &&
   typeof (value as ChatMessage).id === 'string' &&
   ((value as ChatMessage).role === 'user' || (value as ChatMessage).role === 'assistant') &&
-  typeof (value as ChatMessage).content === 'string'
+  typeof (value as ChatMessage).content === 'string' &&
+  ((value as ChatMessage).attachments === undefined ||
+    (Array.isArray((value as ChatMessage).attachments) &&
+      (value as ChatMessage).attachments!.every(isChatAttachment)))
 
 const isChatSession = (value: unknown): value is ChatSession =>
   typeof value === 'object' &&

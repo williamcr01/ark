@@ -1,6 +1,12 @@
 import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon } from 'lucide-react'
 
 import {
+  Attachment,
+  AttachmentPreview,
+  AttachmentRemove,
+  Attachments,
+} from '@/components/ai-elements/attachments'
+import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
@@ -9,9 +15,15 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionAddScreenshot,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputButton,
   PromptInputFooter,
+  PromptInputHeader,
   type PromptInputMessage,
   PromptInputSelect,
   PromptInputSelectContent,
@@ -21,6 +33,7 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,10 +42,87 @@ import {
   type ApiKeyStatus,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
-import type { ChatMessage, ChatMessagePart } from '../../shared/chat.ts'
+import type { ChatAttachment, ChatMessage, ChatMessagePart } from '../../shared/chat.ts'
+import { MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '../../shared/chat.ts'
 import { cn } from '@/lib/utils'
 
 export type { ChatMessage } from '../../shared/chat.ts'
+
+function formatAttachmentError(error: { code: string; message: string }) {
+  switch (error.code) {
+    case 'max_files':
+      return `You can attach up to ${MAX_CHAT_ATTACHMENTS} files.`
+    case 'max_file_size':
+      return `Each attachment must be ${Math.round(MAX_CHAT_ATTACHMENT_BYTES / (1024 * 1024))} MB or smaller.`
+    default:
+      return error.message
+  }
+}
+
+function ChatMessageAttachments({ attachments }: { attachments: ChatAttachment[] }) {
+  if (attachments.length === 0) {
+    return null
+  }
+
+  return (
+    <Attachments className="mt-2" variant="inline">
+      {attachments.map((attachment, index) => (
+        <Attachment
+          data={{
+            ...attachment,
+            id: `${attachment.filename ?? 'attachment'}-${index}`,
+          }}
+          key={`${attachment.filename ?? 'attachment'}-${index}`}
+        >
+          <AttachmentPreview />
+        </Attachment>
+      ))}
+    </Attachments>
+  )
+}
+
+function PromptInputAttachmentsDisplay() {
+  const attachments = usePromptInputAttachments()
+
+  if (attachments.files.length === 0) {
+    return null
+  }
+
+  return (
+    <Attachments variant="inline">
+      {attachments.files.map((attachment) => (
+        <Attachment
+          data={attachment}
+          key={attachment.id}
+          onRemove={() => attachments.remove(attachment.id)}
+        >
+          <AttachmentPreview />
+          <AttachmentRemove />
+        </Attachment>
+      ))}
+    </Attachments>
+  )
+}
+
+function ChatPromptInputSubmit({
+  input,
+  isInputDisabled,
+  isGenerating,
+}: {
+  input: string
+  isInputDisabled: boolean
+  isGenerating: boolean
+}) {
+  const attachments = usePromptInputAttachments()
+  const canSubmit = Boolean(input.trim() || attachments.files.length > 0)
+
+  return (
+    <PromptInputSubmit
+      disabled={!canSubmit || isInputDisabled}
+      status={isGenerating ? 'submitted' : 'ready'}
+    />
+  )
+}
 
 function formatToolLabel(toolName: string) {
   return toolName.replace(/_/g, ' ')
@@ -93,6 +183,7 @@ export type ChatPanelProps = {
   input: string
   isGenerating: boolean
   error: string
+  attachmentError: string
   models: AvailableModel[]
   selectedModel: string
   isLoadingModels: boolean
@@ -103,7 +194,8 @@ export type ChatPanelProps = {
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
   onRefreshModels: () => Promise<void>
-  onPromptSubmit: (message: PromptInputMessage) => Promise<void>
+  onPromptSubmit: (message: PromptInputMessage) => void
+  onAttachmentError: (message: string) => void
 }
 
 function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
@@ -139,6 +231,7 @@ export function ChatPanel({
   input,
   isGenerating,
   error,
+  attachmentError,
   models,
   selectedModel,
   isLoadingModels,
@@ -150,6 +243,7 @@ export function ChatPanel({
   onModelChange,
   onRefreshModels,
   onPromptSubmit,
+  onAttachmentError,
 }: ChatPanelProps) {
   const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
   const isInputDisabled = isGenerating || !canGenerate
@@ -184,6 +278,9 @@ export function ChatPanel({
                     ) : (
                       <MessageResponse>{message.content}</MessageResponse>
                     )}
+                    {message.attachments?.length ? (
+                      <ChatMessageAttachments attachments={message.attachments} />
+                    ) : null}
                   </MessageContent>
                 </Message>
               ))
@@ -211,6 +308,14 @@ export function ChatPanel({
             </Alert>
           ) : null}
 
+          {attachmentError ? (
+            <Alert className="mb-3" variant="destructive">
+              <AlertCircleIcon />
+              <AlertTitle>Attachment error</AlertTitle>
+              <AlertDescription>{attachmentError}</AlertDescription>
+            </Alert>
+          ) : null}
+
           {apiKeyAlert ? (
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />
@@ -227,7 +332,17 @@ export function ChatPanel({
             </Alert>
           ) : null}
 
-          <PromptInput onSubmit={onPromptSubmit}>
+          <PromptInput
+            accept="image/*,text/*,application/pdf"
+            maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
+            maxFiles={MAX_CHAT_ATTACHMENTS}
+            multiple
+            onError={(error) => onAttachmentError(formatAttachmentError(error))}
+            onSubmit={onPromptSubmit}
+          >
+            <PromptInputHeader>
+              <PromptInputAttachmentsDisplay />
+            </PromptInputHeader>
             <PromptInputBody>
               <PromptInputTextarea
                 className="min-h-24 resize-none"
@@ -245,6 +360,16 @@ export function ChatPanel({
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger
+                    aria-label="Add attachments"
+                    tooltip="Add attachments"
+                  />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments />
+                    <PromptInputActionAddScreenshot />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
                 <PromptInputSelect
                   disabled={isGenerating || isLoadingModels}
                   onValueChange={onModelChange}
@@ -287,9 +412,10 @@ export function ChatPanel({
                   <RefreshCwIcon className={cn('size-4', isLoadingModels && 'animate-spin')} />
                 </PromptInputButton>
               </PromptInputTools>
-              <PromptInputSubmit
-                disabled={!input.trim() || isInputDisabled}
-                status={isGenerating ? 'submitted' : 'ready'}
+              <ChatPromptInputSubmit
+                input={input}
+                isGenerating={isGenerating}
+                isInputDisabled={isInputDisabled}
               />
             </PromptInputFooter>
           </PromptInput>
