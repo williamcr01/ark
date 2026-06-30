@@ -39,10 +39,17 @@ import {
 import {
   PromptInput,
   PromptInputBody,
+  PromptInputButton,
   PromptInputFooter,
   type PromptInputMessage,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
+  PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { buttonVariants } from '@/components/ui/button'
@@ -61,6 +68,10 @@ import {
 } from '@/components/ui/resizable'
 import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
+import {
+  useAvailableModels,
+  type AvailableModel,
+} from '@/hooks/useAvailableModels'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -239,6 +250,14 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const {
+    error: modelsError,
+    isLoading: isLoadingModels,
+    loadModels,
+    models,
+    selectedModel,
+    setSelectedModel,
+  } = useAvailableModels()
 
   const hasDeck = generatedHtml.length > 0
   const parsedDeck = useMemo(() => parseDeckSlides(generatedHtml), [generatedHtml])
@@ -271,6 +290,7 @@ function App() {
         body: JSON.stringify({
           prompt,
           currentHtml: generatedHtml || null,
+          model: selectedModel || undefined,
         }),
       })
 
@@ -510,9 +530,15 @@ function App() {
                       error={error}
                       input={input}
                       isGenerating={isGenerating}
+                      isLoadingModels={isLoadingModels}
                       messages={messages}
+                      models={models}
+                      modelsError={modelsError}
                       onInputChange={setInput}
+                      onModelChange={setSelectedModel}
                       onPromptSubmit={handlePromptSubmit}
+                      onRefreshModels={loadModels}
+                      selectedModel={selectedModel}
                     />
                   </ResizablePanel>
                 </>
@@ -541,9 +567,15 @@ function App() {
                     error={error}
                     input={input}
                     isGenerating={isGenerating}
+                    isLoadingModels={isLoadingModels}
                     messages={messages}
+                    models={models}
+                    modelsError={modelsError}
                     onInputChange={setInput}
+                    onModelChange={setSelectedModel}
                     onPromptSubmit={handlePromptSubmit}
+                    onRefreshModels={loadModels}
+                    selectedModel={selectedModel}
                   />
                 </div>
               ) : null}
@@ -769,7 +801,13 @@ type ChatPanelProps = {
   input: string
   isGenerating: boolean
   error: string
+  models: AvailableModel[]
+  selectedModel: string
+  isLoadingModels: boolean
+  modelsError: string
   onInputChange: (value: string) => void
+  onModelChange: (modelId: string) => void
+  onRefreshModels: () => Promise<void>
   onPromptSubmit: (message: PromptInputMessage) => Promise<void>
 }
 
@@ -778,7 +816,13 @@ function ChatPanel({
   input,
   isGenerating,
   error,
+  models,
+  selectedModel,
+  isLoadingModels,
+  modelsError,
   onInputChange,
+  onModelChange,
+  onRefreshModels,
   onPromptSubmit,
 }: ChatPanelProps) {
   return (
@@ -840,6 +884,14 @@ function ChatPanel({
             </Alert>
           ) : null}
 
+          {modelsError ? (
+            <Alert className="mb-3" variant="destructive">
+              <AlertCircleIcon />
+              <AlertTitle>Could not load models</AlertTitle>
+              <AlertDescription>{modelsError}</AlertDescription>
+            </Alert>
+          ) : null}
+
           <PromptInput onSubmit={onPromptSubmit}>
             <PromptInputBody>
               <PromptInputTextarea
@@ -850,7 +902,41 @@ function ChatPanel({
                 value={input}
               />
             </PromptInputBody>
-            <PromptInputFooter className="justify-end">
+            <PromptInputFooter>
+              <PromptInputTools>
+                <PromptInputSelect
+                  disabled={isGenerating || isLoadingModels || models.length === 0}
+                  onValueChange={onModelChange}
+                  value={selectedModel}
+                >
+                  <PromptInputSelectTrigger className="max-w-[220px]">
+                    <PromptInputSelectValue
+                      placeholder={
+                        isLoadingModels ? 'Scanning models…' : 'Select model'
+                      }
+                    />
+                  </PromptInputSelectTrigger>
+                  <PromptInputSelectContent>
+                    {models.map((model) => (
+                      <PromptInputSelectItem key={model.id} value={model.id}>
+                        {model.id}
+                      </PromptInputSelectItem>
+                    ))}
+                  </PromptInputSelectContent>
+                </PromptInputSelect>
+                <PromptInputButton
+                  aria-label="Refresh available models"
+                  disabled={isGenerating || isLoadingModels}
+                  onClick={() => {
+                    void onRefreshModels()
+                  }}
+                  tooltip="Refresh models"
+                >
+                  <RefreshCwIcon
+                    className={cn('size-4', isLoadingModels && 'animate-spin')}
+                  />
+                </PromptInputButton>
+              </PromptInputTools>
               <PromptInputSubmit
                 disabled={!input.trim() || isGenerating}
                 status={isGenerating ? 'submitted' : 'ready'}

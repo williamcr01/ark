@@ -4,15 +4,22 @@ import { openai } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import express, { type Request, type Response } from 'express'
 
+import {
+  ensureModelInList,
+  fetchOpenAIModels,
+  getDefaultModel,
+} from './models.ts'
+
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
-const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
+const defaultModel = getDefaultModel()
 
 app.use(express.json({ limit: '4mb' }))
 
 type GenerateRequest = {
   prompt?: string
   currentHtml?: string | null
+  model?: string
 }
 
 const deckSystemPrompt = `You are Ark, an expert presentation designer and front-end engineer.
@@ -132,12 +139,40 @@ const isHtmlDocument = (html: string) =>
   /<!doctype html>/i.test(html) && /<html[\s>]/i.test(html) && /<body[\s>]/i.test(html)
 
 app.get('/api/health', (_request: Request, response: Response) => {
-  response.json({ ok: true, model })
+  response.json({ ok: true, model: defaultModel })
+})
+
+app.get('/api/models', async (_request: Request, response: Response) => {
+  if (!process.env.OPENAI_API_KEY) {
+    response.status(500).json({
+      error: 'Missing OPENAI_API_KEY. Add it to .env and restart the dev server.',
+    })
+    return
+  }
+
+  try {
+    const models = ensureModelInList(
+      await fetchOpenAIModels(process.env.OPENAI_API_KEY),
+      defaultModel,
+    )
+
+    response.json({
+      defaultModel,
+      models,
+    })
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Could not load available models.'
+
+    response.status(500).json({ error: message })
+  }
 })
 
 app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
   const prompt = request.body.prompt?.trim() ?? ''
   const currentHtml = request.body.currentHtml ?? ''
+  const requestedModel = request.body.model?.trim()
+  const model = requestedModel || defaultModel
 
   if (!process.env.OPENAI_API_KEY) {
     response.status(500).json({
