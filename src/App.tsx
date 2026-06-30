@@ -24,17 +24,20 @@ import {
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat-panel-layout'
 import {
+  describeDeckValidation,
   downloadHtml,
-  isCompleteHtmlDeck,
   isHtmlDeckFile,
+  validateUploadedDeck,
 } from '@/lib/deck-io'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import type { DeckValidationReport } from '@/lib/deck-validate'
 import { newId } from '@/lib/id'
 
 type GenerateResponse = {
   html?: string
   error?: string
   code?: 'missing_api_key' | 'invalid_api_key' | 'provider_error'
+  validation?: DeckValidationReport
 }
 
 function App() {
@@ -108,14 +111,17 @@ function App() {
       }
 
       setGeneratedHtml(data.html)
+      const validationNote = data.validation
+        ? ` Validation: ${describeDeckValidation(data.validation)}.`
+        : ''
       setMessages((current) => [
         ...current,
         {
           id: newId(),
           role: 'assistant',
           content: editingExistingDeck
-            ? 'Updated the HTML deck and refreshed the preview. You can keep iterating from here or download the file.'
-            : 'Generated a complete self-contained HTML slide deck. Review the preview, then ask for edits or download the file.',
+            ? `Updated the HTML deck and refreshed the preview.${validationNote} You can keep iterating from here or download the file.`
+            : `Generated a complete self-contained HTML slide deck.${validationNote} Review the preview, then ask for edits or download the file.`,
         },
       ])
       toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
@@ -177,9 +183,11 @@ function App() {
 
     try {
       const html = await file.text()
+      const validation = validateUploadedDeck(html)
 
-      if (!isCompleteHtmlDeck(html)) {
-        toast.error('That file does not look like a complete HTML deck')
+      if (!validation.valid) {
+        const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+        toast.error(primaryIssue?.message ?? 'That file does not look like a valid Ark HTML deck')
         return
       }
 
@@ -190,7 +198,7 @@ function App() {
         {
           id: newId(),
           role: 'assistant',
-          content: `Loaded ${file.name} into the preview. You can ask Ark to revise this HTML deck now.`,
+          content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
         },
       ])
       toast.success('HTML deck loaded')
