@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
+
+import { toApiMessages } from '../shared/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar } from '@/components/AppTitleBar'
@@ -16,6 +18,7 @@ import {
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
+import { useDeckSession } from '@/hooks/useDeckSession'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -38,8 +41,13 @@ type GenerateResponse = {
 }
 
 function App() {
-  const [generatedHtml, setGeneratedHtml] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const {
+    html: generatedHtml,
+    messages,
+    resetSession,
+    setHtml: setGeneratedHtml,
+    setMessages,
+  } = useDeckSession()
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(true)
@@ -79,17 +87,18 @@ function App() {
     const editingExistingDeck = hasDeck
     setError('')
     setIsGenerating(true)
-    setMessages((current) => [
-      ...current,
+    const nextMessages: ChatMessage[] = [
+      ...messages,
       { id: newId(), role: 'user', content: prompt },
-    ])
+    ]
+    setMessages(nextMessages)
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt,
+          messages: toApiMessages(nextMessages),
           currentHtml: generatedHtml || null,
           model: selectedModel || undefined,
         }),
@@ -200,8 +209,7 @@ function App() {
   }
 
   const handleReset = () => {
-    setGeneratedHtml('')
-    setMessages([])
+    resetSession()
     setInput('')
     setError('')
     toast.info('Started a fresh deck')

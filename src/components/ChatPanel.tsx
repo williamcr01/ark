@@ -33,13 +33,10 @@ import {
   type ApiKeyStatus,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
+import type { ChatMessage } from '../../shared/chat.ts'
 import { cn } from '@/lib/utils'
 
-export type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
+export type { ChatMessage } from '../../shared/chat.ts'
 
 export type ChatPanelProps = {
   messages: ChatMessage[]

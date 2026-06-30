@@ -17,6 +17,11 @@ import {
   getDefaultModelWarning,
 } from './models.ts'
 import { createLanguageModel } from './provider-runtime.ts'
+import {
+  buildModelMessages,
+  normalizeGenerateMessages,
+  type ApiChatMessage,
+} from '../shared/chat.ts'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
@@ -26,6 +31,7 @@ app.use(express.json({ limit: '4mb' }))
 
 type GenerateRequest = {
   prompt?: string
+  messages?: ApiChatMessage[]
   currentHtml?: string | null
   model?: string
 }
@@ -104,26 +110,6 @@ Safety and portability:
 - Do not include analytics, tracking, forms, or nested iframes.
 - External fonts or CSS imports are allowed only if the deck still looks good without them.`
 
-const buildPrompt = ({ prompt, currentHtml }: { prompt: string; currentHtml: string }) => {
-  if (currentHtml.trim()) {
-    return `The user wants to revise the existing Ark HTML deck.
-
-User instruction:
-${prompt}
-
-Current full HTML deck:
-${currentHtml}
-
-Return the complete revised HTML document only.`
-  }
-
-  return `Create a new complete Ark HTML slide deck from this user request:
-
-${prompt}
-
-Return the complete HTML document only.`
-}
-
 const extractHtmlDocument = (text: string) => {
   const withoutFence = text
     .replace(/^```(?:html)?\s*/i, '')
@@ -200,7 +186,7 @@ app.get('/api/models', async (_request: Request, response: Response) => {
 })
 
 app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
-  const prompt = request.body.prompt?.trim() ?? ''
+  const messages = normalizeGenerateMessages(request.body)
   const currentHtml = request.body.currentHtml ?? ''
   const requestedModel = request.body.model?.trim()
   const modelRef = requestedModel || defaultModel
@@ -210,8 +196,16 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
     return
   }
 
-  if (!prompt) {
-    response.status(400).json({ error: 'Prompt is required.', code: 'provider_error' })
+  if (messages.length === 0) {
+    response.status(400).json({ error: 'At least one user message is required.', code: 'provider_error' })
+    return
+  }
+
+  if (messages.at(-1)?.role !== 'user') {
+    response.status(400).json({
+      error: 'The latest chat message must be from the user.',
+      code: 'provider_error',
+    })
     return
   }
 
@@ -221,7 +215,7 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
     const result = await generateText({
       model: model as LanguageModel,
       system: deckSystemPrompt,
-      prompt: buildPrompt({ prompt, currentHtml }),
+      messages: buildModelMessages(messages, currentHtml),
       maxOutputTokens: 12_000,
       temperature: 0.7,
     })
