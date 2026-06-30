@@ -224,7 +224,7 @@ export function PresentMode({
 
   const presenter = (
     <div
-      aria-label="Presentation mode"
+      aria-labelledby="ark-present-mode-title"
       aria-modal="true"
       className="fixed inset-0 z-50 overflow-hidden bg-black text-white outline-none"
       onFocus={showControls}
@@ -235,6 +235,10 @@ export function PresentMode({
       role="dialog"
       tabIndex={-1}
     >
+      <h2 className="sr-only" id="ark-present-mode-title">
+        Presentation mode
+      </h2>
+
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04))]"
@@ -280,10 +284,13 @@ export function PresentMode({
             type="button"
             variant="ghost"
           >
-            <ChevronLeftIcon className="size-4" />
+            <ChevronLeftIcon aria-hidden className="size-4" />
           </Button>
 
-          <div className="min-w-28 select-none px-3 text-center text-xs font-medium tabular-nums tracking-[0.18em] text-white/80">
+          <div
+            aria-live="polite"
+            className="min-w-28 select-none px-3 text-center text-xs font-medium tabular-nums tracking-[0.18em] text-white/80"
+          >
             {activeSlideIndex + 1} / {slideCount}
           </div>
 
@@ -299,20 +306,21 @@ export function PresentMode({
             type="button"
             variant="ghost"
           >
-            <ChevronRightIcon className="size-4" />
+            <ChevronRightIcon aria-hidden className="size-4" />
           </Button>
 
-          <div className="mx-1 h-6 w-px bg-white/10" />
+          <div aria-hidden className="mx-1 h-6 w-px bg-white/10" />
 
           <Button
+            aria-label="Exit presentation"
             className="rounded-full border-white/10 bg-white/10 px-4 text-xs font-medium text-white hover:bg-white/20"
             onClick={exitPresentMode}
             size="sm"
             type="button"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
-            Exit
+            <XIcon aria-hidden className="size-3.5" />
+            <span>Exit</span>
           </Button>
         </div>
       </div>

@@ -20,7 +20,10 @@ describe('PresentMode', () => {
       />,
     )
 
-    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toHaveAttribute(
+      'aria-labelledby',
+      'ark-present-mode-title',
+    )
     expect(screen.getByTitle('Ark presentation mode')).toHaveAttribute('sandbox', 'allow-scripts')
     expect(screen.getByText('1 / 3')).toBeInTheDocument()
 
@@ -30,7 +33,7 @@ describe('PresentMode', () => {
       expect(screen.getByText('2 / 3')).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole('button', { name: 'Exit' }))
+    await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
 
     expect(onExit).toHaveBeenCalledWith(1)
   })
@@ -51,5 +54,30 @@ describe('PresentMode', () => {
     await user.keyboard('{Escape}')
 
     expect(onExit).toHaveBeenCalledWith(2)
+  })
+
+  it('supports keyboard-only navigation between controls', async () => {
+    const user = userEvent.setup()
+    render(
+      <PresentMode
+        html={plainCssDeck}
+        initialSlideIndex={1}
+        onExit={vi.fn()}
+        runtimeMode="static"
+        slideCount={3}
+      />,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Presentation mode' })
+    dialog.focus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Next slide' })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Exit presentation' })).toHaveFocus()
   })
 })

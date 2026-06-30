@@ -22,6 +22,7 @@ type TitleBarButtonProps = {
   label: string
   onClick?: () => void
   primary?: boolean
+  toggle?: boolean
 } & Pick<React.ComponentProps<'button'>, 'aria-controls' | 'aria-expanded' | 'type'>
 
 function TitleBarButton({
@@ -31,6 +32,7 @@ function TitleBarButton({
   label,
   onClick,
   primary = false,
+  toggle = false,
   ...props
 }: TitleBarButtonProps) {
   return (
@@ -38,7 +40,7 @@ function TitleBarButton({
       <TooltipTrigger asChild>
         <button
           aria-label={label}
-          aria-pressed={active}
+          aria-pressed={toggle ? active : undefined}
           className={cn(
             buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
             'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
@@ -52,7 +54,9 @@ function TitleBarButton({
           type="button"
           {...props}
         >
-          {children}
+          <span aria-hidden className="inline-flex">
+            {children}
+          </span>
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>
@@ -169,6 +173,7 @@ export function AppTitleBar({
             aria-expanded={isStripOpen}
             label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
             onClick={onToggleStrip}
+            toggle
           >
             {isStripOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
           </TitleBarButton>
@@ -180,6 +185,7 @@ export function AppTitleBar({
           aria-expanded={isChatOpen}
           label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
           onClick={onToggleChat}
+          toggle
         >
           {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
         </TitleBarButton>
