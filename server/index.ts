@@ -14,6 +14,7 @@ import {
   ensureModelInList,
   fetchAllAvailableModels,
   getDefaultModel,
+  getDefaultModelWarning,
 } from './models.ts'
 import { createLanguageModel } from './provider-runtime.ts'
 
@@ -185,11 +186,13 @@ app.get('/api/health', (_request: Request, response: Response) => {
 app.get('/api/models', async (_request: Request, response: Response) => {
   try {
     const { models, warnings } = await fetchAllAvailableModels()
+    const modelsWithDefault = ensureModelInList(models, defaultModel)
+    const defaultModelWarning = getDefaultModelWarning(modelsWithDefault, defaultModel)
 
     response.json({
       defaultModel,
-      models: ensureModelInList(models, defaultModel),
-      warnings,
+      models: modelsWithDefault,
+      warnings: defaultModelWarning ? [...warnings, defaultModelWarning] : warnings,
     })
   } catch (error) {
     sendApiError(response, 500, getApiErrorFromUnknown(error))
