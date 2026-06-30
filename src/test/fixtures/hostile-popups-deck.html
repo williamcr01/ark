@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Popups Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>Popup attempts</h1>
+      <button onclick="window.open('https://evil.example/popup')" type="button">Open popup</button>
+    </section>
+    <script>
+      window.open('https://evil.example/auto-popup', '_blank')
+      window.open('javascript:alert(1)')
+    </script>
+  </body>
+</html>

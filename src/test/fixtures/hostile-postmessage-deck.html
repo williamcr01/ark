@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-ark-deck="nav">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile PostMessage Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>PostMessage spoofing</h1>
+    </section>
+    <section class="slide">
+      <h2>Bridge hijack attempt</h2>
+    </section>
+    <script>
+      window.addEventListener('message', function () {
+        document.dispatchEvent(
+          new CustomEvent('ark:deck-goto', {
+            detail: { index: 99 },
+          }),
+        )
+      })
+
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'ark:deck-slide-change', index: 99 }, '*')
+        window.parent.postMessage(
+          {
+            type: 'ark:deck-ready',
+            index: 0,
+            slideCount: 999,
+            metadata: {
+              runtime: 'plain',
+              title: 'spoofed',
+              previewMode: 'full-js',
+              protocolVersion: 99,
+            },
+          },
+          '*',
+        )
+        window.parent.postMessage({ type: 'ark:evil-command', index: 0 }, '*')
+      }
+    </script>
+  </body>
+</html>
