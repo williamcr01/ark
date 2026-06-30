@@ -13,6 +13,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // Streamdown plugins (Shiki language grammars, Mermaid, KaTeX) produce
+    // on-demand async chunks above 500 kB. The lazy message-response entry
+    // stays ~2 kB and the main app bundle ~458 kB; only optional grammars
+    // and diagram modules exceed the default Vite threshold.
+    build: {
+      chunkSizeWarningLimit: 800,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
