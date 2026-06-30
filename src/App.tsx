@@ -1,245 +1,40 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type ReactNode,
-} from 'react'
+import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { toast } from 'sonner'
-import {
-  AlertCircleIcon,
-  DownloadIcon,
-  FileCode2Icon,
-  Loader2Icon,
-  Maximize2Icon,
-  MonitorPlayIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
-  PanelRightCloseIcon,
-  PanelRightOpenIcon,
-  PresentationIcon,
-  RefreshCwIcon,
-  UploadIcon,
-  SparklesIcon,
-  WandSparklesIcon,
-} from 'lucide-react'
 
+import { AppTitleBar } from '@/components/AppTitleBar'
 import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from '@/components/ai-elements/conversation'
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from '@/components/ai-elements/message'
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputButton,
-  PromptInputFooter,
-  type PromptInputMessage,
-  PromptInputSelect,
-  PromptInputSelectContent,
-  PromptInputSelectItem,
-  PromptInputSelectTrigger,
-  PromptInputSelectValue,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
-} from '@/components/ai-elements/prompt-input'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { buttonVariants } from '@/components/ui/button'
-import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+  ChatPanel,
+  type ChatMessage,
+} from '@/components/ChatPanel'
+import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
+import { DeckPreview } from '@/components/DeckPreview'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
-import { PresentMode } from '@/components/PresentMode'
-import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
-import {
-  formatModelLabel,
-  useAvailableModels,
-  type ApiKeyStatus,
-  type AvailableModel,
-} from '@/hooks/useAvailableModels'
-import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
+import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { useAvailableModels } from '@/hooks/useAvailableModels'
+import { useElementSize } from '@/hooks/useElementSize'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
-  detectPreviewMode,
-  getPreviewFrameScale,
-  getPreviewFrameStyle,
-  getPreviewHtml,
-  getPreviewStageStyle,
-  type ElementSize,
-} from '@/lib/deck-preview'
-import { parseDeckSlides } from '@/lib/deck-slides'
-import { cn } from '@/lib/utils'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Toaster } from '@/components/ui/sonner'
+  CHAT_PANEL_MIN_WIDTH_PX,
+  getChatPanelDefaultSize,
+  getDeckPanelDefaultSizeWithChat,
+} from '@/lib/chat-panel-layout'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
+  downloadHtml,
+  isCompleteHtmlDeck,
+  isHtmlDeckFile,
+} from '@/lib/deck-io'
+import { parseDeckSlides } from '@/lib/deck-slides'
+import { newId } from '@/lib/id'
 
 type GenerateResponse = {
   html?: string
   error?: string
   code?: 'missing_api_key' | 'invalid_api_key' | 'provider_error'
-}
-
-const newId = () => crypto.randomUUID()
-
-function downloadHtml(html: string) {
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `ark-presentation-${new Date().toISOString().slice(0, 10)}.html`
-  document.body.append(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
-
-const CHAT_PANEL_MIN_WIDTH_PX = 280
-const CHAT_PANEL_DEFAULT_PERCENT = 20
-
-function getChatPanelDefaultSize(containerWidth: number) {
-  if (containerWidth <= 0) {
-    return `${CHAT_PANEL_DEFAULT_PERCENT}%`
-  }
-
-  const percentWidth = containerWidth * (CHAT_PANEL_DEFAULT_PERCENT / 100)
-
-  if (percentWidth < CHAT_PANEL_MIN_WIDTH_PX) {
-    return CHAT_PANEL_MIN_WIDTH_PX
-  }
-
-  return `${CHAT_PANEL_DEFAULT_PERCENT}%`
-}
-
-function getDeckPanelDefaultSizeWithChat(
-  containerWidth: number,
-  chatDefaultSize: number | string,
-) {
-  if (typeof chatDefaultSize === 'number') {
-    if (containerWidth <= 0) {
-      return `${100 - CHAT_PANEL_DEFAULT_PERCENT}%`
-    }
-
-    return containerWidth - chatDefaultSize
-  }
-
-  return `${100 - CHAT_PANEL_DEFAULT_PERCENT}%`
-}
-
-function useElementSize<T extends HTMLElement>() {
-  const elementRef = useRef<T>(null)
-  const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
-
-  useEffect(() => {
-    const element = elementRef.current
-
-    if (!element) {
-      return
-    }
-
-    const updateSize = () => {
-      const { width, height } = element.getBoundingClientRect()
-
-      setSize((current) => {
-        if (
-          Math.abs(current.width - width) < 0.5 &&
-          Math.abs(current.height - height) < 0.5
-        ) {
-          return current
-        }
-
-        return { width, height }
-      })
-    }
-
-    updateSize()
-
-    const resizeObserver = new ResizeObserver(updateSize)
-    resizeObserver.observe(element)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [])
-
-  return [elementRef, size] as const
-}
-
-type TitleBarButtonProps = {
-  active?: boolean
-  children: ReactNode
-  disabled?: boolean
-  label: string
-  onClick?: () => void
-  primary?: boolean
-} & Pick<
-  React.ComponentProps<'button'>,
-  'aria-controls' | 'aria-expanded' | 'type'
->
-
-function TitleBarButton({
-  active = false,
-  children,
-  disabled,
-  label,
-  onClick,
-  primary = false,
-  ...props
-}: TitleBarButtonProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          aria-label={label}
-          aria-pressed={active}
-          className={cn(
-            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
-            'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
-            'hover:bg-[var(--ark-titlebar-hover)]',
-            'disabled:text-[var(--ark-titlebar-muted)]/50',
-            active && 'bg-[var(--ark-titlebar-active)]',
-            primary &&
-            !disabled &&
-            'text-[var(--ark-accent)] hover:bg-[var(--ark-accent-soft)]',
-          )}
-          disabled={disabled}
-          onClick={onClick}
-          type="button"
-          {...props}
-        >
-          {children}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 function App() {
@@ -375,12 +170,7 @@ function App() {
       return
     }
 
-    const looksLikeHtmlFile =
-      file.type === 'text/html' ||
-      file.name.toLowerCase().endsWith('.html') ||
-      file.name.toLowerCase().endsWith('.htm')
-
-    if (!looksLikeHtmlFile) {
+    if (!isHtmlDeckFile(file)) {
       toast.error('Upload an .html file')
       return
     }
@@ -388,7 +178,7 @@ function App() {
     try {
       const html = await file.text()
 
-      if (!/<html[\s>]/i.test(html) || !/<body[\s>]/i.test(html)) {
+      if (!isCompleteHtmlDeck(html)) {
         toast.error('That file does not look like a complete HTML deck')
         return
       }
@@ -420,90 +210,20 @@ function App() {
   return (
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
-        <header className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-2 text-[var(--ark-titlebar-fg)]">
-          <input
-            accept=".html,.htm,text/html"
-            className="hidden"
-            onChange={handleHtmlUpload}
-            ref={fileInputRef}
-            type="file"
-          />
-          <div className="flex min-w-0 items-center gap-2 px-1">
-            <PresentationIcon
-              aria-hidden
-              className="size-4 shrink-0 text-[var(--ark-titlebar-muted)]"
-            />
-            <span className="truncate text-[13px] leading-none">Ark</span>
-            <span
-              aria-hidden
-              className="text-[var(--ark-titlebar-muted)]"
-            >
-              ·
-            </span>
-            <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
-              <span
-                aria-hidden
-                className={cn(
-                  'size-1.5 shrink-0 rounded-full',
-                  isGenerating
-                    ? 'animate-pulse bg-amber-500'
-                    : hasDeck
-                      ? 'bg-emerald-500'
-                      : 'bg-[var(--ark-titlebar-muted)]/50',
-                )}
-              />
-              {isGenerating ? 'Generating…' : hasDeck ? 'Deck ready' : 'New deck'}
-            </span>
-          </div>
-
-          <div className="min-w-0 flex-1" aria-hidden />
-
-          <ButtonGroup className="shrink-0">
-            <TitleBarButton
-              disabled={!hasDeck || isGenerating}
-              label="Start over"
-              onClick={handleReset}
-            >
-              <RefreshCwIcon />
-            </TitleBarButton>
-            <TitleBarButton
-              disabled={!hasDeck}
-              label="Download HTML"
-              onClick={handleDownload}
-              primary
-            >
-              <DownloadIcon />
-            </TitleBarButton>
-            <TitleBarButton
-              disabled={isGenerating}
-              label="Upload HTML"
-              onClick={handleUploadClick}
-            >
-              <UploadIcon />
-            </TitleBarButton>
-            {hasSlides ? (
-              <TitleBarButton
-                active={isStripOpen}
-                aria-controls="ark-slide-strip"
-                aria-expanded={isStripOpen}
-                label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
-                onClick={() => setIsStripOpen((current) => !current)}
-              >
-                {isStripOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
-              </TitleBarButton>
-            ) : null}
-            <ButtonGroupSeparator className="mx-0.5 h-4 bg-[var(--ark-titlebar-border)]" />
-            <TitleBarButton
-              active={isChatOpen}
-              aria-controls="ark-chat-panel"
-              aria-expanded={isChatOpen}
-              label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
-              onClick={() => setIsChatOpen((current) => !current)}
-            >
-              {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
-            </TitleBarButton>
-          </ButtonGroup>
-        </header>
+        <AppTitleBar
+          fileInputRef={fileInputRef}
+          hasDeck={hasDeck}
+          hasSlides={hasSlides}
+          isChatOpen={isChatOpen}
+          isGenerating={isGenerating}
+          isStripOpen={isStripOpen}
+          onDownload={handleDownload}
+          onHtmlUpload={handleHtmlUpload}
+          onReset={handleReset}
+          onToggleChat={() => setIsChatOpen((current) => !current)}
+          onToggleStrip={() => setIsStripOpen((current) => !current)}
+          onUploadClick={handleUploadClick}
+        />
 
         <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
           {isDesktop ? (
@@ -601,431 +321,6 @@ function App() {
       </div>
       <Toaster position="bottom-center" />
     </TooltipProvider>
-  )
-}
-
-type DeckPreviewProps = {
-  html: string
-  isGenerating: boolean
-  isStripOpen: boolean
-  layout: 'desktop' | 'mobile'
-  parsedDeck: ReturnType<typeof parseDeckSlides>
-}
-
-function DeckPreview({
-  html,
-  isGenerating,
-  isStripOpen,
-  layout,
-  parsedDeck,
-}: DeckPreviewProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
-  const [isPresentOpen, setIsPresentOpen] = useState(false)
-  const pendingPresentExitIndexRef = useRef<number | null>(null)
-  const previewMode = useMemo(() => detectPreviewMode(html), [html])
-  const hasSlides = parsedDeck.slideCount > 0
-  const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
-    iframeRef,
-    parsedDeck.slideCount,
-    html,
-    html.length > 0 && hasSlides && !isPresentOpen,
-    {
-      previewMode,
-      keyboardMode: isPresentOpen ? 'off' : 'preview',
-    },
-  )
-
-  useEffect(() => {
-    if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
-      return
-    }
-
-    const finalIndex = pendingPresentExitIndexRef.current
-    pendingPresentExitIndexRef.current = null
-    goToSlide(finalIndex)
-  }, [goToSlide, isPresentOpen])
-
-  const previewFrameScale = getPreviewFrameScale(previewViewportSize)
-  const previewStageStyle = getPreviewStageStyle(previewFrameScale)
-  const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
-  const hasStrip = hasSlides
-  const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
-  const canPresent = html.length > 0 && hasSlides && !isGenerating
-
-  return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
-        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-          <MonitorPlayIcon
-            aria-hidden
-            className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
-          />
-          <span className="truncate text-xs font-medium">Preview</span>
-          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-            ›
-          </span>
-          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
-            {parsedDeck.slideCount > 0
-              ? `Slide ${activeSlideIndex + 1} of ${parsedDeck.slideCount}`
-              : 'HTML deck'}
-          </span>
-        </div>
-        <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
-          <button
-            aria-label="Present fullscreen"
-            className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!canPresent || isPresentOpen}
-            onClick={() => setIsPresentOpen(true)}
-            type="button"
-          >
-            <Maximize2Icon className="size-3" />
-            Present
-          </button>
-          {previewMode === 'full-js' ? (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-              Scripts running
-            </span>
-          ) : null}
-          <span className="flex items-center gap-1">
-            <FileCode2Icon className="size-3" />
-            srcDoc
-          </span>
-        </span>
-      </div>
-
-      <div
-        className={cn(
-          'relative min-h-0 flex-1 overflow-hidden',
-          layout === 'desktop' ? 'flex flex-row' : 'flex flex-col',
-        )}
-      >
-        {hasStrip ? (
-          <SlideThumbnailStrip
-            activeIndex={activeSlideIndex}
-            id="ark-slide-strip"
-            isOpen={isStripOpen}
-            key={html}
-            onSelect={goToSlide}
-            orientation={stripOrientation}
-            parsedDeck={parsedDeck}
-          />
-        ) : null}
-
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-          <div
-            className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden"
-            ref={previewViewportRef}
-          >
-            {html ? (
-              <div
-                className="relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
-                style={previewStageStyle}
-              >
-                <iframe
-                  className="absolute left-0 top-0 block border-0 bg-white"
-                  ref={iframeRef}
-                  referrerPolicy="no-referrer"
-                  sandbox="allow-scripts"
-                  srcDoc={getPreviewHtml(html)}
-                  style={previewFrameStyle}
-                  title="Generated Ark presentation preview"
-                />
-                {isGenerating ? (
-                  <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-                    <Loader2Icon className="size-3.5 animate-spin" />
-                    Updating preview
-                  </div>
-                ) : null}
-              </div>
-            ) : isGenerating ? (
-              <PreviewSkeleton scale={previewFrameScale} />
-            ) : (
-              <EmptyPreview />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {isPresentOpen ? (
-        <PresentMode
-          html={html}
-          initialSlideIndex={activeSlideIndex}
-          onExit={(finalIndex) => {
-            pendingPresentExitIndexRef.current = finalIndex
-            setIsPresentOpen(false)
-          }}
-          previewMode={previewMode}
-          slideCount={parsedDeck.slideCount}
-        />
-      ) : null}
-    </section>
-  )
-}
-
-function EmptyPreview() {
-  return (
-    <Card className="w-full max-w-xl border-dashed bg-white/80 text-center shadow-none">
-      <CardHeader className="items-center gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-[var(--ark-accent-soft)] text-[var(--ark-accent)]">
-          <WandSparklesIcon className="size-6" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <CardTitle>Ready for your first deck</CardTitle>
-          <CardDescription>
-            Ask Ark for a pitch deck, strategy update, sales proposal, research summary, or any presentation you need.
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-2xl border bg-[var(--ark-paper)] p-4 text-left text-sm text-muted-foreground">
-          <p className="font-medium text-foreground">Try:</p>
-          <p>“Create a 6-slide launch deck for a privacy-first notes app.”</p>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function PreviewSkeleton({ scale }: { scale: number }) {
-  return (
-    <div
-      className="max-h-full max-w-full bg-white p-8 shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
-      style={getPreviewStageStyle(scale)}
-    >
-      <div className="flex h-full flex-col gap-8">
-        <div className="flex items-center justify-between gap-8">
-          <Skeleton className="h-5 w-36" />
-          <Skeleton className="h-5 w-24" />
-        </div>
-        <div className="grid flex-1 grid-cols-[1.2fr_0.8fr] gap-8">
-          <div className="flex flex-col justify-center gap-4">
-            <Skeleton className="h-10 w-4/5" />
-            <Skeleton className="h-10 w-3/5" />
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-          <Skeleton className="h-full rounded-2xl" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-type ChatPanelProps = {
-  messages: ChatMessage[]
-  input: string
-  isGenerating: boolean
-  error: string
-  models: AvailableModel[]
-  selectedModel: string
-  isLoadingModels: boolean
-  modelsError: string
-  modelWarnings: string[]
-  apiKeyStatus: ApiKeyStatus
-  canGenerate: boolean
-  onInputChange: (value: string) => void
-  onModelChange: (modelId: string) => void
-  onRefreshModels: () => Promise<void>
-  onPromptSubmit: (message: PromptInputMessage) => Promise<void>
-}
-
-function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
-  if (apiKeyStatus === 'missing') {
-    return {
-      description:
-        'Copy .env.example to .env, add at least one provider API key (OpenAI, Claude, or Gemini), then restart pnpm dev.',
-      title: 'API key required',
-    }
-  }
-
-  if (apiKeyStatus === 'invalid') {
-    return {
-      description:
-        modelsError ||
-        'A provider API key in .env was rejected. Check your keys and restart pnpm dev.',
-      title: 'Invalid API key',
-    }
-  }
-
-  if (modelsError) {
-    return {
-      description: modelsError,
-      title: 'Could not load models',
-    }
-  }
-
-  return null
-}
-
-function ChatPanel({
-  messages,
-  input,
-  isGenerating,
-  error,
-  models,
-  selectedModel,
-  isLoadingModels,
-  modelsError,
-  modelWarnings,
-  apiKeyStatus,
-  canGenerate,
-  onInputChange,
-  onModelChange,
-  onRefreshModels,
-  onPromptSubmit,
-}: ChatPanelProps) {
-  const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
-  const isInputDisabled = isGenerating || !canGenerate
-  return (
-    <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
-        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-          <SparklesIcon
-            aria-hidden
-            className="size-3.5 shrink-0 text-[var(--ark-accent)]"
-          />
-          <span className="truncate text-xs font-medium">Chat</span>
-          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-            ›
-          </span>
-          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
-            AI agent
-          </span>
-        </div>
-      </div>
-
-      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-        <Conversation>
-          <ConversationContent className="gap-5 px-5 py-6">
-            {messages.length === 0 ? (
-              <ConversationEmptyState
-                description="Paste notes, describe an audience, or ask for a specific deck structure. Ark will return a complete HTML presentation."
-                icon={<SparklesIcon className="size-10" />}
-                title="Tell Ark what to make"
-              />
-            ) : (
-              messages.map((message) => (
-                <Message from={message.role} key={message.id}>
-                  <MessageContent>
-                    <MessageResponse>{message.content}</MessageResponse>
-                  </MessageContent>
-                </Message>
-              ))
-            )}
-            {isGenerating ? (
-              <Message from="assistant">
-                <MessageContent>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2Icon className="size-4 animate-spin" />
-                    Designing the deck, writing HTML, and preparing the preview…
-                  </div>
-                </MessageContent>
-              </Message>
-            ) : null}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-
-        <div className="shrink-0 border-t bg-white p-4">
-          {error ? (
-            <Alert className="mb-3" variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>Generation failed</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          {apiKeyAlert ? (
-            <Alert className="mb-3" variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>{apiKeyAlert.title}</AlertTitle>
-              <AlertDescription>{apiKeyAlert.description}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          {modelWarnings.length > 0 ? (
-            <Alert className="mb-3">
-              <AlertCircleIcon />
-              <AlertTitle>Model configuration notice</AlertTitle>
-              <AlertDescription>{modelWarnings.join(' ')}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          <PromptInput onSubmit={onPromptSubmit}>
-            <PromptInputBody>
-              <PromptInputTextarea
-                className="min-h-24 resize-none"
-                disabled={isInputDisabled}
-                onChange={(event) => onInputChange(event.currentTarget.value)}
-                placeholder={
-                  canGenerate
-                    ? 'Describe the deck you want, or ask for an edit…'
-                    : apiKeyStatus === 'checking'
-                      ? 'Checking API key…'
-                      : 'Add a provider API key in .env to start generating decks…'
-                }
-                value={input}
-              />
-            </PromptInputBody>
-            <PromptInputFooter>
-              <PromptInputTools>
-                <PromptInputSelect
-                  disabled={isGenerating || isLoadingModels}
-                  onValueChange={onModelChange}
-                  value={selectedModel}
-                >
-                  <PromptInputSelectTrigger
-                    className={cn(
-                      'max-w-[300px]',
-                      !canGenerate && 'text-muted-foreground',
-                    )}
-                  >
-                    <PromptInputSelectValue
-                      placeholder={
-                        apiKeyStatus === 'checking'
-                          ? 'Checking API key…'
-                          : isLoadingModels
-                            ? 'Scanning models…'
-                            : 'Select model'
-                      }
-                    />
-                  </PromptInputSelectTrigger>
-                  <PromptInputSelectContent>
-                    {models.map((model) => (
-                      <PromptInputSelectItem
-                        className={cn(!model.available && 'text-muted-foreground')}
-                        disabled={!model.available}
-                        key={model.id}
-                        value={model.id}
-                      >
-                        {formatModelLabel(model)}
-                      </PromptInputSelectItem>
-                    ))}
-                  </PromptInputSelectContent>
-                </PromptInputSelect>
-                <PromptInputButton
-                  aria-label="Refresh available models"
-                  disabled={isGenerating || isLoadingModels}
-                  onClick={() => {
-                    void onRefreshModels()
-                  }}
-                  tooltip="Refresh models"
-                >
-                  <RefreshCwIcon
-                    className={cn('size-4', isLoadingModels && 'animate-spin')}
-                  />
-                </PromptInputButton>
-              </PromptInputTools>
-              <PromptInputSubmit
-                disabled={!input.trim() || isInputDisabled}
-                status={isGenerating ? 'submitted' : 'ready'}
-              />
-            </PromptInputFooter>
-          </PromptInput>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
