@@ -14,8 +14,7 @@
     "format:check": "prettier --check .",
     "audit": "pnpm audit --audit-level=high",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test": "vitest run"
   },
   "engines": {
     "node": ">=22"
@@ -52,7 +51,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

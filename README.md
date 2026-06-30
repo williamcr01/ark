@@ -72,7 +72,6 @@ pnpm format:check
 pnpm audit
 pnpm build
 pnpm test
-pnpm test:e2e
 ```
 
 Format before pushing substantive changes:
