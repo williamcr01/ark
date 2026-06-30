@@ -3,6 +3,8 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
+import { getTestLocalStorage, installTestLocalStorage } from './storage'
+
 class TestResizeObserver {
   observe = vi.fn()
   unobserve = vi.fn()
@@ -67,7 +69,10 @@ Object.defineProperty(document, 'exitFullscreen', {
   value: vi.fn().mockResolvedValue(undefined),
 })
 
+installTestLocalStorage()
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  getTestLocalStorage().clear()
 })
