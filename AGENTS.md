@@ -107,11 +107,26 @@ When acting as the presentation agent (side chat):
 
 ### Conversation context (issue #17)
 
-Ark replays the **full visible chat history** on every `/api/generate` request (pi-style), plus the latest deck HTML when editing. This lets follow-ups like “make the title bigger” work without repeating prior instructions.
+Ark replays the **full visible chat history** on every `/api/generate` request (pi-style). Assistant turns store short status text plus optional tool-call parts — never full HTML.
 
 - **Persisted with the deck**: Deck HTML is saved server-side (#10); chat messages are stored in `localStorage` (`ark:chat-session`) so refresh restores the conversation.
-- **Assistant messages**: Store short status text only — never full generated HTML. The model always receives `currentHtml` separately on the latest turn.
-- **Token/cost**: Each request includes all prior user/assistant text plus the full current HTML on the latest turn. Long chats and large decks increase input tokens linearly; compaction/summarization is not implemented yet.
+- **Assistant messages**: Store summary text and tool activity (`list_slides`, `read_deck`, `edit_deck`, `write_deck`). The model reads the deck via tools instead of receiving the full HTML on every turn.
+- **Token/cost**: Follow-up edits use `edit_deck` patches instead of re-emitting the entire document. Long chats still replay prior text linearly; compaction is not implemented yet.
+
+### Agent tool loop (issue #58)
+
+Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools` + `stopWhen: stepCountIs(12)`), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
+
+| Tool | Purpose |
+|------|---------|
+| `list_slides` | Enumerate slide boundaries and titles |
+| `read_deck` | Read full HTML by line offset/limit or a single slide by index |
+| `edit_deck` | Apply exact `oldText` → `newText` patches (pi-style; each match must be unique) |
+| `write_deck` | Replace the entire deck (new decks or explicit full rewrites) |
+
+Server implementation: `server/deck-tools.ts`, `server/deck-agent.ts`. The client shows tool calls/results in chat and applies deck updates from tool results (final HTML returned in the API response).
+
+One user message → one agent run → up to 12 tool/model steps → deck update + assistant summary.
 
 ## What to avoid
 
@@ -130,7 +145,7 @@ Early scaffold: default Vite + React template. Presentation directory, chat pane
 Standard commands live in the `## Commands` section above and in `README.md`. Notes specific to this environment:
 
 - **Dev server runs two processes.** `pnpm dev` uses `concurrently` to start the Express API (`tsx watch server/index.ts`) and the Vite client on `http://localhost:5173`. Both read `PORT` from `.env` or the environment (default `8787`); Vite proxies `/api` to that same port (see `vite.config.ts`). Always open the app on `5173`, not the API port. Run it in a background/tmux session since it stays attached.
-- **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generate`. Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
+- **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generate` (tool-based agent loop). Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
 - **No browser automation in CI yet.** Verification is `pnpm lint`, `pnpm build`, and `pnpm test` (also enforced in GitHub Actions), plus manual browser checks. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
