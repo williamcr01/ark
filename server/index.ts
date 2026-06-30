@@ -9,6 +9,12 @@ import {
   fetchOpenAIModels,
   getDefaultModel,
 } from './models.ts'
+import {
+  getConfiguredApiKey,
+  missingApiKeyError,
+  parseProviderError,
+  type ApiErrorPayload,
+} from './api-key.ts'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
@@ -138,33 +144,59 @@ const extractHtmlDocument = (text: string) => {
 const isHtmlDocument = (html: string) =>
   /<!doctype html>/i.test(html) && /<html[\s>]/i.test(html) && /<body[\s>]/i.test(html)
 
+const sendApiError = (
+  response: Response,
+  status: number,
+  payload: ApiErrorPayload,
+) => {
+  response.status(status).json(payload)
+}
+
+const getApiErrorFromUnknown = (error: unknown): ApiErrorPayload => {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'apiError' in error &&
+    error.apiError &&
+    typeof error.apiError === 'object' &&
+    'code' in error.apiError &&
+    'error' in error.apiError
+  ) {
+    return error.apiError as ApiErrorPayload
+  }
+
+  return parseProviderError(error)
+}
+
 app.get('/api/health', (_request: Request, response: Response) => {
-  response.json({ ok: true, model: defaultModel })
+  const apiKey = getConfiguredApiKey()
+
+  response.json({
+    ok: true,
+    model: defaultModel,
+    apiKey: {
+      configured: Boolean(apiKey),
+    },
+  })
 })
 
 app.get('/api/models', async (_request: Request, response: Response) => {
-  if (!process.env.OPENAI_API_KEY) {
-    response.status(500).json({
-      error: 'Missing OPENAI_API_KEY. Add it to .env and restart the dev server.',
-    })
+  const apiKey = getConfiguredApiKey()
+
+  if (!apiKey) {
+    sendApiError(response, 503, missingApiKeyError())
     return
   }
 
   try {
-    const models = ensureModelInList(
-      await fetchOpenAIModels(process.env.OPENAI_API_KEY),
-      defaultModel,
-    )
+    const models = ensureModelInList(await fetchOpenAIModels(apiKey), defaultModel)
 
     response.json({
       defaultModel,
       models,
     })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Could not load available models.'
-
-    response.status(500).json({ error: message })
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
   }
 })
 
@@ -173,16 +205,15 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
   const currentHtml = request.body.currentHtml ?? ''
   const requestedModel = request.body.model?.trim()
   const model = requestedModel || defaultModel
+  const apiKey = getConfiguredApiKey()
 
-  if (!process.env.OPENAI_API_KEY) {
-    response.status(500).json({
-      error: 'Missing OPENAI_API_KEY. Add it to .env and restart the dev server.',
-    })
+  if (!apiKey) {
+    sendApiError(response, 503, missingApiKeyError())
     return
   }
 
   if (!prompt) {
-    response.status(400).json({ error: 'Prompt is required.' })
+    response.status(400).json({ error: 'Prompt is required.', code: 'openai_error' })
     return
   }
 
@@ -200,14 +231,14 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
     if (!isHtmlDocument(html)) {
       response.status(502).json({
         error: 'The model did not return a complete HTML document. Try again with a more specific prompt.',
+        code: 'openai_error',
       })
       return
     }
 
     response.json({ html })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown generation error.'
-    response.status(500).json({ error: message })
+    sendApiError(response, 500, parseProviderError(error))
   }
 })
 
