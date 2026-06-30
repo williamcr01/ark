@@ -10,6 +10,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  getThumbnailSandbox,
   PREVIEW_FRAME_ASPECT_RATIO,
   PREVIEW_FRAME_HEIGHT,
   PREVIEW_FRAME_WIDTH,
@@ -142,7 +143,7 @@ function LazyThumbnail({
         {mountIframe ? (
           <iframe
             className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
-            sandbox=""
+            sandbox={getThumbnailSandbox()}
             srcDoc={srcDoc}
             style={{
               width: PREVIEW_FRAME_WIDTH,

@@ -1,6 +1,12 @@
 import type { CSSProperties } from 'react'
 
 import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from '@/lib/deck-slides'
+import {
+  detectRuntimeMode,
+  injectRuntimeCsp,
+  runtimeModeAllowsDeckScripts,
+  type DeckRuntimeMode,
+} from '@/lib/deck-runtime'
 
 export const PREVIEW_FRAME_WIDTH = 1600
 export const PREVIEW_FRAME_HEIGHT = 900
@@ -52,34 +58,15 @@ export const DECK_SLIDE_CHANGE_MESSAGE_TYPE = 'ark:deck-slide-change' as const
 export const DECK_GOTO_EVENT = DECK_GOTO_MESSAGE_TYPE
 export const DECK_SLIDE_CHANGE_EVENT = DECK_SLIDE_CHANGE_MESSAGE_TYPE
 
-export type PreviewMode = 'css-only' | 'full-js'
+export type PreviewMode = DeckRuntimeMode
 
-function hasFullJsMarker(doc: Document) {
-  for (const element of [doc.documentElement, doc.body]) {
-    if (!element) {
-      continue
-    }
+export type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
-    if (element.getAttribute('data-ark-deck') === 'nav') {
-      return true
-    }
+export { detectRuntimeMode, getPreviewSandbox, getThumbnailSandbox } from '@/lib/deck-runtime'
 
-    if (element.getAttribute('data-ark-preview') === 'full-js') {
-      return true
-    }
-  }
-
-  return false
-}
-
+/** @deprecated Use {@link detectRuntimeMode} instead. */
 export function detectPreviewMode(html: string): PreviewMode {
-  if (!html.trim()) {
-    return 'css-only'
-  }
-
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-
-  return hasFullJsMarker(doc) ? 'full-js' : 'css-only'
+  return detectRuntimeMode(html)
 }
 
 const previewHistoryShim = `
@@ -357,16 +344,17 @@ export function getPreviewHtml(html: string) {
     return ''
   }
 
-  const mode = detectPreviewMode(html)
+  const mode = detectRuntimeMode(html)
+  const withCsp = injectRuntimeCsp(html, mode)
 
-  if (mode === 'full-js') {
+  if (runtimeModeAllowsDeckScripts(mode)) {
     return injectBeforeBodyClose(
-      injectPreviewFill(html, { historyShim: true }),
+      injectPreviewFill(withCsp, { historyShim: true }),
       previewBridgeScript,
     )
   }
 
-  const strippedHtml = stripDeckScriptsForPreview(html)
+  const strippedHtml = stripDeckScriptsForPreview(withCsp)
 
   return injectBeforeBodyClose(injectPreviewFill(strippedHtml), previewNavScript)
 }
