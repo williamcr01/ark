@@ -4,8 +4,7 @@ export type DeckEdit = {
 }
 
 export type ApplyDeckEditsResult =
-  | { ok: true; html: string; appliedCount: number }
-  | { ok: false; error: string }
+  { ok: true; html: string; appliedCount: number } | { ok: false; error: string }
 
 type MatchedEdit = {
   editIndex: number

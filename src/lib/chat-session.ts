@@ -12,8 +12,7 @@ const isChatMessage = (value: unknown): value is ChatMessage =>
   typeof value === 'object' &&
   value !== null &&
   typeof (value as ChatMessage).id === 'string' &&
-  ((value as ChatMessage).role === 'user' ||
-    (value as ChatMessage).role === 'assistant') &&
+  ((value as ChatMessage).role === 'user' || (value as ChatMessage).role === 'assistant') &&
   typeof (value as ChatMessage).content === 'string'
 
 const isChatSession = (value: unknown): value is ChatSession =>

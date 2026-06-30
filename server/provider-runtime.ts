@@ -10,15 +10,12 @@ export const createLanguageModel = (modelRef: string) => {
   const apiKey = getProviderApiKey(provider)
 
   if (!apiKey) {
-    throw Object.assign(
-      new Error(`No API key configured for ${provider}.`),
-      {
-        apiError: {
-          code: 'missing_api_key',
-          error: `No API key configured for ${provider}.`,
-        },
+    throw Object.assign(new Error(`No API key configured for ${provider}.`), {
+      apiError: {
+        code: 'missing_api_key',
+        error: `No API key configured for ${provider}.`,
       },
-    )
+    })
   }
 
   switch (provider) {

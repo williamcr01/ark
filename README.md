@@ -41,11 +41,11 @@ PORT=8787
 
 ### Supported providers
 
-| Provider | Env var | Model scan source |
-|----------|---------|-------------------|
-| OpenAI | `OPENAI_API_KEY` | OpenAI `/v1/models` |
-| Claude | `ANTHROPIC_API_KEY` | Anthropic `/v1/models` |
-| Gemini | `GOOGLE_GENERATIVE_AI_API_KEY` | Google Generative Language API |
+| Provider | Env var                        | Model scan source              |
+| -------- | ------------------------------ | ------------------------------ |
+| OpenAI   | `OPENAI_API_KEY`               | OpenAI `/v1/models`            |
+| Claude   | `ANTHROPIC_API_KEY`            | Anthropic `/v1/models`         |
+| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Google Generative Language API |
 
 ### API key errors
 
@@ -68,8 +68,16 @@ To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then
 
 ```bash
 pnpm lint
+pnpm format:check
+pnpm audit
 pnpm build
 pnpm test
+```
+
+Format before pushing substantive changes:
+
+```bash
+pnpm format
 ```
 
 Pull requests and pushes to `main` run the same checks in GitHub Actions on an `ubuntu-latest` runner (see `.github/workflows/ci.yml`). No API keys or `.env` file are required for CI.

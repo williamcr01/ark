@@ -41,9 +41,7 @@ describe('chat-session storage', () => {
       }),
     )
 
-    expect(readChatSession()?.messages).toEqual([
-      { id: 'm1', role: 'user', content: 'hello' },
-    ])
+    expect(readChatSession()?.messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
   })
 
   it('returns null for invalid stored payloads', () => {

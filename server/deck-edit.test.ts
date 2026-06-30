@@ -38,9 +38,9 @@ describe('applyDeckEdits', () => {
       error: 'At least one edit is required.',
     })
 
-    expect(
-      applyDeckEdits(plainCssDeck, [{ oldText: 'missing text', newText: 'x' }]),
-    ).toMatchObject({ ok: false })
+    expect(applyDeckEdits(plainCssDeck, [{ oldText: 'missing text', newText: 'x' }])).toMatchObject(
+      { ok: false },
+    )
 
     expect(
       applyDeckEdits(plainCssDeck, [{ oldText: 'section', newText: 'article' }]),

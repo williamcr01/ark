@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import {
-  createDeck,
-  deleteDeck,
-  fetchDeck,
-  updateDeck,
-} from '@/lib/deck-api'
+import { createDeck, deleteDeck, fetchDeck, updateDeck } from '@/lib/deck-api'
 
 const ACTIVE_DECK_STORAGE_KEY = 'ark:active-deck-id'
 
@@ -99,43 +94,41 @@ export function useDeckPersistence() {
     }
   }, [])
 
-  const persistHtml = useCallback(async (nextHtml: string) => {
-    const requestId = ++saveRequestIdRef.current
+  const persistHtml = useCallback(
+    async (nextHtml: string) => {
+      const requestId = ++saveRequestIdRef.current
 
-    setHtml(nextHtml)
-    setIsSaving(true)
-    setSaveError('')
+      setHtml(nextHtml)
+      setIsSaving(true)
+      setSaveError('')
 
-    try {
-      const deck = deckId
-        ? await updateDeck(deckId, nextHtml)
-        : await createDeck(nextHtml)
+      try {
+        const deck = deckId ? await updateDeck(deckId, nextHtml) : await createDeck(nextHtml)
 
-      if (requestId !== saveRequestIdRef.current) {
-        return
+        if (requestId !== saveRequestIdRef.current) {
+          return
+        }
+
+        setDeckId(deck.id)
+        writeActiveDeckId(deck.id)
+        setSavedHtml(nextHtml)
+      } catch (error) {
+        if (requestId !== saveRequestIdRef.current) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : 'Could not save the deck.'
+
+        setSaveError(message)
+        throw error
+      } finally {
+        if (requestId === saveRequestIdRef.current) {
+          setIsSaving(false)
+        }
       }
-
-      setDeckId(deck.id)
-      writeActiveDeckId(deck.id)
-      setSavedHtml(nextHtml)
-    } catch (error) {
-      if (requestId !== saveRequestIdRef.current) {
-        return
-      }
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Could not save the deck.'
-
-      setSaveError(message)
-      throw error
-    } finally {
-      if (requestId === saveRequestIdRef.current) {
-        setIsSaving(false)
-      }
-    }
-  }, [deckId])
+    },
+    [deckId],
+  )
 
   const resetDeck = useCallback(async () => {
     saveRequestIdRef.current += 1

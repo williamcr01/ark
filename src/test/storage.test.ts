@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  createLocalStorageMock,
-  getTestLocalStorage,
-  installTestLocalStorage,
-} from './storage'
+import { createLocalStorageMock, getTestLocalStorage, installTestLocalStorage } from './storage'
 
 describe('test storage helpers', () => {
   it('installs an in-memory localStorage when the runtime has none', () => {

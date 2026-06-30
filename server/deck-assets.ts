@@ -90,7 +90,8 @@ export async function handleDeckAssetRequest(request: Request, response: Respons
 
   if (!isAllowedAssetHost(parsedUrl, allowlist)) {
     response.status(403).json({
-      error: 'External assets are blocked. Configure ARK_DECK_ASSET_ALLOWLIST to proxy approved hosts.',
+      error:
+        'External assets are blocked. Configure ARK_DECK_ASSET_ALLOWLIST to proxy approved hosts.',
       proxyUrl: buildDeckAssetProxyUrl(parsedUrl.toString()),
     })
     return

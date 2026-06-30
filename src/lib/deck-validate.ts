@@ -1,7 +1,4 @@
-import {
-  collectExternalUrls,
-  NETWORK_REQUEST_ERROR_MESSAGE,
-} from '../../shared/deck-network.ts'
+import { collectExternalUrls, NETWORK_REQUEST_ERROR_MESSAGE } from '../../shared/deck-network.ts'
 
 import { findSlideElements } from './deck-slides'
 import {
@@ -66,12 +63,11 @@ const TRACKING_PATTERN =
 function readRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
   const html = doc.documentElement
   const body = doc.body
-  const arkDeck =
-  html?.getAttribute('data-ark-deck') ?? body?.getAttribute('data-ark-deck') ?? null
+  const arkDeck = html?.getAttribute('data-ark-deck') ?? body?.getAttribute('data-ark-deck') ?? null
   const arkPreview =
-  html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
+    html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
   const arkRuntime =
-  html?.getAttribute('data-ark-runtime') ?? body?.getAttribute('data-ark-runtime') ?? null
+    html?.getAttribute('data-ark-runtime') ?? body?.getAttribute('data-ark-runtime') ?? null
 
   return {
     runtimeMode: detectRuntimeModeFromDocument(doc),
@@ -109,7 +105,7 @@ function findMalformedSlides(slides: Element[]) {
   const malformedSlides: DeckMalformedSlide[] = []
 
   slides.forEach((slide, index) => {
-  const nestedSlide = slide.querySelector('section.slide, body > section, .slides > section')
+    const nestedSlide = slide.querySelector('section.slide, body > section, .slides > section')
 
     if (nestedSlide) {
       malformedSlides.push({ index, reason: 'nested_slide' })
@@ -133,17 +129,11 @@ function hasDoctype(rawHtml: string | undefined, doc: Document) {
   return doc.doctype?.name.toLowerCase() === 'html'
 }
 
-function pushIssue(
-  issues: DeckValidationIssue[],
-  issue: DeckValidationIssue,
-) {
+function pushIssue(issues: DeckValidationIssue[], issue: DeckValidationIssue) {
   issues.push(issue)
 }
 
-export function validateDeckDocument(
-  doc: Document,
-  rawHtml?: string,
-): DeckValidationReport {
+export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValidationReport {
   const issues: DeckValidationIssue[] = []
   const parserError = doc.querySelector('parsererror')
 
@@ -185,7 +175,8 @@ export function validateDeckDocument(
   if (slideCount === 0) {
     pushIssue(issues, {
       code: 'no_slides',
-      message: 'No slides were found. Use <section class="slide"> or another supported slide selector.',
+      message:
+        'No slides were found. Use <section class="slide"> or another supported slide selector.',
       severity: 'error',
     })
   }
@@ -329,7 +320,9 @@ export function formatDeckValidationSummary(report: DeckValidationReport) {
   }
 
   if (report.externalUrls.length > 0) {
-    parts.push(`${report.externalUrls.length} external URL${report.externalUrls.length === 1 ? '' : 's'}`)
+    parts.push(
+      `${report.externalUrls.length} external URL${report.externalUrls.length === 1 ? '' : 's'}`,
+    )
   }
 
   if (runtimeModeAllowsDeckScripts(report.runtimeMarkers.runtimeMode)) {

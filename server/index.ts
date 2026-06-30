@@ -3,10 +3,7 @@ import 'dotenv/config'
 import { type LanguageModel } from 'ai'
 import express, { type Request, type Response } from 'express'
 
-import {
-  parseGenerateMessages,
-  type ApiChatMessage,
-} from '../shared/chat.ts'
+import { parseGenerateMessages, type ApiChatMessage } from '../shared/chat.ts'
 import {
   hasAnyConfiguredProvider,
   missingApiKeyError,
@@ -38,11 +35,7 @@ type GenerateRequest = {
   model?: string
 }
 
-const sendApiError = (
-  response: Response,
-  status: number,
-  payload: ApiErrorPayload,
-) => {
+const sendApiError = (response: Response, status: number, payload: ApiErrorPayload) => {
   response.status(status).json(payload)
 }
 
@@ -138,71 +131,74 @@ app.get('/api/decks/:id', async (request: Request<{ id: string }>, response: Res
   }
 })
 
-app.post('/api/decks', async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
-  const html = request.body.html ?? ''
+app.post(
+  '/api/decks',
+  async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
+    const html = request.body.html ?? ''
 
-  if (!html.trim()) {
-    response.status(400).json({ error: 'HTML is required.' })
-    return
-  }
-
-  const validation = validateDeckHtmlOnServer(html)
-
-  if (!validation.valid) {
-    sendDeckValidationError(response, validation)
-    return
-  }
-
-  try {
-    const deck = await deckStore.createDeck(html)
-    response.status(201).json({ deck, validation })
-  } catch (error) {
-    sendApiError(response, 500, getApiErrorFromUnknown(error))
-  }
-})
-
-app.put('/api/decks/:id', async (
-  request: Request<{ id: string }, unknown, { html?: string }>,
-  response: Response,
-) => {
-  const id = request.params.id?.trim()
-  const html = request.body.html ?? ''
-
-  if (!id) {
-    response.status(400).json({ error: 'Deck id is required.' })
-    return
-  }
-
-  if (!isValidDeckId(id)) {
-    response.status(400).json({ error: 'Invalid deck id.' })
-    return
-  }
-
-  if (!html.trim()) {
-    response.status(400).json({ error: 'HTML is required.' })
-    return
-  }
-
-  const validation = validateDeckHtmlOnServer(html)
-
-  if (!validation.valid) {
-    sendDeckValidationError(response, validation)
-    return
-  }
-
-  try {
-    const deck = await deckStore.updateDeck(id, html)
-
-    if (!deck) {
-      response.status(404).json({ error: 'Deck not found.' })
+    if (!html.trim()) {
+      response.status(400).json({ error: 'HTML is required.' })
       return
     }
 
-    response.json({ deck, validation })
-  } catch (error) {
-    sendApiError(response, 500, getApiErrorFromUnknown(error))
-  }
-})
+    const validation = validateDeckHtmlOnServer(html)
+
+    if (!validation.valid) {
+      sendDeckValidationError(response, validation)
+      return
+    }
+
+    try {
+      const deck = await deckStore.createDeck(html)
+      response.status(201).json({ deck, validation })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  },
+)
+
+app.put(
+  '/api/decks/:id',
+  async (request: Request<{ id: string }, unknown, { html?: string }>, response: Response) => {
+    const id = request.params.id?.trim()
+    const html = request.body.html ?? ''
+
+    if (!id) {
+      response.status(400).json({ error: 'Deck id is required.' })
+      return
+    }
+
+    if (!isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+
+    if (!html.trim()) {
+      response.status(400).json({ error: 'HTML is required.' })
+      return
+    }
+
+    const validation = validateDeckHtmlOnServer(html)
+
+    if (!validation.valid) {
+      sendDeckValidationError(response, validation)
+      return
+    }
+
+    try {
+      const deck = await deckStore.updateDeck(id, html)
+
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
+        return
+      }
+
+      response.json({ deck, validation })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  },
+)
 
 app.delete('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
   const id = request.params.id?.trim()
@@ -231,66 +227,71 @@ app.delete('/api/decks/:id', async (request: Request<{ id: string }>, response: 
   }
 })
 
-app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
-  const parsedMessages = parseGenerateMessages(request.body.messages)
-  const currentHtml = request.body.currentHtml ?? ''
-  const requestedModel = request.body.model?.trim()
-  const modelRef = requestedModel || defaultModel
+app.post(
+  '/api/generate',
+  async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
+    const parsedMessages = parseGenerateMessages(request.body.messages)
+    const currentHtml = request.body.currentHtml ?? ''
+    const requestedModel = request.body.model?.trim()
+    const modelRef = requestedModel || defaultModel
 
-  if (!parsedMessages.ok) {
-    response.status(400).json({ error: parsedMessages.error, code: 'provider_error' })
-    return
-  }
+    if (!parsedMessages.ok) {
+      response.status(400).json({ error: parsedMessages.error, code: 'provider_error' })
+      return
+    }
 
-  const messages: ApiChatMessage[] = parsedMessages.messages
+    const messages: ApiChatMessage[] = parsedMessages.messages
 
-  if (!hasAnyConfiguredProvider()) {
-    sendApiError(response, 503, missingApiKeyError())
-    return
-  }
+    if (!hasAnyConfiguredProvider()) {
+      sendApiError(response, 503, missingApiKeyError())
+      return
+    }
 
-  if (messages.length === 0) {
-    response.status(400).json({ error: 'At least one user message is required.', code: 'provider_error' })
-    return
-  }
+    if (messages.length === 0) {
+      response
+        .status(400)
+        .json({ error: 'At least one user message is required.', code: 'provider_error' })
+      return
+    }
 
-  if (messages.at(-1)?.role !== 'user') {
-    response.status(400).json({
-      error: 'The latest chat message must be from the user.',
-      code: 'provider_error',
-    })
-    return
-  }
-
-  try {
-    const { model } = createLanguageModel(modelRef)
-
-    const agentResult = await runDeckAgent({
-      model: model as LanguageModel,
-      messages,
-      currentHtml,
-    })
-
-    if (!agentResult.ok) {
-      response.status(502).json({
-        error: agentResult.error,
+    if (messages.at(-1)?.role !== 'user') {
+      response.status(400).json({
+        error: 'The latest chat message must be from the user.',
         code: 'provider_error',
-        validation: agentResult.validation,
-        steps: agentResult.steps,
       })
       return
     }
 
-    response.json({
-      html: agentResult.html,
-      validation: agentResult.validation,
-      steps: agentResult.steps,
-      text: agentResult.assistantText,
-    })
-  } catch (error) {
-    sendApiError(response, 500, getApiErrorFromUnknown(error))
-  }
-})
+    try {
+      const { model } = createLanguageModel(modelRef)
+
+      const agentResult = await runDeckAgent({
+        model: model as LanguageModel,
+        messages,
+        currentHtml,
+      })
+
+      if (!agentResult.ok) {
+        response.status(502).json({
+          error: agentResult.error,
+          code: 'provider_error',
+          validation: agentResult.validation,
+          steps: agentResult.steps,
+        })
+        return
+      }
+
+      response.json({
+        html: agentResult.html,
+        validation: agentResult.validation,
+        steps: agentResult.steps,
+        text: agentResult.assistantText,
+      })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  },
+)
 
 app.listen(port, () => {
   console.log(`Ark API server listening on http://localhost:${port}`)

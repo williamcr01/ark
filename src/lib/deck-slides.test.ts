@@ -6,10 +6,7 @@ import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 
 import { STRICT_DECK_CSP } from './deck-runtime'
-import {
-  parseDeckSlides,
-  stripDeckScriptsForPreview,
-} from './deck-slides'
+import { parseDeckSlides, stripDeckScriptsForPreview } from './deck-slides'
 
 function parseHtml(html: string) {
   return new DOMParser().parseFromString(html, 'text/html')
@@ -79,10 +76,10 @@ describe('parseDeckSlides', () => {
     expect(parsed.slides[1].outerHTML).toContain('Reveal detail')
 
     const secondThumbnail = parseHtml(parsed.thumbnailSrcDocs[1])
-    expect(secondThumbnail.querySelector('.reveal .slides > section')?.textContent)
-      .toContain('Reveal detail')
-    expect(secondThumbnail.querySelectorAll('.reveal .slides > section'))
-      .toHaveLength(1)
+    expect(secondThumbnail.querySelector('.reveal .slides > section')?.textContent).toContain(
+      'Reveal detail',
+    )
+    expect(secondThumbnail.querySelectorAll('.reveal .slides > section')).toHaveLength(1)
   })
 
   it('sanitizes thumbnail documents for hostile script fixtures', () => {
@@ -96,10 +93,8 @@ describe('parseDeckSlides', () => {
 
       expect(srcDoc).not.toContain('<script')
       expect(thumbnailDoc.body.hasAttribute('onload')).toBe(false)
-      expect(thumbnailDoc.querySelector('section.slide')?.hasAttribute('onclick'))
-        .toBe(false)
-      expect(thumbnailDoc.querySelector('img')?.hasAttribute('onerror') ?? false)
-        .toBe(false)
+      expect(thumbnailDoc.querySelector('section.slide')?.hasAttribute('onclick')).toBe(false)
+      expect(thumbnailDoc.querySelector('img')?.hasAttribute('onerror') ?? false).toBe(false)
     })
   })
 

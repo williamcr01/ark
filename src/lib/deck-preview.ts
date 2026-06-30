@@ -150,10 +150,7 @@ export function getPreviewHtml(html: string) {
   if (runtimeModeAllowsDeckScripts(mode)) {
     return injectBeforeBodyClose(
       injectPreviewFill(withCsp, { historyShim: true }),
-      wrapRuntimeScript(
-        buildDeckBridgeRuntimeScript(runtimeOptions),
-        'data-ark-preview-bridge',
-      ),
+      wrapRuntimeScript(buildDeckBridgeRuntimeScript(runtimeOptions), 'data-ark-preview-bridge'),
     )
   }
 
@@ -161,9 +158,6 @@ export function getPreviewHtml(html: string) {
 
   return injectBeforeBodyClose(
     injectPreviewFill(strippedHtml),
-    wrapRuntimeScript(
-      buildDeckCssNavRuntimeScript(runtimeOptions),
-      'data-ark-preview-nav',
-    ),
+    wrapRuntimeScript(buildDeckCssNavRuntimeScript(runtimeOptions), 'data-ark-preview-nav'),
   )
 }

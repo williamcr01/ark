@@ -2,10 +2,7 @@ import { APICallError } from 'ai'
 
 export type ProviderId = 'openai' | 'anthropic' | 'google'
 
-export type ApiErrorCode =
-  | 'missing_api_key'
-  | 'invalid_api_key'
-  | 'provider_error'
+export type ApiErrorCode = 'missing_api_key' | 'invalid_api_key' | 'provider_error'
 
 export type ApiErrorPayload = {
   error: string
@@ -43,8 +40,8 @@ export const getProviderApiKey = (provider: ProviderId): string | null => {
 }
 
 export const getConfiguredProviders = (): ProviderId[] =>
-  (Object.keys(PROVIDER_ENV_KEYS) as ProviderId[]).filter(
-    (provider) => Boolean(getProviderApiKey(provider)),
+  (Object.keys(PROVIDER_ENV_KEYS) as ProviderId[]).filter((provider) =>
+    Boolean(getProviderApiKey(provider)),
   )
 
 export const hasAnyConfiguredProvider = () => getConfiguredProviders().length > 0
@@ -87,10 +84,7 @@ export const parseProviderHttpError = (
         error?: { message?: string }
         message?: string
       }
-      message =
-        parsed.error?.message?.trim() ||
-        parsed.message?.trim() ||
-        message
+      message = parsed.error?.message?.trim() || parsed.message?.trim() || message
     } catch {
       // Keep the raw body when it is not JSON.
     }
