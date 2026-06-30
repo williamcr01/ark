@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { toast } from 'sonner'
 
-import { AppTitleBar } from '@/components/AppTitleBar'
+import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
 import {
   ChatPanel,
   type ChatMessage,
@@ -16,6 +16,7 @@ import {
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
+import { useDeckPersistence } from '@/hooks/useDeckPersistence'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -41,7 +42,16 @@ type GenerateResponse = {
 }
 
 function App() {
-  const [generatedHtml, setGeneratedHtml] = useState('')
+  const {
+    hasDeck,
+    html: generatedHtml,
+    isDirty,
+    isLoading: isDeckLoading,
+    isSaving: isDeckSaving,
+    persistHtml,
+    resetDeck,
+    saveError,
+  } = useDeckPersistence()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -63,9 +73,21 @@ function App() {
     warnings: modelWarnings,
   } = useAvailableModels()
 
-  const hasDeck = generatedHtml.length > 0
   const parsedDeck = useMemo(() => parseDeckSlides(generatedHtml), [generatedHtml])
   const hasSlides = parsedDeck.slideCount > 0
+  const deckSaveStatus: DeckSaveStatus = isDeckLoading
+    ? 'loading'
+    : isGenerating
+      ? 'generating'
+      : isDeckSaving
+        ? 'saving'
+        : saveError
+          ? 'error'
+          : isDirty
+            ? 'dirty'
+            : hasDeck
+              ? 'saved'
+              : 'new'
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(
     mainSize.width,
@@ -110,7 +132,12 @@ function App() {
         throw new Error(data.error ?? 'The deck could not be generated.')
       }
 
-      setGeneratedHtml(data.html)
+      try {
+        await persistHtml(data.html)
+      } catch {
+        toast.error('Deck generated but could not be saved')
+      }
+
       const validationNote = data.validation
         ? ` Validation: ${describeDeckValidation(data.validation)}.`
         : ''
@@ -191,7 +218,12 @@ function App() {
         return
       }
 
-      setGeneratedHtml(html)
+      try {
+        await persistHtml(html)
+      } catch {
+        toast.error('Deck loaded but could not be saved')
+      }
+
       setError('')
       setMessages((current) => [
         ...current,
@@ -207,8 +239,8 @@ function App() {
     }
   }
 
-  const handleReset = () => {
-    setGeneratedHtml('')
+  const handleReset = async () => {
+    await resetDeck()
     setMessages([])
     setInput('')
     setError('')
@@ -219,6 +251,7 @@ function App() {
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
         <AppTitleBar
+          deckSaveStatus={deckSaveStatus}
           fileInputRef={fileInputRef}
           hasDeck={hasDeck}
           hasSlides={hasSlides}

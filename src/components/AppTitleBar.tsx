@@ -69,8 +69,18 @@ function TitleBarButton({
   )
 }
 
+export type DeckSaveStatus =
+  | 'loading'
+  | 'new'
+  | 'generating'
+  | 'saving'
+  | 'dirty'
+  | 'saved'
+  | 'error'
+
 export type AppTitleBarProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>
+  deckSaveStatus: DeckSaveStatus
   hasDeck: boolean
   hasSlides: boolean
   isChatOpen: boolean
@@ -86,6 +96,7 @@ export type AppTitleBarProps = {
 
 export function AppTitleBar({
   fileInputRef,
+  deckSaveStatus,
   hasDeck,
   hasSlides,
   isChatOpen,
@@ -98,6 +109,31 @@ export function AppTitleBar({
   onToggleStrip,
   onUploadClick,
 }: AppTitleBarProps) {
+  const statusLabel =
+    deckSaveStatus === 'loading'
+      ? 'Restoring…'
+      : deckSaveStatus === 'generating'
+        ? 'Generating…'
+        : deckSaveStatus === 'saving'
+          ? 'Saving…'
+          : deckSaveStatus === 'dirty'
+            ? 'Unsaved changes'
+            : deckSaveStatus === 'error'
+              ? 'Save failed'
+              : hasDeck
+                ? 'Saved'
+                : 'New deck'
+
+  const statusTone =
+    deckSaveStatus === 'loading' ||
+    deckSaveStatus === 'generating' ||
+    deckSaveStatus === 'saving'
+      ? 'pending'
+      : deckSaveStatus === 'dirty' || deckSaveStatus === 'error'
+        ? 'warning'
+        : hasDeck
+          ? 'saved'
+          : 'idle'
   return (
     <header className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-2 text-[var(--ark-titlebar-fg)]">
       <input
@@ -124,14 +160,13 @@ export function AppTitleBar({
             aria-hidden
             className={cn(
               'size-1.5 shrink-0 rounded-full',
-              isGenerating
-                ? 'animate-pulse bg-amber-500'
-                : hasDeck
-                  ? 'bg-emerald-500'
-                  : 'bg-[var(--ark-titlebar-muted)]/50',
+              statusTone === 'pending' && 'animate-pulse bg-amber-500',
+              statusTone === 'warning' && 'bg-amber-500',
+              statusTone === 'saved' && 'bg-emerald-500',
+              statusTone === 'idle' && 'bg-[var(--ark-titlebar-muted)]/50',
             )}
           />
-          {isGenerating ? 'Generating…' : hasDeck ? 'Deck ready' : 'New deck'}
+          {statusLabel}
         </span>
       </div>
 
