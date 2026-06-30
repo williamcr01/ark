@@ -78,10 +78,7 @@ describe('buildModelMessages', () => {
   })
 
   it('uses the new-deck template when there is no current HTML', () => {
-    const messages = buildModelMessages(
-      [{ role: 'user', content: 'Investor update deck' }],
-      '',
-    )
+    const messages = buildModelMessages([{ role: 'user', content: 'Investor update deck' }], '')
 
     expect(messages[0]?.content).toContain('Create a new complete Ark HTML slide deck')
     expect(messages[0]?.content).toContain('Investor update deck')
@@ -120,9 +117,11 @@ describe('agentStepsToChatParts', () => {
 describe('buildAssistantMessageContent', () => {
   it('falls back to the last successful tool result summary', () => {
     expect(
-      buildAssistantMessageContent('', [
-        { type: 'tool-result', toolName: 'write_deck', summary: 'Deck written' },
-      ], false),
+      buildAssistantMessageContent(
+        '',
+        [{ type: 'tool-result', toolName: 'write_deck', summary: 'Deck written' }],
+        false,
+      ),
     ).toBe('Deck written')
   })
 })

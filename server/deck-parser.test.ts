@@ -3,11 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import {
-  parseDeckHtml,
-  summarizeParsedDeck,
-  toDeckSlideSummaries,
-} from './deck-parser.ts'
+import { parseDeckHtml, summarizeParsedDeck, toDeckSlideSummaries } from './deck-parser.ts'
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

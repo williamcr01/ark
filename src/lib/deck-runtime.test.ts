@@ -33,10 +33,12 @@ describe('detectRuntimeMode', () => {
 
   it('enables custom-js only when an explicit Ark marker is present', () => {
     expect(detectRuntimeMode(fullJsDeck)).toBe('custom-js')
-    expect(detectRuntimeMode('<html><body data-ark-preview="full-js"></body></html>'))
-      .toBe('custom-js')
-    expect(detectRuntimeMode('<html><body><script>window.x = 1</script></body></html>'))
-      .toBe('static')
+    expect(detectRuntimeMode('<html><body data-ark-preview="full-js"></body></html>')).toBe(
+      'custom-js',
+    )
+    expect(detectRuntimeMode('<html><body><script>window.x = 1</script></body></html>')).toBe(
+      'static',
+    )
     expect(detectRuntimeMode(hostileScriptsDeck)).toBe('static')
   })
 

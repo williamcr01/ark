@@ -34,8 +34,10 @@ describe('SlideThumbnailStrip', () => {
       expect(iframe).not.toHaveAttribute('allow')
     })
 
-    expect(screen.getByRole('button', { name: 'Go to slide 2' }))
-      .toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: 'Go to slide 2' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
 
     await user.click(screen.getByRole('button', { name: 'Go to slide 3' }))
 

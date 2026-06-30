@@ -49,10 +49,7 @@ export function readDeckHtmlSlice(
   let truncated = startIndex + selected.length < totalLines
 
   if (Buffer.byteLength(content, 'utf8') > DEFAULT_READ_MAX_BYTES) {
-    while (
-      content.length > 0 &&
-      Buffer.byteLength(content, 'utf8') > DEFAULT_READ_MAX_BYTES
-    ) {
+    while (content.length > 0 && Buffer.byteLength(content, 'utf8') > DEFAULT_READ_MAX_BYTES) {
       content = content.slice(0, Math.floor(content.length * 0.9))
     }
 

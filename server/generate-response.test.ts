@@ -15,9 +15,9 @@ const malformedDeck = readFileSync(path.join(fixtureDir, 'malformed-deck.html'),
 
 describe('extractHtmlDocument', () => {
   it('unwraps fenced HTML responses', () => {
-    expect(extractHtmlDocument('```html\n<!DOCTYPE html><html><body></body></html>\n```')).toContain(
-      '<!DOCTYPE html>',
-    )
+    expect(
+      extractHtmlDocument('```html\n<!DOCTYPE html><html><body></body></html>\n```'),
+    ).toContain('<!DOCTYPE html>')
   })
 })
 

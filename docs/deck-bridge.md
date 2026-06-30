@@ -4,10 +4,10 @@ Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The sh
 
 ## Transport
 
-| Direction | Mechanism |
-|-----------|-----------|
-| Shell → deck | `window.postMessage` to the iframe |
-| Deck → shell | `window.parent.postMessage` from the iframe |
+| Direction            | Mechanism                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| Shell → deck         | `window.postMessage` to the iframe                                                         |
+| Deck → shell         | `window.parent.postMessage` from the iframe                                                |
 | Full-JS deck scripts | DOM `CustomEvent`s inside the iframe; the injected bridge translates to/from `postMessage` |
 
 Protocol version: `DECK_BRIDGE_PROTOCOL_VERSION` (currently `1`).
@@ -16,19 +16,19 @@ Protocol version: `DECK_BRIDGE_PROTOCOL_VERSION` (currently `1`).
 
 ### Parent → iframe
 
-| Type | Payload | Purpose |
-|------|---------|---------|
+| Type            | Payload             | Purpose                              |
+| --------------- | ------------------- | ------------------------------------ |
 | `ark:deck-goto` | `{ index: number }` | Navigate to a zero-based slide index |
 
 ### iframe → parent
 
-| Type | Payload | Purpose |
-|------|---------|---------|
-| `ark:deck-ready` | `{ index, slideCount, metadata }` | Bridge is listening; initial slide and deck info |
-| `ark:deck-slide-count` | `{ slideCount }` | Slide count announcement or update |
-| `ark:deck-slide-change` | `{ index }` | Active slide changed |
-| `ark:deck-metadata` | `{ metadata }` | Deck metadata announcement or update |
-| `ark:deck-runtime-error` | `{ message, source? }` | Uncaught error or unhandled rejection |
+| Type                     | Payload                           | Purpose                                          |
+| ------------------------ | --------------------------------- | ------------------------------------------------ |
+| `ark:deck-ready`         | `{ index, slideCount, metadata }` | Bridge is listening; initial slide and deck info |
+| `ark:deck-slide-count`   | `{ slideCount }`                  | Slide count announcement or update               |
+| `ark:deck-slide-change`  | `{ index }`                       | Active slide changed                             |
+| `ark:deck-metadata`      | `{ metadata }`                    | Deck metadata announcement or update             |
+| `ark:deck-runtime-error` | `{ message, source? }`            | Uncaught error or unhandled rejection            |
 
 ### Metadata shape
 
@@ -70,26 +70,27 @@ For hand-written decks with `section.slide` elements:
 
 ```html
 <html data-ark-deck="nav">
-...
-<script>
-(() => {
-  const slides = [...document.querySelectorAll('section.slide')];
-  let index = 0;
+  ...
+  <script>
+    ;(() => {
+      const slides = [...document.querySelectorAll('section.slide')]
+      let index = 0
 
-  function setSlide(nextIndex) {
-    index = Math.max(0, Math.min(slides.length - 1, nextIndex));
-    slides.forEach((slide, i) => {
-      const active = i === index;
-      slide.classList.toggle('active', active);
-      slide.setAttribute('aria-hidden', String(!active));
-    });
-    document.dispatchEvent(new CustomEvent('ark:deck-slide-change', { detail: { index } }));
-  }
+      function setSlide(nextIndex) {
+        index = Math.max(0, Math.min(slides.length - 1, nextIndex))
+        slides.forEach((slide, i) => {
+          const active = i === index
+          slide.classList.toggle('active', active)
+          slide.setAttribute('aria-hidden', String(!active))
+        })
+        document.dispatchEvent(new CustomEvent('ark:deck-slide-change', { detail: { index } }))
+      }
 
-  document.addEventListener('ark:deck-goto', (e) => setSlide(e.detail.index));
-  setSlide(0);
-})();
-</script>
+      document.addEventListener('ark:deck-goto', (e) => setSlide(e.detail.index))
+      setSlide(0)
+    })()
+  </script>
+</html>
 ```
 
 Requirements:
@@ -105,33 +106,33 @@ Reveal decks use `.reveal .slides > section`. Opt in with `data-ark-deck="nav"` 
 
 ```html
 <html data-ark-deck="nav">
-<head>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css" />
-</head>
-<body>
-  <div class="reveal">
-    <div class="slides">
-      <section>Title</section>
-      <section>Detail</section>
+  <head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css" />
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>Title</section>
+        <section>Detail</section>
+      </div>
     </div>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
-  <script>
-    Reveal.initialize({ hash: false, keyboard: true });
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
+    <script>
+      Reveal.initialize({ hash: false, keyboard: true })
 
-    function syncSlide() {
-      const indices = Reveal.getIndices();
-      const index = indices.h || 0;
-      document.dispatchEvent(new CustomEvent('ark:deck-slide-change', { detail: { index } }));
-    }
+      function syncSlide() {
+        const indices = Reveal.getIndices()
+        const index = indices.h || 0
+        document.dispatchEvent(new CustomEvent('ark:deck-slide-change', { detail: { index } }))
+      }
 
-    Reveal.on('slidechanged', syncSlide);
-    document.addEventListener('ark:deck-goto', (e) => {
-      Reveal.slide(e.detail.index);
-    });
-    syncSlide();
-  </script>
-</body>
+      Reveal.on('slidechanged', syncSlide)
+      document.addEventListener('ark:deck-goto', (e) => {
+        Reveal.slide(e.detail.index)
+      })
+      syncSlide()
+    </script>
+  </body>
 </html>
 ```
 

@@ -6,11 +6,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from '@/components/ai-elements/message'
+import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
   PromptInput,
   PromptInputBody,
@@ -47,9 +43,7 @@ function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
     <div className="flex flex-col gap-2">
       {parts.map((part, index) => {
         if (part.type === 'text') {
-          return (
-            <MessageResponse key={`text-${index}`}>{part.content}</MessageResponse>
-          )
+          return <MessageResponse key={`text-${index}`}>{part.content}</MessageResponse>
         }
 
         if (part.type === 'tool-call') {
@@ -58,9 +52,7 @@ function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
               className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
               key={`tool-call-${index}`}
             >
-              <span className="font-medium text-foreground">
-                {formatToolLabel(part.toolName)}
-              </span>
+              <span className="font-medium text-foreground">{formatToolLabel(part.toolName)}</span>
               {part.summary ? (
                 <span className="text-muted-foreground"> — {part.summary}</span>
               ) : null}
@@ -78,7 +70,9 @@ function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
             )}
             key={`tool-result-${index}`}
           >
-            <span className={cn('font-medium', part.error ? 'text-destructive' : 'text-foreground')}>
+            <span
+              className={cn('font-medium', part.error ? 'text-destructive' : 'text-foreground')}
+            >
               {formatToolLabel(part.toolName)}
             </span>
             {part.summary ? (
@@ -163,17 +157,12 @@ export function ChatPanel({
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
         <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-          <SparklesIcon
-            aria-hidden
-            className="size-3.5 shrink-0 text-[var(--ark-accent)]"
-          />
+          <SparklesIcon aria-hidden className="size-3.5 shrink-0 text-[var(--ark-accent)]" />
           <span className="truncate text-xs font-medium">Chat</span>
           <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
             ›
           </span>
-          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
-            AI agent
-          </span>
+          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">AI agent</span>
         </div>
       </div>
 
@@ -262,10 +251,7 @@ export function ChatPanel({
                   value={selectedModel}
                 >
                   <PromptInputSelectTrigger
-                    className={cn(
-                      'max-w-[300px]',
-                      !canGenerate && 'text-muted-foreground',
-                    )}
+                    className={cn('max-w-[300px]', !canGenerate && 'text-muted-foreground')}
                   >
                     <PromptInputSelectValue
                       placeholder={
@@ -298,9 +284,7 @@ export function ChatPanel({
                   }}
                   tooltip="Refresh models"
                 >
-                  <RefreshCwIcon
-                    className={cn('size-4', isLoadingModels && 'animate-spin')}
-                  />
+                  <RefreshCwIcon className={cn('size-4', isLoadingModels && 'animate-spin')} />
                 </PromptInputButton>
               </PromptInputTools>
               <PromptInputSubmit

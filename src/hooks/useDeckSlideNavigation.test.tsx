@@ -13,10 +13,7 @@ import {
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 
-import {
-  useDeckSlideNavigation,
-  type DeckNavOptions,
-} from './useDeckSlideNavigation'
+import { useDeckSlideNavigation, type DeckNavOptions } from './useDeckSlideNavigation'
 
 type HarnessProps = {
   enabled?: boolean
@@ -93,10 +90,7 @@ describe('useDeckSlideNavigation', () => {
     await user.click(screen.getByRole('button', { name: 'Go to third' }))
 
     expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
-    expect(postMessage).toHaveBeenCalledWith(
-      createDeckGotoMessage(2),
-      '*',
-    )
+    expect(postMessage).toHaveBeenCalledWith(createDeckGotoMessage(2), '*')
   })
 
   it('ignores out-of-range goto requests', async () => {
@@ -117,19 +111,23 @@ describe('useDeckSlideNavigation', () => {
     const iframeWindow = getIframeWindow()
 
     act(() => {
-      window.dispatchEvent(new MessageEvent('message', {
-        data: createDeckSlideChangeMessage(1),
-        source: window,
-      }))
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckSlideChangeMessage(1),
+          source: window,
+        }),
+      )
     })
 
     expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
 
     act(() => {
-      window.dispatchEvent(new MessageEvent('message', {
-        data: createDeckSlideChangeMessage(1),
-        source: iframeWindow,
-      }))
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckSlideChangeMessage(1),
+          source: iframeWindow,
+        }),
+      )
     })
 
     await waitFor(() => {
@@ -149,10 +147,12 @@ describe('useDeckSlideNavigation', () => {
     const iframeWindow = getIframeWindow()
 
     act(() => {
-      window.dispatchEvent(new MessageEvent('message', {
-        data: createDeckReadyMessage(1, 3, metadata),
-        source: iframeWindow,
-      }))
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckReadyMessage(1, 3, metadata),
+          source: iframeWindow,
+        }),
+      )
     })
 
     await waitFor(() => {
@@ -171,10 +171,12 @@ describe('useDeckSlideNavigation', () => {
     const iframeWindow = getIframeWindow()
 
     act(() => {
-      window.dispatchEvent(new MessageEvent('message', {
-        data: createDeckRuntimeErrorMessage('boom', 'deck.js'),
-        source: iframeWindow,
-      }))
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckRuntimeErrorMessage('boom', 'deck.js'),
+          source: iframeWindow,
+        }),
+      )
     })
 
     expect(onRuntimeError).toHaveBeenCalledWith('boom', 'deck.js')
@@ -186,20 +188,19 @@ describe('useDeckSlideNavigation', () => {
     const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        key: 'ArrowRight',
-      }))
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: 'ArrowRight',
+        }),
+      )
     })
 
     await waitFor(() => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
     })
-    expect(postMessage).toHaveBeenLastCalledWith(
-      createDeckGotoMessage(1),
-      '*',
-    )
+    expect(postMessage).toHaveBeenLastCalledWith(createDeckGotoMessage(1), '*')
   })
 
   it('uses present-mode keyboard shortcuts and clamps to available slides', async () => {
@@ -208,27 +209,28 @@ describe('useDeckSlideNavigation', () => {
     const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        key: 'End',
-      }))
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: 'End',
+        }),
+      )
     })
 
     await waitFor(() => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
     })
-    expect(postMessage).toHaveBeenLastCalledWith(
-      createDeckGotoMessage(2),
-      '*',
-    )
+    expect(postMessage).toHaveBeenLastCalledWith(createDeckGotoMessage(2), '*')
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        key: 'PageDown',
-      }))
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: 'PageDown',
+        }),
+      )
     })
 
     expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')

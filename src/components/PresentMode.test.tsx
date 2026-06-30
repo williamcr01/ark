@@ -20,10 +20,8 @@ describe('PresentMode', () => {
       />,
     )
 
-    expect(screen.getByRole('dialog', { name: 'Presentation mode' }))
-      .toBeInTheDocument()
-    expect(screen.getByTitle('Ark presentation mode'))
-      .toHaveAttribute('sandbox', 'allow-scripts')
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.getByTitle('Ark presentation mode')).toHaveAttribute('sandbox', 'allow-scripts')
     expect(screen.getByText('1 / 3')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Next slide' }))

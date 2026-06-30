@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -78,8 +71,7 @@ function computeMountedIndices(
   }
 
   const sorted = [...indices].sort(
-    (left, right) =>
-      Math.abs(left - activeIndex) - Math.abs(right - activeIndex) || left - right,
+    (left, right) => Math.abs(left - activeIndex) - Math.abs(right - activeIndex) || left - right,
   )
 
   return new Set(sorted.slice(0, MAX_MOUNTED_THUMBNAILS))
@@ -161,9 +153,7 @@ function LazyThumbnail({
       <span
         className={cn(
           'absolute bottom-1 left-1 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
-          active
-            ? 'bg-[var(--ark-accent)] text-white'
-            : 'bg-black/55 text-white',
+          active ? 'bg-[var(--ark-accent)] text-white' : 'bg-black/55 text-white',
         )}
       >
         {index + 1}
@@ -182,11 +172,8 @@ export function SlideThumbnailStrip({
 }: SlideThumbnailStripProps) {
   const activeItemRef = useRef<HTMLDivElement>(null)
   const { slideCount, thumbnailSrcDocs } = parsedDeck
-  const [visibleIndices, setVisibleIndices] = useState<Set<number>>(
-    () => new Set([0]),
-  )
-  const [collapsedMountedIndices, setCollapsedMountedIndices] =
-    useState<Set<number> | null>(null)
+  const [visibleIndices, setVisibleIndices] = useState<Set<number>>(() => new Set([0]))
+  const [collapsedMountedIndices, setCollapsedMountedIndices] = useState<Set<number> | null>(null)
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
 
   const computedMountedIndices = useMemo(
@@ -205,32 +192,27 @@ export function SlideThumbnailStrip({
   }
 
   const mountedIndices =
-    isOpen || !collapsedMountedIndices
-      ? computedMountedIndices
-      : collapsedMountedIndices
+    isOpen || !collapsedMountedIndices ? computedMountedIndices : collapsedMountedIndices
 
-  const handleVisibilityChange = useCallback(
-    (index: number, isVisible: boolean) => {
-      setVisibleIndices((current) => {
-        const hasIndex = current.has(index)
+  const handleVisibilityChange = useCallback((index: number, isVisible: boolean) => {
+    setVisibleIndices((current) => {
+      const hasIndex = current.has(index)
 
-        if (isVisible === hasIndex) {
-          return current
-        }
+      if (isVisible === hasIndex) {
+        return current
+      }
 
-        const next = new Set(current)
+      const next = new Set(current)
 
-        if (isVisible) {
-          next.add(index)
-        } else {
-          next.delete(index)
-        }
+      if (isVisible) {
+        next.add(index)
+      } else {
+        next.delete(index)
+      }
 
-        return next
-      })
-    },
-    [],
-  )
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     if (!isOpen) {
@@ -258,35 +240,23 @@ export function SlideThumbnailStrip({
       aria-hidden={!isOpen}
       className={cn(
         'flex min-h-0 shrink-0 flex-col border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)]',
-        orientation === 'vertical'
-          ? 'w-[168px] border-r'
-          : 'h-[132px] border-b',
+        orientation === 'vertical' ? 'w-[168px] border-r' : 'h-[132px] border-b',
         !isOpen && 'hidden',
       )}
       id={id}
       style={{ '--ark-thumb-scale': thumbScale } as CSSProperties}
     >
       <div className="flex h-9 shrink-0 items-center border-b border-[var(--ark-titlebar-border)] px-3">
-        <span className="text-xs font-medium text-[var(--ark-titlebar-fg)]">
-          Slides
-        </span>
-        <span className="ml-auto text-[11px] text-[var(--ark-titlebar-muted)]">
-          {slideCount}
-        </span>
+        <span className="text-xs font-medium text-[var(--ark-titlebar-fg)]">Slides</span>
+        <span className="ml-auto text-[11px] text-[var(--ark-titlebar-muted)]">{slideCount}</span>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
         <div
-          className={cn(
-            'p-2',
-            orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2',
-          )}
+          className={cn('p-2', orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2')}
         >
           {thumbnailSrcDocs.map((srcDoc, index) => (
-            <div
-              key={index}
-              ref={index === activeIndex ? activeItemRef : undefined}
-            >
+            <div key={index} ref={index === activeIndex ? activeItemRef : undefined}>
               <LazyThumbnail
                 active={index === activeIndex}
                 index={index}

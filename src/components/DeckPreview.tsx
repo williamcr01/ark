@@ -10,13 +10,7 @@ import {
 
 import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useElementSize } from '@/hooks/useElementSize'
@@ -216,7 +210,8 @@ function EmptyPreview() {
         <div className="flex flex-col gap-1">
           <CardTitle>Ready for your first deck</CardTitle>
           <CardDescription>
-            Ask Ark for a pitch deck, strategy update, sales proposal, research summary, or any presentation you need.
+            Ask Ark for a pitch deck, strategy update, sales proposal, research summary, or any
+            presentation you need.
           </CardDescription>
         </div>
       </CardHeader>

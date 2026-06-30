@@ -3,11 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  createDeckStore,
-  extractDeckTitle,
-  isValidDeckId,
-} from './deck-store.ts'
+import { createDeckStore, extractDeckTitle, isValidDeckId } from './deck-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -78,8 +74,6 @@ describe('createDeckStore', () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
     const store = createDeckStore(dataDir)
 
-    expect(
-      await store.updateDeck('be4b3f4e-d05b-45d1-9da6-89d6df227b54', sampleHtml),
-    ).toBeNull()
+    expect(await store.updateDeck('be4b3f4e-d05b-45d1-9da6-89d6df227b54', sampleHtml)).toBeNull()
   })
 })

@@ -19,8 +19,7 @@ export type DeckStore = {
 
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data', 'decks')
 
-const DECK_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const DECK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function isValidDeckId(id: string) {
   return DECK_ID_PATTERN.test(id)
@@ -74,12 +73,7 @@ async function readDeckFile(filePath: string): Promise<StoredDeck | null> {
       title: typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
     }
   } catch (error) {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 'ENOENT'
-    ) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
       return null
     }
 
@@ -157,12 +151,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       await unlink(filePath)
       return true
     } catch (error) {
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
         return false
       }
 

@@ -10,13 +10,13 @@ Ark is a presentation builder: a PowerPoint-like app where each presentation is 
 
 ## Tech stack
 
-| Layer | Choice |
-|-------|--------|
-| Package manager | **pnpm** (never npm/yarn) |
-| Framework | React 19 + TypeScript |
-| Build | Vite |
-| Presentations | Plain HTML/CSS; reveal.js or similar when needed |
-| Lint | ESLint |
+| Layer           | Choice                                           |
+| --------------- | ------------------------------------------------ |
+| Package manager | **pnpm** (never npm/yarn)                        |
+| Framework       | React 19 + TypeScript                            |
+| Build           | Vite                                             |
+| Presentations   | Plain HTML/CSS; reveal.js or similar when needed |
+| Lint            | ESLint                                           |
 
 ## Commands
 
@@ -50,7 +50,8 @@ ark/
 - Keep the shell thin: presentation rendering lives in HTML files, not in React components.
 - Prefer extracting reusable logic into hooks under `src/hooks/`.
 - Run `pnpm lint` after substantive changes.
-- CI runs `pnpm lint`, `pnpm build`, and `pnpm test` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
+- Run `pnpm format` before pushing substantive changes; CI enforces `pnpm format:check`.
+- CI runs `pnpm lint`, `pnpm format:check`, `pnpm audit`, `pnpm build`, and `pnpm test` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
 
 ## Presentation HTML conventions
 
@@ -86,20 +87,20 @@ Example skeleton (plain HTML):
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Deck Title</title>
-  <style>
-    /* deck styles */
-  </style>
-</head>
-<body>
-  <!-- slide: Title -->
-  <section class="slide">...</section>
-  <!-- slide: Agenda -->
-  <section class="slide">...</section>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deck Title</title>
+    <style>
+      /* deck styles */
+    </style>
+  </head>
+  <body>
+    <!-- slide: Title -->
+    <section class="slide">...</section>
+    <!-- slide: Agenda -->
+    <section class="slide">...</section>
+  </body>
 </html>
 ```
 
@@ -129,13 +130,13 @@ Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml`
 
 Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools` + `stopWhen: stepCountIs(12)`), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
 
-| Tool | Purpose |
-|------|---------|
-| `parse_deck` | Structured deck metadata (title, runtime, slides, notes, styles, scripts, assets) |
-| `list_slides` | Enumerate slide boundaries and titles |
-| `read_deck` | Read full HTML by line offset/limit or a single slide by index |
-| `edit_deck` | Apply exact `oldText` → `newText` patches (pi-style; each match must be unique) |
-| `write_deck` | Replace the entire deck (new decks or explicit full rewrites) |
+| Tool          | Purpose                                                                           |
+| ------------- | --------------------------------------------------------------------------------- |
+| `parse_deck`  | Structured deck metadata (title, runtime, slides, notes, styles, scripts, assets) |
+| `list_slides` | Enumerate slide boundaries and titles                                             |
+| `read_deck`   | Read full HTML by line offset/limit or a single slide by index                    |
+| `edit_deck`   | Apply exact `oldText` → `newText` patches (pi-style; each match must be unique)   |
+| `write_deck`  | Replace the entire deck (new decks or explicit full rewrites)                     |
 
 Server implementation: `server/deck-parser.ts`, `server/deck-tools.ts`, `server/deck-agent.ts`. The client shows tool calls/results in chat and applies deck updates from tool results (final HTML returned in the API response).
 
@@ -161,4 +162,4 @@ Standard commands live in the `## Commands` section above and in `README.md`. No
 - **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generate` (tool-based agent loop). Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
-- **No browser automation in CI yet.** Verification is `pnpm lint`, `pnpm build`, and `pnpm test` (also enforced in GitHub Actions), plus manual browser checks. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
+- **No API keys required for CI.** Verification is `pnpm lint`, `pnpm format:check`, `pnpm audit`, `pnpm build`, and `pnpm test` (also enforced in GitHub Actions). Run `pnpm format` before pushing substantive changes. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.

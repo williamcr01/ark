@@ -105,7 +105,9 @@ describe('validateDeckHtmlInBrowser', () => {
         'https://example.com/logo.png',
       ]),
     )
-    expect(report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error')).toBe(true)
+    expect(
+      report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error'),
+    ).toBe(true)
   })
 
   it('rejects external URLs in CSS background-image and inline style url()', () => {
@@ -123,12 +125,11 @@ describe('validateDeckHtmlInBrowser', () => {
 
     expect(report.valid).toBe(false)
     expect(report.externalUrls).toEqual(
-      expect.arrayContaining([
-        'https://example.com/hero.png',
-        'https://example.com/bg.jpg',
-      ]),
+      expect.arrayContaining(['https://example.com/hero.png', 'https://example.com/bg.jpg']),
     )
-    expect(report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error')).toBe(true)
+    expect(
+      report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error'),
+    ).toBe(true)
   })
 
   it('rejects empty HTML', () => {
@@ -144,13 +145,11 @@ describe('validateDeckHtml with JSDOM', () => {
   it('detects runtime modes on the server path without browser DOMParser', () => {
     const parseDocument = (source: string) => new JSDOM(source).window.document
 
-    expect(validateDeckHtml(plainCssDeck, parseDocument).runtimeMarkers.runtimeMode)
-      .toBe('static')
-    expect(validateDeckHtml(revealDeck, parseDocument).runtimeMarkers.runtimeMode)
-      .toBe('reveal')
-    expect(validateDeckHtml(fullJsDeck, parseDocument).runtimeMarkers.runtimeMode)
-      .toBe('custom-js')
-    expect(validateDeckHtml(hostileScriptsDeck, parseDocument).runtimeMarkers.runtimeMode)
-      .toBe('static')
+    expect(validateDeckHtml(plainCssDeck, parseDocument).runtimeMarkers.runtimeMode).toBe('static')
+    expect(validateDeckHtml(revealDeck, parseDocument).runtimeMarkers.runtimeMode).toBe('reveal')
+    expect(validateDeckHtml(fullJsDeck, parseDocument).runtimeMarkers.runtimeMode).toBe('custom-js')
+    expect(validateDeckHtml(hostileScriptsDeck, parseDocument).runtimeMarkers.runtimeMode).toBe(
+      'static',
+    )
   })
 })

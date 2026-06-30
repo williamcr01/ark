@@ -17,10 +17,7 @@ export function useElementSize<T extends HTMLElement>() {
       const { width, height } = element.getBoundingClientRect()
 
       setSize((current) => {
-        if (
-          Math.abs(current.width - width) < 0.5 &&
-          Math.abs(current.height - height) < 0.5
-        ) {
+        if (Math.abs(current.width - width) < 0.5 && Math.abs(current.height - height) < 0.5) {
           return current
         }
 

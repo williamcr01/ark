@@ -17,11 +17,7 @@ import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 
 import { STRICT_DECK_CSP } from './deck-runtime'
-import {
-  detectRuntimeMode,
-  getPreviewHtml,
-  getPreviewSandbox,
-} from './deck-preview'
+import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from './deck-preview'
 
 function loadExecutablePreview(html: string) {
   return new Promise<JSDOM>((resolve) => {
@@ -46,7 +42,8 @@ function loadExecutablePreview(html: string) {
       },
     })
 
-    ;(dom.window as unknown as Window & { __parentMessages: unknown[] }).__parentMessages = parentMessages
+    ;(dom.window as unknown as Window & { __parentMessages: unknown[] }).__parentMessages =
+      parentMessages
 
     dom.window.addEventListener('load', () => resolve(dom))
   })
@@ -70,10 +67,12 @@ describe('detectRuntimeMode', () => {
 
   it('enables custom-js only when an explicit Ark marker is present', () => {
     expect(detectRuntimeMode(fullJsDeck)).toBe('custom-js')
-    expect(detectRuntimeMode('<html><body data-ark-preview="full-js"></body></html>'))
-      .toBe('custom-js')
-    expect(detectRuntimeMode('<html><body><script>window.x = 1</script></body></html>'))
-      .toBe('static')
+    expect(detectRuntimeMode('<html><body data-ark-preview="full-js"></body></html>')).toBe(
+      'custom-js',
+    )
+    expect(detectRuntimeMode('<html><body><script>window.x = 1</script></body></html>')).toBe(
+      'static',
+    )
   })
 })
 
@@ -120,11 +119,13 @@ describe('getPreviewHtml', () => {
     expect(slides[0].getAttribute('aria-hidden')).toBe('false')
     expect(slides[1].hasAttribute('data-ark-hidden')).toBe(true)
 
-    document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
-      bubbles: true,
-      cancelable: true,
-      key: 'ArrowRight',
-    }))
+    document.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'ArrowRight',
+      }),
+    )
 
     expect(slides[0].hasAttribute('data-ark-hidden')).toBe(true)
     expect(slides[1].getAttribute('data-ark-active')).toBe('')
@@ -161,10 +162,10 @@ describe('getPreviewHtml', () => {
     const dom = await loadExecutablePreview(getPreviewHtml(revealDeck))
     const metadataMessage = getParentMessages(dom).find(
       (message) =>
-        typeof message === 'object'
-        && message !== null
-        && 'type' in message
-        && message.type === DECK_METADATA_MESSAGE_TYPE,
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        message.type === DECK_METADATA_MESSAGE_TYPE,
     ) as { metadata: { runtime: string } } | undefined
 
     expect(metadataMessage?.metadata.runtime).toBe('reveal')
@@ -178,10 +179,12 @@ describe('getPreviewHtml', () => {
       receivedIndexes.push((event as CustomEvent<{ index: number }>).detail.index)
     })
 
-    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
-      data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
-      source: dom.window.parent as unknown as Window,
-    }))
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+        source: dom.window.parent as unknown as Window,
+      }),
+    )
 
     expect(receivedIndexes).toEqual([1])
   })
@@ -204,9 +207,11 @@ describe('getPreviewHtml', () => {
   it('forwards slide-change CustomEvents to the parent in custom-js previews', async () => {
     const dom = await loadExecutablePreview(getPreviewHtml(fullJsDeck))
 
-    dom.window.document.dispatchEvent(new dom.window.CustomEvent(DECK_SLIDE_CHANGE_MESSAGE_TYPE, {
-      detail: { index: 1 },
-    }))
+    dom.window.document.dispatchEvent(
+      new dom.window.CustomEvent(DECK_SLIDE_CHANGE_MESSAGE_TYPE, {
+        detail: { index: 1 },
+      }),
+    )
 
     expect(getParentMessages(dom)).toContainEqual({
       type: DECK_SLIDE_CHANGE_MESSAGE_TYPE,
@@ -217,10 +222,12 @@ describe('getPreviewHtml', () => {
   it('reports runtime errors to the parent', async () => {
     const dom = await loadExecutablePreview(getPreviewHtml(plainCssDeck))
 
-    dom.window.dispatchEvent(new dom.window.ErrorEvent('error', {
-      message: 'Preview failed',
-      filename: 'deck.js',
-    }))
+    dom.window.dispatchEvent(
+      new dom.window.ErrorEvent('error', {
+        message: 'Preview failed',
+        filename: 'deck.js',
+      }),
+    )
 
     expect(getParentMessages(dom)).toContainEqual({
       type: DECK_RUNTIME_ERROR_MESSAGE_TYPE,
