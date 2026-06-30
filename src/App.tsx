@@ -249,6 +249,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  const [navigationResetKey, setNavigationResetKey] = useState(0)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
@@ -394,6 +395,7 @@ function App() {
       }
 
       setGeneratedHtml(html)
+      setNavigationResetKey((current) => current + 1)
       setError('')
       setMessages((current) => [
         ...current,
@@ -411,6 +413,7 @@ function App() {
 
   const handleReset = () => {
     setGeneratedHtml('')
+    setNavigationResetKey((current) => current + 1)
     setMessages([])
     setInput('')
     setError('')
@@ -525,6 +528,7 @@ function App() {
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
                   layout="desktop"
+                  navigationResetKey={navigationResetKey}
                   parsedDeck={parsedDeck}
                 />
               </ResizablePanel>
@@ -571,6 +575,7 @@ function App() {
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
                   layout="mobile"
+                  navigationResetKey={navigationResetKey}
                   parsedDeck={parsedDeck}
                 />
               </div>
@@ -609,6 +614,7 @@ type DeckPreviewProps = {
   isGenerating: boolean
   isStripOpen: boolean
   layout: 'desktop' | 'mobile'
+  navigationResetKey: number
   parsedDeck: ReturnType<typeof parseDeckSlides>
 }
 
@@ -617,6 +623,7 @@ function DeckPreview({
   isGenerating,
   isStripOpen,
   layout,
+  navigationResetKey,
   parsedDeck,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -633,6 +640,7 @@ function DeckPreview({
     {
       previewMode,
       keyboardMode: isPresentOpen ? 'off' : 'preview',
+      resetKey: navigationResetKey,
     },
   )
 

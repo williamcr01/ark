@@ -29,6 +29,7 @@ export type DeckNavOptions = {
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
   onSlideChange?: (index: number) => void
+  resetKey?: number
   syncOnLoad?: boolean
 }
 
@@ -115,12 +116,14 @@ export function useDeckSlideNavigation(
     initialSlideIndex = 0,
     keyboardMode = 'preview',
     onSlideChange,
+    resetKey = 0,
     syncOnLoad = true,
   } = options
   const [activeSlideIndex, setActiveSlideIndex] = useState(() =>
     clampSlideIndex(initialSlideIndex, slideCount),
   )
   const prevHtmlRef = useRef(html)
+  const prevResetKeyRef = useRef(resetKey)
   const activeSlideIndexRef = useRef(activeSlideIndex)
 
   const commitSlideIndex = useCallback(
@@ -144,12 +147,28 @@ export function useDeckSlideNavigation(
   }, [activeSlideIndex])
 
   useEffect(() => {
+    if (prevResetKeyRef.current === resetKey) {
+      return
+    }
+
+    prevResetKeyRef.current = resetKey
+    commitSlideIndex(initialSlideIndex)
+  }, [commitSlideIndex, initialSlideIndex, resetKey])
+
+  useEffect(() => {
     if (prevHtmlRef.current === html) {
       return
     }
 
+    const previousHtml = prevHtmlRef.current
     prevHtmlRef.current = html
-    commitSlideIndex(initialSlideIndex)
+
+    if (!previousHtml.trim() || !html.trim()) {
+      commitSlideIndex(initialSlideIndex)
+      return
+    }
+
+    commitSlideIndex(activeSlideIndexRef.current)
   }, [commitSlideIndex, html, initialSlideIndex])
 
   const goToSlide = useCallback(
