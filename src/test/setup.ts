@@ -3,38 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
-function createLocalStorageMock(): Storage {
-  const store = new Map<string, string>()
-
-  return {
-    get length() {
-      return store.size
-    },
-    clear() {
-      store.clear()
-    },
-    getItem(key: string) {
-      return store.get(key) ?? null
-    },
-    key(index: number) {
-      return [...store.keys()][index] ?? null
-    },
-    removeItem(key: string) {
-      store.delete(key)
-    },
-    setItem(key: string, value: string) {
-      store.set(key, value)
-    },
-  }
-}
-
-const localStorageMock = createLocalStorageMock()
-
-Object.defineProperty(globalThis, 'localStorage', {
-  configurable: true,
-  writable: true,
-  value: localStorageMock,
-})
+import { getTestLocalStorage, installTestLocalStorage } from './storage'
 
 class TestResizeObserver {
   observe = vi.fn()
@@ -100,8 +69,10 @@ Object.defineProperty(document, 'exitFullscreen', {
   value: vi.fn().mockResolvedValue(undefined),
 })
 
+installTestLocalStorage()
+
 afterEach(() => {
-  localStorageMock.clear()
+  getTestLocalStorage().clear()
   cleanup()
   vi.clearAllMocks()
 })

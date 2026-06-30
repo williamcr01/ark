@@ -107,7 +107,7 @@ When acting as the presentation agent (side chat):
 
 Ark replays the **full visible chat history** on every `/api/generate` request (pi-style), plus the latest deck HTML when editing. This lets follow-ups like “make the title bigger” work without repeating prior instructions.
 
-- **Persisted with the deck**: Chat messages and HTML are stored together in `localStorage` (`ark:deck-session`) so refresh restores the conversation.
+- **Persisted with the deck**: Deck HTML is saved server-side (#10); chat messages are stored in `localStorage` (`ark:chat-session`) so refresh restores the conversation.
 - **Assistant messages**: Store short status text only — never full generated HTML. The model always receives `currentHtml` separately on the latest turn.
 - **Token/cost**: Each request includes all prior user/assistant text plus the full current HTML on the latest turn. Long chats and large decks increase input tokens linearly; compaction/summarization is not implemented yet.
 

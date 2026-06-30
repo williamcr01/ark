@@ -16,6 +16,8 @@ import {
   type ApiErrorPayload,
 } from './credentials.ts'
 import { finalizeGeneratedDeck } from './generate-response.ts'
+import { deckStore, isValidDeckId } from './deck-store.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import {
   ensureModelInList,
   fetchAllAvailableModels,
@@ -118,6 +120,18 @@ const sendApiError = (
   response.status(status).json(payload)
 }
 
+const sendDeckValidationError = (
+  response: Response,
+  validation: ReturnType<typeof validateDeckHtmlOnServer>,
+) => {
+  const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
+  response.status(400).json({
+    error: primaryIssue?.message ?? 'The HTML is not a valid Ark deck.',
+    validation,
+  })
+}
+
 const getApiErrorFromUnknown = (error: unknown): ApiErrorPayload => {
   if (
     error &&
@@ -158,6 +172,126 @@ app.get('/api/models', async (_request: Request, response: Response) => {
       models: modelsWithDefault,
       warnings: defaultModelWarning ? [...warnings, defaultModelWarning] : warnings,
     })
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
+
+app.get('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
+  const id = request.params.id?.trim()
+
+  if (!id) {
+    response.status(400).json({ error: 'Deck id is required.' })
+    return
+  }
+
+  if (!isValidDeckId(id)) {
+    response.status(400).json({ error: 'Invalid deck id.' })
+    return
+  }
+
+  try {
+    const deck = await deckStore.getDeck(id)
+
+    if (!deck) {
+      response.status(404).json({ error: 'Deck not found.' })
+      return
+    }
+
+    response.json({ deck })
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
+
+app.post('/api/decks', async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
+  const html = request.body.html ?? ''
+
+  if (!html.trim()) {
+    response.status(400).json({ error: 'HTML is required.' })
+    return
+  }
+
+  const validation = validateDeckHtmlOnServer(html)
+
+  if (!validation.valid) {
+    sendDeckValidationError(response, validation)
+    return
+  }
+
+  try {
+    const deck = await deckStore.createDeck(html)
+    response.status(201).json({ deck, validation })
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
+
+app.put('/api/decks/:id', async (
+  request: Request<{ id: string }, unknown, { html?: string }>,
+  response: Response,
+) => {
+  const id = request.params.id?.trim()
+  const html = request.body.html ?? ''
+
+  if (!id) {
+    response.status(400).json({ error: 'Deck id is required.' })
+    return
+  }
+
+  if (!isValidDeckId(id)) {
+    response.status(400).json({ error: 'Invalid deck id.' })
+    return
+  }
+
+  if (!html.trim()) {
+    response.status(400).json({ error: 'HTML is required.' })
+    return
+  }
+
+  const validation = validateDeckHtmlOnServer(html)
+
+  if (!validation.valid) {
+    sendDeckValidationError(response, validation)
+    return
+  }
+
+  try {
+    const deck = await deckStore.updateDeck(id, html)
+
+    if (!deck) {
+      response.status(404).json({ error: 'Deck not found.' })
+      return
+    }
+
+    response.json({ deck, validation })
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
+
+app.delete('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
+  const id = request.params.id?.trim()
+
+  if (!id) {
+    response.status(400).json({ error: 'Deck id is required.' })
+    return
+  }
+
+  if (!isValidDeckId(id)) {
+    response.status(400).json({ error: 'Invalid deck id.' })
+    return
+  }
+
+  try {
+    const deleted = await deckStore.deleteDeck(id)
+
+    if (!deleted) {
+      response.status(404).json({ error: 'Deck not found.' })
+      return
+    }
+
+    response.status(204).send()
   } catch (error) {
     sendApiError(response, 500, getApiErrorFromUnknown(error))
   }
