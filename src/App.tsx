@@ -70,6 +70,7 @@ import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import {
   useAvailableModels,
+  type ApiKeyStatus,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
@@ -102,6 +103,7 @@ type ChatMessage = {
 type GenerateResponse = {
   html?: string
   error?: string
+  code?: 'missing_api_key' | 'invalid_api_key' | 'openai_error'
 }
 
 const newId = () => crypto.randomUUID()
@@ -251,6 +253,8 @@ function App() {
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const {
+    apiKeyStatus,
+    canGenerate,
     error: modelsError,
     isLoading: isLoadingModels,
     loadModels,
@@ -271,7 +275,7 @@ function App() {
   const generateDeck = async (rawPrompt: string) => {
     const prompt = rawPrompt.trim()
 
-    if (!prompt || isGenerating) {
+    if (!prompt || isGenerating || !canGenerate) {
       return
     }
 
@@ -299,6 +303,10 @@ function App() {
       }))) as GenerateResponse
 
       if (!response.ok || !data.html) {
+        if (data.code === 'missing_api_key' || data.code === 'invalid_api_key') {
+          void loadModels()
+        }
+
         throw new Error(data.error ?? 'The deck could not be generated.')
       }
 
@@ -336,7 +344,7 @@ function App() {
   }
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
-    if (!message.text.trim()) {
+    if (!message.text.trim() || !canGenerate) {
       return
     }
 
@@ -527,6 +535,8 @@ function App() {
                     minSize={CHAT_PANEL_MIN_WIDTH_PX}
                   >
                     <ChatPanel
+                      apiKeyStatus={apiKeyStatus}
+                      canGenerate={canGenerate}
                       error={error}
                       input={input}
                       isGenerating={isGenerating}
@@ -564,6 +574,8 @@ function App() {
               {isChatOpen ? (
                 <div className="min-h-0 overflow-hidden" id="ark-chat-panel">
                   <ChatPanel
+                    apiKeyStatus={apiKeyStatus}
+                    canGenerate={canGenerate}
                     error={error}
                     input={input}
                     isGenerating={isGenerating}
@@ -805,10 +817,40 @@ type ChatPanelProps = {
   selectedModel: string
   isLoadingModels: boolean
   modelsError: string
+  apiKeyStatus: ApiKeyStatus
+  canGenerate: boolean
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
   onRefreshModels: () => Promise<void>
   onPromptSubmit: (message: PromptInputMessage) => Promise<void>
+}
+
+function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
+  if (apiKeyStatus === 'missing') {
+    return {
+      description:
+        'Copy .env.example to .env, set OPENAI_API_KEY to your key, then restart pnpm dev.',
+      title: 'OpenAI API key required',
+    }
+  }
+
+  if (apiKeyStatus === 'invalid') {
+    return {
+      description:
+        modelsError ||
+        'The key in .env was rejected by OpenAI. Check OPENAI_API_KEY and restart pnpm dev.',
+      title: 'Invalid OpenAI API key',
+    }
+  }
+
+  if (modelsError) {
+    return {
+      description: modelsError,
+      title: 'Could not load models',
+    }
+  }
+
+  return null
 }
 
 function ChatPanel({
@@ -820,11 +862,15 @@ function ChatPanel({
   selectedModel,
   isLoadingModels,
   modelsError,
+  apiKeyStatus,
+  canGenerate,
   onInputChange,
   onModelChange,
   onRefreshModels,
   onPromptSubmit,
 }: ChatPanelProps) {
+  const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
+  const isInputDisabled = isGenerating || !canGenerate
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
@@ -884,11 +930,11 @@ function ChatPanel({
             </Alert>
           ) : null}
 
-          {modelsError ? (
+          {apiKeyAlert ? (
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />
-              <AlertTitle>Could not load models</AlertTitle>
-              <AlertDescription>{modelsError}</AlertDescription>
+              <AlertTitle>{apiKeyAlert.title}</AlertTitle>
+              <AlertDescription>{apiKeyAlert.description}</AlertDescription>
             </Alert>
           ) : null}
 
@@ -896,23 +942,33 @@ function ChatPanel({
             <PromptInputBody>
               <PromptInputTextarea
                 className="min-h-24 resize-none"
-                disabled={isGenerating}
+                disabled={isInputDisabled}
                 onChange={(event) => onInputChange(event.currentTarget.value)}
-                placeholder="Describe the deck you want, or ask for an edit…"
+                placeholder={
+                  canGenerate
+                    ? 'Describe the deck you want, or ask for an edit…'
+                    : apiKeyStatus === 'checking'
+                      ? 'Checking API key…'
+                      : 'Add a valid OPENAI_API_KEY in .env to start generating decks…'
+                }
                 value={input}
               />
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
                 <PromptInputSelect
-                  disabled={isGenerating || isLoadingModels || models.length === 0}
+                  disabled={isInputDisabled || isLoadingModels || models.length === 0}
                   onValueChange={onModelChange}
                   value={selectedModel}
                 >
                   <PromptInputSelectTrigger className="max-w-[220px]">
                     <PromptInputSelectValue
                       placeholder={
-                        isLoadingModels ? 'Scanning models…' : 'Select model'
+                        apiKeyStatus === 'checking'
+                          ? 'Checking API key…'
+                          : isLoadingModels
+                            ? 'Scanning models…'
+                            : 'Select model'
                       }
                     />
                   </PromptInputSelectTrigger>
@@ -926,7 +982,7 @@ function ChatPanel({
                 </PromptInputSelect>
                 <PromptInputButton
                   aria-label="Refresh available models"
-                  disabled={isGenerating || isLoadingModels}
+                  disabled={isGenerating || isLoadingModels || apiKeyStatus === 'missing'}
                   onClick={() => {
                     void onRefreshModels()
                   }}
@@ -938,7 +994,7 @@ function ChatPanel({
                 </PromptInputButton>
               </PromptInputTools>
               <PromptInputSubmit
-                disabled={!input.trim() || isGenerating}
+                disabled={!input.trim() || isInputDisabled}
                 status={isGenerating ? 'submitted' : 'ready'}
               />
             </PromptInputFooter>
