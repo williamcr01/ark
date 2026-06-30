@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { getTestLocalStorage, installTestLocalStorage } from '@/test/storage'
 
 import { useDeckPersistence } from './useDeckPersistence'
 
@@ -11,8 +13,10 @@ const sampleHtml = `<!DOCTYPE html>
 
 const updatedHtml = sampleHtml.replace('One', 'Two')
 
+const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
+
 const deck = {
-  id: 'deck-1',
+  id: deckId,
   html: sampleHtml,
   title: 'Test Deck',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -20,14 +24,19 @@ const deck = {
 }
 
 describe('useDeckPersistence', () => {
+  beforeEach(() => {
+    installTestLocalStorage()
+  })
+
   afterEach(() => {
-    localStorage.clear()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    installTestLocalStorage()
+    getTestLocalStorage().clear()
   })
 
   it('restores the active deck after refresh', async () => {
-    localStorage.setItem('ark:active-deck-id', deck.id)
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
     vi.stubGlobal(
       'fetch',
@@ -74,11 +83,11 @@ describe('useDeckPersistence', () => {
     }))
     expect(result.current.html).toBe(sampleHtml)
     expect(result.current.isDirty).toBe(false)
-    expect(localStorage.getItem('ark:active-deck-id')).toBe(deck.id)
+    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(deck.id)
   })
 
   it('updates an existing deck and tracks dirty state until save completes', async () => {
-    localStorage.setItem('ark:active-deck-id', deck.id)
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
     const fetchMock = vi
       .fn()
@@ -131,7 +140,7 @@ describe('useDeckPersistence', () => {
   })
 
   it('clears local and server state on reset', async () => {
-    localStorage.setItem('ark:active-deck-id', deck.id)
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
     const fetchMock = vi
       .fn()
@@ -161,6 +170,6 @@ describe('useDeckPersistence', () => {
       expect.objectContaining({ method: 'DELETE' }),
     )
     expect(result.current.hasDeck).toBe(false)
-    expect(localStorage.getItem('ark:active-deck-id')).toBeNull()
+    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
 })

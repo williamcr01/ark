@@ -11,6 +11,10 @@ const ACTIVE_DECK_STORAGE_KEY = 'ark:active-deck-id'
 
 const readActiveDeckId = () => {
   try {
+    if (typeof localStorage === 'undefined') {
+      return null
+    }
+
     return localStorage.getItem(ACTIVE_DECK_STORAGE_KEY)
   } catch {
     return null
@@ -19,6 +23,10 @@ const readActiveDeckId = () => {
 
 const writeActiveDeckId = (deckId: string) => {
   try {
+    if (typeof localStorage === 'undefined') {
+      return
+    }
+
     localStorage.setItem(ACTIVE_DECK_STORAGE_KEY, deckId)
   } catch {
     // Ignore storage failures (private mode, quota, etc.)
@@ -27,6 +35,10 @@ const writeActiveDeckId = (deckId: string) => {
 
 const clearActiveDeckId = () => {
   try {
+    if (typeof localStorage === 'undefined') {
+      return
+    }
+
     localStorage.removeItem(ACTIVE_DECK_STORAGE_KEY)
   } catch {
     // Ignore storage failures (private mode, quota, etc.)
