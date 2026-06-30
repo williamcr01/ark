@@ -361,7 +361,10 @@ export function ChatPanel({
             <PromptInputFooter>
               <PromptInputTools>
                 <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger aria-label="Add attachments" tooltip="Add attachments" />
+                  <PromptInputActionMenuTrigger
+                    aria-label="Add attachments"
+                    tooltip="Add attachments"
+                  />
                   <PromptInputActionMenuContent>
                     <PromptInputActionAddAttachments />
                     <PromptInputActionAddScreenshot />
