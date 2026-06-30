@@ -9,23 +9,29 @@ pnpm install
 cp .env.example .env
 ```
 
-Add your OpenAI API key to `.env`:
+Add at least one provider API key to `.env`:
 
 ```env
 OPENAI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
 ```
+
+You only need one key to get started. Add more providers to unlock their models in the UI.
 
 ### Choosing a model
 
 You can pick the model in two ways:
 
-1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark scans your OpenAI account for available chat models on load; use the refresh button to re-scan. Your choice is saved in the browser.
+1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark scans each configured provider for available models on load; use the refresh button to re-scan. Your choice is saved in the browser.
 
-2. **In `.env` (default fallback)** — Set `OPENAI_MODEL` to choose the server default when no model is saved in the UI yet:
+2. **In `.env` (default fallback)** — Set `ARK_DEFAULT_MODEL` using `provider:model-id` syntax when no model is saved in the UI yet:
 
 ```env
-OPENAI_MODEL=gpt-4o-mini
+ARK_DEFAULT_MODEL=anthropic:claude-sonnet-4-20250514
 ```
+
+`OPENAI_MODEL` is still supported as a legacy OpenAI-only default.
 
 Optional API port (Vite proxies `/api` to this by default):
 
@@ -33,11 +39,17 @@ Optional API port (Vite proxies `/api` to this by default):
 PORT=8787
 ```
 
-Only `OPENAI_API_KEY` is required. `OPENAI_MODEL` and `PORT` are optional.
+### Supported providers
+
+| Provider | Env var | Model scan source |
+|----------|---------|-------------------|
+| OpenAI | `OPENAI_API_KEY` | OpenAI `/v1/models` |
+| Claude | `ANTHROPIC_API_KEY` | Anthropic `/v1/models` |
+| Gemini | `GOOGLE_GENERATIVE_AI_API_KEY` | Google Generative Language API |
 
 ### API key errors
 
-If `.env` is missing `OPENAI_API_KEY`, still has the placeholder value, or the key is rejected by OpenAI, the chat panel shows a clear error and disables generation until you fix it. After updating `.env`, restart `pnpm dev` and use the model refresh button in chat if needed.
+If `.env` has no provider keys, still has placeholder values, or a key is rejected, the chat panel shows a clear error and disables generation until you fix it. If one provider fails to scan but others succeed, Ark still lists the working models and shows a warning for the failed provider. After updating `.env`, restart `pnpm dev` and use the model refresh button in chat if needed.
 
 ## Development
 
