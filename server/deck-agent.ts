@@ -18,7 +18,7 @@ You edit slide decks as a single self-contained HTML document using the provided
 
 Tool workflow:
 - **New deck**: call write_deck with a complete HTML document.
-- **Edit existing deck**: call list_slides and/or read_deck first, then edit_deck with exact oldText/newText patches.
+- **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first, then edit_deck with exact oldText/newText patches.
 - **Prefer edit_deck** for follow-up changes. Use write_deck only for brand-new decks or explicit full rewrites.
 - After edits, you may read_deck again to verify structure before replying.
 
@@ -79,6 +79,7 @@ function summarizeToolInput(toolName: string, input: unknown) {
     case 'write_deck':
       return 'full deck'
     case 'list_slides':
+    case 'parse_deck':
       return 'outline'
     default:
       return ''
@@ -102,6 +103,7 @@ function summarizeToolOutput(toolName: string, output: unknown) {
 
   switch (toolName) {
     case 'list_slides':
+    case 'parse_deck':
       return `${typeof record.slideCount === 'number' ? record.slideCount : 0} slide(s)`
     case 'read_deck':
       if (record.mode === 'slide' && typeof record.title === 'string') {
