@@ -9,8 +9,8 @@ import {
   createDeckRuntimeErrorMessage,
   createDeckSlideChangeMessage,
   createDeckMetadata,
-  type PreviewMode,
 } from '../../shared/deck-bridge.ts'
+import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 
 import {
@@ -26,7 +26,7 @@ type HarnessProps = {
   onDeckReady?: DeckNavOptions['onDeckReady']
   onRuntimeError?: DeckNavOptions['onRuntimeError']
   onSlideChange?: (index: number) => void
-  previewMode?: PreviewMode
+  runtimeMode?: DeckRuntimeMode
   slideCount?: number
   syncOnLoad?: boolean
 }
@@ -39,7 +39,7 @@ function NavigationHarness({
   onDeckReady,
   onRuntimeError,
   onSlideChange,
-  previewMode = 'css-only',
+  runtimeMode = 'static',
   slideCount = 3,
   syncOnLoad = false,
 }: HarnessProps) {
@@ -55,7 +55,7 @@ function NavigationHarness({
       onDeckReady,
       onRuntimeError,
       onSlideChange,
-      previewMode,
+      runtimeMode,
       syncOnLoad,
     },
   )
