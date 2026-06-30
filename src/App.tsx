@@ -31,6 +31,7 @@ import {
   isHtmlDeckFile,
   validateUploadedDeck,
 } from '@/lib/deck-io'
+import { deckHasExecutableContent, type DeckDownloadVariant } from '@/lib/deck-export'
 import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckValidationReport } from '@/lib/deck-validate'
 import { newId } from '@/lib/id'
@@ -77,6 +78,10 @@ function App() {
   } = useAvailableModels()
 
   const parsedDeck = useMemo(() => parseDeckSlides(generatedHtml), [generatedHtml])
+  const showSanitizedDownload = useMemo(
+    () => deckHasExecutableContent(generatedHtml),
+    [generatedHtml],
+  )
   const hasSlides = parsedDeck.slideCount > 0
   const deckSaveStatus: DeckSaveStatus = isDeckLoading
     ? 'loading'
@@ -200,13 +205,15 @@ function App() {
     await generateDeck(message.text)
   }
 
-  const handleDownload = () => {
+  const handleDownload = (variant: DeckDownloadVariant = 'original') => {
     if (!generatedHtml) {
       return
     }
 
-    downloadHtml(generatedHtml)
-    toast.success('HTML deck downloaded')
+    downloadHtml(generatedHtml, { variant })
+    toast.success(
+      variant === 'sanitized' ? 'Sanitized HTML deck downloaded' : 'HTML deck downloaded',
+    )
   }
 
   const handleUploadClick = () => {
@@ -282,6 +289,7 @@ function App() {
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onUploadClick={handleUploadClick}
+          showSanitizedDownload={showSanitizedDownload}
         />
 
         <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
