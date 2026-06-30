@@ -7,6 +7,7 @@ export type AvailableModel = {
   provider: ProviderId
   modelId: string
   name?: string
+  available: boolean
 }
 
 export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
@@ -55,12 +56,15 @@ const writeStoredModel = (modelId: string) => {
   }
 }
 
-const toApiKeyStatus = (code?: ApiErrorCode): ApiKeyStatus => {
-  if (code === 'missing_api_key') {
+const toApiKeyStatus = (
+  hasConfiguredKey: boolean,
+  hasAvailableModel: boolean,
+): ApiKeyStatus => {
+  if (!hasConfiguredKey) {
     return 'missing'
   }
 
-  if (code === 'invalid_api_key') {
+  if (!hasAvailableModel) {
     return 'invalid'
   }
 
@@ -78,6 +82,25 @@ const resolveStoredModel = (models: AvailableModel[], storedModel: string | null
 
   const legacyMatch = models.find((model) => model.modelId === storedModel)
   return legacyMatch?.id ?? null
+}
+
+const resolveSelectedModel = (
+  models: AvailableModel[],
+  storedModel: string | null,
+  defaultModel: string,
+) => {
+  const preferred =
+    resolveStoredModel(models, storedModel) ??
+    (models.some((model) => model.id === defaultModel) ? defaultModel : null)
+
+  if (preferred) {
+    const preferredModel = models.find((model) => model.id === preferred)
+    if (preferredModel?.available) {
+      return preferred
+    }
+  }
+
+  return models.find((model) => model.available)?.id ?? preferred ?? ''
 }
 
 async function fetchHealth() {
@@ -120,13 +143,23 @@ export function useAvailableModels() {
   const [warnings, setWarnings] = useState<string[]>([])
 
   const applyModels = useCallback(
-    (nextModels: AvailableModel[], nextDefault: string) => {
-      const storedModel = resolveStoredModel(nextModels, readStoredModel())
-      const nextSelected = storedModel ?? nextDefault
+    (
+      nextModels: AvailableModel[],
+      nextDefault: string,
+      hasConfiguredKey: boolean,
+    ) => {
+      const nextSelected = resolveSelectedModel(
+        nextModels,
+        readStoredModel(),
+        nextDefault,
+      )
+      const hasAvailableModel = nextModels.some((model) => model.available)
 
       setModels(nextModels)
       setDefaultModel(nextDefault)
       setSelectedModelState(nextSelected)
+      setApiKeyStatus(toApiKeyStatus(hasConfiguredKey, hasAvailableModel))
+      setError(hasConfiguredKey ? '' : MISSING_KEY_MESSAGE)
 
       if (nextSelected) {
         writeStoredModel(nextSelected)
@@ -142,39 +175,25 @@ export function useAvailableModels() {
 
     try {
       const health = await fetchHealth()
-
-      if (!health.apiKey?.configured) {
-        setApiKeyStatus('missing')
-        setModels([])
-        setSelectedModelState('')
-        setDefaultModel(health.model ?? '')
-        setError(MISSING_KEY_MESSAGE)
-        return
-      }
-
       const {
         defaultModel: nextDefault,
         models: nextModels,
         warnings: nextWarnings,
       } = await fetchAvailableModels()
 
-      setApiKeyStatus('valid')
       setWarnings(nextWarnings)
-      applyModels(nextModels, nextDefault)
+      applyModels(
+        nextModels,
+        nextDefault,
+        Boolean(health.apiKey?.configured),
+      )
     } catch (loadError) {
-      const code =
-        loadError &&
-        typeof loadError === 'object' &&
-        'code' in loadError &&
-        typeof loadError.code === 'string'
-          ? (loadError.code as ApiErrorCode)
-          : undefined
       const message =
         loadError instanceof Error
           ? loadError.message
           : 'Could not load available models.'
 
-      setApiKeyStatus(toApiKeyStatus(code))
+      setApiKeyStatus('invalid')
       setModels([])
       setSelectedModelState('')
       setError(message)
@@ -198,15 +217,6 @@ export function useAvailableModels() {
           return
         }
 
-        if (!health.apiKey?.configured) {
-          setApiKeyStatus('missing')
-          setModels([])
-          setSelectedModelState('')
-          setDefaultModel(health.model ?? '')
-          setError(MISSING_KEY_MESSAGE)
-          return
-        }
-
         const {
           defaultModel: nextDefault,
           models: nextModels,
@@ -217,27 +227,23 @@ export function useAvailableModels() {
           return
         }
 
-        setApiKeyStatus('valid')
         setWarnings(nextWarnings)
-        applyModels(nextModels, nextDefault)
+        applyModels(
+          nextModels,
+          nextDefault,
+          Boolean(health.apiKey?.configured),
+        )
       } catch (loadError) {
         if (cancelled) {
           return
         }
 
-        const code =
-          loadError &&
-          typeof loadError === 'object' &&
-          'code' in loadError &&
-          typeof loadError.code === 'string'
-            ? (loadError.code as ApiErrorCode)
-            : undefined
         const message =
           loadError instanceof Error
             ? loadError.message
             : 'Could not load available models.'
 
-        setApiKeyStatus(toApiKeyStatus(code))
+        setApiKeyStatus('invalid')
         setModels([])
         setSelectedModelState('')
         setError(message)
@@ -260,7 +266,8 @@ export function useAvailableModels() {
     writeStoredModel(modelId)
   }, [])
 
-  const canGenerate = apiKeyStatus === 'valid' && models.length > 0
+  const selectedModelInfo = models.find((model) => model.id === selectedModel)
+  const canGenerate = Boolean(selectedModelInfo?.available)
 
   return {
     apiKeyStatus,
@@ -277,9 +284,11 @@ export function useAvailableModels() {
 }
 
 export const formatModelLabel = (model: AvailableModel) => {
-  if (model.name) {
-    return `${model.provider} · ${model.name}`
+  const label = model.name ? `${model.provider} · ${model.name}` : model.id
+
+  if (model.available) {
+    return label
   }
 
-  return model.id
+  return `${label} (add API key)`
 }
