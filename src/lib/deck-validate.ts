@@ -5,8 +5,6 @@ import {
   type DeckRuntimeMode,
 } from './deck-runtime'
 
-export type DeckPreviewMode = DeckRuntimeMode
-
 export type DeckScriptInfo = {
   inline: boolean
   src?: string

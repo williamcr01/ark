@@ -117,6 +117,12 @@ export function runtimeModeAllowsDeckScripts(mode: DeckRuntimeMode) {
   return mode === 'custom-js'
 }
 
+export function runtimeModeToBridgePreviewMode(
+  mode: DeckRuntimeMode,
+): 'css-only' | 'full-js' {
+  return mode === 'custom-js' ? 'full-js' : 'css-only'
+}
+
 export function getRuntimePolicy(mode: DeckRuntimeMode): DeckRuntimePolicy {
   return {
     mode,

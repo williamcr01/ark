@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  agentStepsToChatParts,
+  buildAgentModelMessages,
+  buildAssistantMessageContent,
   buildModelMessages,
   parseGenerateMessages,
   wrapUserPromptForGeneration,
@@ -82,6 +85,45 @@ describe('buildModelMessages', () => {
 
     expect(messages[0]?.content).toContain('Create a new complete Ark HTML slide deck')
     expect(messages[0]?.content).toContain('Investor update deck')
+  })
+})
+
+describe('buildAgentModelMessages', () => {
+  it('does not embed full HTML in the latest user turn', () => {
+    const messages = buildAgentModelMessages(
+      [{ role: 'user', content: 'Make the title larger' }],
+      '<html><body><section class="slide">cats</section></body></html>',
+    )
+
+    expect(messages[0]?.content).toContain('Make the title larger')
+    expect(messages[0]?.content).toContain('read_deck')
+    expect(messages[0]?.content).not.toContain('<section class="slide">')
+  })
+})
+
+describe('agentStepsToChatParts', () => {
+  it('converts agent steps into persisted chat parts', () => {
+    expect(
+      agentStepsToChatParts([
+        { type: 'tool-call', toolName: 'read_deck', summary: 'lines 1–100' },
+        { type: 'tool-result', toolName: 'edit_deck', summary: 'Applied 1 edit(s)' },
+        { type: 'text', summary: 'Done.' },
+      ]),
+    ).toEqual([
+      { type: 'tool-call', toolName: 'read_deck', summary: 'lines 1–100' },
+      { type: 'tool-result', toolName: 'edit_deck', summary: 'Applied 1 edit(s)' },
+      { type: 'text', content: 'Done.' },
+    ])
+  })
+})
+
+describe('buildAssistantMessageContent', () => {
+  it('falls back to the last successful tool result summary', () => {
+    expect(
+      buildAssistantMessageContent('', [
+        { type: 'tool-result', toolName: 'write_deck', summary: 'Deck written' },
+      ], false),
+    ).toBe('Deck written')
   })
 })
 

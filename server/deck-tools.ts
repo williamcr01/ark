@@ -1,0 +1,176 @@
+import { tool } from 'ai'
+import { z } from 'zod'
+
+import { applyDeckEdits } from './deck-edit.ts'
+import {
+  listDeckSlides,
+  readDeckHtmlSlice,
+  readDeckSlideHtml,
+} from './deck-html.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
+
+const editSchema = z.object({
+  oldText: z
+    .string()
+    .min(1)
+    .describe('Exact text to replace. Must appear exactly once in the deck.'),
+  newText: z.string().describe('Replacement text.'),
+})
+
+export function createDeckTools(workspace: DeckWorkspace) {
+  return {
+    list_slides: tool({
+      description:
+        'List slide boundaries and titles in the current deck. Use before targeted edits.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const slides = listDeckSlides(workspace.html)
+
+        if (slides.length === 0) {
+          return {
+            slideCount: 0,
+            slides: [],
+            message:
+              'No section.slide elements found. Use read_deck to inspect raw HTML structure.',
+          }
+        }
+
+        return {
+          slideCount: slides.length,
+          slides,
+        }
+      },
+    }),
+
+    read_deck: tool({
+      description:
+        'Read deck HTML. Use offset/limit for line-based paging on large files, or slideIndex for one slide outerHTML.',
+      inputSchema: z.object({
+        offset: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('1-based line number to start reading from.'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('Maximum number of lines to return.'),
+        slideIndex: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Zero-based slide index. When set, returns that slide HTML only.'),
+      }),
+      execute: async ({ offset, limit, slideIndex }) => {
+        if (!workspace.html.trim()) {
+          return {
+            error: 'No deck HTML is loaded yet. Use write_deck to create one.',
+          }
+        }
+
+        if (slideIndex !== undefined) {
+          const slide = readDeckSlideHtml(workspace.html, slideIndex)
+
+          if (!slide.ok) {
+            return { error: slide.error }
+          }
+
+          return {
+            mode: 'slide' as const,
+            index: slide.index,
+            title: slide.title,
+            content: slide.content,
+          }
+        }
+
+        const slice = readDeckHtmlSlice(workspace.html, { offset, limit })
+
+        return {
+          mode: 'lines' as const,
+          ...slice,
+        }
+      },
+    }),
+
+    write_deck: tool({
+      description:
+        'Replace the entire deck HTML. Use only for new decks or when the user explicitly asks for a full rewrite.',
+      inputSchema: z.object({
+        html: z.string().min(1).describe('Complete self-contained HTML document.'),
+      }),
+      execute: async ({ html }) => {
+        const validation = validateDeckHtmlOnServer(html)
+
+        if (!validation.valid) {
+          const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
+          return {
+            ok: false,
+            error: primaryIssue?.message ?? 'HTML failed Ark deck validation.',
+            validation,
+          }
+        }
+
+        setDeckWorkspaceHtml(workspace, html)
+
+        return {
+          ok: true,
+          slideCount: validation.slideCount,
+          message: `Wrote complete deck (${validation.slideCount} slide(s)).`,
+        }
+      },
+    }),
+
+    edit_deck: tool({
+      description:
+        'Apply exact search/replace patches to the deck. Each oldText must match exactly once in the original file. Prefer this over write_deck for edits.',
+      inputSchema: z.object({
+        edits: z.array(editSchema).min(1).max(20),
+      }),
+      execute: async ({ edits }) => {
+        if (!workspace.html.trim()) {
+          return {
+            ok: false,
+            error: 'No deck HTML is loaded yet. Use write_deck to create one first.',
+          }
+        }
+
+        const applied = applyDeckEdits(workspace.html, edits)
+
+        if (!applied.ok) {
+          return { ok: false, error: applied.error }
+        }
+
+        const validation = validateDeckHtmlOnServer(applied.html)
+
+        if (!validation.valid) {
+          const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
+          return {
+            ok: false,
+            error:
+              primaryIssue?.message ??
+              'Applied edits produced invalid deck HTML. Fix the patch and try again.',
+            validation,
+          }
+        }
+
+        setDeckWorkspaceHtml(workspace, applied.html)
+
+        return {
+          ok: true,
+          appliedCount: applied.appliedCount,
+          slideCount: validation.slideCount,
+          message: `Applied ${applied.appliedCount} edit(s). Deck now has ${validation.slideCount} slide(s).`,
+        }
+      },
+    }),
+  }
+}
+
+export type DeckTools = ReturnType<typeof createDeckTools>

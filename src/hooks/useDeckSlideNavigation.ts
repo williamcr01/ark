@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 import {
-  DECK_GOTO_MESSAGE_TYPE,
-  DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-  type DeckRuntimeMode,
-} from '@/lib/deck-preview'
+  createDeckGotoMessage,
+  isDeckBridgeMessageFromRuntime,
+  isDeckReadyMessage,
+  isDeckRuntimeErrorMessage,
+  isDeckSlideChangeMessage,
+  type DeckMetadata,
+} from '../../shared/deck-bridge.ts'
+import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
 const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 const PRESENT_NEXT_KEYS = new Set([
@@ -29,6 +33,8 @@ export type DeckNavOptions = {
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
   onSlideChange?: (index: number) => void
+  onDeckReady?: (payload: { index: number; slideCount: number; metadata: DeckMetadata }) => void
+  onRuntimeError?: (message: string, source?: string) => void
   syncOnLoad?: boolean
 }
 
@@ -115,6 +121,8 @@ export function useDeckSlideNavigation(
     initialSlideIndex = 0,
     keyboardMode = 'preview',
     onSlideChange,
+    onDeckReady,
+    onRuntimeError,
     syncOnLoad = true,
   } = options
   const [activeSlideIndex, setActiveSlideIndex] = useState(() =>
@@ -168,10 +176,7 @@ export function useDeckSlideNavigation(
         return
       }
 
-      iframeWindow.postMessage(
-        { type: DECK_GOTO_MESSAGE_TYPE, index: clampedIndex },
-        '*',
-      )
+      iframeWindow.postMessage(createDeckGotoMessage(clampedIndex), '*')
     },
     [commitSlideIndex, iframeRef, slideCount],
   )
@@ -188,13 +193,28 @@ export function useDeckSlideNavigation(
         return
       }
 
-      const data = event.data as { type?: string; index?: number } | null
+      const data = event.data
 
-      if (
-        data?.type === DECK_SLIDE_CHANGE_MESSAGE_TYPE &&
-        typeof data.index === 'number' &&
-        Number.isFinite(data.index)
-      ) {
+      if (!isDeckBridgeMessageFromRuntime(data)) {
+        return
+      }
+
+      if (isDeckReadyMessage(data)) {
+        onDeckReady?.({
+          index: data.index,
+          slideCount: data.slideCount,
+          metadata: data.metadata,
+        })
+        commitSlideIndex(data.index)
+        return
+      }
+
+      if (isDeckRuntimeErrorMessage(data)) {
+        onRuntimeError?.(data.message, data.source)
+        return
+      }
+
+      if (isDeckSlideChangeMessage(data)) {
         commitSlideIndex(data.index)
       }
     }
@@ -204,7 +224,7 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [commitSlideIndex, enabled, iframeRef])
+  }, [commitSlideIndex, enabled, iframeRef, onDeckReady, onRuntimeError])
 
   useEffect(() => {
     if (!enabled || slideCount === 0 || keyboardMode === 'off') {
