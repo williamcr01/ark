@@ -58,6 +58,8 @@ describe('parseDeckSlides', () => {
       const slides = thumbnailDoc.querySelectorAll('section.slide')
 
       expect(srcDoc).toContain('data-ark-thumb-fill')
+      expect(srcDoc).toContain('Content-Security-Policy')
+      expect(srcDoc).toContain("connect-src 'none'")
       expect(slides).toHaveLength(1)
       expect(slides[0].classList.contains('active')).toBe(true)
       expect(slides[0].getAttribute('aria-hidden')).toBe('false')

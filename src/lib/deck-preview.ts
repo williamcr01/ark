@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 
+import { injectPreviewCsp } from '../../shared/deck-network.ts'
 import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from '@/lib/deck-slides'
 
 export const PREVIEW_FRAME_WIDTH = 1600
@@ -337,11 +338,11 @@ const previewNavScript = `
 function injectPreviewFill(html: string, options: { historyShim?: boolean } = {}) {
   const headInjection = `${options.historyShim ? `${previewHistoryShim}\n` : ''}${previewFillStyle}`
 
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `${headInjection}\n</head>`)
-  }
+  const withHeadInjection = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, `${headInjection}\n</head>`)
+    : `${headInjection}\n${html}`
 
-  return `${headInjection}\n${html}`
+  return injectPreviewCsp(withHeadInjection)
 }
 
 function injectBeforeBodyClose(html: string, injection: string) {

@@ -73,7 +73,7 @@ describe('validateDeckHtmlInBrowser', () => {
     )
   })
 
-  it('reports external URLs as warnings', () => {
+  it('rejects external URLs that would trigger network requests', () => {
     const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,14 +86,14 @@ describe('validateDeckHtmlInBrowser', () => {
 </body>
 </html>`)
 
-    expect(report.valid).toBe(true)
+    expect(report.valid).toBe(false)
     expect(report.externalUrls).toEqual(
       expect.arrayContaining([
         'https://fonts.googleapis.com/css2?family=Inter',
         'https://example.com/logo.png',
       ]),
     )
-    expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
+    expect(report.issues.some((issue) => issue.code === 'external_url' && issue.severity === 'error')).toBe(true)
   })
 
   it('rejects empty HTML', () => {
