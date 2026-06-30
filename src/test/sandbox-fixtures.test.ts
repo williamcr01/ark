@@ -253,7 +253,7 @@ describe('sandbox security fixtures', () => {
       dom.window.dispatchEvent(
         new dom.window.MessageEvent('message', {
           data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
-          source: dom.window,
+          source: dom.window as unknown as Window,
         }),
       )
 
