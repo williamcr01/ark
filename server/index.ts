@@ -17,6 +17,7 @@ import {
   getDefaultModelWarning,
 } from './models.ts'
 import { createLanguageModel } from './provider-runtime.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
@@ -143,9 +144,6 @@ const extractHtmlDocument = (text: string) => {
   return withoutFence
 }
 
-const isHtmlDocument = (html: string) =>
-  /<!doctype html>/i.test(html) && /<html[\s>]/i.test(html) && /<body[\s>]/i.test(html)
-
 const sendApiError = (
   response: Response,
   status: number,
@@ -227,16 +225,22 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
     })
 
     const html = extractHtmlDocument(result.text)
+    const validation = validateDeckHtmlOnServer(html)
 
-    if (!isHtmlDocument(html)) {
+    if (!validation.valid) {
+      const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
       response.status(502).json({
-        error: 'The model did not return a complete HTML document. Try again with a more specific prompt.',
+        error:
+          primaryIssue?.message ??
+          'The model did not return a valid Ark HTML deck. Try again with a more specific prompt.',
         code: 'provider_error',
+        validation,
       })
       return
     }
 
-    response.json({ html })
+    response.json({ html, validation })
   } catch (error) {
     sendApiError(response, 500, getApiErrorFromUnknown(error))
   }
