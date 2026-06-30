@@ -4,10 +4,13 @@ import { useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
-  DECK_GOTO_MESSAGE_TYPE,
-  DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-  type DeckRuntimeMode,
-} from '@/lib/deck-preview'
+  createDeckGotoMessage,
+  createDeckReadyMessage,
+  createDeckRuntimeErrorMessage,
+  createDeckSlideChangeMessage,
+  createDeckMetadata,
+} from '../../shared/deck-bridge.ts'
+import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 
 import {
@@ -20,6 +23,8 @@ type HarnessProps = {
   html?: string
   initialSlideIndex?: number
   keyboardMode?: DeckNavOptions['keyboardMode']
+  onDeckReady?: DeckNavOptions['onDeckReady']
+  onRuntimeError?: DeckNavOptions['onRuntimeError']
   onSlideChange?: (index: number) => void
   runtimeMode?: DeckRuntimeMode
   slideCount?: number
@@ -31,6 +36,8 @@ function NavigationHarness({
   html = plainCssDeck,
   initialSlideIndex = 0,
   keyboardMode = 'preview',
+  onDeckReady,
+  onRuntimeError,
   onSlideChange,
   runtimeMode = 'static',
   slideCount = 3,
@@ -45,6 +52,8 @@ function NavigationHarness({
     {
       initialSlideIndex,
       keyboardMode,
+      onDeckReady,
+      onRuntimeError,
       onSlideChange,
       runtimeMode,
       syncOnLoad,
@@ -85,7 +94,7 @@ describe('useDeckSlideNavigation', () => {
 
     expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
     expect(postMessage).toHaveBeenCalledWith(
-      { type: DECK_GOTO_MESSAGE_TYPE, index: 2 },
+      createDeckGotoMessage(2),
       '*',
     )
   })
@@ -109,7 +118,7 @@ describe('useDeckSlideNavigation', () => {
 
     act(() => {
       window.dispatchEvent(new MessageEvent('message', {
-        data: { type: DECK_SLIDE_CHANGE_MESSAGE_TYPE, index: 1 },
+        data: createDeckSlideChangeMessage(1),
         source: window,
       }))
     })
@@ -118,7 +127,7 @@ describe('useDeckSlideNavigation', () => {
 
     act(() => {
       window.dispatchEvent(new MessageEvent('message', {
-        data: { type: DECK_SLIDE_CHANGE_MESSAGE_TYPE, index: 1 },
+        data: createDeckSlideChangeMessage(1),
         source: iframeWindow,
       }))
     })
@@ -127,6 +136,48 @@ describe('useDeckSlideNavigation', () => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
     })
     expect(onSlideChange).toHaveBeenCalledWith(1)
+  })
+
+  it('handles deck-ready messages from the preview iframe', async () => {
+    const onDeckReady = vi.fn()
+    const metadata = createDeckMetadata({
+      runtime: 'plain',
+      title: 'Demo',
+      previewMode: 'css-only',
+    })
+    render(<NavigationHarness onDeckReady={onDeckReady} />)
+    const iframeWindow = getIframeWindow()
+
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: createDeckReadyMessage(1, 3, metadata),
+        source: iframeWindow,
+      }))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
+    })
+    expect(onDeckReady).toHaveBeenCalledWith({
+      index: 1,
+      slideCount: 3,
+      metadata,
+    })
+  })
+
+  it('forwards runtime errors from the preview iframe', async () => {
+    const onRuntimeError = vi.fn()
+    render(<NavigationHarness onRuntimeError={onRuntimeError} />)
+    const iframeWindow = getIframeWindow()
+
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: createDeckRuntimeErrorMessage('boom', 'deck.js'),
+        source: iframeWindow,
+      }))
+    })
+
+    expect(onRuntimeError).toHaveBeenCalledWith('boom', 'deck.js')
   })
 
   it('uses preview arrow keys for shell navigation', async () => {
@@ -146,7 +197,7 @@ describe('useDeckSlideNavigation', () => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
     })
     expect(postMessage).toHaveBeenLastCalledWith(
-      { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+      createDeckGotoMessage(1),
       '*',
     )
   })
@@ -168,7 +219,7 @@ describe('useDeckSlideNavigation', () => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
     })
     expect(postMessage).toHaveBeenLastCalledWith(
-      { type: DECK_GOTO_MESSAGE_TYPE, index: 2 },
+      createDeckGotoMessage(2),
       '*',
     )
 

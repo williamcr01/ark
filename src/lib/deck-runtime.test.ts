@@ -15,6 +15,7 @@ import {
   getThumbnailSandbox,
   injectRuntimeCsp,
   runtimeModeAllowsDeckScripts,
+  runtimeModeToBridgePreviewMode,
   STRICT_DECK_CSP,
 } from './deck-runtime'
 
@@ -99,5 +100,13 @@ describe('injectRuntimeCsp', () => {
     expect(html).toContain('http-equiv="Content-Security-Policy"')
     expect(html).toContain(STRICT_DECK_CSP)
     expect(buildCspMetaTag(STRICT_DECK_CSP)).toContain("connect-src 'none'")
+  })
+})
+
+describe('runtimeModeToBridgePreviewMode', () => {
+  it('maps runtime modes to bridge preview modes', () => {
+    expect(runtimeModeToBridgePreviewMode('static')).toBe('css-only')
+    expect(runtimeModeToBridgePreviewMode('reveal')).toBe('css-only')
+    expect(runtimeModeToBridgePreviewMode('custom-js')).toBe('full-js')
   })
 })

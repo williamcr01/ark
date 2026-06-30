@@ -1,6 +1,11 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 
-import { toApiMessages } from '../shared/chat.ts'
+import {
+  agentStepsToChatParts,
+  buildAssistantMessageContent,
+  toApiMessages,
+  type AgentStep,
+} from '../shared/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
@@ -39,6 +44,8 @@ import { newId } from '@/lib/id'
 
 type GenerateResponse = {
   html?: string
+  text?: string
+  steps?: AgentStep[]
   error?: string
   code?: 'missing_api_key' | 'invalid_api_key' | 'provider_error'
   validation?: DeckValidationReport
@@ -145,14 +152,31 @@ function App() {
       const validationNote = data.validation
         ? ` Validation: ${describeDeckValidation(data.validation)}.`
         : ''
+      const assistantContent = buildAssistantMessageContent(
+        data.text ?? '',
+        data.steps ?? [],
+        editingExistingDeck,
+      )
+      const assistantParts = [
+        ...(data.steps?.length ? agentStepsToChatParts(data.steps) : []),
+        ...(assistantContent
+          ? [{ type: 'text' as const, content: `${assistantContent}${validationNote}` }]
+          : validationNote
+            ? [{ type: 'text' as const, content: validationNote.trim() }]
+            : []),
+      ]
+
       setMessages((current) => [
         ...current,
         {
           id: newId(),
           role: 'assistant',
-          content: editingExistingDeck
-            ? `Updated the HTML deck and refreshed the preview.${validationNote} You can keep iterating from here or download the file.`
-            : `Generated a complete self-contained HTML slide deck.${validationNote} Review the preview, then ask for edits or download the file.`,
+          content: assistantContent
+            ? `${assistantContent}${validationNote}`
+            : editingExistingDeck
+              ? `Updated the HTML deck and refreshed the preview.${validationNote}`
+              : `Generated a complete self-contained HTML slide deck.${validationNote}`,
+          parts: assistantParts.length > 0 ? assistantParts : undefined,
         },
       ])
       toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
