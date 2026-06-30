@@ -69,4 +69,7 @@ To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then
 ```bash
 pnpm lint
 pnpm build
+pnpm test
 ```
+
+Pull requests and pushes to `main` run the same checks in GitHub Actions on an `ubuntu-latest` runner (see `.github/workflows/ci.yml`). No API keys or `.env` file are required for CI.
