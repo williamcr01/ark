@@ -29,7 +29,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -1313,6 +1315,24 @@ export const PromptInputSelectValue = ({
   ...props
 }: PromptInputSelectValueProps) => (
   <SelectValue className={cn(className)} {...props} />
+);
+
+export type PromptInputSelectGroupProps = ComponentProps<typeof SelectGroup>;
+
+export const PromptInputSelectGroup = ({
+  className,
+  ...props
+}: PromptInputSelectGroupProps) => (
+  <SelectGroup className={cn(className)} {...props} />
+);
+
+export type PromptInputSelectLabelProps = ComponentProps<typeof SelectLabel>;
+
+export const PromptInputSelectLabel = ({
+  className,
+  ...props
+}: PromptInputSelectLabelProps) => (
+  <SelectLabel className={cn(className)} {...props} />
 );
 
 export type PromptInputHoverCardProps = ComponentProps<typeof HoverCard>;

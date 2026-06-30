@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { PROVIDER_LABELS } from '@/lib/providers'
+
 export type ProviderId = 'openai' | 'anthropic' | 'google'
 
 export type AvailableModel = {
@@ -100,7 +102,12 @@ const resolveSelectedModel = (
     }
   }
 
-  return models.find((model) => model.available)?.id ?? preferred ?? ''
+  const firstAvailable = models.find((model) => model.available)?.id
+  if (firstAvailable) {
+    return firstAvailable
+  }
+
+  return ''
 }
 
 async function fetchHealth() {
@@ -284,7 +291,18 @@ export function useAvailableModels() {
 }
 
 export const formatModelLabel = (model: AvailableModel) => {
-  const label = model.name ? `${model.provider} · ${model.name}` : model.id
+  const providerLabel = PROVIDER_LABELS[model.provider]
+  const label = model.name ? `${providerLabel} · ${model.name}` : model.id
+
+  if (model.available) {
+    return label
+  }
+
+  return `${label} (add API key)`
+}
+
+export const formatModelOptionLabel = (model: AvailableModel) => {
+  const label = model.name ?? model.modelId
 
   if (model.available) {
     return label

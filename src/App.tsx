@@ -44,7 +44,9 @@ import {
   type PromptInputMessage,
   PromptInputSelect,
   PromptInputSelectContent,
+  PromptInputSelectGroup,
   PromptInputSelectItem,
+  PromptInputSelectLabel,
   PromptInputSelectTrigger,
   PromptInputSelectValue,
   PromptInputSubmit,
@@ -70,6 +72,7 @@ import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import {
   formatModelLabel,
+  formatModelOptionLabel,
   useAvailableModels,
   type ApiKeyStatus,
   type AvailableModel,
@@ -85,6 +88,7 @@ import {
   type ElementSize,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import { PROVIDER_LABELS, PROVIDER_ORDER } from '@/lib/providers'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
@@ -877,6 +881,16 @@ function ChatPanel({
 }: ChatPanelProps) {
   const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
   const isInputDisabled = isGenerating || !canGenerate
+  const selectedModelInfo = models.find((model) => model.id === selectedModel)
+  const modelsByProvider = useMemo(
+    () =>
+      PROVIDER_ORDER.map((provider) => ({
+        provider,
+        label: PROVIDER_LABELS[provider],
+        models: models.filter((model) => model.provider === provider),
+      })).filter((group) => group.models.length > 0),
+    [models],
+  )
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
@@ -989,18 +1003,27 @@ function ChatPanel({
                             ? 'Scanning models…'
                             : 'Select model'
                       }
-                    />
+                    >
+                      {selectedModelInfo
+                        ? formatModelLabel(selectedModelInfo)
+                        : null}
+                    </PromptInputSelectValue>
                   </PromptInputSelectTrigger>
                   <PromptInputSelectContent>
-                    {models.map((model) => (
-                      <PromptInputSelectItem
-                        className={cn(!model.available && 'text-muted-foreground')}
-                        disabled={!model.available}
-                        key={model.id}
-                        value={model.id}
-                      >
-                        {formatModelLabel(model)}
-                      </PromptInputSelectItem>
+                    {modelsByProvider.map((group) => (
+                      <PromptInputSelectGroup key={group.provider}>
+                        <PromptInputSelectLabel>{group.label}</PromptInputSelectLabel>
+                        {group.models.map((model) => (
+                          <PromptInputSelectItem
+                            className={cn(!model.available && 'text-muted-foreground')}
+                            disabled={!model.available}
+                            key={model.id}
+                            value={model.id}
+                          >
+                            {formatModelOptionLabel(model)}
+                          </PromptInputSelectItem>
+                        ))}
+                      </PromptInputSelectGroup>
                     ))}
                   </PromptInputSelectContent>
                 </PromptInputSelect>
