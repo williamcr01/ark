@@ -114,3 +114,13 @@ When acting as the presentation agent (side chat):
 ## Current state
 
 Early scaffold: default Vite + React template. Presentation directory, chat panel, and iframe preview are not yet built — implement toward the layout and conventions above.
+
+## Cursor Cloud specific instructions
+
+Standard commands live in the `## Commands` section above and in `README.md`. Notes specific to this environment:
+
+- **Dev server runs two processes.** `pnpm dev` uses `concurrently` to start the Express API (`tsx watch server/index.ts`) on `http://localhost:8787` and the Vite client on `http://localhost:5173`. Vite proxies `/api` → `8787` (see `vite.config.ts`), so always open the app on `5173`, not `8787`. Run it in a background/tmux session since it stays attached.
+- **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generate`. Health check is a quick liveness probe: `curl -s localhost:8787/api/health`.
+- **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
+- **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
+- **No automated test suite.** Verification is `pnpm lint`, `pnpm build` (runs `tsc -b` then `vite build`), plus manual browser checks. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
