@@ -26,19 +26,49 @@ export const CHAT_CONTEXT_POLICY = {
   assistantMessagesExcludeHtml: true,
 } as const
 
-export function normalizeGenerateMessages(
-  messages: ApiChatMessage[] | undefined,
-): ApiChatMessage[] {
-  if (!messages?.length) {
-    return []
+export type ParseGenerateMessagesResult =
+  | { ok: true; messages: ApiChatMessage[] }
+  | { ok: false; error: string }
+
+const isChatMessageRole = (value: unknown): value is ChatMessageRole =>
+  value === 'user' || value === 'assistant'
+
+/** Runtime validation for untrusted `/api/generate` request bodies. */
+export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResult {
+  if (!Array.isArray(input)) {
+    return { ok: false, error: 'messages must be an array.' }
   }
 
-  return messages
-    .map((message) => ({
-      role: message.role,
-      content: message.content.trim(),
-    }))
-    .filter((message) => message.content.length > 0)
+  const messages: ApiChatMessage[] = []
+
+  for (const [index, item] of input.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { ok: false, error: `messages[${index}] must be an object.` }
+    }
+
+    const role = (item as { role?: unknown }).role
+    if (!isChatMessageRole(role)) {
+      return {
+        ok: false,
+        error: `messages[${index}].role must be "user" or "assistant".`,
+      }
+    }
+
+    const content = (item as { content?: unknown }).content
+    if (typeof content !== 'string') {
+      return {
+        ok: false,
+        error: `messages[${index}].content must be a string.`,
+      }
+    }
+
+    const trimmed = content.trim()
+    if (trimmed.length > 0) {
+      messages.push({ role, content: trimmed })
+    }
+  }
+
+  return { ok: true, messages }
 }
 
 export function wrapUserPromptForGeneration(prompt: string, currentHtml: string) {

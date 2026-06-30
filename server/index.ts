@@ -4,12 +4,18 @@ import { generateText, type LanguageModel } from 'ai'
 import express, { type Request, type Response } from 'express'
 
 import {
+  buildModelMessages,
+  parseGenerateMessages,
+  type ApiChatMessage,
+} from '../shared/chat.ts'
+import {
   hasAnyConfiguredProvider,
   missingApiKeyError,
   parseProviderError,
   getProviderStatus,
   type ApiErrorPayload,
 } from './credentials.ts'
+import { finalizeGeneratedDeck } from './generate-response.ts'
 import {
   ensureModelInList,
   fetchAllAvailableModels,
@@ -17,11 +23,6 @@ import {
   getDefaultModelWarning,
 } from './models.ts'
 import { createLanguageModel } from './provider-runtime.ts'
-import {
-  buildModelMessages,
-  normalizeGenerateMessages,
-  type ApiChatMessage,
-} from '../shared/chat.ts'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
@@ -30,7 +31,7 @@ const defaultModel = getDefaultModel()
 app.use(express.json({ limit: '4mb' }))
 
 type GenerateRequest = {
-  messages?: ApiChatMessage[]
+  messages?: unknown
   currentHtml?: string | null
   model?: string
 }
@@ -109,28 +110,6 @@ Safety and portability:
 - Do not include analytics, tracking, forms, or nested iframes.
 - External fonts or CSS imports are allowed only if the deck still looks good without them.`
 
-const extractHtmlDocument = (text: string) => {
-  const withoutFence = text
-    .replace(/^```(?:html)?\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim()
-
-  const doctypeIndex = withoutFence.search(/<!doctype html>/i)
-  if (doctypeIndex >= 0) {
-    return withoutFence.slice(doctypeIndex).trim()
-  }
-
-  const htmlIndex = withoutFence.search(/<html[\s>]/i)
-  if (htmlIndex >= 0) {
-    return `<!DOCTYPE html>\n${withoutFence.slice(htmlIndex).trim()}`
-  }
-
-  return withoutFence
-}
-
-const isHtmlDocument = (html: string) =>
-  /<!doctype html>/i.test(html) && /<html[\s>]/i.test(html) && /<body[\s>]/i.test(html)
-
 const sendApiError = (
   response: Response,
   status: number,
@@ -185,10 +164,17 @@ app.get('/api/models', async (_request: Request, response: Response) => {
 })
 
 app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequest>, response: Response) => {
-  const messages = normalizeGenerateMessages(request.body.messages)
+  const parsedMessages = parseGenerateMessages(request.body.messages)
   const currentHtml = request.body.currentHtml ?? ''
   const requestedModel = request.body.model?.trim()
   const modelRef = requestedModel || defaultModel
+
+  if (!parsedMessages.ok) {
+    response.status(400).json({ error: parsedMessages.error, code: 'provider_error' })
+    return
+  }
+
+  const messages: ApiChatMessage[] = parsedMessages.messages
 
   if (!hasAnyConfiguredProvider()) {
     sendApiError(response, 503, missingApiKeyError())
@@ -219,17 +205,18 @@ app.post('/api/generate', async (request: Request<unknown, unknown, GenerateRequ
       temperature: 0.7,
     })
 
-    const html = extractHtmlDocument(result.text)
+    const finalized = finalizeGeneratedDeck(result.text)
 
-    if (!isHtmlDocument(html)) {
+    if (!finalized.ok) {
       response.status(502).json({
-        error: 'The model did not return a complete HTML document. Try again with a more specific prompt.',
+        error: finalized.error,
         code: 'provider_error',
+        validation: finalized.validation,
       })
       return
     }
 
-    response.json({ html })
+    response.json({ html: finalized.html, validation: finalized.validation })
   } catch (error) {
     sendApiError(response, 500, getApiErrorFromUnknown(error))
   }

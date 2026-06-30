@@ -2,28 +2,57 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildModelMessages,
-  normalizeGenerateMessages,
+  parseGenerateMessages,
   wrapUserPromptForGeneration,
 } from './chat.ts'
 
-describe('normalizeGenerateMessages', () => {
+describe('parseGenerateMessages', () => {
   it('trims and filters empty messages', () => {
     expect(
-      normalizeGenerateMessages([
+      parseGenerateMessages([
         { role: 'user', content: '  First turn  ' },
         { role: 'assistant', content: 'Done.' },
         { role: 'user', content: '   ' },
         { role: 'user', content: 'Second turn' },
       ]),
-    ).toEqual([
-      { role: 'user', content: 'First turn' },
-      { role: 'assistant', content: 'Done.' },
-      { role: 'user', content: 'Second turn' },
-    ])
+    ).toEqual({
+      ok: true,
+      messages: [
+        { role: 'user', content: 'First turn' },
+        { role: 'assistant', content: 'Done.' },
+        { role: 'user', content: 'Second turn' },
+      ],
+    })
   })
 
-  it('returns an empty array when messages are missing', () => {
-    expect(normalizeGenerateMessages(undefined)).toEqual([])
+  it('returns an error when messages are missing or not an array', () => {
+    expect(parseGenerateMessages(undefined)).toEqual({
+      ok: false,
+      error: 'messages must be an array.',
+    })
+    expect(parseGenerateMessages('hello')).toEqual({
+      ok: false,
+      error: 'messages must be an array.',
+    })
+    expect(parseGenerateMessages({ role: 'user', content: 'hi' })).toEqual({
+      ok: false,
+      error: 'messages must be an array.',
+    })
+  })
+
+  it('rejects malformed message objects and invalid roles', () => {
+    expect(parseGenerateMessages([null])).toEqual({
+      ok: false,
+      error: 'messages[0] must be an object.',
+    })
+    expect(parseGenerateMessages([{ role: 'system', content: 'nope' }])).toEqual({
+      ok: false,
+      error: 'messages[0].role must be "user" or "assistant".',
+    })
+    expect(parseGenerateMessages([{ role: 'user', content: 42 }])).toEqual({
+      ok: false,
+      error: 'messages[0].content must be a string.',
+    })
   })
 })
 
