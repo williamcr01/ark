@@ -6,10 +6,27 @@ export type AvailableModel = {
   ownedBy?: string
 }
 
+export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
+
+export type ApiErrorCode =
+  | 'missing_api_key'
+  | 'invalid_api_key'
+  | 'openai_error'
+
 type ModelsResponse = {
   models?: AvailableModel[]
   defaultModel?: string
   error?: string
+  code?: ApiErrorCode
+}
+
+type HealthResponse = {
+  ok?: boolean
+  defaultModel?: string
+  model?: string
+  apiKey?: {
+    configured?: boolean
+  }
 }
 
 const SELECTED_MODEL_STORAGE_KEY = 'ark:selected-model'
@@ -30,6 +47,29 @@ const writeStoredModel = (modelId: string) => {
   }
 }
 
+const toApiKeyStatus = (code?: ApiErrorCode): ApiKeyStatus => {
+  if (code === 'missing_api_key') {
+    return 'missing'
+  }
+
+  if (code === 'invalid_api_key') {
+    return 'invalid'
+  }
+
+  return 'valid'
+}
+
+async function fetchHealth() {
+  const response = await fetch('/api/health')
+  const data = (await response.json().catch(() => ({}))) as HealthResponse
+
+  if (!response.ok) {
+    throw new Error('Could not reach the Ark API server.')
+  }
+
+  return data
+}
+
 async function fetchAvailableModels() {
   const response = await fetch('/api/models')
   const data = (await response.json().catch(() => ({
@@ -37,7 +77,9 @@ async function fetchAvailableModels() {
   }))) as ModelsResponse
 
   if (!response.ok) {
-    throw new Error(data.error ?? 'Could not load available models.')
+    const error = new Error(data.error ?? 'Could not load available models.')
+    Object.assign(error, { code: data.code })
+    throw error
   }
 
   return {
@@ -50,6 +92,7 @@ export function useAvailableModels() {
   const [models, setModels] = useState<AvailableModel[]>([])
   const [selectedModel, setSelectedModelState] = useState('')
   const [defaultModel, setDefaultModel] = useState('')
+  const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>('checking')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -77,15 +120,40 @@ export function useAvailableModels() {
     setError('')
 
     try {
+      const health = await fetchHealth()
+
+      if (!health.apiKey?.configured) {
+        setApiKeyStatus('missing')
+        setModels([])
+        setSelectedModelState('')
+        setDefaultModel(health.model ?? '')
+        setError(
+          'Missing OPENAI_API_KEY. Copy .env.example to .env, add your key, and restart the dev server.',
+        )
+        return
+      }
+
       const { defaultModel: nextDefault, models: nextModels } =
         await fetchAvailableModels()
+
+      setApiKeyStatus('valid')
       applyModels(nextModels, nextDefault)
     } catch (loadError) {
+      const code =
+        loadError &&
+        typeof loadError === 'object' &&
+        'code' in loadError &&
+        typeof loadError.code === 'string'
+          ? (loadError.code as ApiErrorCode)
+          : undefined
       const message =
         loadError instanceof Error
           ? loadError.message
           : 'Could not load available models.'
 
+      setApiKeyStatus(toApiKeyStatus(code))
+      setModels([])
+      setSelectedModelState('')
       setError(message)
     } finally {
       setIsLoading(false)
@@ -100,6 +168,23 @@ export function useAvailableModels() {
       setError('')
 
       try {
+        const health = await fetchHealth()
+
+        if (cancelled) {
+          return
+        }
+
+        if (!health.apiKey?.configured) {
+          setApiKeyStatus('missing')
+          setModels([])
+          setSelectedModelState('')
+          setDefaultModel(health.model ?? '')
+          setError(
+            'Missing OPENAI_API_KEY. Copy .env.example to .env, add your key, and restart the dev server.',
+          )
+          return
+        }
+
         const { defaultModel: nextDefault, models: nextModels } =
           await fetchAvailableModels()
 
@@ -107,17 +192,28 @@ export function useAvailableModels() {
           return
         }
 
+        setApiKeyStatus('valid')
         applyModels(nextModels, nextDefault)
       } catch (loadError) {
         if (cancelled) {
           return
         }
 
+        const code =
+          loadError &&
+          typeof loadError === 'object' &&
+          'code' in loadError &&
+          typeof loadError.code === 'string'
+            ? (loadError.code as ApiErrorCode)
+            : undefined
         const message =
           loadError instanceof Error
             ? loadError.message
             : 'Could not load available models.'
 
+        setApiKeyStatus(toApiKeyStatus(code))
+        setModels([])
+        setSelectedModelState('')
         setError(message)
       } finally {
         if (!cancelled) {
@@ -138,7 +234,11 @@ export function useAvailableModels() {
     writeStoredModel(modelId)
   }, [])
 
+  const canGenerate = apiKeyStatus === 'valid' && models.length > 0
+
   return {
+    apiKeyStatus,
+    canGenerate,
     defaultModel,
     error,
     isLoading,
