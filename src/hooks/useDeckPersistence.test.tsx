@@ -58,13 +58,11 @@ describe('useDeckPersistence', () => {
   })
 
   it('persists new HTML and marks the deck as saved', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: async () => ({ deck }),
-      })
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ deck }),
+    })
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -78,9 +76,12 @@ describe('useDeckPersistence', () => {
       await result.current.persistHtml(sampleHtml)
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/decks', expect.objectContaining({
-      method: 'POST',
-    }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/decks',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    )
     expect(result.current.html).toBe(sampleHtml)
     expect(result.current.isDirty).toBe(false)
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(deck.id)

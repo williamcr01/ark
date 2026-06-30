@@ -44,8 +44,7 @@ export const CHAT_CONTEXT_POLICY = {
 } as const
 
 export type ParseGenerateMessagesResult =
-  | { ok: true; messages: ApiChatMessage[] }
-  | { ok: false; error: string }
+  { ok: true; messages: ApiChatMessage[] } | { ok: false; error: string }
 
 const isChatMessageRole = (value: unknown): value is ChatMessageRole =>
   value === 'user' || value === 'assistant'

@@ -12,11 +12,7 @@ import {
 
 import { buttonVariants } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 type TitleBarButtonProps = {
@@ -26,10 +22,7 @@ type TitleBarButtonProps = {
   label: string
   onClick?: () => void
   primary?: boolean
-} & Pick<
-  React.ComponentProps<'button'>,
-  'aria-controls' | 'aria-expanded' | 'type'
->
+} & Pick<React.ComponentProps<'button'>, 'aria-controls' | 'aria-expanded' | 'type'>
 
 function TitleBarButton({
   active = false,
@@ -52,9 +45,7 @@ function TitleBarButton({
             'hover:bg-[var(--ark-titlebar-hover)]',
             'disabled:text-[var(--ark-titlebar-muted)]/50',
             active && 'bg-[var(--ark-titlebar-active)]',
-            primary &&
-            !disabled &&
-            'text-[var(--ark-accent)] hover:bg-[var(--ark-accent-soft)]',
+            primary && !disabled && 'text-[var(--ark-accent)] hover:bg-[var(--ark-accent-soft)]',
           )}
           disabled={disabled}
           onClick={onClick}
@@ -70,13 +61,7 @@ function TitleBarButton({
 }
 
 export type DeckSaveStatus =
-  | 'loading'
-  | 'new'
-  | 'generating'
-  | 'saving'
-  | 'dirty'
-  | 'saved'
-  | 'error'
+  'loading' | 'new' | 'generating' | 'saving' | 'dirty' | 'saved' | 'error'
 
 export type AppTitleBarProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -125,9 +110,7 @@ export function AppTitleBar({
                 : 'New deck'
 
   const statusTone =
-    deckSaveStatus === 'loading' ||
-    deckSaveStatus === 'generating' ||
-    deckSaveStatus === 'saving'
+    deckSaveStatus === 'loading' || deckSaveStatus === 'generating' || deckSaveStatus === 'saving'
       ? 'pending'
       : deckSaveStatus === 'dirty' || deckSaveStatus === 'error'
         ? 'warning'
@@ -149,10 +132,7 @@ export function AppTitleBar({
           className="size-4 shrink-0 text-[var(--ark-titlebar-muted)]"
         />
         <span className="truncate text-[13px] leading-none">Ark</span>
-        <span
-          aria-hidden
-          className="text-[var(--ark-titlebar-muted)]"
-        >
+        <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
           ·
         </span>
         <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
@@ -173,26 +153,13 @@ export function AppTitleBar({
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
-        <TitleBarButton
-          disabled={!hasDeck || isGenerating}
-          label="Start over"
-          onClick={onReset}
-        >
+        <TitleBarButton disabled={!hasDeck || isGenerating} label="Start over" onClick={onReset}>
           <RefreshCwIcon />
         </TitleBarButton>
-        <TitleBarButton
-          disabled={!hasDeck}
-          label="Download HTML"
-          onClick={onDownload}
-          primary
-        >
+        <TitleBarButton disabled={!hasDeck} label="Download HTML" onClick={onDownload} primary>
           <DownloadIcon />
         </TitleBarButton>
-        <TitleBarButton
-          disabled={isGenerating}
-          label="Upload HTML"
-          onClick={onUploadClick}
-        >
+        <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
           <UploadIcon />
         </TitleBarButton>
         {hasSlides ? (

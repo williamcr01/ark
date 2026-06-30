@@ -20,7 +20,8 @@ describe('deck-network', () => {
   })
 
   it('collects external URLs from deck markup', () => {
-    const doc = new DOMParser().parseFromString(`<!DOCTYPE html>
+    const doc = new DOMParser().parseFromString(
+      `<!DOCTYPE html>
 <html>
 <head>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter" />
@@ -30,7 +31,9 @@ describe('deck-network', () => {
     <img src="https://example.com/logo.png" alt="Logo" />
   </section>
 </body>
-</html>`, 'text/html')
+</html>`,
+      'text/html',
+    )
 
     expect(collectExternalUrls(doc)).toEqual([
       'https://example.com/logo.png',
@@ -39,7 +42,8 @@ describe('deck-network', () => {
   })
 
   it('collects external URLs from CSS url() in style blocks and inline styles', () => {
-    const doc = new DOMParser().parseFromString(`<!DOCTYPE html>
+    const doc = new DOMParser().parseFromString(
+      `<!DOCTYPE html>
 <html>
 <head>
   <style>
@@ -50,7 +54,9 @@ describe('deck-network', () => {
 <body>
   <section class="slide" style="background: url('https://example.com/bg.jpg')">Hi</section>
 </body>
-</html>`, 'text/html')
+</html>`,
+      'text/html',
+    )
 
     expect(collectExternalUrls(doc)).toEqual([
       'https://example.com/bg.jpg',
@@ -60,13 +66,12 @@ describe('deck-network', () => {
   })
 
   it('extracts external URLs from raw CSS text', () => {
-    expect(collectUrlsFromCss(`
+    expect(
+      collectUrlsFromCss(`
       .hero { background-image: url(https://example.com/hero.png); }
       .logo { list-style-image: url("https://example.com/icon.svg"); }
-    `)).toEqual([
-      'https://example.com/hero.png',
-      'https://example.com/icon.svg',
-    ])
+    `),
+    ).toEqual(['https://example.com/hero.png', 'https://example.com/icon.svg'])
   })
 
   it('builds deck asset proxy URLs', () => {

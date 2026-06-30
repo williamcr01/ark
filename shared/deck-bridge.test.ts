@@ -100,7 +100,8 @@ describe('deck bridge protocol', () => {
   it('requires protocol version on metadata', () => {
     expect(isDeckMetadata(metadata)).toBe(true)
     expect(isDeckMetadata({ ...metadata, protocolVersion: 99 })).toBe(false)
-    expect(createDeckMetadata({ previewMode: 'full-js' }).protocolVersion)
-      .toBe(DECK_BRIDGE_PROTOCOL_VERSION)
+    expect(createDeckMetadata({ previewMode: 'full-js' }).protocolVersion).toBe(
+      DECK_BRIDGE_PROTOCOL_VERSION,
+    )
   })
 })

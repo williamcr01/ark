@@ -96,12 +96,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
           .min(1)
           .optional()
           .describe('1-based line number to start reading from.'),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .optional()
-          .describe('Maximum number of lines to return.'),
+        limit: z.number().int().min(1).optional().describe('Maximum number of lines to return.'),
         slideIndex: z
           .number()
           .int()

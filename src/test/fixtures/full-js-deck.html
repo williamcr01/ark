@@ -1,35 +1,35 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-ark-deck="nav">
-<head>
-  <meta charset="UTF-8" />
-  <title>Full JS Deck</title>
-  <style>
-    body {
-      margin: 0;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <title>Full JS Deck</title>
+    <style>
+      body {
+        margin: 0;
+      }
 
-    section.slide {
-      width: 100vw;
-      height: 100vh;
-    }
-  </style>
-</head>
-<body>
-  <section class="slide active" aria-hidden="false">
-    <h1>Scripted opening</h1>
-  </section>
-  <section class="slide" aria-hidden="true">
-    <h2>Scripted detail</h2>
-  </section>
-  <div aria-hidden="true">
-    <span id="currentSlide">01</span>
-    <span id="totalSlides">02</span>
-    <span id="progressBar"></span>
-    <button id="prevSlide" type="button">Previous</button>
-    <button id="nextSlide" type="button">Next</button>
-  </div>
-  <script>
-    window.fullJsDeckBooted = true;
-  </script>
-</body>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide active" aria-hidden="false">
+      <h1>Scripted opening</h1>
+    </section>
+    <section class="slide" aria-hidden="true">
+      <h2>Scripted detail</h2>
+    </section>
+    <div aria-hidden="true">
+      <span id="currentSlide">01</span>
+      <span id="totalSlides">02</span>
+      <span id="progressBar"></span>
+      <button id="prevSlide" type="button">Previous</button>
+      <button id="nextSlide" type="button">Next</button>
+    </div>
+    <script>
+      window.fullJsDeckBooted = true
+    </script>
+  </body>
 </html>

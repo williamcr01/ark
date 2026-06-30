@@ -9,17 +9,10 @@ import {
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
-import {
-  ChatPanel,
-  type ChatMessage,
-} from '@/components/ChatPanel'
+import { ChatPanel, type ChatMessage } from '@/components/ChatPanel'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { DeckPreview } from '@/components/DeckPreview'
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
@@ -99,10 +92,7 @@ function App() {
               ? 'saved'
               : 'new'
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
-  const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(
-    mainSize.width,
-    chatDefaultSize,
-  )
+  const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
   const generateDeck = async (rawPrompt: string) => {
     const prompt = rawPrompt.trim()
@@ -298,11 +288,7 @@ function App() {
           {isDesktop ? (
             <ResizablePanelGroup
               className="min-h-0 overflow-hidden"
-              key={
-                isChatOpen
-                  ? `deck-with-chat-${String(chatDefaultSize)}`
-                  : 'deck-only'
-              }
+              key={isChatOpen ? `deck-with-chat-${String(chatDefaultSize)}` : 'deck-only'}
               orientation="horizontal"
             >
               <ResizablePanel

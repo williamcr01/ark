@@ -84,16 +84,11 @@ export type DeckBridgeMessage =
   | DeckMetadataMessage
   | DeckRuntimeErrorMessage
 
-export type DeckBridgeMessageFromRuntime = Exclude<
-  DeckBridgeMessage,
-  DeckGotoMessage
->
+export type DeckBridgeMessageFromRuntime = Exclude<DeckBridgeMessage, DeckGotoMessage>
 
 const DECK_BRIDGE_MESSAGE_TYPE_SET = new Set<string>(DECK_BRIDGE_MESSAGE_TYPES)
 
-export function isDeckBridgeMessageType(
-  value: unknown,
-): value is DeckBridgeMessageType {
+export function isDeckBridgeMessageType(value: unknown): value is DeckBridgeMessageType {
   return typeof value === 'string' && DECK_BRIDGE_MESSAGE_TYPE_SET.has(value)
 }
 
@@ -119,80 +114,64 @@ export function isDeckMetadata(value: unknown): value is DeckMetadata {
   }
 
   return (
-    isDeckRuntimeKind(value.runtime)
-    && typeof value.title === 'string'
-    && isDeckPreviewMode(value.previewMode)
-    && value.protocolVersion === DECK_BRIDGE_PROTOCOL_VERSION
+    isDeckRuntimeKind(value.runtime) &&
+    typeof value.title === 'string' &&
+    isDeckPreviewMode(value.previewMode) &&
+    value.protocolVersion === DECK_BRIDGE_PROTOCOL_VERSION
   )
 }
 
 export function isDeckGotoMessage(value: unknown): value is DeckGotoMessage {
-  return (
-    isRecord(value)
-    && value.type === DECK_GOTO_MESSAGE_TYPE
-    && isFiniteNumber(value.index)
-  )
+  return isRecord(value) && value.type === DECK_GOTO_MESSAGE_TYPE && isFiniteNumber(value.index)
 }
 
 export function isDeckReadyMessage(value: unknown): value is DeckReadyMessage {
   return (
-    isRecord(value)
-    && value.type === DECK_READY_MESSAGE_TYPE
-    && isFiniteNumber(value.index)
-    && isFiniteNumber(value.slideCount)
-    && isDeckMetadata(value.metadata)
+    isRecord(value) &&
+    value.type === DECK_READY_MESSAGE_TYPE &&
+    isFiniteNumber(value.index) &&
+    isFiniteNumber(value.slideCount) &&
+    isDeckMetadata(value.metadata)
   )
 }
 
-export function isDeckSlideCountMessage(
-  value: unknown,
-): value is DeckSlideCountMessage {
+export function isDeckSlideCountMessage(value: unknown): value is DeckSlideCountMessage {
   return (
-    isRecord(value)
-    && value.type === DECK_SLIDE_COUNT_MESSAGE_TYPE
-    && isFiniteNumber(value.slideCount)
+    isRecord(value) &&
+    value.type === DECK_SLIDE_COUNT_MESSAGE_TYPE &&
+    isFiniteNumber(value.slideCount)
   )
 }
 
-export function isDeckSlideChangeMessage(
-  value: unknown,
-): value is DeckSlideChangeMessage {
+export function isDeckSlideChangeMessage(value: unknown): value is DeckSlideChangeMessage {
   return (
-    isRecord(value)
-    && value.type === DECK_SLIDE_CHANGE_MESSAGE_TYPE
-    && isFiniteNumber(value.index)
+    isRecord(value) && value.type === DECK_SLIDE_CHANGE_MESSAGE_TYPE && isFiniteNumber(value.index)
   )
 }
 
-export function isDeckMetadataMessage(
-  value: unknown,
-): value is DeckMetadataMessage {
+export function isDeckMetadataMessage(value: unknown): value is DeckMetadataMessage {
   return (
-    isRecord(value)
-    && value.type === DECK_METADATA_MESSAGE_TYPE
-    && isDeckMetadata(value.metadata)
+    isRecord(value) && value.type === DECK_METADATA_MESSAGE_TYPE && isDeckMetadata(value.metadata)
   )
 }
 
-export function isDeckRuntimeErrorMessage(
-  value: unknown,
-): value is DeckRuntimeErrorMessage {
+export function isDeckRuntimeErrorMessage(value: unknown): value is DeckRuntimeErrorMessage {
   return (
-    isRecord(value)
-    && value.type === DECK_RUNTIME_ERROR_MESSAGE_TYPE
-    && typeof value.message === 'string'
-    && (value.source === undefined || typeof value.source === 'string')
+    isRecord(value) &&
+    value.type === DECK_RUNTIME_ERROR_MESSAGE_TYPE &&
+    typeof value.message === 'string' &&
+    (value.source === undefined || typeof value.source === 'string')
   )
 }
 
 export function isDeckBridgeMessage(value: unknown): value is DeckBridgeMessage {
   return (
-    isDeckGotoMessage(value)
-    || isDeckReadyMessage(value)
-    || isDeckSlideCountMessage(value)
-    || isDeckSlideChangeMessage(value)
-    || isDeckMetadataMessage(value)
-    || isDeckRuntimeErrorMessage(value)
+    isDeckGotoMessage(value) ||
+    isDeckReadyMessage(value) ||
+    isDeckSlideCountMessage(value) ||
+    isDeckSlideChangeMessage(value) ||
+    isDeckMetadataMessage(value) ||
+    isDeckRuntimeErrorMessage(value)
   )
 }
 
@@ -271,10 +250,7 @@ export function postDeckGoto(target: Window, index: number) {
   target.postMessage(createDeckGotoMessage(index), DECK_BRIDGE_TARGET_ORIGIN)
 }
 
-export function postDeckBridgeMessage(
-  target: Window,
-  message: DeckBridgeMessageFromRuntime,
-) {
+export function postDeckBridgeMessage(target: Window, message: DeckBridgeMessageFromRuntime) {
   target.postMessage(message, DECK_BRIDGE_TARGET_ORIGIN)
 }
 
@@ -283,9 +259,7 @@ export type DeckBridgeRuntimeScriptOptions = {
   previewMode: DeckPreviewMode
 }
 
-export function buildDeckBridgeRuntimeScript(
-  options: DeckBridgeRuntimeScriptOptions,
-): string {
+export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOptions): string {
   const constants = {
     PROTOCOL_VERSION: DECK_BRIDGE_PROTOCOL_VERSION,
     GOTO: DECK_GOTO_MESSAGE_TYPE,
@@ -444,9 +418,7 @@ export function buildDeckBridgeRuntimeScript(
 })();`
 }
 
-export function buildDeckCssNavRuntimeScript(
-  options: DeckBridgeRuntimeScriptOptions,
-): string {
+export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOptions): string {
   const constants = {
     PROTOCOL_VERSION: DECK_BRIDGE_PROTOCOL_VERSION,
     GOTO: DECK_GOTO_MESSAGE_TYPE,

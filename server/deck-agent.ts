@@ -1,10 +1,6 @@
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
 
-import {
-  buildAgentModelMessages,
-  type AgentStep,
-  type ApiChatMessage,
-} from '../shared/chat.ts'
+import { buildAgentModelMessages, type AgentStep, type ApiChatMessage } from '../shared/chat.ts'
 import { createDeckTools } from './deck-tools.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'

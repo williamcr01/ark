@@ -29,14 +29,7 @@ export type DeckScriptBlock = {
   contentLength: number
 }
 
-export type DeckAssetKind =
-  | 'img'
-  | 'link'
-  | 'script'
-  | 'video'
-  | 'audio'
-  | 'source'
-  | 'import'
+export type DeckAssetKind = 'img' | 'link' | 'script' | 'video' | 'audio' | 'source' | 'import'
 
 export type DeckAssetReference = {
   kind: DeckAssetKind
@@ -73,8 +66,7 @@ function isExternalUrl(value: string | null | undefined) {
 function readRuntimeMarkers(doc: Document): DeckRuntime {
   const html = doc.documentElement
   const body = doc.body
-  const arkDeck =
-    html?.getAttribute('data-ark-deck') ?? body?.getAttribute('data-ark-deck') ?? null
+  const arkDeck = html?.getAttribute('data-ark-deck') ?? body?.getAttribute('data-ark-deck') ?? null
   const arkPreview =
     html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
   const previewMode: DeckPreviewMode =
@@ -128,8 +120,7 @@ function detectDeckStructure(doc: Document, slideSelector: string | null): DeckS
 }
 
 function extractSlideTitle(element: Element, index: number) {
-  const heading =
-    element.querySelector('h1, h2, h3, [data-slide-title]')?.textContent?.trim() ?? ''
+  const heading = element.querySelector('h1, h2, h3, [data-slide-title]')?.textContent?.trim() ?? ''
   const dataTitle = element.getAttribute('data-title')?.trim() ?? ''
   const commentMatch = element.outerHTML.match(/<!--\s*slide:\s*([^>]+?)\s*-->/i)
   const commentTitle = commentMatch?.[1]?.trim() ?? ''
@@ -190,11 +181,7 @@ function collectScripts(doc: Document): DeckScriptBlock[] {
   }))
 }
 
-function pushAsset(
-  assets: DeckAssetReference[],
-  seen: Set<string>,
-  asset: DeckAssetReference,
-) {
+function pushAsset(assets: DeckAssetReference[], seen: Set<string>, asset: DeckAssetReference) {
   const key = `${asset.kind}:${asset.url}:${asset.slideIndex ?? 'deck'}`
 
   if (seen.has(key)) {

@@ -27,8 +27,8 @@ const STRICT_CSP_DIRECTIVES = [
   "default-src 'none'",
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline'",
-  "img-src data: blob:",
-  "font-src data:",
+  'img-src data: blob:',
+  'font-src data:',
   "connect-src 'none'",
   "frame-src 'none'",
   "form-action 'none'",
@@ -117,9 +117,7 @@ export function runtimeModeAllowsDeckScripts(mode: DeckRuntimeMode) {
   return mode === 'custom-js'
 }
 
-export function runtimeModeToBridgePreviewMode(
-  mode: DeckRuntimeMode,
-): 'css-only' | 'full-js' {
+export function runtimeModeToBridgePreviewMode(mode: DeckRuntimeMode): 'css-only' | 'full-js' {
   return mode === 'custom-js' ? 'full-js' : 'css-only'
 }
 

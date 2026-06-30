@@ -13,10 +13,7 @@ export type AvailableModel = {
 
 export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
 
-export type ApiErrorCode =
-  | 'missing_api_key'
-  | 'invalid_api_key'
-  | 'provider_error'
+export type ApiErrorCode = 'missing_api_key' | 'invalid_api_key' | 'provider_error'
 
 type ModelsResponse = {
   models?: AvailableModel[]
@@ -57,10 +54,7 @@ const writeStoredModel = (modelId: string) => {
   }
 }
 
-const toApiKeyStatus = (
-  hasConfiguredKey: boolean,
-  hasAvailableModel: boolean,
-): ApiKeyStatus => {
+const toApiKeyStatus = (hasConfiguredKey: boolean, hasAvailableModel: boolean): ApiKeyStatus => {
   if (!hasConfiguredKey) {
     return 'missing'
   }
@@ -144,16 +138,8 @@ export function useAvailableModels() {
   const [warnings, setWarnings] = useState<string[]>([])
 
   const applyModels = useCallback(
-    (
-      nextModels: AvailableModel[],
-      nextDefault: string,
-      hasConfiguredKey: boolean,
-    ) => {
-      const nextSelected = resolveSelectedModel(
-        nextModels,
-        readStoredModel(),
-        nextDefault,
-      )
+    (nextModels: AvailableModel[], nextDefault: string, hasConfiguredKey: boolean) => {
+      const nextSelected = resolveSelectedModel(nextModels, readStoredModel(), nextDefault)
       const hasAvailableModel = nextModels.some((model) => model.available)
 
       setModels(nextModels)
@@ -183,16 +169,10 @@ export function useAvailableModels() {
       } = await fetchAvailableModels()
 
       setWarnings(nextWarnings)
-      applyModels(
-        nextModels,
-        nextDefault,
-        Boolean(health.apiKey?.configured),
-      )
+      applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured))
     } catch (loadError) {
       const message =
-        loadError instanceof Error
-          ? loadError.message
-          : 'Could not load available models.'
+        loadError instanceof Error ? loadError.message : 'Could not load available models.'
 
       setApiKeyStatus('invalid')
       setModels([])
@@ -229,20 +209,14 @@ export function useAvailableModels() {
         }
 
         setWarnings(nextWarnings)
-        applyModels(
-          nextModels,
-          nextDefault,
-          Boolean(health.apiKey?.configured),
-        )
+        applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured))
       } catch (loadError) {
         if (cancelled) {
           return
         }
 
         const message =
-          loadError instanceof Error
-            ? loadError.message
-            : 'Could not load available models.'
+          loadError instanceof Error ? loadError.message : 'Could not load available models.'
 
         setApiKeyStatus('invalid')
         setModels([])

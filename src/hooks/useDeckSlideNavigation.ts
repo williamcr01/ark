@@ -11,20 +11,8 @@ import {
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
 const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
-const PRESENT_NEXT_KEYS = new Set([
-  'ArrowRight',
-  'ArrowDown',
-  ' ',
-  'Spacebar',
-  'Enter',
-  'PageDown',
-])
-const PRESENT_PREV_KEYS = new Set([
-  'ArrowLeft',
-  'ArrowUp',
-  'Backspace',
-  'PageUp',
-])
+const PRESENT_NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown', ' ', 'Spacebar', 'Enter', 'PageDown'])
+const PRESENT_PREV_KEYS = new Set(['ArrowLeft', 'ArrowUp', 'Backspace', 'PageUp'])
 
 type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
 
@@ -72,11 +60,7 @@ function clampSlideIndex(index: number, slideCount: number) {
   return Math.max(0, Math.min(slideCount - 1, Math.floor(index)))
 }
 
-function getPreviewKeyboardTargetIndex(
-  key: string,
-  currentIndex: number,
-  slideCount: number,
-) {
+function getPreviewKeyboardTargetIndex(key: string, currentIndex: number, slideCount: number) {
   if (!PREVIEW_NAV_KEYS.has(key)) {
     return null
   }
@@ -86,11 +70,7 @@ function getPreviewKeyboardTargetIndex(
   return clampSlideIndex(currentIndex + delta, slideCount)
 }
 
-function getPresentKeyboardTargetIndex(
-  key: string,
-  currentIndex: number,
-  slideCount: number,
-) {
+function getPresentKeyboardTargetIndex(key: string, currentIndex: number, slideCount: number) {
   if (PRESENT_NEXT_KEYS.has(key)) {
     return clampSlideIndex(currentIndex + 1, slideCount)
   }
@@ -242,16 +222,8 @@ export function useDeckSlideNavigation(
 
       const targetIndex =
         keyboardMode === 'present'
-          ? getPresentKeyboardTargetIndex(
-            event.key,
-            activeSlideIndexRef.current,
-            slideCount,
-          )
-          : getPreviewKeyboardTargetIndex(
-            event.key,
-            activeSlideIndexRef.current,
-            slideCount,
-          )
+          ? getPresentKeyboardTargetIndex(event.key, activeSlideIndexRef.current, slideCount)
+          : getPreviewKeyboardTargetIndex(event.key, activeSlideIndexRef.current, slideCount)
 
       if (targetIndex === null) {
         return

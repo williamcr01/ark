@@ -1,8 +1,4 @@
-import {
-  getProviderApiKey,
-  parseProviderHttpError,
-  type ProviderId,
-} from './credentials.ts'
+import { getProviderApiKey, parseProviderHttpError, type ProviderId } from './credentials.ts'
 
 export type ModelUnavailableReason = 'missing_api_key' | 'not_found'
 
@@ -57,10 +53,7 @@ const toModelRef = (
   unavailableReason: available ? undefined : unavailableReason,
 })
 
-const PROVIDER_SEED_MODELS: Record<
-  ProviderId,
-  Array<{ modelId: string; name: string }>
-> = {
+const PROVIDER_SEED_MODELS: Record<ProviderId, Array<{ modelId: string; name: string }>> = {
   openai: [
     { modelId: 'gpt-4o-mini', name: 'GPT-4o Mini' },
     { modelId: 'gpt-4o', name: 'GPT-4o' },
@@ -242,9 +235,7 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
         continue
       }
 
-      models.push(
-        toModelRef('google', modelId, entry.displayName?.trim() || undefined, true),
-      )
+      models.push(toModelRef('google', modelId, entry.displayName?.trim() || undefined, true))
     }
 
     pageToken = payload.nextPageToken
@@ -253,10 +244,7 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
   return sortModels(models)
 }
 
-const PROVIDER_FETCHERS: Record<
-  ProviderId,
-  (apiKey: string) => Promise<ModelInfo[]>
-> = {
+const PROVIDER_FETCHERS: Record<ProviderId, (apiKey: string) => Promise<ModelInfo[]>> = {
   openai: fetchOpenAIModels,
   anthropic: fetchAnthropicModels,
   google: fetchGoogleModels,
@@ -294,9 +282,7 @@ export async function fetchAllAvailableModels(): Promise<{
         models.push(...providerModels)
       } catch (error) {
         const message =
-          error instanceof Error
-            ? error.message
-            : `Could not load ${provider} models.`
+          error instanceof Error ? error.message : `Could not load ${provider} models.`
         warnings.push(message)
         models.push(...seedModelsForProvider(provider))
       }
@@ -319,10 +305,7 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
     ? 'not_found'
     : 'missing_api_key'
 
-  return sortModels([
-    ...models,
-    toModelRef(provider, modelId, undefined, false, unavailableReason),
-  ])
+  return sortModels([...models, toModelRef(provider, modelId, undefined, false, unavailableReason)])
 }
 
 export function getDefaultModelWarning(
