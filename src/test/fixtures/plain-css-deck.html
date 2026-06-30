@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-deck="plain-css">
+<head>
+  <meta charset="UTF-8" />
+  <title>Plain CSS Deck</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+    }
+
+    section.slide {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      color: #172033;
+    }
+
+    section.slide.active,
+    section.slide.is-active {
+      display: flex;
+    }
+  </style>
+</head>
+<body data-kind="plain">
+  <section class="slide" data-title="Opening">
+    <h1>Quarterly planning</h1>
+  </section>
+  <section class="slide" data-title="Metrics">
+    <h2>Metrics that moved</h2>
+  </section>
+  <section class="slide" data-title="Close">
+    <h2>Next decisions</h2>
+  </section>
+</body>
+</html>
