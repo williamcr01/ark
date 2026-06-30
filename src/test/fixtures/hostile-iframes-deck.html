@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Iframes Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1>Nested iframe escape</h1>
+      <iframe src="https://evil.example/embed" title="nested"></iframe>
+    </section>
+    <section class="slide">
+      <h2>Second iframe</h2>
+      <iframe srcdoc="<script>window.top.location='https://evil.example'</script>"></iframe>
+    </section>
+  </body>
+</html>
