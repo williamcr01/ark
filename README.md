@@ -13,9 +13,27 @@ Add your OpenAI API key to `.env`:
 
 ```env
 OPENAI_API_KEY=your_key_here
+```
+
+### Choosing a model
+
+You can pick the model in two ways:
+
+1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark scans your OpenAI account for available chat models on load; use the refresh button to re-scan. Your choice is saved in the browser.
+
+2. **In `.env` (default fallback)** — Set `OPENAI_MODEL` to choose the server default when no model is saved in the UI yet:
+
+```env
 OPENAI_MODEL=gpt-4o-mini
+```
+
+Optional API port (Vite proxies `/api` to this by default):
+
+```env
 PORT=8787
 ```
+
+Only `OPENAI_API_KEY` is required. `OPENAI_MODEL` and `PORT` are optional.
 
 ## Development
 
