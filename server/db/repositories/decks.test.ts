@@ -85,6 +85,63 @@ describe('createPostgresDeckStore', () => {
       expect(await store.getDeck('../escape')).toBeNull()
       expect(await store.updateDeck('missing-id', sampleHtml)).toBeNull()
       expect(await store.deleteDeck('../../etc/passwd')).toBe(false)
+      expect(await store.listVersions('missing-id')).toBeNull()
+      expect(
+        await store.getVersion('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'),
+      ).toBeNull()
+      expect(
+        await store.rollbackToVersion('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'),
+      ).toBeNull()
+    } finally {
+      await pool.end?.()
+    }
+  })
+
+  it('lists versions, reads one version, and rolls back by creating a new version', async () => {
+    const pool = createMemoryPostgresPool()
+    const store = createPostgresDeckStore({ pool })
+
+    try {
+      const created = await store.createDeck(sampleHtml, {
+        source: 'upload',
+        summary: 'Initial upload',
+      })
+      await store.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'), {
+        source: 'agent',
+        summary: 'AI edit',
+        modelName: 'gpt-4.1',
+      })
+
+      const versions = await store.listVersions(created.id)
+
+      expect(versions).toHaveLength(2)
+      expect(versions?.[0]).toMatchObject({
+        versionNumber: 2,
+        source: 'agent',
+        summary: 'AI edit',
+        isActive: true,
+      })
+      expect(versions?.[1]).toMatchObject({
+        versionNumber: 1,
+        source: 'upload',
+        summary: 'Initial upload',
+        isActive: false,
+      })
+
+      const firstVersion = await store.getVersion(created.id, versions![1].id)
+      expect(firstVersion?.html).toBe(sampleHtml)
+
+      const rolledBack = await store.rollbackToVersion(created.id, versions![1].id)
+      expect(rolledBack?.html).toBe(sampleHtml)
+      expect(rolledBack?.versionNumber).toBe(3)
+
+      const afterRollback = await store.listVersions(created.id)
+      expect(afterRollback).toHaveLength(3)
+      expect(afterRollback?.[0]).toMatchObject({
+        versionNumber: 3,
+        source: 'rollback',
+        isActive: true,
+      })
     } finally {
       await pool.end?.()
     }

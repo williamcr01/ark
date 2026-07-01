@@ -4,10 +4,16 @@ import {
   createDeck,
   deleteDeck,
   fetchDeck,
+  fetchDeckVersion,
+  listDeckVersions,
   listDecks,
   renameDeck,
+  rollbackDeck,
   updateDeck,
   type DeckSummary,
+  type DeckVersionDetail,
+  type DeckVersionOptions,
+  type DeckVersionSummary,
   type StoredDeck,
 } from '@/lib/deck-api'
 
@@ -54,6 +60,8 @@ const toDeckSummary = (deck: StoredDeck): DeckSummary => ({
   title: deck.title,
   createdAt: deck.createdAt,
   updatedAt: deck.updatedAt,
+  activeVersionId: deck.activeVersionId ?? null,
+  versionNumber: deck.versionNumber ?? null,
 })
 
 const sortDeckSummaries = (decks: DeckSummary[]) =>
@@ -71,16 +79,25 @@ export function useDeckPersistence() {
   const [savedHtml, setSavedHtml] = useState('')
   const [deckId, setDeckId] = useState<string | null>(null)
   const [deckTitle, setDeckTitle] = useState('')
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null)
+  const [versionNumber, setVersionNumber] = useState<number | null>(null)
+  const [versions, setVersions] = useState<DeckVersionSummary[]>([])
+  const [previewVersion, setPreviewVersion] = useState<DeckVersionDetail | null>(null)
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const saveRequestIdRef = useRef(0)
+  const inspectRequestIdRef = useRef(0)
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
     setDeckId(deck.id)
     setDeckTitle(deck.title)
     setHtml(deck.html)
     setSavedHtml(deck.html)
+    setActiveVersionId(deck.activeVersionId ?? null)
+    setVersionNumber(deck.versionNumber ?? null)
+    setPreviewVersion(null)
     writeActiveDeckId(deck.id)
   }, [])
 
@@ -90,11 +107,30 @@ export function useDeckPersistence() {
     setDeckTitle('')
     setHtml('')
     setSavedHtml('')
+    setActiveVersionId(null)
+    setVersionNumber(null)
+    setVersions([])
+    setPreviewVersion(null)
+  }, [])
+
+  const refreshVersions = useCallback(async (targetDeckId: string) => {
+    setIsLoadingVersions(true)
+
+    try {
+      const nextVersions = await listDeckVersions(targetDeckId)
+      setVersions(nextVersions)
+      return nextVersions
+    } catch {
+      setVersions([])
+      return []
+    } finally {
+      setIsLoadingVersions(false)
+    }
   }, [])
 
   useEffect(() => {
     let cancelled = false
-    const activeDeckId = readActiveDeckId()
+    const storedActiveDeckId = readActiveDeckId()
 
     const loadDecks = async () => {
       try {
@@ -107,23 +143,24 @@ export function useDeckPersistence() {
         setDecks(summaries)
         setSaveError('')
 
-        if (!activeDeckId) {
+        if (!storedActiveDeckId) {
           return
         }
 
-        if (!summaries.some((deck) => deck.id === activeDeckId)) {
+        if (!summaries.some((deck) => deck.id === storedActiveDeckId)) {
           clearActiveDeck()
           return
         }
 
         try {
-          const deck = await fetchDeck(activeDeckId)
+          const deck = await fetchDeck(storedActiveDeckId)
 
           if (cancelled) {
             return
           }
 
           setActiveDeck(deck)
+          void refreshVersions(deck.id)
         } catch {
           if (cancelled) {
             return
@@ -151,10 +188,10 @@ export function useDeckPersistence() {
     return () => {
       cancelled = true
     }
-  }, [clearActiveDeck, setActiveDeck])
+  }, [clearActiveDeck, refreshVersions, setActiveDeck])
 
   const persistHtml = useCallback(
-    async (nextHtml: string) => {
+    async (nextHtml: string, options: DeckVersionOptions = {}) => {
       const requestId = ++saveRequestIdRef.current
 
       setHtml(nextHtml)
@@ -162,7 +199,9 @@ export function useDeckPersistence() {
       setSaveError('')
 
       try {
-        const deck = deckId ? await updateDeck(deckId, nextHtml) : await createDeck(nextHtml)
+        const deck = deckId
+          ? await updateDeck(deckId, nextHtml, options)
+          : await createDeck(nextHtml, options)
 
         if (requestId !== saveRequestIdRef.current) {
           return
@@ -170,9 +209,13 @@ export function useDeckPersistence() {
 
         setDeckId(deck.id)
         setDeckTitle(deck.title)
+        setActiveVersionId(deck.activeVersionId ?? null)
+        setVersionNumber(deck.versionNumber ?? null)
         writeActiveDeckId(deck.id)
         setSavedHtml(deck.html)
+        setPreviewVersion(null)
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+        await refreshVersions(deck.id)
       } catch (error) {
         if (requestId !== saveRequestIdRef.current) {
           return
@@ -188,7 +231,7 @@ export function useDeckPersistence() {
         }
       }
     },
-    [deckId],
+    [deckId, refreshVersions],
   )
 
   const selectDeck = useCallback(
@@ -211,6 +254,7 @@ export function useDeckPersistence() {
 
         setActiveDeck(deck)
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+        await refreshVersions(deck.id)
       } catch (error) {
         if (requestId !== saveRequestIdRef.current) {
           return
@@ -226,7 +270,7 @@ export function useDeckPersistence() {
         }
       }
     },
-    [deckId, setActiveDeck],
+    [deckId, refreshVersions, setActiveDeck],
   )
 
   const startNewDeck = useCallback(() => {
@@ -288,23 +332,95 @@ export function useDeckPersistence() {
     }
   }, [clearActiveDeck, deckId])
 
+  const inspectVersion = useCallback(
+    async (versionId: string) => {
+      if (!deckId) {
+        return null
+      }
+
+      const requestId = ++inspectRequestIdRef.current
+      const version = await fetchDeckVersion(deckId, versionId)
+
+      if (requestId !== inspectRequestIdRef.current) {
+        return null
+      }
+
+      setPreviewVersion(version)
+      return version
+    },
+    [deckId],
+  )
+
+  const clearVersionPreview = useCallback(() => {
+    inspectRequestIdRef.current += 1
+    setPreviewVersion(null)
+  }, [])
+
+  const rollbackToVersion = useCallback(
+    async (versionId: string) => {
+      if (!deckId) {
+        return
+      }
+
+      const requestId = ++saveRequestIdRef.current
+
+      setIsSaving(true)
+      setSaveError('')
+
+      try {
+        const deck = await rollbackDeck(deckId, versionId)
+
+        if (requestId !== saveRequestIdRef.current) {
+          return
+        }
+
+        setActiveDeck(deck)
+        setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+        await refreshVersions(deck.id)
+      } catch (error) {
+        if (requestId !== saveRequestIdRef.current) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : 'Could not roll back the deck.'
+
+        setSaveError(message)
+        throw error
+      } finally {
+        if (requestId === saveRequestIdRef.current) {
+          setIsSaving(false)
+        }
+      }
+    },
+    [deckId, refreshVersions, setActiveDeck],
+  )
+
   const hasDeck = html.length > 0
   const isDirty = hasDeck && html !== savedHtml
 
   return {
+    activeVersionId,
+    clearVersionPreview,
     deckId,
     deckTitle,
     decks,
     deleteActiveDeck,
     hasDeck,
     html,
+    inspectVersion,
     isDirty,
     isLoading,
+    isLoadingVersions,
     isSaving,
     persistHtml,
+    previewVersion,
+    refreshVersions,
     renameActiveDeck,
+    rollbackToVersion,
     saveError,
     selectDeck,
     startNewDeck,
+    versionNumber,
+    versions,
   }
 }

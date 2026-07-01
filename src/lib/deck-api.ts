@@ -1,3 +1,7 @@
+export type DeckVersionSource = 'manual' | 'agent' | 'upload' | 'repair' | 'rollback'
+
+export type DeckValidationStatus = 'unknown' | 'valid' | 'invalid'
+
 export type StoredDeck = {
   id: string
   html: string
@@ -10,6 +14,29 @@ export type StoredDeck = {
 
 export type DeckSummary = Omit<StoredDeck, 'html'>
 
+export type DeckVersionSummary = {
+  id: string
+  deckId: string
+  versionNumber: number
+  title: string
+  source: DeckVersionSource
+  summary: string | null
+  validationStatus: DeckValidationStatus
+  createdAt: string
+  isActive: boolean
+}
+
+export type DeckVersionDetail = DeckVersionSummary & {
+  html: string
+}
+
+export type DeckVersionOptions = {
+  source?: DeckVersionSource
+  summary?: string | null
+  modelProvider?: string | null
+  modelName?: string | null
+}
+
 type DeckResponse = {
   deck?: StoredDeck
   error?: string
@@ -17,6 +44,16 @@ type DeckResponse = {
 
 type DeckListResponse = {
   decks?: DeckSummary[]
+  error?: string
+}
+
+type DeckVersionListResponse = {
+  versions?: DeckVersionSummary[]
+  error?: string
+}
+
+type DeckVersionResponse = {
+  version?: DeckVersionDetail
   error?: string
 }
 
@@ -44,6 +81,30 @@ async function readDeckListResponse(response: Response) {
   return data.decks
 }
 
+async function readVersionListResponse(response: Response) {
+  const data = (await response.json().catch(() => ({
+    error: 'The API returned an unreadable response.',
+  }))) as DeckVersionListResponse
+
+  if (!response.ok || !Array.isArray(data.versions)) {
+    throw new Error(data.error ?? 'Could not load deck versions.')
+  }
+
+  return data.versions
+}
+
+async function readVersionResponse(response: Response) {
+  const data = (await response.json().catch(() => ({
+    error: 'The API returned an unreadable response.',
+  }))) as DeckVersionResponse
+
+  if (!response.ok || !data.version) {
+    throw new Error(data.error ?? 'Could not load the deck version.')
+  }
+
+  return data.version
+}
+
 export async function listDecks() {
   const response = await fetch('/api/decks')
   return readDeckListResponse(response)
@@ -54,21 +115,21 @@ export async function fetchDeck(id: string) {
   return readDeckResponse(response)
 }
 
-export async function createDeck(html: string) {
+export async function createDeck(html: string, options: DeckVersionOptions = {}) {
   const response = await fetch('/api/decks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify({ html, ...options }),
   })
 
   return readDeckResponse(response)
 }
 
-export async function updateDeck(id: string, html: string) {
+export async function updateDeck(id: string, html: string, options: DeckVersionOptions = {}) {
   const response = await fetch(`/api/decks/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify({ html, ...options }),
   })
 
   return readDeckResponse(response)
@@ -98,4 +159,26 @@ export async function deleteDeck(id: string) {
   }))) as DeckResponse
 
   throw new Error(data.error ?? 'Could not delete the deck.')
+}
+
+export async function listDeckVersions(deckId: string) {
+  const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}/versions`)
+  return readVersionListResponse(response)
+}
+
+export async function fetchDeckVersion(deckId: string, versionId: string) {
+  const response = await fetch(
+    `/api/decks/${encodeURIComponent(deckId)}/versions/${encodeURIComponent(versionId)}`,
+  )
+  return readVersionResponse(response)
+}
+
+export async function rollbackDeck(deckId: string, versionId: string) {
+  const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ versionId }),
+  })
+
+  return readDeckResponse(response)
 }
