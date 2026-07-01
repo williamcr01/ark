@@ -4,10 +4,19 @@ export type StoredDeck = {
   title: string
   createdAt: string
   updatedAt: string
+  activeVersionId?: string | null
+  versionNumber?: number | null
 }
+
+export type DeckSummary = Omit<StoredDeck, 'html'>
 
 type DeckResponse = {
   deck?: StoredDeck
+  error?: string
+}
+
+type DeckListResponse = {
+  decks?: DeckSummary[]
   error?: string
 }
 
@@ -26,6 +35,19 @@ async function readDeckResponse(response: Response) {
 export async function fetchDeck(id: string) {
   const response = await fetch(`/api/decks/${encodeURIComponent(id)}`)
   return readDeckResponse(response)
+}
+
+export async function listDecks() {
+  const response = await fetch('/api/decks')
+  const data = (await response.json().catch(() => ({
+    error: 'The API returned an unreadable response.',
+  }))) as DeckListResponse
+
+  if (!response.ok || !data.decks) {
+    throw new Error(data.error ?? 'Could not list decks.')
+  }
+
+  return data.decks
 }
 
 export async function createDeck(html: string) {

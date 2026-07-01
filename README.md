@@ -39,6 +39,21 @@ Optional API port (default `8787`). Both the Express API and Vite's `/api` proxy
 PORT=8787
 ```
 
+### Optional Postgres persistence
+
+By default, Ark stores decks as local JSON files under `data/decks` so development works without a database. To use the hosted-SaaS persistence path, set `DATABASE_URL` and run migrations:
+
+```env
+DATABASE_URL=postgres://ark:ark@localhost:5432/ark
+PGSSLMODE=disable
+```
+
+```bash
+pnpm db:migrate
+```
+
+`PGSSLMODE=require` enables verified TLS for managed Postgres providers. `PGSSLMODE=no-verify` is available for providers that require TLS but do not expose a locally trusted certificate chain. The schema uses standard Postgres tables, UUIDs, constraints, indexes, and `jsonb`, so it can run on local Postgres, Supabase Postgres, Neon, AWS RDS/Aurora Postgres, Azure Database for PostgreSQL, and similar hosted Postgres services.
+
 ### Supported providers
 
 | Provider | Env var                        | Model scan source              |
