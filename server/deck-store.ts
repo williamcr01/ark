@@ -9,13 +9,13 @@ import {
   type StoredDeck,
   extractDeckTitle,
   isValidDeckId,
+  normalizeDeckTitle,
 } from './deck-record.ts'
 
-export { extractDeckTitle, isValidDeckId }
+export { extractDeckTitle, isValidDeckId, normalizeDeckTitle }
 export type { DeckStore, DeckSummary, StoredDeck }
 
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data', 'decks')
-
 function resolveDeckPath(dataDir: string, id: string) {
   if (!isValidDeckId(id)) {
     return null
@@ -54,7 +54,9 @@ async function readDeckFile(filePath: string): Promise<StoredDeck | null> {
 
     return {
       ...parsed,
-      title: typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
+      title: normalizeDeckTitle(
+        typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
+      ),
     }
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
@@ -160,7 +162,34 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     const updated: StoredDeck = {
       ...existing,
       html,
-      title: extractDeckTitle(html),
+      title:
+        existing.title === extractDeckTitle(existing.html)
+          ? extractDeckTitle(html)
+          : existing.title,
+      updatedAt: new Date().toISOString(),
+    }
+
+    await writeFile(filePath, JSON.stringify(updated), 'utf8')
+
+    return updated
+  }
+
+  const updateDeckMetadata = async (id: string, metadata: { title?: string }) => {
+    const filePath = resolveDeckPath(dataDir, id)
+
+    if (!filePath) {
+      return null
+    }
+
+    const existing = await readDeckFile(filePath)
+
+    if (!existing) {
+      return null
+    }
+
+    const updated: StoredDeck = {
+      ...existing,
+      title: normalizeDeckTitle(metadata.title),
       updatedAt: new Date().toISOString(),
     }
 
@@ -193,6 +222,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     getDeck,
     listDecks,
     updateDeck,
+    updateDeckMetadata,
     deleteDeck,
   }
 }

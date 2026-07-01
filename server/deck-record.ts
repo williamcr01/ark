@@ -15,6 +15,7 @@ export type DeckStore = {
   getDeck: (id: string) => Promise<StoredDeck | null>
   listDecks: () => Promise<DeckSummary[]>
   updateDeck: (id: string, html: string) => Promise<StoredDeck | null>
+  updateDeckMetadata: (id: string, metadata: { title?: string }) => Promise<StoredDeck | null>
   deleteDeck: (id: string) => Promise<boolean>
 }
 
@@ -26,7 +27,10 @@ export function isValidDeckId(id: string) {
 
 export function extractDeckTitle(html: string) {
   const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
-  const title = match?.[1]?.trim()
 
-  return title || 'Untitled deck'
+  return normalizeDeckTitle(match?.[1])
+}
+
+export function normalizeDeckTitle(title: unknown) {
+  return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled deck'
 }
