@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "runtimes": [
+    {
+      "id": "reveal.js",
+      "version": "5.1.0",
+      "runtimeMode": "reveal",
+      "license": "MIT",
+      "source": "https://github.com/hakimel/reveal.js",
+      "previewMode": "css-only",
+      "allowsDeckScripts": false,
+      "allowedGlobals": ["Reveal"],
+      "markers": {
+        "arkRuntime": ["reveal"],
+        "arkDeck": ["reveal"],
+        "arkRuntimeLib": ["reveal.js"]
+      },
+      "structureHints": [".reveal .slides > section"],
+      "requiredAssets": {
+        "css": ["reveal.css", "theme/white.css"],
+        "js": ["reveal.js"]
+      },
+      "assets": [
+        {
+          "path": "reveal.js",
+          "kind": "script",
+          "sha256": "9736bf3d8918e391e8c07c85c53773800d4004dc25f948916e319ca371ca881a",
+          "size": 107670
+        },
+        {
+          "path": "reveal.css",
+          "kind": "stylesheet",
+          "sha256": "9cbc5082797d938f0ee780328790a131ae3d7bc5c09c176e77927c174f29e60a",
+          "size": 52279
+        },
+        {
+          "path": "reset.css",
+          "kind": "stylesheet",
+          "sha256": "1aa8e84c9cabcbfe4d95b19879fe48b9c2c5e6d54574cbe679bc22edb9fe12b6",
+          "size": 871
+        },
+        {
+          "path": "theme/white.css",
+          "kind": "stylesheet",
+          "sha256": "5aa3a4e430f08e158a2d4f98a7fc7184f5ef3655942bb53ba86863fc936a2cf0",
+          "size": 7112
+        }
+      ]
+    }
+  ]
+}

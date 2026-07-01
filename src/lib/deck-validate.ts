@@ -1,4 +1,12 @@
 import { collectExternalUrls, NETWORK_REQUEST_ERROR_MESSAGE } from '../../shared/deck-network.ts'
+import {
+  collectInvalidRuntimeMarkers,
+  collectRuntimeAssetReferences,
+  isApprovedRuntimeAssetUrl,
+  readDeckRuntimeLibraryMarkers,
+  resolveDeckApprovedRuntime,
+  validateRuntimeAssetReferences,
+} from '../../shared/deck-runtime-registry.ts'
 
 import { findSlideElements } from './deck-slides'
 import {
@@ -23,6 +31,10 @@ export type DeckRuntimeMarkers = {
   arkDeck: string | null
   arkPreview: string | null
   arkRuntime: string | null
+  arkRuntimeLib: string | null
+  arkRuntimeVersion: string | null
+  approvedRuntimeId: string | null
+  approvedRuntimeVersion: string | null
 }
 
 export type DeckValidationIssueCode =
@@ -38,6 +50,10 @@ export type DeckValidationIssueCode =
   | 'script_without_marker'
   | 'tracking'
   | 'external_url'
+  | 'invalid_runtime_marker'
+  | 'unapproved_runtime_asset'
+  | 'runtime_version_mismatch'
+  | 'missing_runtime_assets'
 
 export type DeckValidationIssue = {
   code: DeckValidationIssueCode
@@ -68,12 +84,18 @@ function readRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
     html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
   const arkRuntime =
     html?.getAttribute('data-ark-runtime') ?? body?.getAttribute('data-ark-runtime') ?? null
+  const libraryMarkers = readDeckRuntimeLibraryMarkers(doc)
+  const approvedRuntime = resolveDeckApprovedRuntime(doc)
 
   return {
     runtimeMode: detectRuntimeModeFromDocument(doc),
     arkDeck,
     arkPreview,
     arkRuntime,
+    arkRuntimeLib: libraryMarkers.arkRuntimeLib,
+    arkRuntimeVersion: libraryMarkers.arkRuntimeVersion,
+    approvedRuntimeId: approvedRuntime?.id ?? null,
+    approvedRuntimeVersion: approvedRuntime?.version ?? null,
   }
 }
 
@@ -225,12 +247,22 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
   const runtimeMarkers = readRuntimeMarkers(doc)
 
   if (scripts.length > 0 && !runtimeModeAllowsDeckScripts(runtimeMarkers.runtimeMode)) {
-    pushIssue(issues, {
-      code: 'script_without_marker',
-      message:
-        'Deck scripts require data-ark-deck="nav" or data-ark-preview="full-js" on <html> or <body>.',
-      severity: 'warning',
+    const usesOnlyApprovedRuntimeScripts = scripts.every((script) => {
+      if (script.inline) {
+        return false
+      }
+
+      return Boolean(script.src && isApprovedRuntimeAssetUrl(script.src))
     })
+
+    if (!usesOnlyApprovedRuntimeScripts) {
+      pushIssue(issues, {
+        code: 'script_without_marker',
+        message:
+          'Deck scripts require data-ark-deck="nav" or data-ark-preview="full-js" on <html> or <body>.',
+        severity: 'warning',
+      })
+    }
   }
 
   if (hasTrackingSignals(doc, scripts)) {
@@ -242,6 +274,23 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
   }
 
   const externalUrls = collectExternalUrls(doc)
+  const runtimeAssetReferences = collectRuntimeAssetReferences(doc)
+  const libraryMarkers = readDeckRuntimeLibraryMarkers(doc)
+
+  for (const invalidMarker of collectInvalidRuntimeMarkers(doc)) {
+    pushIssue(issues, {
+      code: 'invalid_runtime_marker',
+      message: `Unrecognized ${invalidMarker.attribute}="${invalidMarker.value}". Use only approved Ark runtime markers.`,
+      severity: 'error',
+    })
+  }
+
+  for (const runtimeIssue of validateRuntimeAssetReferences(
+    runtimeAssetReferences,
+    libraryMarkers,
+  )) {
+    pushIssue(issues, runtimeIssue)
+  }
 
   if (externalUrls.length > 0) {
     pushIssue(issues, {
@@ -284,6 +333,10 @@ export function validateDeckHtml(
         arkDeck: null,
         arkPreview: null,
         arkRuntime: null,
+        arkRuntimeLib: null,
+        arkRuntimeVersion: null,
+        approvedRuntimeId: null,
+        approvedRuntimeVersion: null,
       },
       issues: [
         {

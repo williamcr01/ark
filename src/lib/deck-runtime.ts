@@ -1,3 +1,9 @@
+import {
+  hasCustomJsMarker,
+  hasRevealMarker,
+  hasRevealStructure,
+} from '../../shared/deck-runtime-registry.ts'
+
 export type DeckRuntimeMode = 'static' | 'reveal' | 'custom-js'
 
 export type DeckRuntimePolicy = {
@@ -40,56 +46,6 @@ const STRICT_CSP_DIRECTIVES = [
 ] as const
 
 export const STRICT_DECK_CSP = STRICT_CSP_DIRECTIVES.join('; ')
-
-function hasCustomJsMarker(doc: Document) {
-  for (const element of [doc.documentElement, doc.body]) {
-    if (!element) {
-      continue
-    }
-
-    if (element.getAttribute('data-ark-deck') === 'nav') {
-      return true
-    }
-
-    if (element.getAttribute('data-ark-preview') === 'full-js') {
-      return true
-    }
-
-    if (element.getAttribute('data-ark-runtime') === 'custom-js') {
-      return true
-    }
-  }
-
-  return false
-}
-
-function hasRevealMarker(doc: Document) {
-  for (const element of [doc.documentElement, doc.body]) {
-    if (!element) {
-      continue
-    }
-
-    if (element.getAttribute('data-ark-runtime') === 'reveal') {
-      return true
-    }
-
-    if (element.getAttribute('data-ark-deck') === 'reveal') {
-      return true
-    }
-  }
-
-  return false
-}
-
-function hasRevealStructure(doc: Document) {
-  const revealRoot = doc.querySelector('.reveal .slides')
-
-  if (!revealRoot) {
-    return false
-  }
-
-  return revealRoot.querySelector('section') !== null
-}
 
 export function detectRuntimeModeFromDocument(doc: Document): DeckRuntimeMode {
   if (hasCustomJsMarker(doc)) {

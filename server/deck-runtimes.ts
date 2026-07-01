@@ -1,0 +1,121 @@
+import { createReadStream, existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import type { NextFunction, Request, Response } from 'express'
+
+import {
+  getApprovedRuntime,
+  getRuntimeRegistrySummary,
+  lookupRuntimeAsset,
+  type RuntimeAssetRef,
+} from '../shared/deck-runtime-registry.ts'
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const RUNTIMES_DIR = path.join(ROOT, 'runtimes')
+
+const MIME_TYPES: Record<string, string> = {
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+}
+
+function getContentType(assetPath: string) {
+  const extension = path.extname(assetPath).toLowerCase()
+  return MIME_TYPES[extension] ?? 'application/octet-stream'
+}
+
+function resolveRuntimeAssetFile(ref: RuntimeAssetRef) {
+  const baseDir = path.join(RUNTIMES_DIR, ref.runtimeId, ref.version)
+  const resolved = path.resolve(baseDir, ref.assetPath)
+
+  if (!resolved.startsWith(`${baseDir}${path.sep}`)) {
+    return null
+  }
+
+  if (!existsSync(resolved)) {
+    return null
+  }
+
+  return resolved
+}
+
+export function handleRuntimeRegistryRequest(_request: Request, response: Response) {
+  response.json({
+    schemaVersion: 1,
+    runtimes: getRuntimeRegistrySummary(),
+  })
+}
+
+export function handleRuntimeAssetRequest(request: Request, response: Response) {
+  const runtimeId = typeof request.params.runtimeId === 'string' ? request.params.runtimeId : ''
+  const version = typeof request.params.version === 'string' ? request.params.version : ''
+  const assetPath = typeof request.params.assetPath === 'string' ? request.params.assetPath : ''
+
+  if (!runtimeId || !version || !assetPath) {
+    response.status(400).json({ error: 'runtimeId, version, and asset path are required.' })
+    return
+  }
+
+  const ref: RuntimeAssetRef = {
+    runtimeId: decodeURIComponent(runtimeId),
+    version: decodeURIComponent(version),
+    assetPath,
+  }
+  const lookup = lookupRuntimeAsset(ref)
+
+  if (!lookup) {
+    response.status(404).json({ error: 'Runtime asset is not in the approved registry.' })
+    return
+  }
+
+  const runtime = getApprovedRuntime(runtimeId, version)
+
+  if (!runtime) {
+    response.status(404).json({ error: 'Runtime version is not approved.' })
+    return
+  }
+
+  const filePath = resolveRuntimeAssetFile(ref)
+
+  if (!filePath) {
+    response.status(404).json({ error: 'Runtime asset file is missing on disk.' })
+    return
+  }
+
+  response.setHeader('Content-Type', getContentType(assetPath))
+  response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+  response.setHeader('X-Checksum-Sha256', lookup.asset.sha256)
+  createReadStream(filePath).pipe(response)
+}
+
+const RUNTIME_ASSET_PATH_PATTERN = /^\/api\/runtimes\/([^/]+)\/([^/]+)\/(.+)$/
+
+export function handleRuntimeRoutes(request: Request, response: Response, next: NextFunction) {
+  if (request.method !== 'GET') {
+    next()
+    return
+  }
+
+  const pathname = request.path
+
+  if (pathname === '/api/runtimes') {
+    handleRuntimeRegistryRequest(request, response)
+    return
+  }
+
+  const match = pathname.match(RUNTIME_ASSET_PATH_PATTERN)
+
+  if (!match) {
+    next()
+    return
+  }
+
+  request.params = {
+    ...request.params,
+    runtimeId: match[1] ?? '',
+    version: match[2] ?? '',
+    assetPath: match[3] ?? '',
+  }
+
+  handleRuntimeAssetRequest(request, response)
+}
