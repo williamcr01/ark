@@ -88,6 +88,7 @@ export function useDeckPersistence() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const saveRequestIdRef = useRef(0)
+  const inspectRequestIdRef = useRef(0)
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
     setDeckId(deck.id)
@@ -337,7 +338,13 @@ export function useDeckPersistence() {
         return null
       }
 
+      const requestId = ++inspectRequestIdRef.current
       const version = await fetchDeckVersion(deckId, versionId)
+
+      if (requestId !== inspectRequestIdRef.current) {
+        return null
+      }
+
       setPreviewVersion(version)
       return version
     },
@@ -345,6 +352,7 @@ export function useDeckPersistence() {
   )
 
   const clearVersionPreview = useCallback(() => {
+    inspectRequestIdRef.current += 1
     setPreviewVersion(null)
   }, [])
 

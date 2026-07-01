@@ -332,4 +332,71 @@ describe('useDeckPersistence', () => {
     expect(result.current.decks).toEqual([])
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
+
+  it('ignores stale version inspect responses when selection changes quickly', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const versionA = {
+      id: 'a0000000-0000-4000-8000-000000000001',
+      deckId: deck.id,
+      versionNumber: 1,
+      title: 'Test Deck',
+      source: 'manual' as const,
+      summary: null,
+      validationStatus: 'valid' as const,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      isActive: false,
+      html: sampleHtml,
+    }
+    const versionB = {
+      ...versionA,
+      id: 'b0000000-0000-4000-8000-000000000001',
+      versionNumber: 2,
+      html: updatedHtml,
+      isActive: true,
+    }
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(jsonResponse({ version: versionA }))
+            }, 30)
+          }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ version: versionB }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    let inspectA: Promise<unknown>
+    let inspectB: Promise<unknown>
+
+    act(() => {
+      inspectA = result.current.inspectVersion(versionA.id)
+      inspectB = result.current.inspectVersion(versionB.id)
+    })
+
+    await act(async () => {
+      await inspectB
+    })
+
+    expect(result.current.previewVersion).toEqual(versionB)
+
+    await act(async () => {
+      await inspectA
+    })
+
+    expect(result.current.previewVersion).toEqual(versionB)
+  })
 })

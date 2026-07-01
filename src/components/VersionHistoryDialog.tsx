@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { HistoryIcon, RotateCcwIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { DeckVersionDetail, DeckVersionSource, DeckVersionSummary } from '@/lib/deck-api'
+import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from '@/lib/deck-preview'
 import { cn } from '@/lib/utils'
 
 const SOURCE_LABELS: Record<DeckVersionSource, string> = {
@@ -143,9 +144,16 @@ export function VersionHistoryDialog({
     }
   }
 
+  const matchingPreview =
+    previewVersion && previewVersion.id === selectedVersionId ? previewVersion : null
   const selectedVersion =
-    previewVersion ?? versions.find((version) => version.id === selectedVersionId) ?? null
-  const previewHtml = previewVersion?.html
+    matchingPreview ?? versions.find((version) => version.id === selectedVersionId) ?? null
+  const previewSourceHtml = matchingPreview?.html ?? ''
+  const runtimeMode = useMemo(() => detectRuntimeMode(previewSourceHtml), [previewSourceHtml])
+  const sanitizedPreviewHtml = useMemo(
+    () => (previewSourceHtml ? getPreviewHtml(previewSourceHtml) : ''),
+    [previewSourceHtml],
+  )
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -245,12 +253,13 @@ export function VersionHistoryDialog({
                     ) : null}
                   </div>
 
-                  {previewHtml ? (
+                  {sanitizedPreviewHtml ? (
                     <div className="min-h-0 flex-1 overflow-hidden rounded-md border bg-muted/20">
                       <iframe
                         className="h-56 w-full bg-white"
-                        sandbox=""
-                        srcDoc={previewHtml}
+                        referrerPolicy="no-referrer"
+                        sandbox={getPreviewSandbox(runtimeMode)}
+                        srcDoc={sanitizedPreviewHtml}
                         title={`Version ${selectedVersion.versionNumber} preview`}
                       />
                     </div>
