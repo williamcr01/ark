@@ -12,7 +12,12 @@ import {
 import { handleDeckAssetRequest } from './deck-assets.ts'
 import { runDeckAgent } from './deck-agent.ts'
 import { createDefaultDeckStore } from './deck-store.ts'
-import { type DeckStore, isValidDeckId } from './deck-record.ts'
+import {
+  type DeckStore,
+  type DeckVersionOptions,
+  isValidDeckId,
+  normalizeDeckVersionSource,
+} from './deck-record.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import {
   ensureModelInList,
@@ -30,6 +35,34 @@ type GenerateRequest = {
 
 type CreateAppOptions = {
   deckStore?: DeckStore
+}
+
+type DeckVersionRequestBody = {
+  source?: unknown
+  summary?: unknown
+  modelProvider?: unknown
+  modelName?: unknown
+}
+
+function parseDeckVersionOptions(body: DeckVersionRequestBody = {}): DeckVersionOptions {
+  const options: DeckVersionOptions = {
+    source: normalizeDeckVersionSource(body.source),
+    validationStatus: 'valid',
+  }
+
+  if (typeof body.summary === 'string' && body.summary.trim()) {
+    options.summary = body.summary.trim()
+  }
+
+  if (typeof body.modelProvider === 'string' && body.modelProvider.trim()) {
+    options.modelProvider = body.modelProvider.trim()
+  }
+
+  if (typeof body.modelName === 'string' && body.modelName.trim()) {
+    options.modelName = body.modelName.trim()
+  }
+
+  return options
 }
 
 const sendApiError = (response: Response, status: number, payload: ApiErrorPayload) => {
@@ -147,7 +180,10 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.post(
     '/api/decks',
-    async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
+    async (
+      request: Request<unknown, unknown, { html?: string } & DeckVersionRequestBody>,
+      response: Response,
+    ) => {
       const html = request.body.html ?? ''
 
       if (!html.trim()) {
@@ -163,7 +199,7 @@ export function createApp(options: CreateAppOptions = {}) {
       }
 
       try {
-        const deck = await deckStore.createDeck(html)
+        const deck = await deckStore.createDeck(html, parseDeckVersionOptions(request.body))
         response.status(201).json({ deck, validation })
       } catch (error) {
         sendApiError(response, 500, getApiErrorFromUnknown(error))
@@ -173,7 +209,10 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.put(
     '/api/decks/:id',
-    async (request: Request<{ id: string }, unknown, { html?: string }>, response: Response) => {
+    async (
+      request: Request<{ id: string }, unknown, { html?: string } & DeckVersionRequestBody>,
+      response: Response,
+    ) => {
       const id = request.params.id?.trim()
       const html = request.body.html ?? ''
 
@@ -200,7 +239,7 @@ export function createApp(options: CreateAppOptions = {}) {
       }
 
       try {
-        const deck = await deckStore.updateDeck(id, html)
+        const deck = await deckStore.updateDeck(id, html, parseDeckVersionOptions(request.body))
 
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })
@@ -245,6 +284,115 @@ export function createApp(options: CreateAppOptions = {}) {
         }
 
         response.json({ deck })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
+
+  app.get(
+    '/api/decks/:id/versions',
+    async (request: Request<{ id: string }>, response: Response) => {
+      const id = request.params.id?.trim()
+
+      if (!id) {
+        response.status(400).json({ error: 'Deck id is required.' })
+        return
+      }
+
+      if (!isValidDeckId(id)) {
+        response.status(400).json({ error: 'Invalid deck id.' })
+        return
+      }
+
+      try {
+        const versions = await deckStore.listVersions(id)
+
+        if (!versions) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
+        response.json({ versions })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
+
+  app.get(
+    '/api/decks/:id/versions/:versionId',
+    async (request: Request<{ id: string; versionId: string }>, response: Response) => {
+      const id = request.params.id?.trim()
+      const versionId = request.params.versionId?.trim()
+
+      if (!id || !versionId) {
+        response.status(400).json({ error: 'Deck id and version id are required.' })
+        return
+      }
+
+      if (!isValidDeckId(id) || !isValidDeckId(versionId)) {
+        response.status(400).json({ error: 'Invalid deck id or version id.' })
+        return
+      }
+
+      try {
+        const version = await deckStore.getVersion(id, versionId)
+
+        if (!version) {
+          response.status(404).json({ error: 'Version not found.' })
+          return
+        }
+
+        response.json({ version })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
+
+  app.post(
+    '/api/decks/:id/rollback',
+    async (
+      request: Request<{ id: string }, unknown, { versionId?: string }>,
+      response: Response,
+    ) => {
+      const id = request.params.id?.trim()
+      const versionId = request.body.versionId?.trim()
+
+      if (!id || !versionId) {
+        response.status(400).json({ error: 'Deck id and version id are required.' })
+        return
+      }
+
+      if (!isValidDeckId(id) || !isValidDeckId(versionId)) {
+        response.status(400).json({ error: 'Invalid deck id or version id.' })
+        return
+      }
+
+      try {
+        const targetVersion = await deckStore.getVersion(id, versionId)
+
+        if (!targetVersion) {
+          response.status(404).json({ error: 'Version not found.' })
+          return
+        }
+
+        const validation = validateDeckHtmlOnServer(targetVersion.html)
+
+        if (!validation.valid) {
+          sendDeckValidationError(response, validation)
+          return
+        }
+
+        const deck = await deckStore.rollbackToVersion(id, versionId)
+
+        if (!deck) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
+        response.json({ deck, validation })
       } catch (error) {
         sendApiError(response, 500, getApiErrorFromUnknown(error))
       }

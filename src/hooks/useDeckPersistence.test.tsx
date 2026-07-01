@@ -22,6 +22,8 @@ const deck = {
   title: 'Test Deck',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  activeVersionId: 'a0000000-0000-4000-8000-000000000001',
+  versionNumber: 1,
 }
 
 const secondDeck = {
@@ -30,6 +32,8 @@ const secondDeck = {
   title: 'Roadmap',
   createdAt: '2026-01-02T00:00:00.000Z',
   updatedAt: '2026-01-02T00:00:00.000Z',
+  activeVersionId: 'b0000000-0000-4000-8000-000000000001',
+  versionNumber: 1,
 }
 
 const toSummary = (storedDeck: typeof deck) => ({
@@ -37,7 +41,26 @@ const toSummary = (storedDeck: typeof deck) => ({
   title: storedDeck.title,
   createdAt: storedDeck.createdAt,
   updatedAt: storedDeck.updatedAt,
+  activeVersionId: storedDeck.activeVersionId ?? null,
+  versionNumber: storedDeck.versionNumber ?? null,
 })
+
+const versionsResponse = (deckId: string) =>
+  jsonResponse({
+    versions: [
+      {
+        id: 'a0000000-0000-4000-8000-000000000001',
+        deckId,
+        versionNumber: 1,
+        title: 'Test Deck',
+        source: 'manual',
+        summary: null,
+        validationStatus: 'valid',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isActive: true,
+      },
+    ],
+  })
 
 const jsonResponse = (body: unknown, options: { ok?: boolean; status?: number } = {}) => ({
   ok: options.ok ?? true,
@@ -64,6 +87,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
       .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -106,6 +130,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [] }))
       .mockResolvedValueOnce(jsonResponse({ deck }, { status: 201 }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -119,7 +144,8 @@ describe('useDeckPersistence', () => {
       await result.current.persistHtml(sampleHtml)
     })
 
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
       '/api/decks',
       expect.objectContaining({
         method: 'POST',
@@ -138,6 +164,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
       .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -150,6 +177,7 @@ describe('useDeckPersistence', () => {
             }, 20)
           }),
       )
+      .mockResolvedValueOnce(versionsResponse(deck.id))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -173,7 +201,8 @@ describe('useDeckPersistence', () => {
       await persistPromise
     })
 
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       `/api/decks/${deck.id}`,
       expect.objectContaining({ method: 'PUT' }),
     )
@@ -188,6 +217,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
       .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -201,7 +231,7 @@ describe('useDeckPersistence', () => {
       result.current.startNewDeck()
     })
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(result.current.hasDeck).toBe(false)
     expect(result.current.decks).toEqual([toSummary(deck)])
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
@@ -212,6 +242,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(secondDeck), toSummary(deck)] }))
       .mockResolvedValueOnce(jsonResponse({ deck: secondDeck }))
+      .mockResolvedValueOnce(versionsResponse(secondDeck.id))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -225,7 +256,7 @@ describe('useDeckPersistence', () => {
       await result.current.selectDeck(secondDeck.id)
     })
 
-    expect(fetchMock).toHaveBeenLastCalledWith(`/api/decks/${secondDeck.id}`)
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `/api/decks/${secondDeck.id}`)
     expect(result.current.deckId).toBe(secondDeck.id)
     expect(result.current.deckTitle).toBe('Roadmap')
     expect(result.current.html).toBe(secondDeck.html)
@@ -244,6 +275,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
       .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
       .mockResolvedValueOnce(jsonResponse({ deck: renamedDeck }))
 
     vi.stubGlobal('fetch', fetchMock)
@@ -277,6 +309,7 @@ describe('useDeckPersistence', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
       .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
       .mockResolvedValueOnce(jsonResponse({}, { status: 204 }))
 
     vi.stubGlobal('fetch', fetchMock)
