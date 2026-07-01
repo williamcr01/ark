@@ -1,6 +1,7 @@
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
 
 import { buildAgentModelMessages, type AgentStep, type ApiChatMessage } from '../shared/chat.ts'
+import { buildRuntimeRegistryPromptSection } from '../shared/deck-runtime-registry.ts'
 import { createDeckTools } from './deck-tools.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
@@ -34,6 +35,9 @@ Preview modes:
 - Listen for CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
 - Dispatch CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
 - External JavaScript libraries are only acceptable if inlined or bundled in the HTML; never use external script URLs.
+
+Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
+${buildRuntimeRegistryPromptSection()}
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
 

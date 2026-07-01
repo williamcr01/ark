@@ -156,6 +156,9 @@ importers:
       prettier:
         specifier: ^3.9.3
         version: 3.9.3
+      reveal.js:
+        specifier: 5.1.0
+        version: 5.1.0
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -4067,6 +4070,10 @@ packages:
   reusify@1.1.0:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
+
+  reveal.js@5.1.0:
+    resolution: {integrity: sha512-KDt7m0+xwKV6nAZt4CNPVFBf42sTKRQapg0bGGKB5PKO5XvChnMfwlZkybydHiQJ7p5+6LbHKRGrhXODdoNIaA==}
+    engines: {node: '>=18.0.0'}
 
   robust-predicates@3.0.3:
     resolution: {integrity: sha512-NS3levdsRIUOmiJ8FZWCP7LG3QpJyrs/TE0Zpf1yvZu8cAJJ6QMW92H1c7kWpdIHo8RvmLxN/o2JXTKHp74lUA==}
@@ -8950,6 +8957,8 @@ snapshots:
   ret@0.1.15: {}
 
   reusify@1.1.0: {}
+
+  reveal.js@5.1.0: {}
 
   robust-predicates@3.0.3: {}
 

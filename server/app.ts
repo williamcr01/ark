@@ -10,6 +10,7 @@ import {
   type ApiErrorPayload,
 } from './credentials.ts'
 import { handleDeckAssetRequest } from './deck-assets.ts'
+import { handleRuntimeRoutes } from './deck-runtimes.ts'
 import { runDeckAgent } from './deck-agent.ts'
 import { createDefaultDeckStore } from './deck-store.ts'
 import { type DeckStore, isValidDeckId } from './deck-record.ts'
@@ -78,6 +79,8 @@ export function createApp(options: CreateAppOptions = {}) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
     }
   })
+
+  app.use(handleRuntimeRoutes)
 
   app.get('/api/health', (_request: Request, response: Response) => {
     const configured = hasAnyConfiguredProvider()
