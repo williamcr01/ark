@@ -246,17 +246,40 @@ export function createDeckRuntimeErrorMessage(
 
 export const DECK_BRIDGE_TARGET_ORIGIN = '*' as const
 
-export function postDeckGoto(target: Window, index: number) {
-  target.postMessage(createDeckGotoMessage(index), DECK_BRIDGE_TARGET_ORIGIN)
+export function getDeckBridgeTargetOrigin(parentOrigin?: string | null) {
+  const configured = parentOrigin?.trim()
+
+  if (configured) {
+    return configured
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+
+  return DECK_BRIDGE_TARGET_ORIGIN
 }
 
-export function postDeckBridgeMessage(target: Window, message: DeckBridgeMessageFromRuntime) {
-  target.postMessage(message, DECK_BRIDGE_TARGET_ORIGIN)
+export function postDeckGoto(
+  target: Window,
+  index: number,
+  targetOrigin = DECK_BRIDGE_TARGET_ORIGIN,
+) {
+  target.postMessage(createDeckGotoMessage(index), targetOrigin)
+}
+
+export function postDeckBridgeMessage(
+  target: Window,
+  message: DeckBridgeMessageFromRuntime,
+  targetOrigin = DECK_BRIDGE_TARGET_ORIGIN,
+) {
+  target.postMessage(message, targetOrigin)
 }
 
 export type DeckBridgeRuntimeScriptOptions = {
   slideSelectors: readonly string[]
   previewMode: DeckPreviewMode
+  parentOrigin?: string
 }
 
 export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOptions): string {
@@ -270,6 +293,7 @@ export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOpt
     ERROR: DECK_RUNTIME_ERROR_MESSAGE_TYPE,
     SELECTORS: [...options.slideSelectors],
     PREVIEW_MODE: options.previewMode,
+    PARENT_ORIGIN: options.parentOrigin?.trim() || '',
   }
 
   return `
@@ -323,7 +347,7 @@ export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOpt
 
   function postToParent(message) {
     if (window.parent !== window) {
-      window.parent.postMessage(message, '*');
+      window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
     }
   }
 
@@ -354,6 +378,10 @@ export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOpt
 
   window.addEventListener('message', function (event) {
     if (event.source !== window.parent) {
+      return;
+    }
+
+    if (C.PARENT_ORIGIN && event.origin !== C.PARENT_ORIGIN) {
       return;
     }
 
@@ -485,7 +513,7 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
 
   function postToParent(message) {
     if (window.parent !== window) {
-      window.parent.postMessage(message, '*');
+      window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
     }
   }
 
@@ -619,6 +647,10 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
 
   window.addEventListener('message', function (event) {
     if (event.source !== window.parent) {
+      return;
+    }
+
+    if (C.PARENT_ORIGIN && event.origin !== C.PARENT_ORIGIN) {
       return;
     }
 

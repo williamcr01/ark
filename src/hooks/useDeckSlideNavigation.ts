@@ -8,6 +8,10 @@ import {
   isDeckSlideChangeMessage,
   type DeckMetadata,
 } from '../../shared/deck-bridge.ts'
+import {
+  DECK_BRIDGE_POST_MESSAGE_TARGET,
+  isAllowedBridgeMessageOrigin,
+} from '../../shared/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
 const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -20,6 +24,7 @@ export type DeckNavOptions = {
   runtimeMode?: DeckRuntimeMode
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
+  sandboxOrigin?: string | null
   onSlideChange?: (index: number) => void
   onDeckReady?: (payload: { index: number; slideCount: number; metadata: DeckMetadata }) => void
   onRuntimeError?: (message: string, source?: string) => void
@@ -100,6 +105,7 @@ export function useDeckSlideNavigation(
   const {
     initialSlideIndex = 0,
     keyboardMode = 'preview',
+    sandboxOrigin = null,
     onSlideChange,
     onDeckReady,
     onRuntimeError,
@@ -110,6 +116,7 @@ export function useDeckSlideNavigation(
   )
   const prevHtmlRef = useRef(html)
   const activeSlideIndexRef = useRef(activeSlideIndex)
+  const iframeGenerationRef = useRef(0)
 
   const commitSlideIndex = useCallback(
     (index: number) => {
@@ -130,6 +137,10 @@ export function useDeckSlideNavigation(
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
+
+  useEffect(() => {
+    iframeGenerationRef.current += 1
+  }, [html, sandboxOrigin])
 
   useEffect(() => {
     if (prevHtmlRef.current === html) {
@@ -156,7 +167,7 @@ export function useDeckSlideNavigation(
         return
       }
 
-      iframeWindow.postMessage(createDeckGotoMessage(clampedIndex), '*')
+      iframeWindow.postMessage(createDeckGotoMessage(clampedIndex), DECK_BRIDGE_POST_MESSAGE_TARGET)
     },
     [commitSlideIndex, iframeRef, slideCount],
   )
@@ -166,10 +177,20 @@ export function useDeckSlideNavigation(
       return
     }
 
+    const messageGeneration = iframeGenerationRef.current
+
     const handleMessage = (event: MessageEvent) => {
+      if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
       const iframeWindow = iframeRef.current?.contentWindow
 
       if (!iframeWindow || event.source !== iframeWindow) {
+        return
+      }
+
+      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
         return
       }
 
@@ -204,7 +225,7 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [commitSlideIndex, enabled, iframeRef, onDeckReady, onRuntimeError])
+  }, [commitSlideIndex, enabled, iframeRef, onDeckReady, onRuntimeError, sandboxOrigin])
 
   useEffect(() => {
     if (!enabled || slideCount === 0 || keyboardMode === 'off') {
