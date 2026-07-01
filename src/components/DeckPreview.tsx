@@ -13,13 +13,13 @@ import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
   detectRuntimeMode,
   getPreviewFrameScale,
   getPreviewFrameStyle,
-  getPreviewHtml,
   getPreviewSandbox,
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
@@ -54,6 +54,7 @@ export function DeckPreview({
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
   const hasSlides = parsedDeck.slideCount > 0
+  const previewFrame = useDeckPreviewFrame(html, html.length > 0 && hasSlides && !isPresentOpen)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
@@ -62,6 +63,7 @@ export function DeckPreview({
     {
       runtimeMode,
       keyboardMode: isPresentOpen ? 'off' : 'preview',
+      sandboxOrigin: previewFrame.sandboxOrigin,
     },
   )
 
@@ -122,7 +124,7 @@ export function DeckPreview({
           ) : null}
           <span className="flex items-center gap-1">
             <FileCode2Icon className="size-3" />
-            srcDoc
+            {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
           </span>
         </span>
       </div>
@@ -157,13 +159,26 @@ export function DeckPreview({
               >
                 <iframe
                   className="absolute left-0 top-0 block border-0 bg-white"
+                  key={previewFrame.iframeKey}
                   ref={iframeRef}
                   referrerPolicy="no-referrer"
                   sandbox={getPreviewSandbox(runtimeMode)}
-                  srcDoc={getPreviewHtml(html)}
+                  src={previewFrame.iframeSrc}
+                  srcDoc={previewFrame.iframeSrcDoc}
                   style={previewFrameStyle}
                   title="Generated Ark presentation preview"
                 />
+                {previewFrame.error ? (
+                  <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
+                    <p className="font-medium">Sandbox preview unavailable</p>
+                    <p>{previewFrame.error}</p>
+                  </div>
+                ) : null}
+                {previewFrame.isLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+                    Loading sandbox preview…
+                  </div>
+                ) : null}
                 {usesStaticPreview ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
                     <div className="flex items-start gap-2">

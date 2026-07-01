@@ -72,12 +72,31 @@ If `.env` has no provider keys, still has placeholder values, or a key is reject
 pnpm dev
 ```
 
-This starts both:
+This starts:
 
 - Vite app: `http://localhost:5173` (proxies `/api` to the port below)
 - local API server: `http://localhost:${PORT:-8787}`
+- sandbox preview host: `http://localhost:${SANDBOX_PORT:-5174}`
+
+Deck previews load from the sandbox origin via short-lived render tokens. The shell creates sessions through `/api/preview-sessions` and embeds `{sandboxOrigin}/render/{token}?parent={appOrigin}` in the preview iframe.
+
+Optional env vars (see `.env.example`):
+
+- `ARK_SANDBOX_ORIGIN` / `SANDBOX_PORT` — sandbox host origin (default `http://localhost:5174`)
+- `ARK_APP_ORIGIN` — app shell origin used for parent/deck `postMessage` scoping (default `http://localhost:5173`)
+- `VITE_ARK_PREVIEW_SRCDOC=true` — force legacy inline `srcDoc` preview instead of the sandbox host
 
 To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then open the app on port `5173` — not the API port directly.
+
+## Production API + sandbox host
+
+After building the client (`pnpm build`), serve the static app however you prefer (for example `pnpm preview` or your CDN) and run the backend processes:
+
+```bash
+pnpm start
+```
+
+This starts the API server and sandbox preview host together. Set `PORT`, `SANDBOX_PORT`, `ARK_APP_ORIGIN`, and `ARK_SANDBOX_ORIGIN` to match your deployed origins before starting.
 
 ## Checks
 

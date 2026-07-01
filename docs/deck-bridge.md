@@ -153,5 +153,18 @@ In CSS-only preview (no Reveal script), Ark still detects `runtime: 'reveal'` fr
 ## Security notes
 
 - The shell only accepts runtime messages from the preview iframe's `contentWindow`
+- Sandboxed preview iframes (`sandbox="allow-scripts"` without `allow-same-origin`) use an opaque origin serialized as `"null"`; parent listeners accept opaque origins and validate by `event.source` plus iframe generation instead of URL origin alone
+- Parent → iframe `postMessage` uses target origin `*` so messages reach opaque-origin frames; iframe → parent messages target the configured app origin when available
 - Preview uses `sandbox="allow-scripts"` without `allow-same-origin`
-- Thumbnails always strip scripts (`sandbox=""`)
+- Thumbnails always strip scripts (`sandbox=""`) and continue to use `srcDoc`
+
+## Sandbox host preview
+
+Main preview and Present mode load decks from a separate sandbox origin (default `http://localhost:5174`) via short-lived render tokens:
+
+1. Shell `POST /api/preview-sessions` with deck HTML → `{ token, renderUrl }`
+2. Preview iframe loads `GET {sandboxOrigin}/render/{token}?parent={appOrigin}`
+3. Sandbox host applies strict CSP/COOP/CORP response headers and serves processed preview HTML
+4. Bridge scripts receive the parent app origin and reject parent messages from other origins
+
+Set `VITE_ARK_PREVIEW_SRCDOC=true` to force the legacy inline `srcDoc` preview path during migration.

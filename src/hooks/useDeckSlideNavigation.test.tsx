@@ -10,6 +10,11 @@ import {
   createDeckSlideChangeMessage,
   createDeckMetadata,
 } from '../../shared/deck-bridge.ts'
+import {
+  DECK_BRIDGE_POST_MESSAGE_TARGET,
+  OPAQUE_SANDBOX_ORIGIN,
+  resolveSandboxOrigin,
+} from '../../shared/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 
@@ -26,6 +31,7 @@ type HarnessProps = {
   runtimeMode?: DeckRuntimeMode
   slideCount?: number
   syncOnLoad?: boolean
+  sandboxOrigin?: string | null
 }
 
 function NavigationHarness({
@@ -39,6 +45,7 @@ function NavigationHarness({
   runtimeMode = 'static',
   slideCount = 3,
   syncOnLoad = false,
+  sandboxOrigin = null,
 }: HarnessProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
@@ -54,6 +61,7 @@ function NavigationHarness({
       onSlideChange,
       runtimeMode,
       syncOnLoad,
+      sandboxOrigin,
     },
   )
 
@@ -81,16 +89,21 @@ function getIframeWindow() {
 }
 
 describe('useDeckSlideNavigation', () => {
+  const sandboxOrigin = resolveSandboxOrigin()
+
   it('posts goto messages and commits the active slide when goToSlide is called', async () => {
     const user = userEvent.setup()
-    render(<NavigationHarness />)
+    render(<NavigationHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
     const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
     await user.click(screen.getByRole('button', { name: 'Go to third' }))
 
     expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
-    expect(postMessage).toHaveBeenCalledWith(createDeckGotoMessage(2), '*')
+    expect(postMessage).toHaveBeenCalledWith(
+      createDeckGotoMessage(2),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
   })
 
   it('ignores out-of-range goto requests', async () => {
@@ -105,16 +118,38 @@ describe('useDeckSlideNavigation', () => {
     expect(postMessage).not.toHaveBeenCalled()
   })
 
-  it('accepts slide-change acknowledgements only from the preview iframe', async () => {
+  it('accepts opaque-origin bridge messages from the preview iframe', async () => {
     const onSlideChange = vi.fn()
-    render(<NavigationHarness onSlideChange={onSlideChange} />)
+    render(<NavigationHarness onSlideChange={onSlideChange} sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
           data: createDeckSlideChangeMessage(1),
-          source: window,
+          origin: OPAQUE_SANDBOX_ORIGIN,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
+    })
+    expect(onSlideChange).toHaveBeenCalledWith(1)
+  })
+
+  it('accepts slide-change acknowledgements only from the preview iframe and sandbox origin', async () => {
+    const onSlideChange = vi.fn()
+    render(<NavigationHarness onSlideChange={onSlideChange} sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckSlideChangeMessage(1),
+          origin: 'http://evil.test',
+          source: iframeWindow,
         }),
       )
     })
@@ -125,6 +160,7 @@ describe('useDeckSlideNavigation', () => {
       window.dispatchEvent(
         new MessageEvent('message', {
           data: createDeckSlideChangeMessage(1),
+          origin: sandboxOrigin,
           source: iframeWindow,
         }),
       )
@@ -143,13 +179,14 @@ describe('useDeckSlideNavigation', () => {
       title: 'Demo',
       previewMode: 'css-only',
     })
-    render(<NavigationHarness onDeckReady={onDeckReady} />)
+    render(<NavigationHarness onDeckReady={onDeckReady} sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
           data: createDeckReadyMessage(1, 3, metadata),
+          origin: sandboxOrigin,
           source: iframeWindow,
         }),
       )
@@ -167,13 +204,14 @@ describe('useDeckSlideNavigation', () => {
 
   it('forwards runtime errors from the preview iframe', async () => {
     const onRuntimeError = vi.fn()
-    render(<NavigationHarness onRuntimeError={onRuntimeError} />)
+    render(<NavigationHarness onRuntimeError={onRuntimeError} sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
           data: createDeckRuntimeErrorMessage('boom', 'deck.js'),
+          origin: sandboxOrigin,
           source: iframeWindow,
         }),
       )
@@ -183,7 +221,7 @@ describe('useDeckSlideNavigation', () => {
   })
 
   it('uses preview arrow keys for shell navigation', async () => {
-    render(<NavigationHarness />)
+    render(<NavigationHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
     const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
@@ -200,11 +238,14 @@ describe('useDeckSlideNavigation', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
     })
-    expect(postMessage).toHaveBeenLastCalledWith(createDeckGotoMessage(1), '*')
+    expect(postMessage).toHaveBeenLastCalledWith(
+      createDeckGotoMessage(1),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
   })
 
   it('uses present-mode keyboard shortcuts and clamps to available slides', async () => {
-    render(<NavigationHarness keyboardMode="present" />)
+    render(<NavigationHarness keyboardMode="present" sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
     const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
@@ -221,7 +262,10 @@ describe('useDeckSlideNavigation', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
     })
-    expect(postMessage).toHaveBeenLastCalledWith(createDeckGotoMessage(2), '*')
+    expect(postMessage).toHaveBeenLastCalledWith(
+      createDeckGotoMessage(2),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
 
     act(() => {
       window.dispatchEvent(
