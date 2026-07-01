@@ -54,9 +54,15 @@ function App() {
     isDirty,
     isLoading: isDeckLoading,
     isSaving: isDeckSaving,
+    deckId,
+    deckTitle,
+    decks,
+    deleteActiveDeck,
     persistHtml,
-    resetDeck,
+    renameActiveDeck,
     saveError,
+    selectDeck,
+    startNewDeck,
   } = useDeckPersistence()
   const { messages, resetChat, setMessages } = useChatSession()
   const [input, setInput] = useState('')
@@ -278,28 +284,68 @@ function App() {
     }
   }
 
-  const handleReset = async () => {
-    await resetDeck()
+  const handleNewDeck = () => {
+    startNewDeck()
     resetChat()
     setInput('')
     setError('')
     toast.info('Started a fresh deck')
   }
 
+  const handleSelectDeck = async (nextDeckId: string) => {
+    try {
+      await selectDeck(nextDeckId)
+      resetChat()
+      setInput('')
+      setError('')
+      toast.success('Deck loaded')
+    } catch {
+      toast.error('Could not load that deck')
+    }
+  }
+
+  const handleRenameDeck = async (title: string) => {
+    try {
+      await renameActiveDeck(title)
+      toast.success('Deck renamed')
+    } catch (renameError) {
+      toast.error('Could not rename deck')
+      throw renameError
+    }
+  }
+
+  const handleDeleteDeck = async () => {
+    try {
+      await deleteActiveDeck()
+      resetChat()
+      setInput('')
+      setError('')
+      toast.success('Deck deleted')
+    } catch {
+      toast.error('Could not delete deck')
+    }
+  }
+
   return (
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
         <AppTitleBar
+          activeDeckId={deckId}
+          deckTitle={deckTitle}
           deckSaveStatus={deckSaveStatus}
+          decks={decks}
           fileInputRef={fileInputRef}
           hasDeck={hasDeck}
           hasSlides={hasSlides}
           isChatOpen={isChatOpen}
           isGenerating={isGenerating}
           isStripOpen={isStripOpen}
+          onDeleteDeck={handleDeleteDeck}
           onDownload={handleDownload}
           onHtmlUpload={handleHtmlUpload}
-          onReset={handleReset}
+          onNewDeck={handleNewDeck}
+          onRenameDeck={handleRenameDeck}
+          onSelectDeck={handleSelectDeck}
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onUploadClick={handleUploadClick}

@@ -1,6 +1,13 @@
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+
+export type DeckSummary = {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
 
 export type StoredDeck = {
   id: string
@@ -12,8 +19,10 @@ export type StoredDeck = {
 
 export type DeckStore = {
   createDeck: (html: string) => Promise<StoredDeck>
+  listDecks: () => Promise<DeckSummary[]>
   getDeck: (id: string) => Promise<StoredDeck | null>
   updateDeck: (id: string, html: string) => Promise<StoredDeck | null>
+  updateDeckMetadata: (id: string, metadata: { title?: string }) => Promise<StoredDeck | null>
   deleteDeck: (id: string) => Promise<boolean>
 }
 
@@ -27,9 +36,21 @@ export function isValidDeckId(id: string) {
 
 export function extractDeckTitle(html: string) {
   const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
-  const title = match?.[1]?.trim()
 
-  return title || 'Untitled deck'
+  return normalizeDeckTitle(match?.[1])
+}
+
+export function normalizeDeckTitle(title: unknown) {
+  return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled deck'
+}
+
+function toDeckSummary(deck: StoredDeck): DeckSummary {
+  return {
+    id: deck.id,
+    title: deck.title,
+    createdAt: deck.createdAt,
+    updatedAt: deck.updatedAt,
+  }
 }
 
 function resolveDeckPath(dataDir: string, id: string) {
@@ -70,7 +91,9 @@ async function readDeckFile(filePath: string): Promise<StoredDeck | null> {
 
     return {
       ...parsed,
-      title: typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
+      title: normalizeDeckTitle(
+        typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
+      ),
     }
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
@@ -105,6 +128,37 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     return deck
   }
 
+  const listDecks = async () => {
+    try {
+      const entries = await readdir(dataDir, { withFileTypes: true })
+      const decks = await Promise.all(
+        entries
+          .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+          .map(async (entry) => {
+            const id = entry.name.slice(0, -'.json'.length)
+            const filePath = resolveDeckPath(dataDir, id)
+
+            if (!filePath) {
+              return null
+            }
+
+            return readDeckFile(filePath)
+          }),
+      )
+
+      return decks
+        .filter((deck): deck is StoredDeck => Boolean(deck))
+        .map(toDeckSummary)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        return []
+      }
+
+      throw error
+    }
+  }
+
   const getDeck = async (id: string) => {
     const filePath = resolveDeckPath(dataDir, id)
 
@@ -131,7 +185,30 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     const updated: StoredDeck = {
       ...existing,
       html,
-      title: extractDeckTitle(html),
+      updatedAt: new Date().toISOString(),
+    }
+
+    await writeFile(filePath, JSON.stringify(updated), 'utf8')
+
+    return updated
+  }
+
+  const updateDeckMetadata = async (id: string, metadata: { title?: string }) => {
+    const filePath = resolveDeckPath(dataDir, id)
+
+    if (!filePath) {
+      return null
+    }
+
+    const existing = await readDeckFile(filePath)
+
+    if (!existing) {
+      return null
+    }
+
+    const updated: StoredDeck = {
+      ...existing,
+      title: normalizeDeckTitle(metadata.title),
       updatedAt: new Date().toISOString(),
     }
 
@@ -161,8 +238,10 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
 
   return {
     createDeck,
+    listDecks,
     getDeck,
     updateDeck,
+    updateDeckMetadata,
     deleteDeck,
   }
 }

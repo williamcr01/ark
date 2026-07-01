@@ -104,6 +104,15 @@ app.get('/api/models', async (_request: Request, response: Response) => {
   }
 })
 
+app.get('/api/decks', async (_request: Request, response: Response) => {
+  try {
+    const decks = await deckStore.listDecks()
+    response.json({ decks })
+  } catch (error) {
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
+})
+
 app.get('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
   const id = request.params.id?.trim()
 
@@ -194,6 +203,43 @@ app.put(
       }
 
       response.json({ deck, validation })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  },
+)
+
+app.patch(
+  '/api/decks/:id',
+  async (request: Request<{ id: string }, unknown, { title?: unknown }>, response: Response) => {
+    const id = request.params.id?.trim()
+
+    if (!id) {
+      response.status(400).json({ error: 'Deck id is required.' })
+      return
+    }
+
+    if (!isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+
+    const title = request.body?.title
+
+    if (typeof title !== 'string') {
+      response.status(400).json({ error: 'Deck title is required.' })
+      return
+    }
+
+    try {
+      const deck = await deckStore.updateDeckMetadata(id, { title })
+
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
+        return
+      }
+
+      response.json({ deck })
     } catch (error) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
     }
