@@ -4,6 +4,8 @@ export type StoredDeck = {
   title: string
   createdAt: string
   updatedAt: string
+  activeVersionId?: string | null
+  versionNumber?: number | null
 }
 
 export type DeckSummary = Omit<StoredDeck, 'html'>
