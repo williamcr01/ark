@@ -49,20 +49,29 @@ type GenerateResponse = {
 
 function App() {
   const {
+    activeVersionId,
+    clearVersionPreview,
     hasDeck,
     html: generatedHtml,
+    inspectVersion,
     isDirty,
     isLoading: isDeckLoading,
+    isLoadingVersions,
     isSaving: isDeckSaving,
     deckId,
     deckTitle,
     decks,
     deleteActiveDeck,
     persistHtml,
+    previewVersion,
+    refreshVersions,
     renameActiveDeck,
+    rollbackToVersion,
     saveError,
     selectDeck,
     startNewDeck,
+    versionNumber,
+    versions,
   } = useDeckPersistence()
   const { messages, resetChat, setMessages } = useChatSession()
   const [input, setInput] = useState('')
@@ -156,7 +165,11 @@ function App() {
       }
 
       try {
-        await persistHtml(data.html)
+        await persistHtml(data.html, {
+          source: 'agent',
+          summary: editingExistingDeck ? 'AI edit' : 'AI generation',
+          modelName: selectedModel || null,
+        })
       } catch {
         toast.error('Deck generated but could not be saved')
       }
@@ -225,6 +238,19 @@ function App() {
     await generateDeck(message.text, attachments)
   }
 
+  const handleRollbackVersion = async (versionId: string) => {
+    try {
+      await rollbackToVersion(versionId)
+      resetChat()
+      setInput('')
+      setError('')
+      toast.success('Deck restored to selected version')
+    } catch {
+      toast.error('Could not restore that version')
+      throw new Error('Could not restore that version')
+    }
+  }
+
   const handleDownload = (variant: DeckDownloadVariant = 'original') => {
     if (!generatedHtml) {
       return
@@ -264,7 +290,10 @@ function App() {
       }
 
       try {
-        await persistHtml(html)
+        await persistHtml(html, {
+          source: 'upload',
+          summary: `Uploaded ${file.name}`,
+        })
       } catch {
         toast.error('Deck loaded but could not be saved')
       }
@@ -331,6 +360,7 @@ function App() {
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
         <AppTitleBar
           activeDeckId={deckId}
+          activeVersionId={activeVersionId}
           deckTitle={deckTitle}
           deckSaveStatus={deckSaveStatus}
           decks={decks}
@@ -339,17 +369,25 @@ function App() {
           hasSlides={hasSlides}
           isChatOpen={isChatOpen}
           isGenerating={isGenerating}
+          isLoadingVersions={isLoadingVersions}
           isStripOpen={isStripOpen}
+          onClearVersionPreview={clearVersionPreview}
           onDeleteDeck={handleDeleteDeck}
           onDownload={handleDownload}
           onHtmlUpload={handleHtmlUpload}
+          onInspectVersion={inspectVersion}
           onNewDeck={handleNewDeck}
+          onRefreshVersions={() => (deckId ? refreshVersions(deckId) : Promise.resolve([]))}
           onRenameDeck={handleRenameDeck}
+          onRollbackVersion={handleRollbackVersion}
           onSelectDeck={handleSelectDeck}
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onUploadClick={handleUploadClick}
+          previewVersion={previewVersion}
           showSanitizedDownload={showSanitizedDownload}
+          versionNumber={versionNumber}
+          versions={versions}
         />
 
         <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>

@@ -5,10 +5,16 @@ import { runMigrations } from '../migrate.ts'
 import {
   type DeckStore,
   type DeckSummary,
+  type DeckValidationStatus,
+  type DeckVersionDetail,
+  type DeckVersionOptions,
+  type DeckVersionSummary,
   type StoredDeck,
   extractDeckTitle,
   isValidDeckId,
   normalizeDeckTitle,
+  normalizeDeckValidationStatus,
+  normalizeDeckVersionSource,
 } from '../../deck-record.ts'
 
 export const SYSTEM_USER_ID = '00000000-0000-4000-8000-000000000001'
@@ -25,6 +31,19 @@ type DeckRow = {
 }
 
 type DeckSummaryRow = Omit<DeckRow, 'html'>
+
+type DeckVersionRow = {
+  id: string
+  deck_id: string
+  version_number: number | string
+  html: string
+  title: string
+  source: string
+  validation_status: string
+  runtime_metadata: Record<string, unknown> | null
+  created_at: Date | string
+  active_version_id: string | null
+}
 
 type PostgresDeckStoreOptions = {
   pool?: ConnectablePool
@@ -44,6 +63,22 @@ function toVersionNumber(value: number | string | null) {
   }
 
   return typeof value === 'number' ? value : Number(value)
+}
+
+function readVersionSummary(row: DeckVersionRow): DeckVersionSummary {
+  const metadata = row.runtime_metadata ?? {}
+
+  return {
+    id: row.id,
+    deckId: row.deck_id,
+    versionNumber: toVersionNumber(row.version_number) ?? 0,
+    title: row.title,
+    source: normalizeDeckVersionSource(row.source),
+    summary: typeof metadata.summary === 'string' ? metadata.summary : null,
+    validationStatus: normalizeDeckValidationStatus(row.validation_status),
+    createdAt: toIsoString(row.created_at),
+    isActive: row.id === row.active_version_id,
+  }
 }
 
 function mapDeck(row: DeckRow): StoredDeck {
@@ -111,6 +146,16 @@ async function readDeckById(queryable: Queryable, id: string) {
   return result.rows[0] ? mapDeck(result.rows[0]) : null
 }
 
+function buildVersionMetadata(options: DeckVersionOptions) {
+  const metadata: Record<string, unknown> = {}
+
+  if (options.summary) {
+    metadata.summary = options.summary
+  }
+
+  return metadata
+}
+
 export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}): DeckStore {
   const pool = options.pool ?? createPostgresPool()
   const shouldMigrate = options.migrate ?? true
@@ -128,11 +173,65 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     await readyPromise
   }
 
-  const createDeck = async (html: string) => {
+  const insertVersion = async (
+    client: Queryable,
+    params: {
+      deckId: string
+      versionNumber: number
+      html: string
+      title: string
+      createdAt: Date
+      options?: DeckVersionOptions
+    },
+  ) => {
+    const versionId = randomUUID()
+    const source = normalizeDeckVersionSource(params.options?.source)
+    const validationStatus: DeckValidationStatus = normalizeDeckValidationStatus(
+      params.options?.validationStatus ?? 'valid',
+    )
+    const metadata = buildVersionMetadata(params.options ?? {})
+
+    await client.query(
+      `
+        INSERT INTO deck_versions (
+          id,
+          deck_id,
+          version_number,
+          html,
+          title,
+          source,
+          author_user_id,
+          model_provider,
+          model_name,
+          validation_status,
+          runtime_metadata,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `,
+      [
+        versionId,
+        params.deckId,
+        params.versionNumber,
+        params.html,
+        params.title,
+        source,
+        ownerUserId,
+        params.options?.modelProvider ?? null,
+        params.options?.modelName ?? null,
+        validationStatus,
+        JSON.stringify(metadata),
+        params.createdAt,
+      ],
+    )
+
+    return versionId
+  }
+
+  const createDeck = async (html: string, versionOptions: DeckVersionOptions = {}) => {
     await ensureReady()
 
     const deckId = randomUUID()
-    const versionId = randomUUID()
     const createdAt = now()
     const title = extractDeckTitle(html)
 
@@ -152,22 +251,14 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
         [deckId, workspaceId, ownerUserId, title, createdAt],
       )
 
-      await client.query(
-        `
-          INSERT INTO deck_versions (
-            id,
-            deck_id,
-            version_number,
-            html,
-            title,
-            source,
-            author_user_id,
-            created_at
-          )
-          VALUES ($1, $2, 1, $3, $4, 'manual', $5, $6)
-        `,
-        [versionId, deckId, html, title, ownerUserId, createdAt],
-      )
+      const versionId = await insertVersion(client, {
+        deckId,
+        versionNumber: 1,
+        html,
+        title,
+        createdAt,
+        options: versionOptions,
+      })
 
       await client.query(
         `
@@ -220,7 +311,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     return result.rows.map(mapDeckSummary)
   }
 
-  const updateDeck = async (id: string, html: string) => {
+  const updateDeck = async (id: string, html: string, versionOptions: DeckVersionOptions = {}) => {
     if (!isValidDeckId(id)) {
       return null
     }
@@ -247,24 +338,14 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
         [id],
       )
       const nextVersionNumber = Number(versionResult.rows[0]?.version_number ?? 0) + 1
-      const versionId = randomUUID()
-
-      await client.query(
-        `
-          INSERT INTO deck_versions (
-            id,
-            deck_id,
-            version_number,
-            html,
-            title,
-            source,
-            author_user_id,
-            created_at
-          )
-          VALUES ($1, $2, $3, $4, $5, 'manual', $6, $7)
-        `,
-        [versionId, id, nextVersionNumber, html, title, ownerUserId, updatedAt],
-      )
+      const versionId = await insertVersion(client, {
+        deckId: id,
+        versionNumber: nextVersionNumber,
+        html,
+        title,
+        createdAt: updatedAt,
+        options: versionOptions,
+      })
 
       await client.query(
         `
@@ -345,6 +426,108 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     return Boolean(result.rows[0])
   }
 
+  const listVersions = async (deckId: string) => {
+    if (!isValidDeckId(deckId)) {
+      return null
+    }
+
+    await ensureReady()
+
+    const deckResult = await pool.query<{ active_version_id: string | null }>(
+      `
+        SELECT active_version_id
+        FROM decks
+        WHERE id = $1
+          AND deleted_at IS NULL
+      `,
+      [deckId],
+    )
+
+    if (!deckResult.rows[0]) {
+      return null
+    }
+
+    const activeVersionId = deckResult.rows[0].active_version_id
+    const result = await pool.query<DeckVersionRow>(
+      `
+        SELECT
+          v.id,
+          v.deck_id,
+          v.version_number,
+          v.html,
+          v.title,
+          v.source,
+          v.validation_status,
+          v.runtime_metadata,
+          v.created_at,
+          $2::uuid AS active_version_id
+        FROM deck_versions v
+        WHERE v.deck_id = $1
+        ORDER BY v.version_number DESC
+      `,
+      [deckId, activeVersionId],
+    )
+
+    return result.rows.map(readVersionSummary)
+  }
+
+  const getVersion = async (deckId: string, versionId: string) => {
+    if (!isValidDeckId(deckId) || !isValidDeckId(versionId)) {
+      return null
+    }
+
+    await ensureReady()
+
+    const result = await pool.query<DeckVersionRow>(
+      `
+        SELECT
+          v.id,
+          v.deck_id,
+          v.version_number,
+          v.html,
+          v.title,
+          v.source,
+          v.validation_status,
+          v.runtime_metadata,
+          v.created_at,
+          d.active_version_id
+        FROM deck_versions v
+        JOIN decks d ON d.id = v.deck_id
+        WHERE v.deck_id = $1
+          AND v.id = $2
+          AND d.deleted_at IS NULL
+      `,
+      [deckId, versionId],
+    )
+
+    const row = result.rows[0]
+
+    if (!row) {
+      return null
+    }
+
+    const summary = readVersionSummary(row)
+
+    return {
+      ...summary,
+      html: row.html,
+    } satisfies DeckVersionDetail
+  }
+
+  const rollbackToVersion = async (deckId: string, versionId: string) => {
+    const targetVersion = await getVersion(deckId, versionId)
+
+    if (!targetVersion) {
+      return null
+    }
+
+    return updateDeck(deckId, targetVersion.html, {
+      source: 'rollback',
+      summary: `Restored from version ${targetVersion.versionNumber}`,
+      validationStatus: targetVersion.validationStatus,
+    })
+  }
+
   return {
     createDeck,
     getDeck,
@@ -352,5 +535,8 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     updateDeck,
     updateDeckMetadata,
     deleteDeck,
+    listVersions,
+    getVersion,
+    rollbackToVersion,
   }
 }

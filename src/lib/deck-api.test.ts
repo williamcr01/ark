@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createDeck, fetchDeck, listDecks, renameDeck } from './deck-api'
+import {
+  createDeck,
+  fetchDeck,
+  fetchDeckVersion,
+  listDeckVersions,
+  listDecks,
+  renameDeck,
+  rollbackDeck,
+} from './deck-api'
 
 const deck = {
   id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
@@ -51,11 +59,52 @@ describe('deck-api', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(createDeck(deck.html)).resolves.toEqual(deck)
+    await expect(createDeck(deck.html, { source: 'upload' })).resolves.toEqual(deck)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/decks',
       expect.objectContaining({
-        body: JSON.stringify({ html: deck.html }),
+        body: JSON.stringify({ html: deck.html, source: 'upload' }),
+        method: 'POST',
+      }),
+    )
+  })
+
+  it('lists deck versions and fetches one version', async () => {
+    const version = {
+      id: 'a0000000-0000-4000-8000-000000000001',
+      deckId: deck.id,
+      versionNumber: 1,
+      title: deck.title,
+      source: 'manual' as const,
+      summary: null,
+      validationStatus: 'valid' as const,
+      createdAt: deck.createdAt,
+      isActive: true,
+      html: deck.html,
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ versions: [version] }))
+      .mockResolvedValueOnce(jsonResponse({ version }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(listDeckVersions(deck.id)).resolves.toEqual([version])
+    await expect(fetchDeckVersion(deck.id, version.id)).resolves.toEqual(version)
+  })
+
+  it('rolls back to a prior version', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deck }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(rollbackDeck(deck.id, 'a0000000-0000-4000-8000-000000000001')).resolves.toEqual(
+      deck,
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/decks/${deck.id}/rollback`,
+      expect.objectContaining({
+        body: JSON.stringify({ versionId: 'a0000000-0000-4000-8000-000000000001' }),
         method: 'POST',
       }),
     )

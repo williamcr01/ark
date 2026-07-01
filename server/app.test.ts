@@ -25,6 +25,8 @@ type ApiDeckResponse = {
     id: string
     html: string
     title: string
+    versionNumber?: number
+    activeVersionId?: string
   }
   error?: string
 }
@@ -33,7 +35,27 @@ type ApiDeckListResponse = {
   decks?: Array<{
     id: string
     title: string
+    versionNumber?: number
   }>
+  error?: string
+}
+
+type ApiVersionListResponse = {
+  versions?: Array<{
+    id: string
+    versionNumber: number
+    source: string
+    isActive: boolean
+  }>
+  error?: string
+}
+
+type ApiVersionResponse = {
+  version?: {
+    id: string
+    versionNumber: number
+    html: string
+  }
   error?: string
 }
 
@@ -73,12 +95,13 @@ describe('deck API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml }),
+      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
     const created = (await createResponse.json()) as ApiDeckResponse
 
     expect(createResponse.status).toBe(201)
     expect(created.deck?.title).toBe('Quarterly Review')
+    expect(created.deck?.versionNumber).toBe(1)
 
     const listResponse = await fetch(`${baseUrl}/api/decks`)
     const list = (await listResponse.json()) as ApiDeckListResponse
@@ -88,6 +111,7 @@ describe('deck API routes', () => {
     expect(list.decks?.[0]).toMatchObject({
       id: created.deck?.id,
       title: 'Quarterly Review',
+      versionNumber: 1,
     })
     expect('html' in list.decks![0]).toBe(false)
 
@@ -101,12 +125,13 @@ describe('deck API routes', () => {
     const updateResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml }),
+      body: JSON.stringify({ html: updatedHtml, source: 'agent', summary: 'AI edit' }),
     })
     const updated = (await updateResponse.json()) as ApiDeckResponse
 
     expect(updateResponse.status).toBe(200)
     expect(updated.deck?.title).toBe('Board Review')
+    expect(updated.deck?.versionNumber).toBe(2)
 
     const deleteResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'DELETE',
@@ -114,5 +139,89 @@ describe('deck API routes', () => {
 
     expect(deleteResponse.status).toBe(204)
     expect((await fetch(`${baseUrl}/api/decks/${created.deck!.id}`)).status).toBe(404)
+  })
+
+  it('lists versions, fetches one version, and rolls back without losing history', async () => {
+    const baseUrl = await startApi()
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+    })
+    const created = (await createResponse.json()) as ApiDeckResponse
+    const deckId = created.deck!.id
+
+    const updatedHtml = sampleHtml.replace('Hello', 'Updated')
+    await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: updatedHtml, source: 'agent' }),
+    })
+
+    const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    const versionsPayload = (await versionsResponse.json()) as ApiVersionListResponse
+
+    expect(versionsResponse.status).toBe(200)
+    expect(versionsPayload.versions).toHaveLength(2)
+    expect(versionsPayload.versions?.[0]).toMatchObject({
+      versionNumber: 2,
+      source: 'agent',
+      isActive: true,
+    })
+    expect(versionsPayload.versions?.[1]).toMatchObject({
+      versionNumber: 1,
+      source: 'upload',
+      isActive: false,
+    })
+    expect('html' in versionsPayload.versions![0]).toBe(false)
+
+    const firstVersionId = versionsPayload.versions![1].id
+    const versionResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions/${firstVersionId}`)
+    const versionPayload = (await versionResponse.json()) as ApiVersionResponse
+
+    expect(versionResponse.status).toBe(200)
+    expect(versionPayload.version?.html).toBe(sampleHtml)
+
+    const rollbackResponse = await fetch(`${baseUrl}/api/decks/${deckId}/rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versionId: firstVersionId }),
+    })
+    const rollbackPayload = (await rollbackResponse.json()) as ApiDeckResponse
+
+    expect(rollbackResponse.status).toBe(200)
+    expect(rollbackPayload.deck?.html).toBe(sampleHtml)
+    expect(rollbackPayload.deck?.versionNumber).toBe(3)
+
+    const versionsAfterRollback = (await (
+      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    ).json()) as ApiVersionListResponse
+
+    expect(versionsAfterRollback.versions).toHaveLength(3)
+    expect(versionsAfterRollback.versions?.[0]).toMatchObject({
+      versionNumber: 3,
+      source: 'rollback',
+      isActive: true,
+    })
+  })
+
+  it('rejects invalid version and rollback requests', async () => {
+    const baseUrl = await startApi()
+
+    expect((await fetch(`${baseUrl}/api/decks/not-a-uuid/versions`)).status).toBe(400)
+    expect(
+      (await fetch(`${baseUrl}/api/decks/not-a-uuid/versions/be4b3f4e-d05b-45d1-9da6-89d6df227b54`))
+        .status,
+    ).toBe(400)
+    expect(
+      (
+        await fetch(`${baseUrl}/api/decks/not-a-uuid/rollback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ versionId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54' }),
+        })
+      ).status,
+    ).toBe(400)
   })
 })
