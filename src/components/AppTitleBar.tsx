@@ -1,26 +1,41 @@
-import type { ChangeEvent, ReactNode } from 'react'
+import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import {
+  ChevronDownIcon,
   DownloadIcon,
+  FilePlus2Icon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
+  PencilIcon,
   PresentationIcon,
-  RefreshCwIcon,
+  Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import type { DeckSummary } from '@/lib/deck-api'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { cn } from '@/lib/utils'
 
@@ -139,20 +154,215 @@ function DownloadTitleBarButton({
   )
 }
 
+function formatUpdatedAt(updatedAt: string) {
+  const date = new Date(updatedAt)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Updated recently'
+  }
+
+  return `Updated ${date.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  })}`
+}
+
+function DeckLibraryMenu({
+  activeDeckId,
+  deckTitle,
+  decks,
+  disabled,
+  onDeleteDeck,
+  onNewDeck,
+  onRenameDeck,
+  onSelectDeck,
+}: {
+  activeDeckId: string | null
+  deckTitle: string
+  decks: DeckSummary[]
+  disabled?: boolean
+  onDeleteDeck: () => Promise<void> | void
+  onNewDeck: () => void
+  onRenameDeck: (title: string) => Promise<void> | void
+  onSelectDeck: (deckId: string) => Promise<void> | void
+}) {
+  const [renameError, setRenameError] = useState('')
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameValue, setRenameValue] = useState(deckTitle)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const displayTitle = deckTitle || 'New deck'
+
+  const handleRenameOpenChange = (open: boolean) => {
+    setRenameOpen(open)
+
+    if (open) {
+      setRenameValue(deckTitle)
+      setRenameError('')
+    }
+  }
+
+  const handleRenameSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!activeDeckId) {
+      return
+    }
+
+    setIsRenaming(true)
+    setRenameError('')
+
+    try {
+      await onRenameDeck(renameValue)
+      setRenameOpen(false)
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Could not rename the deck.')
+    } finally {
+      setIsRenaming(false)
+    }
+  }
+
+  const handleDelete = () => {
+    if (!activeDeckId) {
+      return
+    }
+
+    const confirmed = window.confirm(`Delete "${displayTitle}"? This cannot be undone.`)
+
+    if (confirmed) {
+      void onDeleteDeck()
+    }
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label="Select deck"
+            className={cn(
+              buttonVariants({ variant: 'ghost' }),
+              'h-7 min-w-0 max-w-48 justify-start gap-1 rounded-sm border-0 px-1.5 text-xs font-medium text-[var(--ark-titlebar-fg)] shadow-none',
+              'hover:bg-[var(--ark-titlebar-hover)]',
+              'disabled:text-[var(--ark-titlebar-muted)]/50',
+            )}
+            disabled={disabled}
+            type="button"
+          >
+            <span className="min-w-0 truncate">{displayTitle}</span>
+            <ChevronDownIcon aria-hidden className="shrink-0" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-72">
+          <DropdownMenuLabel>Saved decks</DropdownMenuLabel>
+          <DropdownMenuGroup>
+            {decks.length > 0 ? (
+              decks.map((deck) => (
+                <DropdownMenuItem
+                  className="items-start"
+                  disabled={deck.id === activeDeckId}
+                  key={deck.id}
+                  onSelect={() => {
+                    void onSelectDeck(deck.id)
+                  }}
+                >
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate">{deck.title}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {formatUpdatedAt(deck.updatedAt)}
+                    </span>
+                  </div>
+                  {deck.id === activeDeckId ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">Active</span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))
+            ) : (
+              <DropdownMenuItem disabled>No saved decks yet</DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onNewDeck}>
+            <FilePlus2Icon />
+            New deck
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!activeDeckId}
+            onSelect={() => {
+              handleRenameOpenChange(true)
+            }}
+          >
+            <PencilIcon />
+            Rename deck
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!activeDeckId} onSelect={handleDelete} variant="destructive">
+            <Trash2Icon />
+            Delete deck
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog onOpenChange={handleRenameOpenChange} open={renameOpen}>
+        <DialogContent>
+          <form className="contents" onSubmit={handleRenameSubmit}>
+            <DialogHeader>
+              <DialogTitle>Rename deck</DialogTitle>
+              <DialogDescription>Change the name shown in the deck list.</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Input
+                aria-invalid={Boolean(renameError)}
+                autoFocus
+                disabled={isRenaming}
+                onChange={(event) => setRenameValue(event.target.value)}
+                placeholder="Deck title"
+                value={renameValue}
+              />
+              {renameError ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {renameError}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={isRenaming}
+                onClick={() => setRenameOpen(false)}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button disabled={isRenaming} type="submit">
+                Save name
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export type DeckSaveStatus =
   'loading' | 'new' | 'generating' | 'saving' | 'dirty' | 'saved' | 'error'
 
 export type AppTitleBarProps = {
+  activeDeckId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
+  deckTitle: string
+  decks: DeckSummary[]
   deckSaveStatus: DeckSaveStatus
   hasDeck: boolean
   hasSlides: boolean
   isChatOpen: boolean
   isGenerating: boolean
   isStripOpen: boolean
+  onDeleteDeck: () => Promise<void> | void
   onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
-  onReset: () => void
+  onNewDeck: () => void
+  onRenameDeck: (title: string) => Promise<void> | void
+  onSelectDeck: (deckId: string) => Promise<void> | void
   onToggleChat: () => void
   onToggleStrip: () => void
   onUploadClick: () => void
@@ -160,16 +370,22 @@ export type AppTitleBarProps = {
 }
 
 export function AppTitleBar({
+  activeDeckId,
   fileInputRef,
+  deckTitle,
+  decks,
   deckSaveStatus,
   hasDeck,
   hasSlides,
   isChatOpen,
   isGenerating,
   isStripOpen,
+  onDeleteDeck,
   onDownload,
   onHtmlUpload,
-  onReset,
+  onNewDeck,
+  onRenameDeck,
+  onSelectDeck,
   onToggleChat,
   onToggleStrip,
   onUploadClick,
@@ -216,6 +432,16 @@ export function AppTitleBar({
         <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
           ·
         </span>
+        <DeckLibraryMenu
+          activeDeckId={activeDeckId}
+          deckTitle={deckTitle}
+          decks={decks}
+          disabled={isGenerating}
+          onDeleteDeck={onDeleteDeck}
+          onNewDeck={onNewDeck}
+          onRenameDeck={onRenameDeck}
+          onSelectDeck={onSelectDeck}
+        />
         <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
           <span
             aria-hidden
@@ -234,8 +460,8 @@ export function AppTitleBar({
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
-        <TitleBarButton disabled={!hasDeck || isGenerating} label="Start over" onClick={onReset}>
-          <RefreshCwIcon />
+        <TitleBarButton disabled={isGenerating} label="New deck" onClick={onNewDeck}>
+          <FilePlus2Icon />
         </TitleBarButton>
         <DownloadTitleBarButton
           disabled={!hasDeck}

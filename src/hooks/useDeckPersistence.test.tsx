@@ -14,6 +14,7 @@ const sampleHtml = `<!DOCTYPE html>
 const updatedHtml = sampleHtml.replace('One', 'Two')
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
+const secondDeckId = 'd15f3a35-7ee4-47dd-9c7e-2f8b4eb1fd71'
 
 const deck = {
   id: deckId,
@@ -22,6 +23,27 @@ const deck = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
+
+const secondDeck = {
+  id: secondDeckId,
+  html: sampleHtml.replace('Test Deck', 'Roadmap'),
+  title: 'Roadmap',
+  createdAt: '2026-01-02T00:00:00.000Z',
+  updatedAt: '2026-01-02T00:00:00.000Z',
+}
+
+const toSummary = (storedDeck: typeof deck) => ({
+  id: storedDeck.id,
+  title: storedDeck.title,
+  createdAt: storedDeck.createdAt,
+  updatedAt: storedDeck.updatedAt,
+})
+
+const jsonResponse = (body: unknown, options: { ok?: boolean; status?: number } = {}) => ({
+  ok: options.ok ?? true,
+  status: options.status ?? 200,
+  json: async () => body,
+})
 
 describe('useDeckPersistence', () => {
   beforeEach(() => {
@@ -38,13 +60,12 @@ describe('useDeckPersistence', () => {
   it('restores the active deck after refresh', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ deck }),
-      }),
-    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+
+    vi.stubGlobal('fetch', fetchMock)
 
     const { result } = renderHook(() => useDeckPersistence())
 
@@ -52,17 +73,39 @@ describe('useDeckPersistence', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/decks')
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `/api/decks/${deck.id}`)
+    expect(result.current.deckId).toBe(deck.id)
+    expect(result.current.deckTitle).toBe('Test Deck')
+    expect(result.current.decks).toEqual([toSummary(deck)])
     expect(result.current.html).toBe(sampleHtml)
     expect(result.current.hasDeck).toBe(true)
     expect(result.current.isDirty).toBe(false)
   })
 
-  it('persists new HTML and marks the deck as saved', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      status: 201,
-      json: async () => ({ deck }),
+  it('clears a stale active deck id after refresh', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ decks: [] }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
     })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.current.hasDeck).toBe(false)
+    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
+  })
+
+  it('persists new HTML and marks the deck as saved', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }, { status: 201 }))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -76,13 +119,14 @@ describe('useDeckPersistence', () => {
       await result.current.persistHtml(sampleHtml)
     })
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenLastCalledWith(
       '/api/decks',
       expect.objectContaining({
         method: 'POST',
       }),
     )
     expect(result.current.html).toBe(sampleHtml)
+    expect(result.current.decks).toEqual([toSummary(deck)])
     expect(result.current.isDirty).toBe(false)
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(deck.id)
   })
@@ -92,20 +136,17 @@ describe('useDeckPersistence', () => {
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ deck }),
-      })
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             setTimeout(() => {
-              resolve({
-                ok: true,
-                json: async () => ({
+              resolve(
+                jsonResponse({
                   deck: { ...deck, html: updatedHtml, updatedAt: '2026-01-02T00:00:00.000Z' },
                 }),
-              })
+              )
             }, 20)
           }),
       )
@@ -140,19 +181,37 @@ describe('useDeckPersistence', () => {
     expect(result.current.isSaving).toBe(false)
   })
 
-  it('clears local and server state on reset', async () => {
+  it('starts a new deck without deleting the previous saved deck', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ deck }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 204,
-      })
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      result.current.startNewDeck()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.hasDeck).toBe(false)
+    expect(result.current.decks).toEqual([toSummary(deck)])
+    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
+  })
+
+  it('selects another saved deck', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(secondDeck), toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck: secondDeck }))
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -163,7 +222,73 @@ describe('useDeckPersistence', () => {
     })
 
     await act(async () => {
-      await result.current.resetDeck()
+      await result.current.selectDeck(secondDeck.id)
+    })
+
+    expect(fetchMock).toHaveBeenLastCalledWith(`/api/decks/${secondDeck.id}`)
+    expect(result.current.deckId).toBe(secondDeck.id)
+    expect(result.current.deckTitle).toBe('Roadmap')
+    expect(result.current.html).toBe(secondDeck.html)
+    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(secondDeck.id)
+  })
+
+  it('renames the active deck metadata', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const renamedDeck = {
+      ...deck,
+      title: 'Board plan',
+      updatedAt: '2026-01-03T00:00:00.000Z',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(jsonResponse({ deck: renamedDeck }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.renameActiveDeck('Board plan')
+    })
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `/api/decks/${deck.id}`,
+      expect.objectContaining({
+        body: JSON.stringify({ title: 'Board plan' }),
+        method: 'PATCH',
+      }),
+    )
+    expect(result.current.deckTitle).toBe('Board plan')
+    expect(result.current.html).toBe(sampleHtml)
+    expect(result.current.decks.at(0)).toEqual(toSummary(renamedDeck))
+  })
+
+  it('deletes the active deck explicitly', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(jsonResponse({}, { status: 204 }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.deleteActiveDeck()
     })
 
     expect(fetchMock).toHaveBeenLastCalledWith(
@@ -171,6 +296,7 @@ describe('useDeckPersistence', () => {
       expect.objectContaining({ method: 'DELETE' }),
     )
     expect(result.current.hasDeck).toBe(false)
+    expect(result.current.decks).toEqual([])
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
 })

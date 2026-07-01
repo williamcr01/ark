@@ -8,6 +8,7 @@ import {
   type StoredDeck,
   extractDeckTitle,
   isValidDeckId,
+  normalizeDeckTitle,
 } from '../../deck-record.ts'
 
 export const SYSTEM_USER_ID = '00000000-0000-4000-8000-000000000001'
@@ -227,23 +228,16 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     await ensureReady()
 
     const updatedAt = now()
-    const title = extractDeckTitle(html)
 
     return withTransaction(pool, async (client) => {
-      const deckResult = await client.query<{ id: string }>(
-        `
-          SELECT id
-          FROM decks
-          WHERE id = $1
-            AND deleted_at IS NULL
-        `,
-        [id],
-      )
+      const existing = await readDeckById(client, id)
 
-      if (!deckResult.rows[0]) {
+      if (!existing) {
         return null
       }
 
+      const title =
+        existing.title === extractDeckTitle(existing.html) ? extractDeckTitle(html) : existing.title
       const versionResult = await client.query<{ version_number: number | string }>(
         `
           SELECT COALESCE(MAX(version_number), 0) AS version_number
@@ -288,6 +282,46 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     })
   }
 
+  const updateDeckMetadata = async (id: string, metadata: { title?: string }) => {
+    if (!isValidDeckId(id)) {
+      return null
+    }
+
+    await ensureReady()
+
+    const updatedAt = now()
+    const title = normalizeDeckTitle(metadata.title)
+    const result = await pool.query<DeckRow>(
+      `
+        UPDATE decks
+        SET
+          title = $1,
+          updated_at = $2
+        WHERE id = $3
+          AND deleted_at IS NULL
+        RETURNING
+          id,
+          title,
+          created_at,
+          updated_at,
+          active_version_id,
+          (
+            SELECT html
+            FROM deck_versions
+            WHERE id = decks.active_version_id
+          ) AS html,
+          (
+            SELECT version_number
+            FROM deck_versions
+            WHERE id = decks.active_version_id
+          ) AS version_number
+      `,
+      [title, updatedAt, id],
+    )
+
+    return result.rows[0] ? mapDeck(result.rows[0]) : null
+  }
+
   const deleteDeck = async (id: string) => {
     if (!isValidDeckId(id)) {
       return false
@@ -316,6 +350,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     getDeck,
     listDecks,
     updateDeck,
+    updateDeckMetadata,
     deleteDeck,
   }
 }

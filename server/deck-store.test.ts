@@ -1,9 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createDeckStore, extractDeckTitle, isValidDeckId } from './deck-store.ts'
+import {
+  createDeckStore,
+  extractDeckTitle,
+  isValidDeckId,
+  normalizeDeckTitle,
+} from './deck-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -22,6 +27,12 @@ describe('deck-store helpers', () => {
     expect(extractDeckTitle('<html><body></body></html>')).toBe('Untitled deck')
   })
 
+  it('normalizes blank deck titles', () => {
+    expect(normalizeDeckTitle(' Board plan ')).toBe('Board plan')
+    expect(normalizeDeckTitle('')).toBe('Untitled deck')
+    expect(normalizeDeckTitle(null)).toBe('Untitled deck')
+  })
+
   it('accepts only generated UUID deck ids', () => {
     expect(isValidDeckId('be4b3f4e-d05b-45d1-9da6-89d6df227b54')).toBe(true)
     expect(isValidDeckId('missing-id')).toBe(false)
@@ -38,6 +49,8 @@ describe('createDeckStore', () => {
       await rm(dataDir, { recursive: true, force: true })
       dataDir = ''
     }
+
+    vi.useRealTimers()
   })
 
   it('creates, reads, updates, and deletes decks', async () => {
@@ -54,6 +67,7 @@ describe('createDeckStore', () => {
     const updatedHtml = sampleHtml.replace('Hello', 'Updated')
     const updated = await store.updateDeck(created.id, updatedHtml)
     expect(updated?.html).toContain('Updated')
+    expect(updated?.title).toBe('Quarterly Review')
     expect(updated?.updatedAt).not.toBe(created.updatedAt)
 
     const decks = await store.listDecks()
@@ -84,5 +98,61 @@ describe('createDeckStore', () => {
     const store = createDeckStore(dataDir)
 
     expect(await store.updateDeck('be4b3f4e-d05b-45d1-9da6-89d6df227b54', sampleHtml)).toBeNull()
+  })
+
+  it('lists deck summaries by most recently updated first', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+    const older = await store.createDeck(sampleHtml)
+    vi.setSystemTime(new Date('2026-01-02T00:00:00.000Z'))
+    const newer = await store.createDeck(sampleHtml.replace('Quarterly Review', 'Roadmap'))
+
+    const summaries = await store.listDecks()
+
+    expect(summaries).toEqual([
+      {
+        id: newer.id,
+        title: 'Roadmap',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+      },
+      {
+        id: older.id,
+        title: 'Quarterly Review',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ])
+  })
+
+  it('updates title metadata without changing HTML or reverting on later saves', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+
+    const created = await store.createDeck(sampleHtml)
+    const renamed = await store.updateDeckMetadata(created.id, { title: ' Board plan ' })
+
+    expect(renamed?.title).toBe('Board plan')
+    expect(renamed?.html).toBe(sampleHtml)
+
+    const updatedHtmlTitle = sampleHtml.replace('Quarterly Review', 'HTML title')
+    const updated = await store.updateDeck(created.id, updatedHtmlTitle)
+
+    expect(updated?.title).toBe('Board plan')
+    expect(updated?.html).toContain('<title>HTML title</title>')
+  })
+
+  it('returns null when updating metadata for a missing deck', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+
+    expect(
+      await store.updateDeckMetadata('be4b3f4e-d05b-45d1-9da6-89d6df227b54', {
+        title: 'Missing',
+      }),
+    ).toBeNull()
   })
 })
