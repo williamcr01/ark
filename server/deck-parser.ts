@@ -1,7 +1,7 @@
 import { JSDOM } from 'jsdom'
 
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '../src/lib/deck-slides.ts'
-import { extractDeckTitle } from './deck-store.ts'
+import { extractDeckTitle } from './deck-record.ts'
 
 export type DeckStructure = 'plain' | 'reveal' | 'unknown'
 

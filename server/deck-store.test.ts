@@ -56,6 +56,14 @@ describe('createDeckStore', () => {
     expect(updated?.html).toContain('Updated')
     expect(updated?.updatedAt).not.toBe(created.updatedAt)
 
+    const decks = await store.listDecks()
+    expect(decks).toHaveLength(1)
+    expect(decks[0]).toMatchObject({
+      id: created.id,
+      title: 'Quarterly Review',
+    })
+    expect('html' in decks[0]).toBe(false)
+
     const deleted = await store.deleteDeck(created.id)
     expect(deleted).toBe(true)
     expect(await store.getDeck(created.id)).toBeNull()
@@ -68,6 +76,7 @@ describe('createDeckStore', () => {
     expect(await store.getDeck('../escape')).toBeNull()
     expect(await store.updateDeck('missing-id', sampleHtml)).toBeNull()
     expect(await store.deleteDeck('../../etc/passwd')).toBe(false)
+    expect(await store.listDecks()).toEqual([])
   })
 
   it('returns null when updating a missing deck', async () => {
