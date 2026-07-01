@@ -395,6 +395,41 @@ export function useDeckPersistence() {
     [deckId, refreshVersions, setActiveDeck],
   )
 
+  const refreshActiveDeck = useCallback(
+    async (targetDeckId?: string) => {
+      const resolvedDeckId = targetDeckId ?? deckId
+
+      if (!resolvedDeckId) {
+        return null
+      }
+
+      const requestId = ++saveRequestIdRef.current
+
+      try {
+        const deck = await fetchDeck(resolvedDeckId)
+
+        if (requestId !== saveRequestIdRef.current) {
+          return null
+        }
+
+        setActiveDeck(deck)
+        setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+        await refreshVersions(deck.id)
+        return deck
+      } catch (error) {
+        if (requestId !== saveRequestIdRef.current) {
+          return null
+        }
+
+        const message = error instanceof Error ? error.message : 'Could not refresh the deck.'
+
+        setSaveError(message)
+        throw error
+      }
+    },
+    [deckId, refreshVersions, setActiveDeck],
+  )
+
   const hasDeck = html.length > 0
   const isDirty = hasDeck && html !== savedHtml
 
@@ -414,6 +449,7 @@ export function useDeckPersistence() {
     isSaving,
     persistHtml,
     previewVersion,
+    refreshActiveDeck,
     refreshVersions,
     renameActiveDeck,
     rollbackToVersion,
