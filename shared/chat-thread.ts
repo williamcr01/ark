@@ -53,6 +53,8 @@ export type DeckChatResponse = {
   hasMore: boolean
 }
 
+export const CHAT_HISTORY_PAGE_SIZE = 500
+
 export function persistedMessageToChatMessage(message: PersistedChatMessage) {
   return {
     id: message.id,

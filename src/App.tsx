@@ -136,7 +136,7 @@ function App() {
       const targetDeckId = outcome.job.result?.deckId ?? deckId
 
       if (targetDeckId) {
-        await reloadChat()
+        await reloadChat(targetDeckId)
       } else {
         const validationNote = outcome.job.result?.validation
           ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
@@ -196,12 +196,33 @@ function App() {
       }
 
       if (deckId) {
-        await reloadChat()
+        await reloadChat(deckId)
+      } else {
+        setMessages((current) => {
+          const failedContent =
+            outcome.status === 'canceled'
+              ? `Generation canceled. ${outcome.message}`
+              : `I could not generate the deck yet. ${outcome.message}`
+          const last = current.at(-1)
+
+          if (last?.role === 'assistant' && last.content === failedContent) {
+            return current
+          }
+
+          return [
+            ...current,
+            {
+              id: newId(),
+              role: 'assistant' as const,
+              content: failedContent,
+            },
+          ]
+        })
       }
 
       setError(outcome.message)
     })()
-  }, [applySucceededOutcome, deckId, isDeckLoading, reloadChat, resumeStoredJob])
+  }, [applySucceededOutcome, deckId, isDeckLoading, reloadChat, resumeStoredJob, setMessages])
 
   const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
     const prompt =

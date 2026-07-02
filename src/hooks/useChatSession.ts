@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { ChatMessage } from '../../shared/chat.ts'
 import { persistedMessageToChatMessage } from '../../shared/chat-thread.ts'
-import { appendDeckChatMessage, clearDeckChat, fetchDeckChat } from '@/lib/chat-api'
+import { appendDeckChatMessage, clearDeckChat, fetchAllDeckChat } from '@/lib/chat-api'
 import {
   clearChatSession,
   createChatSession,
@@ -46,7 +46,7 @@ export function useChatSession({ deckId, deckVersionId = null }: UseChatSessionO
       }
 
       try {
-        const data = await fetchDeckChat(deckId)
+        const data = await fetchAllDeckChat(deckId)
         const nextMessages = data.messages.map(persistedMessageToChatMessage)
 
         if (loadRequestIdRef.current !== requestId) {
@@ -109,15 +109,15 @@ export function useChatSession({ deckId, deckVersionId = null }: UseChatSessionO
     [persistMessage],
   )
 
-  const reloadChat = useCallback(async () => {
-    const activeDeckId = deckIdRef.current
+  const reloadChat = useCallback(async (targetDeckId?: string | null) => {
+    const activeDeckId = targetDeckId ?? deckIdRef.current
 
     if (!activeDeckId) {
       return readChatSession(null)?.messages ?? []
     }
 
     try {
-      const data = await fetchDeckChat(activeDeckId)
+      const data = await fetchAllDeckChat(activeDeckId)
       const nextMessages = data.messages.map(persistedMessageToChatMessage)
       setMessages(nextMessages)
       writeChatSession(activeDeckId, {

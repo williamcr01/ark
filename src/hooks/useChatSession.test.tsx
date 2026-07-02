@@ -40,7 +40,10 @@ describe('useChatSession', () => {
     })
 
     expect(result.current.messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
-    expect(fetchMock).toHaveBeenCalledWith('/api/decks/deck-1/chat', expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/decks/deck-1/chat'),
+      expect.any(Object),
+    )
   })
 
   it('switches to a different deck thread when deckId changes', async () => {
@@ -140,5 +143,58 @@ describe('useChatSession', () => {
 
     const { result: freshResult } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
     expect(freshResult.current.messages).toEqual([])
+  })
+
+  it('reloads chat for an explicit deck id before the hook ref updates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes('deck-new')) {
+        return {
+          ok: true,
+          json: async () => ({
+            thread: { id: 'thread-new', deckId: 'deck-new' },
+            messages: [
+              {
+                id: 'm-user',
+                role: 'user',
+                content: 'make slides',
+                threadId: 'thread-new',
+                deckId: 'deck-new',
+                deckVersionId: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+              {
+                id: 'm-assistant',
+                role: 'assistant',
+                content: 'Generated the deck.',
+                threadId: 'thread-new',
+                deckId: 'deck-new',
+                deckVersionId: null,
+                createdAt: '2026-01-01T00:00:01.000Z',
+              },
+            ],
+            hasMore: false,
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ thread: null, messages: [], hasMore: false }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: null }))
+
+    await act(async () => {
+      await result.current.reloadChat('deck-new')
+    })
+
+    expect(result.current.messages).toEqual([
+      { id: 'm-user', role: 'user', content: 'make slides' },
+      { id: 'm-assistant', role: 'assistant', content: 'Generated the deck.' },
+    ])
   })
 })

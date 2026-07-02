@@ -75,7 +75,7 @@ const estimateDataUrlBytes = (url: string) => {
   return Math.max(0, Math.floor((payload.length * 3) / 4) - padding)
 }
 
-const parseChatAttachments = (
+export const parseChatAttachments = (
   input: unknown,
   messageIndex: number,
 ): { ok: true; attachments: ChatAttachment[] } | { ok: false; error: string } => {

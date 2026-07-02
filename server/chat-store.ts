@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -20,6 +20,29 @@ const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data', 'chat')
 type StoredChatFile = {
   thread: ChatThread
   messages: StoredChatMessage[]
+}
+
+const deckLocks = new Map<string, Promise<void>>()
+
+async function withDeckLock<T>(deckId: string, operation: () => Promise<T>) {
+  const previous = deckLocks.get(deckId) ?? Promise.resolve()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const current = previous.then(() => gate)
+  deckLocks.set(deckId, current)
+
+  await previous
+
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (deckLocks.get(deckId) === current) {
+      deckLocks.delete(deckId)
+    }
+  }
 }
 
 function resolveChatPath(dataDir: string, deckId: string) {
@@ -77,34 +100,37 @@ function parseStoredChatFile(parsed: unknown): StoredChatFile | null {
 async function readChatFile(filePath: string) {
   try {
     const raw = await readFile(filePath, 'utf8')
-    return parseStoredChatFile(JSON.parse(raw))
+    const parsed = parseStoredChatFile(JSON.parse(raw))
+
+    if (!parsed) {
+      throw new Error(`Corrupt chat history file at ${filePath}`)
+    }
+
+    return parsed
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
       return null
     }
 
-    return null
+    if (error instanceof Error && error.message.startsWith('Corrupt chat history file')) {
+      throw error
+    }
+
+    const corruptError = new Error(`Corrupt chat history file at ${filePath}`, {
+      cause: error,
+    })
+    throw corruptError
   }
 }
 
 async function writeChatFile(filePath: string, file: StoredChatFile) {
-  await writeFile(filePath, JSON.stringify(file, null, 2), 'utf8')
+  const tempPath = `${filePath}.${randomUUID()}.tmp`
+  await writeFile(tempPath, JSON.stringify(file, null, 2), 'utf8')
+  await rename(tempPath, filePath)
 }
 
 export function createChatStore(dataDir = DEFAULT_DATA_DIR): ChatStore {
-  const getActiveThread = async (deckId: string) => {
-    const filePath = resolveChatPath(dataDir, deckId)
-
-    if (!filePath) {
-      return null
-    }
-
-    const file = await readChatFile(filePath)
-
-    return file?.thread.status === 'active' ? file.thread : null
-  }
-
-  const getOrCreateActiveThread = async (
+  const getOrCreateActiveThreadUnlocked = async (
     deckId: string,
     activeDeckVersionId: string | null = null,
   ) => {
@@ -152,6 +178,23 @@ export function createChatStore(dataDir = DEFAULT_DATA_DIR): ChatStore {
     return thread
   }
 
+  const getActiveThread = async (deckId: string) => {
+    const filePath = resolveChatPath(dataDir, deckId)
+
+    if (!filePath) {
+      return null
+    }
+
+    const file = await readChatFile(filePath)
+
+    return file?.thread.status === 'active' ? file.thread : null
+  }
+
+  const getOrCreateActiveThread = async (
+    deckId: string,
+    activeDeckVersionId: string | null = null,
+  ) => withDeckLock(deckId, () => getOrCreateActiveThreadUnlocked(deckId, activeDeckVersionId))
+
   const listMessages = async (
     deckId: string,
     options: ListChatMessagesOptions = {},
@@ -194,75 +237,92 @@ export function createChatStore(dataDir = DEFAULT_DATA_DIR): ChatStore {
     }
   }
 
-  const appendMessage = async (deckId: string, input: AppendChatMessageInput) => {
-    const filePath = resolveChatPath(dataDir, deckId)
+  const appendMessage = async (deckId: string, input: AppendChatMessageInput) =>
+    withDeckLock(deckId, async () => {
+      const filePath = resolveChatPath(dataDir, deckId)
 
-    if (!filePath) {
-      throw new Error('Invalid deck id.')
-    }
+      if (!filePath) {
+        throw new Error('Invalid deck id.')
+      }
 
-    await ensureDataDir(dataDir)
+      await ensureDataDir(dataDir)
 
-    const existing = await readChatFile(filePath)
-    const thread =
-      existing?.thread.status === 'active'
-        ? existing.thread
-        : await getOrCreateActiveThread(deckId, input.deckVersionId ?? null)
-    const messages = existing?.thread.status === 'active' ? [...existing.messages] : []
-    const id = input.id && isValidChatMessageId(input.id) ? input.id : randomUUID()
-    const duplicate = messages.find((message) => message.id === id)
+      const existing = await readChatFile(filePath)
+      const thread =
+        existing?.thread.status === 'active'
+          ? existing.thread
+          : await getOrCreateActiveThreadUnlocked(deckId, input.deckVersionId ?? null)
+      const messages = existing?.thread.status === 'active' ? [...existing.messages] : []
+      const id =
+        input.id && isValidChatMessageId(input.id)
+          ? input.id
+          : input.generationJobId && isValidChatMessageId(input.generationJobId)
+            ? input.generationJobId
+            : randomUUID()
 
-    if (duplicate) {
-      return duplicate
-    }
+      const duplicateById = messages.find((message) => message.id === id)
+      if (duplicateById) {
+        return duplicateById
+      }
 
-    const createdAt = new Date().toISOString()
-    const message: StoredChatMessage = {
-      id,
-      threadId: thread.id,
-      deckId,
-      deckVersionId: input.deckVersionId ?? thread.activeDeckVersionId,
-      role: input.role,
-      content: input.content,
-      parts: input.parts,
-      attachments: input.attachments,
-      generationJobId: input.generationJobId ?? null,
-      generationStatus: input.generationStatus ?? null,
-      model: input.model ?? null,
-      error: input.error ?? null,
-      createdAt,
-    }
+      if (input.generationJobId) {
+        const duplicateByJob = messages.find(
+          (message) => message.generationJobId === input.generationJobId,
+        )
 
-    await writeChatFile(filePath, {
-      thread: {
-        ...thread,
-        activeDeckVersionId: input.deckVersionId ?? thread.activeDeckVersionId,
-        updatedAt: createdAt,
-      },
-      messages: [...messages, message],
+        if (duplicateByJob) {
+          return duplicateByJob
+        }
+      }
+
+      const createdAt = new Date().toISOString()
+      const message: StoredChatMessage = {
+        id,
+        threadId: thread.id,
+        deckId,
+        deckVersionId: input.deckVersionId ?? thread.activeDeckVersionId,
+        role: input.role,
+        content: input.content,
+        parts: input.parts,
+        attachments: input.attachments,
+        generationJobId: input.generationJobId ?? null,
+        generationStatus: input.generationStatus ?? null,
+        model: input.model ?? null,
+        error: input.error ?? null,
+        createdAt,
+      }
+
+      await writeChatFile(filePath, {
+        thread: {
+          ...thread,
+          activeDeckVersionId: input.deckVersionId ?? thread.activeDeckVersionId,
+          updatedAt: createdAt,
+        },
+        messages: [...messages, message],
+      })
+
+      return message
     })
 
-    return message
-  }
+  const clearThread = async (deckId: string) =>
+    withDeckLock(deckId, async () => {
+      const filePath = resolveChatPath(dataDir, deckId)
 
-  const clearThread = async (deckId: string) => {
-    const filePath = resolveChatPath(dataDir, deckId)
-
-    if (!filePath) {
-      return false
-    }
-
-    try {
-      await unlink(filePath)
-      return true
-    } catch (error) {
-      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      if (!filePath) {
         return false
       }
 
-      throw error
-    }
-  }
+      try {
+        await unlink(filePath)
+        return true
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+          return false
+        }
+
+        throw error
+      }
+    })
 
   return {
     getOrCreateActiveThread,

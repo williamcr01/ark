@@ -3,6 +3,7 @@ import type {
   DeckChatResponse,
   PersistedChatMessage,
 } from '../../shared/chat-thread.ts'
+import { CHAT_HISTORY_PAGE_SIZE } from '../../shared/chat-thread.ts'
 
 type DeckChatApiResponse = DeckChatResponse & {
   error?: string
@@ -59,6 +60,43 @@ export async function fetchDeckChat(
   )
 
   return readDeckChatResponse(response)
+}
+
+export async function fetchAllDeckChat(deckId: string, signal?: AbortSignal) {
+  let thread: DeckChatResponse['thread'] = null
+  let messages: PersistedChatMessage[] = []
+  let before: string | undefined
+
+  while (true) {
+    const page = await fetchDeckChat(
+      deckId,
+      {
+        limit: CHAT_HISTORY_PAGE_SIZE,
+        before,
+      },
+      signal,
+    )
+
+    thread = page.thread ?? thread
+
+    if (page.messages.length === 0) {
+      break
+    }
+
+    messages = [...page.messages, ...messages]
+
+    if (!page.hasMore) {
+      break
+    }
+
+    before = page.messages[0]?.id
+  }
+
+  return {
+    thread,
+    messages,
+    hasMore: false,
+  }
 }
 
 export async function appendDeckChatMessage(

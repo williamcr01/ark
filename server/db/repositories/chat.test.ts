@@ -34,9 +34,18 @@ describe('createPostgresChatStore', () => {
         deckVersionId: deck.activeVersionId ?? null,
       })
       const second = await chatStore.appendMessage(deck.id, {
+        id: '00000000-0000-4000-8000-000000000201',
         role: 'assistant',
         content: 'Generated the deck.',
         parts: [{ type: 'tool-call', toolName: 'write_deck', summary: 'Wrote deck HTML' }],
+        generationJobId: '00000000-0000-4000-8000-000000000201',
+        generationStatus: 'succeeded',
+        model: 'openai:gpt-4.1-mini',
+      })
+      const duplicate = await chatStore.appendMessage(deck.id, {
+        id: '00000000-0000-4000-8000-000000000201',
+        role: 'assistant',
+        content: 'Generated the deck.',
         generationJobId: '00000000-0000-4000-8000-000000000201',
         generationStatus: 'succeeded',
         model: 'openai:gpt-4.1-mini',
@@ -45,6 +54,7 @@ describe('createPostgresChatStore', () => {
       expect(first.content).toBe('Make a deck')
       expect(second.parts).toHaveLength(1)
       expect(second.content).not.toContain('<!DOCTYPE html>')
+      expect(duplicate.id).toBe(second.id)
 
       const listed = await chatStore.listMessages(deck.id, { limit: 1 })
 

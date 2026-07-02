@@ -39,6 +39,7 @@ type ChatMessageRow = {
   tool_activity: unknown
   attachments_metadata: unknown
   generation_status: string | null
+  message_metadata: Record<string, unknown> | null
   error_metadata: Record<string, unknown> | null
   created_at: Date | string
 }
@@ -83,11 +84,18 @@ function readErrorMetadata(
   }
 }
 
-function readMessageMetadata(metadata: Record<string, unknown> | null) {
+function readMessageMetadata(
+  messageMetadata: Record<string, unknown> | null,
+  errorMetadata: Record<string, unknown> | null,
+) {
+  const metadata = {
+    ...(errorMetadata ?? {}),
+    ...(messageMetadata ?? {}),
+  }
+
   return {
-    generationJobId:
-      metadata && typeof metadata.generationJobId === 'string' ? metadata.generationJobId : null,
-    model: metadata && typeof metadata.model === 'string' ? metadata.model : null,
+    generationJobId: typeof metadata.generationJobId === 'string' ? metadata.generationJobId : null,
+    model: typeof metadata.model === 'string' ? metadata.model : null,
   }
 }
 
@@ -104,8 +112,9 @@ function mapThread(row: ChatThreadRow): ChatThread {
 }
 
 function mapMessage(row: ChatMessageRow): StoredChatMessage {
+  const messageMetadata = row.message_metadata ?? {}
   const errorMetadata = row.error_metadata ?? {}
-  const { generationJobId, model } = readMessageMetadata(errorMetadata)
+  const { generationJobId, model } = readMessageMetadata(messageMetadata, errorMetadata)
   const error = readErrorMetadata(errorMetadata)
 
   return {
@@ -125,7 +134,7 @@ function mapMessage(row: ChatMessageRow): StoredChatMessage {
   }
 }
 
-function buildErrorMetadata(input: AppendChatMessageInput) {
+function buildMessageMetadata(input: AppendChatMessageInput) {
   const metadata: Record<string, unknown> = {}
 
   if (input.generationJobId) {
@@ -136,12 +145,18 @@ function buildErrorMetadata(input: AppendChatMessageInput) {
     metadata.model = input.model
   }
 
-  if (input.error) {
-    metadata.message = input.error.message
-    metadata.code = input.error.code ?? null
+  return metadata
+}
+
+function buildErrorMetadata(input: AppendChatMessageInput) {
+  if (!input.error) {
+    return {}
   }
 
-  return metadata
+  return {
+    message: input.error.message,
+    code: input.error.code ?? null,
+  }
 }
 
 export function createPostgresChatStore(options: PostgresChatStoreOptions = {}): ChatStore {
@@ -245,38 +260,86 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
       return existing
     }
 
-    const id = randomUUID()
-    const timestamp = now()
+    const client = await pool.connect()
 
-    const workspaceResult = await pool.query<{ workspace_id: string }>(
-      'SELECT workspace_id FROM decks WHERE id = $1',
-      [deckId],
-    )
-    const workspaceId = workspaceResult.rows[0]?.workspace_id ?? defaultWorkspaceId
+    try {
+      await client.query('BEGIN')
+      await client.query(
+        `
+          SELECT id
+          FROM decks
+          WHERE id = $1
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [deckId],
+      )
 
-    await pool.query(
-      `
-        INSERT INTO chat_threads (
-          id,
-          deck_id,
-          workspace_id,
-          active_deck_version_id,
-          created_at,
-          updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $5)
-      `,
-      [id, deckId, workspaceId, activeDeckVersionId, timestamp],
-    )
+      const lockedExisting = await client.query<ChatThreadRow>(
+        `
+          SELECT
+            id,
+            deck_id,
+            workspace_id,
+            active_deck_version_id,
+            title,
+            status,
+            created_at,
+            updated_at
+          FROM chat_threads
+          WHERE deck_id = $1
+            AND status = 'active'
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `,
+        [deckId],
+      )
 
-    return {
-      id,
-      deckId,
-      activeDeckVersionId,
-      title: 'Deck chat',
-      status: 'active' as const,
-      createdAt: toIsoString(timestamp),
-      updatedAt: toIsoString(timestamp),
+      if (lockedExisting.rows[0]) {
+        await client.query('COMMIT')
+        return mapThread(lockedExisting.rows[0])
+      }
+
+      const id = randomUUID()
+      const timestamp = now()
+
+      const workspaceResult = await client.query<{ workspace_id: string }>(
+        'SELECT workspace_id FROM decks WHERE id = $1',
+        [deckId],
+      )
+      const workspaceId = workspaceResult.rows[0]?.workspace_id ?? defaultWorkspaceId
+
+      const inserted = await client.query<ChatThreadRow>(
+        `
+          INSERT INTO chat_threads (
+            id,
+            deck_id,
+            workspace_id,
+            active_deck_version_id,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $5)
+          RETURNING
+            id,
+            deck_id,
+            workspace_id,
+            active_deck_version_id,
+            title,
+            status,
+            created_at,
+            updated_at
+        `,
+        [id, deckId, workspaceId, activeDeckVersionId, timestamp],
+      )
+
+      await client.query('COMMIT')
+      return mapThread(inserted.rows[0])
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      throw error
+    } finally {
+      client.release()
     }
   }
 
@@ -330,6 +393,7 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
           tool_activity,
           attachments_metadata,
           generation_status,
+          message_metadata,
           error_metadata,
           created_at
         FROM chat_messages
@@ -359,8 +423,41 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
     await ensureMigrated()
 
     const thread = await getOrCreateActiveThread(deckId, input.deckVersionId ?? null)
-    const id = input.id && isValidChatMessageId(input.id) ? input.id : randomUUID()
+    const id =
+      input.id && isValidChatMessageId(input.id)
+        ? input.id
+        : input.generationJobId && isValidChatMessageId(input.generationJobId)
+          ? input.generationJobId
+          : randomUUID()
     const timestamp = now()
+
+    if (input.generationJobId) {
+      const existingByJob = await pool.query<ChatMessageRow>(
+        `
+          SELECT
+            id,
+            thread_id,
+            deck_id,
+            deck_version_id,
+            role,
+            content_summary,
+            tool_activity,
+            attachments_metadata,
+            generation_status,
+            message_metadata,
+            error_metadata,
+            created_at
+          FROM chat_messages
+          WHERE deck_id = $1
+            AND message_metadata->>'generationJobId' = $2
+        `,
+        [deckId, input.generationJobId],
+      )
+
+      if (existingByJob.rows[0]) {
+        return mapMessage(existingByJob.rows[0])
+      }
+    }
 
     if (input.id && isValidChatMessageId(input.id)) {
       const existing = await pool.query<ChatMessageRow>(
@@ -401,10 +498,11 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
           tool_activity,
           attachments_metadata,
           generation_status,
+          message_metadata,
           error_metadata,
           created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10::jsonb, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12)
       `,
       [
         id,
@@ -416,6 +514,7 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
         JSON.stringify(input.parts ?? []),
         JSON.stringify(input.attachments ?? []),
         input.generationStatus ?? null,
+        JSON.stringify(buildMessageMetadata(input)),
         JSON.stringify(buildErrorMetadata(input)),
         timestamp,
       ],

@@ -32,6 +32,7 @@ import {
   getDefaultModel,
   getDefaultModelWarning,
 } from './models.ts'
+import { parseChatAttachments } from '../shared/chat.ts'
 import type { AppendChatMessageRequest } from '../shared/chat-thread.ts'
 
 type CreateAppOptions = {
@@ -54,6 +55,12 @@ function parseAppendChatMessageBody(
     return { ok: false as const, error: 'Message content must be a string.' }
   }
 
+  const parsedAttachments = parseChatAttachments(body.attachments, 0)
+
+  if (!parsedAttachments.ok) {
+    return { ok: false as const, error: parsedAttachments.error }
+  }
+
   return {
     ok: true as const,
     message: {
@@ -61,7 +68,8 @@ function parseAppendChatMessageBody(
       role,
       content: body.content.trim(),
       parts: Array.isArray(body.parts) ? body.parts : undefined,
-      attachments: Array.isArray(body.attachments) ? body.attachments : undefined,
+      attachments:
+        parsedAttachments.attachments.length > 0 ? parsedAttachments.attachments : undefined,
       deckVersionId: typeof body.deckVersionId === 'string' ? body.deckVersionId : null,
       generationJobId: typeof body.generationJobId === 'string' ? body.generationJobId : null,
       generationStatus: typeof body.generationStatus === 'string' ? body.generationStatus : null,

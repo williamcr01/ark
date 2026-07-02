@@ -87,6 +87,7 @@ export async function persistAssistantGenerationMessage(
   ]
 
   return chatStore.appendMessage(deckId, {
+    id: options.jobId,
     role: 'assistant',
     content,
     parts: assistantParts.length > 0 ? assistantParts : undefined,

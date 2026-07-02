@@ -54,6 +54,7 @@ describe('generation job runner', () => {
     const runner = createGenerationJobRunner({
       deckStore,
       jobStore,
+      chatStore: null,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
@@ -220,6 +221,7 @@ describe('generation job API routes', () => {
     const generationJobRunner = createGenerationJobRunner({
       deckStore,
       jobStore,
+      chatStore: null,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
