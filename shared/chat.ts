@@ -346,7 +346,8 @@ export function buildModelMessages(
 }
 
 export function toApiMessages(messages: ChatMessage[]): ApiChatMessage[] {
-  return messages.map(({ role, content, attachments }) => ({
+  return messages.map(({ id, role, content, attachments }) => ({
+    ...(id ? { id } : {}),
     role,
     content,
     ...(attachments?.length ? { attachments } : {}),

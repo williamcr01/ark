@@ -1,41 +1,144 @@
-import { act, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { clearChatSession, writeChatSession } from '@/lib/chat-session'
 import { useChatSession } from '@/hooks/useChatSession'
 
 describe('useChatSession', () => {
   afterEach(() => {
-    clearChatSession()
+    clearChatSession(null)
+    clearChatSession('deck-1')
+    clearChatSession('deck-2')
+    vi.unstubAllGlobals()
   })
 
-  it('restores persisted messages on mount', () => {
-    writeChatSession({
+  it('loads deck chat from the backend when deckId is set', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        thread: { id: 'thread-1', deckId: 'deck-1' },
+        messages: [
+          {
+            id: 'm1',
+            role: 'user',
+            content: 'hello',
+            threadId: 'thread-1',
+            deckId: 'deck-1',
+            deckVersionId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+        hasMore: false,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/deck-1/chat', expect.any(Object))
+  })
+
+  it('switches to a different deck thread when deckId changes', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes('deck-1')) {
+        return {
+          ok: true,
+          json: async () => ({
+            thread: { id: 'thread-1', deckId: 'deck-1' },
+            messages: [
+              {
+                id: 'm1',
+                role: 'user',
+                content: 'deck one',
+                threadId: 'thread-1',
+                deckId: 'deck-1',
+                deckVersionId: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+            hasMore: false,
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({
+          thread: { id: 'thread-2', deckId: 'deck-2' },
+          messages: [
+            {
+              id: 'm2',
+              role: 'user',
+              content: 'deck two',
+              threadId: 'thread-2',
+              deckId: 'deck-2',
+              deckVersionId: null,
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          hasMore: false,
+        }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, rerender } = renderHook(
+      ({ deckId }: { deckId: string | null }) => useChatSession({ deckId }),
+      { initialProps: { deckId: 'deck-1' as string | null } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.messages[0]?.content).toBe('deck one')
+    })
+
+    rerender({ deckId: 'deck-2' })
+
+    await waitFor(() => {
+      expect(result.current.messages[0]?.content).toBe('deck two')
+    })
+  })
+
+  it('restores local new-deck chat when no deck id is active', () => {
+    writeChatSession(null, {
       messages: [{ id: 'm1', role: 'user', content: 'hello' }],
       updatedAt: new Date().toISOString(),
     })
 
-    const { result } = renderHook(() => useChatSession())
+    const { result } = renderHook(() => useChatSession({ deckId: null }))
 
     expect(result.current.messages).toHaveLength(1)
     expect(result.current.messages[0]?.content).toBe('hello')
   })
 
-  it('clears persisted state when reset', () => {
-    writeChatSession({
+  it('clears persisted state when reset', async () => {
+    writeChatSession('deck-1', {
       messages: [{ id: 'm1', role: 'user', content: 'hello' }],
       updatedAt: new Date().toISOString(),
     })
 
-    const { result } = renderHook(() => useChatSession())
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
 
-    act(() => {
-      result.current.resetChat()
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+
+    await act(async () => {
+      await result.current.resetChat()
     })
 
     expect(result.current.messages).toEqual([])
 
-    const { result: freshResult } = renderHook(() => useChatSession())
+    const { result: freshResult } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
     expect(freshResult.current.messages).toEqual([])
   })
 })

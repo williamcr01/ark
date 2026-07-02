@@ -26,6 +26,7 @@ type GenerationJobRow = {
   deck_id: string | null
   workspace_id: string
   user_id: string
+  chat_thread_id: string | null
   status: string
   request_metadata: Record<string, unknown> | null
   provider: string | null
@@ -126,6 +127,7 @@ function rowToJob(row: GenerationJobRow): GenerationJob {
     deckId: row.deck_id,
     baseVersionId:
       typeof requestMetadata.baseVersionId === 'string' ? requestMetadata.baseVersionId : null,
+    chatThreadId: row.chat_thread_id,
     status: normalizeGenerationJobStatusFromStorage(row.status),
     model: row.model ?? '',
     provider: row.provider,
@@ -182,6 +184,7 @@ export function createPostgresGenerationJobStore(
           deck_id,
           workspace_id,
           user_id,
+          chat_thread_id,
           status,
           request_metadata,
           provider,
@@ -189,13 +192,14 @@ export function createPostgresGenerationJobStore(
           created_at,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $10)
       `,
       [
         id,
         input.deckId ?? null,
         defaultWorkspaceId,
         defaultOwnerUserId,
+        input.chatThreadId ?? null,
         'queued',
         JSON.stringify(requestMetadata),
         input.provider ?? null,
@@ -226,6 +230,7 @@ export function createPostgresGenerationJobStore(
           deck_id,
           workspace_id,
           user_id,
+          chat_thread_id,
           status,
           request_metadata,
           provider,
@@ -311,6 +316,7 @@ export function createPostgresGenerationJobStore(
           deck_id,
           workspace_id,
           user_id,
+          chat_thread_id,
           status,
           request_metadata,
           provider,
@@ -409,6 +415,7 @@ export function createPostgresGenerationJobStore(
           deck_id,
           workspace_id,
           user_id,
+          chat_thread_id,
           status,
           request_metadata,
           provider,
@@ -447,6 +454,7 @@ export function createPostgresGenerationJobStore(
           deck_id,
           workspace_id,
           user_id,
+          chat_thread_id,
           status,
           request_metadata,
           provider,

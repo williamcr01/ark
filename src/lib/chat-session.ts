@@ -1,6 +1,7 @@
-import type { ChatAttachment, ChatMessage } from '../../shared/chat.ts'
+import type { ChatMessage } from '../../shared/chat.ts'
 
-const CHAT_SESSION_STORAGE_KEY = 'ark:chat-session'
+const CHAT_SESSION_STORAGE_PREFIX = 'ark:chat-session:'
+const LEGACY_CHAT_SESSION_STORAGE_KEY = 'ark:chat-session'
 const LEGACY_DECK_SESSION_STORAGE_KEY = 'ark:deck-session'
 
 export type ChatSession = {
@@ -8,22 +9,12 @@ export type ChatSession = {
   updatedAt: string
 }
 
-const isChatAttachment = (value: unknown): value is ChatAttachment =>
-  typeof value === 'object' &&
-  value !== null &&
-  (value as ChatAttachment).type === 'file' &&
-  typeof (value as ChatAttachment).mediaType === 'string' &&
-  typeof (value as ChatAttachment).url === 'string'
-
 const isChatMessage = (value: unknown): value is ChatMessage =>
   typeof value === 'object' &&
   value !== null &&
   typeof (value as ChatMessage).id === 'string' &&
   ((value as ChatMessage).role === 'user' || (value as ChatMessage).role === 'assistant') &&
-  typeof (value as ChatMessage).content === 'string' &&
-  ((value as ChatMessage).attachments === undefined ||
-    (Array.isArray((value as ChatMessage).attachments) &&
-      (value as ChatMessage).attachments!.every(isChatAttachment)))
+  typeof (value as ChatMessage).content === 'string'
 
 const isChatSession = (value: unknown): value is ChatSession =>
   typeof value === 'object' &&
@@ -65,55 +56,75 @@ const parseStoredSession = (raw: string | null): ChatSession | null => {
   return null
 }
 
+export function getChatSessionStorageKey(deckId: string | null) {
+  return `${CHAT_SESSION_STORAGE_PREFIX}${deckId ?? 'new'}`
+}
+
 export const createChatSession = (): ChatSession => ({
   messages: [],
   updatedAt: new Date().toISOString(),
 })
 
-export const readChatSession = (): ChatSession | null => {
+export const readChatSession = (deckId: string | null = null): ChatSession | null => {
   try {
     if (typeof localStorage === 'undefined') {
       return null
     }
 
-    const current = parseStoredSession(localStorage.getItem(CHAT_SESSION_STORAGE_KEY))
+    const current = parseStoredSession(localStorage.getItem(getChatSessionStorageKey(deckId)))
+
     if (current) {
       return current
     }
 
-    return parseStoredSession(localStorage.getItem(LEGACY_DECK_SESSION_STORAGE_KEY))
+    if (deckId === null) {
+      return (
+        parseStoredSession(localStorage.getItem(LEGACY_CHAT_SESSION_STORAGE_KEY)) ??
+        parseStoredSession(localStorage.getItem(LEGACY_DECK_SESSION_STORAGE_KEY))
+      )
+    }
+
+    return null
   } catch {
     return null
   }
 }
 
-export const writeChatSession = (session: ChatSession) => {
+export const writeChatSession = (deckId: string | null, session: ChatSession) => {
   try {
     if (typeof localStorage === 'undefined') {
       return
     }
 
     localStorage.setItem(
-      CHAT_SESSION_STORAGE_KEY,
+      getChatSessionStorageKey(deckId),
       JSON.stringify({
         ...session,
         updatedAt: new Date().toISOString(),
       }),
     )
-    localStorage.removeItem(LEGACY_DECK_SESSION_STORAGE_KEY)
+
+    if (deckId === null) {
+      localStorage.removeItem(LEGACY_CHAT_SESSION_STORAGE_KEY)
+      localStorage.removeItem(LEGACY_DECK_SESSION_STORAGE_KEY)
+    }
   } catch {
     // Ignore storage failures (private mode, quota, etc.)
   }
 }
 
-export const clearChatSession = () => {
+export const clearChatSession = (deckId: string | null = null) => {
   try {
     if (typeof localStorage === 'undefined') {
       return
     }
 
-    localStorage.removeItem(CHAT_SESSION_STORAGE_KEY)
-    localStorage.removeItem(LEGACY_DECK_SESSION_STORAGE_KEY)
+    localStorage.removeItem(getChatSessionStorageKey(deckId))
+
+    if (deckId === null) {
+      localStorage.removeItem(LEGACY_CHAT_SESSION_STORAGE_KEY)
+      localStorage.removeItem(LEGACY_DECK_SESSION_STORAGE_KEY)
+    }
   } catch {
     // Ignore storage failures (private mode, quota, etc.)
   }

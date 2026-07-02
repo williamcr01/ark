@@ -59,7 +59,10 @@ function App() {
     versionNumber,
     versions,
   } = useDeckPersistence()
-  const { messages, resetChat, setMessages } = useChatSession()
+  const { appendMessage, messages, reloadChat, resetChat, setMessages } = useChatSession({
+    deckId,
+    deckVersionId: activeVersionId,
+  })
   const [input, setInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
@@ -123,49 +126,51 @@ function App() {
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
   const applySucceededOutcome = useCallback(
-    async (
-      outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>,
-      editingExistingDeck: boolean,
-    ) => {
+    async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) => {
       try {
         await refreshActiveDeck(outcome.job.result?.deckId)
       } catch {
         toast.error('Deck generated but could not be refreshed in the editor')
       }
 
-      const validationNote = outcome.job.result?.validation
-        ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
-        : ''
-      const assistantParts = [
-        ...outcome.assistantParts,
-        ...(outcome.assistantContent
-          ? [
-              {
-                type: 'text' as const,
-                content: `${outcome.assistantContent}${validationNote}`,
-              },
-            ]
-          : validationNote
-            ? [{ type: 'text' as const, content: validationNote.trim() }]
-            : []),
-      ]
+      const targetDeckId = outcome.job.result?.deckId ?? deckId
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: newId(),
-          role: 'assistant',
-          content: outcome.assistantContent
-            ? `${outcome.assistantContent}${validationNote}`
-            : editingExistingDeck
-              ? `Updated the HTML deck and refreshed the preview.${validationNote}`
+      if (targetDeckId) {
+        await reloadChat()
+      } else {
+        const validationNote = outcome.job.result?.validation
+          ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
+          : ''
+        const assistantParts = [
+          ...outcome.assistantParts,
+          ...(outcome.assistantContent
+            ? [
+                {
+                  type: 'text' as const,
+                  content: `${outcome.assistantContent}${validationNote}`,
+                },
+              ]
+            : validationNote
+              ? [{ type: 'text' as const, content: validationNote.trim() }]
+              : []),
+        ]
+
+        setMessages((current) => [
+          ...current,
+          {
+            id: newId(),
+            role: 'assistant',
+            content: outcome.assistantContent
+              ? `${outcome.assistantContent}${validationNote}`
               : `Generated a complete self-contained HTML slide deck.${validationNote}`,
-          parts: assistantParts.length > 0 ? assistantParts : undefined,
-        },
-      ])
-      toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
+            parts: assistantParts.length > 0 ? assistantParts : undefined,
+          },
+        ])
+      }
+
+      toast.success(outcome.job.request.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
-    [refreshActiveDeck, setMessages],
+    [deckId, refreshActiveDeck, reloadChat, setMessages],
   )
 
   useEffect(() => {
@@ -186,13 +191,17 @@ function App() {
         }
 
         recoveredJobIdsRef.current.add(outcome.job.id)
-        await applySucceededOutcome(outcome, hasDeck)
+        await applySucceededOutcome(outcome)
         return
+      }
+
+      if (deckId) {
+        await reloadChat()
       }
 
       setError(outcome.message)
     })()
-  }, [applySucceededOutcome, deckId, hasDeck, isDeckLoading, resumeStoredJob])
+  }, [applySucceededOutcome, deckId, isDeckLoading, reloadChat, resumeStoredJob])
 
   const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
     const prompt =
@@ -203,20 +212,22 @@ function App() {
       return
     }
 
-    const editingExistingDeck = hasDeck
     setError('')
     setGenerationError('')
     setAttachmentError('')
-    const nextMessages: ChatMessage[] = [
-      ...messages,
-      {
-        id: newId(),
-        role: 'user',
-        content: rawPrompt.trim(),
-        ...(attachments.length > 0 ? { attachments } : {}),
-      },
-    ]
-    setMessages(nextMessages)
+    const userMessage: ChatMessage = {
+      id: newId(),
+      role: 'user',
+      content: rawPrompt.trim(),
+      ...(attachments.length > 0 ? { attachments } : {}),
+    }
+    const nextMessages: ChatMessage[] = [...messages, userMessage]
+
+    if (deckId) {
+      await appendMessage(userMessage)
+    } else {
+      setMessages(nextMessages)
+    }
 
     try {
       const outcome = await startGeneration(nextMessages, generatedHtml)
@@ -226,23 +237,28 @@ function App() {
       }
 
       if (outcome.status === 'succeeded') {
-        await applySucceededOutcome(outcome, editingExistingDeck)
+        await applySucceededOutcome(outcome)
         return
       }
 
       const message = outcome.message
       setError(message)
-      setMessages((current) => [
-        ...current,
-        {
-          id: newId(),
-          role: 'assistant',
-          content:
-            outcome.status === 'canceled'
-              ? `Generation canceled. ${message}`
-              : `I could not generate the deck yet. ${message}`,
-        },
-      ])
+
+      if (deckId) {
+        await reloadChat()
+      } else {
+        setMessages((current) => [
+          ...current,
+          {
+            id: newId(),
+            role: 'assistant',
+            content:
+              outcome.status === 'canceled'
+                ? `Generation canceled. ${message}`
+                : `I could not generate the deck yet. ${message}`,
+          },
+        ])
+      }
 
       if (outcome.status === 'canceled') {
         toast.info('Generation canceled')
@@ -258,14 +274,19 @@ function App() {
           : 'Something went wrong while generating the deck.'
 
       setError(message)
-      setMessages((current) => [
-        ...current,
-        {
-          id: newId(),
-          role: 'assistant',
-          content: `I could not generate the deck yet. ${message}`,
-        },
-      ])
+
+      if (deckId) {
+        await reloadChat()
+      } else {
+        setMessages((current) => [
+          ...current,
+          {
+            id: newId(),
+            role: 'assistant',
+            content: `I could not generate the deck yet. ${message}`,
+          },
+        ])
+      }
       toast.error('Generation failed')
     }
   }
@@ -280,8 +301,6 @@ function App() {
   }
 
   const handleRetryGeneration = async () => {
-    const editingExistingDeck = hasDeck
-
     try {
       const outcome = await retryGeneration()
 
@@ -290,12 +309,17 @@ function App() {
       }
 
       if (outcome.status === 'succeeded') {
-        await applySucceededOutcome(outcome, editingExistingDeck)
+        await applySucceededOutcome(outcome)
         return
       }
 
       const message = outcome.message
       setError(message)
+
+      if (deckId) {
+        await reloadChat()
+      }
+
       toast.error(outcome.status === 'canceled' ? 'Generation canceled' : 'Generation failed')
     } catch {
       toast.error('Could not retry generation')
@@ -317,7 +341,7 @@ function App() {
   const handleRollbackVersion = async (versionId: string) => {
     try {
       await rollbackToVersion(versionId)
-      resetChat()
+      await resetChat()
       setInput('')
       setError('')
       toast.success('Deck restored to selected version')
@@ -375,14 +399,17 @@ function App() {
       }
 
       setError('')
-      setMessages((current) => [
-        ...current,
-        {
-          id: newId(),
-          role: 'assistant',
-          content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
-        },
-      ])
+      const uploadMessage: ChatMessage = {
+        id: newId(),
+        role: 'assistant',
+        content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
+      }
+
+      if (deckId) {
+        await appendMessage(uploadMessage)
+      } else {
+        setMessages((current) => [...current, uploadMessage])
+      }
       toast.success('HTML deck loaded')
     } catch {
       toast.error('Could not read that HTML file')
@@ -391,7 +418,7 @@ function App() {
 
   const handleNewDeck = () => {
     startNewDeck()
-    resetChat()
+    void resetChat()
     setInput('')
     setError('')
     toast.info('Started a fresh deck')
@@ -400,7 +427,6 @@ function App() {
   const handleSelectDeck = async (nextDeckId: string) => {
     try {
       await selectDeck(nextDeckId)
-      resetChat()
       setInput('')
       setError('')
       toast.success('Deck loaded')
@@ -422,7 +448,7 @@ function App() {
   const handleDeleteDeck = async () => {
     try {
       await deleteActiveDeck()
-      resetChat()
+      await resetChat()
       setInput('')
       setError('')
       toast.success('Deck deleted')

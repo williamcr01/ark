@@ -10,6 +10,8 @@ import {
 } from './credentials.ts'
 import { handleDeckAssetRequest } from './deck-assets.ts'
 import { createDefaultDeckStore } from './deck-store.ts'
+import { createDefaultChatStore } from './chat-store.ts'
+import { type ChatStore, normalizeChatMessageLimit } from './chat-record.ts'
 import {
   type DeckStore,
   type DeckVersionOptions,
@@ -30,11 +32,81 @@ import {
   getDefaultModel,
   getDefaultModelWarning,
 } from './models.ts'
+import type { AppendChatMessageRequest } from '../shared/chat-thread.ts'
 
 type CreateAppOptions = {
   deckStore?: DeckStore
+  chatStore?: ChatStore
   generationJobStore?: GenerationJobStore
   generationJobRunner?: GenerationJobRunner
+}
+
+function parseAppendChatMessageBody(
+  body: AppendChatMessageRequest = {} as AppendChatMessageRequest,
+) {
+  const role = body.role
+
+  if (role !== 'user' && role !== 'assistant') {
+    return { ok: false as const, error: 'Message role must be "user" or "assistant".' }
+  }
+
+  if (typeof body.content !== 'string') {
+    return { ok: false as const, error: 'Message content must be a string.' }
+  }
+
+  return {
+    ok: true as const,
+    message: {
+      id: typeof body.id === 'string' ? body.id : undefined,
+      role,
+      content: body.content.trim(),
+      parts: Array.isArray(body.parts) ? body.parts : undefined,
+      attachments: Array.isArray(body.attachments) ? body.attachments : undefined,
+      deckVersionId: typeof body.deckVersionId === 'string' ? body.deckVersionId : null,
+      generationJobId: typeof body.generationJobId === 'string' ? body.generationJobId : null,
+      generationStatus: typeof body.generationStatus === 'string' ? body.generationStatus : null,
+      model: typeof body.model === 'string' ? body.model : null,
+      error:
+        body.error && typeof body.error.message === 'string'
+          ? {
+              message: body.error.message,
+              code: typeof body.error.code === 'string' ? body.error.code : null,
+            }
+          : null,
+    },
+  }
+}
+
+function toChatApiMessage(message: {
+  id: string
+  threadId: string
+  deckId: string
+  deckVersionId: string | null
+  role: 'user' | 'assistant'
+  content: string
+  parts?: AppendChatMessageRequest['parts']
+  attachments?: AppendChatMessageRequest['attachments']
+  generationJobId?: string | null
+  generationStatus?: string | null
+  model?: string | null
+  error?: { message: string; code?: string | null } | null
+  createdAt: string
+}) {
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    deckId: message.deckId,
+    deckVersionId: message.deckVersionId,
+    role: message.role,
+    content: message.content,
+    ...(message.parts?.length ? { parts: message.parts } : {}),
+    ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+    generationJobId: message.generationJobId ?? null,
+    generationStatus: message.generationStatus ?? null,
+    model: message.model ?? null,
+    error: message.error ?? null,
+    createdAt: message.createdAt,
+  }
 }
 
 type DeckVersionRequestBody = {
@@ -100,9 +172,10 @@ const getApiErrorFromUnknown = (error: unknown): ApiErrorPayload => {
 export function createApp(options: CreateAppOptions = {}) {
   const app = express()
   const deckStore = options.deckStore ?? createDefaultDeckStore()
+  const chatStore = options.chatStore ?? createDefaultChatStore()
   const jobStore = options.generationJobStore ?? createDefaultGenerationJobStore()
   const generationJobs =
-    options.generationJobRunner ?? createGenerationJobRunner({ deckStore, jobStore })
+    options.generationJobRunner ?? createGenerationJobRunner({ deckStore, jobStore, chatStore })
   const defaultModel = getDefaultModel()
 
   app.use(express.json({ limit: '12mb' }))
@@ -396,6 +469,118 @@ export function createApp(options: CreateAppOptions = {}) {
         }
 
         response.json({ deck, validation })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
+
+  app.get('/api/decks/:id/chat', async (request: Request<{ id: string }>, response: Response) => {
+    const id = request.params.id?.trim()
+
+    if (!id) {
+      response.status(400).json({ error: 'Deck id is required.' })
+      return
+    }
+
+    if (!isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+
+    const limit = normalizeChatMessageLimit(
+      request.query.limit ? Number(request.query.limit) : undefined,
+    )
+    const before =
+      typeof request.query.before === 'string' ? request.query.before.trim() : undefined
+
+    try {
+      const deck = await deckStore.getDeck(id)
+
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
+        return
+      }
+
+      const result = await chatStore.listMessages(id, { limit, before })
+
+      response.json({
+        thread: result.thread,
+        messages: result.messages.map(toChatApiMessage),
+        hasMore: result.hasMore,
+      })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
+
+  app.post(
+    '/api/decks/:id/chat/messages',
+    async (
+      request: Request<{ id: string }, unknown, AppendChatMessageRequest>,
+      response: Response,
+    ) => {
+      const id = request.params.id?.trim()
+
+      if (!id) {
+        response.status(400).json({ error: 'Deck id is required.' })
+        return
+      }
+
+      if (!isValidDeckId(id)) {
+        response.status(400).json({ error: 'Invalid deck id.' })
+        return
+      }
+
+      const parsed = parseAppendChatMessageBody(request.body)
+
+      if (!parsed.ok) {
+        response.status(400).json({ error: parsed.error })
+        return
+      }
+
+      try {
+        const deck = await deckStore.getDeck(id)
+
+        if (!deck) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
+        const message = await chatStore.appendMessage(id, parsed.message)
+
+        response.status(201).json({ message: toChatApiMessage(message) })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
+
+  app.delete(
+    '/api/decks/:id/chat',
+    async (request: Request<{ id: string }>, response: Response) => {
+      const id = request.params.id?.trim()
+
+      if (!id) {
+        response.status(400).json({ error: 'Deck id is required.' })
+        return
+      }
+
+      if (!isValidDeckId(id)) {
+        response.status(400).json({ error: 'Invalid deck id.' })
+        return
+      }
+
+      try {
+        const deck = await deckStore.getDeck(id)
+
+        if (!deck) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
+        await chatStore.clearThread(id)
+        response.status(204).send()
       } catch (error) {
         sendApiError(response, 500, getApiErrorFromUnknown(error))
       }
