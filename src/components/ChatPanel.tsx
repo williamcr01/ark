@@ -1,4 +1,4 @@
-import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon } from 'lucide-react'
+import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
 
 import {
   Attachment,
@@ -42,8 +42,13 @@ import {
   type ApiKeyStatus,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
-import type { ChatAttachment, ChatMessage, ChatMessagePart } from '../../shared/chat.ts'
-import { MAX_CHAT_ATTACHMENTS, MAX_CHAT_ATTACHMENT_BYTES } from '../../shared/chat.ts'
+import type { AgentStep, ChatAttachment, ChatMessage, ChatMessagePart } from '../../shared/chat.ts'
+import {
+  agentStepsToChatParts,
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_ATTACHMENT_BYTES,
+} from '../../shared/chat.ts'
+import type { GenerationJobStatus } from '../../shared/generation-job.ts'
 import { cn } from '@/lib/utils'
 
 export type { ChatMessage } from '../../shared/chat.ts'
@@ -182,6 +187,9 @@ export type ChatPanelProps = {
   messages: ChatMessage[]
   input: string
   isGenerating: boolean
+  generationStatus: GenerationJobStatus | null
+  activeSteps: AgentStep[]
+  failedJobId: string | null
   error: string
   attachmentError: string
   models: AvailableModel[]
@@ -196,6 +204,8 @@ export type ChatPanelProps = {
   onRefreshModels: () => Promise<void>
   onPromptSubmit: (message: PromptInputMessage) => void
   onAttachmentError: (message: string) => void
+  onCancelGeneration: () => void | Promise<void>
+  onRetryGeneration: () => void | Promise<void>
 }
 
 function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
@@ -230,6 +240,9 @@ export function ChatPanel({
   messages,
   input,
   isGenerating,
+  generationStatus,
+  activeSteps,
+  failedJobId,
   error,
   attachmentError,
   models,
@@ -244,6 +257,8 @@ export function ChatPanel({
   onRefreshModels,
   onPromptSubmit,
   onAttachmentError,
+  onCancelGeneration,
+  onRetryGeneration,
 }: ChatPanelProps) {
   const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
   const isInputDisabled = isGenerating || !canGenerate
@@ -288,9 +303,18 @@ export function ChatPanel({
             {isGenerating ? (
               <Message from="assistant">
                 <MessageContent>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2Icon className="size-4 animate-spin" />
-                    Designing the deck and running agent tools…
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      {generationStatus === 'queued'
+                        ? 'Queued for generation…'
+                        : generationStatus === 'canceling'
+                          ? 'Canceling generation…'
+                          : 'Designing the deck and running agent tools…'}
+                    </div>
+                    {activeSteps.length > 0 ? (
+                      <ChatMessageParts parts={agentStepsToChatParts(activeSteps)} />
+                    ) : null}
                   </div>
                 </MessageContent>
               </Message>
@@ -304,7 +328,23 @@ export function ChatPanel({
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />
               <AlertTitle>Generation failed</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription className="flex flex-col gap-3">
+                <span>{error}</span>
+                {failedJobId ? (
+                  <div>
+                    <PromptInputButton
+                      aria-label="Retry generation"
+                      onClick={() => {
+                        void onRetryGeneration()
+                      }}
+                      tooltip="Retry generation"
+                    >
+                      <RefreshCwIcon className="size-4" />
+                      Retry
+                    </PromptInputButton>
+                  </div>
+                ) : null}
+              </AlertDescription>
             </Alert>
           ) : null}
 
@@ -411,6 +451,18 @@ export function ChatPanel({
                 >
                   <RefreshCwIcon className={cn('size-4', isLoadingModels && 'animate-spin')} />
                 </PromptInputButton>
+                {isGenerating ? (
+                  <PromptInputButton
+                    aria-label="Cancel generation"
+                    onClick={() => {
+                      void onCancelGeneration()
+                    }}
+                    tooltip="Cancel generation"
+                  >
+                    <XIcon className="size-4" />
+                    Cancel
+                  </PromptInputButton>
+                ) : null}
               </PromptInputTools>
               <ChatPromptInputSubmit
                 input={input}
