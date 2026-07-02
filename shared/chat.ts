@@ -157,7 +157,7 @@ const parseChatAttachments = (
   return { ok: true, attachments }
 }
 
-/** Runtime validation for untrusted `/api/generate` request bodies. */
+/** Runtime validation for untrusted generation job request bodies. */
 export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResult {
   if (!Array.isArray(input)) {
     return { ok: false, error: 'messages must be an array.' }
