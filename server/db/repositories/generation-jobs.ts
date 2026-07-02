@@ -246,6 +246,106 @@ export function createPostgresGenerationJobStore(
     return row ? rowToJob(row) : null
   }
 
+  const updateJobIfStatus = async (
+    id: string,
+    expectedStatus: GenerationJobStatus,
+    patch: Partial<{
+      status: GenerationJobStatus
+      deckId: string | null
+      progress: GenerationJobProgress
+      result: GenerationJobResult | null
+      error: GenerationJobError | null
+      startedAt: string | null
+      completedAt: string | null
+    }>,
+  ) => {
+    if (!isValidGenerationJobId(id)) {
+      return null
+    }
+
+    await ensureMigrated()
+
+    const existing = await getJob(id)
+
+    if (!existing || existing.status !== expectedStatus) {
+      return null
+    }
+
+    const timestamp = now()
+    const requestMetadata = {
+      messages: existing.request.messages,
+      currentHtml: existing.request.currentHtml,
+      baseVersionId: existing.baseVersionId,
+      editingExistingDeck: existing.request.editingExistingDeck ?? false,
+      retryOfJobId: existing.retryOfJobId,
+      progress: patch.progress ?? existing.progress,
+      result: patch.result === undefined ? existing.result : patch.result,
+    }
+    const errorMetadata =
+      patch.error === undefined
+        ? existing.error
+        : patch.error
+          ? {
+              message: patch.error.message,
+              code: patch.error.code ?? null,
+              validation: patch.error.validation ?? null,
+            }
+          : null
+
+    const result = await pool.query<GenerationJobRow>(
+      `
+        UPDATE generation_jobs
+        SET
+          deck_id = COALESCE($2, deck_id),
+          status = COALESCE($3, status),
+          request_metadata = $4::jsonb,
+          error_metadata = COALESCE($5::jsonb, '{}'::jsonb),
+          started_at = COALESCE($6, started_at),
+          completed_at = COALESCE($7, completed_at),
+          result_deck_version_id = COALESCE($8, result_deck_version_id),
+          updated_at = $9
+        WHERE id = $1
+          AND status = $10
+        RETURNING
+          id,
+          deck_id,
+          workspace_id,
+          user_id,
+          status,
+          request_metadata,
+          provider,
+          model,
+          error_metadata,
+          started_at,
+          completed_at,
+          result_deck_version_id,
+          created_at,
+          updated_at
+      `,
+      [
+        id,
+        patch.deckId ?? null,
+        patch.status ? normalizeGenerationJobStatusForStorage(patch.status) : null,
+        JSON.stringify(requestMetadata),
+        errorMetadata ? JSON.stringify(errorMetadata) : null,
+        patch.startedAt ? new Date(patch.startedAt) : null,
+        patch.completedAt ? new Date(patch.completedAt) : null,
+        patch.result?.versionId ?? null,
+        timestamp,
+        normalizeGenerationJobStatusForStorage(expectedStatus),
+      ],
+    )
+
+    const row = result.rows[0]
+    return row ? rowToJob(row) : null
+  }
+
+  const claimQueuedJob = async (id: string, startedAt: string) =>
+    updateJobIfStatus(id, 'queued', {
+      status: 'running',
+      startedAt,
+    })
+
   const updateJob = async (
     id: string,
     patch: Partial<{
@@ -370,7 +470,9 @@ export function createPostgresGenerationJobStore(
   return {
     createJob,
     getJob,
+    claimQueuedJob,
     updateJob,
+    updateJobIfStatus,
     listJobsForDeck,
   }
 }

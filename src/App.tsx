@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, type ChangeEvent } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, type ChangeEvent } from 'react'
 
 import { toChatAttachments, type ChatAttachment } from '../shared/chat.ts'
 import { toast } from 'sonner'
@@ -13,7 +13,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useChatSession } from '@/hooks/useChatSession'
 import { useDeckPersistence } from '@/hooks/useDeckPersistence'
-import { useGenerationJob } from '@/hooks/useGenerationJob'
+import { useGenerationJob, type GenerationJobOutcome } from '@/hooks/useGenerationJob'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -66,6 +66,7 @@ function App() {
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const recoveredJobIdsRef = useRef(new Set<string>())
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const {
@@ -121,6 +122,52 @@ function App() {
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
+  const applySucceededOutcome = useCallback(
+    async (
+      outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>,
+      editingExistingDeck: boolean,
+    ) => {
+      try {
+        await refreshActiveDeck(outcome.job.result?.deckId)
+      } catch {
+        toast.error('Deck generated but could not be refreshed in the editor')
+      }
+
+      const validationNote = outcome.job.result?.validation
+        ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
+        : ''
+      const assistantParts = [
+        ...outcome.assistantParts,
+        ...(outcome.assistantContent
+          ? [
+              {
+                type: 'text' as const,
+                content: `${outcome.assistantContent}${validationNote}`,
+              },
+            ]
+          : validationNote
+            ? [{ type: 'text' as const, content: validationNote.trim() }]
+            : []),
+      ]
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: newId(),
+          role: 'assistant',
+          content: outcome.assistantContent
+            ? `${outcome.assistantContent}${validationNote}`
+            : editingExistingDeck
+              ? `Updated the HTML deck and refreshed the preview.${validationNote}`
+              : `Generated a complete self-contained HTML slide deck.${validationNote}`,
+          parts: assistantParts.length > 0 ? assistantParts : undefined,
+        },
+      ])
+      toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
+    },
+    [refreshActiveDeck, setMessages],
+  )
+
   useEffect(() => {
     if (isDeckLoading) {
       return
@@ -134,19 +181,18 @@ function App() {
       }
 
       if (outcome.status === 'succeeded') {
-        try {
-          await refreshActiveDeck(outcome.job.result?.deckId)
-        } catch {
-          toast.error('Deck generated but could not be refreshed in the editor')
+        if (recoveredJobIdsRef.current.has(outcome.job.id)) {
+          return
         }
 
-        toast.success(hasDeck ? 'Deck updated' : 'Deck generated')
+        recoveredJobIdsRef.current.add(outcome.job.id)
+        await applySucceededOutcome(outcome, hasDeck)
         return
       }
 
       setError(outcome.message)
     })()
-  }, [deckId, hasDeck, isDeckLoading, refreshActiveDeck, resumeStoredJob])
+  }, [applySucceededOutcome, deckId, hasDeck, isDeckLoading, resumeStoredJob])
 
   const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
     const prompt =
@@ -180,43 +226,7 @@ function App() {
       }
 
       if (outcome.status === 'succeeded') {
-        try {
-          await refreshActiveDeck(outcome.job.result?.deckId)
-        } catch {
-          toast.error('Deck generated but could not be refreshed in the editor')
-        }
-
-        const validationNote = outcome.job.result?.validation
-          ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
-          : ''
-        const assistantParts = [
-          ...outcome.assistantParts,
-          ...(outcome.assistantContent
-            ? [
-                {
-                  type: 'text' as const,
-                  content: `${outcome.assistantContent}${validationNote}`,
-                },
-              ]
-            : validationNote
-              ? [{ type: 'text' as const, content: validationNote.trim() }]
-              : []),
-        ]
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: newId(),
-            role: 'assistant',
-            content: outcome.assistantContent
-              ? `${outcome.assistantContent}${validationNote}`
-              : editingExistingDeck
-                ? `Updated the HTML deck and refreshed the preview.${validationNote}`
-                : `Generated a complete self-contained HTML slide deck.${validationNote}`,
-            parts: assistantParts.length > 0 ? assistantParts : undefined,
-          },
-        ])
-        toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
+        await applySucceededOutcome(outcome, editingExistingDeck)
         return
       }
 
@@ -280,40 +290,7 @@ function App() {
       }
 
       if (outcome.status === 'succeeded') {
-        try {
-          await refreshActiveDeck(outcome.job.result?.deckId)
-        } catch {
-          toast.error('Deck generated but could not be refreshed in the editor')
-        }
-
-        const validationNote = outcome.job.result?.validation
-          ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
-          : ''
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: newId(),
-            role: 'assistant',
-            content: outcome.assistantContent
-              ? `${outcome.assistantContent}${validationNote}`
-              : editingExistingDeck
-                ? `Updated the HTML deck and refreshed the preview.${validationNote}`
-                : `Generated a complete self-contained HTML slide deck.${validationNote}`,
-            parts: [
-              ...outcome.assistantParts,
-              ...(outcome.assistantContent
-                ? [
-                    {
-                      type: 'text' as const,
-                      content: `${outcome.assistantContent}${validationNote}`,
-                    },
-                  ]
-                : []),
-            ],
-          },
-        ])
-        toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
+        await applySucceededOutcome(outcome, editingExistingDeck)
         return
       }
 

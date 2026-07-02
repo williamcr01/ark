@@ -7,7 +7,8 @@ import type {
   GenerationJobStatus,
   StartGenerationJobRequest,
 } from '../shared/generation-job.ts'
-import { runDeckAgent } from './deck-agent.ts'
+import { ACTIVE_GENERATION_JOB_STATUSES } from '../shared/generation-job.ts'
+import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'
 import { cloneGenerationJobRequest, type GenerationJobStore } from './generation-job-record.ts'
 import { createLanguageModel } from './provider-runtime.ts'
@@ -16,6 +17,7 @@ export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
   jobStore: GenerationJobStore
   createModel?: typeof createLanguageModel
+  runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
   now?: () => Date
 }
 
@@ -45,35 +47,24 @@ export function createGenerationJobRunner({
   deckStore,
   jobStore,
   createModel = createLanguageModel,
+  runAgent = runDeckAgent,
   now = () => new Date(),
 }: GenerationJobRunnerOptions): GenerationJobRunner {
   const processJob = async (jobId: string) => {
-    const job = await jobStore.getJob(jobId)
+    const claimed = await jobStore.claimQueuedJob(jobId, now().toISOString())
 
-    if (!job || job.status !== 'queued') {
+    if (!claimed) {
       return
     }
 
     const abortController = new AbortController()
     runningControllers.set(jobId, abortController)
-
-    const startedAt = now().toISOString()
-    await jobStore.updateJob(jobId, {
-      status: 'running',
-      startedAt,
-    })
-
-    const currentJob = await jobStore.getJob(jobId)
-
-    if (!currentJob) {
-      runningControllers.delete(jobId)
-      return
-    }
+    const currentJob = claimed
 
     try {
       const { model, provider } = createModel(currentJob.model)
 
-      const agentResult = await runDeckAgent({
+      const agentResult = await runAgent({
         model: model as LanguageModel,
         messages: currentJob.request.messages,
         currentHtml: currentJob.request.currentHtml,
@@ -303,6 +294,20 @@ export function createGenerationJobRunner({
         ? body.baseVersionId.trim()
         : null
 
+    if (deckId) {
+      const jobs = await jobStore.listJobsForDeck(deckId)
+      const inFlight = jobs.find((job) => ACTIVE_GENERATION_JOB_STATUSES.has(job.status))
+
+      if (inFlight) {
+        throw Object.assign(new Error('A generation job is already in progress for this deck.'), {
+          apiError: {
+            code: 'provider_error',
+            error: 'A generation job is already in progress for this deck.',
+          },
+        })
+      }
+    }
+
     const input: CreateGenerationJobInput = {
       deckId,
       baseVersionId,
@@ -334,12 +339,27 @@ export function createGenerationJobRunner({
       return null
     }
 
+    const request = cloneGenerationJobRequest(existing.request)
+    const deckId = existing.deckId
+    let baseVersionId = existing.baseVersionId
+
+    if (deckId) {
+      const deck = await deckStore.getDeck(deckId)
+
+      if (deck) {
+        baseVersionId = deck.activeVersionId ?? null
+        request.currentHtml = deck.html
+        request.baseVersionId = baseVersionId
+        request.editingExistingDeck = true
+      }
+    }
+
     const input: CreateGenerationJobInput = {
-      deckId: existing.deckId,
-      baseVersionId: existing.baseVersionId,
+      deckId,
+      baseVersionId,
       model: existing.model,
       provider: existing.provider,
-      request: cloneGenerationJobRequest(existing.request),
+      request,
       retryOfJobId: existing.id,
     }
 
@@ -363,10 +383,13 @@ export function createGenerationJobRunner({
     controller?.abort()
 
     if (existing.status === 'queued') {
-      return jobStore.updateJob(jobId, {
-        status: 'canceled',
-        completedAt: now().toISOString(),
-      })
+      const canceled =
+        (await jobStore.updateJobIfStatus(jobId, 'queued', {
+          status: 'canceled',
+          completedAt: now().toISOString(),
+        })) ?? (await jobStore.getJob(jobId))
+
+      return canceled
     }
 
     return jobStore.updateJob(jobId, {
@@ -398,7 +421,6 @@ export function toGenerationJobResponse(job: GenerationJob) {
         ? {
             deckId: job.result.deckId,
             versionId: job.result.versionId,
-            html: job.result.html,
             validation: job.result.validation,
             assistantText: job.result.assistantText,
           }

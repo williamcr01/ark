@@ -47,7 +47,16 @@ describe('file generation job store', () => {
     expect(updated?.status).toBe('running')
     expect(updated?.progress.steps).toHaveLength(1)
 
+    const claimed = await store.claimQueuedJob(created.id, new Date().toISOString())
+    expect(claimed).toBeNull()
+
+    const canceled = await store.updateJobIfStatus(created.id, 'running', {
+      status: 'canceled',
+      completedAt: new Date().toISOString(),
+    })
+    expect(canceled?.status).toBe('canceled')
+
     const loaded = await store.getJob(created.id)
-    expect(loaded?.status).toBe('running')
+    expect(loaded?.status).toBe('canceled')
   })
 })

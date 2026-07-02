@@ -114,6 +114,29 @@ async function writeJobFile(filePath: string, job: StoredGenerationJobFile) {
   await writeFile(filePath, JSON.stringify(job, null, 2), 'utf8')
 }
 
+const jobLocks = new Map<string, Promise<void>>()
+
+async function withJobLock<T>(jobId: string, operation: () => Promise<T>) {
+  const previous = jobLocks.get(jobId) ?? Promise.resolve()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const current = previous.then(() => gate)
+  jobLocks.set(jobId, current)
+
+  await previous
+
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (jobLocks.get(jobId) === current) {
+      jobLocks.delete(jobId)
+    }
+  }
+}
+
 export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): GenerationJobStore {
   const createJob = async (input: CreateGenerationJobInput) => {
     await ensureDataDir(dataDir)
@@ -168,28 +191,71 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
       startedAt: string | null
       completedAt: string | null
     }>,
-  ) => {
-    const filePath = resolveJobPath(dataDir, id)
+  ) =>
+    withJobLock(id, async () => {
+      const filePath = resolveJobPath(dataDir, id)
 
-    if (!filePath) {
-      return null
-    }
+      if (!filePath) {
+        return null
+      }
 
-    const existing = await readJobFile(filePath)
+      const existing = await readJobFile(filePath)
 
-    if (!existing) {
-      return null
-    }
+      if (!existing) {
+        return null
+      }
 
-    const updated: StoredGenerationJobFile = {
-      ...existing,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    }
+      const updated: StoredGenerationJobFile = {
+        ...existing,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      }
 
-    await writeJobFile(filePath, updated)
-    return updated
-  }
+      await writeJobFile(filePath, updated)
+      return updated
+    })
+
+  const updateJobIfStatus = async (
+    id: string,
+    expectedStatus: GenerationJobStatus,
+    patch: Partial<{
+      status: GenerationJobStatus
+      deckId: string | null
+      progress: GenerationJobProgress
+      result: GenerationJobResult | null
+      error: GenerationJobError | null
+      startedAt: string | null
+      completedAt: string | null
+    }>,
+  ) =>
+    withJobLock(id, async () => {
+      const filePath = resolveJobPath(dataDir, id)
+
+      if (!filePath) {
+        return null
+      }
+
+      const existing = await readJobFile(filePath)
+
+      if (!existing || existing.status !== expectedStatus) {
+        return null
+      }
+
+      const updated: StoredGenerationJobFile = {
+        ...existing,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      }
+
+      await writeJobFile(filePath, updated)
+      return updated
+    })
+
+  const claimQueuedJob = async (id: string, startedAt: string) =>
+    updateJobIfStatus(id, 'queued', {
+      status: 'running',
+      startedAt,
+    })
 
   const listJobsForDeck = async (deckId: string) => {
     await ensureDataDir(dataDir)
@@ -215,7 +281,9 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
   return {
     createJob,
     getJob,
+    claimQueuedJob,
     updateJob,
+    updateJobIfStatus,
     listJobsForDeck,
   }
 }

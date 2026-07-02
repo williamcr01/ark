@@ -7,6 +7,7 @@ import { type AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from './app.ts'
+import { type RunDeckAgentResult } from './deck-agent.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
@@ -21,6 +22,12 @@ const sampleHtml = `<!DOCTYPE html>
   <section class="slide"><h1>Hello</h1></section>
 </body>
 </html>`
+
+const stubAgentFailure = async (): Promise<RunDeckAgentResult> => ({
+  ok: false,
+  error: 'Stubbed agent failure for tests.',
+  steps: [],
+})
 
 describe('generation job runner', () => {
   let deckDir = ''
@@ -37,7 +44,7 @@ describe('generation job runner', () => {
     jobDir = ''
   })
 
-  async function createRunner() {
+  async function createRunner(options?: { runAgent?: () => Promise<RunDeckAgentResult> }) {
     deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
     jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
 
@@ -52,6 +59,7 @@ describe('generation job runner', () => {
         provider: 'openai',
         modelId: 'gpt-4.1-mini',
       }),
+      runAgent: options?.runAgent ?? stubAgentFailure,
       now: () => new Date('2026-07-01T12:00:00.000Z'),
     })
 
@@ -59,11 +67,16 @@ describe('generation job runner', () => {
   }
 
   it('marks canceled queued jobs without running the agent', async () => {
-    const { runner, jobStore } = await createRunner()
+    const { runner, jobStore } = await createRunner({
+      runAgent: () => new Promise(() => undefined),
+    })
 
-    const job = await runner.startJob({
-      defaultModel: 'openai:gpt-4.1-mini',
-      body: {
+    const job = await jobStore.createJob({
+      deckId: null,
+      baseVersionId: null,
+      model: 'openai:gpt-4.1-mini',
+      provider: 'openai',
+      request: {
         messages: [{ role: 'user', content: 'Make slides' }],
         currentHtml: '',
       },
@@ -75,6 +88,34 @@ describe('generation job runner', () => {
     const stored = await jobStore.getJob(job.id)
     expect(stored?.status).toBe('canceled')
     expect(stored?.completedAt).toBeTruthy()
+  })
+
+  it('does not overwrite a canceled queued job with running', async () => {
+    const { jobStore } = await createRunner()
+
+    const job = await jobStore.createJob({
+      deckId: null,
+      baseVersionId: null,
+      model: 'openai:gpt-4.1-mini',
+      provider: 'openai',
+      request: {
+        messages: [{ role: 'user', content: 'Make slides' }],
+        currentHtml: '',
+      },
+    })
+
+    const canceled = await jobStore.updateJobIfStatus(job.id, 'queued', {
+      status: 'canceled',
+      completedAt: new Date().toISOString(),
+    })
+    expect(canceled?.status).toBe('canceled')
+
+    const claimed = await jobStore.claimQueuedJob(job.id, new Date().toISOString())
+    expect(claimed).toBeNull()
+
+    const stored = await jobStore.getJob(job.id)
+    expect(stored?.status).toBe('canceled')
+    expect(stored?.startedAt).toBeNull()
   })
 
   it('retries failed jobs with retry relationship metadata', async () => {
@@ -101,6 +142,43 @@ describe('generation job runner', () => {
 
     expect(retried?.retryOfJobId).toBe(failed.id)
     expect(retried?.status).toBe('queued')
+
+    if (retried) {
+      await runner.cancelJob(retried.id)
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  })
+
+  it('refreshes deck snapshot when retrying a failed edit job', async () => {
+    const { deckStore, runner, jobStore } = await createRunner()
+    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const failed = await jobStore.createJob({
+      deckId: deck.id,
+      baseVersionId: deck.activeVersionId,
+      model: 'openai:gpt-4.1-mini',
+      provider: 'openai',
+      request: {
+        messages: [{ role: 'user', content: 'Retry me' }],
+        currentHtml: deck.html,
+        baseVersionId: deck.activeVersionId,
+        editingExistingDeck: true,
+      },
+    })
+
+    await jobStore.updateJob(failed.id, {
+      status: 'failed',
+      error: { message: 'Version conflict', code: 'version_conflict' },
+      completedAt: new Date().toISOString(),
+    })
+
+    const updatedDeck = await deckStore.updateDeck(deck.id, sampleHtml.replace('Hello', 'Hi'), {
+      source: 'manual',
+    })
+    const retried = await runner.retryJob(failed.id)
+
+    expect(retried?.baseVersionId).toBe(updatedDeck?.activeVersionId)
+    expect(retried?.request.currentHtml).toBe(updatedDeck?.html)
 
     if (retried) {
       await runner.cancelJob(retried.id)
@@ -147,6 +225,7 @@ describe('generation job API routes', () => {
         provider: 'openai',
         modelId: 'gpt-4.1-mini',
       }),
+      runAgent: stubAgentFailure,
     })
 
     const app = createApp({
@@ -159,7 +238,10 @@ describe('generation job API routes', () => {
     await new Promise<void>((resolve) => server?.once('listening', resolve))
 
     const address = server.address() as AddressInfo
-    return `http://127.0.0.1:${address.port}`
+    return {
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      generationJobRunner,
+    }
   }
 
   it('starts and reads a generation job quickly', async () => {
@@ -167,7 +249,7 @@ describe('generation job API routes', () => {
     process.env.OPENAI_API_KEY = 'sk-test-generation-job-route'
 
     try {
-      const baseUrl = await startApi()
+      const { baseUrl, generationJobRunner } = await startApi()
 
       const response = await fetch(`${baseUrl}/api/generation-jobs`, {
         method: 'POST',
@@ -184,10 +266,19 @@ describe('generation job API routes', () => {
       expect(started.job?.status).toBe('queued')
 
       const readResponse = await fetch(`${baseUrl}/api/generation-jobs/${started.job?.id}`)
-      const read = (await readResponse.json()) as { job?: { id: string; status: string } }
+      const read = (await readResponse.json()) as {
+        job?: { id: string; status: string; result?: { html?: string } | null }
+      }
 
       expect(readResponse.status).toBe(200)
       expect(read.job?.id).toBe(started.job?.id)
+      expect(read.job?.result?.html).toBeUndefined()
+
+      if (started.job?.id) {
+        await generationJobRunner.cancelJob(started.job.id)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 25))
     } finally {
       if (previousKey === undefined) {
         delete process.env.OPENAI_API_KEY
@@ -198,7 +289,7 @@ describe('generation job API routes', () => {
   })
 
   it('rejects invalid generation job ids', async () => {
-    const baseUrl = await startApi()
+    const { baseUrl } = await startApi()
 
     const response = await fetch(`${baseUrl}/api/generation-jobs/not-a-uuid`)
     expect(response.status).toBe(400)

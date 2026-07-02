@@ -307,6 +307,12 @@ export function useGenerationJob({
       const job = await fetchGenerationJob(storedJobId)
 
       if (!isActiveGenerationJobStatus(job.status)) {
+        if (job.status === 'succeeded') {
+          clearStoredJobId(deckKey)
+          finalizeJob(job)
+          return buildOutcome(job)
+        }
+
         if (job.status === 'failed' || job.status === 'canceled') {
           setFailedJob(job)
           setError(job.error?.message ?? '')
@@ -321,7 +327,7 @@ export function useGenerationJob({
       clearStoredJobId(deckKey)
       return null
     }
-  }, [deckKey, isGenerating, runJob])
+  }, [buildOutcome, deckKey, finalizeJob, isGenerating, runJob])
 
   useEffect(() => {
     return () => {

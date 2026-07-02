@@ -8,20 +8,25 @@ import type {
   GenerationJobStatus,
 } from '../shared/generation-job.ts'
 
+type GenerationJobPatch = Partial<{
+  status: GenerationJobStatus
+  deckId: string | null
+  progress: GenerationJobProgress
+  result: GenerationJobResult | null
+  error: GenerationJobError | null
+  startedAt: string | null
+  completedAt: string | null
+}>
+
 export type GenerationJobStore = {
   createJob: (input: CreateGenerationJobInput) => Promise<GenerationJob>
   getJob: (id: string) => Promise<GenerationJob | null>
-  updateJob: (
+  claimQueuedJob: (id: string, startedAt: string) => Promise<GenerationJob | null>
+  updateJob: (id: string, patch: GenerationJobPatch) => Promise<GenerationJob | null>
+  updateJobIfStatus: (
     id: string,
-    patch: Partial<{
-      status: GenerationJobStatus
-      deckId: string | null
-      progress: GenerationJobProgress
-      result: GenerationJobResult | null
-      error: GenerationJobError | null
-      startedAt: string | null
-      completedAt: string | null
-    }>,
+    expectedStatus: GenerationJobStatus,
+    patch: GenerationJobPatch,
   ) => Promise<GenerationJob | null>
   listJobsForDeck: (deckId: string) => Promise<GenerationJob[]>
 }
