@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -112,7 +112,9 @@ async function readJobFile(filePath: string) {
 }
 
 async function writeJobFile(filePath: string, job: StoredGenerationJobFile) {
-  await writeFile(filePath, JSON.stringify(job, null, 2), 'utf8')
+  const tempPath = `${filePath}.${randomUUID()}.tmp`
+  await writeFile(tempPath, JSON.stringify(job, null, 2), 'utf8')
+  await rename(tempPath, filePath)
 }
 
 const jobLocks = new Map<string, Promise<void>>()
