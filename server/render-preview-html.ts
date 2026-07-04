@@ -37,10 +37,6 @@ function restoreDomGlobals(previous: DomGlobals) {
 }
 
 export function withDomEnvironment<T>(callback: () => T): T {
-  if (typeof DOMParser !== 'undefined' && typeof document !== 'undefined') {
-    return callback()
-  }
-
   const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
     url: 'http://sandbox.ark.local/',
   })
