@@ -1,10 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
 export type RuntimeStylesheetMap = Record<string, string>
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 let stylesheetMap: RuntimeStylesheetMap | null = null
 
@@ -20,20 +14,6 @@ function buildStylesheetKey(runtimeId: string, version: string, assetPath: strin
   return `${runtimeId}@${version}/${assetPath}`
 }
 
-function readRuntimeStylesheetFromDisk(runtimeId: string, version: string, assetPath: string) {
-  const filePath = path.join(ROOT, 'runtimes', runtimeId, version, assetPath)
-
-  if (!existsSync(filePath)) {
-    return null
-  }
-
-  return readFileSync(filePath, 'utf8')
-}
-
-function isVitestEnvironment() {
-  return typeof process !== 'undefined' && process.env.VITEST === 'true'
-}
-
 export function getApprovedRuntimeStylesheetContent(
   runtimeId: string,
   version: string,
@@ -41,15 +21,7 @@ export function getApprovedRuntimeStylesheetContent(
 ): string | null {
   const key = buildStylesheetKey(runtimeId, version, assetPath)
 
-  if (stylesheetMap?.[key]) {
-    return stylesheetMap[key]
-  }
-
-  if (isVitestEnvironment()) {
-    return readRuntimeStylesheetFromDisk(runtimeId, version, assetPath)
-  }
-
-  return null
+  return stylesheetMap?.[key] ?? null
 }
 
 export async function loadRevealThumbnailStylesFromApi(

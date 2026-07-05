@@ -8,7 +8,7 @@ import {
   validateRuntimeAssetReferences,
 } from '../../shared/deck-runtime-registry.ts'
 
-import { findSlideElements } from './deck-slides'
+import { findSlideElements } from '../../shared/deck-preview-slides.ts'
 import {
   detectRuntimeModeFromDocument,
   runtimeModeAllowsDeckScripts,

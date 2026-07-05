@@ -1,7 +1,8 @@
 import { loadRevealThumbnailStylesFromApi } from '../../shared/runtime-stylesheet-content.ts'
 
 const isVitestEnvironment = typeof process !== 'undefined' && process.env.VITEST === 'true'
+const isBrowser = typeof window !== 'undefined'
 
-if (!isVitestEnvironment) {
+if (isBrowser && !isVitestEnvironment) {
   await loadRevealThumbnailStylesFromApi()
 }
