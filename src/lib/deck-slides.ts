@@ -3,6 +3,7 @@ import {
   injectRuntimeCsp,
   type DeckRuntimeMode,
 } from './deck-runtime'
+import { isApprovedRuntimeAssetUrl } from '../../shared/deck-runtime-registry.ts'
 
 export const SLIDE_SELECTOR_CHAIN = [
   'section.slide',
@@ -19,6 +20,10 @@ export type ParsedDeck = {
   htmlAttrs: string
   bodyAttrs: string
   thumbnailSrcDocs: string[]
+}
+
+export type StripDeckScriptsForPreviewOptions = {
+  preserveApprovedRuntimeScripts?: boolean
 }
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
@@ -58,8 +63,22 @@ function stripInlineHandlers(root: ParentNode) {
   }
 }
 
-function stripScripts(root: ParentNode) {
+function shouldPreserveScript(
+  script: HTMLScriptElement,
+  options: StripDeckScriptsForPreviewOptions,
+) {
+  return (
+    options.preserveApprovedRuntimeScripts &&
+    isApprovedRuntimeAssetUrl(script.getAttribute('src'), 'script')
+  )
+}
+
+function stripScripts(root: ParentNode, options: StripDeckScriptsForPreviewOptions = {}) {
   root.querySelectorAll('script').forEach((script) => {
+    if (shouldPreserveScript(script, options)) {
+      return
+    }
+
     script.remove()
   })
 }
@@ -73,7 +92,10 @@ function stripScriptsFromHead(head: HTMLHeadElement) {
   return clone.innerHTML
 }
 
-export function stripDeckScriptsForPreview(html: string): string {
+export function stripDeckScriptsForPreview(
+  html: string,
+  options: StripDeckScriptsForPreviewOptions = {},
+): string {
   if (!html.trim()) {
     return ''
   }
@@ -81,12 +103,12 @@ export function stripDeckScriptsForPreview(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
   if (doc.head) {
-    stripScripts(doc.head)
+    stripScripts(doc.head, options)
     stripInlineHandlers(doc.head)
   }
 
   if (doc.body) {
-    stripScripts(doc.body)
+    stripScripts(doc.body, options)
     stripInlineHandlers(doc.body)
   }
 
@@ -134,7 +156,7 @@ function prepareThumbnailBody(doc: Document, slideIndex: number) {
       return
     }
 
-    slide.classList.add('active', 'is-active')
+    slide.classList.add('active', 'is-active', 'present')
     slide.setAttribute('aria-hidden', 'false')
     slide.setAttribute('data-active', '')
     slide.removeAttribute('data-ark-hidden')

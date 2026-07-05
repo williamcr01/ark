@@ -15,6 +15,7 @@ import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
+import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 
 import { STRICT_DECK_CSP } from './deck-runtime'
 import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from './deck-preview'
@@ -169,6 +170,32 @@ describe('getPreviewHtml', () => {
     ) as { metadata: { runtime: string } } | undefined
 
     expect(metadataMessage?.metadata.runtime).toBe('reveal')
+  })
+
+  it('allows approved runtime assets and preserves approved runtime scripts in reveal previews', () => {
+    const previewHtml = getPreviewHtml(revealRegistryDeck)
+
+    expect(previewHtml).toContain('src="/api/runtimes/reveal.js/5.1.0/reveal.js"')
+    expect(previewHtml).toContain('href="/api/runtimes/reveal.js/5.1.0/reveal.css"')
+    expect(previewHtml).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
+    expect(previewHtml).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css')
+    expect(previewHtml).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/white.css',
+    )
+    expect(previewHtml).toContain("connect-src 'none'")
+    expect(previewHtml).toContain('data-ark-preview-nav')
+  })
+
+  it('still strips unapproved scripts from reveal previews', () => {
+    const previewHtml = getPreviewHtml(
+      revealRegistryDeck.replace(
+        '</body>',
+        '<script>window.unapprovedRevealCode = true</script></body>',
+      ),
+    )
+
+    expect(previewHtml).toContain('src="/api/runtimes/reveal.js/5.1.0/reveal.js"')
+    expect(previewHtml).not.toContain('window.unapprovedRevealCode')
   })
 
   it('bridges parent goto messages into deck CustomEvents for custom-js previews', async () => {

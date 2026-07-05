@@ -136,7 +136,7 @@ export function parseRuntimeAssetUrl(url: string | null | undefined): RuntimeAss
   return { runtimeId, version, assetPath }
 }
 
-export function isApprovedRuntimeAssetUrl(url: string | null | undefined) {
+export function isApprovedRuntimeAssetUrl(url: string | null | undefined, kind?: RuntimeAssetKind) {
   const ref = parseRuntimeAssetUrl(url)
 
   if (!ref) {
@@ -149,7 +149,9 @@ export function isApprovedRuntimeAssetUrl(url: string | null | undefined) {
     return false
   }
 
-  return runtime.assets.some((asset) => asset.path === ref.assetPath)
+  return runtime.assets.some(
+    (asset) => asset.path === ref.assetPath && (!kind || asset.kind === kind),
+  )
 }
 
 export function lookupRuntimeAsset(ref: RuntimeAssetRef) {
@@ -166,6 +168,18 @@ export function lookupRuntimeAsset(ref: RuntimeAssetRef) {
   }
 
   return { runtime, asset }
+}
+
+export function getApprovedRuntimeAssetUrls(
+  options: { runtimeMode?: ApprovedRuntimeEntry['runtimeMode']; kind?: RuntimeAssetKind } = {},
+) {
+  return APPROVED_RUNTIMES.filter(
+    (runtime) => !options.runtimeMode || runtime.runtimeMode === options.runtimeMode,
+  ).flatMap((runtime) =>
+    runtime.assets
+      .filter((asset) => !options.kind || asset.kind === options.kind)
+      .map((asset) => buildRuntimeAssetUrl(runtime.id, runtime.version, asset.path)),
+  )
 }
 
 export function readDeckRuntimeLibraryMarkers(doc: Document): DeckRuntimeLibraryMarkers {

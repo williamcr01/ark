@@ -1,7 +1,10 @@
 import {
+  getApprovedRuntimeAssetUrls,
   hasCustomJsMarker,
   hasRevealMarker,
   hasRevealStructure,
+  type ApprovedRuntimeEntry,
+  type RuntimeAssetKind,
 } from '../../shared/deck-runtime-registry.ts'
 
 export type DeckRuntimeMode = 'static' | 'reveal' | 'custom-js'
@@ -29,23 +32,28 @@ const BLOCKED_SANDBOX_FEATURES = [
   'allow-presentation',
 ] as const
 
-const STRICT_CSP_DIRECTIVES = [
-  "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline'",
-  'img-src data: blob:',
-  'font-src data:',
-  "connect-src 'none'",
-  "frame-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-  "object-src 'none'",
-  "worker-src 'none'",
-  "child-src 'none'",
-  "manifest-src 'none'",
-] as const
+function buildDeckCsp(options: { scriptSources?: string[]; styleSources?: string[] } = {}) {
+  const scriptSources = ["'unsafe-inline'", ...(options.scriptSources ?? [])]
+  const styleSources = ["'unsafe-inline'", ...(options.styleSources ?? [])]
 
-export const STRICT_DECK_CSP = STRICT_CSP_DIRECTIVES.join('; ')
+  return [
+    "default-src 'none'",
+    `script-src ${scriptSources.join(' ')}`,
+    `style-src ${styleSources.join(' ')}`,
+    'img-src data: blob:',
+    'font-src data:',
+    "connect-src 'none'",
+    "frame-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "worker-src 'none'",
+    "child-src 'none'",
+    "manifest-src 'none'",
+  ].join('; ')
+}
+
+export const STRICT_DECK_CSP = buildDeckCsp()
 
 export function detectRuntimeModeFromDocument(doc: Document): DeckRuntimeMode {
   if (hasCustomJsMarker(doc)) {
@@ -77,10 +85,52 @@ export function runtimeModeToBridgePreviewMode(mode: DeckRuntimeMode): 'css-only
   return mode === 'custom-js' ? 'full-js' : 'css-only'
 }
 
+function runtimeModeToApprovedRuntimeMode(
+  mode: DeckRuntimeMode,
+): ApprovedRuntimeEntry['runtimeMode'] | null {
+  return mode === 'static' ? null : mode
+}
+
+function getCurrentOrigin() {
+  const origin = globalThis.location?.origin
+
+  if (!origin || origin === 'null') {
+    return null
+  }
+
+  return origin
+}
+
+function toAbsoluteCspSource(source: string) {
+  const origin = getCurrentOrigin()
+
+  if (!origin) {
+    return null
+  }
+
+  try {
+    return new URL(source, `${origin}/`).href
+  } catch {
+    return null
+  }
+}
+
+function getRuntimeAssetCspSources(mode: DeckRuntimeMode, kind: RuntimeAssetKind) {
+  const runtimeMode = runtimeModeToApprovedRuntimeMode(mode)
+
+  if (!runtimeMode) {
+    return []
+  }
+
+  return getApprovedRuntimeAssetUrls({ runtimeMode, kind })
+    .map(toAbsoluteCspSource)
+    .filter((source): source is string => Boolean(source))
+}
+
 export function getRuntimePolicy(mode: DeckRuntimeMode): DeckRuntimePolicy {
   return {
     mode,
-    csp: STRICT_DECK_CSP,
+    csp: getRuntimeCsp(mode),
     previewSandbox: PREVIEW_SANDBOX,
     thumbnailSandbox: THUMBNAIL_SANDBOX,
     allowsDeckScripts: runtimeModeAllowsDeckScripts(mode),
@@ -96,7 +146,14 @@ export function getThumbnailSandbox() {
 }
 
 export function getRuntimeCsp(mode: DeckRuntimeMode) {
-  return getRuntimePolicy(mode).csp
+  const scriptSources = getRuntimeAssetCspSources(mode, 'script')
+  const styleSources = getRuntimeAssetCspSources(mode, 'stylesheet')
+
+  if (scriptSources.length === 0 && styleSources.length === 0) {
+    return STRICT_DECK_CSP
+  }
+
+  return buildDeckCsp({ scriptSources, styleSources })
 }
 
 export function getBlockedSandboxFeatures() {

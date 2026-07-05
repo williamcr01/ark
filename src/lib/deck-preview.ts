@@ -154,7 +154,9 @@ export function getPreviewHtml(html: string) {
     )
   }
 
-  const strippedHtml = stripDeckScriptsForPreview(withCsp)
+  const strippedHtml = stripDeckScriptsForPreview(withCsp, {
+    preserveApprovedRuntimeScripts: mode === 'reveal',
+  })
 
   return injectBeforeBodyClose(
     injectPreviewFill(strippedHtml),

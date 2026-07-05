@@ -4,6 +4,7 @@ import {
   buildRuntimeAssetUrl,
   buildRuntimeRegistryPromptSection,
   getApprovedRuntime,
+  getApprovedRuntimeAssetUrls,
   getApprovedRuntimes,
   isApprovedRuntimeAssetUrl,
   lookupRuntimeAsset,
@@ -59,10 +60,23 @@ describe('approved runtime registry', () => {
       assetPath: 'reveal.js',
     })
     expect(isApprovedRuntimeAssetUrl(url)).toBe(true)
+    expect(isApprovedRuntimeAssetUrl(url, 'script')).toBe(true)
+    expect(isApprovedRuntimeAssetUrl(url, 'stylesheet')).toBe(false)
     expect(lookupRuntimeAsset(ref!)).toMatchObject({
       runtime: { id: 'reveal.js', version: '5.1.0' },
       asset: { path: 'reveal.js' },
     })
+  })
+
+  it('lists approved runtime asset URLs by mode and kind', () => {
+    expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'reveal', kind: 'script' })).toEqual([
+      '/api/runtimes/reveal.js/5.1.0/reveal.js',
+    ])
+    expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'reveal', kind: 'stylesheet' })).toEqual([
+      '/api/runtimes/reveal.js/5.1.0/reveal.css',
+      '/api/runtimes/reveal.js/5.1.0/reset.css',
+      '/api/runtimes/reveal.js/5.1.0/theme/white.css',
+    ])
   })
 
   it('rejects unapproved runtime asset references', () => {

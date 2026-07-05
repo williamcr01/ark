@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import {
   ChevronDownIcon,
+  HistoryIcon,
   DownloadIcon,
   FilePlus2Icon,
   PanelLeftCloseIcon,
@@ -35,8 +36,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { DeckSummary } from '@/lib/deck-api'
+import type { DeckSummary, DeckVersionDetail, DeckVersionSummary } from '@/lib/deck-api'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
+import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { cn } from '@/lib/utils'
 
 type TitleBarButtonProps = {
@@ -348,6 +350,7 @@ export type DeckSaveStatus =
 
 export type AppTitleBarProps = {
   activeDeckId: string | null
+  activeVersionId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
   deckTitle: string
   decks: DeckSummary[]
@@ -356,21 +359,30 @@ export type AppTitleBarProps = {
   hasSlides: boolean
   isChatOpen: boolean
   isGenerating: boolean
+  isLoadingVersions: boolean
   isStripOpen: boolean
+  onClearVersionPreview: () => void
   onDeleteDeck: () => Promise<void> | void
   onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
+  onInspectVersion: (versionId: string) => Promise<DeckVersionDetail | null>
   onNewDeck: () => void
+  onRefreshVersions: () => Promise<DeckVersionSummary[]>
   onRenameDeck: (title: string) => Promise<void> | void
+  onRollbackVersion: (versionId: string) => Promise<void>
   onSelectDeck: (deckId: string) => Promise<void> | void
   onToggleChat: () => void
   onToggleStrip: () => void
   onUploadClick: () => void
+  previewVersion: DeckVersionDetail | null
   showSanitizedDownload: boolean
+  versionNumber: number | null
+  versions: DeckVersionSummary[]
 }
 
 export function AppTitleBar({
   activeDeckId,
+  activeVersionId,
   fileInputRef,
   deckTitle,
   decks,
@@ -379,18 +391,27 @@ export function AppTitleBar({
   hasSlides,
   isChatOpen,
   isGenerating,
+  isLoadingVersions,
   isStripOpen,
+  onClearVersionPreview,
   onDeleteDeck,
   onDownload,
   onHtmlUpload,
+  onInspectVersion,
   onNewDeck,
+  onRefreshVersions,
   onRenameDeck,
+  onRollbackVersion,
   onSelectDeck,
   onToggleChat,
   onToggleStrip,
   onUploadClick,
+  previewVersion,
   showSanitizedDownload,
+  versionNumber,
+  versions,
 }: AppTitleBarProps) {
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const statusLabel =
     deckSaveStatus === 'loading'
       ? 'Restoring…'
@@ -454,12 +475,22 @@ export function AppTitleBar({
             )}
           />
           {statusLabel}
+          {versionNumber ? (
+            <span className="truncate text-[var(--ark-titlebar-muted)]">· v{versionNumber}</span>
+          ) : null}
         </span>
       </div>
 
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
+        <TitleBarButton
+          disabled={!activeDeckId || isGenerating}
+          label="Version history"
+          onClick={() => setVersionHistoryOpen(true)}
+        >
+          <HistoryIcon />
+        </TitleBarButton>
         <TitleBarButton disabled={isGenerating} label="New deck" onClick={onNewDeck}>
           <FilePlus2Icon />
         </TitleBarButton>
@@ -495,6 +526,21 @@ export function AppTitleBar({
           {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
         </TitleBarButton>
       </ButtonGroup>
+
+      <VersionHistoryDialog
+        activeVersionId={activeVersionId}
+        deckTitle={deckTitle}
+        disabled={isGenerating}
+        isLoadingVersions={isLoadingVersions}
+        onClearPreview={onClearVersionPreview}
+        onInspectVersion={onInspectVersion}
+        onOpenChange={setVersionHistoryOpen}
+        onRefreshVersions={onRefreshVersions}
+        onRollback={onRollbackVersion}
+        open={versionHistoryOpen}
+        previewVersion={previewVersion}
+        versions={versions}
+      />
     </header>
   )
 }
