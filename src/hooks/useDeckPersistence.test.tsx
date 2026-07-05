@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getTestLocalStorage, installTestLocalStorage } from '@/test/storage'
+import type { StoredDeck } from '@/lib/deck-api'
 
 import { useDeckPersistence } from './useDeckPersistence'
 
@@ -172,7 +173,7 @@ describe('useDeckPersistence', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    let savedDeck: typeof deck | undefined
+    let savedDeck: StoredDeck | undefined
 
     await act(async () => {
       savedDeck = await result.current.persistHtml(sampleHtml)
@@ -211,7 +212,7 @@ describe('useDeckPersistence', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    let persistPromise: Promise<void> | undefined
+    let persistPromise: Promise<StoredDeck | undefined> | undefined
 
     act(() => {
       persistPromise = result.current.persistHtml(updatedHtml)
