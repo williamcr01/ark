@@ -17,6 +17,7 @@ import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 
+import { resolveAppOrigin } from '../../shared/sandbox-origin.ts'
 import { STRICT_DECK_CSP } from './deck-runtime'
 import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from './deck-preview'
 
@@ -175,8 +176,12 @@ describe('getPreviewHtml', () => {
   it('allows approved runtime assets and preserves approved runtime scripts in reveal previews', () => {
     const previewHtml = getPreviewHtml(revealRegistryDeck)
 
-    expect(previewHtml).toContain('src="/api/runtimes/reveal.js/5.1.0/reveal.js"')
-    expect(previewHtml).toContain('href="/api/runtimes/reveal.js/5.1.0/reveal.css"')
+    expect(previewHtml).toContain(
+      'src="http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js"',
+    )
+    expect(previewHtml).toContain(
+      'href="http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css"',
+    )
     expect(previewHtml).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
     expect(previewHtml).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css')
     expect(previewHtml).toContain(
@@ -194,13 +199,16 @@ describe('getPreviewHtml', () => {
       ),
     )
 
-    expect(previewHtml).toContain('src="/api/runtimes/reveal.js/5.1.0/reveal.js"')
+    expect(previewHtml).toContain(
+      'src="http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js"',
+    )
     expect(previewHtml).not.toContain('window.unapprovedRevealCode')
   })
 
   it('bridges parent goto messages into deck CustomEvents for custom-js previews', async () => {
     const dom = await loadExecutablePreview(getPreviewHtml(fullJsDeck))
     const receivedIndexes: number[] = []
+    const appOrigin = resolveAppOrigin()
 
     dom.window.document.addEventListener(DECK_GOTO_EVENT, (event) => {
       receivedIndexes.push((event as CustomEvent<{ index: number }>).detail.index)
@@ -209,6 +217,7 @@ describe('getPreviewHtml', () => {
     dom.window.dispatchEvent(
       new dom.window.MessageEvent('message', {
         data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+        origin: appOrigin,
         source: dom.window.parent as unknown as Window,
       }),
     )
