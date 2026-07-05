@@ -29,3 +29,6 @@ jobs:
       - run: pnpm audit
       - run: pnpm build
       - run: pnpm test
+      - run: pnpm smoke:reveal-runtime
+        env:
+          ARK_CHROMIUM_PATH: /usr/bin/google-chrome
