@@ -32,6 +32,7 @@ import {
   type GenerationJobRunner,
 } from './generation-job-runner.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import {
   ensureModelInList,
   fetchAllAvailableModels,
@@ -347,8 +348,17 @@ export function createApp(options: CreateAppOptions = {}) {
       }
 
       try {
-        const deck = await deckStore.createDeck(html, parseDeckVersionOptions(request.body))
-        response.status(201).json({ deck, validation })
+        const versionOptions = buildDeckVersionOptions(
+          html,
+          parseDeckVersionOptions(request.body),
+          validation,
+        )
+        const deck = await deckStore.createDeck(html, versionOptions)
+        response.status(201).json({
+          deck,
+          validation,
+          runtimeManifest: versionOptions.runtimeManifest ?? null,
+        })
       } catch (error) {
         sendApiError(response, 500, getApiErrorFromUnknown(error))
       }
@@ -387,14 +397,23 @@ export function createApp(options: CreateAppOptions = {}) {
       }
 
       try {
-        const deck = await deckStore.updateDeck(id, html, parseDeckVersionOptions(request.body))
+        const versionOptions = buildDeckVersionOptions(
+          html,
+          parseDeckVersionOptions(request.body),
+          validation,
+        )
+        const deck = await deckStore.updateDeck(id, html, versionOptions)
 
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })
           return
         }
 
-        response.json({ deck, validation })
+        response.json({
+          deck,
+          validation,
+          runtimeManifest: versionOptions.runtimeManifest ?? null,
+        })
       } catch (error) {
         sendApiError(response, 500, getApiErrorFromUnknown(error))
       }

@@ -3,6 +3,9 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 import { createPostgresDeckStore } from './db/repositories/decks.ts'
+import type { DeckRuntimeManifest } from '../shared/deck-runtime-manifest.ts'
+import { parseDeckRuntimeManifest } from '../shared/deck-runtime-manifest.ts'
+import { buildDeckRuntimeManifestFromHtml } from './deck-manifest.ts'
 import {
   type DeckStore,
   type DeckSummary,
@@ -47,6 +50,7 @@ type StoredDeckVersion = {
   source: DeckVersionSource
   summary: string | null
   validationStatus: DeckValidationStatus
+  runtimeManifest: DeckRuntimeManifest | null
   createdAt: string
 }
 
@@ -94,6 +98,7 @@ function toVersionSummary(
     source: version.source,
     summary: version.summary,
     validationStatus: version.validationStatus,
+    runtimeManifest: version.runtimeManifest,
     createdAt: version.createdAt,
     isActive: version.id === activeVersionId,
   }
@@ -158,6 +163,7 @@ function migrateLegacyDeck(parsed: StoredDeck): StoredDeckFile | null {
         source: 'manual',
         summary: null,
         validationStatus: 'valid',
+        runtimeManifest: null,
         createdAt: parsed.createdAt,
       },
     ],
@@ -187,6 +193,7 @@ function parseDeckFile(raw: string): StoredDeckFile | null {
         source: normalizeDeckVersionSource(version.source),
         summary: typeof version.summary === 'string' ? version.summary : null,
         validationStatus: normalizeDeckValidationStatus(version.validationStatus),
+        runtimeManifest: parseDeckRuntimeManifest(version.runtimeManifest),
         createdAt: version.createdAt,
       }))
 
@@ -224,6 +231,10 @@ async function writeDeckFile(filePath: string, file: StoredDeckFile) {
   await writeFile(filePath, JSON.stringify(file), 'utf8')
 }
 
+function resolveVersionManifest(html: string, options: DeckVersionOptions = {}) {
+  return options.runtimeManifest ?? buildDeckRuntimeManifestFromHtml(html)
+}
+
 function createVersion(
   versionNumber: number,
   html: string,
@@ -239,6 +250,7 @@ function createVersion(
     source: normalizeDeckVersionSource(options.source),
     summary: options.summary ?? null,
     validationStatus: normalizeDeckValidationStatus(options.validationStatus ?? 'valid'),
+    runtimeManifest: resolveVersionManifest(html, options),
     createdAt,
   }
 }
@@ -487,6 +499,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       source: 'rollback',
       summary: `Restored from version ${targetVersion.versionNumber}`,
       validationStatus: targetVersion.validationStatus,
+      runtimeManifest: targetVersion.runtimeManifest ?? undefined,
     })
   }
 

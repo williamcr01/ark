@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 
 import { createPostgresPool, type ConnectablePool, type Queryable } from '../client.ts'
 import { runMigrations } from '../migrate.ts'
+import { parseDeckRuntimeManifest } from '../../../shared/deck-runtime-manifest.ts'
+import { buildDeckRuntimeManifestFromHtml } from '../../deck-manifest.ts'
 import {
   type DeckStore,
   type DeckSummary,
@@ -76,6 +78,7 @@ function readVersionSummary(row: DeckVersionRow): DeckVersionSummary {
     source: normalizeDeckVersionSource(row.source),
     summary: typeof metadata.summary === 'string' ? metadata.summary : null,
     validationStatus: normalizeDeckValidationStatus(row.validation_status),
+    runtimeManifest: parseDeckRuntimeManifest(metadata.manifest),
     createdAt: toIsoString(row.created_at),
     isActive: row.id === row.active_version_id,
   }
@@ -146,14 +149,25 @@ async function readDeckById(queryable: Queryable, id: string) {
   return result.rows[0] ? mapDeck(result.rows[0]) : null
 }
 
-function buildVersionMetadata(options: DeckVersionOptions) {
+function resolveVersionManifest(html: string, options: DeckVersionOptions = {}) {
+  return options.runtimeManifest ?? buildDeckRuntimeManifestFromHtml(html)
+}
+
+function buildVersionMetadata(options: DeckVersionOptions, html: string) {
   const metadata: Record<string, unknown> = {}
+  const manifest = resolveVersionManifest(html, options)
 
   if (options.summary) {
     metadata.summary = options.summary
   }
 
+  metadata.manifest = manifest
+
   return metadata
+}
+
+function buildValidationReport(options: DeckVersionOptions) {
+  return options.validationReport ?? {}
 }
 
 export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}): DeckStore {
@@ -189,7 +203,8 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     const validationStatus: DeckValidationStatus = normalizeDeckValidationStatus(
       params.options?.validationStatus ?? 'valid',
     )
-    const metadata = buildVersionMetadata(params.options ?? {})
+    const metadata = buildVersionMetadata(params.options ?? {}, params.html)
+    const validationReport = buildValidationReport(params.options ?? {})
 
     await client.query(
       `
@@ -205,9 +220,10 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
           model_name,
           validation_status,
           runtime_metadata,
+          validation_report,
           created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       `,
       [
         versionId,
@@ -221,6 +237,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
         params.options?.modelName ?? null,
         validationStatus,
         JSON.stringify(metadata),
+        JSON.stringify(validationReport),
         params.createdAt,
       ],
     )
@@ -525,6 +542,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
       source: 'rollback',
       summary: `Restored from version ${targetVersion.versionNumber}`,
       validationStatus: targetVersion.validationStatus,
+      runtimeManifest: targetVersion.runtimeManifest ?? undefined,
     })
   }
 
