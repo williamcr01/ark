@@ -1,3 +1,5 @@
+import type { DeckPatchOperation, DeckPatchRequest } from '../../shared/deck-patch.ts'
+
 export type DeckVersionSource = 'manual' | 'agent' | 'upload' | 'repair' | 'rollback'
 
 export type DeckValidationStatus = 'unknown' | 'valid' | 'invalid'
@@ -35,6 +37,22 @@ export type DeckVersionOptions = {
   summary?: string | null
   modelProvider?: string | null
   modelName?: string | null
+}
+
+export type DeckPatchResponse = {
+  deck: StoredDeck
+  patch: {
+    appliedCount: number
+    changedSlideIndexes: number[]
+    changedElementIds: string[]
+    summary: string
+    suggestedActiveSlideIndex?: number
+  }
+}
+
+type DeckPatchApiResponse = DeckPatchResponse & {
+  error?: string
+  operationIndex?: number
 }
 
 type DeckResponse = {
@@ -143,6 +161,40 @@ export async function renameDeck(id: string, title: string) {
   })
 
   return readDeckResponse(response)
+}
+
+export type PatchDeckOptions = DeckVersionOptions &
+  Pick<DeckPatchRequest, 'activeSlideIndex'> & {
+    operations: DeckPatchOperation[]
+  }
+
+async function readPatchResponse(response: Response): Promise<DeckPatchResponse> {
+  const data = (await response.json().catch(() => ({
+    error: 'The API returned an unreadable response.',
+  }))) as DeckPatchApiResponse
+
+  if (!response.ok || !data.deck || !data.patch) {
+    const operationHint =
+      typeof data.operationIndex === 'number' ? ` (operation ${data.operationIndex})` : ''
+    throw new Error((data.error ?? 'Could not patch the deck.') + operationHint)
+  }
+
+  return { deck: data.deck, patch: data.patch }
+}
+
+export async function patchDeck(id: string, options: PatchDeckOptions) {
+  const { operations, activeSlideIndex, ...versionOptions } = options
+  const response = await fetch(`/api/decks/${encodeURIComponent(id)}/patch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      operations,
+      activeSlideIndex,
+      ...versionOptions,
+    }),
+  })
+
+  return readPatchResponse(response)
 }
 
 export async function deleteDeck(id: string) {

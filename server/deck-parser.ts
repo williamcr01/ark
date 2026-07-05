@@ -1,5 +1,6 @@
 import { JSDOM } from 'jsdom'
 
+import { ARK_SLIDE_ID_ATTR } from '../shared/deck-metadata.ts'
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '../shared/deck-preview-slides.ts'
 import { extractDeckTitle } from './deck-record.ts'
 
@@ -39,6 +40,7 @@ export type DeckAssetReference = {
 
 export type ParsedDeckSlide = {
   index: number
+  slideId: string | null
   title: string
   preview: string
   outerHTML: string
@@ -278,6 +280,7 @@ export function parseDeckHtml(html: string): DeckParseResult {
 
     return {
       index,
+      slideId: element.getAttribute(ARK_SLIDE_ID_ATTR)?.trim() || null,
       title,
       preview,
       outerHTML: element.outerHTML,
@@ -334,5 +337,10 @@ export function summarizeParsedDeck(parsed: DeckParseResult) {
 }
 
 export function toDeckSlideSummaries(parsed: DeckParseResult) {
-  return parsed.slides.map(({ index, title, preview }) => ({ index, title, preview }))
+  return parsed.slides.map(({ index, slideId, title, preview }) => ({
+    index,
+    slideId,
+    title,
+    preview,
+  }))
 }

@@ -401,6 +401,99 @@ export function createApp(options: CreateAppOptions = {}) {
     },
   )
 
+  app.post(
+    '/api/decks/:id/patch',
+    async (
+      request: Request<
+        { id: string },
+        unknown,
+        {
+          operations?: unknown
+          activeSlideIndex?: unknown
+        } & DeckVersionRequestBody
+      >,
+      response: Response,
+    ) => {
+      const id = request.params.id?.trim()
+
+      if (!id) {
+        response.status(400).json({ error: 'Deck id is required.' })
+        return
+      }
+
+      if (!isValidDeckId(id)) {
+        response.status(400).json({ error: 'Invalid deck id.' })
+        return
+      }
+
+      const { deckPatchRequestSchema } = await import('../shared/deck-patch.ts')
+      const parsedBody = deckPatchRequestSchema.safeParse({
+        operations: request.body?.operations,
+        activeSlideIndex: request.body?.activeSlideIndex,
+      })
+
+      if (!parsedBody.success) {
+        response.status(400).json({
+          error: parsedBody.error.issues[0]?.message ?? 'Invalid patch request.',
+        })
+        return
+      }
+
+      try {
+        const existing = await deckStore.getDeck(id)
+
+        if (!existing) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
+        const { applyDeckPatches } = await import('./deck-patch.ts')
+        const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
+          activeSlideIndex: parsedBody.data.activeSlideIndex,
+        })
+
+        if (!patched.ok) {
+          response.status(400).json({
+            error: patched.error,
+            operationIndex: patched.operationIndex,
+          })
+          return
+        }
+
+        const validation = validateDeckHtmlOnServer(patched.html)
+
+        if (!validation.valid) {
+          sendDeckValidationError(response, validation)
+          return
+        }
+
+        const versionOptions = parseDeckVersionOptions(request.body)
+        versionOptions.summary = versionOptions.summary ?? patched.summary
+
+        const deck = await deckStore.updateDeck(id, patched.html, versionOptions)
+
+        if (!deck) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
+        response.json({
+          deck,
+          validation,
+          patch: {
+            appliedCount: patched.appliedCount,
+            changedSlideIndexes: patched.changedSlideIndexes,
+            changedElementIds: patched.changedElementIds,
+            summary: patched.summary,
+            suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
+          },
+        })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
+
   app.patch(
     '/api/decks/:id',
     async (request: Request<{ id: string }, unknown, { title?: unknown }>, response: Response) => {

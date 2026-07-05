@@ -40,4 +40,40 @@ describe('extractAgentSteps', () => {
       },
     ])
   })
+
+  it('summarizes patch_deck tool activity', () => {
+    const steps = extractAgentSteps([
+      {
+        text: '',
+        toolCalls: [
+          {
+            toolName: 'patch_deck',
+            input: {
+              operations: [{ op: 'update_slide_title', slideIndex: 0, title: 'New title' }],
+            },
+          },
+        ],
+        toolResults: [
+          {
+            toolName: 'patch_deck',
+            output: {
+              ok: true,
+              summary: 'Updated title on slide 0.',
+              changedSlideIndexes: [0],
+            },
+          },
+        ],
+      },
+    ])
+
+    expect(steps).toEqual([
+      { type: 'tool-call', toolName: 'patch_deck', summary: '1 op(s)' },
+      {
+        type: 'tool-result',
+        toolName: 'patch_deck',
+        summary: 'Updated title on slide 0.',
+        error: false,
+      },
+    ])
+  })
 })
