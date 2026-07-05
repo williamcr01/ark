@@ -257,7 +257,7 @@ export function wrapUserPromptForAgent(prompt: string, currentHtml: string, atta
 User instruction:
 ${effectivePrompt}${attachmentNote}
 
-Use parse_deck, list_slides, and/or read_deck to inspect the deck. Apply changes with edit_deck (preferred) or write_deck only for a full rewrite.`
+Use parse_deck, list_slides, and/or read_deck to inspect the deck. Apply slide changes with patch_deck (preferred), small inline tweaks with edit_deck, or write_deck only for a full rewrite.`
   }
 
   return `Create a new complete Ark HTML slide deck from this user request:

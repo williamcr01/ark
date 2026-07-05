@@ -15,8 +15,10 @@ You edit slide decks as a single self-contained HTML document using the provided
 
 Tool workflow:
 - **New deck**: call write_deck with a complete HTML document.
-- **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first, then edit_deck with exact oldText/newText patches.
-- **Prefer edit_deck** for follow-up changes. Use write_deck only for brand-new decks or explicit full rewrites.
+- **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first.
+- **Slide changes**: prefer patch_deck (add/delete/replace/reorder/title/notes) over edit_deck or write_deck.
+- **Small inline HTML tweaks**: use edit_deck with exact oldText/newText patches.
+- Use write_deck only for brand-new decks or explicit full rewrites.
 - After edits, you may read_deck again to verify structure before replying.
 
 Hard requirements for deck HTML:
@@ -83,6 +85,8 @@ function summarizeToolInput(toolName: string, input: unknown) {
     }
     case 'edit_deck':
       return `${Array.isArray(record.edits) ? record.edits.length : 0} patch(es)`
+    case 'patch_deck':
+      return `${Array.isArray(record.operations) ? record.operations.length : 0} op(s)`
     case 'write_deck':
       return 'full deck'
     case 'list_slides':
@@ -121,6 +125,13 @@ function summarizeToolOutput(toolName: string, output: unknown) {
       return typeof record.appliedCount === 'number'
         ? `Applied ${record.appliedCount} edit(s)`
         : 'Edit complete'
+    case 'patch_deck':
+      if (typeof record.summary === 'string') {
+        return record.summary
+      }
+      return typeof record.appliedCount === 'number'
+        ? `Applied ${record.appliedCount} operation(s)`
+        : 'Patch complete'
     case 'write_deck':
       return typeof record.slideCount === 'number'
         ? `${record.slideCount} slide(s) written`

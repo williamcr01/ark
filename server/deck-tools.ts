@@ -1,7 +1,9 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
+import { deckSlidePatchOperationSchema } from '../shared/deck-patch.ts'
 import { applyDeckEdits } from './deck-edit.ts'
+import { applyDeckPatches } from './deck-patch.ts'
 import {
   listDeckSlides,
   parseDeckStructure,
@@ -28,6 +30,7 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
     slideCount: parsed.slideCount,
     slides: parsed.slides.map((slide) => ({
       index: slide.index,
+      slideId: slide.slideId,
       title: slide.title,
       preview: slide.preview,
       notes: slide.notes,
@@ -167,7 +170,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
 
     edit_deck: tool({
       description:
-        'Apply exact search/replace patches to the deck. Each oldText must match exactly once in the original file. Prefer this over write_deck for edits.',
+        'Apply exact search/replace patches to the deck. Each oldText must match exactly once in the original file. Prefer patch_deck for slide operations; use this for small inline HTML tweaks.',
       inputSchema: z.object({
         edits: z.array(editSchema).min(1).max(20),
       }),
@@ -206,6 +209,61 @@ export function createDeckTools(workspace: DeckWorkspace) {
           appliedCount: applied.appliedCount,
           slideCount: validation.slideCount,
           message: `Applied ${applied.appliedCount} edit(s). Deck now has ${validation.slideCount} slide(s).`,
+        }
+      },
+    }),
+
+    patch_deck: tool({
+      description:
+        'Apply structured slide-level patch operations (add, delete, replace, reorder, title, notes). Prefer this over edit_deck or write_deck for slide changes. Call list_slides or parse_deck first to get indexes and slide ids.',
+      inputSchema: z.object({
+        operations: z.array(deckSlidePatchOperationSchema).min(1).max(20),
+        activeSlideIndex: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Current active slide index when reordering or deleting slides.'),
+      }),
+      execute: async ({ operations, activeSlideIndex }) => {
+        if (!workspace.html.trim()) {
+          return {
+            ok: false,
+            error: 'No deck HTML is loaded yet. Use write_deck to create one first.',
+          }
+        }
+
+        const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex })
+
+        if (!patched.ok) {
+          return { ok: false, error: patched.error, operationIndex: patched.operationIndex }
+        }
+
+        const validation = validateDeckHtmlOnServer(patched.html)
+
+        if (!validation.valid) {
+          const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
+          return {
+            ok: false,
+            error:
+              primaryIssue?.message ??
+              'Applied patches produced invalid deck HTML. Fix the operation and try again.',
+            validation,
+            operationIndex: patched.appliedCount,
+          }
+        }
+
+        setDeckWorkspaceHtml(workspace, patched.html)
+
+        return {
+          ok: true,
+          appliedCount: patched.appliedCount,
+          slideCount: validation.slideCount,
+          changedSlideIndexes: patched.changedSlideIndexes,
+          suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
+          summary: patched.summary,
+          message: patched.summary,
         }
       },
     }),
