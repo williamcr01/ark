@@ -1,6 +1,5 @@
 import { isApprovedRuntimeAssetUrl } from './deck-runtime-registry.ts'
 import {
-  detectRuntimeMode,
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
   type DeckRuntimeMode,
@@ -223,12 +222,11 @@ export function composeDeckRuntimeManifest(input: {
 }
 
 export function buildDeckRuntimeManifestFromParts(
-  html: string,
   validation: DeckManifestValidationInput,
   parsed: DeckManifestParseInput,
   usesRevealAdapter = false,
 ): DeckRuntimeManifest {
-  const runtimeMode = validation.runtimeMode || detectRuntimeMode(html)
+  const runtimeMode = validation.runtimeMode
 
   return composeDeckRuntimeManifest({
     validation: {

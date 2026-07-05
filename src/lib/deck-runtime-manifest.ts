@@ -66,7 +66,6 @@ export function buildDeckRuntimeManifestInBrowser(html: string): DeckRuntimeMani
   const runtimeMode = validation.runtimeMarkers.runtimeMode
 
   return buildDeckRuntimeManifestFromParts(
-    html,
     {
       valid: validation.valid,
       slideCount: validation.slideCount,
