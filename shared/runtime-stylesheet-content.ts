@@ -1,6 +1,7 @@
 export type RuntimeStylesheetMap = Record<string, string>
 
 let stylesheetMap: RuntimeStylesheetMap | null = null
+let preloadPromise: Promise<void> | null = null
 
 export function configureRuntimeStylesheetMap(map: RuntimeStylesheetMap) {
   stylesheetMap = map
@@ -8,6 +9,10 @@ export function configureRuntimeStylesheetMap(map: RuntimeStylesheetMap) {
 
 export function resetRuntimeStylesheetMap() {
   stylesheetMap = null
+}
+
+export function hasLoadedRevealThumbnailStyles() {
+  return Boolean(stylesheetMap && Object.keys(stylesheetMap).length > 0)
 }
 
 function buildStylesheetKey(runtimeId: string, version: string, assetPath: string) {
@@ -53,4 +58,40 @@ export async function loadRevealThumbnailStylesFromApi(
   )
 
   configureRuntimeStylesheetMap(Object.fromEntries(entries))
+}
+
+function isVitestEnvironment() {
+  return typeof process !== 'undefined' && process.env.VITEST === 'true'
+}
+
+function isBrowserEnvironment() {
+  return typeof window !== 'undefined'
+}
+
+export function startRevealThumbnailStylesPreload(options: { assetOrigin?: string | null } = {}) {
+  if (!isBrowserEnvironment() || isVitestEnvironment() || hasLoadedRevealThumbnailStyles()) {
+    return
+  }
+
+  if (preloadPromise) {
+    return
+  }
+
+  const assetOrigin = options.assetOrigin?.trim() || window.location.origin
+
+  preloadPromise = loadRevealThumbnailStylesFromApi(assetOrigin)
+    .catch(() => {
+      // Thumbnail generation falls back to runtime <link> tags and reveal CSP.
+    })
+    .finally(() => {
+      preloadPromise = null
+    })
+}
+
+export function waitForRevealThumbnailStylesPreload() {
+  if (hasLoadedRevealThumbnailStyles()) {
+    return Promise.resolve()
+  }
+
+  return preloadPromise ?? Promise.resolve()
 }

@@ -301,23 +301,32 @@ export function prepareThumbnailHeadHtml(
   if (approvedRuntime) {
     const inlinedStyles: string[] = []
     const seenAssets = new Set<string>()
+    const approvedLinks = [...headClone.querySelectorAll('link[rel="stylesheet"]')].filter(
+      (link) => {
+        const href = link.getAttribute('href')
 
-    for (const link of [...headClone.querySelectorAll('link[rel="stylesheet"]')]) {
+        return Boolean(href && isApprovedRuntimeAssetUrl(href, 'stylesheet'))
+      },
+    )
+    let allApprovedLinksInlined = approvedLinks.length > 0
+
+    for (const link of approvedLinks) {
       const href = link.getAttribute('href')
 
-      if (!href || !isApprovedRuntimeAssetUrl(href, 'stylesheet')) {
+      if (!href) {
+        allApprovedLinksInlined = false
         continue
       }
 
       const ref = parseRuntimeAssetUrl(href)
 
       if (!ref) {
+        allApprovedLinksInlined = false
         continue
       }
 
-      link.remove()
-
       if (seenAssets.has(ref.assetPath)) {
+        link.remove()
         continue
       }
 
@@ -326,10 +335,11 @@ export function prepareThumbnailHeadHtml(
       const css = inlineApprovedRuntimeStylesheet(ref.runtimeId, ref.version, ref.assetPath)
 
       if (!css) {
+        allApprovedLinksInlined = false
         continue
       }
 
-      usesInlinedRuntimeCss = true
+      link.remove()
       inlinedStyles.push(
         `<style data-ark-runtime-css="${ref.runtimeId}@${ref.version}/${ref.assetPath}">\n${css}\n</style>`,
       )
@@ -338,6 +348,8 @@ export function prepareThumbnailHeadHtml(
     if (inlinedStyles.length > 0) {
       headClone.insertAdjacentHTML('beforeend', inlinedStyles.join('\n'))
     }
+
+    usesInlinedRuntimeCss = allApprovedLinksInlined
   }
 
   return {

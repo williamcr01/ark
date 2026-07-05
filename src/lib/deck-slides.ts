@@ -7,9 +7,8 @@ import {
   buildThumbnailSrcDoc,
   type ThumbnailHtmlOptions,
 } from '../../shared/deck-thumbnail-html.ts'
+import { startRevealThumbnailStylesPreload } from '../../shared/runtime-stylesheet-content.ts'
 import { detectRuntimeModeFromDocument } from './deck-runtime'
-
-import './reveal-thumbnail-styles.ts'
 
 export { SLIDE_SELECTOR_CHAIN, findSlideElements, stripDeckScriptsForPreview }
 
@@ -74,6 +73,8 @@ const emptyParsedDeck: ParsedDeck = {
 }
 
 export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = {}): ParsedDeck {
+  startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
+
   if (!html.trim()) {
     return emptyParsedDeck
   }

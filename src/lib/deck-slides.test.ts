@@ -10,6 +10,8 @@ import revealVerticalDeck from '@/test/fixtures/reveal-vertical-deck.html?raw'
 
 import { STRICT_DECK_CSP } from './deck-runtime'
 import { parseDeckSlides, stripDeckScriptsForPreview } from './deck-slides'
+import { configureVitestRuntimeStylesheets } from '../../shared/runtime-stylesheet-disk.ts'
+import { resetRuntimeStylesheetMap } from '../../shared/runtime-stylesheet-content.ts'
 
 function parseHtml(html: string) {
   return new DOMParser().parseFromString(html, 'text/html')
@@ -175,6 +177,28 @@ describe('parseDeckSlides', () => {
       expect(srcDoc).toContain('data-ark-reveal-thumb-shim')
       expectThumbnailSecurity(srcDoc)
     })
+  })
+
+  it('keeps runtime stylesheet links when approved CSS is unavailable', () => {
+    resetRuntimeStylesheetMap()
+
+    try {
+      const parsed = parseDeckSlides(revealRegistryDeck)
+
+      expect(parsed.thumbnailSrcDocs[0]).toContain(
+        'href="/api/runtimes/reveal.js/5.1.0/reveal.css"',
+      )
+      expect(parsed.thumbnailSrcDocs[0]).toContain(
+        'href="/api/runtimes/reveal.js/5.1.0/theme/white.css"',
+      )
+      expect(parsed.thumbnailSrcDocs[0]).not.toContain('data-ark-runtime-css=')
+      expect(parsed.thumbnailSrcDocs[0]).not.toContain(STRICT_DECK_CSP)
+      expect(parsed.thumbnailSrcDocs[0]).toContain(
+        'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css',
+      )
+    } finally {
+      configureVitestRuntimeStylesheets()
+    }
   })
 
   it('shows all fragments in a single thumbnail and keeps background attributes', () => {
