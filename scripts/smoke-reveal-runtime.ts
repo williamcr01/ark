@@ -738,6 +738,7 @@ async function runSmoke() {
           sandbox: string | null
           hasRevealCss: boolean
           hasThemeCss: boolean
+          hasRevealShim: boolean
           hasScript: boolean
           hasCsp: boolean
         }>
@@ -746,8 +747,9 @@ async function runSmoke() {
         `Array.from(document.querySelectorAll('iframe[title$="thumbnail"]')).map((frame) => ({
           title: frame.title,
           sandbox: frame.getAttribute('sandbox'),
-          hasRevealCss: frame.srcdoc.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'),
-          hasThemeCss: frame.srcdoc.includes('/api/runtimes/reveal.js/5.1.0/theme/white.css'),
+          hasRevealCss: frame.srcdoc.includes('data-ark-runtime-css="reveal.js@5.1.0/reveal.css"'),
+          hasThemeCss: frame.srcdoc.includes('data-ark-runtime-css="reveal.js@5.1.0/theme/white.css"'),
+          hasRevealShim: frame.srcdoc.includes('data-ark-reveal-thumb-shim'),
           hasScript: frame.srcdoc.includes('<script'),
           hasCsp: frame.srcdoc.includes('Content-Security-Policy')
         }))`,
@@ -761,6 +763,7 @@ async function runSmoke() {
           thumbnail.sandbox === '' &&
           thumbnail.hasRevealCss &&
           thumbnail.hasThemeCss &&
+          thumbnail.hasRevealShim &&
           !thumbnail.hasScript &&
           thumbnail.hasCsp,
       ),
