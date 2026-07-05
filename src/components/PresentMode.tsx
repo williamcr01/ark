@@ -4,11 +4,11 @@ import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import {
   getPreviewFrameScale,
   getPreviewFrameStyle,
-  getPreviewHtml,
   getPreviewSandbox,
   getPreviewStageStyle,
   type ElementSize,
@@ -111,6 +111,8 @@ export function PresentMode({
     onExit(currentSlideIndexRef.current)
   }, [clearIdleTimer, onExit])
 
+  const previewFrame = useDeckPreviewFrame(html, slideCount > 0)
+
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     slideCount,
@@ -120,6 +122,7 @@ export function PresentMode({
       runtimeMode,
       initialSlideIndex,
       keyboardMode: 'present',
+      sandboxOrigin: previewFrame.sandboxOrigin,
       syncOnLoad: true,
       onSlideChange: (index) => {
         currentSlideIndexRef.current = index
@@ -254,10 +257,12 @@ export function PresentMode({
         >
           <iframe
             className="absolute left-0 top-0 block border-0 bg-white"
+            key={previewFrame.iframeKey}
             ref={iframeRef}
             referrerPolicy="no-referrer"
             sandbox={getPreviewSandbox(runtimeMode)}
-            srcDoc={getPreviewHtml(html)}
+            src={previewFrame.iframeSrc}
+            srcDoc={previewFrame.iframeSrcDoc}
             style={previewFrameStyle}
             tabIndex={-1}
             title="Ark presentation mode"

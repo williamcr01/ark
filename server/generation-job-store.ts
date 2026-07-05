@@ -113,7 +113,9 @@ async function readJobFile(filePath: string) {
 
 async function writeJobFile(filePath: string, job: StoredGenerationJobFile) {
   const tempPath = `${filePath}.${randomUUID()}.tmp`
-  await writeFile(tempPath, JSON.stringify(job, null, 2), 'utf8')
+  const payload = JSON.stringify(job, null, 2)
+
+  await writeFile(tempPath, payload, 'utf8')
   await rename(tempPath, filePath)
 }
 
@@ -174,15 +176,16 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
     return job
   }
 
-  const getJob = async (id: string) => {
-    const filePath = resolveJobPath(dataDir, id)
+  const getJob = async (id: string) =>
+    withJobLock(id, async () => {
+      const filePath = resolveJobPath(dataDir, id)
 
-    if (!filePath) {
-      return null
-    }
+      if (!filePath) {
+        return null
+      }
 
-    return readJobFile(filePath)
-  }
+      return readJobFile(filePath)
+    })
 
   const updateJob = async (
     id: string,
