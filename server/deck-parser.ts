@@ -1,6 +1,6 @@
 import { JSDOM } from 'jsdom'
 
-import { ARK_SLIDE_ID_ATTR } from '../shared/deck-patch.ts'
+import { ARK_SLIDE_ID_ATTR } from '../shared/deck-metadata.ts'
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '../shared/deck-preview-slides.ts'
 import { extractDeckTitle } from './deck-record.ts'
 

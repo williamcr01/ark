@@ -1,10 +1,8 @@
 import { z } from 'zod'
 
-/** Stable slide id attribute (see issue #74). */
-export const ARK_SLIDE_ID_ATTR = 'data-ark-slide-id' as const
+import { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR } from './deck-metadata.ts'
 
-/** Stable editable element id attribute (issue #74 — schema groundwork). */
-export const ARK_ELEMENT_ID_ATTR = 'data-ark-id' as const
+export { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR }
 
 export type DeckSlideTarget = {
   slideIndex?: number

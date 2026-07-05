@@ -1,8 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { deckSlidePatchOperationSchema } from '../shared/deck-patch.ts'
 import { applyDeckEdits } from './deck-edit.ts'
+import { deckSlidePatchOperationSchema } from '../shared/deck-patch.ts'
 import {
   listDeckSlides,
   parseDeckStructure,

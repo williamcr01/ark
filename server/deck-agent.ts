@@ -2,7 +2,6 @@ import { generateText, stepCountIs, type LanguageModel } from 'ai'
 
 import { buildAgentModelMessages, type AgentStep, type ApiChatMessage } from '../shared/chat.ts'
 import { buildRuntimeRegistryPromptSection } from '../shared/deck-runtime-registry.ts'
-import { createDeckTools } from './deck-tools.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
@@ -199,6 +198,7 @@ export async function runDeckAgent({
   throwIfAborted(abortSignal)
 
   const workspace = createDeckWorkspace(currentHtml)
+  const { createDeckTools } = await import('./deck-tools.ts')
   const tools = createDeckTools(workspace)
   const accumulatedSteps: AgentStep[] = []
 

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { ARK_SLIDE_ID_ATTR } from '../shared/deck-patch.ts'
+import { ARK_SLIDE_ID_ATTR } from '../shared/deck-metadata.ts'
 import { applyDeckPatches } from './deck-patch.ts'
 import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'

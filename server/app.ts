@@ -1,6 +1,5 @@
 import express, { type Request, type Response } from 'express'
 
-import { deckPatchRequestSchema } from '../shared/deck-patch.ts'
 import { type StartGenerationJobRequest } from '../shared/generation-job.ts'
 import {
   buildSandboxRenderUrl,
@@ -427,6 +426,7 @@ export function createApp(options: CreateAppOptions = {}) {
         return
       }
 
+      const { deckPatchRequestSchema } = await import('../shared/deck-patch.ts')
       const parsedBody = deckPatchRequestSchema.safeParse({
         operations: request.body?.operations,
         activeSlideIndex: request.body?.activeSlideIndex,

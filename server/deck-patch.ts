@@ -2,8 +2,8 @@ import { JSDOM } from 'jsdom'
 import { nanoid } from 'nanoid'
 
 import { findSlideElements } from '../shared/deck-preview-slides.ts'
+import { ARK_SLIDE_ID_ATTR } from '../shared/deck-metadata.ts'
 import {
-  ARK_SLIDE_ID_ATTR,
   type DeckPatchOperation,
   type DeckPatchResult,
   isElementPatchOperation,
