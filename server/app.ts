@@ -2,6 +2,11 @@ import express, { type Request, type Response } from 'express'
 
 import { type StartGenerationJobRequest } from '../shared/generation-job.ts'
 import {
+  buildSandboxRenderUrl,
+  resolveAppOrigin,
+  resolveSandboxOrigin,
+} from '../shared/sandbox-origin.ts'
+import {
   hasAnyConfiguredProvider,
   missingApiKeyError,
   parseProviderError,
@@ -31,11 +36,13 @@ import {
   getDefaultModel,
   getDefaultModelWarning,
 } from './models.ts'
+import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
 
 type CreateAppOptions = {
   deckStore?: DeckStore
   generationJobStore?: GenerationJobStore
   generationJobRunner?: GenerationJobRunner
+  previewSessionStore?: PreviewSessionStore
 }
 
 type DeckVersionRequestBody = {
@@ -104,6 +111,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const jobStore = options.generationJobStore ?? createDefaultGenerationJobStore()
   const generationJobs =
     options.generationJobRunner ?? createGenerationJobRunner({ deckStore, jobStore })
+  const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const defaultModel = getDefaultModel()
 
   app.use(express.json({ limit: '12mb' }))
@@ -128,8 +136,61 @@ export function createApp(options: CreateAppOptions = {}) {
         configured,
       },
       providers: getProviderStatus(),
+      preview: {
+        sandboxOrigin: resolveSandboxOrigin(),
+        appOrigin: resolveAppOrigin(),
+      },
     })
   })
+
+  app.post(
+    '/api/preview-sessions',
+    async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
+      const html = request.body.html ?? ''
+
+      if (!html.trim()) {
+        response.status(400).json({ error: 'HTML is required.' })
+        return
+      }
+
+      const session = previewSessionStore.createSession(html)
+
+      response.status(201).json({
+        token: session.token,
+        expiresAt: session.expiresAt,
+        sandboxOrigin: resolveSandboxOrigin(),
+        renderUrl: buildSandboxRenderUrl(session.token, {
+          sandboxOrigin: resolveSandboxOrigin(),
+          appOrigin: resolveAppOrigin(),
+        }),
+      })
+    },
+  )
+
+  app.get(
+    '/api/preview-sessions/:token',
+    (request: Request<{ token: string }>, response: Response) => {
+      const token = request.params.token?.trim()
+
+      if (!token) {
+        response.status(400).json({ error: 'Preview token is required.' })
+        return
+      }
+
+      const session = previewSessionStore.getSession(token)
+
+      if (!session) {
+        response.status(404).json({ error: 'Preview session not found or expired.' })
+        return
+      }
+
+      response.json({
+        token: session.token,
+        html: session.html,
+        expiresAt: session.expiresAt,
+      })
+    },
+  )
 
   app.get('/api/models', async (_request: Request, response: Response) => {
     try {
