@@ -139,6 +139,7 @@ describe('runtimeModeToBridgePreviewMode', () => {
   it('maps runtime modes to bridge preview modes', () => {
     expect(runtimeModeToBridgePreviewMode('static')).toBe('css-only')
     expect(runtimeModeToBridgePreviewMode('reveal')).toBe('css-only')
+    expect(runtimeModeToBridgePreviewMode('reveal', { usesRevealAdapter: true })).toBe('full-js')
     expect(runtimeModeToBridgePreviewMode('custom-js')).toBe('full-js')
   })
 })

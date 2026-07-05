@@ -1,5 +1,9 @@
 import { injectRuntimeCsp, type DeckRuntimeMode } from './deck-runtime.ts'
 import { isApprovedRuntimeAssetUrl } from './deck-runtime-registry.ts'
+import {
+  flattenRevealSlideElementsFromRoot,
+  hasRevealSlideStructure,
+} from './reveal-slide-index.ts'
 
 export const SLIDE_SELECTOR_CHAIN = [
   'section.slide',
@@ -97,6 +101,14 @@ ${bodyHtml}
 }
 
 export function findSlideElements(root: ParentNode) {
+  if (hasRevealSlideStructure(root)) {
+    const revealSlides = flattenRevealSlideElementsFromRoot(root)
+
+    if (revealSlides.length > 0) {
+      return revealSlides
+    }
+  }
+
   for (const selector of SLIDE_SELECTOR_CHAIN) {
     const slides = [...root.querySelectorAll(selector)]
 

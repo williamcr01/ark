@@ -719,11 +719,10 @@ async function runSmoke() {
       const frameActive = await evaluate<boolean>(
         cdp!,
         `(() => {
-          const slides = [...document.querySelectorAll('.reveal .slides > section')];
+          const present = document.querySelector('.reveal .slides section.present');
           return Boolean(
-            slides[0]?.hasAttribute('data-ark-hidden') &&
-            slides[1]?.getAttribute('aria-hidden') === 'false' &&
-            slides[1]?.hasAttribute('data-ark-active')
+            present &&
+            (present.textContent || '').includes('Registry-served libraries only')
           );
         })()`,
         { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
@@ -788,31 +787,17 @@ async function runSmoke() {
 
     await waitFor('Present mode preserves current Reveal slide', async () => {
       const snapshot = await evaluate<{
-        appText: string
+        presentText: string
         hasReveal: boolean
         hasWindowReveal: boolean
-        slides: Array<{
-          index: number
-          active: boolean
-          hidden: boolean
-          ariaHidden: string | null
-          text: string
-        }>
       }>(
         cdp!,
         `(() => {
-          const slides = [...document.querySelectorAll('.reveal .slides > section')];
+          const present = document.querySelector('.reveal .slides section.present');
           return {
-            appText: window.parent === window ? document.body.innerText : '',
+            presentText: (present?.textContent || '').trim(),
             hasReveal: Boolean(document.querySelector('.reveal')),
             hasWindowReveal: typeof window.Reveal !== 'undefined',
-            slides: slides.map((slide, index) => ({
-              index,
-              active: slide.hasAttribute('data-ark-active'),
-              hidden: slide.hasAttribute('data-ark-hidden'),
-              ariaHidden: slide.getAttribute('aria-hidden'),
-              text: (slide.textContent || '').trim(),
-            })),
           };
         })()`,
         { contextId: presentPreview.id, sessionId: presentPreview.sessionId },
@@ -821,8 +806,7 @@ async function runSmoke() {
       const isOnSecondSlide = Boolean(
         snapshot.hasReveal &&
         snapshot.hasWindowReveal &&
-        snapshot.slides[0]?.hidden &&
-        snapshot.slides[1]?.ariaHidden === 'false',
+        snapshot.presentText.includes('Registry-served libraries only'),
       )
 
       if (!isOnSecondSlide) {

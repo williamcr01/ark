@@ -17,6 +17,7 @@ import {
 } from '../../shared/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 
 import { useDeckSlideNavigation, type DeckNavOptions } from './useDeckSlideNavigation'
 
@@ -331,5 +332,54 @@ describe('useDeckSlideNavigation', () => {
 
     expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
     expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  it('handles reveal slide-change acknowledgements for registry decks', async () => {
+    const onSlideChange = vi.fn()
+    const metadata = createDeckMetadata({
+      runtime: 'reveal',
+      title: 'Reveal Registry Deck',
+      previewMode: 'full-js',
+    })
+
+    render(
+      <NavigationHarness
+        html={revealRegistryDeck}
+        onSlideChange={onSlideChange}
+        runtimeMode="reveal"
+        sandboxOrigin={sandboxOrigin}
+        slideCount={2}
+      />,
+    )
+    const iframeWindow = getIframeWindow()
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckSlideChangeMessage(1),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
+    })
+    expect(onSlideChange).toHaveBeenCalledWith(1)
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckReadyMessage(0, 2, metadata),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
+    })
   })
 })

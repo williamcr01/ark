@@ -92,6 +92,6 @@ describe('renderPreviewHtml', () => {
       'href="http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css"',
     )
     expect(previewHtml).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
-    expect(previewHtml).toContain('data-ark-preview-nav')
+    expect(previewHtml).toContain('data-ark-preview-reveal')
   })
 })

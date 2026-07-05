@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-import { buildPreviewHtml } from '../../shared/deck-preview-html.ts'
+import { buildPreviewHtml, type PreviewHtmlOptions } from '../../shared/deck-preview-html.ts'
 import { resolveAppOrigin } from '../../shared/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import { detectRuntimeMode } from '@/lib/deck-runtime'
@@ -65,8 +65,10 @@ export function detectPreviewMode(html: string): DeckRuntimeMode {
   return detectRuntimeMode(html)
 }
 
-export function getPreviewHtml(html: string) {
-  return buildPreviewHtml(html, { parentOrigin: resolveAppOrigin() })
+export function getPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
+  return buildPreviewHtml(html, {
+    parentOrigin: options.parentOrigin ?? resolveAppOrigin(),
+  })
 }
 
 export function useSrcDocPreviewFallback() {
