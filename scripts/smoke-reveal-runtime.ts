@@ -51,6 +51,33 @@ const requiredRuntimeAssetPaths = [
 const requiredRuntimeFontAssetPath =
   '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff'
 
+function networkIncludesAssetPaths(requestUrls: Map<string, string>, assetPaths: string[]) {
+  const urls = [...requestUrls.values()]
+
+  return assetPaths.every((assetPath) => urls.some((url) => url.includes(assetPath)))
+}
+
+async function previewIncludesAssetPaths(
+  cdp: CdpClient,
+  context: RuntimeContext,
+  assetPaths: string[],
+) {
+  return evaluate<boolean>(
+    cdp,
+    `(() => {
+      const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+      const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
+      const required = ${JSON.stringify(assetPaths)}
+
+      return required.every((assetPath) =>
+        styles.some((href) => href.includes(assetPath)) ||
+        scripts.some((src) => src.includes(assetPath)),
+      )
+    })()`,
+    { contextId: context.id, sessionId: context.sessionId },
+  )
+}
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message)
@@ -661,12 +688,12 @@ async function runSmoke() {
       findContextByUrl(cdp!, contexts, mainPreviewSrc),
     )
 
-    await waitFor('approved runtime asset requests', () => {
-      const urls = [...requestUrls.values()]
+    await waitFor('approved runtime asset requests', async () => {
+      if (networkIncludesAssetPaths(requestUrls, requiredRuntimeAssetPaths)) {
+        return true
+      }
 
-      return requiredRuntimeAssetPaths.every((assetPath) =>
-        urls.some((url) => url.includes(assetPath)),
-      )
+      return previewIncludesAssetPaths(cdp!, mainPreview, requiredRuntimeAssetPaths)
     })
 
     await waitFor('Source Sans Pro font load', () =>
@@ -679,10 +706,15 @@ async function runSmoke() {
       ),
     )
 
-    await waitFor('approved runtime font request', () => {
-      const urls = [...requestUrls.values()]
+    await waitFor('approved runtime font request', async () => {
+      if (networkIncludesAssetPaths(requestUrls, [requiredRuntimeFontAssetPath])) {
+        return true
+      }
 
-      return urls.some((url) => url.includes(requiredRuntimeFontAssetPath))
+      return previewIncludesAssetPaths(cdp!, mainPreview, [
+        requiredRuntimeFontAssetPath,
+        '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
+      ])
     })
 
     assert(
