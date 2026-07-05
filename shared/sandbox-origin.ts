@@ -201,7 +201,7 @@ function toAbsoluteSandboxAssetSource(source: string, appOrigin: string) {
 
 function getSandboxRuntimeAssetSources(
   appOrigin: string,
-  options: { kind: 'script' | 'stylesheet' },
+  options: { kind: 'script' | 'stylesheet' | 'font' },
 ) {
   return getApprovedRuntimeAssetUrls({ kind: options.kind })
     .map((source) => toAbsoluteSandboxAssetSource(source, appOrigin))
@@ -217,8 +217,9 @@ export function buildSandboxResponseCsp(appOrigin: string) {
     "'unsafe-inline'",
     ...getSandboxRuntimeAssetSources(appOrigin, { kind: 'stylesheet' }),
   ]
+  const fontSources = ['data:', ...getSandboxRuntimeAssetSources(appOrigin, { kind: 'font' })]
 
-  return `default-src 'none'; script-src ${scriptSources.join(' ')}; style-src ${styleSources.join(' ')}; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; ${buildSandboxFrameAncestorsCsp(appOrigin)}`
+  return `default-src 'none'; script-src ${scriptSources.join(' ')}; style-src ${styleSources.join(' ')}; img-src data: blob:; font-src ${fontSources.join(' ')}; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; ${buildSandboxFrameAncestorsCsp(appOrigin)}`
 }
 
 export const DECK_BRIDGE_POST_MESSAGE_TARGET = '*' as const

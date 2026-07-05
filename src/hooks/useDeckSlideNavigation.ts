@@ -117,6 +117,9 @@ export function useDeckSlideNavigation(
   const prevHtmlRef = useRef(html)
   const activeSlideIndexRef = useRef(activeSlideIndex)
   const iframeGenerationRef = useRef(0)
+  const pendingFrameSyncIndexRef = useRef<number | null>(
+    syncOnLoad ? clampSlideIndex(initialSlideIndex, slideCount) : null,
+  )
 
   const commitSlideIndex = useCallback(
     (index: number) => {
@@ -140,7 +143,10 @@ export function useDeckSlideNavigation(
 
   useEffect(() => {
     iframeGenerationRef.current += 1
-  }, [html, sandboxOrigin])
+    pendingFrameSyncIndexRef.current = syncOnLoad
+      ? clampSlideIndex(activeSlideIndexRef.current, slideCount)
+      : null
+  }, [html, sandboxOrigin, slideCount, syncOnLoad])
 
   useEffect(() => {
     if (prevHtmlRef.current === html) {
@@ -160,6 +166,10 @@ export function useDeckSlideNavigation(
       const clampedIndex = clampSlideIndex(index, slideCount)
 
       commitSlideIndex(clampedIndex)
+
+      if (pendingFrameSyncIndexRef.current !== null) {
+        pendingFrameSyncIndexRef.current = clampedIndex
+      }
 
       const iframeWindow = iframeRef.current?.contentWindow
 
@@ -200,12 +210,40 @@ export function useDeckSlideNavigation(
         return
       }
 
+      const syncPendingFrameIndex = (reportedIndex: number) => {
+        const pendingIndex = pendingFrameSyncIndexRef.current
+
+        if (pendingIndex === null) {
+          return false
+        }
+
+        const targetIndex = clampSlideIndex(pendingIndex, slideCount)
+
+        if (targetIndex === clampSlideIndex(reportedIndex, slideCount)) {
+          pendingFrameSyncIndexRef.current = null
+          commitSlideIndex(targetIndex)
+          return true
+        }
+
+        commitSlideIndex(targetIndex)
+        iframeWindow.postMessage(
+          createDeckGotoMessage(targetIndex),
+          DECK_BRIDGE_POST_MESSAGE_TARGET,
+        )
+        return true
+      }
+
       if (isDeckReadyMessage(data)) {
         onDeckReady?.({
           index: data.index,
           slideCount: data.slideCount,
           metadata: data.metadata,
         })
+
+        if (syncPendingFrameIndex(data.index)) {
+          return
+        }
+
         commitSlideIndex(data.index)
         return
       }
@@ -216,6 +254,10 @@ export function useDeckSlideNavigation(
       }
 
       if (isDeckSlideChangeMessage(data)) {
+        if (syncPendingFrameIndex(data.index)) {
+          return
+        }
+
         commitSlideIndex(data.index)
       }
     }
@@ -225,7 +267,16 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [commitSlideIndex, enabled, iframeRef, onDeckReady, onRuntimeError, sandboxOrigin])
+  }, [
+    commitSlideIndex,
+    enabled,
+    iframeRef,
+    onDeckReady,
+    onRuntimeError,
+    sandboxOrigin,
+    slideCount,
+    syncOnLoad,
+  ])
 
   useEffect(() => {
     if (!enabled || slideCount === 0 || keyboardMode === 'off') {
