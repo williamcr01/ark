@@ -5,10 +5,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   composeDeckRuntimeManifest,
+  DECK_RUNTIME_MANIFEST_SCHEMA_VERSION,
   deserializeDeckRuntimeManifest,
   isDeckRuntimeManifest,
   manifestIndicatesScriptStripping,
+  parseDeckRuntimeManifest,
   serializeDeckRuntimeManifest,
+  type DeckRuntimeManifest,
 } from '../shared/deck-runtime-manifest.ts'
 import { detectRuntimeMode } from '../shared/deck-runtime.ts'
 import { buildDeckRuntimeManifestFromHtml } from '../server/deck-manifest.ts'
@@ -105,6 +108,41 @@ describe('deck runtime manifest serialization', () => {
 
   it('rejects unknown schema versions', () => {
     expect(isDeckRuntimeManifest({ schemaVersion: 99, runtimeMode: 'static' })).toBe(false)
+  })
+
+  it('rejects partial manifests missing nested consumer fields', () => {
+    const manifest = buildDeckRuntimeManifestFromHtml(plainCssDeck)
+
+    expect(isDeckRuntimeManifest({ ...manifest, scripts: { inline: 0 } })).toBe(false)
+    expect(isDeckRuntimeManifest({ ...manifest, warnings: ['ok', 1] })).toBe(false)
+    expect(isDeckRuntimeManifest({ ...manifest, network: { externalUrls: [] } })).toBe(false)
+    expect(isDeckRuntimeManifest({ ...manifest, validation: { valid: true } })).toBe(false)
+    expect(isDeckRuntimeManifest({ ...manifest, assets: [{ kind: 'script', url: '/x' }] })).toBe(
+      false,
+    )
+    expect(isDeckRuntimeManifest({ ...manifest, usesRevealAdapter: 'yes' })).toBe(false)
+  })
+
+  it('treats corrupt stored metadata as absent', () => {
+    const manifest = buildDeckRuntimeManifestFromHtml(plainCssDeck)
+    const corrupt = {
+      schemaVersion: DECK_RUNTIME_MANIFEST_SCHEMA_VERSION,
+      runtimeMode: 'static',
+      previewMode: 'css-only',
+      slideCount: manifest.slideCount,
+    }
+
+    expect(parseDeckRuntimeManifest(corrupt)).toBeNull()
+    expect(deserializeDeckRuntimeManifest(JSON.stringify(corrupt))).toBeNull()
+  })
+
+  it('does not treat partial manifests as script-stripping', () => {
+    expect(
+      manifestIndicatesScriptStripping({
+        previewMode: 'css-only',
+        scripts: undefined as unknown as DeckRuntimeManifest['scripts'],
+      }),
+    ).toBe(false)
   })
 })
 

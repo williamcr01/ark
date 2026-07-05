@@ -238,6 +238,94 @@ export function buildDeckRuntimeManifestFromParts(
   })
 }
 
+function isRuntimeMode(value: unknown): value is DeckRuntimeMode {
+  return value === 'static' || value === 'reveal' || value === 'custom-js'
+}
+
+function isPreviewMode(value: unknown): value is DeckRuntimeManifest['previewMode'] {
+  return value === 'css-only' || value === 'full-js'
+}
+
+function isManifestStructure(value: unknown): value is DeckManifestStructure {
+  return value === 'plain' || value === 'reveal' || value === 'unknown'
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isManifestScripts(value: unknown): value is DeckRuntimeManifestScripts {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const scripts = value as Partial<DeckRuntimeManifestScripts>
+
+  return (
+    isFiniteNumber(scripts.inline) &&
+    isFiniteNumber(scripts.external) &&
+    typeof scripts.allowed === 'boolean'
+  )
+}
+
+function isManifestAsset(value: unknown): value is DeckRuntimeManifestAsset {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const asset = value as Partial<DeckRuntimeManifestAsset>
+
+  return (
+    typeof asset.kind === 'string' &&
+    typeof asset.url === 'string' &&
+    typeof asset.approved === 'boolean' &&
+    (asset.slideIndex === undefined || isFiniteNumber(asset.slideIndex))
+  )
+}
+
+function isManifestNetwork(value: unknown): value is DeckRuntimeManifestNetwork {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const network = value as Partial<DeckRuntimeManifestNetwork>
+
+  return isStringArray(network.externalUrls) && network.connectAllowed === false
+}
+
+function isManifestValidation(value: unknown): value is DeckRuntimeManifestValidation {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const validation = value as Partial<DeckRuntimeManifestValidation>
+
+  return (
+    typeof validation.valid === 'boolean' &&
+    isFiniteNumber(validation.warnings) &&
+    isFiniteNumber(validation.errors)
+  )
+}
+
+function isApprovedRuntime(value: unknown): value is DeckRuntimeManifestApprovedRuntime {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const approvedRuntime = value as Partial<DeckRuntimeManifestApprovedRuntime>
+
+  return (
+    typeof approvedRuntime.id === 'string' &&
+    approvedRuntime.id.length > 0 &&
+    typeof approvedRuntime.version === 'string' &&
+    approvedRuntime.version.length > 0
+  )
+}
+
 export function isDeckRuntimeManifest(value: unknown): value is DeckRuntimeManifest {
   if (!value || typeof value !== 'object') {
     return false
@@ -245,14 +333,62 @@ export function isDeckRuntimeManifest(value: unknown): value is DeckRuntimeManif
 
   const manifest = value as Partial<DeckRuntimeManifest>
 
-  return (
-    manifest.schemaVersion === DECK_RUNTIME_MANIFEST_SCHEMA_VERSION &&
-    (manifest.runtimeMode === 'static' ||
-      manifest.runtimeMode === 'reveal' ||
-      manifest.runtimeMode === 'custom-js') &&
-    (manifest.previewMode === 'css-only' || manifest.previewMode === 'full-js') &&
-    typeof manifest.slideCount === 'number'
-  )
+  if (manifest.schemaVersion !== DECK_RUNTIME_MANIFEST_SCHEMA_VERSION) {
+    return false
+  }
+
+  if (!isRuntimeMode(manifest.runtimeMode) || !isPreviewMode(manifest.previewMode)) {
+    return false
+  }
+
+  if (!isFiniteNumber(manifest.slideCount) || manifest.slideCount < 0) {
+    return false
+  }
+
+  if (!isManifestStructure(manifest.structure)) {
+    return false
+  }
+
+  if (
+    manifest.slideSelector !== null &&
+    (manifest.slideSelector === undefined || typeof manifest.slideSelector !== 'string')
+  ) {
+    return false
+  }
+
+  if (typeof manifest.aspectRatio !== 'string' || manifest.aspectRatio.length === 0) {
+    return false
+  }
+
+  if (manifest.approvedRuntime !== undefined && !isApprovedRuntime(manifest.approvedRuntime)) {
+    return false
+  }
+
+  if (!isManifestScripts(manifest.scripts)) {
+    return false
+  }
+
+  if (!Array.isArray(manifest.assets) || !manifest.assets.every(isManifestAsset)) {
+    return false
+  }
+
+  if (!isManifestNetwork(manifest.network)) {
+    return false
+  }
+
+  if (!isManifestValidation(manifest.validation)) {
+    return false
+  }
+
+  if (typeof manifest.usesRevealAdapter !== 'boolean') {
+    return false
+  }
+
+  if (!isStringArray(manifest.warnings)) {
+    return false
+  }
+
+  return true
 }
 
 export function parseDeckRuntimeManifest(value: unknown): DeckRuntimeManifest | null {
@@ -289,5 +425,12 @@ export function manifestIndicatesScriptStripping(
     return false
   }
 
-  return manifest.scripts.inline + manifest.scripts.external > 0
+  const inline = manifest.scripts?.inline
+  const external = manifest.scripts?.external
+
+  if (!isFiniteNumber(inline) || !isFiniteNumber(external)) {
+    return false
+  }
+
+  return inline + external > 0
 }
