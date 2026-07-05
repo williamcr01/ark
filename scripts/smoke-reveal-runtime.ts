@@ -595,6 +595,17 @@ async function runSmoke() {
 
   try {
     servers = await startServers({ apiPort, sandboxPort, webPort, tempRoot })
+
+    await waitFor('API health', async () => {
+      const response = await fetch(`http://127.0.0.1:${apiPort}/api/health`)
+      return response.ok
+    })
+
+    await waitFor('Vite dev server', async () => {
+      const response = await fetch(servers.appOrigin)
+      return response.ok
+    })
+
     browser = await spawnChromium(debugPort, path.join(tempRoot, 'chromium-profile'))
     cdp = await createPage(browser.debugPort)
 
@@ -688,7 +699,46 @@ async function runSmoke() {
       findContextByUrl(cdp!, contexts, mainPreviewSrc),
     )
 
+    const renderedPreviewHtml = await (await fetch(mainPreviewSrc)).text()
+    assert(
+      renderedPreviewHtml.includes('/api/runtimes/reveal.js/5.1.0/reveal.js'),
+      `Sandbox render did not include approved Reveal assets.\n${renderedPreviewHtml.slice(0, 800)}`,
+    )
+
+    if (mainPreview.sessionId) {
+      await cdp!.send('Runtime.enable', {}, mainPreview.sessionId)
+      await cdp!.send('Page.enable', {}, mainPreview.sessionId)
+      await cdp!.send('Network.enable', {}, mainPreview.sessionId)
+    }
+
+    await waitFor('sandbox preview loading overlay to clear', async () => {
+      const loading = await evaluate<boolean>(
+        cdp!,
+        `document.body.innerText.includes('Loading sandbox preview')`,
+      )
+
+      return !loading
+    })
+
     await waitFor('approved runtime asset requests', async () => {
+      const revealReady = await evaluate<boolean>(
+        cdp!,
+        `(() => {
+          const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+          const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
+          return (
+            typeof window.Reveal !== 'undefined' &&
+            scripts.some((src) => src.includes('/api/runtimes/reveal.js/5.1.0/reveal.js')) &&
+            styles.some((href) => href.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'))
+          )
+        })()`,
+        { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
+      )
+
+      if (revealReady) {
+        return true
+      }
+
       if (networkIncludesAssetPaths(requestUrls, requiredRuntimeAssetPaths)) {
         return true
       }
