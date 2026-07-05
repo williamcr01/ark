@@ -458,6 +458,7 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
     SELECTORS: [...options.slideSelectors],
     PREVIEW_MODE: options.previewMode,
     NAV_KEYS: { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 },
+    PARENT_ORIGIN: options.parentOrigin?.trim() || '',
   }
 
   return `

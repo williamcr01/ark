@@ -48,6 +48,8 @@ describe('renderPreviewHtml', () => {
     })
 
     expect(cssOnly).toContain('data-ark-preview-nav')
+    expect(cssOnly).toContain('PARENT_ORIGIN')
+    expect(cssOnly).toContain('http://localhost:5173')
     expect(fullJs).toContain('data-ark-preview-bridge')
     expect(fullJs).toContain('PARENT_ORIGIN')
     expect(fullJs).toContain('http://localhost:5173')
