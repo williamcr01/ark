@@ -4,10 +4,11 @@ import {
   stripDeckScriptsForPreview,
 } from '../../shared/deck-preview-slides.ts'
 import {
-  detectRuntimeModeFromDocument,
-  injectRuntimeCsp,
-  type DeckRuntimeMode,
-} from './deck-runtime'
+  buildThumbnailSrcDoc,
+  type ThumbnailHtmlOptions,
+} from '../../shared/deck-thumbnail-html.ts'
+import { startRevealThumbnailStylesPreload } from '../../shared/runtime-stylesheet-content.ts'
+import { detectRuntimeModeFromDocument } from './deck-runtime'
 
 export { SLIDE_SELECTOR_CHAIN, findSlideElements, stripDeckScriptsForPreview }
 
@@ -20,19 +21,9 @@ export type ParsedDeck = {
   thumbnailSrcDocs: string[]
 }
 
-const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
+export type ParseDeckSlidesOptions = ThumbnailHtmlOptions
 
-const thumbnailFillStyle = `
-<style data-ark-thumb-fill>
-  html,
-  body {
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-  }
-</style>`
+const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 
 function serializeElementAttrs(element: Element) {
   return [...element.attributes]
@@ -72,54 +63,6 @@ function stripScriptsFromHead(head: HTMLHeadElement) {
   return clone.innerHTML
 }
 
-function prepareThumbnailBody(doc: Document, slideIndex: number) {
-  const bodyClone = doc.body.cloneNode(true) as HTMLBodyElement
-
-  stripScripts(bodyClone)
-  stripInlineHandlers(bodyClone)
-
-  const slides = findSlideElements(bodyClone)
-
-  slides.forEach((slide, index) => {
-    if (index !== slideIndex) {
-      slide.remove()
-      return
-    }
-
-    slide.classList.add('active', 'is-active', 'present')
-    slide.setAttribute('aria-hidden', 'false')
-    slide.setAttribute('data-active', '')
-    slide.removeAttribute('data-ark-hidden')
-  })
-
-  return bodyClone.innerHTML
-}
-
-function buildThumbnailSrcDoc(
-  doc: Document,
-  slideIndex: number,
-  headHtml: string,
-  htmlAttrs: string,
-  bodyAttrs: string,
-  runtimeMode: DeckRuntimeMode,
-) {
-  const bodyHtml = prepareThumbnailBody(doc, slideIndex)
-  const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
-  const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
-  const srcDoc = `<!DOCTYPE html>
-${htmlOpen}
-<head>
-${headHtml}
-${thumbnailFillStyle}
-</head>
-${bodyOpen}
-${bodyHtml}
-</body>
-</html>`
-
-  return injectRuntimeCsp(srcDoc, runtimeMode)
-}
-
 const emptyParsedDeck: ParsedDeck = {
   slideCount: 0,
   slides: [],
@@ -129,7 +72,9 @@ const emptyParsedDeck: ParsedDeck = {
   thumbnailSrcDocs: [],
 }
 
-export function parseDeckSlides(html: string): ParsedDeck {
+export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = {}): ParsedDeck {
+  startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
+
   if (!html.trim()) {
     return emptyParsedDeck
   }
@@ -154,7 +99,7 @@ export function parseDeckSlides(html: string): ParsedDeck {
   const runtimeMode = detectRuntimeModeFromDocument(doc)
 
   const thumbnailSrcDocs = slides.map((slide) =>
-    buildThumbnailSrcDoc(doc, slide.index, headHtml, htmlAttrs, bodyAttrs, runtimeMode),
+    buildThumbnailSrcDoc(doc, slide.index, htmlAttrs, bodyAttrs, runtimeMode, options),
   )
 
   return {

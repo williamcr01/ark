@@ -31,6 +31,10 @@ import { deckHasExecutableContent, type DeckDownloadVariant } from '@/lib/deck-e
 import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckValidationReport } from '@/lib/deck-validate'
 import { newId } from '@/lib/id'
+import {
+  startRevealThumbnailStylesPreload,
+  waitForRevealThumbnailStylesPreload,
+} from '../shared/runtime-stylesheet-content.ts'
 
 function App() {
   const {
@@ -69,6 +73,7 @@ function App() {
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
   const recoveredJobIdsRef = useRef(new Set<string>())
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -102,7 +107,26 @@ function App() {
     onReloadModels: loadModels,
   })
 
-  const parsedDeck = useMemo(() => parseDeckSlides(generatedHtml), [generatedHtml])
+  useEffect(() => {
+    startRevealThumbnailStylesPreload()
+
+    let cancelled = false
+
+    void waitForRevealThumbnailStylesPreload().then(() => {
+      if (!cancelled) {
+        setThumbnailStylesRevision((value) => value + 1)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const parsedDeck = useMemo(() => {
+    void thumbnailStylesRevision
+    return parseDeckSlides(generatedHtml)
+  }, [generatedHtml, thumbnailStylesRevision])
   const showSanitizedDownload = useMemo(
     () => deckHasExecutableContent(generatedHtml),
     [generatedHtml],

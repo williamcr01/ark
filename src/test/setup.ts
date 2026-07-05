@@ -3,7 +3,10 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
+import { configureVitestRuntimeStylesheets } from '../../shared/runtime-stylesheet-disk.ts'
 import { getTestLocalStorage, installTestLocalStorage } from './storage'
+
+configureVitestRuntimeStylesheets()
 
 class TestResizeObserver {
   observe = vi.fn()
