@@ -1,11 +1,24 @@
+import { isApprovedRuntimeAssetUrl } from '../shared/deck-runtime-registry.ts'
 import {
   buildDeckRuntimeManifestFromParts,
   type DeckRuntimeManifest,
 } from '../shared/deck-runtime-manifest.ts'
-import { usesRevealRuntimeAdapter } from '../shared/deck-runtime.ts'
 import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { DeckValidationReport } from '../src/lib/deck-validate.ts'
+
+function resolveUsesRevealAdapter(
+  validation: DeckValidationReport,
+  assets: Array<{ kind: string; url: string }>,
+) {
+  if (validation.runtimeMarkers.runtimeMode !== 'reveal') {
+    return false
+  }
+
+  return assets.some(
+    (asset) => asset.kind === 'script' && isApprovedRuntimeAssetUrl(asset.url, 'script'),
+  )
+}
 
 function toManifestValidationInput(validation: DeckValidationReport) {
   return {
@@ -29,21 +42,21 @@ export function buildDeckRuntimeManifestFromHtml(
   validation: DeckValidationReport = validateDeckHtmlOnServer(html),
 ): DeckRuntimeManifest {
   const parsed = parseDeckHtml(html)
+  const assets = parsed.assets.map((asset) => ({
+    kind: asset.kind,
+    url: asset.url,
+    slideIndex: asset.slideIndex,
+  }))
 
   return buildDeckRuntimeManifestFromParts(
-    html,
     toManifestValidationInput(validation),
     {
       structure: parsed.structure,
       slideSelector: parsed.slideSelector,
       slideCount: parsed.slideCount,
-      assets: parsed.assets.map((asset) => ({
-        kind: asset.kind,
-        url: asset.url,
-        slideIndex: asset.slideIndex,
-      })),
+      assets,
     },
-    usesRevealRuntimeAdapter(html),
+    resolveUsesRevealAdapter(validation, assets),
   )
 }
 
@@ -52,8 +65,4 @@ export function buildDeckRuntimeManifestFromValidation(
   validation: DeckValidationReport,
 ): DeckRuntimeManifest {
   return buildDeckRuntimeManifestFromHtml(html, validation)
-}
-
-export function usesRevealAdapterForHtml(html: string) {
-  return usesRevealRuntimeAdapter(html)
 }
