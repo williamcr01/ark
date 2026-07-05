@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom'
 
-import { ARK_SLIDE_ID_ATTR } from '../shared/deck-metadata.ts'
+import type { SlideEditableElements } from '../shared/deck-editable.ts'
+import { parseEditableElements, resolveSlideId } from './deck-editable-elements.ts'
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '../shared/deck-preview-slides.ts'
 import { extractDeckTitle } from './deck-record.ts'
 
@@ -41,6 +42,7 @@ export type DeckAssetReference = {
 export type ParsedDeckSlide = {
   index: number
   slideId: string | null
+  slideIdTransient: boolean
   title: string
   preview: string
   outerHTML: string
@@ -54,6 +56,7 @@ export type DeckParseResult = {
   slideSelector: string | null
   slideCount: number
   slides: ParsedDeckSlide[]
+  editableElements: SlideEditableElements[]
   styles: DeckStyleBlock[]
   scripts: DeckScriptBlock[]
   assets: DeckAssetReference[]
@@ -260,6 +263,7 @@ const emptyParseResult: DeckParseResult = {
   slideSelector: null,
   slideCount: 0,
   slides: [],
+  editableElements: [],
   styles: [],
   scripts: [],
   assets: [],
@@ -277,10 +281,12 @@ export function parseDeckHtml(html: string): DeckParseResult {
   const slides = slideElements.map((element, index) => {
     const title = extractSlideTitle(element, index)
     const preview = element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) ?? ''
+    const { slideId, slideIdTransient } = resolveSlideId(element, index)
 
     return {
       index,
-      slideId: element.getAttribute(ARK_SLIDE_ID_ATTR)?.trim() || null,
+      slideId,
+      slideIdTransient,
       title,
       preview,
       outerHTML: element.outerHTML,
@@ -295,6 +301,7 @@ export function parseDeckHtml(html: string): DeckParseResult {
     slideSelector,
     slideCount: slides.length,
     slides,
+    editableElements: parseEditableElements(slideElements, doc),
     styles: collectStyles(doc),
     scripts: collectScripts(doc),
     assets: collectAssets(doc, slideElements),
@@ -337,9 +344,10 @@ export function summarizeParsedDeck(parsed: DeckParseResult) {
 }
 
 export function toDeckSlideSummaries(parsed: DeckParseResult) {
-  return parsed.slides.map(({ index, slideId, title, preview }) => ({
+  return parsed.slides.map(({ index, slideId, slideIdTransient, title, preview }) => ({
     index,
     slideId,
+    slideIdTransient,
     title,
     preview,
   }))
