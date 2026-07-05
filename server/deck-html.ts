@@ -11,6 +11,7 @@ export const DEFAULT_READ_MAX_BYTES = 256 * 1024
 export type DeckSlideSummary = {
   index: number
   slideId: string | null
+  slideIdTransient: boolean
   title: string
   preview: string
 }

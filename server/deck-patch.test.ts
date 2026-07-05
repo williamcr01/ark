@@ -41,12 +41,12 @@ function expectValidDeck(html: string) {
 }
 
 describe('applyDeckPatches', () => {
-  it('adds a slide with a generated slide id', () => {
+  it('adds a slide with a generated slide id and element ids', () => {
     const result = applyDeckPatches(plainCssDeck, [
       {
         op: 'add_slide',
         afterIndex: 0,
-        html: '<section class="slide"><h2>Inserted</h2></section>',
+        html: '<section class="slide"><h2>Inserted</h2><p>More detail</p></section>',
       },
     ])
 
@@ -61,7 +61,11 @@ describe('applyDeckPatches', () => {
     expect(parsed.slides[1]?.title).toBe('Inserted')
     expect(parsed.slides[1]?.slideId).toMatch(/^ark-slide-/)
     expect(result.changedSlideIndexes).toEqual([1])
+    expect(result.changedElementIds.length).toBeGreaterThan(0)
     expect(result.summary).toContain('Added slide')
+
+    const insertedElements = parsed.editableElements[1]?.elements ?? []
+    expect(insertedElements.some((element) => element.id.startsWith('ark-el-'))).toBe(true)
   })
 
   it('deletes, replaces, and reorders slides by index or id', () => {

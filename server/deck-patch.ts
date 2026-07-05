@@ -12,6 +12,7 @@ import {
   summarizePatchOperation,
 } from '../shared/deck-patch.ts'
 import { applyDeckEdits } from './deck-edit.ts'
+import { stampEditableElementIds } from './deck-editable-elements.ts'
 
 export type ApplyDeckPatchesOptions = {
   activeSlideIndex?: number
@@ -200,6 +201,7 @@ function applyAddSlide(
   }
 
   const slideId = ensureSlideId(parsed.element, operation.slideId)
+  const stampedElementIds = stampEditableElementIds(parsed.element)
   const insertIndex =
     operation.afterIndex === undefined || operation.afterIndex < 0
       ? context.slides.length
@@ -221,6 +223,9 @@ function applyAddSlide(
 
   refreshSlides(context)
   markSlideChanged(context, insertIndex)
+  for (const elementId of stampedElementIds) {
+    context.changedElementIds.add(elementId)
+  }
   context.summaries.push(`Added slide ${slideId} at index ${insertIndex}.`)
   context.activeSlideIndex = adjustActiveSlideIndex(context.activeSlideIndex, {
     type: 'insert',
@@ -282,9 +287,13 @@ function applyReplaceSlide(
   }
 
   ensureSlideId(parsed.element)
+  const stampedElementIds = stampEditableElementIds(parsed.element)
   resolved.element.replaceWith(parsed.element)
   refreshSlides(context)
   markSlideChanged(context, resolved.index)
+  for (const elementId of stampedElementIds) {
+    context.changedElementIds.add(elementId)
+  }
   context.summaries.push(`Replaced slide at index ${resolved.index}.`)
 
   return { ok: true as const }
