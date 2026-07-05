@@ -1,5 +1,6 @@
 import {
   getApprovedRuntimeAssetUrls,
+  hasApprovedRevealRuntimeInHtml,
   hasCustomJsMarker,
   hasRevealMarker,
   hasRevealStructure,
@@ -88,8 +89,19 @@ export function runtimeModeAllowsDeckScripts(mode: DeckRuntimeMode) {
   return mode === 'custom-js'
 }
 
-export function runtimeModeToBridgePreviewMode(mode: DeckRuntimeMode): 'css-only' | 'full-js' {
-  return mode === 'custom-js' ? 'full-js' : 'css-only'
+export function runtimeModeToBridgePreviewMode(
+  mode: DeckRuntimeMode,
+  options: { usesRevealAdapter?: boolean } = {},
+): 'css-only' | 'full-js' {
+  if (mode === 'custom-js' || (mode === 'reveal' && options.usesRevealAdapter)) {
+    return 'full-js'
+  }
+
+  return 'css-only'
+}
+
+export function usesRevealRuntimeAdapter(html: string) {
+  return detectRuntimeMode(html) === 'reveal' && hasApprovedRevealRuntimeInHtml(html)
 }
 
 function runtimeModeToApprovedRuntimeMode(

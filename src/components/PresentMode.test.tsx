@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 
 import { PresentMode } from './PresentMode'
 
@@ -79,5 +80,29 @@ describe('PresentMode', () => {
 
     await user.tab()
     expect(screen.getByRole('button', { name: 'Exit presentation' })).toHaveFocus()
+  })
+
+  it('preserves the current slide when exiting reveal present mode', async () => {
+    const user = userEvent.setup()
+    const onExit = vi.fn()
+    render(
+      <PresentMode
+        html={revealRegistryDeck}
+        initialSlideIndex={0}
+        onExit={onExit}
+        runtimeMode="reveal"
+        slideCount={2}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Next slide' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('2 / 2')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
+
+    expect(onExit).toHaveBeenCalledWith(1)
   })
 })

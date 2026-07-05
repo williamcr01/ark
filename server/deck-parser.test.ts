@@ -12,6 +12,7 @@ const fixtureDir = path.resolve(
 
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
 const revealDeck = readFileSync(path.join(fixtureDir, 'reveal-deck.html'), 'utf8')
+const revealVerticalDeck = readFileSync(path.join(fixtureDir, 'reveal-vertical-deck.html'), 'utf8')
 const fullJsDeck = readFileSync(path.join(fixtureDir, 'full-js-deck.html'), 'utf8')
 const hostileScriptsDeck = readFileSync(path.join(fixtureDir, 'hostile-scripts-deck.html'), 'utf8')
 
@@ -63,6 +64,19 @@ describe('parseDeckHtml', () => {
     expect(parsed.slideCount).toBe(2)
     expect(parsed.slides[0]?.title).toBe('Reveal opening')
     expect(parsed.slides[1]?.title).toBe('Reveal detail')
+  })
+
+  it('flattens reveal vertical slide stacks for parser metadata', () => {
+    const parsed = parseDeckHtml(revealVerticalDeck)
+
+    expect(parsed.structure).toBe('reveal')
+    expect(parsed.slideCount).toBe(4)
+    expect(parsed.slides.map((slide) => slide.title)).toEqual([
+      'Opening',
+      'Vertical one',
+      'Vertical two',
+      'Closing',
+    ])
   })
 
   it('extracts speaker notes from aside, data-notes, and comments', () => {

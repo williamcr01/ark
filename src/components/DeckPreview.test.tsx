@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 import { parseDeckSlides } from '@/lib/deck-slides'
 
 import { DeckPreview } from './DeckPreview'
@@ -56,6 +57,21 @@ describe('DeckPreview script divergence UI', () => {
       />,
     )
 
+    expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+  })
+
+  it('shows reveal runtime messaging for approved reveal registry decks', () => {
+    render(
+      <DeckPreview
+        html={revealRegistryDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(revealRegistryDeck)}
+      />,
+    )
+
+    expect(screen.getAllByText('Reveal runtime').length).toBeGreaterThan(0)
     expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
   })
 })

@@ -154,6 +154,22 @@ export function isApprovedRuntimeAssetUrl(url: string | null | undefined, kind?:
   )
 }
 
+export function hasApprovedRevealRuntimeInDocument(doc: Document) {
+  return [...doc.querySelectorAll('script[src]')].some((script) =>
+    isApprovedRuntimeAssetUrl(script.getAttribute('src'), 'script'),
+  )
+}
+
+export function hasApprovedRevealRuntimeInHtml(html: string) {
+  if (!html.trim()) {
+    return false
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  return hasApprovedRevealRuntimeInDocument(doc)
+}
+
 export function lookupRuntimeAsset(ref: RuntimeAssetRef) {
   const runtime = getApprovedRuntime(ref.runtimeId, ref.version)
 

@@ -16,6 +16,7 @@ import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
+import revealVerticalDeck from '@/test/fixtures/reveal-vertical-deck.html?raw'
 
 import { resolveAppOrigin } from '../../shared/sandbox-origin.ts'
 import { STRICT_DECK_CSP } from './deck-runtime'
@@ -53,6 +54,67 @@ function loadExecutablePreview(html: string) {
 
 function getParentMessages(dom: JSDOM) {
   return (dom.window as unknown as Window & { __parentMessages: unknown[] }).__parentMessages
+}
+
+function buildRevealMockScript(slideCount: number) {
+  return `<script data-ark-test-reveal-mock>
+(function () {
+  var currentIndex = 0;
+  var listeners = [];
+  var slides = [];
+
+  for (var i = 0; i < ${slideCount}; i++) {
+  var slide = document.createElement('section');
+  slide.dataset.linearIndex = String(i);
+  slides.push(slide);
+  }
+
+  function notify() {
+    listeners.forEach(function (handler) {
+      handler({ currentSlide: slides[currentIndex] });
+    });
+  }
+
+  window.Reveal = {
+    initialize: function () {
+      return Promise.resolve();
+    },
+    on: function (event, handler) {
+      if (event === 'slidechanged') {
+        listeners.push(handler);
+      }
+    },
+    getSlides: function () {
+      return slides;
+    },
+    getTotalSlides: function () {
+      return slides.length;
+    },
+    getCurrentSlide: function () {
+      return slides[currentIndex];
+    },
+    getSlidePastCount: function (slide) {
+      return slides.indexOf(slide);
+    },
+    getIndices: function (slide) {
+      var index = slides.indexOf(slide || slides[currentIndex]);
+      return { h: index, v: 0, f: 0 };
+    },
+    slide: function (h) {
+      currentIndex = Math.max(0, Math.min(slides.length - 1, h));
+      notify();
+    },
+  };
+})();</script>`
+}
+
+function prepareRevealAdapterPreview(html: string, slideCount: number) {
+  const previewHtml = getPreviewHtml(html, { parentOrigin: 'http://localhost:5173' })
+
+  return previewHtml.replace(
+    /<script[^>]*reveal\.js[^>]*><\/script>/i,
+    buildRevealMockScript(slideCount),
+  )
 }
 
 describe('detectRuntimeMode', () => {
@@ -173,8 +235,10 @@ describe('getPreviewHtml', () => {
     expect(metadataMessage?.metadata.runtime).toBe('reveal')
   })
 
-  it('allows approved runtime assets and preserves approved runtime scripts in reveal previews', () => {
-    const previewHtml = getPreviewHtml(revealRegistryDeck)
+  it('allows approved runtime assets and injects the reveal adapter for registry decks', () => {
+    const previewHtml = getPreviewHtml(revealRegistryDeck, {
+      parentOrigin: 'http://localhost:5173',
+    })
 
     expect(previewHtml).toContain(
       'src="http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js"',
@@ -188,7 +252,62 @@ describe('getPreviewHtml', () => {
       'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/white.css',
     )
     expect(previewHtml).toContain("connect-src 'none'")
+    expect(previewHtml).toContain('data-ark-preview-reveal')
+    expect(previewHtml).not.toContain('data-ark-preview-nav')
+  })
+
+  it('keeps structure-only reveal decks on the CSS navigation shim', () => {
+    const previewHtml = getPreviewHtml(revealDeck)
+
     expect(previewHtml).toContain('data-ark-preview-nav')
+    expect(previewHtml).not.toContain('data-ark-preview-reveal')
+  })
+
+  it('initializes the reveal adapter once and announces reveal metadata', async () => {
+    const dom = await loadExecutablePreview(prepareRevealAdapterPreview(revealRegistryDeck, 2))
+    const messages = getParentMessages(dom)
+
+    expect(messages).toContainEqual({
+      type: DECK_READY_MESSAGE_TYPE,
+      index: 0,
+      slideCount: 2,
+      metadata: expect.objectContaining({
+        runtime: 'reveal',
+        previewMode: 'full-js',
+      }),
+    })
+    expect(dom.window.document.querySelectorAll('[data-ark-preview-reveal]').length).toBe(1)
+  })
+
+  it('navigates reveal decks from parent goto messages and reports slide changes', async () => {
+    const dom = await loadExecutablePreview(prepareRevealAdapterPreview(revealRegistryDeck, 2))
+    const appOrigin = resolveAppOrigin()
+
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+        origin: appOrigin,
+        source: dom.window.parent as unknown as Window,
+      }),
+    )
+
+    await new Promise((resolve) => {
+      dom.window.setTimeout(resolve, 0)
+    })
+
+    expect(getParentMessages(dom)).toContainEqual({
+      type: DECK_SLIDE_CHANGE_MESSAGE_TYPE,
+      index: 1,
+    })
+  })
+
+  it('uses the reveal adapter for vertical registry decks', () => {
+    const previewHtml = getPreviewHtml(revealVerticalDeck, {
+      parentOrigin: 'http://localhost:5173',
+    })
+
+    expect(previewHtml).toContain('data-ark-preview-reveal')
+    expect(previewHtml).not.toContain('data-ark-preview-nav')
   })
 
   it('still strips unapproved scripts from reveal previews', () => {
@@ -197,6 +316,7 @@ describe('getPreviewHtml', () => {
         '</body>',
         '<script>window.unapprovedRevealCode = true</script></body>',
       ),
+      { parentOrigin: 'http://localhost:5173' },
     )
 
     expect(previewHtml).toContain(
