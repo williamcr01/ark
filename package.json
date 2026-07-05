@@ -19,6 +19,7 @@
     "audit": "pnpm audit --audit-level=high",
     "preview": "vite preview",
     "test": "vitest run",
+    "smoke:reveal-runtime": "tsx scripts/smoke-reveal-runtime.ts",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts"
   },
   "engines": {

@@ -17,6 +17,10 @@ const RUNTIMES_DIR = path.join(ROOT, 'runtimes')
 const MIME_TYPES: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.ttf': 'font/ttf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
 }
 
 function getContentType(assetPath: string) {
@@ -84,6 +88,9 @@ export function handleRuntimeAssetRequest(request: Request, response: Response) 
 
   response.setHeader('Content-Type', getContentType(assetPath))
   response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+  response.setHeader('Access-Control-Allow-Origin', '*')
+  response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+  response.setHeader('X-Content-Type-Options', 'nosniff')
   response.setHeader('X-Checksum-Sha256', lookup.asset.sha256)
   createReadStream(filePath).pipe(response)
 }

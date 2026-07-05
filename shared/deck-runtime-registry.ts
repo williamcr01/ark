@@ -1,6 +1,6 @@
 import manifest from '../runtimes/manifest.json'
 
-export type RuntimeAssetKind = 'script' | 'stylesheet'
+export type RuntimeAssetKind = 'script' | 'stylesheet' | 'font'
 
 export type ApprovedRuntimeAsset = {
   path: string

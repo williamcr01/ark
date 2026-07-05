@@ -77,5 +77,11 @@ describe('sandbox-origin', () => {
     expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
       'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css',
     )
+    expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
+    )
+    expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
+    )
   })
 })
