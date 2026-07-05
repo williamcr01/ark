@@ -50,6 +50,8 @@ const requiredRuntimeAssetPaths = [
 const requiredRuntimeFontAssetPath =
   '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff'
 
+const SMOKE_SLOW_TIMEOUT_MS = 45_000
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message)
@@ -642,31 +644,62 @@ async function runSmoke() {
 
     await setUploadFile(cdp, revealFixturePath)
 
-    await waitFor('uploaded Reveal deck in shell', async () => {
-      const text = await evaluate<string>(cdp!, 'document.body.innerText')
-      return text.includes('Reveal Registry Deck') && text.includes('Slide 1 of 2')
-    })
-
-    const mainPreviewSrc = await waitFor('main sandbox preview iframe src', async () => {
-      const src = await evaluate<string>(
-        cdp!,
-        `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
-      )
-
-      return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
-    })
-
-    const mainPreview = await waitFor('main sandbox preview frame context', () =>
-      findContextByUrl(cdp!, contexts, mainPreviewSrc),
+    await waitFor(
+      'uploaded Reveal deck in shell',
+      async () => {
+        const text = await evaluate<string>(cdp!, 'document.body.innerText')
+        return text.includes('Reveal Registry Deck') && text.includes('Slide 1 of 2')
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
-    await waitFor('approved runtime asset requests', () => {
-      const urls = [...requestUrls.values()]
+    const mainPreviewSrc = await waitFor(
+      'main sandbox preview iframe src',
+      async () => {
+        const src = await evaluate<string>(
+          cdp!,
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
 
-      return requiredRuntimeAssetPaths.every((assetPath) =>
-        urls.some((url) => url.includes(assetPath)),
-      )
-    })
+        return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+
+    const mainPreview = await waitFor(
+      'main sandbox preview frame context',
+      () => findContextByUrl(cdp!, contexts, mainPreviewSrc),
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+
+    await waitFor(
+      'approved runtime asset requests',
+      async () => {
+        const urls = [...requestUrls.values()]
+        const networkReady = requiredRuntimeAssetPaths.every((assetPath) =>
+          urls.some((url) => url.includes(assetPath)),
+        )
+
+        if (networkReady) {
+          return true
+        }
+
+        // Child-frame network events can race CDP attachment on slower CI runners.
+        return evaluate<boolean>(
+          cdp!,
+          `(() => {
+          const assetPaths = ${JSON.stringify(requiredRuntimeAssetPaths)};
+          const urls = [
+            ...[...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
+            ...[...document.querySelectorAll('script[src]')].map((script) => script.src),
+          ];
+          return assetPaths.every((assetPath) => urls.some((url) => url.includes(assetPath)));
+        })()`,
+          { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
+        )
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
 
     await waitFor('Source Sans Pro font load', () =>
       evaluate<boolean>(

@@ -3,7 +3,6 @@ import { z } from 'zod'
 
 import { deckSlidePatchOperationSchema } from '../shared/deck-patch.ts'
 import { applyDeckEdits } from './deck-edit.ts'
-import { applyDeckPatches } from './deck-patch.ts'
 import {
   listDeckSlides,
   parseDeckStructure,
@@ -233,6 +232,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
           }
         }
 
+        const { applyDeckPatches } = await import('./deck-patch.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex })
 
         if (!patched.ok) {

@@ -32,7 +32,6 @@ import {
   toGenerationJobResponse,
   type GenerationJobRunner,
 } from './generation-job-runner.ts'
-import { applyDeckPatches } from './deck-patch.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import {
   ensureModelInList,
@@ -448,6 +447,7 @@ export function createApp(options: CreateAppOptions = {}) {
           return
         }
 
+        const { applyDeckPatches } = await import('./deck-patch.ts')
         const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
           activeSlideIndex: parsedBody.data.activeSlideIndex,
         })
