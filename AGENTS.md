@@ -116,7 +116,7 @@ When acting as the presentation agent (side chat):
 
 ### Conversation context (issue #17)
 
-Ark replays the **full visible chat history** on every `/api/generate` request (pi-style). Assistant turns store short status text plus optional tool-call parts — never full HTML.
+Ark replays the **full visible chat history** on every generation job request (pi-style). Assistant turns store short status text plus optional tool-call parts — never full HTML.
 
 - **Persisted with the deck**: Deck HTML is saved server-side (#10); chat messages are stored in `localStorage` (`ark:chat-session`) so refresh restores the conversation.
 - **Assistant messages**: Store summary text and tool activity (`list_slides`, `read_deck`, `edit_deck`, `write_deck`). The model reads the deck via tools instead of receiving the full HTML on every turn.
@@ -159,7 +159,7 @@ Early scaffold: default Vite + React template. Presentation directory, chat pane
 Standard commands live in the `## Commands` section above and in `README.md`. Notes specific to this environment:
 
 - **Dev server runs two processes.** `pnpm dev` uses `concurrently` to start the Express API (`tsx watch server/index.ts`) and the Vite client on `http://localhost:5173`. Both read `PORT` from `.env` or the environment (default `8787`); Vite proxies `/api` to that same port (see `vite.config.ts`). Always open the app on `5173`, not the API port. Run it in a background/tmux session since it stays attached.
-- **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generate` (tool-based agent loop). Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
+- **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/generation-jobs`, `GET /api/generation-jobs/:id`, `POST /api/generation-jobs/:id/cancel`, `POST /api/generation-jobs/:id/retry` (tool-based agent loop via generation jobs). Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
 - **No API keys required for CI.** Verification is `pnpm lint`, `pnpm format:check`, `pnpm audit`, `pnpm build`, and `pnpm test` (also enforced in GitHub Actions). Always run `pnpm format` before committing. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.

@@ -60,6 +60,8 @@ describe('createDeckStore', () => {
     const created = await store.createDeck(sampleHtml)
     expect(created.id).toBeTruthy()
     expect(created.title).toBe('Quarterly Review')
+    expect(created.versionNumber).toBe(1)
+    expect(created.activeVersionId).toBeTruthy()
 
     const loaded = await store.getDeck(created.id)
     expect(loaded?.html).toBe(sampleHtml)
@@ -68,6 +70,8 @@ describe('createDeckStore', () => {
     const updated = await store.updateDeck(created.id, updatedHtml)
     expect(updated?.html).toContain('Updated')
     expect(updated?.title).toBe('Quarterly Review')
+    expect(updated?.versionNumber).toBe(2)
+    expect(updated?.activeVersionId).not.toBe(created.activeVersionId)
     expect(updated?.updatedAt).not.toBe(created.updatedAt)
 
     const decks = await store.listDecks()
@@ -75,12 +79,62 @@ describe('createDeckStore', () => {
     expect(decks[0]).toMatchObject({
       id: created.id,
       title: 'Quarterly Review',
+      versionNumber: 2,
     })
     expect('html' in decks[0]).toBe(false)
 
     const deleted = await store.deleteDeck(created.id)
     expect(deleted).toBe(true)
     expect(await store.getDeck(created.id)).toBeNull()
+  })
+
+  it('creates immutable versions with source metadata', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+
+    const created = await store.createDeck(sampleHtml, {
+      source: 'upload',
+      summary: 'Initial upload',
+    })
+    const updated = await store.updateDeck(created.id, sampleHtml.replace('Hello', 'Agent edit'), {
+      source: 'agent',
+      summary: 'AI edit',
+      modelName: 'gpt-4.1',
+    })
+
+    const versions = await store.listVersions(created.id)
+
+    expect(versions).toHaveLength(2)
+    expect(versions?.[0]).toMatchObject({
+      versionNumber: 2,
+      source: 'agent',
+      summary: 'AI edit',
+      isActive: true,
+      validationStatus: 'valid',
+    })
+    expect(versions?.[1]).toMatchObject({
+      versionNumber: 1,
+      source: 'upload',
+      summary: 'Initial upload',
+      isActive: false,
+    })
+
+    const firstVersion = await store.getVersion(created.id, versions![1].id)
+    expect(firstVersion?.html).toBe(sampleHtml)
+    expect(firstVersion?.versionNumber).toBe(1)
+
+    const rolledBack = await store.rollbackToVersion(created.id, versions![1].id)
+    expect(rolledBack?.html).toBe(sampleHtml)
+    expect(rolledBack?.versionNumber).toBe(3)
+
+    const afterRollback = await store.listVersions(created.id)
+    expect(afterRollback).toHaveLength(3)
+    expect(afterRollback?.[0]).toMatchObject({
+      versionNumber: 3,
+      source: 'rollback',
+      isActive: true,
+    })
+    expect(updated?.html).toContain('Agent edit')
   })
 
   it('rejects invalid deck ids before touching the filesystem', async () => {
@@ -91,6 +145,11 @@ describe('createDeckStore', () => {
     expect(await store.updateDeck('missing-id', sampleHtml)).toBeNull()
     expect(await store.deleteDeck('../../etc/passwd')).toBe(false)
     expect(await store.listDecks()).toEqual([])
+    expect(await store.listVersions('missing-id')).toBeNull()
+    expect(await store.getVersion('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54')).toBeNull()
+    expect(
+      await store.rollbackToVersion('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'),
+    ).toBeNull()
   })
 
   it('returns null when updating a missing deck', async () => {
@@ -118,12 +177,16 @@ describe('createDeckStore', () => {
         title: 'Roadmap',
         createdAt: '2026-01-02T00:00:00.000Z',
         updatedAt: '2026-01-02T00:00:00.000Z',
+        activeVersionId: newer.activeVersionId,
+        versionNumber: 1,
       },
       {
         id: older.id,
         title: 'Quarterly Review',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
+        activeVersionId: older.activeVersionId,
+        versionNumber: 1,
       },
     ])
   })
@@ -154,5 +217,30 @@ describe('createDeckStore', () => {
         title: 'Missing',
       }),
     ).toBeNull()
+  })
+
+  it('migrates legacy single-file decks on read and preserves history on update', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+    const legacyDeck = {
+      id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+      html: sampleHtml,
+      title: 'Quarterly Review',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    const { writeFile, mkdir } = await import('node:fs/promises')
+    await mkdir(dataDir, { recursive: true })
+    await writeFile(path.join(dataDir, `${legacyDeck.id}.json`), JSON.stringify(legacyDeck), 'utf8')
+
+    const loaded = await store.getDeck(legacyDeck.id)
+    expect(loaded?.html).toBe(sampleHtml)
+
+    const updated = await store.updateDeck(legacyDeck.id, sampleHtml.replace('Hello', 'Migrated'))
+    expect(updated?.versionNumber).toBe(2)
+
+    const versions = await store.listVersions(legacyDeck.id)
+    expect(versions).toHaveLength(2)
   })
 })

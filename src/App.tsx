@@ -1,13 +1,6 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, type ChangeEvent } from 'react'
 
-import {
-  agentStepsToChatParts,
-  buildAssistantMessageContent,
-  toApiMessages,
-  toChatAttachments,
-  type AgentStep,
-  type ChatAttachment,
-} from '../shared/chat.ts'
+import { toChatAttachments, type ChatAttachment } from '../shared/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
@@ -20,6 +13,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useChatSession } from '@/hooks/useChatSession'
 import { useDeckPersistence } from '@/hooks/useDeckPersistence'
+import { useGenerationJob, type GenerationJobOutcome } from '@/hooks/useGenerationJob'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -38,40 +32,41 @@ import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckValidationReport } from '@/lib/deck-validate'
 import { newId } from '@/lib/id'
 
-type GenerateResponse = {
-  html?: string
-  text?: string
-  steps?: AgentStep[]
-  error?: string
-  code?: 'missing_api_key' | 'invalid_api_key' | 'provider_error'
-  validation?: DeckValidationReport
-}
-
 function App() {
   const {
+    activeVersionId,
+    clearVersionPreview,
     hasDeck,
     html: generatedHtml,
+    inspectVersion,
     isDirty,
     isLoading: isDeckLoading,
+    isLoadingVersions,
     isSaving: isDeckSaving,
     deckId,
     deckTitle,
     decks,
     deleteActiveDeck,
     persistHtml,
+    previewVersion,
+    refreshActiveDeck,
+    refreshVersions,
     renameActiveDeck,
+    rollbackToVersion,
     saveError,
     selectDeck,
     startNewDeck,
+    versionNumber,
+    versions,
   } = useDeckPersistence()
   const { messages, resetChat, setMessages } = useChatSession()
   const [input, setInput] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const recoveredJobIdsRef = useRef(new Set<string>())
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const {
@@ -85,6 +80,24 @@ function App() {
     setSelectedModel,
     warnings: modelWarnings,
   } = useAvailableModels()
+  const {
+    activeSteps,
+    cancelGeneration,
+    error: generationError,
+    failedJob,
+    isGenerating,
+    retryGeneration,
+    resumeStoredJob,
+    setError: setGenerationError,
+    startGeneration,
+    status: generationStatus,
+  } = useGenerationJob({
+    deckId,
+    baseVersionId: activeVersionId,
+    selectedModel,
+    canGenerate,
+    onReloadModels: loadModels,
+  })
 
   const parsedDeck = useMemo(() => parseDeckSlides(generatedHtml), [generatedHtml])
   const showSanitizedDownload = useMemo(
@@ -105,8 +118,81 @@ function App() {
             : hasDeck
               ? 'saved'
               : 'new'
+  const displayError = error || generationError
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
+
+  const applySucceededOutcome = useCallback(
+    async (
+      outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>,
+      editingExistingDeck: boolean,
+    ) => {
+      try {
+        await refreshActiveDeck(outcome.job.result?.deckId)
+      } catch {
+        toast.error('Deck generated but could not be refreshed in the editor')
+      }
+
+      const validationNote = outcome.job.result?.validation
+        ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
+        : ''
+      const assistantParts = [
+        ...outcome.assistantParts,
+        ...(outcome.assistantContent
+          ? [
+              {
+                type: 'text' as const,
+                content: `${outcome.assistantContent}${validationNote}`,
+              },
+            ]
+          : validationNote
+            ? [{ type: 'text' as const, content: validationNote.trim() }]
+            : []),
+      ]
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: newId(),
+          role: 'assistant',
+          content: outcome.assistantContent
+            ? `${outcome.assistantContent}${validationNote}`
+            : editingExistingDeck
+              ? `Updated the HTML deck and refreshed the preview.${validationNote}`
+              : `Generated a complete self-contained HTML slide deck.${validationNote}`,
+          parts: assistantParts.length > 0 ? assistantParts : undefined,
+        },
+      ])
+      toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
+    },
+    [refreshActiveDeck, setMessages],
+  )
+
+  useEffect(() => {
+    if (isDeckLoading) {
+      return
+    }
+
+    void (async () => {
+      const outcome = await resumeStoredJob()
+
+      if (!outcome) {
+        return
+      }
+
+      if (outcome.status === 'succeeded') {
+        if (recoveredJobIdsRef.current.has(outcome.job.id)) {
+          return
+        }
+
+        recoveredJobIdsRef.current.add(outcome.job.id)
+        await applySucceededOutcome(outcome, hasDeck)
+        return
+      }
+
+      setError(outcome.message)
+    })()
+  }, [applySucceededOutcome, deckId, hasDeck, isDeckLoading, resumeStoredJob])
 
   const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
     const prompt =
@@ -119,8 +205,8 @@ function App() {
 
     const editingExistingDeck = hasDeck
     setError('')
+    setGenerationError('')
     setAttachmentError('')
-    setIsGenerating(true)
     const nextMessages: ChatMessage[] = [
       ...messages,
       {
@@ -133,69 +219,42 @@ function App() {
     setMessages(nextMessages)
 
     try {
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: toApiMessages(nextMessages),
-          currentHtml: generatedHtml || null,
-          model: selectedModel || undefined,
-        }),
-      })
+      const outcome = await startGeneration(nextMessages, generatedHtml)
 
-      const data = (await response.json().catch(() => ({
-        error: 'The API returned an unreadable response.',
-      }))) as GenerateResponse
-
-      if (!response.ok || !data.html) {
-        if (data.code === 'missing_api_key' || data.code === 'invalid_api_key') {
-          void loadModels()
-        }
-
-        throw new Error(data.error ?? 'The deck could not be generated.')
+      if (!outcome) {
+        return
       }
 
-      try {
-        await persistHtml(data.html)
-      } catch {
-        toast.error('Deck generated but could not be saved')
+      if (outcome.status === 'succeeded') {
+        await applySucceededOutcome(outcome, editingExistingDeck)
+        return
       }
 
-      const validationNote = data.validation
-        ? ` Validation: ${describeDeckValidation(data.validation)}.`
-        : ''
-      const assistantContent = buildAssistantMessageContent(
-        data.text ?? '',
-        data.steps ?? [],
-        editingExistingDeck,
-      )
-      const assistantParts = [
-        ...(data.steps?.length ? agentStepsToChatParts(data.steps) : []),
-        ...(assistantContent
-          ? [{ type: 'text' as const, content: `${assistantContent}${validationNote}` }]
-          : validationNote
-            ? [{ type: 'text' as const, content: validationNote.trim() }]
-            : []),
-      ]
-
+      const message = outcome.message
+      setError(message)
       setMessages((current) => [
         ...current,
         {
           id: newId(),
           role: 'assistant',
-          content: assistantContent
-            ? `${assistantContent}${validationNote}`
-            : editingExistingDeck
-              ? `Updated the HTML deck and refreshed the preview.${validationNote}`
-              : `Generated a complete self-contained HTML slide deck.${validationNote}`,
-          parts: assistantParts.length > 0 ? assistantParts : undefined,
+          content:
+            outcome.status === 'canceled'
+              ? `Generation canceled. ${message}`
+              : `I could not generate the deck yet. ${message}`,
         },
       ])
-      toast.success(editingExistingDeck ? 'Deck updated' : 'Deck generated')
-    } catch (generationError) {
+
+      if (outcome.status === 'canceled') {
+        toast.info('Generation canceled')
+      } else if (outcome.job.error?.code === 'version_conflict') {
+        toast.error('Deck changed during generation')
+      } else {
+        toast.error('Generation failed')
+      }
+    } catch (generationFailure) {
       const message =
-        generationError instanceof Error
-          ? generationError.message
+        generationFailure instanceof Error
+          ? generationFailure.message
           : 'Something went wrong while generating the deck.'
 
       setError(message)
@@ -208,8 +267,38 @@ function App() {
         },
       ])
       toast.error('Generation failed')
-    } finally {
-      setIsGenerating(false)
+    }
+  }
+
+  const handleCancelGeneration = async () => {
+    try {
+      await cancelGeneration()
+      toast.info('Canceling generation…')
+    } catch {
+      toast.error('Could not cancel generation')
+    }
+  }
+
+  const handleRetryGeneration = async () => {
+    const editingExistingDeck = hasDeck
+
+    try {
+      const outcome = await retryGeneration()
+
+      if (!outcome) {
+        return
+      }
+
+      if (outcome.status === 'succeeded') {
+        await applySucceededOutcome(outcome, editingExistingDeck)
+        return
+      }
+
+      const message = outcome.message
+      setError(message)
+      toast.error(outcome.status === 'canceled' ? 'Generation canceled' : 'Generation failed')
+    } catch {
+      toast.error('Could not retry generation')
     }
   }
 
@@ -223,6 +312,19 @@ function App() {
 
     setInput('')
     await generateDeck(message.text, attachments)
+  }
+
+  const handleRollbackVersion = async (versionId: string) => {
+    try {
+      await rollbackToVersion(versionId)
+      resetChat()
+      setInput('')
+      setError('')
+      toast.success('Deck restored to selected version')
+    } catch {
+      toast.error('Could not restore that version')
+      throw new Error('Could not restore that version')
+    }
   }
 
   const handleDownload = (variant: DeckDownloadVariant = 'original') => {
@@ -264,7 +366,10 @@ function App() {
       }
 
       try {
-        await persistHtml(html)
+        await persistHtml(html, {
+          source: 'upload',
+          summary: `Uploaded ${file.name}`,
+        })
       } catch {
         toast.error('Deck loaded but could not be saved')
       }
@@ -331,6 +436,7 @@ function App() {
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
         <AppTitleBar
           activeDeckId={deckId}
+          activeVersionId={activeVersionId}
           deckTitle={deckTitle}
           deckSaveStatus={deckSaveStatus}
           decks={decks}
@@ -339,17 +445,25 @@ function App() {
           hasSlides={hasSlides}
           isChatOpen={isChatOpen}
           isGenerating={isGenerating}
+          isLoadingVersions={isLoadingVersions}
           isStripOpen={isStripOpen}
+          onClearVersionPreview={clearVersionPreview}
           onDeleteDeck={handleDeleteDeck}
           onDownload={handleDownload}
           onHtmlUpload={handleHtmlUpload}
+          onInspectVersion={inspectVersion}
           onNewDeck={handleNewDeck}
+          onRefreshVersions={() => (deckId ? refreshVersions(deckId) : Promise.resolve([]))}
           onRenameDeck={handleRenameDeck}
+          onRollbackVersion={handleRollbackVersion}
           onSelectDeck={handleSelectDeck}
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onUploadClick={handleUploadClick}
+          previewVersion={previewVersion}
           showSanitizedDownload={showSanitizedDownload}
+          versionNumber={versionNumber}
+          versions={versions}
         />
 
         <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
@@ -380,10 +494,13 @@ function App() {
                     minSize={CHAT_PANEL_MIN_WIDTH_PX}
                   >
                     <ChatPanel
+                      activeSteps={activeSteps}
                       apiKeyStatus={apiKeyStatus}
                       attachmentError={attachmentError}
                       canGenerate={canGenerate}
-                      error={error}
+                      error={displayError}
+                      failedJobId={failedJob?.id ?? null}
+                      generationStatus={generationStatus}
                       input={input}
                       isGenerating={isGenerating}
                       isLoadingModels={isLoadingModels}
@@ -392,10 +509,12 @@ function App() {
                       modelsError={modelsError}
                       modelWarnings={modelWarnings}
                       onAttachmentError={setAttachmentError}
+                      onCancelGeneration={handleCancelGeneration}
                       onInputChange={setInput}
                       onModelChange={setSelectedModel}
                       onPromptSubmit={handlePromptSubmit}
                       onRefreshModels={loadModels}
+                      onRetryGeneration={handleRetryGeneration}
                       selectedModel={selectedModel}
                     />
                   </ResizablePanel>
@@ -422,10 +541,13 @@ function App() {
               {isChatOpen ? (
                 <div className="min-h-0 overflow-hidden" id="ark-chat-panel">
                   <ChatPanel
+                    activeSteps={activeSteps}
                     apiKeyStatus={apiKeyStatus}
                     attachmentError={attachmentError}
                     canGenerate={canGenerate}
-                    error={error}
+                    error={displayError}
+                    failedJobId={failedJob?.id ?? null}
+                    generationStatus={generationStatus}
                     input={input}
                     isGenerating={isGenerating}
                     isLoadingModels={isLoadingModels}
@@ -434,10 +556,12 @@ function App() {
                     modelsError={modelsError}
                     modelWarnings={modelWarnings}
                     onAttachmentError={setAttachmentError}
+                    onCancelGeneration={handleCancelGeneration}
                     onInputChange={setInput}
                     onModelChange={setSelectedModel}
                     onPromptSubmit={handlePromptSubmit}
                     onRefreshModels={loadModels}
+                    onRetryGeneration={handleRetryGeneration}
                     selectedModel={selectedModel}
                   />
                 </div>

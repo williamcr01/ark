@@ -583,7 +583,7 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
       if (isActive) {
         slide.removeAttribute('data-ark-hidden');
         slide.setAttribute('data-ark-active', '');
-        slide.classList.add('active', 'is-active');
+        slide.classList.add('active', 'is-active', 'present');
         slide.setAttribute('aria-hidden', 'false');
         slide.setAttribute('data-active', '');
         slide.style.removeProperty('display');
@@ -594,7 +594,7 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
       } else {
         slide.removeAttribute('data-ark-active');
         slide.setAttribute('data-ark-hidden', '');
-        slide.classList.remove('active', 'is-active');
+        slide.classList.remove('active', 'is-active', 'present');
         slide.setAttribute('aria-hidden', 'true');
         slide.removeAttribute('data-active');
         slide.style.removeProperty('display');

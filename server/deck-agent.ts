@@ -45,6 +45,8 @@ export type RunDeckAgentOptions = {
   model: LanguageModel
   messages: ApiChatMessage[]
   currentHtml: string
+  abortSignal?: AbortSignal
+  onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
 }
 
 export type RunDeckAgentResult =
@@ -170,13 +172,24 @@ export function extractAgentSteps(
   return events
 }
 
+function throwIfAborted(abortSignal?: AbortSignal) {
+  if (abortSignal?.aborted) {
+    throw new DOMException('Generation canceled.', 'AbortError')
+  }
+}
+
 export async function runDeckAgent({
   model,
   messages,
   currentHtml,
+  abortSignal,
+  onStepProgress,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
+  throwIfAborted(abortSignal)
+
   const workspace = createDeckWorkspace(currentHtml)
   const tools = createDeckTools(workspace)
+  const accumulatedSteps: AgentStep[] = []
 
   const result = await generateText({
     model,
@@ -186,9 +199,17 @@ export async function runDeckAgent({
     stopWhen: stepCountIs(AGENT_MAX_STEPS),
     maxOutputTokens: 8_000,
     temperature: 0.4,
+    abortSignal,
+    onStepFinish: async (step) => {
+      throwIfAborted(abortSignal)
+      accumulatedSteps.push(...extractAgentSteps([step]))
+      await onStepProgress?.(accumulatedSteps)
+    },
   })
 
-  const steps = extractAgentSteps(result.steps)
+  throwIfAborted(abortSignal)
+
+  const steps = accumulatedSteps.length > 0 ? accumulatedSteps : extractAgentSteps(result.steps)
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html)

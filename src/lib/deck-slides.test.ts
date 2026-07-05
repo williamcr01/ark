@@ -4,6 +4,7 @@ import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
+import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 
 import { STRICT_DECK_CSP } from './deck-runtime'
 import { parseDeckSlides, stripDeckScriptsForPreview } from './deck-slides'
@@ -39,6 +40,16 @@ describe('stripDeckScriptsForPreview', () => {
 
   it('returns an empty string for blank input', () => {
     expect(stripDeckScriptsForPreview('   ')).toBe('')
+  })
+
+  it('preserves approved runtime scripts only when requested', () => {
+    const stripped = stripDeckScriptsForPreview(revealRegistryDeck)
+    const preserved = stripDeckScriptsForPreview(revealRegistryDeck, {
+      preserveApprovedRuntimeScripts: true,
+    })
+
+    expect(stripped).not.toContain('src="/api/runtimes/reveal.js/5.1.0/reveal.js"')
+    expect(preserved).toContain('src="/api/runtimes/reveal.js/5.1.0/reveal.js"')
   })
 })
 
@@ -76,10 +87,22 @@ describe('parseDeckSlides', () => {
     expect(parsed.slides[1].outerHTML).toContain('Reveal detail')
 
     const secondThumbnail = parseHtml(parsed.thumbnailSrcDocs[1])
-    expect(secondThumbnail.querySelector('.reveal .slides > section')?.textContent).toContain(
-      'Reveal detail',
-    )
+    const selectedSlide = secondThumbnail.querySelector('.reveal .slides > section')
+
+    expect(selectedSlide?.textContent).toContain('Reveal detail')
+    expect(selectedSlide?.classList.contains('present')).toBe(true)
     expect(secondThumbnail.querySelectorAll('.reveal .slides > section')).toHaveLength(1)
+  })
+
+  it('allows approved runtime stylesheets in reveal thumbnail CSP', () => {
+    const parsed = parseDeckSlides(revealRegistryDeck)
+
+    expect(parsed.thumbnailSrcDocs[0]).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css',
+    )
+    expect(parsed.thumbnailSrcDocs[0]).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/white.css',
+    )
   })
 
   it('sanitizes thumbnail documents for hostile script fixtures', () => {
