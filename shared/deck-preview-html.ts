@@ -4,6 +4,7 @@ import {
   buildDeckCssNavRuntimeScript,
   buildRevealNavRuntimeScript,
 } from './deck-bridge.ts'
+import type { DeckRuntimeManifest } from './deck-runtime-manifest.ts'
 import {
   detectRuntimeMode,
   injectRuntimeCsp,
@@ -17,6 +18,7 @@ import { getApprovedRuntimeAssetUrls } from './deck-runtime-registry.ts'
 
 export type PreviewHtmlOptions = {
   parentOrigin?: string
+  manifest?: Pick<DeckRuntimeManifest, 'runtimeMode' | 'usesRevealAdapter' | 'previewMode'>
 }
 
 const previewHistoryShim = `
@@ -107,8 +109,8 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
     return ''
   }
 
-  const mode = detectRuntimeMode(html)
-  const usesRevealAdapter = usesRevealRuntimeAdapter(html)
+  const mode = options.manifest?.runtimeMode ?? detectRuntimeMode(html)
+  const usesRevealAdapter = options.manifest?.usesRevealAdapter ?? usesRevealRuntimeAdapter(html)
   const assetOrigin = options.parentOrigin
   const withCsp = injectRuntimeCsp(html, mode, { assetOrigin })
   const runtimeOptions = {

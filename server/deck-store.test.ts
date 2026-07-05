@@ -137,6 +137,21 @@ describe('createDeckStore', () => {
     expect(updated?.html).toContain('Agent edit')
   })
 
+  it('persists a runtime manifest with each deck version', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+
+    const created = await store.createDeck(sampleHtml)
+    const versions = await store.listVersions(created.id)
+
+    expect(versions?.[0]?.runtimeManifest).toMatchObject({
+      schemaVersion: 1,
+      runtimeMode: 'static',
+      previewMode: 'css-only',
+      slideCount: 1,
+    })
+  })
+
   it('rejects invalid deck ids before touching the filesystem', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
     const store = createDeckStore(dataDir)
