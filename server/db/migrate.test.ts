@@ -10,6 +10,7 @@ describe('Postgres migrations', () => {
     expect(migrations.map((migration) => migration.id)).toEqual([
       '001_foundation',
       '002_generation_job_statuses',
+      '003_chat_message_metadata',
     ])
   })
 
@@ -20,8 +21,16 @@ describe('Postgres migrations', () => {
       const firstRun = await runMigrations(pool)
       const secondRun = await runMigrations(pool)
 
-      expect(firstRun.applied).toEqual(['001_foundation', '002_generation_job_statuses'])
-      expect(secondRun.skipped).toEqual(['001_foundation', '002_generation_job_statuses'])
+      expect(firstRun.applied).toEqual([
+        '001_foundation',
+        '002_generation_job_statuses',
+        '003_chat_message_metadata',
+      ])
+      expect(secondRun.skipped).toEqual([
+        '001_foundation',
+        '002_generation_job_statuses',
+        '003_chat_message_metadata',
+      ])
 
       const userResult = await pool.query('SELECT id FROM users')
       const workspaceResult = await pool.query('SELECT id FROM workspaces')

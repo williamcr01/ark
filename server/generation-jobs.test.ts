@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from './app.ts'
 import { type RunDeckAgentResult } from './deck-agent.ts'
+import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
@@ -32,9 +33,10 @@ const stubAgentFailure = async (): Promise<RunDeckAgentResult> => ({
 describe('generation job runner', () => {
   let deckDir = ''
   let jobDir = ''
+  let chatDir = ''
 
   afterEach(async () => {
-    for (const dir of [deckDir, jobDir]) {
+    for (const dir of [deckDir, jobDir, chatDir]) {
       if (dir) {
         await rm(dir, { recursive: true, force: true })
       }
@@ -42,18 +44,25 @@ describe('generation job runner', () => {
 
     deckDir = ''
     jobDir = ''
+    chatDir = ''
   })
 
-  async function createRunner(options?: { runAgent?: () => Promise<RunDeckAgentResult> }) {
+  async function createRunner(options?: {
+    runAgent?: () => Promise<RunDeckAgentResult>
+    chatDir?: string
+  }) {
     deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
     jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
+    chatDir = options?.chatDir ?? (await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-')))
 
     const deckStore = createDeckStore(deckDir)
     const jobStore = createGenerationJobStore(jobDir)
+    const chatStore = createChatStore(chatDir)
 
     const runner = createGenerationJobRunner({
       deckStore,
       jobStore,
+      chatStore,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
@@ -63,7 +72,7 @@ describe('generation job runner', () => {
       now: () => new Date('2026-07-01T12:00:00.000Z'),
     })
 
-    return { deckStore, jobStore, runner }
+    return { chatStore, deckStore, jobStore, runner }
   }
 
   it('marks canceled queued jobs without running the agent', async () => {
@@ -186,6 +195,47 @@ describe('generation job runner', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 25))
   })
+
+  it('does not duplicate the latest user message when the client already persisted it', async () => {
+    const { chatStore, deckStore, runner } = await createRunner()
+    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const userMessageId = '00000000-0000-4000-8000-000000000101'
+
+    await chatStore.appendMessage(deck.id, {
+      id: userMessageId,
+      role: 'user',
+      content: 'Make the title larger',
+      deckVersionId: deck.activeVersionId ?? null,
+    })
+
+    const job = await runner.startJob({
+      defaultModel: 'openai:gpt-4.1-mini',
+      body: {
+        deckId: deck.id,
+        baseVersionId: deck.activeVersionId ?? undefined,
+        currentHtml: deck.html,
+        messages: [
+          {
+            id: userMessageId,
+            role: 'user',
+            content: 'Make the title larger',
+          },
+        ],
+      },
+    })
+
+    const chatAfterStart = await chatStore.listMessages(deck.id)
+
+    expect(chatAfterStart.messages.filter((message) => message.role === 'user')).toHaveLength(1)
+    expect(chatAfterStart.messages[0]).toMatchObject({
+      id: userMessageId,
+      role: 'user',
+      content: 'Make the title larger',
+    })
+
+    await runner.cancelJob(job.id)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  })
 })
 
 describe('generation job API routes', () => {
@@ -220,6 +270,7 @@ describe('generation job API routes', () => {
     const generationJobRunner = createGenerationJobRunner({
       deckStore,
       jobStore,
+      chatStore: null,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',

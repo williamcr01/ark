@@ -121,6 +121,42 @@ describe('parseGenerateMessages', () => {
       error: 'messages[0].attachments[0].url must be a data URL.',
     })
   })
+
+  it('preserves valid client message ids for server-side deduplication', () => {
+    expect(
+      parseGenerateMessages([
+        {
+          id: '00000000-0000-4000-8000-000000000101',
+          role: 'user',
+          content: 'Make the title larger',
+        },
+      ]),
+    ).toEqual({
+      ok: true,
+      messages: [
+        {
+          id: '00000000-0000-4000-8000-000000000101',
+          role: 'user',
+          content: 'Make the title larger',
+        },
+      ],
+    })
+  })
+
+  it('ignores invalid message ids', () => {
+    expect(
+      parseGenerateMessages([
+        {
+          id: 'not-a-uuid',
+          role: 'user',
+          content: 'hello',
+        },
+      ]),
+    ).toEqual({
+      ok: true,
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+  })
 })
 
 describe('buildModelMessages', () => {

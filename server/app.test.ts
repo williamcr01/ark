@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from './app.ts'
+import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
@@ -223,5 +224,148 @@ describe('deck API routes', () => {
         })
       ).status,
     ).toBe(400)
+  })
+})
+
+describe('deck chat API routes', () => {
+  let deckDir = ''
+  let chatDir = ''
+  let server: Server | null = null
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve, reject) => {
+        server?.close((error) => (error ? reject(error) : resolve()))
+      })
+      server = null
+    }
+
+    for (const dir of [deckDir, chatDir]) {
+      if (dir) {
+        await rm(dir, { recursive: true, force: true })
+      }
+    }
+
+    deckDir = ''
+    chatDir = ''
+  })
+
+  async function startApi() {
+    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-decks-'))
+    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-chat-'))
+    const app = createApp({
+      deckStore: createDeckStore(deckDir),
+      chatStore: createChatStore(chatDir),
+    })
+
+    server = app.listen(0)
+    await new Promise<void>((resolve) => server?.once('listening', resolve))
+
+    const address = server.address() as AddressInfo
+
+    return `http://127.0.0.1:${address.port}`
+  }
+
+  it('returns empty chat for a new deck and persists appended messages', async () => {
+    const baseUrl = await startApi()
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+    })
+    const created = (await createResponse.json()) as ApiDeckResponse
+    const deckId = created.deck!.id
+
+    const initialChatResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat`)
+    const initialChat = (await initialChatResponse.json()) as {
+      thread: unknown
+      messages: unknown[]
+      hasMore: boolean
+    }
+
+    expect(initialChatResponse.status).toBe(200)
+    expect(initialChat.thread).toBeNull()
+    expect(initialChat.messages).toEqual([])
+
+    const appendResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: '00000000-0000-4000-8000-000000000101',
+        role: 'user',
+        content: 'Make this deck darker',
+      }),
+    })
+    const appended = (await appendResponse.json()) as {
+      message?: { id: string; content: string; role: string }
+    }
+
+    expect(appendResponse.status).toBe(201)
+    expect(appended.message).toMatchObject({
+      id: '00000000-0000-4000-8000-000000000101',
+      role: 'user',
+      content: 'Make this deck darker',
+    })
+
+    const chatResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat`)
+    const chat = (await chatResponse.json()) as {
+      thread: { deckId: string } | null
+      messages: Array<{ content: string; role: string }>
+    }
+
+    expect(chat.thread?.deckId).toBe(deckId)
+    expect(chat.messages).toHaveLength(1)
+    expect(chat.messages[0]).toMatchObject({
+      role: 'user',
+      content: 'Make this deck darker',
+    })
+  })
+
+  it('stores assistant tool activity without full deck html', async () => {
+    const baseUrl = await startApi()
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+    })
+    const created = (await createResponse.json()) as ApiDeckResponse
+    const deckId = created.deck!.id
+
+    await fetch(`${baseUrl}/api/decks/${deckId}/chat/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: 'assistant',
+        content: 'Updated the deck.',
+        parts: [{ type: 'tool-result', toolName: 'edit_deck', summary: 'Patched title slide' }],
+        generationStatus: 'succeeded',
+      }),
+    })
+
+    const chatResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat`)
+    const chat = (await chatResponse.json()) as {
+      messages: Array<{ content: string; parts?: Array<{ summary: string }> }>
+    }
+
+    expect(chat.messages[0]?.content).toBe('Updated the deck.')
+    expect(chat.messages[0]?.parts?.[0]?.summary).toBe('Patched title slide')
+    expect(JSON.stringify(chat.messages[0])).not.toContain('<!DOCTYPE html>')
+  })
+
+  it('returns 404 when appending chat to a missing deck', async () => {
+    const baseUrl = await startApi()
+
+    const response = await fetch(
+      `${baseUrl}/api/decks/00000000-0000-4000-8000-000000000099/chat/messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'user', content: 'hello' }),
+      },
+    )
+
+    expect(response.status).toBe(404)
   })
 })

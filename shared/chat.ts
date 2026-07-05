@@ -13,6 +13,13 @@ export type ChatAttachment = {
 export const MAX_CHAT_ATTACHMENTS = 5
 export const MAX_CHAT_ATTACHMENT_BYTES = 2 * 1024 * 1024
 
+const CHAT_MESSAGE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+export function isValidChatMessageId(id: string) {
+  return CHAT_MESSAGE_ID_PATTERN.test(id)
+}
+
 export type AgentStepType = 'text' | 'tool-call' | 'tool-result'
 
 /** One visible agent loop event (tool call, result, or assistant text chunk). */
@@ -38,7 +45,7 @@ export type ChatMessage = {
   parts?: ChatMessagePart[]
 }
 
-/** API payload message (ids are optional and ignored server-side). */
+/** API payload message (optional client ids enable server-side deduplication). */
 export type ApiChatMessage = {
   id?: string
   role: ChatMessageRole
@@ -75,7 +82,7 @@ const estimateDataUrlBytes = (url: string) => {
   return Math.max(0, Math.floor((payload.length * 3) / 4) - padding)
 }
 
-const parseChatAttachments = (
+export const parseChatAttachments = (
   input: unknown,
   messageIndex: number,
 ): { ok: true; attachments: ChatAttachment[] } | { ok: false; error: string } => {
@@ -194,9 +201,14 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
       return parsedAttachments
     }
 
+    const rawId = (item as { id?: unknown }).id
+    const id =
+      typeof rawId === 'string' && isValidChatMessageId(rawId.trim()) ? rawId.trim() : undefined
+
     const trimmed = content.trim()
     if (trimmed.length > 0 || parsedAttachments.attachments.length > 0) {
       messages.push({
+        ...(id ? { id } : {}),
         role,
         content: trimmed,
         ...(parsedAttachments.attachments.length > 0
@@ -346,7 +358,8 @@ export function buildModelMessages(
 }
 
 export function toApiMessages(messages: ChatMessage[]): ApiChatMessage[] {
-  return messages.map(({ role, content, attachments }) => ({
+  return messages.map(({ id, role, content, attachments }) => ({
+    ...(id ? { id } : {}),
     role,
     content,
     ...(attachments?.length ? { attachments } : {}),

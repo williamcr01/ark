@@ -46,6 +46,7 @@ export type GenerationJob = {
   id: string
   deckId: string | null
   baseVersionId: string | null
+  chatThreadId?: string | null
   status: GenerationJobStatus
   model: string
   provider: string | null
@@ -68,6 +69,7 @@ export type GenerationJobSummary = Omit<GenerationJob, 'request' | 'result'> & {
 export type CreateGenerationJobInput = {
   deckId?: string | null
   baseVersionId?: string | null
+  chatThreadId?: string | null
   model: string
   provider?: string | null
   request: GenerationJobRequest
