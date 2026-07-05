@@ -14,6 +14,17 @@ vi.mock('@/hooks/useDeckSlideNavigation', () => ({
   }),
 }))
 
+vi.mock('@/hooks/useDeckPreviewFrame', () => ({
+  useDeckPreviewFrame: () => ({
+    iframeKey: 'test-preview',
+    iframeSrcDoc: '<html></html>',
+    sandboxOrigin: null,
+    isLoading: false,
+    error: null,
+    usesSandboxHost: false,
+  }),
+}))
+
 vi.mock('@/hooks/useElementSize', () => ({
   useElementSize: () => [vi.fn(), { width: 1600, height: 900 }],
 }))

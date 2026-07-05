@@ -16,6 +16,7 @@ import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 
+import { resolveAppOrigin } from '../../shared/sandbox-origin.ts'
 import { STRICT_DECK_CSP } from './deck-runtime'
 import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from './deck-preview'
 
@@ -174,6 +175,7 @@ describe('getPreviewHtml', () => {
   it('bridges parent goto messages into deck CustomEvents for custom-js previews', async () => {
     const dom = await loadExecutablePreview(getPreviewHtml(fullJsDeck))
     const receivedIndexes: number[] = []
+    const appOrigin = resolveAppOrigin()
 
     dom.window.document.addEventListener(DECK_GOTO_EVENT, (event) => {
       receivedIndexes.push((event as CustomEvent<{ index: number }>).detail.index)
@@ -182,6 +184,7 @@ describe('getPreviewHtml', () => {
     dom.window.dispatchEvent(
       new dom.window.MessageEvent('message', {
         data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+        origin: appOrigin,
         source: dom.window.parent as unknown as Window,
       }),
     )
