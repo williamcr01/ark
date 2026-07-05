@@ -40,6 +40,7 @@ type BrowserProcess = {
 }
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const SMOKE_WAIT_TIMEOUT_MS = process.env.CI ? 60_000 : 15_000
 const revealFixturePath = path.join(repoRoot, 'src/test/fixtures/reveal-registry-deck.html')
 const requiredRuntimeAssetPaths = [
   '/api/runtimes/reveal.js/5.1.0/reveal.js',
@@ -65,7 +66,7 @@ async function waitFor<T>(
   callback: () => Promise<T> | T,
   options: { timeoutMs?: number; intervalMs?: number } = {},
 ) {
-  const timeoutMs = options.timeoutMs ?? 15_000
+  const timeoutMs = options.timeoutMs ?? SMOKE_WAIT_TIMEOUT_MS
   const intervalMs = options.intervalMs ?? 100
   const startedAt = Date.now()
   let lastError: unknown
@@ -306,7 +307,7 @@ class CdpClient {
   waitForEvent(
     method: string,
     predicate: (params: unknown, sessionId: string | null) => boolean = () => true,
-    timeoutMs = 15_000,
+    timeoutMs = SMOKE_WAIT_TIMEOUT_MS,
   ) {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
