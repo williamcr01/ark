@@ -64,6 +64,20 @@ Set `data-ark-deck="nav"` on `<html>` when the deck owns navigation, or `data-ar
 
 Deck scripts must **not** call `window.parent.postMessage` directly for navigation; dispatch DOM events instead.
 
+### Reveal runtime (approved registry assets)
+
+Decks with reveal runtime markers (`data-ark-runtime="reveal"`, etc.) and approved registry `reveal.js` assets use `buildRevealNavRuntimeScript` instead of the CSS shim. Ark:
+
+- Preserves only approved registry `reveal.js` scripts
+- Initializes Reveal once with preview-safe settings (`hash: false`, `keyboard: false`, `controls: false`, `progress: false`)
+- Maps parent `ark:deck-goto` messages to `Reveal.slide(h, v, 0)`
+- Reports `ark:deck-slide-change` using Reveal's flattened slide index (`getSlidePastCount`)
+- Announces `runtime: 'reveal'` and `previewMode: 'full-js'`
+
+**Slide index model:** Ark uses a flattened linear index that matches Reveal's slide order. Each top-level horizontal slide without nested sections counts as one slide. A horizontal slide with vertical child sections expands into one index per vertical child. Fragment steps are not included in Ark indexes; fragment-only Reveal navigation does not update Ark slide state.
+
+Reveal decks without approved registry assets continue to use the CSS-only shim. Custom full-JS decks (`data-ark-deck="nav"`) keep the explicit opt-in bridge path.
+
 ## Plain runtime contract
 
 For hand-written decks with `section.slide` elements:
@@ -102,7 +116,31 @@ Requirements:
 
 ## Reveal.js runtime contract
 
-Reveal decks use `.reveal .slides > section`. Opt in with `data-ark-deck="nav"` and wire Reveal events to the bridge:
+### Auto-wired reveal runtime (recommended)
+
+Approved reveal registry decks only need runtime markers and registry asset URLs. Ark injects the reveal adapter automatically; no deck-authored bridge script is required.
+
+```html
+<html data-ark-runtime="reveal" data-ark-runtime-lib="reveal.js" data-ark-runtime-version="5.1.0">
+  <head>
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/reveal.css" />
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/theme/white.css" />
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>Title</section>
+        <section>Detail</section>
+      </div>
+    </div>
+    <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
+  </body>
+</html>
+```
+
+### Manual custom-JS reveal decks
+
+For decks that opt into full-JS mode with `data-ark-deck="nav"`, wire Reveal events to the bridge yourself:
 
 ```html
 <html data-ark-deck="nav">
@@ -136,7 +174,7 @@ Reveal decks use `.reveal .slides > section`. Opt in with `data-ark-deck="nav"` 
 </html>
 ```
 
-In CSS-only preview (no Reveal script), Ark still detects `runtime: 'reveal'` from the DOM and navigates the static slide sections.
+In CSS-only preview (no approved reveal runtime script), Ark still detects `runtime: 'reveal'` from the DOM and navigates the static slide sections with the CSS shim.
 
 ## Shell helpers
 
@@ -146,7 +184,7 @@ In CSS-only preview (no Reveal script), Ark still detects `runtime: 'reveal'` fr
 - `createDeckGotoMessage`, `createDeckReadyMessage`, etc.
 - `isDeckBridgeMessage`, `parseDeckBridgeMessage`, and per-type guards
 - `postDeckGoto(target, index)` for the shell
-- `buildDeckBridgeRuntimeScript` / `buildDeckCssNavRuntimeScript` for preview injection
+- `buildDeckBridgeRuntimeScript` / `buildDeckCssNavRuntimeScript` / `buildRevealNavRuntimeScript` for preview injection
 
 `useDeckSlideNavigation` uses these helpers and accepts optional `onDeckReady` / `onRuntimeError` callbacks.
 

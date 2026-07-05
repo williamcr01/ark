@@ -5,6 +5,7 @@ import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
 import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
+import revealVerticalDeck from '@/test/fixtures/reveal-vertical-deck.html?raw'
 
 import { STRICT_DECK_CSP } from './deck-runtime'
 import { parseDeckSlides, stripDeckScriptsForPreview } from './deck-slides'
@@ -92,6 +93,21 @@ describe('parseDeckSlides', () => {
     expect(selectedSlide?.textContent).toContain('Reveal detail')
     expect(selectedSlide?.classList.contains('present')).toBe(true)
     expect(secondThumbnail.querySelectorAll('.reveal .slides > section')).toHaveLength(1)
+  })
+
+  it('flattens reveal vertical slide stacks into a linear slide list', () => {
+    const parsed = parseDeckSlides(revealVerticalDeck)
+
+    expect(parsed.slideCount).toBe(4)
+    expect(parsed.slides.map((slide) => slide.outerHTML)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Opening'),
+        expect.stringContaining('Vertical one'),
+        expect.stringContaining('Vertical two'),
+        expect.stringContaining('Closing'),
+      ]),
+    )
+    expect(parsed.thumbnailSrcDocs).toHaveLength(4)
   })
 
   it('allows approved runtime stylesheets in reveal thumbnail CSP', () => {
