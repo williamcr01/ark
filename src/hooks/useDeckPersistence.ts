@@ -204,7 +204,7 @@ export function useDeckPersistence() {
           : await createDeck(nextHtml, options)
 
         if (requestId !== saveRequestIdRef.current) {
-          return
+          return undefined
         }
 
         setDeckId(deck.id)
@@ -216,9 +216,10 @@ export function useDeckPersistence() {
         setPreviewVersion(null)
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
         await refreshVersions(deck.id)
+        return deck
       } catch (error) {
         if (requestId !== saveRequestIdRef.current) {
-          return
+          return undefined
         }
 
         const message = error instanceof Error ? error.message : 'Could not save the deck.'

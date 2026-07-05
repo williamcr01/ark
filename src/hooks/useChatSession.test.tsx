@@ -197,4 +197,62 @@ describe('useChatSession', () => {
       { id: 'm-assistant', role: 'assistant', content: 'Generated the deck.' },
     ])
   })
+
+  it('persists appended messages to an explicit deck id before the hook ref updates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.includes('/chat/messages') && init?.method === 'POST') {
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            message: {
+              id: '00000000-0000-4000-8000-000000000201',
+              role: 'assistant',
+              content: 'Loaded deck.html into the preview.',
+              threadId: 'thread-new',
+              deckId: 'deck-new',
+              deckVersionId: null,
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ thread: null, messages: [], hasMore: false }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: null }))
+
+    await act(async () => {
+      await result.current.appendMessage(
+        {
+          id: '00000000-0000-4000-8000-000000000201',
+          role: 'assistant',
+          content: 'Loaded deck.html into the preview.',
+        },
+        'deck-new',
+      )
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/decks/deck-new/chat/messages'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('Loaded deck.html into the preview.'),
+      }),
+    )
+    expect(result.current.messages).toEqual([
+      {
+        id: '00000000-0000-4000-8000-000000000201',
+        role: 'assistant',
+        content: 'Loaded deck.html into the preview.',
+      },
+    ])
+  })
 })

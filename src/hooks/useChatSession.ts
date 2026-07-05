@@ -80,13 +80,15 @@ export function useChatSession({ deckId, deckVersionId = null }: UseChatSessionO
   }, [deckId, messages])
 
   const persistMessage = useCallback(
-    async (message: ChatMessage) => {
-      if (!deckIdRef.current) {
+    async (message: ChatMessage, targetDeckId?: string | null) => {
+      const activeDeckId = targetDeckId ?? deckIdRef.current
+
+      if (!activeDeckId) {
         return
       }
 
       try {
-        await appendDeckChatMessage(deckIdRef.current, {
+        await appendDeckChatMessage(activeDeckId, {
           id: message.id,
           role: message.role,
           content: message.content,
@@ -102,9 +104,13 @@ export function useChatSession({ deckId, deckVersionId = null }: UseChatSessionO
   )
 
   const appendMessage = useCallback(
-    async (message: ChatMessage) => {
+    async (message: ChatMessage, targetDeckId?: string | null) => {
+      if (targetDeckId && targetDeckId !== deckIdRef.current) {
+        loadRequestIdRef.current += 1
+      }
+
       setMessages((current) => [...current, message])
-      await persistMessage(message)
+      await persistMessage(message, targetDeckId)
     },
     [persistMessage],
   )

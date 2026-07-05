@@ -157,6 +157,30 @@ describe('useDeckPersistence', () => {
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(deck.id)
   })
 
+  it('returns the saved deck from persistHtml', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }, { status: 201 }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    let savedDeck: typeof deck | undefined
+
+    await act(async () => {
+      savedDeck = await result.current.persistHtml(sampleHtml)
+    })
+
+    expect(savedDeck).toEqual(deck)
+  })
+
   it('updates an existing deck and tracks dirty state until save completes', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 

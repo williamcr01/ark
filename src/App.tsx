@@ -410,11 +410,17 @@ function App() {
         return
       }
 
+      let savedDeckId = deckId
+
       try {
-        await persistHtml(html, {
+        const savedDeck = await persistHtml(html, {
           source: 'upload',
           summary: `Uploaded ${file.name}`,
         })
+
+        if (savedDeck?.id) {
+          savedDeckId = savedDeck.id
+        }
       } catch {
         toast.error('Deck loaded but could not be saved')
       }
@@ -426,8 +432,8 @@ function App() {
         content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
       }
 
-      if (deckId) {
-        await appendMessage(uploadMessage)
+      if (savedDeckId) {
+        await appendMessage(uploadMessage, savedDeckId)
       } else {
         setMessages((current) => [...current, uploadMessage])
       }
