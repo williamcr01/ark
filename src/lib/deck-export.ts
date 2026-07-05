@@ -1,4 +1,8 @@
-import { detectRuntimeMode, runtimeModeAllowsDeckScripts } from '@/lib/deck-runtime'
+import {
+  detectRuntimeMode,
+  runtimeModeAllowsDeckScripts,
+  usesRevealRuntimeAdapter,
+} from '@/lib/deck-runtime'
 import { stripDeckScriptsForPreview } from '@/lib/deck-slides'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
@@ -47,6 +51,10 @@ export {
 
 export function previewStripsDeckScripts(html: string) {
   if (!html.trim()) {
+    return false
+  }
+
+  if (usesRevealRuntimeAdapter(html)) {
     return false
   }
 

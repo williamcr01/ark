@@ -1,11 +1,16 @@
 import { injectPreviewCsp } from './deck-network.ts'
-import { buildDeckBridgeRuntimeScript, buildDeckCssNavRuntimeScript } from './deck-bridge.ts'
+import {
+  buildDeckBridgeRuntimeScript,
+  buildDeckCssNavRuntimeScript,
+  buildRevealNavRuntimeScript,
+} from './deck-bridge.ts'
 import {
   detectRuntimeMode,
   injectRuntimeCsp,
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
   toAbsoluteRuntimeAssetSource,
+  usesRevealRuntimeAdapter,
 } from './deck-runtime.ts'
 import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from './deck-preview-slides.ts'
 import { getApprovedRuntimeAssetUrls } from './deck-runtime-registry.ts'
@@ -103,11 +108,12 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
   }
 
   const mode = detectRuntimeMode(html)
+  const usesRevealAdapter = usesRevealRuntimeAdapter(html)
   const assetOrigin = options.parentOrigin
   const withCsp = injectRuntimeCsp(html, mode, { assetOrigin })
   const runtimeOptions = {
     slideSelectors: SLIDE_SELECTOR_CHAIN,
-    previewMode: runtimeModeToBridgePreviewMode(mode),
+    previewMode: runtimeModeToBridgePreviewMode(mode, { usesRevealAdapter }),
     parentOrigin: options.parentOrigin,
   }
 
@@ -117,6 +123,18 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
         historyShim: true,
       }),
       wrapRuntimeScript(buildDeckBridgeRuntimeScript(runtimeOptions), 'data-ark-preview-bridge'),
+    )
+  }
+
+  if (usesRevealAdapter) {
+    const strippedHtml = stripDeckScriptsForPreview(withCsp, {
+      preserveApprovedRuntimeScripts: true,
+    })
+    const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
+
+    return injectBeforeBodyClose(
+      injectPreviewFill(previewHtml, { historyShim: true }),
+      wrapRuntimeScript(buildRevealNavRuntimeScript(runtimeOptions), 'data-ark-preview-reveal'),
     )
   }
 

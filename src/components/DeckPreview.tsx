@@ -117,6 +117,10 @@ export function DeckPreview({
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
+          ) : runtimeMode === 'reveal' && !usesStaticPreview ? (
+            <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
+              Reveal runtime
+            </span>
           ) : usesStaticPreview ? (
             <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
               Static preview
