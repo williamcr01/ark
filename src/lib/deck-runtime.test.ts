@@ -94,6 +94,13 @@ describe('runtime policies', () => {
     expect(csp).toContain('style-src')
     expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
     expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css')
+    expect(csp).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
+    )
+    expect(csp).toContain('font-src data:')
+    expect(csp).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
+    )
     expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/white.css')
     expect(csp).toContain("connect-src 'none'")
   })

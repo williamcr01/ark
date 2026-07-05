@@ -202,6 +202,46 @@ describe('useDeckSlideNavigation', () => {
     })
   })
 
+  it('syncs the requested initial slide when a new iframe reports ready at slide 0', async () => {
+    const metadata = createDeckMetadata({
+      runtime: 'plain',
+      title: 'Demo',
+      previewMode: 'css-only',
+    })
+    render(
+      <NavigationHarness initialSlideIndex={1} sandboxOrigin={sandboxOrigin} syncOnLoad={true} />,
+    )
+    const iframeWindow = getIframeWindow()
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckSlideChangeMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckReadyMessage(0, 3, metadata),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
+    })
+    expect(postMessage).toHaveBeenCalledWith(
+      createDeckGotoMessage(1),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
+  })
+
   it('forwards runtime errors from the preview iframe', async () => {
     const onRuntimeError = vi.fn()
     render(<NavigationHarness onRuntimeError={onRuntimeError} sandboxOrigin={sandboxOrigin} />)

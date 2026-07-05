@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-type RuntimeAssetKind = 'script' | 'stylesheet'
+type RuntimeAssetKind = 'script' | 'stylesheet' | 'font'
 
 type ManifestAsset = {
   path: string
@@ -39,9 +39,18 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const RUNTIMES_DIR = path.join(ROOT, 'runtimes')
 const MANIFEST_PATH = path.join(RUNTIMES_DIR, 'manifest.json')
 const REVEAL_SOURCE = path.join(ROOT, 'node_modules', 'reveal.js', 'dist')
+const REVEAL_THEME_FONT_FAMILY = 'source-sans-pro'
 
 function inferAssetKind(filePath: string): RuntimeAssetKind {
-  return filePath.endsWith('.js') ? 'script' : 'stylesheet'
+  if (filePath.endsWith('.js')) {
+    return 'script'
+  }
+
+  if (filePath.endsWith('.css')) {
+    return 'stylesheet'
+  }
+
+  return 'font'
 }
 
 async function hashFile(filePath: string) {
@@ -54,30 +63,12 @@ async function hashFile(filePath: string) {
   }
 }
 
-async function copyRevealAssets(targetVersionDir: string) {
-  const copies: Array<{ source: string; target: string }> = [
-    {
-      source: path.join(REVEAL_SOURCE, 'reveal.js'),
-      target: path.join(targetVersionDir, 'reveal.js'),
-    },
-    {
-      source: path.join(REVEAL_SOURCE, 'reveal.css'),
-      target: path.join(targetVersionDir, 'reveal.css'),
-    },
-    {
-      source: path.join(REVEAL_SOURCE, 'reset.css'),
-      target: path.join(targetVersionDir, 'reset.css'),
-    },
-    {
-      source: path.join(REVEAL_SOURCE, 'theme', 'white.css'),
-      target: path.join(targetVersionDir, 'theme', 'white.css'),
-    },
-  ]
-
-  for (const copy of copies) {
-    await fs.mkdir(path.dirname(copy.target), { recursive: true })
-    await fs.copyFile(copy.source, copy.target)
-  }
+async function copyRevealFontAssets(targetVersionDir: string) {
+  await fs.cp(
+    path.join(REVEAL_SOURCE, 'theme', 'fonts', REVEAL_THEME_FONT_FAMILY),
+    path.join(targetVersionDir, 'theme', 'fonts', REVEAL_THEME_FONT_FAMILY),
+    { recursive: true },
+  )
 }
 
 async function buildAssetMetadata(versionDir: string, assetPath: string): Promise<ManifestAsset> {
@@ -103,21 +94,47 @@ async function syncRevealRuntime(manifest: RuntimeManifest) {
 
   try {
     await fs.access(REVEAL_SOURCE)
-    await copyRevealAssets(versionDir)
-    console.log(`Copied reveal.js@${entry.version} assets from node_modules`)
+    await copyRevealFontAssets(versionDir)
+    console.log(`Copied reveal.js@${entry.version} theme font assets from node_modules`)
   } catch {
     console.log(`Using committed reveal.js@${entry.version} assets in ${versionDir}`)
   }
 
+  const fontRoot = path.join(versionDir, 'theme', 'fonts', REVEAL_THEME_FONT_FAMILY)
+  const fontAssetPaths = await listRuntimeAssetFiles(fontRoot, fontRoot)
   const assetPaths = [
     ...(entry.requiredAssets.js ?? []),
     ...(entry.requiredAssets.css ?? []),
     'reset.css',
+    ...fontAssetPaths.map((assetPath) =>
+      path.posix.join('theme/fonts', REVEAL_THEME_FONT_FAMILY, assetPath),
+    ),
   ]
 
   entry.assets = await Promise.all(
     assetPaths.map((assetPath) => buildAssetMetadata(versionDir, assetPath)),
   )
+}
+
+async function listRuntimeAssetFiles(rootDir: string, currentDir: string): Promise<string[]> {
+  const entries = await fs.readdir(currentDir, { withFileTypes: true })
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(currentDir, entry.name)
+
+      if (entry.isDirectory()) {
+        return listRuntimeAssetFiles(rootDir, entryPath)
+      }
+
+      if (!/\.(css|eot|ttf|woff2?)$/i.test(entry.name)) {
+        return []
+      }
+
+      return [path.relative(rootDir, entryPath).split(path.sep).join('/')]
+    }),
+  )
+
+  return files.flat().sort()
 }
 
 async function main() {

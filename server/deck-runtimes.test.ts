@@ -71,8 +71,21 @@ describe('handleRuntimeRoutes', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('text/css')
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(response.headers.get('x-checksum-sha256')).toMatch(/^[a-f0-9]{64}$/)
     expect(response.body).toContain('margin: 0')
+  })
+
+  it('serves approved runtime font assets with font content types', async () => {
+    const response = await requestRuntime(
+      '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('font/woff')
+    expect(response.headers.get('x-checksum-sha256')).toMatch(/^[a-f0-9]{64}$/)
   })
 
   it('rejects unapproved runtime versions and assets', async () => {

@@ -36,16 +36,19 @@ export type RuntimeCspOptions = {
   assetOrigin?: string | null
 }
 
-function buildDeckCsp(options: { scriptSources?: string[]; styleSources?: string[] } = {}) {
+function buildDeckCsp(
+  options: { scriptSources?: string[]; styleSources?: string[]; fontSources?: string[] } = {},
+) {
   const scriptSources = ["'unsafe-inline'", ...(options.scriptSources ?? [])]
   const styleSources = ["'unsafe-inline'", ...(options.styleSources ?? [])]
+  const fontSources = ['data:', ...(options.fontSources ?? [])]
 
   return [
     "default-src 'none'",
     `script-src ${scriptSources.join(' ')}`,
     `style-src ${styleSources.join(' ')}`,
     'img-src data: blob:',
-    'font-src data:',
+    `font-src ${fontSources.join(' ')}`,
     "connect-src 'none'",
     "frame-src 'none'",
     "form-action 'none'",
@@ -169,12 +172,13 @@ export function getThumbnailSandbox() {
 export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspOptions = {}) {
   const scriptSources = getRuntimeAssetCspSources(mode, 'script', options)
   const styleSources = getRuntimeAssetCspSources(mode, 'stylesheet', options)
+  const fontSources = getRuntimeAssetCspSources(mode, 'font', options)
 
-  if (scriptSources.length === 0 && styleSources.length === 0) {
+  if (scriptSources.length === 0 && styleSources.length === 0 && fontSources.length === 0) {
     return STRICT_DECK_CSP
   }
 
-  return buildDeckCsp({ scriptSources, styleSources })
+  return buildDeckCsp({ scriptSources, styleSources, fontSources })
 }
 
 export function getBlockedSandboxFeatures() {

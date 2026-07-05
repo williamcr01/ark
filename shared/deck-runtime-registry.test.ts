@@ -74,9 +74,16 @@ describe('approved runtime registry', () => {
     ])
     expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'reveal', kind: 'stylesheet' })).toEqual([
       '/api/runtimes/reveal.js/5.1.0/reveal.css',
-      '/api/runtimes/reveal.js/5.1.0/reset.css',
       '/api/runtimes/reveal.js/5.1.0/theme/white.css',
+      '/api/runtimes/reveal.js/5.1.0/reset.css',
+      '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
     ])
+    expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'reveal', kind: 'font' })).toEqual(
+      expect.arrayContaining([
+        '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
+        '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-semibold.woff',
+      ]),
+    )
   })
 
   it('rejects unapproved runtime asset references', () => {
