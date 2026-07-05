@@ -422,13 +422,14 @@ describe('sandbox security fixtures', () => {
   })
 
   describe('invalid runtime manifests', () => {
-    it('treats unrecognized Ark markers as static runtime', () => {
+    it('flags unrecognized Ark markers as invalid runtime manifests', () => {
       const report = validateDeckHtmlInBrowser(hostileInvalidManifestDeck)
 
       expect(report.runtimeMarkers.runtimeMode).toBe('static')
       expect(report.runtimeMarkers.arkDeck).toBe('evil')
       expect(report.runtimeMarkers.arkPreview).toBe('yes')
       expect(report.runtimeMarkers.arkRuntime).toBe('hack')
+      expect(report.issues.some((issue) => issue.code === 'invalid_runtime_marker')).toBe(true)
       expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(true)
     })
 

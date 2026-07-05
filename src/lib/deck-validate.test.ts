@@ -6,6 +6,7 @@ import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
+import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 
 import {
   formatDeckValidationSummary,
@@ -36,6 +37,64 @@ describe('validateDeckHtmlInBrowser', () => {
     expect(report.runtimeMarkers.runtimeMode).toBe('custom-js')
     expect(report.runtimeMarkers.arkDeck).toBe('nav')
     expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(false)
+  })
+
+  it('accepts reveal decks that use approved Ark runtime assets', () => {
+    const report = validateDeckHtmlInBrowser(revealRegistryDeck)
+
+    expect(report.valid).toBe(true)
+    expect(report.runtimeMarkers.runtimeMode).toBe('reveal')
+    expect(report.runtimeMarkers.approvedRuntimeId).toBe('reveal.js')
+    expect(report.runtimeMarkers.approvedRuntimeVersion).toBe('5.1.0')
+    expect(report.externalUrls).toEqual([])
+    expect(report.issues).toEqual([])
+  })
+
+  it('rejects unapproved external script URLs even for reveal decks', () => {
+    const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
+<html lang="en" data-ark-runtime-lib="reveal.js" data-ark-runtime-version="5.1.0">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+</head>
+<body>
+  <div class="reveal"><div class="slides"><section>One</section></div></div>
+</body>
+</html>`)
+
+    expect(report.valid).toBe(false)
+    expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
+  })
+
+  it('rejects unapproved runtime asset references', () => {
+    const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
+<html lang="en" data-ark-runtime-lib="reveal.js" data-ark-runtime-version="5.1.0">
+<head>
+  <script src="/api/runtimes/reveal.js/4.0.0/reveal.js"></script>
+</head>
+<body>
+  <div class="reveal"><div class="slides"><section>One</section></div></div>
+</body>
+</html>`)
+
+    expect(report.valid).toBe(false)
+    expect(
+      report.issues.some(
+        (issue) =>
+          issue.code === 'unapproved_runtime_asset' || issue.code === 'runtime_version_mismatch',
+      ),
+    ).toBe(true)
+  })
+
+  it('flags invalid Ark runtime markers', () => {
+    const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
+<html lang="en" data-ark-deck="evil" data-ark-preview="yes" data-ark-runtime="hack">
+<body>
+  <section class="slide"><h1>Bad markers</h1></section>
+</body>
+</html>`)
+
+    expect(report.valid).toBe(false)
+    expect(report.issues.some((issue) => issue.code === 'invalid_runtime_marker')).toBe(true)
   })
 
   it('detects reveal decks from structure', () => {

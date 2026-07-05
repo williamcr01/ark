@@ -14,6 +14,7 @@ import {
   type ApiErrorPayload,
 } from './credentials.ts'
 import { handleDeckAssetRequest } from './deck-assets.ts'
+import { handleRuntimeRoutes } from './deck-runtimes.ts'
 import { createDefaultDeckStore } from './deck-store.ts'
 import { createDefaultChatStore } from './chat-store.ts'
 import { type ChatStore, normalizeChatMessageLimit } from './chat-record.ts'
@@ -203,6 +204,8 @@ export function createApp(options: CreateAppOptions = {}) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
     }
   })
+
+  app.use(handleRuntimeRoutes)
 
   app.get('/api/health', (_request: Request, response: Response) => {
     const configured = hasAnyConfiguredProvider()

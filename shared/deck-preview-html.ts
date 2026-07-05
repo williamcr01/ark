@@ -5,8 +5,10 @@ import {
   injectRuntimeCsp,
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
+  toAbsoluteRuntimeAssetSource,
 } from './deck-runtime.ts'
 import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from './deck-preview-slides.ts'
+import { getApprovedRuntimeAssetUrls } from './deck-runtime-registry.ts'
 
 export type PreviewHtmlOptions = {
   parentOrigin?: string
@@ -73,13 +75,36 @@ function injectBeforeBodyClose(html: string, injection: string) {
   return `${html}\n${injection}`
 }
 
+function absolutizeApprovedRuntimeAssetReferences(html: string, assetOrigin?: string | null) {
+  if (!assetOrigin?.trim()) {
+    return html
+  }
+
+  let output = html
+
+  for (const assetUrl of getApprovedRuntimeAssetUrls()) {
+    const absoluteUrl = toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin })
+
+    if (!absoluteUrl) {
+      continue
+    }
+
+    output = output
+      .replaceAll(`"${assetUrl}"`, `"${absoluteUrl}"`)
+      .replaceAll(`'${assetUrl}'`, `'${absoluteUrl}'`)
+  }
+
+  return output
+}
+
 export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   if (!html) {
     return ''
   }
 
   const mode = detectRuntimeMode(html)
-  const withCsp = injectRuntimeCsp(html, mode)
+  const assetOrigin = options.parentOrigin
+  const withCsp = injectRuntimeCsp(html, mode, { assetOrigin })
   const runtimeOptions = {
     slideSelectors: SLIDE_SELECTOR_CHAIN,
     previewMode: runtimeModeToBridgePreviewMode(mode),
@@ -88,15 +113,20 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
 
   if (runtimeModeAllowsDeckScripts(mode)) {
     return injectBeforeBodyClose(
-      injectPreviewFill(withCsp, { historyShim: true }),
+      injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(withCsp, assetOrigin), {
+        historyShim: true,
+      }),
       wrapRuntimeScript(buildDeckBridgeRuntimeScript(runtimeOptions), 'data-ark-preview-bridge'),
     )
   }
 
-  const strippedHtml = stripDeckScriptsForPreview(withCsp)
+  const strippedHtml = stripDeckScriptsForPreview(withCsp, {
+    preserveApprovedRuntimeScripts: mode === 'reveal',
+  })
+  const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
   return injectBeforeBodyClose(
-    injectPreviewFill(strippedHtml),
+    injectPreviewFill(previewHtml),
     wrapRuntimeScript(buildDeckCssNavRuntimeScript(runtimeOptions), 'data-ark-preview-nav'),
   )
 }

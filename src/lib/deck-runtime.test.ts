@@ -87,6 +87,22 @@ describe('runtime policies', () => {
     }
   })
 
+  it('allows approved reveal runtime assets by exact same-origin URL', () => {
+    const csp = getRuntimeCsp('reveal')
+
+    expect(csp).toContain('script-src')
+    expect(csp).toContain('style-src')
+    expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
+    expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css')
+    expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/white.css')
+    expect(csp).toContain("connect-src 'none'")
+  })
+
+  it('keeps static CSP closed to runtime asset URLs', () => {
+    expect(getRuntimeCsp('static')).toBe(STRICT_DECK_CSP)
+    expect(getRuntimeCsp('static')).not.toContain('/api/runtimes/')
+  })
+
   it('only allows deck scripts in custom-js mode', () => {
     expect(runtimeModeAllowsDeckScripts('static')).toBe(false)
     expect(runtimeModeAllowsDeckScripts('reveal')).toBe(false)
@@ -102,6 +118,13 @@ describe('injectRuntimeCsp', () => {
     expect(html).toContain('http-equiv="Content-Security-Policy"')
     expect(html).toContain(STRICT_DECK_CSP)
     expect(buildCspMetaTag(STRICT_DECK_CSP)).toContain("connect-src 'none'")
+  })
+
+  it('injects approved runtime asset sources for reveal decks', () => {
+    const html = injectRuntimeCsp(revealDeck, 'reveal')
+
+    expect(html).toContain('http-equiv="Content-Security-Policy"')
+    expect(html).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
   })
 })
 

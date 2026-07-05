@@ -1,3 +1,5 @@
+import { getApprovedRuntimeAssetUrls } from './deck-runtime-registry.ts'
+
 export const DEFAULT_APP_PORT = 5173
 export const DEFAULT_SANDBOX_PORT = 5174
 export const DEFAULT_API_PORT = 8787
@@ -183,8 +185,40 @@ export function buildSandboxFrameAncestorsCsp(appOrigin: string) {
   return `frame-ancestors ${ancestors.join(' ')}`
 }
 
+function toAbsoluteSandboxAssetSource(source: string, appOrigin: string) {
+  const origin = normalizeOrigin(appOrigin)
+
+  if (!origin) {
+    return null
+  }
+
+  try {
+    return new URL(source, `${origin}/`).href
+  } catch {
+    return null
+  }
+}
+
+function getSandboxRuntimeAssetSources(
+  appOrigin: string,
+  options: { kind: 'script' | 'stylesheet' },
+) {
+  return getApprovedRuntimeAssetUrls({ kind: options.kind })
+    .map((source) => toAbsoluteSandboxAssetSource(source, appOrigin))
+    .filter((source): source is string => Boolean(source))
+}
+
 export function buildSandboxResponseCsp(appOrigin: string) {
-  return `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; ${buildSandboxFrameAncestorsCsp(appOrigin)}`
+  const scriptSources = [
+    "'unsafe-inline'",
+    ...getSandboxRuntimeAssetSources(appOrigin, { kind: 'script' }),
+  ]
+  const styleSources = [
+    "'unsafe-inline'",
+    ...getSandboxRuntimeAssetSources(appOrigin, { kind: 'stylesheet' }),
+  ]
+
+  return `default-src 'none'; script-src ${scriptSources.join(' ')}; style-src ${styleSources.join(' ')}; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; ${buildSandboxFrameAncestorsCsp(appOrigin)}`
 }
 
 export const DECK_BRIDGE_POST_MESSAGE_TARGET = '*' as const

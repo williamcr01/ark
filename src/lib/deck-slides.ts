@@ -86,7 +86,7 @@ function prepareThumbnailBody(doc: Document, slideIndex: number) {
       return
     }
 
-    slide.classList.add('active', 'is-active')
+    slide.classList.add('active', 'is-active', 'present')
     slide.setAttribute('aria-hidden', 'false')
     slide.setAttribute('data-active', '')
     slide.removeAttribute('data-ark-hidden')

@@ -71,5 +71,11 @@ describe('sandbox-origin', () => {
     )
     expect(buildSandboxFrameAncestorsCsp('http://localhost:5173')).toContain('127.0.0.1:5173')
     expect(buildSandboxResponseCsp('http://localhost:5173')).toContain("connect-src 'none'")
+    expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js',
+    )
+    expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
+      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css',
+    )
   })
 })

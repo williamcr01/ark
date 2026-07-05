@@ -40,6 +40,11 @@ export function deckHasExecutableContent(html: string) {
   return parentHasInlineHandlers(doc.documentElement)
 }
 
+export {
+  resolveDeckApprovedRuntime,
+  getRuntimeRegistrySummary,
+} from '../../shared/deck-runtime-registry.ts'
+
 export function previewStripsDeckScripts(html: string) {
   if (!html.trim()) {
     return false
