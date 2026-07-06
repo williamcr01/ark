@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
 
 import {
@@ -238,6 +239,7 @@ export type ChatPanelProps = {
   modelWarnings: string[]
   apiKeyStatus: ApiKeyStatus
   canGenerate: boolean
+  assetsSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
   onRefreshModels: () => Promise<void>
@@ -293,6 +295,7 @@ export function ChatPanel({
   modelWarnings,
   apiKeyStatus,
   canGenerate,
+  assetsSlot,
   onInputChange,
   onModelChange,
   onRefreshModels,
@@ -377,6 +380,7 @@ export function ChatPanel({
         </Conversation>
 
         <div className="shrink-0 border-t bg-white p-4">
+          {assetsSlot}
           {error ? (
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />

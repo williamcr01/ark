@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
 import { ChatPanel, type ChatMessage } from '@/components/ChatPanel'
+import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { DeckPreview } from '@/components/DeckPreview'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
@@ -12,6 +13,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useChatSession } from '@/hooks/useChatSession'
+import { useDeckAssets } from '@/hooks/useDeckAssets'
 import { useDeckPersistence } from '@/hooks/useDeckPersistence'
 import { useGenerationJob, type GenerationJobOutcome } from '@/hooks/useGenerationJob'
 import { useElementSize } from '@/hooks/useElementSize'
@@ -87,6 +89,17 @@ function App() {
       toast.warning('Could not refresh chat from server — showing cached messages')
     }, []),
   })
+  const {
+    assets: deckAssets,
+    uploads: assetUploads,
+    selectedAssetIds,
+    error: assetError,
+    uploadFiles: uploadAssetFiles,
+    removeAsset,
+    dismissUpload,
+    toggleAssetSelected,
+    clearSelection: clearAssetSelection,
+  } = useDeckAssets(deckId)
   const [input, setInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
@@ -166,6 +179,19 @@ function App() {
               ? 'saved'
               : 'new'
   const displayError = error || generationError
+  const deckAssetsSlot = deckId ? (
+    <DeckAssets
+      assets={deckAssets}
+      disabled={isGenerating}
+      error={assetError}
+      onDismissUpload={dismissUpload}
+      onRemoveAsset={removeAsset}
+      onToggleSelected={toggleAssetSelected}
+      onUploadFiles={uploadAssetFiles}
+      selectedAssetIds={selectedAssetIds}
+      uploads={assetUploads}
+    />
+  ) : null
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
@@ -294,14 +320,17 @@ function App() {
       setMessages(nextMessages)
     }
 
+    const assetIds = deckId ? selectedAssetIds : []
+
     try {
-      const outcome = await startGeneration(nextMessages, generatedHtml)
+      const outcome = await startGeneration(nextMessages, generatedHtml, { assetIds })
 
       if (!outcome) {
         return
       }
 
       if (outcome.status === 'succeeded') {
+        clearAssetSelection()
         await applySucceededOutcome(outcome)
         return
       }
@@ -662,6 +691,7 @@ function App() {
                     <ChatPanel
                       activeSteps={activeSteps}
                       apiKeyStatus={apiKeyStatus}
+                      assetsSlot={deckAssetsSlot}
                       attachmentError={attachmentError}
                       canGenerate={canGenerate}
                       error={displayError}
@@ -716,6 +746,7 @@ function App() {
                   <ChatPanel
                     activeSteps={activeSteps}
                     apiKeyStatus={apiKeyStatus}
+                    assetsSlot={deckAssetsSlot}
                     attachmentError={attachmentError}
                     canGenerate={canGenerate}
                     error={displayError}
