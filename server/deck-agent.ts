@@ -1,6 +1,7 @@
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
 
 import { buildAgentModelMessages, type AgentStep, type ApiChatMessage } from '../shared/chat.ts'
+import type { ProviderCallMetrics } from '../shared/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '../shared/deck-runtime-registry.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
@@ -55,10 +56,41 @@ When you finish, reply briefly in plain language summarizing what changed. Do no
 
 export type RunDeckAgentOptions = {
   model: LanguageModel
+  provider?: string | null
+  modelRef?: string | null
   messages: ApiChatMessage[]
   currentHtml: string
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
+}
+
+function buildProviderMetrics(input: {
+  provider: string
+  modelRef: string
+  latencyMs: number
+  usage?: {
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
+  }
+  finishReason?: string | null
+  errorCategory?: string | null
+}): ProviderCallMetrics {
+  return {
+    latencyMs: input.latencyMs,
+    model: input.modelRef,
+    provider: input.provider,
+    tokenUsage: input.usage
+      ? {
+          inputTokens: input.usage.inputTokens,
+          outputTokens: input.usage.outputTokens,
+          totalTokens: input.usage.totalTokens,
+        }
+      : null,
+    finishReason: input.finishReason ?? null,
+    retryCount: 0,
+    errorCategory: input.errorCategory ?? null,
+  }
 }
 
 export type RunDeckAgentResult =
@@ -68,12 +100,14 @@ export type RunDeckAgentResult =
       validation: ReturnType<typeof validateDeckHtmlOnServer>
       steps: AgentStep[]
       assistantText: string
+      providerMetrics: ProviderCallMetrics
     }
   | {
       ok: false
       error: string
       steps: AgentStep[]
       validation?: ReturnType<typeof validateDeckHtmlOnServer>
+      providerMetrics?: ProviderCallMetrics | null
     }
 
 function summarizeToolInput(toolName: string, input: unknown) {
@@ -201,32 +235,68 @@ function throwIfAborted(abortSignal?: AbortSignal) {
 
 export async function runDeckAgent({
   model,
+  provider: providerInput = 'unknown',
+  modelRef: modelRefInput = 'unknown',
   messages,
   currentHtml,
   abortSignal,
   onStepProgress,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
+  const provider = providerInput ?? 'unknown'
+  const modelRef = modelRefInput ?? 'unknown'
   throwIfAborted(abortSignal)
 
   const workspace = createDeckWorkspace(currentHtml)
   const { createDeckTools } = await import('./deck-tools.ts')
   const tools = createDeckTools(workspace)
   const accumulatedSteps: AgentStep[] = []
+  const startedAt = performance.now()
 
-  const result = await generateText({
-    model,
-    system: deckAgentSystemPrompt,
-    messages: buildAgentModelMessages(messages, currentHtml),
-    tools,
-    stopWhen: stepCountIs(AGENT_MAX_STEPS),
-    maxOutputTokens: 8_000,
-    temperature: 0.4,
-    abortSignal,
-    onStepFinish: async (step) => {
-      throwIfAborted(abortSignal)
-      accumulatedSteps.push(...extractAgentSteps([step]))
-      await onStepProgress?.(accumulatedSteps)
+  let result
+
+  try {
+    result = await generateText({
+      model,
+      system: deckAgentSystemPrompt,
+      messages: buildAgentModelMessages(messages, currentHtml),
+      tools,
+      stopWhen: stepCountIs(AGENT_MAX_STEPS),
+      maxOutputTokens: 8_000,
+      temperature: 0.4,
+      abortSignal,
+      onStepFinish: async (step) => {
+        throwIfAborted(abortSignal)
+        accumulatedSteps.push(...extractAgentSteps([step]))
+        await onStepProgress?.(accumulatedSteps)
+      },
+    })
+  } catch (error) {
+    const { categorizeProviderError } = await import('./observability/provider-errors.ts')
+    const details = categorizeProviderError(error)
+
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Model provider request failed.',
+      steps: accumulatedSteps,
+      providerMetrics: buildProviderMetrics({
+        provider,
+        modelRef,
+        latencyMs: Math.round(performance.now() - startedAt),
+        errorCategory: details.category,
+      }),
+    }
+  }
+
+  const providerMetrics = buildProviderMetrics({
+    provider,
+    modelRef,
+    latencyMs: Math.round(performance.now() - startedAt),
+    usage: {
+      inputTokens: result.totalUsage.inputTokens,
+      outputTokens: result.totalUsage.outputTokens,
+      totalTokens: result.totalUsage.totalTokens,
     },
+    finishReason: result.finishReason,
   })
 
   throwIfAborted(abortSignal)
@@ -246,6 +316,7 @@ export async function runDeckAgent({
           'The agent produced an invalid deck. Try a more specific edit request.',
         steps,
         validation,
+        providerMetrics,
       }
     }
 
@@ -255,6 +326,7 @@ export async function runDeckAgent({
       validation,
       steps,
       assistantText: result.text.trim(),
+      providerMetrics,
     }
   }
 
@@ -267,6 +339,7 @@ export async function runDeckAgent({
       validation: fallback.validation,
       steps,
       assistantText: result.text.trim(),
+      providerMetrics,
     }
   }
 
@@ -282,6 +355,7 @@ export async function runDeckAgent({
         validation: extractedFinal.validation,
         steps,
         assistantText: result.text.trim(),
+        providerMetrics,
       }
     }
   }
@@ -293,5 +367,6 @@ export async function runDeckAgent({
       'The agent did not update the deck. Ask for a specific change or try again.',
     steps,
     validation: fallback.validation,
+    providerMetrics,
   }
 }

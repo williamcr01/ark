@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest'
+
+import { createRuntimeErrorStore, parseRuntimeErrorBody } from './runtime-errors.ts'
+
+const deckId = '11111111-1111-4111-8111-111111111111'
+
+describe('runtime error reporting', () => {
+  it('rejects malformed payloads and oversized messages', () => {
+    expect(parseRuntimeErrorBody(null)).toEqual({
+      ok: false,
+      error: 'Request body must be a JSON object.',
+    })
+
+    expect(parseRuntimeErrorBody({ message: '' })).toEqual({
+      ok: false,
+      error: 'message is required.',
+    })
+
+    const parsed = parseRuntimeErrorBody({
+      deckId,
+      message: 'x'.repeat(5_000),
+      stack: 'y'.repeat(20_000),
+      source: 'deck.js',
+    })
+
+    expect(parsed.ok).toBe(true)
+
+    if (parsed.ok) {
+      expect(parsed.input.message.length).toBeLessThanOrEqual(2_001)
+      expect(parsed.input.stack?.length).toBeLessThanOrEqual(8_001)
+    }
+  })
+
+  it('stores sanitized runtime errors in memory', () => {
+    const store = createRuntimeErrorStore(2)
+
+    const first = store.record({
+      deckId,
+      message: 'Reveal failed to initialize',
+      runtimeMode: 'reveal',
+      severity: 'error',
+      source: 'reveal.js',
+    })
+
+    store.record({
+      deckId,
+      message: 'Second error',
+      severity: 'warning',
+    })
+    store.record({
+      deckId,
+      message: 'Third error',
+      severity: 'info',
+    })
+
+    expect(store.listForDeck(deckId)).toHaveLength(2)
+    expect(store.listRecent()).toHaveLength(2)
+    expect(first.message).toBe('Reveal failed to initialize')
+    expect(first.stack).toBeNull()
+  })
+})
