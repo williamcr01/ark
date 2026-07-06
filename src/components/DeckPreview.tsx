@@ -255,6 +255,11 @@ export function DeckPreview({
                 <iframe
                   className="absolute left-0 top-0 block border-0 bg-white"
                   key={previewFrame.iframeKey}
+                  onLoad={() => {
+                    if (editorBridgeInjected) {
+                      enableEditor(activeSlideIndex)
+                    }
+                  }}
                   ref={iframeRef}
                   referrerPolicy="no-referrer"
                   sandbox={getPreviewSandbox(runtimeMode)}

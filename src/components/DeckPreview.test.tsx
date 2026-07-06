@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
 
 import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
@@ -8,6 +8,19 @@ import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 import { parseDeckSlides } from '@/lib/deck-slides'
 
 import { DeckPreview } from './DeckPreview'
+
+const editorBridgeMock = vi.hoisted(() => ({
+  editorReady: false,
+  selection: null,
+  editorError: null,
+  enableEditor: vi.fn(),
+  disableEditor: vi.fn(),
+  requestGeometry: vi.fn(),
+}))
+
+vi.mock('@/hooks/useDeckEditorBridge', () => ({
+  useDeckEditorBridge: () => editorBridgeMock,
+}))
 
 vi.mock('@/hooks/useDeckSlideNavigation', () => ({
   useDeckSlideNavigation: () => ({
@@ -32,6 +45,15 @@ vi.mock('@/hooks/useElementSize', () => ({
 }))
 
 describe('DeckPreview script divergence UI', () => {
+  beforeEach(() => {
+    editorBridgeMock.editorReady = false
+    editorBridgeMock.selection = null
+    editorBridgeMock.editorError = null
+    editorBridgeMock.enableEditor.mockClear()
+    editorBridgeMock.disableEditor.mockClear()
+    editorBridgeMock.requestGeometry.mockClear()
+  })
+
   it('shows static preview messaging for uploaded scripted decks', () => {
     render(
       <DeckPreview
@@ -115,5 +137,25 @@ describe('DeckPreview script divergence UI', () => {
       'aria-pressed',
       'true',
     )
+  })
+
+  it('enables the editor bridge when the edit-mode iframe loads', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+
+    expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0)
   })
 })
