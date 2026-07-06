@@ -27,9 +27,12 @@ const editorBridgeMock = vi.hoisted(() => ({
     slideId: string | null
     tagName: string
     locked: boolean
+    managed: boolean
+    editableKind: string | null
     textPreview: string | null
   } | null,
   geometry: null,
+  selectionZIndex: null,
   hover: null,
   hoverGeometry: null,
   editorError: null,
@@ -41,6 +44,9 @@ const editorBridgeMock = vi.hoisted(() => ({
     text: string
     originalText: string
   } | null,
+  lastInsertRequest: null,
+  lastDeleteRequest: null,
+  transformCommit: null,
   enableEditor: vi.fn(),
   disableEditor: vi.fn(),
   requestGeometry: vi.fn(),
@@ -88,11 +94,15 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.editorReady = false
     editorBridgeMock.selection = null
     editorBridgeMock.geometry = null
+    editorBridgeMock.selectionZIndex = null
     editorBridgeMock.hover = null
     editorBridgeMock.hoverGeometry = null
     editorBridgeMock.editorError = null
     editorBridgeMock.textEditActive = false
     editorBridgeMock.lastTextCommit = null
+    editorBridgeMock.lastInsertRequest = null
+    editorBridgeMock.lastDeleteRequest = null
+    editorBridgeMock.transformCommit = null
     editorBridgeMock.enableEditor.mockClear()
     editorBridgeMock.disableEditor.mockClear()
     editorBridgeMock.requestGeometry.mockClear()
@@ -215,6 +225,8 @@ describe('DeckPreview script divergence UI', () => {
       slideId: null,
       tagName: 'h1',
       locked: false,
+      managed: false,
+      editableKind: null,
       textPreview: 'Quarterly planning',
     }
 
@@ -234,6 +246,8 @@ describe('DeckPreview script divergence UI', () => {
       slideId: null,
       tagName: 'h1',
       locked: false,
+      managed: false,
+      editableKind: null,
       textPreview: 'Quarterly planning',
     }
 
@@ -254,6 +268,8 @@ describe('DeckPreview script divergence UI', () => {
       slideId: null,
       tagName: 'p',
       locked: false,
+      managed: false,
+      editableKind: null,
       textPreview: 'Body copy',
     }
 
@@ -275,6 +291,8 @@ describe('DeckPreview script divergence UI', () => {
       slideId: null,
       tagName: 'h1',
       locked: false,
+      managed: false,
+      editableKind: null,
       textPreview: 'Quarterly planning',
     }
     editorBridgeMock.textEditActive = true
@@ -309,6 +327,8 @@ describe('DeckPreview script divergence UI', () => {
       slideId: null,
       tagName: 'h1',
       locked: false,
+      managed: false,
+      editableKind: null,
       textPreview: 'Quarterly planning',
     }
     editorBridgeMock.lastTextCommit = {
@@ -406,6 +426,8 @@ describe('DeckPreview script divergence UI', () => {
       slideId: null,
       tagName: 'h1',
       locked: true,
+      managed: false,
+      editableKind: null,
       textPreview: 'Runtime title',
     }
 

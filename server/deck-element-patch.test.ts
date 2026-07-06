@@ -163,6 +163,45 @@ describe('applyDeckPatches element operations', () => {
     expect(deleted.html).not.toContain('New callout')
   })
 
+  it('inserts text boxes and keeps slide parsing stable', () => {
+    const inserted = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'insert_element',
+        slideIndex: 0,
+        html: '<div class="ark-text-box" data-ark-editable="text-box" data-ark-managed="true" style="position:absolute;left:160px;top:144px;width:384px;min-height:58px;"><p>New text</p></div>',
+      },
+    ])
+
+    expect(inserted.ok).toBe(true)
+    if (!inserted.ok) {
+      return
+    }
+
+    expectValidDeck(inserted.html)
+    const parsed = parseDeckHtml(inserted.html)
+    expect(parsed.slideCount).toBe(2)
+    expect(inserted.html).toContain('ark-text-box')
+    expect(inserted.html).toContain('data-ark-editable="text-box"')
+  })
+
+  it('duplicates managed elements with a positional offset', () => {
+    const duplicated = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'duplicate_element',
+        slideIndex: 0,
+        elementId: 'ark-el-body',
+      },
+    ])
+
+    expect(duplicated.ok).toBe(true)
+    if (!duplicated.ok) {
+      return
+    }
+
+    expect(duplicated.html.match(/Managed body copy/g)?.length).toBe(2)
+    expect(duplicated.changedElementIds.some((id) => id.startsWith('ark-el-'))).toBe(true)
+  })
+
   it('moves, resizes, and reorders managed elements using normalized geometry', () => {
     const moved = applyDeckPatches(arkManagedDeck, [
       {

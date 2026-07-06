@@ -70,7 +70,7 @@ The editor runtime is **dormant** until `ark:editor-enable`. Messages other than
 | `ark:editor-start-text-edit`  | `elementId: string`, `slideIndex: number` | **Edit text** button or Enter on a text-editable selection | Enter `contenteditable` on element; post `ark:editor-text-edit-state`          |
 | `ark:editor-cancel-text-edit` | _(none)_                                  | Escape (shell) or cancel flow                              | Revert text; exit edit; post `ark:editor-text-edit-state` with `active: false` |
 | `ark:editor-request-geometry` | `elementId: string`, `slideIndex: number` | Selection changes in Edit mode                             | Measure element; post `ark:editor-geometry`                                    |
-| `ark:editor-set-tool`         | `tool: EditorTool`                        | Future toolbar (#80)                                       | Set active tool: `select`, `text`, or `insert`                                 |
+| `ark:editor-set-tool`         | `tool: EditorTool`                        | Toolbar tool selection                                     | Set active tool: `select`, `text`, or `insert`                                 |
 
 #### `EditorTool`
 
@@ -79,8 +79,8 @@ type EditorTool = 'select' | 'text' | 'insert'
 ```
 
 - `select` — pointer-down selects editable elements (default).
-- `text` — reserved for text-box insertion (#79).
-- `insert` — reserved for generic insert flows.
+- `text` — click-drag inserts Ark-managed text boxes (#79); click without drag inserts a default-size box.
+- `insert` — reserved for generic insert flows (e.g. images).
 
 ### iframe → parent (runtime messages)
 
@@ -143,10 +143,11 @@ Coordinates are **slide-relative normalized fractions** (0–1), derived from `g
 
 #### Deletion and errors
 
-| Type                        | Payload fields                     | When fired                                      | Semantics                                                              |
-| --------------------------- | ---------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `ark:editor-delete-request` | `elementId`, `slideIndex`          | User deletes selection (future)                 | Parent should map to `delete_element` patch op after server validation |
-| `ark:editor-error`          | `message: string`, `code?: string` | Runtime failure (missing element, locked, etc.) | Surface in preview chrome; optional `onEditorError` callback           |
+| Type                        | Payload fields                               | When fired                                           | Semantics                                                               |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch op after server validation  |
+| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                             | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)` |
+| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)      | Surface in preview chrome; optional `onEditorError` callback            |
 
 Known error codes from the injected runtime: `locked-element`, `non-text-element`, `missing-element`, `missing-slide`, `editor-runtime`.
 

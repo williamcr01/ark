@@ -26,6 +26,10 @@ import {
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import {
+  buildTextBoxInsertOperation,
+  buildTransformPatchOperations,
+} from '@/lib/deck-editor-patches'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
@@ -53,6 +57,11 @@ export type DeckPreviewProps = {
   editorBridgeEnabled?: boolean
   isTextEditSaving?: boolean
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
+  onPatchEditorOperations?: (
+    operations: import('../../shared/deck-patch.ts').DeckElementPatchOperation[],
+    activeSlideIndex: number,
+    summary: string,
+  ) => Promise<void>
 }
 
 export function DeckPreview({
@@ -66,6 +75,7 @@ export function DeckPreview({
   editorBridgeEnabled = false,
   isTextEditSaving = false,
   onCommitTextEdit,
+  onPatchEditorOperations,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
@@ -75,6 +85,12 @@ export function DeckPreview({
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
   const processedTextCommitRef = useRef<string | null>(null)
+  const processedInsertRequestRef = useRef<string | null>(null)
+  const processedDeleteRequestRef = useRef<string | null>(null)
+  const processedTransformCommitRef = useRef<string | null>(null)
+  const committedGeometryRef = useRef<
+    import('../../shared/deck-editor-bridge.ts').EditorNormalizedRect | null
+  >(null)
   const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
   const runtimeMode = runtimeManifest.runtimeMode
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
@@ -139,8 +155,12 @@ export function DeckPreview({
     hover,
     geometry,
     hoverGeometry,
+    selectionZIndex,
     editorError,
     lastTextCommit,
+    lastInsertRequest,
+    lastDeleteRequest,
+    transformCommit,
     textEditActive,
     enableEditor,
     disableEditor,
@@ -163,6 +183,76 @@ export function DeckPreview({
     () => editChromeActive && isTextEditableSelection(selection),
     [editChromeActive, selection],
   )
+
+  const canModifySelection =
+    Boolean(selection?.managed) && !selection?.locked && editChromeActive && !textEditActive
+
+  const handleDeleteSelection = useCallback(() => {
+    if (!selection || !canModifySelection || !onPatchEditorOperations) {
+      return
+    }
+
+    void onPatchEditorOperations(
+      [
+        {
+          op: 'delete_element',
+          elementId: selection.elementId,
+          slideIndex: selection.slideIndex,
+          ...(selection.slideId ? { slideId: selection.slideId } : {}),
+        },
+      ],
+      selection.slideIndex,
+      'Deleted element in preview',
+    )
+  }, [canModifySelection, onPatchEditorOperations, selection])
+
+  const handleDuplicateSelection = useCallback(() => {
+    if (!selection || !canModifySelection || !onPatchEditorOperations) {
+      return
+    }
+
+    void onPatchEditorOperations(
+      [
+        {
+          op: 'duplicate_element',
+          elementId: selection.elementId,
+          slideIndex: selection.slideIndex,
+          ...(selection.slideId ? { slideId: selection.slideId } : {}),
+        },
+      ],
+      selection.slideIndex,
+      'Duplicated element in preview',
+    )
+  }, [canModifySelection, onPatchEditorOperations, selection])
+
+  const handleReorderSelection = useCallback(
+    (delta: number) => {
+      if (!selection || !canModifySelection || !onPatchEditorOperations) {
+        return
+      }
+
+      const currentZIndex = selectionZIndex ?? 0
+
+      void onPatchEditorOperations(
+        [
+          {
+            op: 'reorder_element',
+            elementId: selection.elementId,
+            slideIndex: selection.slideIndex,
+            ...(selection.slideId ? { slideId: selection.slideId } : {}),
+            zIndex: Math.max(0, currentZIndex + delta),
+          },
+        ],
+        selection.slideIndex,
+        delta > 0 ? 'Brought element forward' : 'Sent element backward',
+      )
+    },
+    [canModifySelection, onPatchEditorOperations, selection, selectionZIndex],
+  )
+
+  useEffect(() => {
+    committedGeometryRef.current = geometry
+  }, [geometry])
 
   const beginTextEdit = useCallback(() => {
     if (!selection || !canEditSelectedText || textEditActive) {
@@ -241,6 +331,98 @@ export function DeckPreview({
       preserveSlideIndexRef.current = null
     })
   }, [activeSlideIndex, lastTextCommit, onCommitTextEdit])
+
+  useEffect(() => {
+    if (!lastInsertRequest || !onPatchEditorOperations) {
+      return
+    }
+
+    const requestKey = `${lastInsertRequest.kind}:${lastInsertRequest.slideIndex}:${lastInsertRequest.geometry.x}:${lastInsertRequest.geometry.y}:${lastInsertRequest.geometry.width}:${lastInsertRequest.geometry.height}`
+
+    if (processedInsertRequestRef.current === requestKey) {
+      return
+    }
+
+    processedInsertRequestRef.current = requestKey
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onPatchEditorOperations(
+      [buildTextBoxInsertOperation(lastInsertRequest.slideIndex, lastInsertRequest.geometry, null)],
+      lastInsertRequest.slideIndex,
+      'Inserted text box in preview',
+    )
+      .then(() => {
+        handleToolChange('select')
+      })
+      .catch(() => {
+        processedInsertRequestRef.current = null
+        preserveSlideIndexRef.current = null
+      })
+  }, [activeSlideIndex, handleToolChange, lastInsertRequest, onPatchEditorOperations])
+
+  useEffect(() => {
+    if (!lastDeleteRequest || !onPatchEditorOperations) {
+      return
+    }
+
+    const requestKey = `${lastDeleteRequest.elementId}:${lastDeleteRequest.slideIndex}`
+
+    if (processedDeleteRequestRef.current === requestKey) {
+      return
+    }
+
+    processedDeleteRequestRef.current = requestKey
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onPatchEditorOperations(
+      [
+        {
+          op: 'delete_element',
+          elementId: lastDeleteRequest.elementId,
+          slideIndex: lastDeleteRequest.slideIndex,
+        },
+      ],
+      lastDeleteRequest.slideIndex,
+      'Deleted element in preview',
+    ).catch(() => {
+      processedDeleteRequestRef.current = null
+      preserveSlideIndexRef.current = null
+    })
+  }, [activeSlideIndex, lastDeleteRequest, onPatchEditorOperations])
+
+  useEffect(() => {
+    if (!transformCommit || !onPatchEditorOperations) {
+      return
+    }
+
+    const commitKey = `${transformCommit.elementId}:${transformCommit.slideIndex}:${transformCommit.geometry.x}:${transformCommit.geometry.y}:${transformCommit.geometry.width}:${transformCommit.geometry.height}`
+
+    if (processedTransformCommitRef.current === commitKey) {
+      return
+    }
+
+    const operations = buildTransformPatchOperations(
+      transformCommit,
+      committedGeometryRef.current,
+      selection?.slideId ?? null,
+    )
+
+    if (operations.length === 0) {
+      return
+    }
+
+    processedTransformCommitRef.current = commitKey
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onPatchEditorOperations(
+      operations,
+      transformCommit.slideIndex,
+      'Updated element layout in preview',
+    ).catch(() => {
+      processedTransformCommitRef.current = null
+      preserveSlideIndexRef.current = null
+    })
+  }, [activeSlideIndex, onPatchEditorOperations, selection?.slideId, transformCommit])
 
   useEffect(() => {
     if (preserveSlideIndexRef.current === null) {
@@ -442,9 +624,14 @@ export function DeckPreview({
           hasSelection={Boolean(selection?.elementId)}
           isGenerating={isGenerating}
           isSaving={isTextEditSaving}
+          onBringForward={() => handleReorderSelection(1)}
+          onDelete={handleDeleteSelection}
+          onDuplicate={handleDuplicateSelection}
           onEditText={beginTextEdit}
+          onSendBackward={() => handleReorderSelection(-1)}
           onToolChange={handleToolChange}
           selectionLocked={selection?.locked ?? false}
+          selectionManaged={selection?.managed ?? false}
           textEditActive={textEditActive}
         />
       ) : null}

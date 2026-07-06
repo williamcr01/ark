@@ -30,6 +30,8 @@ describe('deck editor bridge protocol', () => {
     slideId: 'ark-slide-1',
     tagName: 'h1',
     locked: false,
+    managed: false,
+    editableKind: null,
     textPreview: 'Opening',
   }
 

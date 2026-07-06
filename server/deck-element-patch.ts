@@ -574,6 +574,104 @@ function applyDeleteElement(
   return { ok: true as const }
 }
 
+function clearStableElementIds(root: Element) {
+  root.removeAttribute(ARK_ELEMENT_ID_ATTR)
+
+  for (const descendant of root.querySelectorAll(`[${ARK_ELEMENT_ID_ATTR}]`)) {
+    descendant.removeAttribute(ARK_ELEMENT_ID_ATTR)
+  }
+}
+
+function applyDuplicateElement(
+  context: ElementPatchContext,
+  operation: Extract<DeckElementPatchOperation, { op: 'duplicate_element' }>,
+) {
+  const resolved = resolveElementTarget(context, operation, 'duplicate_element')
+
+  if ('error' in resolved) {
+    return resolved
+  }
+
+  const patchable = assertElementPatchable(resolved, operation, operation.elementId)
+
+  if (patchable) {
+    return patchable
+  }
+
+  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
+    return { error: 'duplicate_element requires an HTML element target.' }
+  }
+
+  const clone = resolved.element.cloneNode(true) as HTMLElement
+  clearStableElementIds(clone)
+  clone.setAttribute(ARK_MANAGED_ATTR, 'true')
+
+  const offsetX = operation.offsetX ?? 0.02
+  const offsetY = operation.offsetY ?? 0.02
+  const currentLeft = parsePixelValueFromStyle(resolved.element, 'left') / ARK_SLIDE_REFERENCE_WIDTH
+  const currentTop = parsePixelValueFromStyle(resolved.element, 'top') / ARK_SLIDE_REFERENCE_HEIGHT
+  const left = formatPixelValue(Math.min(1, currentLeft + offsetX), ARK_SLIDE_REFERENCE_WIDTH)
+  const top = formatPixelValue(Math.min(1, currentTop + offsetY), ARK_SLIDE_REFERENCE_HEIGHT)
+  const merged = mergeInlineStyle(clone, {
+    position: 'absolute',
+    left,
+    top,
+  })
+
+  if ('error' in merged) {
+    return merged
+  }
+
+  const rootId = ensureStableElementId(clone)
+  const stampedIds = stampEditableElementIds(clone)
+
+  if (!stampedIds.includes(rootId)) {
+    stampedIds.unshift(rootId)
+  }
+
+  resolved.element.insertAdjacentElement('afterend', clone)
+
+  for (const id of stampedIds) {
+    context.changedElementIds.add(id)
+    markElementChanged(context, resolved.slideIndex, id)
+  }
+
+  context.summaries.push(`Duplicated ${operation.elementId} on slide ${resolved.slideIndex}.`)
+
+  return { ok: true as const }
+}
+
+function parsePixelValueFromStyle(element: HTMLElement, property: string) {
+  const inline = element.getAttribute('style')
+
+  if (!inline) {
+    return 0
+  }
+
+  for (const chunk of inline.split(';')) {
+    const separator = chunk.indexOf(':')
+
+    if (separator === -1) {
+      continue
+    }
+
+    const name = chunk.slice(0, separator).trim().toLowerCase()
+    const value = chunk.slice(separator + 1).trim()
+
+    if (name !== property) {
+      continue
+    }
+
+    const match = value.match(/^(-?\d+(?:\.\d+)?)px$/i)
+
+    if (match) {
+      return Number.parseFloat(match[1]!)
+    }
+  }
+
+  return 0
+}
+
 function applySetAttrs(
   context: ElementPatchContext,
   operation: Extract<DeckElementPatchOperation, { op: 'set_attrs' }>,
@@ -833,6 +931,8 @@ export function applyElementPatch(
       return applyInsertElement(context, operation)
     case 'delete_element':
       return applyDeleteElement(context, operation)
+    case 'duplicate_element':
+      return applyDuplicateElement(context, operation)
     case 'set_attrs':
       return applySetAttrs(context, operation)
     case 'set_inline_style':

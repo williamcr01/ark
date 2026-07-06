@@ -30,6 +30,7 @@ import {
 import { deckHasExecutableContent, type DeckDownloadVariant } from '@/lib/deck-export'
 import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckValidationReport } from '../shared/deck-validate.ts'
+import type { DeckElementPatchOperation } from '../shared/deck-patch.ts'
 import { newId } from '@/lib/id'
 import {
   startRevealThumbnailStylesPreload,
@@ -568,6 +569,28 @@ function App() {
     [deckId, patchDeckOperations, refreshActiveDeck],
   )
 
+  const handlePatchEditorOperations = useCallback(
+    async (operations: DeckElementPatchOperation[], activeSlideIndex: number, summary: string) => {
+      if (!deckId) {
+        toast.error('Save the deck before editing')
+        throw new Error('Deck is not saved')
+      }
+
+      try {
+        await patchDeckOperations(operations, activeSlideIndex, { summary })
+      } catch (patchError) {
+        toast.error(patchError instanceof Error ? patchError.message : 'Could not save the edit')
+        try {
+          await refreshActiveDeck()
+        } catch {
+          // Ignore refresh failures after a failed patch.
+        }
+        throw patchError
+      }
+    },
+    [deckId, patchDeckOperations, refreshActiveDeck],
+  )
+
   return (
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
@@ -623,6 +646,7 @@ function App() {
                   isTextEditSaving={isDeckPatching}
                   layout="desktop"
                   onCommitTextEdit={handleCommitTextEdit}
+                  onPatchEditorOperations={handlePatchEditorOperations}
                   parsedDeck={parsedDeck}
                   versionId={activeVersionId}
                 />
