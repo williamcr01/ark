@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileCode2Icon,
   Loader2Icon,
@@ -6,9 +6,11 @@ import {
   MonitorPlayIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
+  TypeIcon,
   WandSparklesIcon,
 } from 'lucide-react'
 
+import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
 import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,11 +26,20 @@ import {
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
 import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
+
+export type DeckTextEditCommit = {
+  elementId: string
+  slideIndex: number
+  slideId: string | null
+  text: string
+  originalText: string | null
+}
 
 export type DeckPreviewProps = {
   html: string
@@ -39,6 +50,8 @@ export type DeckPreviewProps = {
   layout: 'desktop' | 'mobile'
   parsedDeck: ReturnType<typeof parseDeckSlides>
   editorBridgeEnabled?: boolean
+  isTextEditSaving?: boolean
+  onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
 }
 
 export function DeckPreview({
@@ -50,12 +63,16 @@ export function DeckPreview({
   layout,
   parsedDeck,
   editorBridgeEnabled = false,
+  isTextEditSaving = false,
+  onCommitTextEdit,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
   const [editModeActive, setEditModeActive] = useState(false)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
+  const preserveSlideIndexRef = useRef<number | null>(null)
+  const processedTextCommitRef = useRef<string | null>(null)
   const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
   const runtimeMode = runtimeManifest.runtimeMode
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
@@ -111,13 +128,130 @@ export function DeckPreview({
     activeSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
 
-  const { editorReady, selection, editorError, enableEditor, disableEditor, requestGeometry } =
-    useDeckEditorBridge(iframeRef, {
-      enabled: editorBridgeInjected && html.length > 0 && hasSlides && !isPresentOpen,
-      activeSlideIndex,
-      sandboxOrigin: previewFrame.sandboxOrigin,
-      iframeGenerationKey: previewFrame.iframeKey,
+  const {
+    editorReady,
+    selection,
+    geometry,
+    editorError,
+    lastTextCommit,
+    textEditActive,
+    enableEditor,
+    disableEditor,
+    requestGeometry,
+    startTextEdit,
+    cancelTextEdit,
+  } = useDeckEditorBridge(iframeRef, {
+    enabled: editorBridgeInjected && html.length > 0 && hasSlides && !isPresentOpen,
+    activeSlideIndex,
+    sandboxOrigin: previewFrame.sandboxOrigin,
+    iframeGenerationKey: previewFrame.iframeKey,
+  })
+
+  const canEditSelectedText = useMemo(
+    () => editModeActive && isTextEditableSelection(selection),
+    [editModeActive, selection],
+  )
+
+  const beginTextEdit = useCallback(() => {
+    if (!selection || !canEditSelectedText || textEditActive) {
+      return
+    }
+
+    startTextEdit(selection.elementId, selection.slideIndex)
+  }, [canEditSelectedText, selection, startTextEdit, textEditActive])
+
+  const endTextEditing = useCallback(() => {
+    if (!textEditActive) {
+      return
+    }
+
+    cancelTextEdit()
+  }, [cancelTextEdit, textEditActive])
+
+  useEffect(() => {
+    if (!lastTextCommit || !onCommitTextEdit) {
+      return
+    }
+
+    const commitKey = `${lastTextCommit.elementId}:${lastTextCommit.slideIndex}:${lastTextCommit.text}`
+
+    if (processedTextCommitRef.current === commitKey) {
+      return
+    }
+
+    processedTextCommitRef.current = commitKey
+
+    if (lastTextCommit.text === lastTextCommit.originalText) {
+      return
+    }
+
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onCommitTextEdit({
+      elementId: lastTextCommit.elementId,
+      slideIndex: lastTextCommit.slideIndex,
+      slideId: lastTextCommit.slideId,
+      text: lastTextCommit.text,
+      originalText: lastTextCommit.originalText,
+    }).catch(() => {
+      processedTextCommitRef.current = null
+      preserveSlideIndexRef.current = null
     })
+  }, [activeSlideIndex, lastTextCommit, onCommitTextEdit])
+
+  useEffect(() => {
+    if (preserveSlideIndexRef.current === null) {
+      return
+    }
+
+    const slideIndex = preserveSlideIndexRef.current
+    preserveSlideIndexRef.current = null
+    goToSlide(slideIndex)
+  }, [goToSlide, html, previewFrame.iframeKey])
+
+  useEffect(() => {
+    if (!editModeActive) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (textEditActive) {
+          event.preventDefault()
+          endTextEditing()
+        }
+
+        return
+      }
+
+      if (
+        event.key !== 'Enter' ||
+        event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      ) {
+        return
+      }
+
+      if (textEditActive || !canEditSelectedText) {
+        return
+      }
+
+      if (event.target instanceof HTMLElement && event.target.closest('button, [role="button"]')) {
+        return
+      }
+
+      event.preventDefault()
+      beginTextEdit()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [beginTextEdit, canEditSelectedText, editModeActive, endTextEditing, textEditActive])
 
   useEffect(() => {
     if (!editorBridgeInjected || !editorReady) {
@@ -194,15 +328,41 @@ export function DeckPreview({
               disabled={!canPresent || isPresentOpen}
               onClick={() => {
                 if (editModeActive) {
+                  endTextEditing()
                   disableEditor()
+                  setEditModeActive(false)
+                  return
                 }
 
-                setEditModeActive((current) => !current)
+                setEditModeActive(true)
               }}
               type="button"
             >
               {editModeActive ? 'Editing' : 'Edit'}
             </button>
+          ) : null}
+          {editModeActive && canEditSelectedText ? (
+            <button
+              aria-label="Edit selected text"
+              className="inline-flex h-6 items-center gap-1 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={textEditActive || isTextEditSaving}
+              onClick={beginTextEdit}
+              type="button"
+            >
+              <TypeIcon className="size-3" />
+              Edit text
+            </button>
+          ) : null}
+          {editModeActive && selection?.locked ? (
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+              Locked
+            </span>
+          ) : null}
+          {isTextEditSaving ? (
+            <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
+              <Loader2Icon className="size-3 animate-spin" />
+              Saving edit
+            </span>
           ) : null}
           {runtimeMode === 'custom-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
@@ -278,6 +438,14 @@ export function DeckPreview({
                   <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-medium text-muted-foreground backdrop-blur-sm">
                     Loading sandbox preview…
                   </div>
+                ) : null}
+                {editModeActive ? (
+                  <EditorSelectionOverlay
+                    geometry={geometry}
+                    isEditing={textEditActive}
+                    locked={selection?.locked ?? false}
+                    scale={previewFrameScale}
+                  />
                 ) : null}
                 {usesStaticPreview ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
