@@ -57,7 +57,11 @@ export function previewStripsDeckScripts(html: string, manifest?: DeckRuntimeMan
   }
 
   if (manifest) {
-    return manifestIndicatesScriptStripping(manifest)
+    if (manifestIndicatesScriptStripping(manifest)) {
+      return true
+    }
+
+    return manifest.previewMode === 'css-only' && deckHasExecutableContent(html)
   }
 
   if (usesRevealRuntimeAdapter(html)) {
