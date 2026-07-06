@@ -1257,7 +1257,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
-  function applyTransform(element, slide, geometry, preview) {
+  function applyTransform(element, slide, geometry, preview, mode) {
     var slideRect = slide.getBoundingClientRect();
     var rect = clampRect(geometry);
 
@@ -1268,9 +1268,15 @@ export function buildDeckEditorBridgeRuntimeScript(
     element.style.position = 'absolute';
     element.style.left = rect.x * slideRect.width + 'px';
     element.style.top = rect.y * slideRect.height + 'px';
-    element.style.width = rect.width * slideRect.width + 'px';
-    element.style.minHeight = rect.height * slideRect.height + 'px';
-    element.style.height = '';
+
+    // A pure move must not touch the element size. Only rewrite width/height
+    // during a resize, otherwise elements sized with an explicit height would
+    // silently change dimensions when merely repositioned.
+    if (mode !== 'move') {
+      element.style.width = rect.width * slideRect.width + 'px';
+      element.style.minHeight = rect.height * slideRect.height + 'px';
+      element.style.height = '';
+    }
 
     if (preview) {
       postToParent({
@@ -1379,6 +1385,9 @@ export function buildDeckEditorBridgeRuntimeScript(
       height: Math.abs(endPoint.y - startPoint.y),
     });
 
+    // clampRect floors both dimensions to MIN_BOX_SIZE, so a rect still at the
+    // minimum on both axes means the pointer never dragged past the threshold:
+    // treat it as a plain click and drop a default-sized box centered on the point.
     if (rect.width <= C.MIN_BOX_SIZE && rect.height <= C.MIN_BOX_SIZE) {
       rect = clampRect({
         x: endPoint.x - C.DEFAULT_BOX_WIDTH / 2,
@@ -1422,7 +1431,7 @@ export function buildDeckEditorBridgeRuntimeScript(
           width: transformState.startGeometry.width,
           height: transformState.startGeometry.height,
         });
-        applyTransform(transformState.element, slide, moved, true);
+        applyTransform(transformState.element, slide, moved, true, 'move');
         return;
       }
 
@@ -1433,7 +1442,7 @@ export function buildDeckEditorBridgeRuntimeScript(
           event,
           slide,
         );
-        applyTransform(transformState.element, slide, resized, true);
+        applyTransform(transformState.element, slide, resized, true, 'resize');
         return;
       }
     }
@@ -1546,7 +1555,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       transformState.element
     ) {
       var finalGeometry = normalizeRect(transformState.element, slide);
-      applyTransform(transformState.element, slide, finalGeometry, false);
+      applyTransform(transformState.element, slide, finalGeometry, false, transformState.kind);
       transformState = null;
       return;
     }
@@ -1611,6 +1620,13 @@ export function buildDeckEditorBridgeRuntimeScript(
     }
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && selectedElement) {
+      // Only Ark-managed elements (text boxes, duplicated/moved elements) can be
+      // deleted with the keyboard. Deck-authored headings/paragraphs stay put so
+      // a stray Backspace can't destroy the original content.
+      if (!isManagedElement(selectedElement)) {
+        return;
+      }
+
       if (selectedElement.getAttribute(C.LOCKED_ATTR) === 'true') {
         return;
       }
