@@ -66,14 +66,30 @@ async function previewIncludesAssetPaths(
   return evaluate<boolean>(
     cdp,
     `(() => {
-      const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
-      const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
+      const urls = new Set([
+        ...performance.getEntriesByType('resource').map((entry) => entry.name),
+        ...[...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
+        ...[...document.querySelectorAll('script[src]')].map((script) => script.src),
+        ...[...document.styleSheets].map((sheet) => sheet.href).filter(Boolean),
+      ])
+
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) {
+            const href = rule.href || rule.styleSheet?.href
+
+            if (href) {
+              urls.add(href)
+            }
+          }
+        } catch {
+          // Cross-origin stylesheets still expose resource timing entries and hrefs.
+        }
+      }
+
       const required = ${JSON.stringify(assetPaths)}
 
-      return required.every((assetPath) =>
-        styles.some((href) => href.includes(assetPath)) ||
-        scripts.some((src) => src.includes(assetPath)),
-      )
+      return required.every((assetPath) => [...urls].some((url) => url.includes(assetPath)))
     })()`,
     { contextId: context.id, sessionId: context.sessionId },
   )
