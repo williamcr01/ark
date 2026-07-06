@@ -1,3 +1,5 @@
+import type { DeckRuntimeManifest } from '../shared/deck-runtime-manifest.ts'
+
 export type DeckVersionSource = 'manual' | 'agent' | 'upload' | 'repair' | 'rollback'
 
 export type DeckValidationStatus = 'unknown' | 'valid' | 'invalid'
@@ -8,6 +10,8 @@ export type DeckVersionOptions = {
   modelProvider?: string | null
   modelName?: string | null
   validationStatus?: DeckValidationStatus
+  runtimeManifest?: DeckRuntimeManifest
+  validationReport?: Record<string, unknown>
 }
 
 export type StoredDeck = {
@@ -30,6 +34,7 @@ export type DeckVersionSummary = {
   source: DeckVersionSource
   summary: string | null
   validationStatus: DeckValidationStatus
+  runtimeManifest: DeckRuntimeManifest | null
   createdAt: string
   isActive: boolean
 }

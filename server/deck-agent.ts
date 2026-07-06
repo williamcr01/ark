@@ -26,19 +26,30 @@ Hard requirements for deck HTML:
 - Decks must be fully self-contained: no http(s) URLs for scripts, stylesheets, fonts, or images.
 - Use inline CSS, system fonts, inline SVG, or data: URIs instead of external assets.
 - Design for 16:9: html/body width 100%, height 100%, margin 0, overflow hidden; active slide fills 100vw × 100vh.
-- Each slide is a top-level <section class="slide">. All slides in the DOM at once.
 - Keep copy concise and presentation-grade. Avoid lorem ipsum and generic filler.
 
+Plain deck structure (default — prefer unless reveal.js is requested):
+- Each slide is a top-level <section class="slide">. All slides in the DOM at once.
+- No runtime markers required; Ark injects CSS-only navigation.
+
 Preview modes:
-- Default: no marker — Ark injects navigation; scripts may be stripped.
-- Full-JS: set data-ark-deck="nav" on <html> when the deck owns navigation.
+- Plain CSS (default): no marker — Ark injects navigation; deck scripts are stripped.
+- Custom full-JS: set data-ark-deck="nav" on <html> when the deck owns navigation.
 - When using data-ark-deck="nav", follow the Ark deck bridge protocol in docs/deck-bridge.md.
 - Listen for CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
 - Dispatch CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
-- External JavaScript libraries are only acceptable if inlined or bundled in the HTML; never use external script URLs.
+- External JavaScript libraries are only acceptable if inlined in the HTML or served via approved runtime URLs below; never use CDN script URLs.
 
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
+
+Reveal.js rules (only when requested or clearly needed — see docs/reveal-runtime.md):
+- Set data-ark-runtime="reveal", data-ark-runtime-lib="reveal.js", and data-ark-runtime-version="5.1.0" on <html>.
+- Use .reveal > .slides > section structure; do not use section.slide for reveal decks.
+- Include all required runtime CSS and JS URLs from the registry list above.
+- Do not add deck-authored bridge scripts, Reveal.initialize(), or reveal plugins — Ark injects the reveal adapter in preview.
+- Do not promise fragment step-through, speaker-notes UI, or reveal themes other than theme/white.css.
+- CDN reveal.js URLs are invalid even if the version matches.
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
 

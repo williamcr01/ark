@@ -57,11 +57,12 @@ ark/
 
 When creating or editing presentation files in `presentations/`:
 
-1. **Self-contained**: One `.html` file per deck. Inline or `<style>` CSS; CDN scripts only when needed (e.g. reveal.js).
+1. **Self-contained**: One `.html` file per deck. Inline `<style>` CSS; no external http(s) URLs for scripts, stylesheets, fonts, or images.
 2. **Modern and polished**: Clean typography, consistent spacing, intentional color palette. Avoid generic “AI slop” aesthetics.
-3. **Agent-friendly structure**: Use clear section/slide boundaries (e.g. `<section>` per slide for reveal.js, or commented `<!-- slide -->` markers for plain HTML).
+3. **Agent-friendly structure**: Use clear section/slide boundaries (e.g. `<section class="slide">` for plain decks, or `.reveal > .slides > section` for reveal.js — see [docs/reveal-runtime.md](docs/reveal-runtime.md)).
 4. **Safe preview**: Prefer `addEventListener` over inline handlers; use inline CSS, data URIs, and SVG — no external http(s) resource URLs.
 5. **Incremental edits**: Prefer patching specific slides over rewriting the entire file when the user asks for small changes.
+6. **Approved runtimes**: Use pinned `/api/runtimes/...` assets from the registry — never CDNs. See [docs/runtimes.md](docs/runtimes.md) and [docs/reveal-runtime.md](docs/reveal-runtime.md).
 
 ### Preview network isolation
 
@@ -74,14 +75,15 @@ Deck preview blocks all network access from generated or uploaded HTML:
 
 ### Preview JavaScript
 
-The shell uses two preview modes (see `detectPreviewMode` in `src/lib/deck-preview.ts`). The parent ↔ iframe contract is defined in `shared/deck-bridge.ts` and documented in `docs/deck-bridge.md`.
+The shell uses preview modes based on runtime detection (see `detectPreviewMode` in `src/lib/deck-preview.ts`). The parent ↔ iframe contract is defined in `shared/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md).
 
-- **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for decks without executable `<script>`.
-- **Full-JS** — deck scripts run only when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set (explicit opt-in). Without a marker, scripts are stripped even if present. Ark injects only a bridge (`postMessage` ↔ DOM `CustomEvent`). The deck owns navigation; shell state syncs on `ark:deck-slide-change` acknowledgements.
+- **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for plain decks and reveal decks without approved runtime assets.
+- **Full-JS (custom)** — deck scripts run when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set. Ark injects a bridge (`postMessage` ↔ DOM `CustomEvent`); the deck owns navigation.
+- **Full-JS (reveal adapter)** — reveal decks with approved registry markers and `/api/runtimes/reveal.js/5.1.0/reveal.js` get Ark's reveal navigation adapter automatically. No deck-authored bridge script. See [docs/reveal-runtime.md](docs/reveal-runtime.md).
 
-Thumbnails always strip scripts (`sandbox=""`). Main preview uses `sandbox="allow-scripts"` without `allow-same-origin`, loaded from the sandbox host URL by default (`VITE_ARK_PREVIEW_SRCDOC=true` restores legacy `srcDoc`). Parent ↔ deck `postMessage` is scoped to the configured app/sandbox origins. Ark injects a strict CSP so deck scripts cannot make network requests; the UI shows a "Scripts running" indicator in full-JS mode. Preview is download-like, not identical (storage, popups, and permissions may differ).
+Thumbnails always strip scripts (`sandbox=""`). Main preview uses `sandbox="allow-scripts"` without `allow-same-origin`, loaded from the sandbox host URL by default (`VITE_ARK_PREVIEW_SRCDOC=true` restores legacy `srcDoc`). Approved runtime asset URLs are absolutized to the app origin in preview. Parent ↔ deck `postMessage` is scoped to the configured app/sandbox origins. Ark injects a strict CSP so deck scripts cannot make network requests; the UI shows a "Scripts running" indicator in full-JS mode.
 
-Scripted decks with navigation must use `data-ark-deck="nav"` and the Ark bridge protocol (`ark:deck-goto`, `ark:deck-slide-change`, `ark:deck-ready`, etc.) documented in `docs/deck-bridge.md`.
+Custom scripted decks with navigation must use `data-ark-deck="nav"` and the Ark bridge protocol (`ark:deck-goto`, `ark:deck-slide-change`, `ark:deck-ready`, etc.).
 
 Example skeleton (plain HTML):
 

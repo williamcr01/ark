@@ -37,6 +37,27 @@ function formatVersionTimestamp(createdAt: string) {
   })
 }
 
+function RuntimeBadge({ manifest }: { manifest: DeckVersionSummary['runtimeManifest'] }) {
+  if (!manifest) {
+    return null
+  }
+
+  const label =
+    manifest.runtimeMode === 'custom-js'
+      ? 'Custom JS'
+      : manifest.runtimeMode === 'reveal'
+        ? manifest.usesRevealAdapter
+          ? 'Reveal runtime'
+          : 'Reveal (static preview)'
+        : 'Static'
+
+  return (
+    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      {label}
+    </span>
+  )
+}
+
 function ValidationBadge({ status }: { status: DeckVersionSummary['validationStatus'] }) {
   const label =
     status === 'valid' ? 'Valid' : status === 'invalid' ? 'Invalid' : 'Unknown validation'
@@ -149,10 +170,14 @@ export function VersionHistoryDialog({
   const selectedVersion =
     matchingPreview ?? versions.find((version) => version.id === selectedVersionId) ?? null
   const previewSourceHtml = matchingPreview?.html ?? ''
-  const runtimeMode = useMemo(() => detectRuntimeMode(previewSourceHtml), [previewSourceHtml])
+  const previewManifest = selectedVersion?.runtimeManifest ?? null
+  const runtimeMode = previewManifest?.runtimeMode ?? detectRuntimeMode(previewSourceHtml)
   const sanitizedPreviewHtml = useMemo(
-    () => (previewSourceHtml ? getPreviewHtml(previewSourceHtml) : ''),
-    [previewSourceHtml],
+    () =>
+      previewSourceHtml
+        ? getPreviewHtml(previewSourceHtml, { manifest: previewManifest ?? undefined })
+        : '',
+    [previewManifest, previewSourceHtml],
   )
 
   return (
@@ -215,8 +240,9 @@ export function VersionHistoryDialog({
                           {version.summary ? (
                             <span className="text-xs text-muted-foreground">{version.summary}</span>
                           ) : null}
-                          <div className="pt-1">
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
                             <ValidationBadge status={version.validationStatus} />
+                            <RuntimeBadge manifest={version.runtimeManifest} />
                           </div>
                         </button>
                       </li>

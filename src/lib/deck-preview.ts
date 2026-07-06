@@ -68,6 +68,7 @@ export function detectPreviewMode(html: string): DeckRuntimeMode {
 export function getPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   return buildPreviewHtml(html, {
     parentOrigin: options.parentOrigin ?? resolveAppOrigin(),
+    manifest: options.manifest,
   })
 }
 

@@ -142,6 +142,23 @@ describe('createPostgresDeckStore', () => {
         source: 'rollback',
         isActive: true,
       })
+
+      const metadataRow = await pool.query<{ runtime_metadata: Record<string, unknown> }>(
+        `
+          SELECT runtime_metadata
+          FROM deck_versions
+          WHERE deck_id = $1
+          ORDER BY version_number ASC
+          LIMIT 1
+        `,
+        [created.id],
+      )
+
+      expect(metadataRow.rows[0]?.runtime_metadata.manifest).toMatchObject({
+        schemaVersion: 1,
+        runtimeMode: 'static',
+        previewMode: 'css-only',
+      })
     } finally {
       await pool.end?.()
     }
