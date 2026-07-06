@@ -246,7 +246,7 @@ export type ChatPanelProps = {
   onCancelGeneration: () => void | Promise<void>
   onRetryGeneration: () => void | Promise<void>
   getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
-  onRetryPersist?: (messageId: string) => void | Promise<void>
+  onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
 }
 
 function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
