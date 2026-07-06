@@ -1,6 +1,7 @@
 import { type LanguageModel } from 'ai'
 
 import { parseGenerateMessages } from '../shared/chat.ts'
+import type { ApiChatMessage, ChatAttachment } from '../shared/chat.ts'
 import type {
   CreateGenerationJobInput,
   GenerationJob,
@@ -40,7 +41,48 @@ export type GenerationJobRunnerOptions = {
 export type StartGenerationJobOptions = {
   body: StartGenerationJobRequest
   defaultModel: string
+  /**
+   * Inline attachments resolved from uploaded asset ids. Merged into the model
+   * input for the latest user turn, but NOT into the lightweight chat history.
+   */
+  assetAttachments?: ChatAttachment[]
   requestId?: string | null
+}
+
+/**
+ * Merge resolved asset attachments into the latest user message so the model
+ * receives the bytes, while the persisted chat history stays reference-only.
+ */
+function withResolvedAttachments(
+  messages: ApiChatMessage[],
+  attachments: ChatAttachment[],
+): ApiChatMessage[] {
+  if (attachments.length === 0) {
+    return messages
+  }
+
+  const lastUserIndex = messages.map((message) => message.role).lastIndexOf('user')
+
+  if (lastUserIndex === -1) {
+    return messages
+  }
+
+  return messages.map((message, index) => {
+    if (index !== lastUserIndex) {
+      return message
+    }
+
+    const existing = message.attachments ?? []
+    const existingAssetIds = new Set(
+      existing.map((attachment) => attachment.assetId).filter(Boolean),
+    )
+    const merged = [
+      ...existing,
+      ...attachments.filter((attachment) => !existingAssetIds.has(attachment.assetId)),
+    ]
+
+    return { ...message, attachments: merged }
+  })
 }
 
 export type GenerationJobRunner = {
@@ -487,7 +529,12 @@ export function createGenerationJobRunner({
     void processJob(jobId, requestId)
   }
 
-  const startJob = async ({ body, defaultModel, requestId = null }: StartGenerationJobOptions) => {
+  const startJob = async ({
+    body,
+    defaultModel,
+    assetAttachments = [],
+    requestId = null,
+  }: StartGenerationJobOptions) => {
     const parsedMessages = parseGenerateMessages(body.messages)
 
     if (!parsedMessages.ok) {
@@ -553,6 +600,8 @@ export function createGenerationJobRunner({
       }
     }
 
+    const modelMessages = withResolvedAttachments(messages, assetAttachments)
+
     const input: CreateGenerationJobInput = {
       deckId,
       baseVersionId,
@@ -560,7 +609,7 @@ export function createGenerationJobRunner({
       model: modelRef,
       provider,
       request: {
-        messages,
+        messages: modelMessages,
         currentHtml,
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),

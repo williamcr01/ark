@@ -1,13 +1,24 @@
 import type { FilePart, ModelMessage, TextPart } from 'ai'
 
+import { isValidAssetId, parseAssetIdFromUrl } from './assets.ts'
+
 export type ChatMessageRole = 'user' | 'assistant'
 
-/** Serializable file attachment sent with a user message. */
+/**
+ * Serializable file attachment sent with a user message.
+ *
+ * Two shapes are supported:
+ * - Inline data URL (`url` starts with `data:`) — bytes travel with the message.
+ * - Ark asset reference (`assetId` set, `url` is an Ark-owned `/api/assets/:id`
+ *   URL) — the persisted message stays lightweight and the server resolves the
+ *   bytes from asset storage when needed for generation.
+ */
 export type ChatAttachment = {
   type: 'file'
   mediaType: string
   filename?: string
   url: string
+  assetId?: string
 }
 
 export const MAX_CHAT_ATTACHMENTS = 5
@@ -128,10 +139,32 @@ export const parseChatAttachments = (
     }
 
     const url = (item as { url?: unknown }).url
-    if (typeof url !== 'string' || !url.startsWith('data:')) {
+    const rawAssetId = (item as { assetId?: unknown }).assetId
+
+    if (rawAssetId !== undefined && (typeof rawAssetId !== 'string' || !isValidAssetId(rawAssetId))) {
       return {
         ok: false,
-        error: `messages[${messageIndex}].attachments[${attachmentIndex}].url must be a data URL.`,
+        error: `messages[${messageIndex}].attachments[${attachmentIndex}].assetId must be a valid asset id.`,
+      }
+    }
+
+    if (typeof url !== 'string') {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].attachments[${attachmentIndex}].url must be a string.`,
+      }
+    }
+
+    const assetId =
+      typeof rawAssetId === 'string' ? rawAssetId : (parseAssetIdFromUrl(url) ?? undefined)
+    const isDataUrl = url.startsWith('data:')
+
+    // Accept either an inline data URL or an Ark-owned asset reference. External
+    // http(s) URLs are never allowed to keep preview/export network-isolated.
+    if (!isDataUrl && !assetId) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].attachments[${attachmentIndex}].url must be a data URL or Ark asset reference.`,
       }
     }
 
@@ -143,11 +176,13 @@ export const parseChatAttachments = (
       }
     }
 
-    const estimatedBytes = estimateDataUrlBytes(url)
-    if (estimatedBytes > MAX_CHAT_ATTACHMENT_BYTES) {
-      return {
-        ok: false,
-        error: `messages[${messageIndex}].attachments[${attachmentIndex}] exceeds the ${MAX_CHAT_ATTACHMENT_BYTES} byte limit.`,
+    if (isDataUrl) {
+      const estimatedBytes = estimateDataUrlBytes(url)
+      if (estimatedBytes > MAX_CHAT_ATTACHMENT_BYTES) {
+        return {
+          ok: false,
+          error: `messages[${messageIndex}].attachments[${attachmentIndex}] exceeds the ${MAX_CHAT_ATTACHMENT_BYTES} byte limit.`,
+        }
       }
     }
 
@@ -155,6 +190,7 @@ export const parseChatAttachments = (
       type: 'file',
       mediaType: mediaType.trim(),
       url,
+      ...(assetId ? { assetId } : {}),
       ...(typeof filename === 'string' && filename.trim().length > 0
         ? { filename: filename.trim() }
         : {}),
@@ -268,12 +304,17 @@ Use write_deck to save the complete HTML document, then summarize what you built
 }
 
 export function chatAttachmentsToFileParts(attachments: ChatAttachment[]): FilePart[] {
-  return attachments.map((attachment) => ({
-    type: 'file',
-    mediaType: attachment.mediaType,
-    data: attachment.url,
-    ...(attachment.filename ? { filename: attachment.filename } : {}),
-  }))
+  // Only attachments that carry inline bytes (data URLs) can be sent to the
+  // model directly. Ark asset references must be resolved to data URLs by the
+  // server (see resolveAssetAttachments) before reaching this point.
+  return attachments
+    .filter((attachment) => attachment.url.startsWith('data:'))
+    .map((attachment) => ({
+      type: 'file',
+      mediaType: attachment.mediaType,
+      data: attachment.url,
+      ...(attachment.filename ? { filename: attachment.filename } : {}),
+    }))
 }
 
 export function buildUserModelContent(
@@ -367,14 +408,33 @@ export function toApiMessages(messages: ChatMessage[]): ApiChatMessage[] {
 }
 
 export function toChatAttachments(
-  files: Array<{ mediaType: string; filename?: string; url: string }>,
+  files: Array<{ mediaType: string; filename?: string; url: string; assetId?: string }>,
 ): ChatAttachment[] {
   return files.map((file) => ({
     type: 'file',
     mediaType: file.mediaType,
     url: file.url,
+    ...(file.assetId ? { assetId: file.assetId } : {}),
     ...(file.filename ? { filename: file.filename } : {}),
   }))
+}
+
+/** Collect the unique Ark asset ids referenced by a set of attachments. */
+export function collectAssetIds(attachments: ChatAttachment[] | undefined): string[] {
+  if (!attachments?.length) {
+    return []
+  }
+
+  const ids = new Set<string>()
+
+  for (const attachment of attachments) {
+    const id = attachment.assetId ?? parseAssetIdFromUrl(attachment.url)
+    if (id) {
+      ids.add(id)
+    }
+  }
+
+  return [...ids]
 }
 
 export function agentStepsToChatParts(steps: AgentStep[]): ChatMessagePart[] {

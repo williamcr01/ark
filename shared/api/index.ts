@@ -21,6 +21,7 @@ export {
   deckVersionResponseSchema,
 } from './decks.ts'
 export type { DeckPatchRequest, DeckPatchResponse } from './decks.ts'
+export * from './assets.ts'
 export * from './health.ts'
 export * from './preview.ts'
 export * from './chat.ts'
