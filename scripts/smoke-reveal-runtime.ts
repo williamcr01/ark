@@ -40,6 +40,7 @@ type BrowserProcess = {
 }
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const SMOKE_WAIT_TIMEOUT_MS = process.env.CI ? 60_000 : 15_000
 const revealFixturePath = path.join(repoRoot, 'src/test/fixtures/reveal-registry-deck.html')
 const requiredRuntimeAssetPaths = [
   '/api/runtimes/reveal.js/5.1.0/reveal.js',
@@ -49,8 +50,34 @@ const requiredRuntimeAssetPaths = [
 ]
 const requiredRuntimeFontAssetPath =
   '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff'
-
 const SMOKE_SLOW_TIMEOUT_MS = 45_000
+
+function networkIncludesAssetPaths(requestUrls: Map<string, string>, assetPaths: string[]) {
+  const urls = [...requestUrls.values()]
+
+  return assetPaths.every((assetPath) => urls.some((url) => url.includes(assetPath)))
+}
+
+async function previewIncludesAssetPaths(
+  cdp: CdpClient,
+  context: RuntimeContext,
+  assetPaths: string[],
+) {
+  return evaluate<boolean>(
+    cdp,
+    `(() => {
+      const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+      const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
+      const required = ${JSON.stringify(assetPaths)}
+
+      return required.every((assetPath) =>
+        styles.some((href) => href.includes(assetPath)) ||
+        scripts.some((src) => src.includes(assetPath)),
+      )
+    })()`,
+    { contextId: context.id, sessionId: context.sessionId },
+  )
+}
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -67,7 +94,7 @@ async function waitFor<T>(
   callback: () => Promise<T> | T,
   options: { timeoutMs?: number; intervalMs?: number } = {},
 ) {
-  const timeoutMs = options.timeoutMs ?? 15_000
+  const timeoutMs = options.timeoutMs ?? SMOKE_WAIT_TIMEOUT_MS
   const intervalMs = options.intervalMs ?? 100
   const startedAt = Date.now()
   let lastError: unknown
@@ -308,7 +335,7 @@ class CdpClient {
   waitForEvent(
     method: string,
     predicate: (params: unknown, sessionId: string | null) => boolean = () => true,
-    timeoutMs = 15_000,
+    timeoutMs = SMOKE_WAIT_TIMEOUT_MS,
   ) {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -569,6 +596,17 @@ async function runSmoke() {
 
   try {
     servers = await startServers({ apiPort, sandboxPort, webPort, tempRoot })
+
+    await waitFor('API health', async () => {
+      const response = await fetch(`http://127.0.0.1:${apiPort}/api/health`)
+      return response.ok
+    })
+
+    await waitFor('Vite dev server', async () => {
+      const response = await fetch(servers.appOrigin)
+      return response.ok
+    })
+
     browser = await spawnChromium(debugPort, path.join(tempRoot, 'chromium-profile'))
     cdp = await createPage(browser.debugPort)
 
@@ -672,31 +710,54 @@ async function runSmoke() {
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
+    const renderedPreviewHtml = await (await fetch(mainPreviewSrc)).text()
+    assert(
+      renderedPreviewHtml.includes('/api/runtimes/reveal.js/5.1.0/reveal.js'),
+      `Sandbox render did not include approved Reveal assets.\n${renderedPreviewHtml.slice(0, 800)}`,
+    )
+
+    if (mainPreview.sessionId) {
+      await cdp!.send('Runtime.enable', {}, mainPreview.sessionId)
+      await cdp!.send('Page.enable', {}, mainPreview.sessionId)
+      await cdp!.send('Network.enable', {}, mainPreview.sessionId)
+    }
+
+    await waitFor('sandbox preview loading overlay to clear', async () => {
+      const loading = await evaluate<boolean>(
+        cdp!,
+        `document.body.innerText.includes('Loading sandbox preview')`,
+      )
+
+      return !loading
+    })
+
     await waitFor(
       'approved runtime asset requests',
       async () => {
-        const urls = [...requestUrls.values()]
-        const networkReady = requiredRuntimeAssetPaths.every((assetPath) =>
-          urls.some((url) => url.includes(assetPath)),
+        const revealReady = await evaluate<boolean>(
+          cdp!,
+          `(() => {
+            const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+            const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
+            return (
+              typeof window.Reveal !== 'undefined' &&
+              scripts.some((src) => src.includes('/api/runtimes/reveal.js/5.1.0/reveal.js')) &&
+              styles.some((href) => href.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'))
+            )
+          })()`,
+          { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
         )
 
-        if (networkReady) {
+        if (revealReady) {
+          return true
+        }
+
+        if (networkIncludesAssetPaths(requestUrls, requiredRuntimeAssetPaths)) {
           return true
         }
 
         // Child-frame network events can race CDP attachment on slower CI runners.
-        return evaluate<boolean>(
-          cdp!,
-          `(() => {
-          const assetPaths = ${JSON.stringify(requiredRuntimeAssetPaths)};
-          const urls = [
-            ...[...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
-            ...[...document.querySelectorAll('script[src]')].map((script) => script.src),
-          ];
-          return assetPaths.every((assetPath) => urls.some((url) => url.includes(assetPath)));
-        })()`,
-          { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
-        )
+        return previewIncludesAssetPaths(cdp!, mainPreview, requiredRuntimeAssetPaths)
       },
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
@@ -711,10 +772,15 @@ async function runSmoke() {
       ),
     )
 
-    await waitFor('approved runtime font request', () => {
-      const urls = [...requestUrls.values()]
+    await waitFor('approved runtime font request', async () => {
+      if (networkIncludesAssetPaths(requestUrls, [requiredRuntimeFontAssetPath])) {
+        return true
+      }
 
-      return urls.some((url) => url.includes(requiredRuntimeFontAssetPath))
+      return previewIncludesAssetPaths(cdp!, mainPreview, [
+        requiredRuntimeFontAssetPath,
+        '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
+      ])
     })
 
     assert(
