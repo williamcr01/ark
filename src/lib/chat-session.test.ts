@@ -61,6 +61,18 @@ describe('chat-session storage', () => {
     expect(readChatSession(null)?.messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
   })
 
+  it('round-trips failed persist ids for saved decks', () => {
+    const session = {
+      ...createChatSession(),
+      messages: [{ id: 'm1', role: 'user' as const, content: 'hello' }],
+      failedPersistIds: ['m1'],
+    }
+
+    writeChatSession('deck-1', session)
+
+    expect(readChatSession('deck-1')?.failedPersistIds).toEqual(['m1'])
+  })
+
   it('returns null for invalid stored payloads', () => {
     getTestLocalStorage().setItem(getChatSessionStorageKey('deck-1'), '{"messages":"nope"}')
     expect(readChatSession('deck-1')).toBeNull()

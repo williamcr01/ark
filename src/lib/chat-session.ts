@@ -7,6 +7,8 @@ const LEGACY_DECK_SESSION_STORAGE_KEY = 'ark:deck-session'
 export type ChatSession = {
   messages: ChatMessage[]
   updatedAt: string
+  /** Message ids that failed to persist to the server (local cache metadata only). */
+  failedPersistIds?: string[]
 }
 
 const isChatMessage = (value: unknown): value is ChatMessage =>
@@ -23,6 +25,16 @@ const isChatSession = (value: unknown): value is ChatSession =>
   (value as ChatSession).messages.every(isChatMessage) &&
   typeof (value as ChatSession).updatedAt === 'string'
 
+const readFailedPersistIds = (parsed: { failedPersistIds?: unknown }): string[] | undefined => {
+  const ids = parsed.failedPersistIds
+
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+    return undefined
+  }
+
+  return ids
+}
+
 const parseStoredSession = (raw: string | null): ChatSession | null => {
   if (!raw) {
     return null
@@ -32,7 +44,10 @@ const parseStoredSession = (raw: string | null): ChatSession | null => {
     const parsed: unknown = JSON.parse(raw)
 
     if (isChatSession(parsed)) {
-      return parsed
+      return {
+        ...parsed,
+        failedPersistIds: readFailedPersistIds(parsed),
+      }
     }
 
     if (
@@ -47,6 +62,7 @@ const parseStoredSession = (raw: string | null): ChatSession | null => {
           typeof (parsed as { updatedAt?: unknown }).updatedAt === 'string'
             ? (parsed as { updatedAt: string }).updatedAt
             : new Date().toISOString(),
+        failedPersistIds: readFailedPersistIds(parsed as { failedPersistIds?: unknown }),
       }
     }
   } catch {
