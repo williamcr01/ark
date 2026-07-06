@@ -1,3 +1,4 @@
+import type { DeckRuntimeManifest } from '../../shared/deck-runtime-manifest.ts'
 import type { DeckPatchOperation, DeckPatchRequest } from '../../shared/deck-patch.ts'
 
 export type DeckVersionSource = 'manual' | 'agent' | 'upload' | 'repair' | 'rollback'
@@ -24,6 +25,7 @@ export type DeckVersionSummary = {
   source: DeckVersionSource
   summary: string | null
   validationStatus: DeckValidationStatus
+  runtimeManifest: DeckRuntimeManifest | null
   createdAt: string
   isActive: boolean
 }

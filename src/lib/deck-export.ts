@@ -1,8 +1,10 @@
+import type { DeckRuntimeManifest } from '../../shared/deck-runtime-manifest.ts'
 import {
   detectRuntimeMode,
   runtimeModeAllowsDeckScripts,
   usesRevealRuntimeAdapter,
 } from '@/lib/deck-runtime'
+import { manifestIndicatesScriptStripping } from '@/lib/deck-runtime-manifest'
 import { stripDeckScriptsForPreview } from '@/lib/deck-slides'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
@@ -49,9 +51,17 @@ export {
   getRuntimeRegistrySummary,
 } from '../../shared/deck-runtime-registry.ts'
 
-export function previewStripsDeckScripts(html: string) {
+export function previewStripsDeckScripts(html: string, manifest?: DeckRuntimeManifest | null) {
   if (!html.trim()) {
     return false
+  }
+
+  if (manifest) {
+    if (manifestIndicatesScriptStripping(manifest)) {
+      return true
+    }
+
+    return manifest.previewMode === 'css-only' && deckHasExecutableContent(html)
   }
 
   if (usesRevealRuntimeAdapter(html)) {
