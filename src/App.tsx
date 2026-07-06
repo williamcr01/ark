@@ -154,7 +154,17 @@ function App() {
     generatedHtmlRef.current = generatedHtml
   }, [generatedHtml])
 
-  const { reset: resetEditHistory, record: recordEditHistory } = editHistory
+  const {
+    canRedo,
+    canUndo,
+    commitRedo,
+    commitUndo,
+    redoEntry,
+    record: recordEditHistory,
+    reset: resetEditHistory,
+    undoEntry,
+  } = editHistory
+  const undoRedoInFlightRef = useRef(false)
 
   // Clear undo/redo history whenever the active deck changes (switch, new deck,
   // delete). AI generation, upload, and rollback reset explicitly below since
@@ -650,17 +660,26 @@ function App() {
   )
 
   const handleUndoEdit = useCallback(async () => {
-    const entry = editHistory.undoEntry
+    if (undoRedoInFlightRef.current) {
+      return
+    }
+
+    const entry = undoEntry
 
     if (!entry) {
       return
     }
 
+    undoRedoInFlightRef.current = true
+
     try {
-      await restoreHtmlSnapshot(entry.beforeHtml, {
+      const deck = await restoreHtmlSnapshot(entry.beforeHtml, {
         summary: `Undo: ${entry.provenance.summary}`,
       })
-      editHistory.commitUndo()
+
+      if (deck) {
+        commitUndo()
+      }
     } catch (undoError) {
       toast.error(undoError instanceof Error ? undoError.message : 'Could not undo the last edit')
       try {
@@ -668,21 +687,32 @@ function App() {
       } catch {
         // Ignore refresh failures after a failed undo.
       }
+    } finally {
+      undoRedoInFlightRef.current = false
     }
-  }, [editHistory, refreshActiveDeck, restoreHtmlSnapshot])
+  }, [commitUndo, refreshActiveDeck, restoreHtmlSnapshot, undoEntry])
 
   const handleRedoEdit = useCallback(async () => {
-    const entry = editHistory.redoEntry
+    if (undoRedoInFlightRef.current) {
+      return
+    }
+
+    const entry = redoEntry
 
     if (!entry) {
       return
     }
 
+    undoRedoInFlightRef.current = true
+
     try {
-      await restoreHtmlSnapshot(entry.afterHtml, {
+      const deck = await restoreHtmlSnapshot(entry.afterHtml, {
         summary: `Redo: ${entry.provenance.summary}`,
       })
-      editHistory.commitRedo()
+
+      if (deck) {
+        commitRedo()
+      }
     } catch (redoError) {
       toast.error(redoError instanceof Error ? redoError.message : 'Could not redo the edit')
       try {
@@ -690,8 +720,10 @@ function App() {
       } catch {
         // Ignore refresh failures after a failed redo.
       }
+    } finally {
+      undoRedoInFlightRef.current = false
     }
-  }, [editHistory, refreshActiveDeck, restoreHtmlSnapshot])
+  }, [commitRedo, refreshActiveDeck, restoreHtmlSnapshot, redoEntry])
 
   return (
     <TooltipProvider>
@@ -740,8 +772,8 @@ function App() {
                 minSize={isChatOpen ? '45%' : '100%'}
               >
                 <DeckPreview
-                  canRedo={editHistory.canRedo}
-                  canUndo={editHistory.canUndo}
+                  canRedo={canRedo}
+                  canUndo={canUndo}
                   deckId={deckId}
                   editorBridgeEnabled
                   html={generatedHtml}
@@ -754,8 +786,8 @@ function App() {
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
-                  redoSlideIndex={editHistory.redoEntry?.slideIndex ?? null}
-                  undoSlideIndex={editHistory.undoEntry?.slideIndex ?? null}
+                  redoSlideIndex={redoEntry?.slideIndex ?? null}
+                  undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
               </ResizablePanel>
@@ -807,8 +839,8 @@ function App() {
             >
               <div className="min-h-0 overflow-hidden">
                 <DeckPreview
-                  canRedo={editHistory.canRedo}
-                  canUndo={editHistory.canUndo}
+                  canRedo={canRedo}
+                  canUndo={canUndo}
                   deckId={deckId}
                   editorBridgeEnabled
                   html={generatedHtml}
@@ -820,8 +852,8 @@ function App() {
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
-                  redoSlideIndex={editHistory.redoEntry?.slideIndex ?? null}
-                  undoSlideIndex={editHistory.undoEntry?.slideIndex ?? null}
+                  redoSlideIndex={redoEntry?.slideIndex ?? null}
+                  undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
               </div>

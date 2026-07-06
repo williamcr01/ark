@@ -562,6 +562,43 @@ describe('DeckPreview script divergence UI', () => {
     expect(onUndo).not.toHaveBeenCalled()
   })
 
+  it('does not undo with keyboard when nothing is undoable', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: false,
+      onUndo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+
+    expect(onUndo).not.toHaveBeenCalled()
+  })
+
+  it('does not undo with keyboard while a patch is saving', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      isTextEditSaving: true,
+      onUndo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+
+    expect(onUndo).not.toHaveBeenCalled()
+  })
+
   it('shows locked messaging for locked selections', async () => {
     const user = userEvent.setup()
 

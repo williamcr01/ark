@@ -265,7 +265,7 @@ export function DeckPreview({
   )
 
   const handleUndo = useCallback(() => {
-    if (!canUndo || !onUndo || textEditActive) {
+    if (!canUndo || !onUndo || textEditActive || isTextEditSaving) {
       return
     }
 
@@ -273,16 +273,16 @@ export function DeckPreview({
     // fall back to the current slide when it is unknown.
     preserveSlideIndexRef.current = undoSlideIndex ?? activeSlideIndex
     void onUndo()
-  }, [activeSlideIndex, canUndo, onUndo, textEditActive, undoSlideIndex])
+  }, [activeSlideIndex, canUndo, isTextEditSaving, onUndo, textEditActive, undoSlideIndex])
 
   const handleRedo = useCallback(() => {
-    if (!canRedo || !onRedo || textEditActive) {
+    if (!canRedo || !onRedo || textEditActive || isTextEditSaving) {
       return
     }
 
     preserveSlideIndexRef.current = redoSlideIndex ?? activeSlideIndex
     void onRedo()
-  }, [activeSlideIndex, canRedo, onRedo, redoSlideIndex, textEditActive])
+  }, [activeSlideIndex, canRedo, isTextEditSaving, onRedo, redoSlideIndex, textEditActive])
 
   // Track the element's geometry from *before* a transform begins so a commit can
   // be diffed against the real starting rect. While a drag is in progress the
@@ -508,15 +508,23 @@ export function DeckPreview({
       if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
         // Leave undo/redo to the browser while editing text so contenteditable
         // history keeps working inside the deck.
-        if (textEditActive) {
+        if (textEditActive || isTextEditSaving) {
           return
         }
 
-        event.preventDefault()
-
         if (event.shiftKey) {
+          if (!canRedo || !onRedo) {
+            return
+          }
+
+          event.preventDefault()
           handleRedo()
         } else {
+          if (!canUndo || !onUndo) {
+            return
+          }
+
+          event.preventDefault()
           handleUndo()
         }
 
@@ -529,7 +537,11 @@ export function DeckPreview({
         !event.shiftKey &&
         (event.key === 'y' || event.key === 'Y')
       ) {
-        if (textEditActive) {
+        if (textEditActive || isTextEditSaving) {
+          return
+        }
+
+        if (!canRedo || !onRedo) {
           return
         }
 
@@ -584,11 +596,16 @@ export function DeckPreview({
     activeTool,
     beginTextEdit,
     canEditSelectedText,
+    canRedo,
+    canUndo,
     editChromeActive,
     endTextEditing,
     handleRedo,
     handleToolChange,
     handleUndo,
+    isTextEditSaving,
+    onRedo,
+    onUndo,
     textEditActive,
   ])
 
