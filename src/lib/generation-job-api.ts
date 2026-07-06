@@ -1,26 +1,17 @@
 import type {
-  GenerationJob,
-  GenerationJobStatus,
+  GenerationJobApi,
   StartGenerationJobRequest,
-} from '../../shared/generation-job.ts'
+} from '../../shared/api/generation-jobs.ts'
+import { generationJobResponseSchema } from '../../shared/api/generation-jobs.ts'
+import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import type { GenerationJobStatus } from '../../shared/generation-job.ts'
 
-type GenerationJobResponse = {
-  job?: GenerationJob
-  error?: string
-  code?: string
-}
+export type { GenerationJobApi, StartGenerationJobRequest }
 
 async function readGenerationJobResponse(response: Response) {
-  const data = (await response.json().catch(() => ({
-    error: 'The API returned an unreadable response.',
-  }))) as GenerationJobResponse
-
-  if (!response.ok || !data.job) {
-    throw Object.assign(new Error(data.error ?? 'Could not load the generation job.'), {
-      code: data.code,
-    })
-  }
-
+  const data = await fetchApiJsonOrThrow(response, generationJobResponseSchema, {
+    fallbackMessage: 'Could not load the generation job.',
+  })
   return data.job
 }
 

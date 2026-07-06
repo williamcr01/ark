@@ -33,12 +33,9 @@ export type GenerationJobStore = {
   listJobsForDeck: (deckId: string) => Promise<GenerationJob[]>
 }
 
-const GENERATION_JOB_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+import { isValidGenerationJobId } from '../shared/api/common.ts'
 
-export function isValidGenerationJobId(id: string) {
-  return GENERATION_JOB_ID_PATTERN.test(id)
-}
+export { isValidGenerationJobId }
 
 export function createEmptyGenerationJobProgress(): GenerationJobProgress {
   return {

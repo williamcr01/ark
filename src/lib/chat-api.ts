@@ -1,40 +1,26 @@
-import type {
-  AppendChatMessageRequest,
-  DeckChatResponse,
-  PersistedChatMessage,
-} from '../../shared/chat-thread.ts'
+import type { AppendChatMessageRequest } from '../../shared/chat-thread.ts'
 import { CHAT_HISTORY_PAGE_SIZE } from '../../shared/chat-thread.ts'
+import {
+  appendChatMessageResponseSchema,
+  deckChatResponseSchema,
+  type DeckChatResponse,
+  type PersistedChatMessage,
+} from '../../shared/api/chat.ts'
+import { ApiResponseError, fetchApiJsonOrThrow, readJsonBody } from '../../shared/api/fetch.ts'
+import { simpleErrorResponseSchema } from '../../shared/api/common.ts'
 
-type DeckChatApiResponse = DeckChatResponse & {
-  error?: string
-}
-
-type AppendChatMessageResponse = {
-  message?: PersistedChatMessage
-  error?: string
-}
+export type { DeckChatResponse, PersistedChatMessage }
 
 async function readDeckChatResponse(response: Response) {
-  const data = (await response.json().catch(() => ({
-    error: 'The API returned an unreadable response.',
-  }))) as DeckChatApiResponse
-
-  if (!response.ok || !Array.isArray(data.messages)) {
-    throw new Error(data.error ?? 'Could not load deck chat.')
-  }
-
-  return data
+  return fetchApiJsonOrThrow(response, deckChatResponseSchema, {
+    fallbackMessage: 'Could not load deck chat.',
+  })
 }
 
 async function readAppendMessageResponse(response: Response) {
-  const data = (await response.json().catch(() => ({
-    error: 'The API returned an unreadable response.',
-  }))) as AppendChatMessageResponse
-
-  if (!response.ok || !data.message) {
-    throw new Error(data.error ?? 'Could not save chat message.')
-  }
-
+  const data = await fetchApiJsonOrThrow(response, appendChatMessageResponseSchema, {
+    fallbackMessage: 'Could not save chat message.',
+  })
   return data.message
 }
 
@@ -120,11 +106,13 @@ export async function clearDeckChat(deckId: string, signal?: AbortSignal) {
     signal,
   })
 
-  if (!response.ok && response.status !== 204) {
-    const data = (await response.json().catch(() => ({ error: 'Could not clear deck chat.' }))) as {
-      error?: string
-    }
+  if (response.status === 204) {
+    return
+  }
 
-    throw new Error(data.error ?? 'Could not clear deck chat.')
+  if (!response.ok) {
+    const data = await readJsonBody(response)
+    const parsed = simpleErrorResponseSchema.safeParse(data)
+    throw new ApiResponseError(parsed.success ? parsed.data.error : 'Could not clear deck chat.')
   }
 }

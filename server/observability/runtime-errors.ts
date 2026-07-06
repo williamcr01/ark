@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
 import { isValidDeckId } from '../deck-record.ts'
+import { runtimeErrorInputSchema } from '../../shared/api/runtime-errors.ts'
+import type { RuntimeErrorInput, RuntimeErrorSeverity } from '../../shared/api/runtime-errors.ts'
 import { sanitizeRuntimeErrorText } from './redact.ts'
 
-export type RuntimeErrorSeverity = 'info' | 'warning' | 'error'
+export type { RuntimeErrorInput, RuntimeErrorSeverity } from '../../shared/api/runtime-errors.ts'
 
 export type RuntimeErrorRecord = {
   id: string
@@ -17,18 +19,6 @@ export type RuntimeErrorRecord = {
   stack: string | null
   requestId: string | null
   createdAt: string
-}
-
-export type RuntimeErrorInput = {
-  deckId?: string | null
-  versionId?: string | null
-  slideIndex?: number | null
-  runtimeMode?: string | null
-  severity?: RuntimeErrorSeverity | null
-  message: string
-  source?: string | null
-  stack?: string | null
-  requestId?: string | null
 }
 
 export type RuntimeErrorStore = {
@@ -57,60 +47,50 @@ function clampSlideIndex(value: unknown) {
   return index
 }
 
-function normalizeSeverity(value: unknown): RuntimeErrorSeverity {
-  if (value === 'info' || value === 'warning' || value === 'error') {
-    return value
-  }
-
-  return 'error'
-}
-
 export function parseRuntimeErrorBody(
   body: unknown,
 ): { ok: true; input: RuntimeErrorInput } | { ok: false; error: string } {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { ok: false, error: 'Request body must be a JSON object.' }
+  const parsed = runtimeErrorInputSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? 'Request body must be a JSON object.',
+    }
   }
 
-  const record = body as Record<string, unknown>
-  const message = sanitizeRuntimeErrorText(record.message, MAX_MESSAGE_LENGTH)
+  const message = sanitizeRuntimeErrorText(parsed.data.message, MAX_MESSAGE_LENGTH)
 
   if (!message) {
     return { ok: false, error: 'message is required.' }
   }
 
-  const deckId = typeof record.deckId === 'string' ? record.deckId.trim() : null
+  const deckId = parsed.data.deckId?.trim() || null
 
   if (deckId && !isValidDeckId(deckId)) {
     return { ok: false, error: 'Invalid deck id.' }
   }
 
-  const versionId = typeof record.versionId === 'string' ? record.versionId.trim() : null
+  const versionId = parsed.data.versionId?.trim() || null
 
   if (versionId && !isValidDeckId(versionId)) {
     return { ok: false, error: 'Invalid version id.' }
   }
 
-  const runtimeModeRaw =
-    typeof record.runtimeMode === 'string'
-      ? record.runtimeMode.trim().slice(0, MAX_RUNTIME_MODE_LENGTH)
-      : null
+  const runtimeModeRaw = parsed.data.runtimeMode?.trim().slice(0, MAX_RUNTIME_MODE_LENGTH) || null
 
   return {
     ok: true,
     input: {
-      deckId: deckId || null,
-      versionId: versionId || null,
-      slideIndex: clampSlideIndex(record.slideIndex),
-      runtimeMode: runtimeModeRaw || null,
-      severity: normalizeSeverity(record.severity),
+      deckId,
+      versionId,
+      slideIndex: clampSlideIndex(parsed.data.slideIndex),
+      runtimeMode: runtimeModeRaw,
+      severity: parsed.data.severity ?? 'error',
       message,
-      source: sanitizeRuntimeErrorText(record.source, MAX_SOURCE_LENGTH) || null,
-      stack: sanitizeRuntimeErrorText(record.stack, MAX_STACK_LENGTH) || null,
-      requestId:
-        typeof record.requestId === 'string' && record.requestId.trim()
-          ? record.requestId.trim()
-          : null,
+      source: sanitizeRuntimeErrorText(parsed.data.source, MAX_SOURCE_LENGTH) || null,
+      stack: sanitizeRuntimeErrorText(parsed.data.stack, MAX_STACK_LENGTH) || null,
+      requestId: parsed.data.requestId?.trim() || null,
     },
   }
 }

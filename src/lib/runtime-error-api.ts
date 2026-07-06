@@ -1,20 +1,8 @@
-export type ReportRuntimeErrorInput = {
-  deckId?: string | null
-  versionId?: string | null
-  slideIndex?: number | null
-  runtimeMode?: string | null
-  severity?: 'info' | 'warning' | 'error'
-  message: string
-  source?: string | null
-  stack?: string | null
-}
+import type { RuntimeErrorInput } from '../../shared/api/runtime-errors.ts'
+import { runtimeErrorResponseSchema } from '../../shared/api/runtime-errors.ts'
+import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
 
-type RuntimeErrorResponse = {
-  id?: string
-  createdAt?: string
-  error?: string
-  requestId?: string
-}
+export type ReportRuntimeErrorInput = RuntimeErrorInput
 
 export async function reportRuntimeError(input: ReportRuntimeErrorInput) {
   const response = await fetch('/api/runtime-errors', {
@@ -25,13 +13,7 @@ export async function reportRuntimeError(input: ReportRuntimeErrorInput) {
     body: JSON.stringify(input),
   })
 
-  const data = (await response.json().catch(() => ({
-    error: 'The API returned an unreadable response.',
-  }))) as RuntimeErrorResponse
-
-  if (!response.ok) {
-    throw new Error(data.error ?? 'Could not report runtime error.')
-  }
-
-  return data
+  return fetchApiJsonOrThrow(response, runtimeErrorResponseSchema, {
+    fallbackMessage: 'Could not report runtime error.',
+  })
 }
