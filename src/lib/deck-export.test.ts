@@ -10,6 +10,20 @@ import {
   previewStripsDeckScripts,
   resolveDownloadHtml,
 } from './deck-export'
+import { buildDeckRuntimeManifestInBrowser } from './deck-runtime-manifest'
+
+const inlineHandlerDeck = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Inline Handler Deck</title>
+</head>
+<body>
+  <section class="slide" onclick="window.clicked = true">
+    <h1>Hello</h1>
+  </section>
+</body>
+</html>`
 
 describe('deck-export', () => {
   it('detects executable content in hostile scripted decks', () => {
@@ -20,6 +34,14 @@ describe('deck-export', () => {
   it('does not treat plain CSS decks as executable', () => {
     expect(deckHasExecutableContent(plainCssDeck)).toBe(false)
     expect(previewStripsDeckScripts(plainCssDeck)).toBe(false)
+  })
+
+  it('keeps inline handler stripping visible when a manifest is provided', () => {
+    const manifest = buildDeckRuntimeManifestInBrowser(inlineHandlerDeck)
+
+    expect(manifest.scripts.inline + manifest.scripts.external).toBe(0)
+    expect(deckHasExecutableContent(inlineHandlerDeck)).toBe(true)
+    expect(previewStripsDeckScripts(inlineHandlerDeck, manifest)).toBe(true)
   })
 
   it('keeps full-js decks executable in preview', () => {
