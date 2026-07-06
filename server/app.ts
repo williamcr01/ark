@@ -41,6 +41,14 @@ import {
 import { parseChatAttachments } from '../shared/chat.ts'
 import type { AppendChatMessageRequest } from '../shared/chat-thread.ts'
 import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
+import {
+  createObservabilityMiddleware,
+  createRuntimeErrorStore,
+  getRequestId,
+  getRequestLogger,
+  parseRuntimeErrorBody,
+  type RuntimeErrorStore,
+} from './observability/index.ts'
 
 type CreateAppOptions = {
   deckStore?: DeckStore
@@ -48,6 +56,7 @@ type CreateAppOptions = {
   generationJobStore?: GenerationJobStore
   generationJobRunner?: GenerationJobRunner
   previewSessionStore?: PreviewSessionStore
+  runtimeErrorStore?: RuntimeErrorStore
 }
 
 function parseAppendChatMessageBody(
@@ -160,8 +169,17 @@ const sendApiError = (response: Response, status: number, payload: ApiErrorPaylo
 const sendDeckValidationError = (
   response: Response,
   validation: ReturnType<typeof validateDeckHtmlOnServer>,
+  request?: object,
 ) => {
   const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
+  if (request) {
+    getRequestLogger(request).warn('deck.validation.failed', {
+      issueCount: validation.issues.length,
+      primaryCode: primaryIssue?.code ?? null,
+      statusCode: 400,
+    })
+  }
 
   response.status(400).json({
     error: primaryIssue?.message ?? 'The HTML is not a valid Ark deck.',
@@ -193,8 +211,10 @@ export function createApp(options: CreateAppOptions = {}) {
   const generationJobs =
     options.generationJobRunner ?? createGenerationJobRunner({ deckStore, jobStore, chatStore })
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
+  const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
 
+  app.use(createObservabilityMiddleware())
   app.use(express.json({ limit: '12mb' }))
 
   app.get('/api/deck-assets', async (request: Request, response: Response) => {
@@ -342,12 +362,16 @@ export function createApp(options: CreateAppOptions = {}) {
       const validation = validateDeckHtmlOnServer(html)
 
       if (!validation.valid) {
-        sendDeckValidationError(response, validation)
+        sendDeckValidationError(response, validation, request)
         return
       }
 
       try {
         const deck = await deckStore.createDeck(html, parseDeckVersionOptions(request.body))
+        getRequestLogger(request).info('deck.created', {
+          deckId: deck.id,
+          statusCode: 201,
+        })
         response.status(201).json({ deck, validation })
       } catch (error) {
         sendApiError(response, 500, getApiErrorFromUnknown(error))
@@ -382,7 +406,7 @@ export function createApp(options: CreateAppOptions = {}) {
       const validation = validateDeckHtmlOnServer(html)
 
       if (!validation.valid) {
-        sendDeckValidationError(response, validation)
+        sendDeckValidationError(response, validation, request)
         return
       }
 
@@ -463,7 +487,7 @@ export function createApp(options: CreateAppOptions = {}) {
         const validation = validateDeckHtmlOnServer(patched.html)
 
         if (!validation.valid) {
-          sendDeckValidationError(response, validation)
+          sendDeckValidationError(response, validation, request)
           return
         }
 
@@ -622,7 +646,7 @@ export function createApp(options: CreateAppOptions = {}) {
         const validation = validateDeckHtmlOnServer(targetVersion.html)
 
         if (!validation.valid) {
-          sendDeckValidationError(response, validation)
+          sendDeckValidationError(response, validation, request)
           return
         }
 
@@ -798,6 +822,14 @@ export function createApp(options: CreateAppOptions = {}) {
         const job = await generationJobs.startJob({
           body: request.body,
           defaultModel,
+          requestId: getRequestId(request),
+        })
+
+        getRequestLogger(request).info('generation.job.enqueued', {
+          jobId: job.id,
+          deckId: job.deckId,
+          model: job.model,
+          statusCode: 202,
         })
 
         response.status(202).json(toGenerationJobResponse(job))
@@ -888,6 +920,35 @@ export function createApp(options: CreateAppOptions = {}) {
       }
     },
   )
+
+  app.post('/api/runtime-errors', (request: Request, response: Response) => {
+    const parsed = parseRuntimeErrorBody(request.body)
+
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
+
+    const record = runtimeErrorStore.record({
+      ...parsed.input,
+      requestId: parsed.input.requestId ?? getRequestId(request),
+    })
+
+    getRequestLogger(request).warn('runtime.error.reported', {
+      runtimeErrorId: record.id,
+      deckId: record.deckId,
+      versionId: record.versionId,
+      slideIndex: record.slideIndex,
+      runtimeMode: record.runtimeMode,
+      severity: record.severity,
+      statusCode: 201,
+    })
+
+    response.status(201).json({
+      id: record.id,
+      createdAt: record.createdAt,
+    })
+  })
 
   return app
 }

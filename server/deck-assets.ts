@@ -5,6 +5,8 @@ import {
   isAllowedAssetHost,
   parseDeckAssetAllowlist,
 } from '../shared/deck-network.ts'
+import { categorizeAssetProxyFailure } from './observability/provider-errors.ts'
+import { getRequestLogger } from './observability/middleware.ts'
 
 const MAX_ASSET_BYTES = 5 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 10_000
@@ -65,9 +67,14 @@ async function fetchRemoteAsset(url: URL) {
 }
 
 export async function handleDeckAssetRequest(request: Request, response: Response) {
+  const logger = getRequestLogger(request)
   const rawUrl = typeof request.query.url === 'string' ? request.query.url.trim() : ''
 
   if (!rawUrl) {
+    logger.warn('asset_proxy.rejected', {
+      errorCategory: 'missing_url',
+      statusCode: 400,
+    })
     response.status(400).json({ error: 'url query parameter is required.' })
     return
   }
@@ -77,11 +84,19 @@ export async function handleDeckAssetRequest(request: Request, response: Respons
   try {
     parsedUrl = new URL(rawUrl)
   } catch {
+    logger.warn('asset_proxy.rejected', {
+      errorCategory: 'invalid_url',
+      statusCode: 400,
+    })
     response.status(400).json({ error: 'url must be a valid absolute http(s) URL.' })
     return
   }
 
   if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    logger.warn('asset_proxy.rejected', {
+      errorCategory: 'invalid_url',
+      statusCode: 400,
+    })
     response.status(400).json({ error: 'Only http(s) asset URLs are supported.' })
     return
   }
@@ -89,6 +104,11 @@ export async function handleDeckAssetRequest(request: Request, response: Respons
   const allowlist = getAllowlist()
 
   if (!isAllowedAssetHost(parsedUrl, allowlist)) {
+    logger.warn('asset_proxy.blocked', {
+      errorCategory: 'allowlist_blocked',
+      host: parsedUrl.hostname,
+      statusCode: 403,
+    })
     response.status(403).json({
       error:
         'External assets are blocked. Configure ARK_DECK_ASSET_ALLOWLIST to proxy approved hosts.',
@@ -101,6 +121,10 @@ export async function handleDeckAssetRequest(request: Request, response: Respons
   const cached = assetCache.get(cacheKey)
 
   if (cached) {
+    logger.info('asset_proxy.cache_hit', {
+      host: parsedUrl.hostname,
+      statusCode: 200,
+    })
     response.setHeader('Content-Type', cached.contentType)
     response.setHeader('Cache-Control', 'public, max-age=3600')
     response.send(cached.body)
@@ -108,11 +132,21 @@ export async function handleDeckAssetRequest(request: Request, response: Respons
   }
 
   try {
+    const fetchStartedAt = performance.now()
     const asset = await fetchRemoteAsset(parsedUrl)
+    const durationMs = Math.round(performance.now() - fetchStartedAt)
 
     assetCache.set(cacheKey, {
       ...asset,
       fetchedAt: Date.now(),
+    })
+
+    logger.info('asset_proxy.fetched', {
+      host: parsedUrl.hostname,
+      durationMs,
+      contentType: asset.contentType,
+      byteLength: asset.body.byteLength,
+      statusCode: 200,
     })
 
     response.setHeader('Content-Type', asset.contentType)
@@ -120,6 +154,15 @@ export async function handleDeckAssetRequest(request: Request, response: Respons
     response.send(asset.body)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Asset could not be fetched.'
+    const errorCategory = categorizeAssetProxyFailure(error)
+
+    logger.warn('asset_proxy.failed', {
+      host: parsedUrl.hostname,
+      errorCategory,
+      message,
+      statusCode: 502,
+    })
+
     response.status(502).json({ error: message })
   }
 }

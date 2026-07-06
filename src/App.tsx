@@ -555,11 +555,13 @@ function App() {
                 minSize={isChatOpen ? '45%' : '100%'}
               >
                 <DeckPreview
+                  deckId={deckId}
                   html={generatedHtml}
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
                   layout="desktop"
                   parsedDeck={parsedDeck}
+                  versionId={activeVersionId}
                 />
               </ResizablePanel>
               {isChatOpen ? (
@@ -608,11 +610,13 @@ function App() {
             >
               <div className="min-h-0 overflow-hidden">
                 <DeckPreview
+                  deckId={deckId}
                   html={generatedHtml}
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
                   layout="mobile"
                   parsedDeck={parsedDeck}
+                  versionId={activeVersionId}
                 />
               </div>
               {isChatOpen ? (

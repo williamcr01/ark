@@ -26,10 +26,13 @@ import {
 import { parseDeckSlides } from '@/lib/deck-slides'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
+import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 
 export type DeckPreviewProps = {
   html: string
+  deckId?: string | null
+  versionId?: string | null
   isGenerating: boolean
   isStripOpen: boolean
   layout: 'desktop' | 'mobile'
@@ -38,6 +41,8 @@ export type DeckPreviewProps = {
 
 export function DeckPreview({
   html,
+  deckId = null,
+  versionId = null,
   isGenerating,
   isStripOpen,
   layout,
@@ -55,6 +60,8 @@ export function DeckPreview({
   )
   const hasSlides = parsedDeck.slideCount > 0
   const previewFrame = useDeckPreviewFrame(html, html.length > 0 && hasSlides && !isPresentOpen)
+  const reportedRuntimeErrorsRef = useRef(new Set<string>())
+  const activeSlideIndexRef = useRef(0)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
@@ -64,8 +71,33 @@ export function DeckPreview({
       runtimeMode,
       keyboardMode: isPresentOpen ? 'off' : 'preview',
       sandboxOrigin: previewFrame.sandboxOrigin,
+      onRuntimeError: (message, source) => {
+        const fingerprint = `${message}:${source ?? ''}`
+
+        if (reportedRuntimeErrorsRef.current.has(fingerprint)) {
+          return
+        }
+
+        reportedRuntimeErrorsRef.current.add(fingerprint)
+
+        void reportRuntimeError({
+          deckId,
+          versionId,
+          slideIndex: activeSlideIndexRef.current,
+          runtimeMode,
+          severity: 'error',
+          message,
+          source: source ?? null,
+        }).catch(() => {
+          reportedRuntimeErrorsRef.current.delete(fingerprint)
+        })
+      },
     },
   )
+
+  useEffect(() => {
+    activeSlideIndexRef.current = activeSlideIndex
+  }, [activeSlideIndex])
 
   useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
