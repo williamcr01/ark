@@ -116,6 +116,8 @@ Requirements:
 
 ## Reveal.js runtime contract
 
+See [reveal-runtime.md](./reveal-runtime.md) for the full authoring guide, feature matrix, and agent rules.
+
 ### Auto-wired reveal runtime (recommended)
 
 Approved reveal registry decks only need runtime markers and registry asset URLs. Ark injects the reveal adapter automatically; no deck-authored bridge script is required.
@@ -138,14 +140,17 @@ Approved reveal registry decks only need runtime markers and registry asset URLs
 </html>
 ```
 
-### Manual custom-JS reveal decks
+### Manual custom-JS reveal decks (discouraged)
 
-For decks that opt into full-JS mode with `data-ark-deck="nav"`, wire Reveal events to the bridge yourself:
+New reveal decks should use the **approved registry path** documented in [reveal-runtime.md](./reveal-runtime.md). Ark injects the reveal adapter automatically; no deck-authored bridge script is required.
+
+For legacy hand-written decks that opt into full-JS mode with `data-ark-deck="nav"`, wire Reveal events to the bridge yourself. **CDN URLs are invalid** — use approved runtime assets only:
 
 ```html
-<html data-ark-deck="nav">
+<html data-ark-deck="nav" data-ark-runtime-lib="reveal.js" data-ark-runtime-version="5.1.0">
   <head>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.css" />
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/reveal.css" />
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/theme/white.css" />
   </head>
   <body>
     <div class="reveal">
@@ -154,19 +159,27 @@ For decks that opt into full-JS mode with `data-ark-deck="nav"`, wire Reveal eve
         <section>Detail</section>
       </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/reveal.js/dist/reveal.js"></script>
+    <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
     <script>
-      Reveal.initialize({ hash: false, keyboard: true })
+      Reveal.initialize({ hash: false, keyboard: false })
 
       function syncSlide() {
-        const indices = Reveal.getIndices()
-        const index = indices.h || 0
+        const slide = Reveal.getCurrentSlide()
+        const index =
+          slide && typeof Reveal.getSlidePastCount === 'function'
+            ? Reveal.getSlidePastCount(slide)
+            : 0
         document.dispatchEvent(new CustomEvent('ark:deck-slide-change', { detail: { index } }))
       }
 
       Reveal.on('slidechanged', syncSlide)
       document.addEventListener('ark:deck-goto', (e) => {
-        Reveal.slide(e.detail.index)
+        const slides = Reveal.getSlides()
+        const target = slides[e.detail.index]
+        if (target) {
+          const { h, v } = Reveal.getIndices(target)
+          Reveal.slide(h, v, 0)
+        }
       })
       syncSlide()
     </script>

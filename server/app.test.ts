@@ -142,6 +142,54 @@ describe('deck API routes', () => {
     expect((await fetch(`${baseUrl}/api/decks/${created.deck!.id}`)).status).toBe(404)
   })
 
+  it('applies structured slide patches and persists a new version', async () => {
+    const baseUrl = await startApi()
+    const multiSlideHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Patch Deck</title>
+</head>
+<body>
+  <section class="slide"><h1>One</h1></section>
+  <section class="slide"><h1>Two</h1></section>
+</body>
+</html>`
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: multiSlideHtml, source: 'upload' }),
+    })
+    const created = (await createResponse.json()) as ApiDeckResponse
+    const deckId = created.deck!.id
+
+    const patchResponse = await fetch(`${baseUrl}/api/decks/${deckId}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operations: [{ op: 'update_slide_title', slideIndex: 1, title: 'Updated second slide' }],
+        source: 'manual',
+      }),
+    })
+    const patched = (await patchResponse.json()) as ApiDeckResponse & {
+      patch?: {
+        appliedCount: number
+        changedSlideIndexes: number[]
+        summary: string
+      }
+    }
+
+    expect(patchResponse.status).toBe(200)
+    expect(patched.deck?.versionNumber).toBe(2)
+    expect(patched.patch).toMatchObject({
+      appliedCount: 1,
+      changedSlideIndexes: [1],
+      summary: expect.stringContaining('Updated title'),
+    })
+    expect(patched.deck?.html).toContain('Updated second slide')
+  })
+
   it('lists versions, fetches one version, and rolls back without losing history', async () => {
     const baseUrl = await startApi()
 
