@@ -27,8 +27,10 @@ import {
   type EditorTransformPreviewMessage,
   postEditorShellMessage,
 } from '../../shared/deck-editor-bridge.ts'
-import { getDeckBridgeTargetOrigin } from '../../shared/deck-bridge.ts'
-import { isAllowedBridgeMessageOrigin } from '../../shared/sandbox-origin.ts'
+import {
+  DECK_BRIDGE_POST_MESSAGE_TARGET,
+  isAllowedBridgeMessageOrigin,
+} from '../../shared/sandbox-origin.ts'
 
 export type DeckEditorBridgeState = {
   editorReady: boolean
@@ -80,7 +82,7 @@ export function useDeckEditorBridge(
     enabled,
     activeSlideIndex,
     sandboxOrigin = null,
-    parentOrigin = null,
+    parentOrigin: _parentOrigin = null,
     iframeGenerationKey = '',
     onSelectionChange,
     onEditorError,
@@ -101,14 +103,10 @@ export function useDeckEditorBridge(
         return false
       }
 
-      postEditorShellMessage(
-        iframeWindow,
-        message,
-        getDeckBridgeTargetOrigin(parentOrigin ?? undefined),
-      )
+      postEditorShellMessage(iframeWindow, message, DECK_BRIDGE_POST_MESSAGE_TARGET)
       return true
     },
-    [iframeRef, parentOrigin],
+    [iframeRef],
   )
 
   const enableEditor = useCallback(

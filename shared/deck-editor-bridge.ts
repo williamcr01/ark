@@ -12,7 +12,7 @@ import {
   ARK_LOCKED_ATTR,
   TRANSIENT_ELEMENT_ID_PREFIX,
 } from './deck-metadata.ts'
-import { getDeckBridgeTargetOrigin } from './deck-bridge.ts'
+import { DECK_BRIDGE_POST_MESSAGE_TARGET } from './sandbox-origin.ts'
 
 export const EDITOR_BRIDGE_PROTOCOL_VERSION = 1 as const
 
@@ -627,7 +627,7 @@ export function createEditorErrorMessage(message: string, code?: string): Editor
 export function postEditorShellMessage(
   target: Window,
   message: EditorShellMessage,
-  targetOrigin = getDeckBridgeTargetOrigin(),
+  targetOrigin = DECK_BRIDGE_POST_MESSAGE_TARGET,
 ) {
   target.postMessage(message, targetOrigin)
 }

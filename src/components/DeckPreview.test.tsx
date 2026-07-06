@@ -354,6 +354,49 @@ describe('DeckPreview script divergence UI', () => {
     expect(onCommitTextEdit).not.toHaveBeenCalled()
   })
 
+  it('commits repeated text edits that return to a prior value after an intervening change', () => {
+    const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Quarterly planning',
+      originalText: 'Updated planning',
+    }
+
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onCommitTextEdit,
+    })
+
+    expect(onCommitTextEdit).toHaveBeenCalledTimes(1)
+
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Updated planning',
+      originalText: 'Quarterly planning',
+    }
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} editorBridgeEnabled onCommitTextEdit={onCommitTextEdit} />
+      </TooltipProvider>,
+    )
+
+    expect(onCommitTextEdit).toHaveBeenCalledTimes(2)
+    expect(onCommitTextEdit).toHaveBeenLastCalledWith({
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Updated planning',
+      originalText: 'Quarterly planning',
+    })
+  })
+
   it('shows locked messaging for locked selections', async () => {
     const user = userEvent.setup()
 

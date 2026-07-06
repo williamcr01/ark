@@ -216,7 +216,7 @@ export function DeckPreview({
       return
     }
 
-    const commitKey = `${lastTextCommit.elementId}:${lastTextCommit.slideIndex}:${lastTextCommit.text}`
+    const commitKey = `${lastTextCommit.elementId}:${lastTextCommit.slideIndex}:${lastTextCommit.originalText}:${lastTextCommit.text}`
 
     if (processedTextCommitRef.current === commitKey) {
       return
