@@ -14,6 +14,7 @@ import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
+import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
@@ -37,6 +38,7 @@ export type DeckPreviewProps = {
   isStripOpen: boolean
   layout: 'desktop' | 'mobile'
   parsedDeck: ReturnType<typeof parseDeckSlides>
+  editorBridgeEnabled?: boolean
 }
 
 export function DeckPreview({
@@ -47,10 +49,12 @@ export function DeckPreview({
   isStripOpen,
   layout,
   parsedDeck,
+  editorBridgeEnabled = false,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
+  const [editModeActive, setEditModeActive] = useState(false)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
   const runtimeMode = runtimeManifest.runtimeMode
@@ -64,7 +68,10 @@ export function DeckPreview({
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
   const hasSlides = parsedDeck.slideCount > 0
-  const previewFrame = useDeckPreviewFrame(html, html.length > 0 && hasSlides && !isPresentOpen)
+  const editorBridgeInjected = editorBridgeEnabled && editModeActive
+  const previewFrame = useDeckPreviewFrame(html, html.length > 0 && hasSlides && !isPresentOpen, {
+    editorBridge: editorBridgeInjected,
+  })
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
@@ -103,6 +110,30 @@ export function DeckPreview({
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
+
+  const { editorReady, selection, editorError, enableEditor, disableEditor, requestGeometry } =
+    useDeckEditorBridge(iframeRef, {
+      enabled: editorBridgeInjected && html.length > 0 && hasSlides && !isPresentOpen,
+      activeSlideIndex,
+      sandboxOrigin: previewFrame.sandboxOrigin,
+      iframeGenerationKey: previewFrame.iframeKey,
+    })
+
+  useEffect(() => {
+    if (!editorBridgeInjected || !editorReady) {
+      return
+    }
+
+    enableEditor(activeSlideIndex)
+  }, [activeSlideIndex, editorBridgeInjected, editorReady, enableEditor, previewFrame.iframeKey])
+
+  useEffect(() => {
+    if (!editModeActive || !selection?.elementId) {
+      return
+    }
+
+    requestGeometry(selection.elementId, selection.slideIndex)
+  }, [editModeActive, requestGeometry, selection])
 
   useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
@@ -150,6 +181,29 @@ export function DeckPreview({
             <Maximize2Icon className="size-3" />
             Present
           </button>
+          {editorBridgeEnabled ? (
+            <button
+              aria-label={editModeActive ? 'Disable edit mode' : 'Enable edit mode'}
+              aria-pressed={editModeActive}
+              className={cn(
+                'inline-flex h-6 items-center rounded-sm border px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+                editModeActive
+                  ? 'border-[var(--ark-accent)] bg-[var(--ark-accent-soft)] text-[var(--ark-accent)]'
+                  : 'border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] text-[var(--ark-titlebar-fg)] hover:bg-[var(--ark-titlebar-hover)]',
+              )}
+              disabled={!canPresent || isPresentOpen}
+              onClick={() => {
+                if (editModeActive) {
+                  disableEditor()
+                }
+
+                setEditModeActive((current) => !current)
+              }}
+              type="button"
+            >
+              {editModeActive ? 'Editing' : 'Edit'}
+            </button>
+          ) : null}
           {runtimeMode === 'custom-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
@@ -233,6 +287,17 @@ export function DeckPreview({
                         </p>
                       </div>
                     </div>
+                  </div>
+                ) : null}
+                {editorError ? (
+                  <div
+                    className={cn(
+                      'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
+                      usesStaticPreview ? 'top-24' : 'top-4',
+                    )}
+                  >
+                    <p className="font-medium">Editor bridge error</p>
+                    <p>{editorError}</p>
                   </div>
                 ) : null}
                 {networkIssues.length > 0 ? (

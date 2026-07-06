@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
@@ -73,5 +74,46 @@ describe('DeckPreview script divergence UI', () => {
 
     expect(screen.getAllByText('Reveal runtime').length).toBeGreaterThan(0)
     expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+  })
+
+  it('can opt into editor bridge controls without enabling edit mode by default', () => {
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Enable edit mode' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Enable edit mode' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('toggles edit mode from the preview chrome', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+
+    expect(screen.getByRole('button', { name: 'Disable edit mode' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 })
