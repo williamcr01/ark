@@ -28,6 +28,8 @@ function slideTargetOperationSchema<T extends z.ZodRawShape>(shape: T) {
   })
 }
 
+const normalizedUnitSchema = z.number().min(0).max(1)
+
 export const deckSlidePatchOperationSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('add_slide'),
@@ -103,16 +105,16 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     slideIndex: z.number().int().min(0).optional(),
     slideId: z.string().min(1).optional(),
     elementId: z.string().min(1),
-    x: z.number(),
-    y: z.number(),
+    x: normalizedUnitSchema,
+    y: normalizedUnitSchema,
   }),
   z.object({
     op: z.literal('resize_element'),
     slideIndex: z.number().int().min(0).optional(),
     slideId: z.string().min(1).optional(),
     elementId: z.string().min(1),
-    width: z.number(),
-    height: z.number(),
+    width: normalizedUnitSchema,
+    height: normalizedUnitSchema,
   }),
   z.object({
     op: z.literal('reorder_element'),

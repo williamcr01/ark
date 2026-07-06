@@ -97,7 +97,17 @@ function formatPixelValue(normalized: number, reference: number) {
 }
 
 function findElementByPath(slide: Element, path: string) {
-  const indices = path.split('.').map((part) => Number.parseInt(part, 10))
+  if (!path) {
+    return null
+  }
+
+  const parts = path.split('.')
+
+  if (parts.some((part) => !/^\d+$/.test(part))) {
+    return null
+  }
+
+  const indices = parts.map((part) => Number.parseInt(part, 10))
 
   if (indices.some((index) => !Number.isFinite(index) || index < 0)) {
     return null
@@ -116,9 +126,18 @@ function findElementByPath(slide: Element, path: string) {
   return current
 }
 
+function findElementByStableId(slide: Element, elementId: string) {
+  for (const element of slide.querySelectorAll(`[${ARK_ELEMENT_ID_ATTR}]`)) {
+    if (element.getAttribute(ARK_ELEMENT_ID_ATTR) === elementId) {
+      return element
+    }
+  }
+
+  return null
+}
+
 function findElementInSlide(slide: Element, elementId: string, slideIndex: number) {
-  const escapedId = elementId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  const byAttr = slide.querySelector(`[${ARK_ELEMENT_ID_ATTR}="${escapedId}"]`)
+  const byAttr = findElementByStableId(slide, elementId)
 
   if (byAttr) {
     return byAttr
@@ -135,7 +154,13 @@ function findElementInSlide(slide: Element, elementId: string, slideIndex: numbe
     return null
   }
 
-  const idSlideIndex = Number.parseInt(suffix.slice(0, dashIndex), 10)
+  const slideIndexPart = suffix.slice(0, dashIndex)
+
+  if (!/^\d+$/.test(slideIndexPart)) {
+    return null
+  }
+
+  const idSlideIndex = Number.parseInt(slideIndexPart, 10)
 
   if (idSlideIndex !== slideIndex) {
     return null
@@ -251,6 +276,39 @@ function isUnsafeElement(element: Element) {
   return false
 }
 
+function findUnsafeInsertedElement(root: Element) {
+  const elements = [root, ...root.querySelectorAll('*')]
+
+  return elements.find((element) => isUnsafeElement(element)) ?? null
+}
+
+function isUnsafeAttributeValue(name: string, value: string) {
+  const normalizedName = name.toLowerCase()
+
+  if (normalizedName.startsWith('on')) {
+    return true
+  }
+
+  return (
+    (normalizedName === 'href' || normalizedName === 'src') &&
+    /^(?:javascript|vbscript):/i.test(value.trim())
+  )
+}
+
+function findUnsafeInsertedAttribute(root: Element) {
+  for (const element of [root, ...root.querySelectorAll('*')]) {
+    for (const name of element.getAttributeNames()) {
+      const value = element.getAttribute(name)?.trim() ?? ''
+
+      if (isUnsafeAttributeValue(name, value)) {
+        return name
+      }
+    }
+  }
+
+  return null
+}
+
 function assertElementPatchable(
   resolved: ResolvedElement,
   operation: DeckElementPatchOperation,
@@ -326,10 +384,20 @@ function parseElementHtml(doc: Document, html: string) {
   }
 
   const element = doc.importNode(body.firstElementChild!, true) as Element
-  const tag = element.tagName.toLowerCase()
+  const unsafeElement = findUnsafeInsertedElement(element)
 
-  if (UNSAFE_TAGS.has(tag)) {
-    return { error: `insert_element cannot insert unsafe <${tag}> elements.` } as const
+  if (unsafeElement) {
+    return {
+      error: `insert_element cannot insert unsafe <${unsafeElement.tagName.toLowerCase()}> elements.`,
+    } as const
+  }
+
+  const unsafeAttribute = findUnsafeInsertedAttribute(element)
+
+  if (unsafeAttribute) {
+    return {
+      error: `insert_element cannot insert unsafe "${unsafeAttribute}" attributes.`,
+    } as const
   }
 
   return { element }
@@ -527,6 +595,10 @@ function applySetAttrs(
   for (const [name, value] of Object.entries(operation.attrs)) {
     if (!PATCHABLE_ATTRS.has(name)) {
       return { error: `set_attrs does not allow the "${name}" attribute.` }
+    }
+
+    if (isUnsafeAttributeValue(name, value)) {
+      return { error: `set_attrs does not allow unsafe "${name}" values.` }
     }
 
     if (resolved.element.getAttribute(name) !== value) {

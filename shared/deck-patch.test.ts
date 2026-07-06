@@ -42,6 +42,26 @@ describe('deck patch schema', () => {
     expect(isSlidePatchOperation(operation)).toBe(false)
   })
 
+  it('rejects out-of-range normalized element geometry', () => {
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: -0.1,
+        y: 0.5,
+      }).success,
+    ).toBe(false)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'resize_element',
+        elementId: 'ark-el-1',
+        width: 1.2,
+        height: 0.5,
+      }).success,
+    ).toBe(false)
+  })
+
   it('rejects slide targets without index or id', () => {
     const parsed = deckSlidePatchOperationSchema.safeParse({ op: 'delete_slide' })
     expect(parsed.success).toBe(false)
