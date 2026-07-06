@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import { createEditorTransformCommitMessage } from '../../shared/deck-editor-bridge.ts'
 import {
+  buildImageInsertOperation,
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
 } from './deck-editor-patches.ts'
+
+const tinyPngDataUrl =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 describe('deck-editor-patches', () => {
   it('builds insert_element operations for text boxes', () => {
@@ -15,6 +19,23 @@ describe('deck-editor-patches', () => {
       slideIndex: 1,
       slideId: 'slide-1',
       html: expect.stringContaining('class="ark-text-box"'),
+    })
+  })
+
+  it('builds insert_element operations for embedded images', () => {
+    expect(
+      buildImageInsertOperation(
+        0,
+        { x: 0.1, y: 0.15, width: 0.4, height: 0.225 },
+        { kind: 'data-url', mimeType: 'image/png', dataUrl: tinyPngDataUrl },
+        'slide-1',
+        { alt: 'Logo', aspectRatio: 16 / 9 },
+      ),
+    ).toEqual({
+      op: 'insert_element',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      html: expect.stringContaining('data-ark-editable="image"'),
     })
   })
 

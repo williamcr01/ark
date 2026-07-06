@@ -2,6 +2,7 @@ import type {
   EditorNormalizedRect,
   EditorTransformCommitMessage,
 } from '../../shared/deck-editor-bridge.ts'
+import { buildImageHtml, type DeckAssetRef, type ImageFitMode } from '../../shared/deck-image.ts'
 import { buildTextBoxHtml } from '../../shared/deck-text-box.ts'
 import type { DeckElementPatchOperation } from '../../shared/deck-patch.ts'
 
@@ -61,5 +62,20 @@ export function buildTextBoxInsertOperation(
     slideIndex,
     ...(slideId ? { slideId } : {}),
     html: buildTextBoxHtml(geometry),
+  }
+}
+
+export function buildImageInsertOperation(
+  slideIndex: number,
+  geometry: EditorNormalizedRect,
+  asset: Extract<DeckAssetRef, { kind: 'data-url' }>,
+  slideId: string | null,
+  options: { alt?: string; fit?: ImageFitMode; aspectRatio?: number } = {},
+): DeckElementPatchOperation {
+  return {
+    op: 'insert_element',
+    slideIndex,
+    ...(slideId ? { slideId } : {}),
+    html: buildImageHtml(geometry, asset, options),
   }
 }
