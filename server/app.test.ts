@@ -6,6 +6,22 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { assertApiContract } from '../shared/api/fetch.ts'
+import {
+  apiErrorPayloadSchema,
+  createDeckResponseSchema,
+  deckListResponseSchema,
+  deckPatchResponseSchema,
+  deckResponseSchema,
+  deckRollbackResponseSchema,
+  deckVersionListResponseSchema,
+  deckVersionResponseSchema,
+  simpleErrorResponseSchema,
+} from '../shared/api/index.ts'
+import { appendChatMessageResponseSchema, deckChatResponseSchema } from '../shared/api/chat.ts'
+import { healthResponseSchema, modelsResponseSchema } from '../shared/api/health.ts'
+import { generationJobResponseSchema } from '../shared/api/generation-jobs.ts'
+import { previewSessionResponseSchema } from '../shared/api/preview.ts'
 import { createApp } from './app.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
@@ -20,45 +36,6 @@ const sampleHtml = `<!DOCTYPE html>
   <section class="slide"><h1>Hello</h1></section>
 </body>
 </html>`
-
-type ApiDeckResponse = {
-  deck?: {
-    id: string
-    html: string
-    title: string
-    versionNumber?: number
-    activeVersionId?: string
-  }
-  error?: string
-}
-
-type ApiDeckListResponse = {
-  decks?: Array<{
-    id: string
-    title: string
-    versionNumber?: number
-  }>
-  error?: string
-}
-
-type ApiVersionListResponse = {
-  versions?: Array<{
-    id: string
-    versionNumber: number
-    source: string
-    isActive: boolean
-  }>
-  error?: string
-}
-
-type ApiVersionResponse = {
-  version?: {
-    id: string
-    versionNumber: number
-    html: string
-  }
-  error?: string
-}
 
 describe('deck API routes', () => {
   let dataDir = ''
@@ -98,16 +75,18 @@ describe('deck API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
-    const created = (await createResponse.json()) as ApiDeckResponse
+    const created = await createResponse.json()
 
     expect(createResponse.status).toBe(201)
+    assertApiContract(createDeckResponseSchema, created)
     expect(created.deck?.title).toBe('Quarterly Review')
     expect(created.deck?.versionNumber).toBe(1)
 
     const listResponse = await fetch(`${baseUrl}/api/decks`)
-    const list = (await listResponse.json()) as ApiDeckListResponse
+    const list = await listResponse.json()
 
     expect(listResponse.status).toBe(200)
+    assertApiContract(deckListResponseSchema, list)
     expect(list.decks).toHaveLength(1)
     expect(list.decks?.[0]).toMatchObject({
       id: created.deck?.id,
@@ -117,9 +96,10 @@ describe('deck API routes', () => {
     expect('html' in list.decks![0]).toBe(false)
 
     const fetchResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`)
-    const fetched = (await fetchResponse.json()) as ApiDeckResponse
+    const fetched = await fetchResponse.json()
 
     expect(fetchResponse.status).toBe(200)
+    assertApiContract(deckResponseSchema, fetched)
     expect(fetched.deck?.html).toBe(sampleHtml)
 
     const updatedHtml = sampleHtml.replace('Quarterly Review', 'Board Review')
@@ -128,9 +108,10 @@ describe('deck API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: updatedHtml, source: 'agent', summary: 'AI edit' }),
     })
-    const updated = (await updateResponse.json()) as ApiDeckResponse
+    const updated = await updateResponse.json()
 
     expect(updateResponse.status).toBe(200)
+    assertApiContract(createDeckResponseSchema, updated)
     expect(updated.deck?.title).toBe('Board Review')
     expect(updated.deck?.versionNumber).toBe(2)
 
@@ -161,8 +142,9 @@ describe('deck API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: multiSlideHtml, source: 'upload' }),
     })
-    const created = (await createResponse.json()) as ApiDeckResponse
-    const deckId = created.deck!.id
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
+    const deckId = created.deck.id
 
     const patchResponse = await fetch(`${baseUrl}/api/decks/${deckId}/patch`, {
       method: 'POST',
@@ -172,15 +154,10 @@ describe('deck API routes', () => {
         source: 'manual',
       }),
     })
-    const patched = (await patchResponse.json()) as ApiDeckResponse & {
-      patch?: {
-        appliedCount: number
-        changedSlideIndexes: number[]
-        summary: string
-      }
-    }
+    const patched = await patchResponse.json()
 
     expect(patchResponse.status).toBe(200)
+    assertApiContract(deckPatchResponseSchema, patched)
     expect(patched.deck?.versionNumber).toBe(2)
     expect(patched.patch).toMatchObject({
       appliedCount: 1,
@@ -198,8 +175,9 @@ describe('deck API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
-    const created = (await createResponse.json()) as ApiDeckResponse
-    const deckId = created.deck!.id
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
+    const deckId = created.deck.id
 
     const updatedHtml = sampleHtml.replace('Hello', 'Updated')
     await fetch(`${baseUrl}/api/decks/${deckId}`, {
@@ -209,9 +187,10 @@ describe('deck API routes', () => {
     })
 
     const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    const versionsPayload = (await versionsResponse.json()) as ApiVersionListResponse
+    const versionsPayload = await versionsResponse.json()
 
     expect(versionsResponse.status).toBe(200)
+    assertApiContract(deckVersionListResponseSchema, versionsPayload)
     expect(versionsPayload.versions).toHaveLength(2)
     expect(versionsPayload.versions?.[0]).toMatchObject({
       versionNumber: 2,
@@ -227,9 +206,10 @@ describe('deck API routes', () => {
 
     const firstVersionId = versionsPayload.versions![1].id
     const versionResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions/${firstVersionId}`)
-    const versionPayload = (await versionResponse.json()) as ApiVersionResponse
+    const versionPayload = await versionResponse.json()
 
     expect(versionResponse.status).toBe(200)
+    assertApiContract(deckVersionResponseSchema, versionPayload)
     expect(versionPayload.version?.html).toBe(sampleHtml)
 
     const rollbackResponse = await fetch(`${baseUrl}/api/decks/${deckId}/rollback`, {
@@ -237,15 +217,18 @@ describe('deck API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ versionId: firstVersionId }),
     })
-    const rollbackPayload = (await rollbackResponse.json()) as ApiDeckResponse
+    const rollbackPayload = await rollbackResponse.json()
 
     expect(rollbackResponse.status).toBe(200)
+    assertApiContract(deckRollbackResponseSchema, rollbackPayload)
     expect(rollbackPayload.deck?.html).toBe(sampleHtml)
     expect(rollbackPayload.deck?.versionNumber).toBe(3)
 
-    const versionsAfterRollback = (await (
+    const versionsAfterRollback = await (
       await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    ).json()) as ApiVersionListResponse
+    ).json()
+
+    assertApiContract(deckVersionListResponseSchema, versionsAfterRollback)
 
     expect(versionsAfterRollback.versions).toHaveLength(3)
     expect(versionsAfterRollback.versions?.[0]).toMatchObject({
@@ -253,6 +236,21 @@ describe('deck API routes', () => {
       source: 'rollback',
       isActive: true,
     })
+  })
+
+  it('returns consistent validation errors for invalid create payloads', async () => {
+    const baseUrl = await startApi()
+
+    const response = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: '   ' }),
+    })
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    assertApiContract(simpleErrorResponseSchema, payload)
+    expect(payload.error).toContain('HTML')
   })
 
   it('rejects invalid version and rollback requests', async () => {
@@ -322,17 +320,15 @@ describe('deck chat API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
-    const created = (await createResponse.json()) as ApiDeckResponse
-    const deckId = created.deck!.id
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
+    const deckId = created.deck.id
 
     const initialChatResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat`)
-    const initialChat = (await initialChatResponse.json()) as {
-      thread: unknown
-      messages: unknown[]
-      hasMore: boolean
-    }
+    const initialChat = await initialChatResponse.json()
 
     expect(initialChatResponse.status).toBe(200)
+    assertApiContract(deckChatResponseSchema, initialChat)
     expect(initialChat.thread).toBeNull()
     expect(initialChat.messages).toEqual([])
 
@@ -345,11 +341,10 @@ describe('deck chat API routes', () => {
         content: 'Make this deck darker',
       }),
     })
-    const appended = (await appendResponse.json()) as {
-      message?: { id: string; content: string; role: string }
-    }
+    const appended = await appendResponse.json()
 
     expect(appendResponse.status).toBe(201)
+    assertApiContract(appendChatMessageResponseSchema, appended)
     expect(appended.message).toMatchObject({
       id: '00000000-0000-4000-8000-000000000101',
       role: 'user',
@@ -357,11 +352,9 @@ describe('deck chat API routes', () => {
     })
 
     const chatResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat`)
-    const chat = (await chatResponse.json()) as {
-      thread: { deckId: string } | null
-      messages: Array<{ content: string; role: string }>
-    }
+    const chat = await chatResponse.json()
 
+    assertApiContract(deckChatResponseSchema, chat)
     expect(chat.thread?.deckId).toBe(deckId)
     expect(chat.messages).toHaveLength(1)
     expect(chat.messages[0]).toMatchObject({
@@ -378,8 +371,9 @@ describe('deck chat API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
-    const created = (await createResponse.json()) as ApiDeckResponse
-    const deckId = created.deck!.id
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
+    const deckId = created.deck.id
 
     await fetch(`${baseUrl}/api/decks/${deckId}/chat/messages`, {
       method: 'POST',
@@ -393,12 +387,14 @@ describe('deck chat API routes', () => {
     })
 
     const chatResponse = await fetch(`${baseUrl}/api/decks/${deckId}/chat`)
-    const chat = (await chatResponse.json()) as {
-      messages: Array<{ content: string; parts?: Array<{ summary: string }> }>
-    }
+    const chat = await chatResponse.json()
 
+    assertApiContract(deckChatResponseSchema, chat)
     expect(chat.messages[0]?.content).toBe('Updated the deck.')
-    expect(chat.messages[0]?.parts?.[0]?.summary).toBe('Patched title slide')
+    expect(chat.messages[0]?.parts?.[0]).toMatchObject({
+      type: 'tool-result',
+      summary: 'Patched title slide',
+    })
     expect(JSON.stringify(chat.messages[0])).not.toContain('<!DOCTYPE html>')
   })
 
@@ -415,5 +411,97 @@ describe('deck chat API routes', () => {
     )
 
     expect(response.status).toBe(404)
+  })
+})
+
+describe('shared API route contracts', () => {
+  let dataDir = ''
+  let server: Server | null = null
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve, reject) => {
+        server?.close((error) => (error ? reject(error) : resolve()))
+      })
+      server = null
+    }
+
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true })
+      dataDir = ''
+    }
+  })
+
+  async function startApi() {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-contracts-'))
+    const app = createApp({ deckStore: createDeckStore(dataDir) })
+
+    server = app.listen(0)
+    await new Promise<void>((resolve) => server?.once('listening', resolve))
+
+    const address = server.address() as AddressInfo
+
+    return `http://127.0.0.1:${address.port}`
+  }
+
+  it('returns health and models payloads that match shared contracts', async () => {
+    const baseUrl = await startApi()
+
+    const healthResponse = await fetch(`${baseUrl}/api/health`)
+    const health = await healthResponse.json()
+
+    expect(healthResponse.status).toBe(200)
+    assertApiContract(healthResponseSchema, health)
+
+    const modelsResponse = await fetch(`${baseUrl}/api/models`)
+    const models = await modelsResponse.json()
+
+    expect(modelsResponse.status).toBe(200)
+    assertApiContract(modelsResponseSchema, models)
+  })
+
+  it('returns preview session payloads that match shared contracts', async () => {
+    const baseUrl = await startApi()
+
+    const invalidResponse = await fetch(`${baseUrl}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: '   ' }),
+    })
+    const invalid = await invalidResponse.json()
+
+    expect(invalidResponse.status).toBe(400)
+    assertApiContract(simpleErrorResponseSchema, invalid)
+
+    const createResponse = await fetch(`${baseUrl}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml }),
+    })
+    const created = await createResponse.json()
+
+    expect(createResponse.status).toBe(201)
+    assertApiContract(previewSessionResponseSchema, created)
+  })
+
+  it('returns generation job error payloads that match shared contracts', async () => {
+    const baseUrl = await startApi()
+
+    const missingKeyResponse = await fetch(`${baseUrl}/api/generation-jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Build a deck' }],
+      }),
+    })
+    const missingKey = await missingKeyResponse.json()
+
+    if (missingKeyResponse.status === 503) {
+      assertApiContract(apiErrorPayloadSchema, missingKey)
+      return
+    }
+
+    expect(missingKeyResponse.status).toBe(202)
+    assertApiContract(generationJobResponseSchema, missingKey)
   })
 })

@@ -8,7 +8,7 @@ describe('runtime error reporting', () => {
   it('rejects malformed payloads and oversized messages', () => {
     expect(parseRuntimeErrorBody(null)).toEqual({
       ok: false,
-      error: 'Request body must be a JSON object.',
+      error: 'Invalid input: expected object, received null',
     })
 
     expect(parseRuntimeErrorBody({ message: '' })).toEqual({

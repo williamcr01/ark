@@ -100,13 +100,9 @@ export type CreateGenerationJobInput = {
   retryOfJobId?: string | null
 }
 
-export type StartGenerationJobRequest = {
-  messages?: unknown
-  currentHtml?: string | null
-  model?: string
-  deckId?: string | null
-  baseVersionId?: string | null
-}
+export type StartGenerationJobRequest = import('./api/generation-jobs.ts').StartGenerationJobRequest
+
+export type GenerationJobApi = import('./api/generation-jobs.ts').GenerationJobApi
 
 export function isGenerationJobStatus(value: unknown): value is GenerationJobStatus {
   return (

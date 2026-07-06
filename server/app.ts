@@ -1,6 +1,15 @@
 import express, { type Request, type Response } from 'express'
 
-import { type StartGenerationJobRequest } from '../shared/generation-job.ts'
+import { appendChatMessageRequestSchema, deckChatQuerySchema } from '../shared/api/chat.ts'
+import {
+  createDeckRequestSchema,
+  deckPatchRequestSchema,
+  renameDeckRequestSchema,
+  rollbackDeckRequestSchema,
+} from '../shared/api/decks.ts'
+import { createPreviewSessionRequestSchema } from '../shared/api/preview.ts'
+import { startGenerationJobRequestSchema } from '../shared/api/generation-jobs.ts'
+import { parseRequestBody } from '../shared/api/common.ts'
 import {
   buildSandboxRenderUrl,
   resolveAppOrigin,
@@ -39,7 +48,6 @@ import {
   getDefaultModel,
   getDefaultModelWarning,
 } from './models.ts'
-import { parseChatAttachments } from '../shared/chat.ts'
 import type { AppendChatMessageRequest } from '../shared/chat-thread.ts'
 import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
 import {
@@ -58,49 +66,6 @@ type CreateAppOptions = {
   generationJobRunner?: GenerationJobRunner
   previewSessionStore?: PreviewSessionStore
   runtimeErrorStore?: RuntimeErrorStore
-}
-
-function parseAppendChatMessageBody(
-  body: AppendChatMessageRequest = {} as AppendChatMessageRequest,
-) {
-  const role = body.role
-
-  if (role !== 'user' && role !== 'assistant') {
-    return { ok: false as const, error: 'Message role must be "user" or "assistant".' }
-  }
-
-  if (typeof body.content !== 'string') {
-    return { ok: false as const, error: 'Message content must be a string.' }
-  }
-
-  const parsedAttachments = parseChatAttachments(body.attachments, 0)
-
-  if (!parsedAttachments.ok) {
-    return { ok: false as const, error: parsedAttachments.error }
-  }
-
-  return {
-    ok: true as const,
-    message: {
-      id: typeof body.id === 'string' ? body.id : undefined,
-      role,
-      content: body.content.trim(),
-      parts: Array.isArray(body.parts) ? body.parts : undefined,
-      attachments:
-        parsedAttachments.attachments.length > 0 ? parsedAttachments.attachments : undefined,
-      deckVersionId: typeof body.deckVersionId === 'string' ? body.deckVersionId : null,
-      generationJobId: typeof body.generationJobId === 'string' ? body.generationJobId : null,
-      generationStatus: typeof body.generationStatus === 'string' ? body.generationStatus : null,
-      model: typeof body.model === 'string' ? body.model : null,
-      error:
-        body.error && typeof body.error.message === 'string'
-          ? {
-              message: body.error.message,
-              code: typeof body.error.code === 'string' ? body.error.code : null,
-            }
-          : null,
-    },
-  }
 }
 
 function toChatApiMessage(message: {
@@ -135,14 +100,14 @@ function toChatApiMessage(message: {
   }
 }
 
-type DeckVersionRequestBody = {
-  source?: unknown
-  summary?: unknown
-  modelProvider?: unknown
-  modelName?: unknown
-}
-
-function parseDeckVersionOptions(body: DeckVersionRequestBody = {}): DeckVersionOptions {
+function parseDeckVersionOptions(
+  body: {
+    source?: unknown
+    summary?: unknown
+    modelProvider?: unknown
+    modelName?: unknown
+  } = {},
+): DeckVersionOptions {
   const options: DeckVersionOptions = {
     source: normalizeDeckVersionSource(body.source),
     validationStatus: 'valid',
@@ -245,29 +210,26 @@ export function createApp(options: CreateAppOptions = {}) {
     })
   })
 
-  app.post(
-    '/api/preview-sessions',
-    async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
-      const html = request.body.html ?? ''
+  app.post('/api/preview-sessions', async (request: Request, response: Response) => {
+    const parsed = parseRequestBody(createPreviewSessionRequestSchema, request.body)
 
-      if (!html.trim()) {
-        response.status(400).json({ error: 'HTML is required.' })
-        return
-      }
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
 
-      const session = previewSessionStore.createSession(html)
+    const session = previewSessionStore.createSession(parsed.data.html)
 
-      response.status(201).json({
-        token: session.token,
-        expiresAt: session.expiresAt,
+    response.status(201).json({
+      token: session.token,
+      expiresAt: session.expiresAt,
+      sandboxOrigin: resolveSandboxOrigin(),
+      renderUrl: buildSandboxRenderUrl(session.token, {
         sandboxOrigin: resolveSandboxOrigin(),
-        renderUrl: buildSandboxRenderUrl(session.token, {
-          sandboxOrigin: resolveSandboxOrigin(),
-          appOrigin: resolveAppOrigin(),
-        }),
-      })
-    },
-  )
+        appOrigin: resolveAppOrigin(),
+      }),
+    })
+  })
 
   app.get(
     '/api/preview-sessions/:token',
@@ -347,232 +309,205 @@ export function createApp(options: CreateAppOptions = {}) {
     }
   })
 
-  app.post(
-    '/api/decks',
-    async (
-      request: Request<unknown, unknown, { html?: string } & DeckVersionRequestBody>,
-      response: Response,
-    ) => {
-      const html = request.body.html ?? ''
+  app.post('/api/decks', async (request: Request, response: Response) => {
+    const parsed = parseRequestBody(createDeckRequestSchema, request.body)
 
-      if (!html.trim()) {
-        response.status(400).json({ error: 'HTML is required.' })
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
+
+    const { html, ...versionBody } = parsed.data
+    const validation = validateDeckHtmlOnServer(html)
+
+    if (!validation.valid) {
+      sendDeckValidationError(response, validation, request)
+      return
+    }
+
+    try {
+      const versionOptions = buildDeckVersionOptions(
+        html,
+        parseDeckVersionOptions(versionBody),
+        validation,
+      )
+      const deck = await deckStore.createDeck(html, versionOptions)
+      getRequestLogger(request).info('deck.created', {
+        deckId: deck.id,
+        statusCode: 201,
+      })
+      response.status(201).json({
+        deck,
+        validation,
+        runtimeManifest: versionOptions.runtimeManifest ?? null,
+      })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
+
+  app.put('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
+    const id = request.params.id?.trim()
+    const parsed = parseRequestBody(createDeckRequestSchema, request.body)
+
+    if (!id) {
+      response.status(400).json({ error: 'Deck id is required.' })
+      return
+    }
+
+    if (!isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
+
+    const { html, ...versionBody } = parsed.data
+    const validation = validateDeckHtmlOnServer(html)
+
+    if (!validation.valid) {
+      sendDeckValidationError(response, validation, request)
+      return
+    }
+
+    try {
+      const versionOptions = buildDeckVersionOptions(
+        html,
+        parseDeckVersionOptions(versionBody),
+        validation,
+      )
+      const deck = await deckStore.updateDeck(id, html, versionOptions)
+
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
         return
       }
 
-      const validation = validateDeckHtmlOnServer(html)
+      response.json({
+        deck,
+        validation,
+        runtimeManifest: versionOptions.runtimeManifest ?? null,
+      })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
 
-      if (!validation.valid) {
-        sendDeckValidationError(response, validation, request)
+  app.post('/api/decks/:id/patch', async (request: Request<{ id: string }>, response: Response) => {
+    const id = request.params.id?.trim()
+
+    if (!id) {
+      response.status(400).json({ error: 'Deck id is required.' })
+      return
+    }
+
+    if (!isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+
+    const parsedBody = parseRequestBody(deckPatchRequestSchema, {
+      operations: request.body?.operations,
+      activeSlideIndex: request.body?.activeSlideIndex,
+    })
+
+    if (!parsedBody.ok) {
+      response.status(400).json({
+        error: parsedBody.error,
+      })
+      return
+    }
+
+    try {
+      const existing = await deckStore.getDeck(id)
+
+      if (!existing) {
+        response.status(404).json({ error: 'Deck not found.' })
         return
       }
 
-      try {
-        const versionOptions = buildDeckVersionOptions(
-          html,
-          parseDeckVersionOptions(request.body),
-          validation,
-        )
-        const deck = await deckStore.createDeck(html, versionOptions)
-        getRequestLogger(request).info('deck.created', {
-          deckId: deck.id,
-          statusCode: 201,
-        })
-        response.status(201).json({
-          deck,
-          validation,
-          runtimeManifest: versionOptions.runtimeManifest ?? null,
-        })
-      } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
-      }
-    },
-  )
-
-  app.put(
-    '/api/decks/:id',
-    async (
-      request: Request<{ id: string }, unknown, { html?: string } & DeckVersionRequestBody>,
-      response: Response,
-    ) => {
-      const id = request.params.id?.trim()
-      const html = request.body.html ?? ''
-
-      if (!id) {
-        response.status(400).json({ error: 'Deck id is required.' })
-        return
-      }
-
-      if (!isValidDeckId(id)) {
-        response.status(400).json({ error: 'Invalid deck id.' })
-        return
-      }
-
-      if (!html.trim()) {
-        response.status(400).json({ error: 'HTML is required.' })
-        return
-      }
-
-      const validation = validateDeckHtmlOnServer(html)
-
-      if (!validation.valid) {
-        sendDeckValidationError(response, validation, request)
-        return
-      }
-
-      try {
-        const versionOptions = buildDeckVersionOptions(
-          html,
-          parseDeckVersionOptions(request.body),
-          validation,
-        )
-        const deck = await deckStore.updateDeck(id, html, versionOptions)
-
-        if (!deck) {
-          response.status(404).json({ error: 'Deck not found.' })
-          return
-        }
-
-        response.json({
-          deck,
-          validation,
-          runtimeManifest: versionOptions.runtimeManifest ?? null,
-        })
-      } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
-      }
-    },
-  )
-
-  app.post(
-    '/api/decks/:id/patch',
-    async (
-      request: Request<
-        { id: string },
-        unknown,
-        {
-          operations?: unknown
-          activeSlideIndex?: unknown
-        } & DeckVersionRequestBody
-      >,
-      response: Response,
-    ) => {
-      const id = request.params.id?.trim()
-
-      if (!id) {
-        response.status(400).json({ error: 'Deck id is required.' })
-        return
-      }
-
-      if (!isValidDeckId(id)) {
-        response.status(400).json({ error: 'Invalid deck id.' })
-        return
-      }
-
-      const { deckPatchRequestSchema } = await import('../shared/deck-patch.ts')
-      const parsedBody = deckPatchRequestSchema.safeParse({
-        operations: request.body?.operations,
-        activeSlideIndex: request.body?.activeSlideIndex,
+      const { applyDeckPatches } = await import('./deck-patch.ts')
+      const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
+        activeSlideIndex: parsedBody.data.activeSlideIndex,
       })
 
-      if (!parsedBody.success) {
+      if (!patched.ok) {
         response.status(400).json({
-          error: parsedBody.error.issues[0]?.message ?? 'Invalid patch request.',
+          error: patched.error,
+          operationIndex: patched.operationIndex,
         })
         return
       }
 
-      try {
-        const existing = await deckStore.getDeck(id)
+      const validation = validateDeckHtmlOnServer(patched.html)
 
-        if (!existing) {
-          response.status(404).json({ error: 'Deck not found.' })
-          return
-        }
-
-        const { applyDeckPatches } = await import('./deck-patch.ts')
-        const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
-          activeSlideIndex: parsedBody.data.activeSlideIndex,
-        })
-
-        if (!patched.ok) {
-          response.status(400).json({
-            error: patched.error,
-            operationIndex: patched.operationIndex,
-          })
-          return
-        }
-
-        const validation = validateDeckHtmlOnServer(patched.html)
-
-        if (!validation.valid) {
-          sendDeckValidationError(response, validation, request)
-          return
-        }
-
-        const versionOptions = parseDeckVersionOptions(request.body)
-        versionOptions.summary = versionOptions.summary ?? patched.summary
-
-        const deck = await deckStore.updateDeck(id, patched.html, versionOptions)
-
-        if (!deck) {
-          response.status(404).json({ error: 'Deck not found.' })
-          return
-        }
-
-        response.json({
-          deck,
-          validation,
-          patch: {
-            appliedCount: patched.appliedCount,
-            changedSlideIndexes: patched.changedSlideIndexes,
-            changedElementIds: patched.changedElementIds,
-            summary: patched.summary,
-            suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
-          },
-        })
-      } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
-      }
-    },
-  )
-
-  app.patch(
-    '/api/decks/:id',
-    async (request: Request<{ id: string }, unknown, { title?: unknown }>, response: Response) => {
-      const id = request.params.id?.trim()
-
-      if (!id) {
-        response.status(400).json({ error: 'Deck id is required.' })
+      if (!validation.valid) {
+        sendDeckValidationError(response, validation, request)
         return
       }
 
-      if (!isValidDeckId(id)) {
-        response.status(400).json({ error: 'Invalid deck id.' })
+      const versionOptions = parseDeckVersionOptions(request.body)
+      versionOptions.summary = versionOptions.summary ?? patched.summary
+
+      const deck = await deckStore.updateDeck(id, patched.html, versionOptions)
+
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
         return
       }
 
-      const title = request.body?.title
+      response.json({
+        deck,
+        validation,
+        patch: {
+          appliedCount: patched.appliedCount,
+          changedSlideIndexes: patched.changedSlideIndexes,
+          changedElementIds: patched.changedElementIds,
+          summary: patched.summary,
+          suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
+        },
+      })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
 
-      if (typeof title !== 'string') {
-        response.status(400).json({ error: 'Deck title is required.' })
+  app.patch('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
+    const id = request.params.id?.trim()
+
+    if (!id) {
+      response.status(400).json({ error: 'Deck id is required.' })
+      return
+    }
+
+    if (!isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+
+    const parsed = parseRequestBody(renameDeckRequestSchema, request.body)
+
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
+
+    try {
+      const deck = await deckStore.updateDeckMetadata(id, { title: parsed.data.title })
+
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
         return
       }
 
-      try {
-        const deck = await deckStore.updateDeckMetadata(id, { title })
-
-        if (!deck) {
-          response.status(404).json({ error: 'Deck not found.' })
-          return
-        }
-
-        response.json({ deck })
-      } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
-      }
-    },
-  )
+      response.json({ deck })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
 
   app.get(
     '/api/decks/:id/versions',
@@ -637,17 +572,21 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.post(
     '/api/decks/:id/rollback',
-    async (
-      request: Request<{ id: string }, unknown, { versionId?: string }>,
-      response: Response,
-    ) => {
+    async (request: Request<{ id: string }>, response: Response) => {
       const id = request.params.id?.trim()
-      const versionId = request.body.versionId?.trim()
+      const parsed = parseRequestBody(rollbackDeckRequestSchema, request.body)
 
-      if (!id || !versionId) {
+      if (!id) {
         response.status(400).json({ error: 'Deck id and version id are required.' })
         return
       }
+
+      if (!parsed.ok) {
+        response.status(400).json({ error: parsed.error })
+        return
+      }
+
+      const versionId = parsed.data.versionId
 
       if (!isValidDeckId(id) || !isValidDeckId(versionId)) {
         response.status(400).json({ error: 'Invalid deck id or version id.' })
@@ -696,11 +635,18 @@ export function createApp(options: CreateAppOptions = {}) {
       return
     }
 
-    const limit = normalizeChatMessageLimit(
-      request.query.limit ? Number(request.query.limit) : undefined,
-    )
-    const before =
-      typeof request.query.before === 'string' ? request.query.before.trim() : undefined
+    const parsedQuery = parseRequestBody(deckChatQuerySchema, {
+      limit: request.query.limit,
+      before: request.query.before,
+    })
+
+    if (!parsedQuery.ok) {
+      response.status(400).json({ error: parsedQuery.error })
+      return
+    }
+
+    const limit = normalizeChatMessageLimit(parsedQuery.data.limit)
+    const before = parsedQuery.data.before?.trim() || undefined
 
     try {
       const deck = await deckStore.getDeck(id)
@@ -724,10 +670,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.post(
     '/api/decks/:id/chat/messages',
-    async (
-      request: Request<{ id: string }, unknown, AppendChatMessageRequest>,
-      response: Response,
-    ) => {
+    async (request: Request<{ id: string }>, response: Response) => {
       const id = request.params.id?.trim()
 
       if (!id) {
@@ -740,11 +683,24 @@ export function createApp(options: CreateAppOptions = {}) {
         return
       }
 
-      const parsed = parseAppendChatMessageBody(request.body)
+      const parsed = parseRequestBody(appendChatMessageRequestSchema, request.body)
 
       if (!parsed.ok) {
         response.status(400).json({ error: parsed.error })
         return
+      }
+
+      const messageInput = {
+        id: parsed.data.id,
+        role: parsed.data.role,
+        content: parsed.data.content.trim(),
+        parts: parsed.data.parts,
+        attachments: parsed.data.attachments,
+        deckVersionId: parsed.data.deckVersionId ?? null,
+        generationJobId: parsed.data.generationJobId ?? null,
+        generationStatus: parsed.data.generationStatus ?? null,
+        model: parsed.data.model ?? null,
+        error: parsed.data.error ?? null,
       }
 
       try {
@@ -755,7 +711,7 @@ export function createApp(options: CreateAppOptions = {}) {
           return
         }
 
-        const message = await chatStore.appendMessage(id, parsed.message)
+        const message = await chatStore.appendMessage(id, messageInput)
 
         response.status(201).json({ message: toChatApiMessage(message) })
       } catch (error) {
@@ -822,43 +778,48 @@ export function createApp(options: CreateAppOptions = {}) {
     }
   })
 
-  app.post(
-    '/api/generation-jobs',
-    async (request: Request<unknown, unknown, StartGenerationJobRequest>, response: Response) => {
-      if (!hasAnyConfiguredProvider()) {
-        sendApiError(response, 503, missingApiKeyError())
-        return
-      }
+  app.post('/api/generation-jobs', async (request: Request, response: Response) => {
+    if (!hasAnyConfiguredProvider()) {
+      sendApiError(response, 503, missingApiKeyError())
+      return
+    }
 
-      const deckId = request.body.deckId?.trim()
+    const parsed = parseRequestBody(startGenerationJobRequestSchema, request.body)
 
-      if (deckId && !isValidDeckId(deckId)) {
-        response.status(400).json({ error: 'Invalid deck id.' })
-        return
-      }
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
 
-      try {
-        const job = await generationJobs.startJob({
-          body: request.body,
-          defaultModel,
-          requestId: getRequestId(request),
-        })
+    const body = parsed.data
+    const deckId = body.deckId?.trim()
 
-        getRequestLogger(request).info('generation.job.enqueued', {
-          jobId: job.id,
-          deckId: job.deckId,
-          model: job.model,
-          statusCode: 202,
-        })
+    if (deckId && !isValidDeckId(deckId)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
 
-        response.status(202).json(toGenerationJobResponse(job))
-      } catch (error) {
-        const apiError = getApiErrorFromUnknown(error)
-        const status = apiError.code === 'provider_error' ? 400 : 500
-        sendApiError(response, status, apiError)
-      }
-    },
-  )
+    try {
+      const job = await generationJobs.startJob({
+        body,
+        defaultModel,
+        requestId: getRequestId(request),
+      })
+
+      getRequestLogger(request).info('generation.job.enqueued', {
+        jobId: job.id,
+        deckId: job.deckId,
+        model: job.model,
+        statusCode: 202,
+      })
+
+      response.status(202).json(toGenerationJobResponse(job))
+    } catch (error) {
+      const apiError = getApiErrorFromUnknown(error)
+      const status = apiError.code === 'provider_error' ? 400 : 500
+      sendApiError(response, status, apiError)
+    }
+  })
 
   app.get(
     '/api/generation-jobs/:id',
