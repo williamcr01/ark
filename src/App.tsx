@@ -47,6 +47,7 @@ function App() {
     isLoading: isDeckLoading,
     isLoadingVersions,
     isSaving: isDeckSaving,
+    isPatching: isDeckPatching,
     deckId,
     deckTitle,
     decks,
@@ -539,10 +540,15 @@ function App() {
         toast.error(
           patchError instanceof Error ? patchError.message : 'Could not save the text edit',
         )
+        try {
+          await refreshActiveDeck()
+        } catch {
+          // Ignore refresh failures after a failed patch.
+        }
         throw patchError
       }
     },
-    [deckId, patchDeckOperations],
+    [deckId, patchDeckOperations, refreshActiveDeck],
   )
 
   return (
@@ -597,7 +603,7 @@ function App() {
                   html={generatedHtml}
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
-                  isTextEditSaving={isDeckSaving}
+                  isTextEditSaving={isDeckPatching}
                   layout="desktop"
                   onCommitTextEdit={handleCommitTextEdit}
                   parsedDeck={parsedDeck}
@@ -655,7 +661,7 @@ function App() {
                   html={generatedHtml}
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
-                  isTextEditSaving={isDeckSaving}
+                  isTextEditSaving={isDeckPatching}
                   layout="mobile"
                   onCommitTextEdit={handleCommitTextEdit}
                   parsedDeck={parsedDeck}

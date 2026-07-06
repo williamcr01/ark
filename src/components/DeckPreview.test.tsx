@@ -21,7 +21,14 @@ const editorBridgeMock = vi.hoisted(() => ({
   } | null,
   geometry: null,
   editorError: null,
-  lastTextCommit: null as { elementId: string; slideIndex: number; text: string } | null,
+  textEditActive: false,
+  lastTextCommit: null as {
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    text: string
+    originalText: string
+  } | null,
   enableEditor: vi.fn(),
   disableEditor: vi.fn(),
   requestGeometry: vi.fn(),
@@ -61,6 +68,7 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.selection = null
     editorBridgeMock.geometry = null
     editorBridgeMock.editorError = null
+    editorBridgeMock.textEditActive = false
     editorBridgeMock.lastTextCommit = null
     editorBridgeMock.enableEditor.mockClear()
     editorBridgeMock.disableEditor.mockClear()
@@ -272,6 +280,7 @@ describe('DeckPreview script divergence UI', () => {
       locked: false,
       textPreview: 'Quarterly planning',
     }
+    editorBridgeMock.textEditActive = true
 
     render(
       <DeckPreview
@@ -285,8 +294,7 @@ describe('DeckPreview script divergence UI', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
-    await user.click(screen.getByRole('button', { name: 'Edit selected text' }))
-    await user.keyboard('{Escape}')
+    fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(editorBridgeMock.cancelTextEdit).toHaveBeenCalled()
   })
@@ -305,7 +313,9 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.lastTextCommit = {
       elementId: 'transient-el-0-0',
       slideIndex: 0,
+      slideId: null,
       text: 'Updated planning',
+      originalText: 'Quarterly planning',
     }
 
     render(
@@ -327,6 +337,32 @@ describe('DeckPreview script divergence UI', () => {
       text: 'Updated planning',
       originalText: 'Quarterly planning',
     })
+  })
+
+  it('skips patch commits when text did not change', () => {
+    const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Quarterly planning',
+      originalText: 'Quarterly planning',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        onCommitTextEdit={onCommitTextEdit}
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    expect(onCommitTextEdit).not.toHaveBeenCalled()
   })
 
   it('shows locked messaging for locked selections', async () => {

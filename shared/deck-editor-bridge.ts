@@ -6,6 +6,7 @@
  * parent sends `ark:editor-enable`.
  */
 
+import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable.ts'
 import {
   ARK_ELEMENT_ID_ATTR,
   ARK_LOCKED_ATTR,
@@ -29,6 +30,7 @@ export const EDITOR_HOVER_MESSAGE_TYPE = 'ark:editor-hover' as const
 export const EDITOR_SELECTION_CHANGE_MESSAGE_TYPE = 'ark:editor-selection-change' as const
 export const EDITOR_GEOMETRY_MESSAGE_TYPE = 'ark:editor-geometry' as const
 export const EDITOR_TEXT_COMMIT_MESSAGE_TYPE = 'ark:editor-text-commit' as const
+export const EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE = 'ark:editor-text-edit-state' as const
 export const EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE = 'ark:editor-transform-preview' as const
 export const EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE = 'ark:editor-transform-commit' as const
 export const EDITOR_DELETE_REQUEST_MESSAGE_TYPE = 'ark:editor-delete-request' as const
@@ -51,6 +53,7 @@ export const EDITOR_RUNTIME_MESSAGE_TYPES = [
   EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
   EDITOR_GEOMETRY_MESSAGE_TYPE,
   EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+  EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
   EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
   EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
@@ -154,7 +157,16 @@ export type EditorTextCommitMessage = {
   type: typeof EDITOR_TEXT_COMMIT_MESSAGE_TYPE
   elementId: string
   slideIndex: number
+  slideId: string | null
   text: string
+  originalText: string
+}
+
+export type EditorTextEditStateMessage = {
+  type: typeof EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE
+  active: boolean
+  elementId?: string
+  slideIndex?: number
 }
 
 export type EditorTransformPreviewMessage = {
@@ -201,6 +213,7 @@ export type EditorRuntimeMessage =
   | EditorSelectionChangeMessage
   | EditorGeometryMessage
   | EditorTextCommitMessage
+  | EditorTextEditStateMessage
   | EditorTransformPreviewMessage
   | EditorTransformCommitMessage
   | EditorDeleteRequestMessage
@@ -361,8 +374,26 @@ export function isEditorTextCommitMessage(value: unknown): value is EditorTextCo
     isRecord(value) &&
     value.type === EDITOR_TEXT_COMMIT_MESSAGE_TYPE &&
     hasElementTarget(value) &&
-    typeof value.text === 'string'
+    (value.slideId === null || typeof value.slideId === 'string') &&
+    typeof value.text === 'string' &&
+    typeof value.originalText === 'string'
   )
+}
+
+export function isEditorTextEditStateMessage(value: unknown): value is EditorTextEditStateMessage {
+  if (!isRecord(value) || value.type !== EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE) {
+    return false
+  }
+
+  if (typeof value.active !== 'boolean') {
+    return false
+  }
+
+  if (value.active) {
+    return hasElementTarget(value)
+  }
+
+  return value.elementId === undefined && value.slideIndex === undefined
 }
 
 export function isEditorTransformPreviewMessage(
@@ -424,6 +455,7 @@ export function isEditorRuntimeMessage(value: unknown): value is EditorRuntimeMe
     isEditorSelectionChangeMessage(value) ||
     isEditorGeometryMessage(value) ||
     isEditorTextCommitMessage(value) ||
+    isEditorTextEditStateMessage(value) ||
     isEditorTransformPreviewMessage(value) ||
     isEditorTransformCommitMessage(value) ||
     isEditorDeleteRequestMessage(value) ||
@@ -517,8 +549,34 @@ export function createEditorTextCommitMessage(
   elementId: string,
   slideIndex: number,
   text: string,
+  originalText: string,
+  slideId: string | null = null,
 ): EditorTextCommitMessage {
-  return { type: EDITOR_TEXT_COMMIT_MESSAGE_TYPE, elementId, slideIndex, text }
+  return {
+    type: EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+    elementId,
+    slideIndex,
+    slideId,
+    text,
+    originalText,
+  }
+}
+
+export function createEditorTextEditStateMessage(
+  active: boolean,
+  elementId?: string,
+  slideIndex?: number,
+): EditorTextEditStateMessage {
+  if (active) {
+    return {
+      type: EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
+      active: true,
+      elementId: elementId ?? '',
+      slideIndex: slideIndex ?? 0,
+    }
+  }
+
+  return { type: EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE, active: false }
 }
 
 export function createEditorTransformPreviewMessage(
@@ -597,6 +655,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     SELECTION_CHANGE: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
     GEOMETRY: EDITOR_GEOMETRY_MESSAGE_TYPE,
     TEXT_COMMIT: EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+    TEXT_EDIT_STATE: EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
     TRANSFORM_PREVIEW: EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
     TRANSFORM_COMMIT: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
     DELETE_REQUEST: EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
@@ -606,6 +665,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     ELEMENT_ID_ATTR: ARK_ELEMENT_ID_ATTR,
     LOCKED_ATTR: ARK_LOCKED_ATTR,
     TRANSIENT_PREFIX: TRANSIENT_ELEMENT_ID_PREFIX,
+    INLINE_TEXT_TAGS: [...INLINE_TEXT_EDITABLE_TAGS],
   }
 
   return `
@@ -769,19 +829,21 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function isTextEditableTag(tag) {
-    return (
-      tag === 'h1' ||
-      tag === 'h2' ||
-      tag === 'h3' ||
-      tag === 'h4' ||
-      tag === 'h5' ||
-      tag === 'h6' ||
-      tag === 'p' ||
-      tag === 'li' ||
-      tag === 'blockquote' ||
-      tag === 'figcaption' ||
-      tag === 'span'
-    );
+    return C.INLINE_TEXT_TAGS.indexOf(tag) !== -1;
+  }
+
+  function postTextEditState(active, elementId, slideIndex) {
+    if (active) {
+      postToParent({
+        type: C.TEXT_EDIT_STATE,
+        active: true,
+        elementId: elementId,
+        slideIndex: slideIndex,
+      });
+      return;
+    }
+
+    postToParent({ type: C.TEXT_EDIT_STATE, active: false });
   }
 
   function buildSelection(element, slide, slideIndex) {
@@ -901,6 +963,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     var slide = getActiveSlide();
     var element = textEditElement;
     var slideIndex = currentSlideIndex;
+    var savedOriginalText = originalTextBeforeEdit;
 
     if (!commit && originalTextBeforeEdit !== null) {
       element.textContent = originalTextBeforeEdit;
@@ -914,10 +977,13 @@ export function buildDeckEditorBridgeRuntimeScript(
         type: C.TEXT_COMMIT,
         elementId: resolveElementId(element, slide, slideIndex),
         slideIndex: slideIndex,
+        slideId: slide.getAttribute('data-ark-slide-id') || null,
         text: element.textContent || '',
+        originalText: savedOriginalText || '',
       });
     }
 
+    postTextEditState(false);
     originalTextBeforeEdit = null;
     textEditElement = null;
   }
@@ -954,6 +1020,12 @@ export function buildDeckEditorBridgeRuntimeScript(
     } catch (error) {
       // Ignore selection failures in older browsers.
     }
+
+    postTextEditState(
+      true,
+      resolveElementId(element, slide, slideIndex),
+      slideIndex,
+    );
   }
 
   function applyTransform(element, slide, geometry, preview) {
@@ -1050,13 +1122,25 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function onKeyDown(event) {
-    if (!textEditElement || event.key !== 'Escape') {
+    if (!textEditElement) {
       return;
     }
 
-    event.preventDefault();
-    event.stopPropagation();
-    endTextEdit(false);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      endTextEdit(false);
+      return;
+    }
+
+    if (
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown'
+    ) {
+      event.stopPropagation();
+    }
   }
 
   function bindListeners() {

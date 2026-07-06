@@ -4,12 +4,16 @@ import {
   createEditorEnableMessage,
   createEditorGeometryMessage,
   createEditorSelectionChangeMessage,
+  createEditorTextCommitMessage,
+  createEditorTextEditStateMessage,
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
+  buildDeckEditorBridgeRuntimeScript,
   EDITOR_ENABLE_MESSAGE_TYPE,
   EDITOR_GEOMETRY_MESSAGE_TYPE,
   EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
   EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+  EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
   EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
   isEditorMessage,
@@ -17,6 +21,7 @@ import {
   isEditorShellMessage,
   parseEditorMessage,
 } from './deck-editor-bridge'
+import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable'
 
 describe('deck editor bridge protocol', () => {
   const selection = {
@@ -68,6 +73,15 @@ describe('deck editor bridge protocol', () => {
   it('validates editor messages and rejects malformed payloads', () => {
     expect(isEditorShellMessage(createEditorEnableMessage(0))).toBe(true)
     expect(isEditorRuntimeMessage(createEditorSelectionChangeMessage(selection))).toBe(true)
+    expect(
+      isEditorRuntimeMessage(
+        createEditorTextCommitMessage('ark-el-title', 0, 'Updated', 'Opening', null),
+      ),
+    ).toBe(true)
+    expect(isEditorRuntimeMessage(createEditorTextEditStateMessage(true, 'ark-el-title', 0))).toBe(
+      true,
+    )
+    expect(isEditorRuntimeMessage(createEditorTextEditStateMessage(false))).toBe(true)
     expect(isEditorMessage({ type: EDITOR_TEXT_COMMIT_MESSAGE_TYPE, text: 'Nope' })).toBe(false)
     expect(isEditorMessage({ type: 'ark:editor-evil', slideIndex: 0 })).toBe(false)
     expect(
@@ -81,5 +95,19 @@ describe('deck editor bridge protocol', () => {
       ),
     ).toMatchObject({ type: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE })
     expect(parseEditorMessage(null)).toBeNull()
+  })
+
+  it('embeds shared inline text tags and text-edit lifecycle hooks in the runtime script', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    for (const tag of INLINE_TEXT_EDITABLE_TAGS) {
+      expect(script).toContain(`"${tag}"`)
+    }
+
+    expect(script).toContain(EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE)
+    expect(script).toContain('originalText')
+    expect(script).toContain('ArrowLeft')
   })
 })

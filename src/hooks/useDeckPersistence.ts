@@ -89,8 +89,10 @@ export function useDeckPersistence() {
   const [isLoadingVersions, setIsLoadingVersions] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isPatching, setIsPatching] = useState(false)
   const [saveError, setSaveError] = useState('')
   const saveRequestIdRef = useRef(0)
+  const patchRequestIdRef = useRef(0)
   const inspectRequestIdRef = useRef(0)
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
@@ -461,9 +463,9 @@ export function useDeckPersistence() {
         throw new Error('Save the deck before editing.')
       }
 
-      const requestId = ++saveRequestIdRef.current
+      const requestId = ++patchRequestIdRef.current
 
-      setIsSaving(true)
+      setIsPatching(true)
       setSaveError('')
 
       try {
@@ -476,14 +478,14 @@ export function useDeckPersistence() {
           modelName: options.modelName,
         })
 
-        if (requestId !== saveRequestIdRef.current) {
+        if (requestId !== patchRequestIdRef.current) {
           return undefined
         }
 
         const suggestedSlideIndex = applyPatchedDeck(patchResult)
         return { ...patchResult, suggestedSlideIndex }
       } catch (error) {
-        if (requestId !== saveRequestIdRef.current) {
+        if (requestId !== patchRequestIdRef.current) {
           return undefined
         }
 
@@ -492,8 +494,8 @@ export function useDeckPersistence() {
         setSaveError(message)
         throw error
       } finally {
-        if (requestId === saveRequestIdRef.current) {
-          setIsSaving(false)
+        if (requestId === patchRequestIdRef.current) {
+          setIsPatching(false)
         }
       }
     },
@@ -516,6 +518,7 @@ export function useDeckPersistence() {
     isDirty,
     isLoading,
     isLoadingVersions,
+    isPatching,
     isSaving,
     patchDeckOperations,
     persistHtml,

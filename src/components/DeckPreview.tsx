@@ -70,7 +70,6 @@ export function DeckPreview({
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
   const [editModeActive, setEditModeActive] = useState(false)
-  const [isTextEditing, setIsTextEditing] = useState(false)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
   const processedTextCommitRef = useRef<string | null>(null)
@@ -135,6 +134,7 @@ export function DeckPreview({
     geometry,
     editorError,
     lastTextCommit,
+    textEditActive,
     enableEditor,
     disableEditor,
     requestGeometry,
@@ -153,18 +153,20 @@ export function DeckPreview({
   )
 
   const beginTextEdit = useCallback(() => {
-    if (!selection || !canEditSelectedText) {
+    if (!selection || !canEditSelectedText || textEditActive) {
       return
     }
 
-    setIsTextEditing(true)
     startTextEdit(selection.elementId, selection.slideIndex)
-  }, [canEditSelectedText, selection, startTextEdit])
+  }, [canEditSelectedText, selection, startTextEdit, textEditActive])
 
   const endTextEditing = useCallback(() => {
-    setIsTextEditing(false)
+    if (!textEditActive) {
+      return
+    }
+
     cancelTextEdit()
-  }, [cancelTextEdit])
+  }, [cancelTextEdit, textEditActive])
 
   useEffect(() => {
     if (!lastTextCommit || !onCommitTextEdit) {
@@ -178,11 +180,8 @@ export function DeckPreview({
     }
 
     processedTextCommitRef.current = commitKey
-    setIsTextEditing(false)
 
-    const originalText = selection?.textPreview ?? null
-
-    if (lastTextCommit.text === (originalText ?? '')) {
+    if (lastTextCommit.text === lastTextCommit.originalText) {
       return
     }
 
@@ -191,22 +190,14 @@ export function DeckPreview({
     void onCommitTextEdit({
       elementId: lastTextCommit.elementId,
       slideIndex: lastTextCommit.slideIndex,
-      slideId:
-        selection?.elementId === lastTextCommit.elementId ? (selection.slideId ?? null) : null,
+      slideId: lastTextCommit.slideId,
       text: lastTextCommit.text,
-      originalText,
+      originalText: lastTextCommit.originalText,
     }).catch(() => {
       processedTextCommitRef.current = null
       preserveSlideIndexRef.current = null
     })
-  }, [
-    activeSlideIndex,
-    lastTextCommit,
-    onCommitTextEdit,
-    selection?.elementId,
-    selection?.slideId,
-    selection?.textPreview,
-  ])
+  }, [activeSlideIndex, lastTextCommit, onCommitTextEdit])
 
   useEffect(() => {
     if (preserveSlideIndexRef.current === null) {
@@ -225,7 +216,7 @@ export function DeckPreview({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (isTextEditing) {
+        if (textEditActive) {
           event.preventDefault()
           endTextEditing()
         }
@@ -243,7 +234,7 @@ export function DeckPreview({
         return
       }
 
-      if (isTextEditing || !canEditSelectedText) {
+      if (textEditActive || !canEditSelectedText) {
         return
       }
 
@@ -260,7 +251,7 @@ export function DeckPreview({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [beginTextEdit, canEditSelectedText, editModeActive, endTextEditing, isTextEditing])
+  }, [beginTextEdit, canEditSelectedText, editModeActive, endTextEditing, textEditActive])
 
   useEffect(() => {
     if (!editorBridgeInjected || !editorReady) {
@@ -354,7 +345,7 @@ export function DeckPreview({
             <button
               aria-label="Edit selected text"
               className="inline-flex h-6 items-center gap-1 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={isTextEditing || isTextEditSaving}
+              disabled={textEditActive || isTextEditSaving}
               onClick={beginTextEdit}
               type="button"
             >
@@ -451,7 +442,7 @@ export function DeckPreview({
                 {editModeActive ? (
                   <EditorSelectionOverlay
                     geometry={geometry}
-                    isEditing={isTextEditing}
+                    isEditing={textEditActive}
                     locked={selection?.locked ?? false}
                     scale={previewFrameScale}
                   />
