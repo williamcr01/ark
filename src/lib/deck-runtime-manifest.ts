@@ -29,7 +29,7 @@ import {
 import { usesRevealRuntimeAdapter } from '../../shared/deck-runtime.ts'
 import { findSlideElements, SLIDE_SELECTOR_CHAIN } from '../../shared/deck-preview-slides.ts'
 import { hasRevealSlideStructure } from '../../shared/reveal-slide-index.ts'
-import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
+import { validateDeckHtmlInBrowser } from '../../shared/deck-validate.ts'
 
 function detectSlideSelector(doc: Document) {
   if (hasRevealSlideStructure(doc)) {

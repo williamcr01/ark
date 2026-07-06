@@ -1,4 +1,4 @@
-import type { DeckValidationReport } from '../src/lib/deck-validate.ts'
+import type { DeckValidationReport } from '../shared/deck-validate.ts'
 import { buildDeckRuntimeManifestFromValidation } from './deck-manifest.ts'
 import type { DeckVersionOptions } from './deck-record.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
