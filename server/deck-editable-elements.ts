@@ -414,6 +414,10 @@ function collectPatchAttrs(element: Element) {
   return attrs
 }
 
+function readClassName(element: Element) {
+  return element.getAttribute('class')?.trim() || null
+}
+
 function isInsideUnsafeSubtree(element: Element, slide: Element) {
   let current = element.parentElement
 
@@ -560,7 +564,7 @@ function classifyElement(
     lockReason,
     textPreview,
     tagName: tag,
-    className: element.className?.trim() || null,
+    className: readClassName(element),
     attrs: collectPatchAttrs(element),
     style,
   }

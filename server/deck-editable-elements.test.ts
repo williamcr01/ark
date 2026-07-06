@@ -120,6 +120,32 @@ describe('parseEditableElements', () => {
     )
   })
 
+  it('handles inline svg image candidates without crashing', () => {
+    const parsed = parseDeckHtml(`<!DOCTYPE html>
+<html lang="en">
+<head><title>SVG deck</title></head>
+<body>
+  <section class="slide">
+    <h1>Inline artwork</h1>
+    <svg class="logo-mark" viewBox="0 0 10 10" role="img" aria-label="Logo mark">
+      <circle cx="5" cy="5" r="4"></circle>
+    </svg>
+  </section>
+</body>
+</html>`)
+
+    expect(parsed.editableElements[0]?.elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'image',
+          tagName: 'svg',
+          className: 'logo-mark',
+          textPreview: 'Logo mark',
+        }),
+      ]),
+    )
+  })
+
   it('locks scripts, runtime controls, and hidden navigation elements', () => {
     const parsed = parseDeckHtml(hostileScriptsDeck)
     const scriptSlide = parsed.editableElements[1]
