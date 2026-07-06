@@ -574,6 +574,128 @@ function applyDeleteElement(
   return { ok: true as const }
 }
 
+function clearStableElementIds(root: Element) {
+  root.removeAttribute(ARK_ELEMENT_ID_ATTR)
+
+  for (const descendant of root.querySelectorAll(`[${ARK_ELEMENT_ID_ATTR}]`)) {
+    descendant.removeAttribute(ARK_ELEMENT_ID_ATTR)
+  }
+}
+
+function applyDuplicateElement(
+  context: ElementPatchContext,
+  operation: Extract<DeckElementPatchOperation, { op: 'duplicate_element' }>,
+) {
+  const resolved = resolveElementTarget(context, operation, 'duplicate_element')
+
+  if ('error' in resolved) {
+    return resolved
+  }
+
+  const patchable = assertElementPatchable(resolved, operation, operation.elementId)
+
+  if (patchable) {
+    return patchable
+  }
+
+  const view = context.doc.defaultView
+
+  if (!view) {
+    return { error: 'duplicate_element requires a live document view.' }
+  }
+
+  if (!(resolved.element instanceof view.HTMLElement)) {
+    return { error: 'duplicate_element requires an HTML element target.' }
+  }
+
+  const clone = resolved.element.cloneNode(true) as HTMLElement
+  clearStableElementIds(clone)
+  clone.setAttribute(ARK_MANAGED_ATTR, 'true')
+
+  // Only nudge the clone when the source is already absolutely positioned. For a
+  // flow-positioned element, forcing `position: absolute` at a small offset would
+  // rip the duplicate out of flow to the top-left of the slide; instead let it
+  // sit inline right after the original.
+  if (isAbsolutelyPositioned(resolved.element)) {
+    const offsetX = operation.offsetX ?? 0.02
+    const offsetY = operation.offsetY ?? 0.02
+    const currentLeft =
+      parsePixelValueFromStyle(resolved.element, 'left') / ARK_SLIDE_REFERENCE_WIDTH
+    const currentTop =
+      parsePixelValueFromStyle(resolved.element, 'top') / ARK_SLIDE_REFERENCE_HEIGHT
+    const left = formatPixelValue(Math.min(1, currentLeft + offsetX), ARK_SLIDE_REFERENCE_WIDTH)
+    const top = formatPixelValue(Math.min(1, currentTop + offsetY), ARK_SLIDE_REFERENCE_HEIGHT)
+    const merged = mergeInlineStyle(clone, {
+      position: 'absolute',
+      left,
+      top,
+    })
+
+    if ('error' in merged) {
+      return merged
+    }
+  }
+
+  const rootId = ensureStableElementId(clone)
+  const stampedIds = stampEditableElementIds(clone)
+
+  if (!stampedIds.includes(rootId)) {
+    stampedIds.unshift(rootId)
+  }
+
+  resolved.element.insertAdjacentElement('afterend', clone)
+
+  for (const id of stampedIds) {
+    context.changedElementIds.add(id)
+    markElementChanged(context, resolved.slideIndex, id)
+  }
+
+  context.summaries.push(`Duplicated ${operation.elementId} on slide ${resolved.slideIndex}.`)
+
+  return { ok: true as const }
+}
+
+function readInlineStyleValue(element: Element, property: string) {
+  const inline = element.getAttribute('style')
+
+  if (!inline) {
+    return null
+  }
+
+  for (const chunk of inline.split(';')) {
+    const separator = chunk.indexOf(':')
+
+    if (separator === -1) {
+      continue
+    }
+
+    const name = chunk.slice(0, separator).trim().toLowerCase()
+
+    if (name === property) {
+      return chunk.slice(separator + 1).trim()
+    }
+  }
+
+  return null
+}
+
+function isAbsolutelyPositioned(element: Element) {
+  const position = readInlineStyleValue(element, 'position')?.toLowerCase()
+  return position === 'absolute' || position === 'fixed'
+}
+
+function parsePixelValueFromStyle(element: HTMLElement, property: string) {
+  const value = readInlineStyleValue(element, property)
+
+  if (!value) {
+    return 0
+  }
+
+  const match = value.match(/^(-?\d+(?:\.\d+)?)px$/i)
+
+  return match ? Number.parseFloat(match[1]!) : 0
+}
+
 function applySetAttrs(
   context: ElementPatchContext,
   operation: Extract<DeckElementPatchOperation, { op: 'set_attrs' }>,
@@ -752,8 +874,8 @@ function applyReorderElement(
     return { error: 'reorder_element requires an HTML element target.' }
   }
 
-  const zIndex = String(operation.zIndex)
-  const merged = mergeInlineStyle(resolved.element, { 'z-index': zIndex })
+  const targetZIndex = resolveReorderZIndex(resolved.element, operation)
+  const merged = mergeInlineStyle(resolved.element, { 'z-index': String(targetZIndex) })
 
   if ('error' in merged) {
     return merged
@@ -761,9 +883,47 @@ function applyReorderElement(
 
   const elementId = ensureStableElementId(resolved.element)
   markElementChanged(context, resolved.slideIndex, elementId)
-  context.summaries.push(`Reordered ${elementId} to z-index ${operation.zIndex}.`)
+  context.summaries.push(`Reordered ${elementId} to z-index ${targetZIndex}.`)
 
   return { ok: true as const }
+}
+
+function siblingZIndexBounds(element: Element) {
+  const parent = element.parentElement
+  let min = 0
+  let max = 0
+
+  if (parent) {
+    for (const sibling of parent.children) {
+      if (sibling === element) {
+        continue
+      }
+
+      const raw = readInlineStyleValue(sibling, 'z-index')
+      const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN
+      const z = Number.isFinite(parsed) ? parsed : 0
+      min = Math.min(min, z)
+      max = Math.max(max, z)
+    }
+  }
+
+  return { min, max }
+}
+
+function resolveReorderZIndex(
+  element: Element,
+  operation: Extract<DeckElementPatchOperation, { op: 'reorder_element' }>,
+) {
+  if (operation.zIndex !== undefined) {
+    return operation.zIndex
+  }
+
+  const { min, max } = siblingZIndexBounds(element)
+
+  // Bump past the extreme sibling so the element reliably lands above/below the
+  // whole stack instead of nudging by a fixed ±1 from its own (often `auto`/0)
+  // z-index, which never clears siblings sitting at the same level.
+  return operation.direction === 'back' ? Math.max(0, min - 1) : max + 1
 }
 
 function applyLockElement(
@@ -833,6 +993,8 @@ export function applyElementPatch(
       return applyInsertElement(context, operation)
     case 'delete_element':
       return applyDeleteElement(context, operation)
+    case 'duplicate_element':
+      return applyDuplicateElement(context, operation)
     case 'set_attrs':
       return applySetAttrs(context, operation)
     case 'set_inline_style':

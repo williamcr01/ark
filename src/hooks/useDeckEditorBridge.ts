@@ -12,6 +12,7 @@ import {
   isEditorErrorMessage,
   isEditorGeometryMessage,
   isEditorHoverMessage,
+  isEditorInsertRequestMessage,
   isEditorReadyMessage,
   isEditorRuntimeMessage,
   isEditorSelectionChangeMessage,
@@ -19,12 +20,15 @@ import {
   isEditorTextEditStateMessage,
   isEditorTransformCommitMessage,
   isEditorTransformPreviewMessage,
+  isEditorDeleteRequestMessage,
   type EditorHoverMessage,
+  type EditorInsertRequestMessage,
   type EditorNormalizedRect,
   type EditorSelectionInfo,
   type EditorTool,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
+  type EditorDeleteRequestMessage,
   postEditorShellMessage,
 } from '../../shared/deck-editor-bridge.ts'
 import {
@@ -37,9 +41,12 @@ export type DeckEditorBridgeState = {
   selection: EditorSelectionInfo | null
   hover: Pick<EditorHoverMessage, 'elementId' | 'slideIndex'> | null
   geometry: EditorNormalizedRect | null
+  selectionZIndex: number | null
   editorError: string | null
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
+  lastInsertRequest: EditorInsertRequestMessage | null
+  lastDeleteRequest: EditorDeleteRequestMessage | null
   textEditActive: boolean
   hoverGeometry: EditorNormalizedRect | null
   lastTextCommit: {
@@ -66,9 +73,12 @@ const initialState: DeckEditorBridgeState = {
   selection: null,
   hover: null,
   geometry: null,
+  selectionZIndex: null,
   editorError: null,
   transformPreview: null,
   transformCommit: null,
+  lastInsertRequest: null,
+  lastDeleteRequest: null,
   textEditActive: false,
   hoverGeometry: null,
   lastTextCommit: null,
@@ -221,6 +231,7 @@ export function useDeckEditorBridge(
             return {
               ...current,
               geometry: data.geometry,
+              selectionZIndex: data.zIndex,
             }
           }
 
@@ -276,6 +287,22 @@ export function useDeckEditorBridge(
           ...current,
           transformCommit: data,
           transformPreview: null,
+        }))
+        return
+      }
+
+      if (isEditorInsertRequestMessage(data)) {
+        setState((current) => ({
+          ...current,
+          lastInsertRequest: data,
+        }))
+        return
+      }
+
+      if (isEditorDeleteRequestMessage(data)) {
+        setState((current) => ({
+          ...current,
+          lastDeleteRequest: data,
         }))
         return
       }

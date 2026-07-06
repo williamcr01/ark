@@ -87,6 +87,8 @@ describe('useDeckEditorBridge', () => {
             slideId: null,
             tagName: 'h1',
             locked: false,
+            managed: false,
+            editableKind: null,
             textPreview: 'Title',
           }),
           origin: sandboxOrigin,

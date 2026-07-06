@@ -25,8 +25,12 @@ export type EditModeToolbarProps = {
   isGenerating: boolean
   isSaving: boolean
   selectionLocked: boolean
+  selectionManaged: boolean
   textEditActive: boolean
   onDelete?: () => void
+  onDuplicate?: () => void
+  onBringForward?: () => void
+  onSendBackward?: () => void
   onEditText?: () => void
   onToolChange: (tool: EditorTool) => void
 }
@@ -83,13 +87,18 @@ export function EditModeToolbar({
   isGenerating,
   isSaving,
   selectionLocked,
+  selectionManaged,
   textEditActive,
   onDelete,
+  onDuplicate,
+  onBringForward,
+  onSendBackward,
   onEditText,
   onToolChange,
 }: EditModeToolbarProps) {
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
   const canModifySelection = hasSelection && !selectionLocked && !toolbarDisabled && !textEditActive
+  const canModifyManagedSelection = canModifySelection && selectionManaged
   const canUseTools = hasDeck && !isGenerating && !isSaving
 
   return (
@@ -151,19 +160,31 @@ export function EditModeToolbar({
 
       <ButtonGroup aria-label="Selection actions" className="shrink-0">
         <ToolbarButton
-          disabled={!canModifySelection}
+          disabled={!canModifyManagedSelection}
           label={
             selectionLocked
               ? 'Delete selected element (locked)'
               : hasSelection
-                ? 'Delete selected element'
+                ? selectionManaged
+                  ? 'Delete selected element'
+                  : 'Delete selected element (not managed)'
                 : 'Delete selected element (no selection)'
           }
           onClick={onDelete}
         >
           <Trash2Icon className="size-3.5" />
         </ToolbarButton>
-        <ToolbarButton disabled label="Duplicate selected element (coming soon)">
+        <ToolbarButton
+          disabled={!canModifyManagedSelection}
+          label={
+            hasSelection
+              ? selectionManaged
+                ? 'Duplicate selected element'
+                : 'Duplicate selected element (not managed)'
+              : 'Duplicate selected element (no selection)'
+          }
+          onClick={onDuplicate}
+        >
           <CopyIcon className="size-3.5" />
         </ToolbarButton>
       </ButtonGroup>
@@ -174,10 +195,30 @@ export function EditModeToolbar({
       />
 
       <ButtonGroup aria-label="Layer order" className="hidden shrink-0 sm:flex">
-        <ToolbarButton disabled label="Bring forward (coming soon)">
+        <ToolbarButton
+          disabled={!canModifyManagedSelection}
+          label={
+            hasSelection
+              ? selectionManaged
+                ? 'Bring forward'
+                : 'Bring forward (not managed)'
+              : 'Bring forward (no selection)'
+          }
+          onClick={onBringForward}
+        >
           <ArrowUpIcon className="size-3.5" />
         </ToolbarButton>
-        <ToolbarButton disabled label="Send backward (coming soon)">
+        <ToolbarButton
+          disabled={!canModifyManagedSelection}
+          label={
+            hasSelection
+              ? selectionManaged
+                ? 'Send backward'
+                : 'Send backward (not managed)'
+              : 'Send backward (no selection)'
+          }
+          onClick={onSendBackward}
+        >
           <ArrowDownIcon className="size-3.5" />
         </ToolbarButton>
       </ButtonGroup>

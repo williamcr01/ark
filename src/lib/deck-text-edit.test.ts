@@ -11,6 +11,8 @@ describe('isTextEditableSelection', () => {
         slideId: null,
         tagName: 'h1',
         locked: false,
+        managed: false,
+        editableKind: null,
         textPreview: 'Title',
       }),
     ).toBe(true)
@@ -24,6 +26,8 @@ describe('isTextEditableSelection', () => {
         slideId: null,
         tagName: 'h1',
         locked: true,
+        managed: false,
+        editableKind: null,
         textPreview: 'Title',
       }),
     ).toBe(false)
@@ -37,8 +41,25 @@ describe('isTextEditableSelection', () => {
         slideId: null,
         tagName: 'img',
         locked: false,
+        managed: false,
+        editableKind: null,
         textPreview: null,
       }),
     ).toBe(false)
+  })
+
+  it('returns true for Ark-managed text boxes', () => {
+    expect(
+      isTextEditableSelection({
+        elementId: 'el-1',
+        slideIndex: 0,
+        slideId: null,
+        tagName: 'div',
+        locked: false,
+        managed: true,
+        editableKind: 'text-box',
+        textPreview: 'New text',
+      }),
+    ).toBe(true)
   })
 })

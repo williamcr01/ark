@@ -18,6 +18,7 @@ import {
   TRANSIENT_ELEMENT_ID_PREFIX,
   TRANSIENT_SLIDE_ID_PREFIX,
 } from '../shared/deck-metadata.ts'
+import { ARK_TEXT_BOX_CLASS } from '../shared/deck-text-box.ts'
 
 const UNSAFE_TAGS = new Set([
   'script',
@@ -348,6 +349,13 @@ function readKind(element: Element): EditableElementKind {
     return 'text'
   }
 
+  if (
+    element.getAttribute(ARK_EDITABLE_ATTR) === 'text-box' ||
+    element.classList.contains('ark-text-box')
+  ) {
+    return 'text'
+  }
+
   if (explicit === 'image') {
     return 'image'
   }
@@ -446,6 +454,14 @@ function isCandidateElement(element: Element, slide: Element) {
   }
 
   if (element.hasAttribute(ARK_ELEMENT_ID_ATTR)) {
+    return true
+  }
+
+  if (
+    tag === 'div' &&
+    (element.getAttribute(ARK_EDITABLE_ATTR) === 'text-box' ||
+      element.classList.contains(ARK_TEXT_BOX_CLASS))
+  ) {
     return true
   }
 

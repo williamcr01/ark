@@ -10,6 +10,12 @@
 
 import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable.ts'
 import {
+  ARK_TEXT_BOX_CLASS,
+  ARK_TEXT_BOX_EDITABLE_VALUE,
+  DEFAULT_TEXT_BOX_NORMALIZED_SIZE,
+  MIN_TEXT_BOX_NORMALIZED_SIZE,
+} from './deck-text-box.ts'
+import {
   ARK_ELEMENT_ID_ATTR,
   ARK_LOCKED_ATTR,
   TRANSIENT_ELEMENT_ID_PREFIX,
@@ -36,6 +42,7 @@ export const EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE = 'ark:editor-text-edit-state' 
 export const EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE = 'ark:editor-transform-preview' as const
 export const EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE = 'ark:editor-transform-commit' as const
 export const EDITOR_DELETE_REQUEST_MESSAGE_TYPE = 'ark:editor-delete-request' as const
+export const EDITOR_INSERT_REQUEST_MESSAGE_TYPE = 'ark:editor-insert-request' as const
 export const EDITOR_ERROR_MESSAGE_TYPE = 'ark:editor-error' as const
 
 export const EDITOR_SHELL_MESSAGE_TYPES = [
@@ -59,6 +66,7 @@ export const EDITOR_RUNTIME_MESSAGE_TYPES = [
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
   EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
   EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
+  EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
   EDITOR_ERROR_MESSAGE_TYPE,
 ] as const
 
@@ -86,6 +94,8 @@ export type EditorSelectionInfo = {
   slideId: string | null
   tagName: string
   locked: boolean
+  managed: boolean
+  editableKind: string | null
   textPreview: string | null
 }
 
@@ -193,6 +203,15 @@ export type EditorDeleteRequestMessage = {
   slideIndex: number
 }
 
+export type EditorInsertKind = 'text-box'
+
+export type EditorInsertRequestMessage = {
+  type: typeof EDITOR_INSERT_REQUEST_MESSAGE_TYPE
+  kind: EditorInsertKind
+  slideIndex: number
+  geometry: EditorNormalizedRect
+}
+
 export type EditorErrorMessage = {
   type: typeof EDITOR_ERROR_MESSAGE_TYPE
   message: string
@@ -219,6 +238,7 @@ export type EditorRuntimeMessage =
   | EditorTransformPreviewMessage
   | EditorTransformCommitMessage
   | EditorDeleteRequestMessage
+  | EditorInsertRequestMessage
   | EditorErrorMessage
 
 export type EditorMessage = EditorShellMessage | EditorRuntimeMessage
@@ -271,6 +291,8 @@ export function isEditorSelectionInfo(value: unknown): value is EditorSelectionI
     (value.slideId === null || typeof value.slideId === 'string') &&
     typeof value.tagName === 'string' &&
     typeof value.locked === 'boolean' &&
+    typeof value.managed === 'boolean' &&
+    (value.editableKind === null || typeof value.editableKind === 'string') &&
     (value.textPreview === null || typeof value.textPreview === 'string')
   )
 }
@@ -428,6 +450,16 @@ export function isEditorDeleteRequestMessage(value: unknown): value is EditorDel
   )
 }
 
+export function isEditorInsertRequestMessage(value: unknown): value is EditorInsertRequestMessage {
+  return (
+    isRecord(value) &&
+    value.type === EDITOR_INSERT_REQUEST_MESSAGE_TYPE &&
+    value.kind === 'text-box' &&
+    isFiniteNumber(value.slideIndex) &&
+    isEditorNormalizedRect(value.geometry)
+  )
+}
+
 export function isEditorErrorMessage(value: unknown): value is EditorErrorMessage {
   return (
     isRecord(value) &&
@@ -461,6 +493,7 @@ export function isEditorRuntimeMessage(value: unknown): value is EditorRuntimeMe
     isEditorTransformPreviewMessage(value) ||
     isEditorTransformCommitMessage(value) ||
     isEditorDeleteRequestMessage(value) ||
+    isEditorInsertRequestMessage(value) ||
     isEditorErrorMessage(value)
   )
 }
@@ -618,6 +651,14 @@ export function createEditorDeleteRequestMessage(
   return { type: EDITOR_DELETE_REQUEST_MESSAGE_TYPE, elementId, slideIndex }
 }
 
+export function createEditorInsertRequestMessage(
+  kind: EditorInsertKind,
+  slideIndex: number,
+  geometry: EditorNormalizedRect,
+): EditorInsertRequestMessage {
+  return { type: EDITOR_INSERT_REQUEST_MESSAGE_TYPE, kind, slideIndex, geometry }
+}
+
 export function createEditorErrorMessage(message: string, code?: string): EditorErrorMessage {
   return {
     type: EDITOR_ERROR_MESSAGE_TYPE,
@@ -661,13 +702,21 @@ export function buildDeckEditorBridgeRuntimeScript(
     TRANSFORM_PREVIEW: EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
     TRANSFORM_COMMIT: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
     DELETE_REQUEST: EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
+    INSERT_REQUEST: EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
     ERROR: EDITOR_ERROR_MESSAGE_TYPE,
     SELECTORS: [...options.slideSelectors],
     PARENT_ORIGIN: options.parentOrigin?.trim() || '',
     ELEMENT_ID_ATTR: ARK_ELEMENT_ID_ATTR,
     LOCKED_ATTR: ARK_LOCKED_ATTR,
+    MANAGED_ATTR: 'data-ark-managed',
+    EDITABLE_ATTR: 'data-ark-editable',
     TRANSIENT_PREFIX: TRANSIENT_ELEMENT_ID_PREFIX,
     INLINE_TEXT_TAGS: [...INLINE_TEXT_EDITABLE_TAGS],
+    TEXT_BOX_EDITABLE: ARK_TEXT_BOX_EDITABLE_VALUE,
+    TEXT_BOX_CLASS: ARK_TEXT_BOX_CLASS,
+    MIN_BOX_SIZE: MIN_TEXT_BOX_NORMALIZED_SIZE,
+    DEFAULT_BOX_WIDTH: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.width,
+    DEFAULT_BOX_HEIGHT: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.height,
   }
 
   return `
@@ -680,6 +729,9 @@ export function buildDeckEditorBridgeRuntimeScript(
   var textEditElement = null;
   var originalTextBeforeEdit = null;
   var listenersBound = false;
+  var transformState = null;
+  var marqueeElement = null;
+  var resizeHandles = [];
 
   function isRecord(value) {
     return typeof value === 'object' && value !== null;
@@ -789,6 +841,13 @@ export function buildDeckEditorBridgeRuntimeScript(
       return true;
     }
 
+    if (
+      element.getAttribute(C.EDITABLE_ATTR) === C.TEXT_BOX_EDITABLE ||
+      element.classList.contains(C.TEXT_BOX_CLASS)
+    ) {
+      return true;
+    }
+
     return (
       tag === 'h1' ||
       tag === 'h2' ||
@@ -855,6 +914,8 @@ export function buildDeckEditorBridgeRuntimeScript(
       slideId: slide.getAttribute('data-ark-slide-id') || null,
       tagName: element.tagName.toLowerCase(),
       locked: element.getAttribute(C.LOCKED_ATTR) === 'true',
+      managed: isManagedElement(element),
+      editableKind: element.getAttribute(C.EDITABLE_ATTR) || null,
       textPreview: readTextPreview(element),
     };
   }
@@ -882,6 +943,158 @@ export function buildDeckEditorBridgeRuntimeScript(
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  function clampUnit(value) {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function clampRect(rect) {
+    var width = Math.max(C.MIN_BOX_SIZE, clampUnit(rect.width));
+    var height = Math.max(C.MIN_BOX_SIZE, clampUnit(rect.height));
+    var x = clampUnit(rect.x);
+    var y = clampUnit(rect.y);
+
+    return {
+      x: Math.min(x, Math.max(0, 1 - width)),
+      y: Math.min(y, Math.max(0, 1 - height)),
+      width: width,
+      height: height,
+    };
+  }
+
+  function pointerToNormalized(clientX, clientY, slide) {
+    var slideRect = slide.getBoundingClientRect();
+
+    if (!slideRect.width || !slideRect.height) {
+      return { x: 0, y: 0 };
+    }
+
+    return {
+      x: clampUnit((clientX - slideRect.left) / slideRect.width),
+      y: clampUnit((clientY - slideRect.top) / slideRect.height),
+    };
+  }
+
+  function isTextBox(element) {
+    if (!element) {
+      return false;
+    }
+
+    return (
+      element.getAttribute(C.EDITABLE_ATTR) === C.TEXT_BOX_EDITABLE ||
+      element.classList.contains(C.TEXT_BOX_CLASS)
+    );
+  }
+
+  function isManagedElement(element) {
+    if (!element) {
+      return false;
+    }
+
+    return element.getAttribute(C.MANAGED_ATTR) === 'true' || isTextBox(element);
+  }
+
+  function getTextEditTarget(element) {
+    if (!element) {
+      return null;
+    }
+
+    if (isTextBox(element)) {
+      var child = element.querySelector('p, h1, h2, h3, h4, h5, h6, span, li, blockquote, figcaption');
+
+      return child || element;
+    }
+
+    return element;
+  }
+
+  function clearMarquee() {
+    if (marqueeElement && marqueeElement.parentElement) {
+      marqueeElement.parentElement.removeChild(marqueeElement);
+    }
+
+    marqueeElement = null;
+  }
+
+  function clearResizeHandles() {
+    for (var i = 0; i < resizeHandles.length; i++) {
+      if (resizeHandles[i].parentElement) {
+        resizeHandles[i].parentElement.removeChild(resizeHandles[i]);
+      }
+    }
+
+    resizeHandles = [];
+  }
+
+  function clearEditorOverlays() {
+    clearMarquee();
+    clearResizeHandles();
+  }
+
+  function updateResizeHandles(element, slide) {
+    clearResizeHandles();
+
+    if (!element || !slide || !isManagedElement(element) || element.getAttribute(C.LOCKED_ATTR) === 'true') {
+      return;
+    }
+
+    var rect = normalizeRect(element, slide);
+    var handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+    for (var i = 0; i < handles.length; i++) {
+      var handle = document.createElement('div');
+      handle.setAttribute('data-ark-editor-handle', handles[i]);
+      handle.style.position = 'absolute';
+      handle.style.width = '8px';
+      handle.style.height = '8px';
+      handle.style.background = '#2563eb';
+      handle.style.border = '1px solid #ffffff';
+      handle.style.borderRadius = '2px';
+      handle.style.zIndex = '10000';
+      handle.style.pointerEvents = 'auto';
+      handle.style.boxSizing = 'border-box';
+      positionResizeHandle(handle, handles[i], rect, slide);
+      slide.appendChild(handle);
+      resizeHandles.push(handle);
+    }
+  }
+
+  function positionResizeHandle(handle, kind, rect, slide) {
+    var slideRect = slide.getBoundingClientRect();
+    var left = rect.x * slideRect.width;
+    var top = rect.y * slideRect.height;
+    var width = rect.width * slideRect.width;
+    var height = rect.height * slideRect.height;
+    var size = 8;
+
+    if (kind.indexOf('n') !== -1) {
+      handle.style.top = top - size / 2 + 'px';
+    } else if (kind.indexOf('s') !== -1) {
+      handle.style.top = top + height - size / 2 + 'px';
+    } else {
+      handle.style.top = top + height / 2 - size / 2 + 'px';
+    }
+
+    if (kind.indexOf('w') !== -1) {
+      handle.style.left = left - size / 2 + 'px';
+    } else if (kind.indexOf('e') !== -1) {
+      handle.style.left = left + width - size / 2 + 'px';
+    } else {
+      handle.style.left = left + width / 2 - size / 2 + 'px';
+    }
+  }
+
+  function refreshSelectionChrome(element, slide, slideIndex) {
+    updateResizeHandles(element, slide);
+
+    if (element) {
+      postGeometryForElement(element, slide, slideIndex);
+    }
+  }
+
   function clearSelectionStyles() {
     if (selectedElement) {
       selectedElement.removeAttribute('data-ark-editor-selected');
@@ -890,12 +1103,18 @@ export function buildDeckEditorBridgeRuntimeScript(
     selectedElement = null;
   }
 
-  function setSelectedElement(element) {
+  function setSelectedElement(element, slide, slideIndex) {
     clearSelectionStyles();
     selectedElement = element;
 
     if (selectedElement) {
       selectedElement.setAttribute('data-ark-editor-selected', '');
+
+      if (slide) {
+        refreshSelectionChrome(selectedElement, slide, slideIndex);
+      }
+    } else {
+      clearEditorOverlays();
     }
   }
 
@@ -991,31 +1210,39 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function startTextEditOnElement(element, slide, slideIndex) {
+    var target = getTextEditTarget(element);
+
+    if (!target) {
+      postError('Element is not text-editable.', 'non-text-element');
+      return;
+    }
+
     if (element.getAttribute(C.LOCKED_ATTR) === 'true') {
       postError('Element is locked.', 'locked-element');
       return;
     }
 
-    var tag = element.tagName.toLowerCase();
+    var tag = target.tagName.toLowerCase();
 
-    if (!isTextEditableTag(tag)) {
+    if (!isTextEditableTag(tag) && !isTextBox(element)) {
       postError('Element is not text-editable.', 'non-text-element');
       return;
     }
 
     endTextEdit(false);
-    textEditElement = element;
-    originalTextBeforeEdit = element.textContent || '';
-    element.setAttribute('contenteditable', 'true');
-    element.setAttribute('data-ark-editor-text-edit', '');
-    element.focus();
+    clearEditorOverlays();
+    textEditElement = target;
+    originalTextBeforeEdit = target.textContent || '';
+    target.setAttribute('contenteditable', 'true');
+    target.setAttribute('data-ark-editor-text-edit', '');
+    target.focus();
 
     try {
       var selection = window.getSelection();
 
       if (selection) {
         var range = document.createRange();
-        range.selectNodeContents(element);
+        range.selectNodeContents(target);
         selection.removeAllRanges();
         selection.addRange(range);
       }
@@ -1030,28 +1257,152 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
-  function applyTransform(element, slide, geometry, preview) {
+  function applyTransform(element, slide, geometry, preview, mode) {
     var slideRect = slide.getBoundingClientRect();
+    var rect = clampRect(geometry);
 
     if (!slideRect.width || !slideRect.height) {
-      return;
+      return rect;
     }
 
     element.style.position = 'absolute';
-    element.style.left = geometry.x * slideRect.width + 'px';
-    element.style.top = geometry.y * slideRect.height + 'px';
-    element.style.width = geometry.width * slideRect.width + 'px';
-    element.style.height = geometry.height * slideRect.height + 'px';
+    element.style.left = rect.x * slideRect.width + 'px';
+    element.style.top = rect.y * slideRect.height + 'px';
 
-    if (!preview) {
+    // A pure move must not touch the element size. Only rewrite width/height
+    // during a resize, otherwise elements sized with an explicit height would
+    // silently change dimensions when merely repositioned.
+    if (mode !== 'move') {
+      element.style.width = rect.width * slideRect.width + 'px';
+      element.style.minHeight = rect.height * slideRect.height + 'px';
+      element.style.height = '';
+    }
+
+    if (preview) {
+      postToParent({
+        type: C.TRANSFORM_PREVIEW,
+        elementId: resolveElementId(element, slide, currentSlideIndex),
+        slideIndex: currentSlideIndex,
+        geometry: rect,
+        zIndex: readZIndex(element),
+      });
+    } else {
       postToParent({
         type: C.TRANSFORM_COMMIT,
         elementId: resolveElementId(element, slide, currentSlideIndex),
         slideIndex: currentSlideIndex,
-        geometry: geometry,
+        geometry: rect,
         zIndex: readZIndex(element),
       });
     }
+
+    refreshSelectionChrome(element, slide, currentSlideIndex);
+    return rect;
+  }
+
+  function resizeRectWithHandle(startGeometry, handle, pointer, slide) {
+    var start = clampRect(startGeometry);
+    var current = pointerToNormalized(pointer.clientX, pointer.clientY, slide);
+    var rect = {
+      x: start.x,
+      y: start.y,
+      width: start.width,
+      height: start.height,
+    };
+
+    if (handle.indexOf('e') !== -1) {
+      rect.width = Math.max(C.MIN_BOX_SIZE, current.x - start.x);
+    }
+
+    if (handle.indexOf('s') !== -1) {
+      rect.height = Math.max(C.MIN_BOX_SIZE, current.y - start.y);
+    }
+
+    if (handle.indexOf('w') !== -1) {
+      rect.width = Math.max(C.MIN_BOX_SIZE, start.x + start.width - current.x);
+      rect.x = current.x;
+    }
+
+    if (handle.indexOf('n') !== -1) {
+      rect.height = Math.max(C.MIN_BOX_SIZE, start.y + start.height - current.y);
+      rect.y = current.y;
+    }
+
+    return clampRect(rect);
+  }
+
+  function findResizeHandle(target) {
+    if (!target || !target.getAttribute) {
+      return null;
+    }
+
+    if (target.getAttribute('data-ark-editor-handle')) {
+      return target.getAttribute('data-ark-editor-handle');
+    }
+
+    return null;
+  }
+
+  function ensureMarquee(slide) {
+    if (marqueeElement) {
+      return marqueeElement;
+    }
+
+    marqueeElement = document.createElement('div');
+    marqueeElement.setAttribute('data-ark-editor-marquee', 'true');
+    marqueeElement.style.position = 'absolute';
+    marqueeElement.style.border = '1px dashed #2563eb';
+    marqueeElement.style.background = 'rgba(37, 99, 235, 0.08)';
+    marqueeElement.style.pointerEvents = 'none';
+    marqueeElement.style.zIndex = '9999';
+    slide.appendChild(marqueeElement);
+    return marqueeElement;
+  }
+
+  function updateMarquee(startPoint, endPoint, slide) {
+    var marquee = ensureMarquee(slide);
+    var slideRect = slide.getBoundingClientRect();
+    var rect = clampRect({
+      x: Math.min(startPoint.x, endPoint.x),
+      y: Math.min(startPoint.y, endPoint.y),
+      width: Math.abs(endPoint.x - startPoint.x),
+      height: Math.abs(endPoint.y - startPoint.y),
+    });
+
+    marquee.style.left = rect.x * slideRect.width + 'px';
+    marquee.style.top = rect.y * slideRect.height + 'px';
+    marquee.style.width = rect.width * slideRect.width + 'px';
+    marquee.style.height = rect.height * slideRect.height + 'px';
+
+    return rect;
+  }
+
+  function finishTextBoxDraw(slide, startPoint, endPoint) {
+    var rect = clampRect({
+      x: Math.min(startPoint.x, endPoint.x),
+      y: Math.min(startPoint.y, endPoint.y),
+      width: Math.abs(endPoint.x - startPoint.x),
+      height: Math.abs(endPoint.y - startPoint.y),
+    });
+
+    // clampRect floors both dimensions to MIN_BOX_SIZE, so a rect still at the
+    // minimum on both axes means the pointer never dragged past the threshold:
+    // treat it as a plain click and drop a default-sized box centered on the point.
+    if (rect.width <= C.MIN_BOX_SIZE && rect.height <= C.MIN_BOX_SIZE) {
+      rect = clampRect({
+        x: endPoint.x - C.DEFAULT_BOX_WIDTH / 2,
+        y: endPoint.y - C.DEFAULT_BOX_HEIGHT / 2,
+        width: C.DEFAULT_BOX_WIDTH,
+        height: C.DEFAULT_BOX_HEIGHT,
+      });
+    }
+
+    postToParent({
+      type: C.INSERT_REQUEST,
+      kind: 'text-box',
+      slideIndex: currentSlideIndex,
+      geometry: rect,
+    });
   }
 
   function onPointerMove(event) {
@@ -1065,6 +1416,41 @@ export function buildDeckEditorBridgeRuntimeScript(
       return;
     }
 
+    if (transformState && transformState.pointerId === event.pointerId) {
+      if (transformState.kind === 'draw') {
+        updateMarquee(transformState.startPoint, pointerToNormalized(event.clientX, event.clientY, slide), slide);
+        return;
+      }
+
+      if (transformState.kind === 'move' && transformState.element) {
+        var deltaX = pointerToNormalized(event.clientX, event.clientY, slide).x - transformState.startPoint.x;
+        var deltaY = pointerToNormalized(event.clientX, event.clientY, slide).y - transformState.startPoint.y;
+        var moved = clampRect({
+          x: transformState.startGeometry.x + deltaX,
+          y: transformState.startGeometry.y + deltaY,
+          width: transformState.startGeometry.width,
+          height: transformState.startGeometry.height,
+        });
+        applyTransform(transformState.element, slide, moved, true, 'move');
+        return;
+      }
+
+      if (transformState.kind === 'resize' && transformState.element && transformState.handle) {
+        var resized = resizeRectWithHandle(
+          transformState.startGeometry,
+          transformState.handle,
+          event,
+          slide,
+        );
+        applyTransform(transformState.element, slide, resized, true, 'resize');
+        return;
+      }
+    }
+
+    if (transformState) {
+      return;
+    }
+
     var target = findEditableTarget(event.target, slide);
 
     postToParent({
@@ -1075,7 +1461,7 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function onPointerDown(event) {
-    if (!enabled || currentTool !== 'select' || textEditElement) {
+    if (!enabled || textEditElement) {
       return;
     }
 
@@ -1085,18 +1471,96 @@ export function buildDeckEditorBridgeRuntimeScript(
       return;
     }
 
+    if (currentTool === 'text') {
+      event.preventDefault();
+      event.stopPropagation();
+      clearEditorOverlays();
+      setSelectedElement(null, slide, currentSlideIndex);
+      postSelection(null, slide, currentSlideIndex);
+      transformState = {
+        kind: 'draw',
+        pointerId: event.pointerId,
+        startPoint: pointerToNormalized(event.clientX, event.clientY, slide),
+      };
+      ensureMarquee(slide);
+      return;
+    }
+
+    if (currentTool !== 'select') {
+      return;
+    }
+
+    var handle = findResizeHandle(event.target);
+
+    if (handle && selectedElement && isManagedElement(selectedElement)) {
+      event.preventDefault();
+      event.stopPropagation();
+      transformState = {
+        kind: 'resize',
+        pointerId: event.pointerId,
+        handle: handle,
+        element: selectedElement,
+        startGeometry: normalizeRect(selectedElement, slide),
+      };
+      return;
+    }
+
     var target = findEditableTarget(event.target, slide);
 
     if (!target) {
-      setSelectedElement(null);
+      setSelectedElement(null, slide, currentSlideIndex);
       postSelection(null, slide, currentSlideIndex);
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    setSelectedElement(target);
+    setSelectedElement(target, slide, currentSlideIndex);
     postSelection(target, slide, currentSlideIndex);
+
+    if (isManagedElement(target) && target.getAttribute(C.LOCKED_ATTR) !== 'true') {
+      transformState = {
+        kind: 'move',
+        pointerId: event.pointerId,
+        element: target,
+        startPoint: pointerToNormalized(event.clientX, event.clientY, slide),
+        startGeometry: normalizeRect(target, slide),
+      };
+    }
+  }
+
+  function onPointerUp(event) {
+    if (!enabled || !transformState || transformState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    var slide = getActiveSlide();
+
+    if (!slide) {
+      transformState = null;
+      clearEditorOverlays();
+      return;
+    }
+
+    if (transformState.kind === 'draw') {
+      var endPoint = pointerToNormalized(event.clientX, event.clientY, slide);
+      finishTextBoxDraw(slide, transformState.startPoint, endPoint);
+      clearMarquee();
+      transformState = null;
+      return;
+    }
+
+    if (
+      (transformState.kind === 'move' || transformState.kind === 'resize') &&
+      transformState.element
+    ) {
+      var finalGeometry = normalizeRect(transformState.element, slide);
+      applyTransform(transformState.element, slide, finalGeometry, false, transformState.kind);
+      transformState = null;
+      return;
+    }
+
+    transformState = null;
   }
 
   function onDoubleClick(event) {
@@ -1112,36 +1576,68 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     var target = findEditableTarget(event.target, slide);
 
-    if (!target || !isTextEditableTag(target.tagName.toLowerCase())) {
+    if (!target) {
+      return;
+    }
+
+    var editableTarget = getTextEditTarget(target);
+    var tag = editableTarget ? editableTarget.tagName.toLowerCase() : '';
+
+    if (!editableTarget || (!isTextEditableTag(tag) && !isTextBox(target))) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    setSelectedElement(target);
+    setSelectedElement(target, slide, currentSlideIndex);
     postSelection(target, slide, currentSlideIndex);
     startTextEditOnElement(target, slide, currentSlideIndex);
   }
 
   function onKeyDown(event) {
-    if (!textEditElement) {
+    if (textEditElement) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        endTextEdit(false);
+        return;
+      }
+
+      if (
+        event.key === 'ArrowLeft' ||
+        event.key === 'ArrowRight' ||
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowDown'
+      ) {
+        event.stopPropagation();
+      }
+
       return;
     }
 
-    if (event.key === 'Escape') {
+    if (!enabled || currentTool !== 'select') {
+      return;
+    }
+
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedElement) {
+      // Only Ark-managed elements (text boxes, duplicated/moved elements) can be
+      // deleted with the keyboard. Deck-authored headings/paragraphs stay put so
+      // a stray Backspace can't destroy the original content.
+      if (!isManagedElement(selectedElement)) {
+        return;
+      }
+
+      if (selectedElement.getAttribute(C.LOCKED_ATTR) === 'true') {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
-      endTextEdit(false);
-      return;
-    }
-
-    if (
-      event.key === 'ArrowLeft' ||
-      event.key === 'ArrowRight' ||
-      event.key === 'ArrowUp' ||
-      event.key === 'ArrowDown'
-    ) {
-      event.stopPropagation();
+      postToParent({
+        type: C.DELETE_REQUEST,
+        elementId: resolveElementId(selectedElement, getActiveSlide(), currentSlideIndex),
+        slideIndex: currentSlideIndex,
+      });
     }
   }
 
@@ -1152,6 +1648,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('dblclick', onDoubleClick, true);
     document.addEventListener('keydown', onKeyDown, true);
     listenersBound = true;
@@ -1164,6 +1661,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     document.removeEventListener('pointermove', onPointerMove, true);
     document.removeEventListener('pointerdown', onPointerDown, true);
+    document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('dblclick', onDoubleClick, true);
     document.removeEventListener('keydown', onKeyDown, true);
     listenersBound = false;
@@ -1173,6 +1671,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     enabled = true;
     currentSlideIndex = slideIndex;
     currentTool = tool || 'select';
+    transformState = null;
     bindListeners();
     postToParent({
       type: C.READY,
@@ -1183,8 +1682,11 @@ export function buildDeckEditorBridgeRuntimeScript(
 
   function disableEditor() {
     enabled = false;
+    transformState = null;
     endTextEdit(false);
     clearSelectionStyles();
+    clearEditorOverlays();
+    selectedElement = null;
     unbindListeners();
     postToParent({ type: C.SELECTION_CHANGE, selection: null });
     postToParent({ type: C.HOVER, slideIndex: currentSlideIndex, elementId: null });
@@ -1228,13 +1730,15 @@ export function buildDeckEditorBridgeRuntimeScript(
       }
 
       if (data.type === C.CLEAR_SELECTION) {
-        setSelectedElement(null);
+        setSelectedElement(null, slide, currentSlideIndex);
         postSelection(null, slide, currentSlideIndex);
         return;
       }
 
       if (data.type === C.SET_TOOL && (data.tool === 'select' || data.tool === 'text' || data.tool === 'insert')) {
         currentTool = data.tool;
+        clearEditorOverlays();
+        transformState = null;
         return;
       }
 
@@ -1254,7 +1758,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         }
 
         if (data.type === C.SELECT) {
-          setSelectedElement(element);
+          setSelectedElement(element, slide, data.slideIndex);
           postSelection(element, slide, data.slideIndex);
           return;
         }

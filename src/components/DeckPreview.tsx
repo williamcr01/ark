@@ -26,6 +26,10 @@ import {
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import {
+  buildTextBoxInsertOperation,
+  buildTransformPatchOperations,
+} from '@/lib/deck-editor-patches'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
@@ -53,6 +57,11 @@ export type DeckPreviewProps = {
   editorBridgeEnabled?: boolean
   isTextEditSaving?: boolean
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
+  onPatchEditorOperations?: (
+    operations: import('../../shared/deck-patch.ts').DeckElementPatchOperation[],
+    activeSlideIndex: number,
+    summary: string,
+  ) => Promise<void>
 }
 
 export function DeckPreview({
@@ -66,6 +75,7 @@ export function DeckPreview({
   editorBridgeEnabled = false,
   isTextEditSaving = false,
   onCommitTextEdit,
+  onPatchEditorOperations,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
@@ -75,6 +85,16 @@ export function DeckPreview({
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
   const processedTextCommitRef = useRef<string | null>(null)
+  const processedInsertRequestRef = useRef<string | null>(null)
+  const processedDeleteRequestRef = useRef<string | null>(null)
+  const processedTransformCommitRef = useRef<string | null>(null)
+  const committedGeometryRef = useRef<
+    import('../../shared/deck-editor-bridge.ts').EditorNormalizedRect | null
+  >(null)
+  const transformStartGeometryRef = useRef<
+    import('../../shared/deck-editor-bridge.ts').EditorNormalizedRect | null
+  >(null)
+  const isTransformingRef = useRef(false)
   const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
   const runtimeMode = runtimeManifest.runtimeMode
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
@@ -141,6 +161,10 @@ export function DeckPreview({
     hoverGeometry,
     editorError,
     lastTextCommit,
+    lastInsertRequest,
+    lastDeleteRequest,
+    transformPreview,
+    transformCommit,
     textEditActive,
     enableEditor,
     disableEditor,
@@ -163,6 +187,95 @@ export function DeckPreview({
     () => editChromeActive && isTextEditableSelection(selection),
     [editChromeActive, selection],
   )
+
+  const canModifySelection =
+    Boolean(selection?.managed) && !selection?.locked && editChromeActive && !textEditActive
+
+  const handleDeleteSelection = useCallback(() => {
+    if (!selection || !canModifySelection || !onPatchEditorOperations) {
+      return
+    }
+
+    void onPatchEditorOperations(
+      [
+        {
+          op: 'delete_element',
+          elementId: selection.elementId,
+          slideIndex: selection.slideIndex,
+          ...(selection.slideId ? { slideId: selection.slideId } : {}),
+        },
+      ],
+      selection.slideIndex,
+      'Deleted element in preview',
+    )
+  }, [canModifySelection, onPatchEditorOperations, selection])
+
+  const handleDuplicateSelection = useCallback(() => {
+    if (!selection || !canModifySelection || !onPatchEditorOperations) {
+      return
+    }
+
+    void onPatchEditorOperations(
+      [
+        {
+          op: 'duplicate_element',
+          elementId: selection.elementId,
+          slideIndex: selection.slideIndex,
+          ...(selection.slideId ? { slideId: selection.slideId } : {}),
+        },
+      ],
+      selection.slideIndex,
+      'Duplicated element in preview',
+    )
+  }, [canModifySelection, onPatchEditorOperations, selection])
+
+  const handleReorderSelection = useCallback(
+    (direction: 'front' | 'back') => {
+      if (!selection || !canModifySelection || !onPatchEditorOperations) {
+        return
+      }
+
+      void onPatchEditorOperations(
+        [
+          {
+            op: 'reorder_element',
+            elementId: selection.elementId,
+            slideIndex: selection.slideIndex,
+            ...(selection.slideId ? { slideId: selection.slideId } : {}),
+            direction,
+          },
+        ],
+        selection.slideIndex,
+        direction === 'front' ? 'Brought element forward' : 'Sent element backward',
+      )
+    },
+    [canModifySelection, onPatchEditorOperations, selection],
+  )
+
+  // Track the element's geometry from *before* a transform begins so a commit can
+  // be diffed against the real starting rect. While a drag is in progress the
+  // runtime streams `ark:editor-geometry` on every preview frame, so we must stop
+  // syncing here — otherwise the baseline would drift to the live previewed rect
+  // and the commit diff would come back empty (element visibly moves but nothing
+  // persists).
+  useEffect(() => {
+    if (isTransformingRef.current) {
+      return
+    }
+
+    committedGeometryRef.current = geometry
+  }, [geometry])
+
+  // A transform preview marks the start of a drag/resize. Snapshot the pre-drag
+  // geometry on the first preview frame and freeze the baseline until commit.
+  useEffect(() => {
+    if (!transformPreview || isTransformingRef.current) {
+      return
+    }
+
+    isTransformingRef.current = true
+    transformStartGeometryRef.current = committedGeometryRef.current
+  }, [transformPreview])
 
   const beginTextEdit = useCallback(() => {
     if (!selection || !canEditSelectedText || textEditActive) {
@@ -241,6 +354,106 @@ export function DeckPreview({
       preserveSlideIndexRef.current = null
     })
   }, [activeSlideIndex, lastTextCommit, onCommitTextEdit])
+
+  useEffect(() => {
+    if (!lastInsertRequest || !onPatchEditorOperations) {
+      return
+    }
+
+    const requestKey = `${lastInsertRequest.kind}:${lastInsertRequest.slideIndex}:${lastInsertRequest.geometry.x}:${lastInsertRequest.geometry.y}:${lastInsertRequest.geometry.width}:${lastInsertRequest.geometry.height}`
+
+    if (processedInsertRequestRef.current === requestKey) {
+      return
+    }
+
+    processedInsertRequestRef.current = requestKey
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onPatchEditorOperations(
+      [buildTextBoxInsertOperation(lastInsertRequest.slideIndex, lastInsertRequest.geometry, null)],
+      lastInsertRequest.slideIndex,
+      'Inserted text box in preview',
+    )
+      .then(() => {
+        handleToolChange('select')
+      })
+      .catch(() => {
+        processedInsertRequestRef.current = null
+        preserveSlideIndexRef.current = null
+      })
+  }, [activeSlideIndex, handleToolChange, lastInsertRequest, onPatchEditorOperations])
+
+  useEffect(() => {
+    if (!lastDeleteRequest || !onPatchEditorOperations) {
+      return
+    }
+
+    const requestKey = `${lastDeleteRequest.elementId}:${lastDeleteRequest.slideIndex}`
+
+    if (processedDeleteRequestRef.current === requestKey) {
+      return
+    }
+
+    processedDeleteRequestRef.current = requestKey
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onPatchEditorOperations(
+      [
+        {
+          op: 'delete_element',
+          elementId: lastDeleteRequest.elementId,
+          slideIndex: lastDeleteRequest.slideIndex,
+        },
+      ],
+      lastDeleteRequest.slideIndex,
+      'Deleted element in preview',
+    ).catch(() => {
+      processedDeleteRequestRef.current = null
+      preserveSlideIndexRef.current = null
+    })
+  }, [activeSlideIndex, lastDeleteRequest, onPatchEditorOperations])
+
+  useEffect(() => {
+    if (!transformCommit || !onPatchEditorOperations) {
+      return
+    }
+
+    const commitKey = `${transformCommit.elementId}:${transformCommit.slideIndex}:${transformCommit.geometry.x}:${transformCommit.geometry.y}:${transformCommit.geometry.width}:${transformCommit.geometry.height}`
+
+    if (processedTransformCommitRef.current === commitKey) {
+      return
+    }
+
+    // Diff against the geometry captured when the drag started, not the live
+    // (previewed) geometry. Fall back to `null` when no drag baseline was
+    // captured so the commit still persists move + resize.
+    const previousGeometry = isTransformingRef.current ? transformStartGeometryRef.current : null
+
+    const operations = buildTransformPatchOperations(
+      transformCommit,
+      previousGeometry,
+      selection?.slideId ?? null,
+    )
+
+    isTransformingRef.current = false
+    transformStartGeometryRef.current = null
+
+    if (operations.length === 0) {
+      return
+    }
+
+    processedTransformCommitRef.current = commitKey
+    preserveSlideIndexRef.current = activeSlideIndex
+
+    void onPatchEditorOperations(
+      operations,
+      transformCommit.slideIndex,
+      'Updated element layout in preview',
+    ).catch(() => {
+      processedTransformCommitRef.current = null
+      preserveSlideIndexRef.current = null
+    })
+  }, [activeSlideIndex, onPatchEditorOperations, selection?.slideId, transformCommit])
 
   useEffect(() => {
     if (preserveSlideIndexRef.current === null) {
@@ -442,9 +655,14 @@ export function DeckPreview({
           hasSelection={Boolean(selection?.elementId)}
           isGenerating={isGenerating}
           isSaving={isTextEditSaving}
+          onBringForward={() => handleReorderSelection('front')}
+          onDelete={handleDeleteSelection}
+          onDuplicate={handleDuplicateSelection}
           onEditText={beginTextEdit}
+          onSendBackward={() => handleReorderSelection('back')}
           onToolChange={handleToolChange}
           selectionLocked={selection?.locked ?? false}
+          selectionManaged={selection?.managed ?? false}
           textEditActive={textEditActive}
         />
       ) : null}
