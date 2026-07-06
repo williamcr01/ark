@@ -18,11 +18,12 @@ import {
   isEditorTextCommitMessage,
   isEditorTransformCommitMessage,
   isEditorTransformPreviewMessage,
-  type EditorGeometryMessage,
   type EditorHoverMessage,
   type EditorNormalizedRect,
   type EditorSelectionInfo,
   type EditorTool,
+  type EditorTransformCommitMessage,
+  type EditorTransformPreviewMessage,
   postEditorShellMessage,
 } from '../../shared/deck-editor-bridge.ts'
 import { getDeckBridgeTargetOrigin } from '../../shared/deck-bridge.ts'
@@ -34,8 +35,8 @@ export type DeckEditorBridgeState = {
   hover: Pick<EditorHoverMessage, 'elementId' | 'slideIndex'> | null
   geometry: EditorNormalizedRect | null
   editorError: string | null
-  transformPreview: EditorGeometryMessage | null
-  transformCommit: EditorGeometryMessage | null
+  transformPreview: EditorTransformPreviewMessage | null
+  transformCommit: EditorTransformCommitMessage | null
   lastTextCommit: { elementId: string; slideIndex: number; text: string } | null
 }
 

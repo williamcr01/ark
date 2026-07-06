@@ -3,12 +3,17 @@ import { nanoid } from 'nanoid'
 export type PreviewSession = {
   token: string
   html: string
+  editorBridge: boolean
   createdAt: number
   expiresAt: number
 }
 
+export type PreviewSessionOptions = {
+  editorBridge?: boolean
+}
+
 export type PreviewSessionStore = {
-  createSession: (html: string) => PreviewSession
+  createSession: (html: string, options?: PreviewSessionOptions) => PreviewSession
   getSession: (token: string) => PreviewSession | null
   deleteSession: (token: string) => boolean
 }
@@ -30,7 +35,7 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
   }
 
   return {
-    createSession(html) {
+    createSession(html, options = {}) {
       purgeExpired()
 
       const now = Date.now()
@@ -38,6 +43,7 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
       const session: PreviewSession = {
         token,
         html,
+        editorBridge: options.editorBridge === true,
         createdAt: now,
         expiresAt: now + ttlMs,
       }
