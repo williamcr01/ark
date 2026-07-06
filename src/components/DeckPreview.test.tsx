@@ -8,6 +8,13 @@ import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 import { parseDeckSlides } from '@/lib/deck-slides'
+import {
+  createEditorTransformCommitMessage,
+  createEditorTransformPreviewMessage,
+  type EditorNormalizedRect,
+  type EditorTransformCommitMessage,
+  type EditorTransformPreviewMessage,
+} from '../../shared/deck-editor-bridge.ts'
 
 import { DeckPreview } from './DeckPreview'
 
@@ -31,7 +38,7 @@ const editorBridgeMock = vi.hoisted(() => ({
     editableKind: string | null
     textPreview: string | null
   } | null,
-  geometry: null,
+  geometry: null as EditorNormalizedRect | null,
   selectionZIndex: null,
   hover: null,
   hoverGeometry: null,
@@ -46,7 +53,8 @@ const editorBridgeMock = vi.hoisted(() => ({
   } | null,
   lastInsertRequest: null,
   lastDeleteRequest: null,
-  transformCommit: null,
+  transformPreview: null as EditorTransformPreviewMessage | null,
+  transformCommit: null as EditorTransformCommitMessage | null,
   enableEditor: vi.fn(),
   disableEditor: vi.fn(),
   requestGeometry: vi.fn(),
@@ -102,6 +110,7 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.lastTextCommit = null
     editorBridgeMock.lastInsertRequest = null
     editorBridgeMock.lastDeleteRequest = null
+    editorBridgeMock.transformPreview = null
     editorBridgeMock.transformCommit = null
     editorBridgeMock.enableEditor.mockClear()
     editorBridgeMock.disableEditor.mockClear()
@@ -415,6 +424,74 @@ describe('DeckPreview script divergence UI', () => {
       text: 'Updated planning',
       originalText: 'Quarterly planning',
     })
+  })
+
+  it('persists drag transforms by diffing against the pre-drag geometry', async () => {
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+    const startGeometry: EditorNormalizedRect = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+    const endGeometry: EditorNormalizedRect = { x: 0.4, y: 0.35, width: 0.3, height: 0.1 }
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = startGeometry
+
+    const props = {
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    }
+
+    const { rerender } = renderDeckPreview(props)
+
+    const renderProps = () =>
+      rerender(
+        <TooltipProvider>
+          <DeckPreview {...props} />
+        </TooltipProvider>,
+      )
+
+    // Drag begins: the runtime streams a transform preview frame.
+    editorBridgeMock.transformPreview = createEditorTransformPreviewMessage(
+      'ark-el-box',
+      0,
+      endGeometry,
+    )
+    renderProps()
+
+    // Preview frames also push live geometry updates that would otherwise poison
+    // the baseline used to diff the commit.
+    editorBridgeMock.geometry = endGeometry
+    renderProps()
+
+    // Pointer up: the runtime commits at the final rect.
+    editorBridgeMock.transformPreview = null
+    editorBridgeMock.transformCommit = createEditorTransformCommitMessage(
+      'ark-el-box',
+      0,
+      endGeometry,
+    )
+    renderProps()
+
+    expect(onPatchEditorOperations).toHaveBeenCalledTimes(1)
+    const [operations] = onPatchEditorOperations.mock.calls[0]!
+    expect(operations).toEqual([
+      {
+        op: 'move_element',
+        elementId: 'ark-el-box',
+        slideIndex: 0,
+        slideId: 'slide-1',
+        x: endGeometry.x,
+        y: endGeometry.y,
+      },
+    ])
   })
 
   it('shows locked messaging for locked selections', async () => {

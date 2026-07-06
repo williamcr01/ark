@@ -91,6 +91,10 @@ export function DeckPreview({
   const committedGeometryRef = useRef<
     import('../../shared/deck-editor-bridge.ts').EditorNormalizedRect | null
   >(null)
+  const transformStartGeometryRef = useRef<
+    import('../../shared/deck-editor-bridge.ts').EditorNormalizedRect | null
+  >(null)
+  const isTransformingRef = useRef(false)
   const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
   const runtimeMode = runtimeManifest.runtimeMode
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
@@ -155,11 +159,11 @@ export function DeckPreview({
     hover,
     geometry,
     hoverGeometry,
-    selectionZIndex,
     editorError,
     lastTextCommit,
     lastInsertRequest,
     lastDeleteRequest,
+    transformPreview,
     transformCommit,
     textEditActive,
     enableEditor,
@@ -226,12 +230,10 @@ export function DeckPreview({
   }, [canModifySelection, onPatchEditorOperations, selection])
 
   const handleReorderSelection = useCallback(
-    (delta: number) => {
+    (direction: 'front' | 'back') => {
       if (!selection || !canModifySelection || !onPatchEditorOperations) {
         return
       }
-
-      const currentZIndex = selectionZIndex ?? 0
 
       void onPatchEditorOperations(
         [
@@ -240,19 +242,40 @@ export function DeckPreview({
             elementId: selection.elementId,
             slideIndex: selection.slideIndex,
             ...(selection.slideId ? { slideId: selection.slideId } : {}),
-            zIndex: Math.max(0, currentZIndex + delta),
+            direction,
           },
         ],
         selection.slideIndex,
-        delta > 0 ? 'Brought element forward' : 'Sent element backward',
+        direction === 'front' ? 'Brought element forward' : 'Sent element backward',
       )
     },
-    [canModifySelection, onPatchEditorOperations, selection, selectionZIndex],
+    [canModifySelection, onPatchEditorOperations, selection],
   )
 
+  // Track the element's geometry from *before* a transform begins so a commit can
+  // be diffed against the real starting rect. While a drag is in progress the
+  // runtime streams `ark:editor-geometry` on every preview frame, so we must stop
+  // syncing here — otherwise the baseline would drift to the live previewed rect
+  // and the commit diff would come back empty (element visibly moves but nothing
+  // persists).
   useEffect(() => {
+    if (isTransformingRef.current) {
+      return
+    }
+
     committedGeometryRef.current = geometry
   }, [geometry])
+
+  // A transform preview marks the start of a drag/resize. Snapshot the pre-drag
+  // geometry on the first preview frame and freeze the baseline until commit.
+  useEffect(() => {
+    if (!transformPreview || isTransformingRef.current) {
+      return
+    }
+
+    isTransformingRef.current = true
+    transformStartGeometryRef.current = committedGeometryRef.current
+  }, [transformPreview])
 
   const beginTextEdit = useCallback(() => {
     if (!selection || !canEditSelectedText || textEditActive) {
@@ -401,11 +424,19 @@ export function DeckPreview({
       return
     }
 
+    // Diff against the geometry captured when the drag started, not the live
+    // (previewed) geometry. Fall back to `null` when no drag baseline was
+    // captured so the commit still persists move + resize.
+    const previousGeometry = isTransformingRef.current ? transformStartGeometryRef.current : null
+
     const operations = buildTransformPatchOperations(
       transformCommit,
-      committedGeometryRef.current,
+      previousGeometry,
       selection?.slideId ?? null,
     )
+
+    isTransformingRef.current = false
+    transformStartGeometryRef.current = null
 
     if (operations.length === 0) {
       return
@@ -624,11 +655,11 @@ export function DeckPreview({
           hasSelection={Boolean(selection?.elementId)}
           isGenerating={isGenerating}
           isSaving={isTextEditSaving}
-          onBringForward={() => handleReorderSelection(1)}
+          onBringForward={() => handleReorderSelection('front')}
           onDelete={handleDeleteSelection}
           onDuplicate={handleDuplicateSelection}
           onEditText={beginTextEdit}
-          onSendBackward={() => handleReorderSelection(-1)}
+          onSendBackward={() => handleReorderSelection('back')}
           onToolChange={handleToolChange}
           selectionLocked={selection?.locked ?? false}
           selectionManaged={selection?.managed ?? false}
