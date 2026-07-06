@@ -30,6 +30,8 @@ describe('deck editor bridge protocol', () => {
     slideId: 'ark-slide-1',
     tagName: 'h1',
     locked: false,
+    managed: false,
+    editableKind: null,
     textPreview: 'Opening',
   }
 
@@ -109,5 +111,17 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain(EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE)
     expect(script).toContain('originalText')
     expect(script).toContain('ArrowLeft')
+  })
+
+  it('gates keyboard deletion to Ark-managed elements in the runtime script', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    const deleteHandlerIndex = script.indexOf("event.key === 'Delete'")
+    expect(deleteHandlerIndex).toBeGreaterThan(-1)
+
+    const managedGuardIndex = script.indexOf('!isManagedElement(selectedElement)')
+    expect(managedGuardIndex).toBeGreaterThan(deleteHandlerIndex)
   })
 })

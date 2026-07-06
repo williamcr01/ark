@@ -21,6 +21,7 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>
         isSaving={false}
         onToolChange={onToolChange}
         selectionLocked={false}
+        selectionManaged={false}
         textEditActive={false}
         {...overrides}
       />
@@ -81,13 +82,22 @@ describe('EditModeToolbar', () => {
     expect(screen.getByRole('button', { name: 'Delete selected element (locked)' })).toBeDisabled()
   })
 
-  it('marks coming-soon actions as disabled', () => {
+  it('enables managed selection actions when available', () => {
+    const onDuplicate = vi.fn()
+    renderToolbar({ hasSelection: true, selectionManaged: true, onDuplicate })
+
+    expect(screen.getByRole('button', { name: 'Duplicate selected element' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Bring forward' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Send backward' })).toBeEnabled()
+  })
+
+  it('marks history actions as disabled', () => {
     renderToolbar({ hasSelection: true })
 
     expect(screen.getByRole('button', { name: 'Undo (coming soon)' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Redo (coming soon)' })).toBeDisabled()
     expect(
-      screen.getByRole('button', { name: 'Duplicate selected element (coming soon)' }),
+      screen.getByRole('button', { name: 'Duplicate selected element (not managed)' }),
     ).toBeDisabled()
   })
 })

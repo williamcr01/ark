@@ -87,6 +87,14 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     elementId: z.string().min(1),
   }),
   z.object({
+    op: z.literal('duplicate_element'),
+    slideIndex: z.number().int().min(0).optional(),
+    slideId: z.string().min(1).optional(),
+    elementId: z.string().min(1),
+    offsetX: normalizedUnitSchema.optional(),
+    offsetY: normalizedUnitSchema.optional(),
+  }),
+  z.object({
     op: z.literal('set_attrs'),
     slideIndex: z.number().int().min(0).optional(),
     slideId: z.string().min(1).optional(),
@@ -116,13 +124,33 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     width: normalizedUnitSchema,
     height: normalizedUnitSchema,
   }),
-  z.object({
-    op: z.literal('reorder_element'),
-    slideIndex: z.number().int().min(0).optional(),
-    slideId: z.string().min(1).optional(),
-    elementId: z.string().min(1),
-    zIndex: z.number().int(),
-  }),
+  z
+    .object({
+      op: z.literal('reorder_element'),
+      slideIndex: z.number().int().min(0).optional(),
+      slideId: z.string().min(1).optional(),
+      elementId: z.string().min(1),
+      zIndex: z
+        .number()
+        .int()
+        .optional()
+        .describe('Absolute z-index to assign. Omit when using direction.'),
+      direction: z
+        .enum(['front', 'back'])
+        .optional()
+        .describe(
+          'Stack relative to siblings: "front" moves above the top sibling, "back" below the bottom.',
+        ),
+    })
+    .superRefine((value, context) => {
+      if (value.zIndex === undefined && value.direction === undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Provide zIndex or direction.',
+          path: ['zIndex'],
+        })
+      }
+    }),
   z.object({
     op: z.literal('lock_element'),
     slideIndex: z.number().int().min(0).optional(),
@@ -196,6 +224,7 @@ const ELEMENT_PATCH_OPS = new Set<DeckElementPatchOperation['op']>([
   'replace_text',
   'insert_element',
   'delete_element',
+  'duplicate_element',
   'set_attrs',
   'set_inline_style',
   'move_element',
@@ -245,6 +274,8 @@ export function summarizePatchOperation(operation: DeckPatchOperation): string {
       return 'insert element'
     case 'delete_element':
       return `delete ${operation.elementId}`
+    case 'duplicate_element':
+      return `duplicate ${operation.elementId}`
     case 'set_attrs':
       return `set attrs on ${operation.elementId}`
     case 'set_inline_style':

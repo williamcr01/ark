@@ -1,5 +1,6 @@
 import type { EditorSelectionInfo } from '../../shared/deck-editor-bridge.ts'
 import { isInlineTextEditableTag } from '../../shared/deck-editable.ts'
+import { isTextBoxEditableValue } from '../../shared/deck-text-box.ts'
 
 /** Plain-text inline editing only; nested markup inside elements is flattened on save. */
 export function isTextEditableSelection(selection: EditorSelectionInfo | null) {
@@ -7,5 +8,9 @@ export function isTextEditableSelection(selection: EditorSelectionInfo | null) {
     return false
   }
 
-  return isInlineTextEditableTag(selection.tagName)
+  if (isInlineTextEditableTag(selection.tagName)) {
+    return true
+  }
+
+  return isTextBoxEditableValue(selection.editableKind)
 }
