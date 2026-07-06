@@ -5,8 +5,9 @@ Ark is a presentation builder: a PowerPoint-like app where each presentation is 
 ## Product model
 
 - **Shell app** (`src/`): React + TypeScript + Vite. Hosts the editor UI, slide preview, and agent chat panel.
-- **Presentations** (`presentations/`): Self-contained `.html` files. Each file is one deck — portable, previewable in an iframe, and editable by the agent without touching React code.
-- **Agent chat**: Side panel beside the slide preview. User supplies content (notes, data, bullet points); the agent writes or updates the active presentation HTML.
+- **API server** (`server/`): Express. Persists decks and chat, runs the generation agent loop, serves approved runtime assets, and hosts the sandbox preview origin.
+- **Decks**: Self-contained single-page HTML documents (HTML + CSS, optionally approved runtimes like reveal.js). Decks are **persisted server-side** — JSON files under `data/decks/` by default, or Postgres when `DATABASE_URL` is set — and edited through the API/agent tools, not as files in the repo. (The `presentations/` directory exists for ad-hoc local fixtures but is not part of the persistence path.)
+- **Agent chat**: Side panel beside the slide preview. User supplies content (notes, data, bullet points); the agent writes or updates the active deck HTML via tools.
 
 ## Tech stack
 
@@ -29,16 +30,21 @@ pnpm test       # run unit tests (Vitest)
 pnpm preview    # preview production build
 ```
 
-## Project layout (target)
+## Project layout
 
 ```
 ark/
 ├── src/                    # React shell app
 │   ├── components/         # UI components (chat, preview, toolbar)
 │   ├── hooks/              # shared React hooks
-│   └── ...
-├── presentations/          # generated / user presentation HTML files
-│   └── *.html
+│   └── lib/                # client-side helpers (deck preview, validation, API)
+├── server/                 # Express API, agent loop, deck/chat stores, sandbox host
+│   └── db/                 # Postgres repositories + migrations (optional path)
+├── shared/                 # code shared by client and server (bridge, patches, API contracts)
+├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
+├── docs/                   # runtime/preview/bridge documentation
+├── scripts/                # runtime sync + smoke tests
+├── data/                   # local dev persistence (gitignored): decks, chat
 ├── public/                 # static assets
 └── AGENTS.md               # this file
 ```
@@ -55,7 +61,7 @@ ark/
 
 ## Presentation HTML conventions
 
-When creating or editing presentation files in `presentations/`:
+When creating or editing deck HTML (through the agent tools or upload):
 
 1. **Self-contained**: One `.html` file per deck. Inline `<style>` CSS; no external http(s) URLs for scripts, stylesheets, fonts, or images.
 2. **Modern and polished**: Clean typography, consistent spacing, intentional color palette. Avoid generic “AI slop” aesthetics.
@@ -112,7 +118,7 @@ Example skeleton (plain HTML):
 When acting as the presentation agent (side chat):
 
 - **Input**: User provides raw content — notes, CSV snippets, bullet lists, images URLs, tone/style preferences.
-- **Output**: Updated HTML in the active presentation file, or a new file in `presentations/`.
+- **Output**: Updated HTML for the active deck (persisted server-side), or a new deck.
 - **Workflow**: Confirm scope briefly, generate slides, then offer targeted follow-ups (e.g. “Want a dark theme?”).
 - **Preview**: Assume the React shell loads the active `.html` in an iframe; broken markup breaks the preview — validate structure.
 - **Scope**: Do not refactor the React shell unless the user asks; focus on presentation HTML and chat-related UI.
@@ -121,9 +127,9 @@ When acting as the presentation agent (side chat):
 
 Ark replays the **full visible chat history** on every generation job request (pi-style). Assistant turns store short status text plus optional tool-call parts — never full HTML.
 
-- **Persisted with the deck**: Deck HTML is saved server-side (#10); chat messages are stored in `localStorage` (`ark:chat-session`) so refresh restores the conversation.
-- **Assistant messages**: Store summary text and tool activity (`list_slides`, `read_deck`, `edit_deck`, `write_deck`). The model reads the deck via tools instead of receiving the full HTML on every turn.
-- **Token/cost**: Follow-up edits use `edit_deck` patches instead of re-emitting the entire document. Long chats still replay prior text linearly; compaction is not implemented yet.
+- **Persisted with the deck**: Deck HTML is saved server-side (#10). Chat messages are also persisted server-side per deck (`GET/POST/DELETE /api/decks/:id/chat`, JSON files under `data/chat/` or Postgres); `localStorage` (`ark:chat-session:{deckId|new}`) acts as a client-side cache/fallback so refresh restores the conversation even when the API is briefly unavailable. Chat for a not-yet-saved deck lives only in `localStorage` until the deck is created.
+- **Assistant messages**: Store summary text and tool activity (`list_slides`, `read_deck`, `patch_deck`, `edit_deck`, `write_deck`). The model reads the deck via tools instead of receiving the full HTML on every turn.
+- **Token/cost**: Follow-up edits use `patch_deck`/`edit_deck` patches instead of re-emitting the entire document. Long chats still replay prior text linearly; compaction is not implemented yet.
 
 ### Deck parser (issue #37)
 
@@ -133,13 +139,14 @@ Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml`
 
 Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools` + `stopWhen: stepCountIs(12)`), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
 
-| Tool          | Purpose                                                                           |
-| ------------- | --------------------------------------------------------------------------------- |
-| `parse_deck`  | Structured deck metadata (title, runtime, slides, notes, styles, scripts, assets) |
-| `list_slides` | Enumerate slide boundaries and titles                                             |
-| `read_deck`   | Read full HTML by line offset/limit or a single slide by index                    |
-| `edit_deck`   | Apply exact `oldText` → `newText` patches (pi-style; each match must be unique)   |
-| `write_deck`  | Replace the entire deck (new decks or explicit full rewrites)                     |
+| Tool          | Purpose                                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `parse_deck`  | Structured deck metadata (title, runtime, slides, notes, styles, scripts, assets)                                 |
+| `list_slides` | Enumerate slide boundaries and titles                                                                             |
+| `read_deck`   | Read full HTML by line offset/limit or a single slide by index                                                    |
+| `patch_deck`  | Structured slide-level operations (add, delete, replace, reorder, title, notes) — **preferred** for slide changes |
+| `edit_deck`   | Apply exact `oldText` → `newText` patches (pi-style; each match must be unique)                                   |
+| `write_deck`  | Replace the entire deck (new decks or explicit full rewrites)                                                     |
 
 Server implementation: `server/deck-parser.ts`, `server/deck-tools.ts`, `server/deck-agent.ts`. The client shows tool calls/results in chat and applies deck updates from tool results (final HTML returned in the API response).
 
@@ -148,21 +155,30 @@ One user message → one agent run → up to 12 tool/model steps → deck update
 ## What to avoid
 
 - Do not use npm or yarn — always pnpm.
-- Do not embed presentation content in React JSX long-term; keep decks as HTML files.
+- Do not embed presentation content in React JSX long-term; keep decks as self-contained HTML documents.
 - Do not add heavy dependencies to the shell without clear need.
 - Do not rewrite entire presentations for minor edits.
 - Do not commit secrets or API keys.
 
 ## Current state
 
-Early scaffold: default Vite + React template. Presentation directory, chat panel, and iframe preview are not yet built — implement toward the layout and conventions above.
+Fully working editor, not a scaffold. Implemented today:
+
+- **Multi-deck persistence** with immutable versions and rollback (JSON files under `data/` by default; Postgres repositories + migrations under `server/db/` when `DATABASE_URL` is set).
+- **Server-persisted chat** per deck with `localStorage` caching.
+- **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
+- **Sandboxed preview** on a separate origin with CSP isolation, CSS-only and full-JS modes, thumbnails, and Present mode.
+- **Approved runtime registry** with vendored reveal.js 5.1.0 served from `/api/runtimes/...`.
+- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol (`shared/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, text boxes, undo/redo, and image insertion are tracked in issues #76 and #78–#84.
+
+Typed API contracts shared by client and server live in `shared/api/`.
 
 ## Cursor Cloud specific instructions
 
 Standard commands live in the `## Commands` section above and in `README.md`. Notes specific to this environment:
 
 - **Dev server runs three processes.** `pnpm dev` uses `concurrently` to start the Express API (`tsx watch server/index.ts`), the sandbox preview host (`tsx watch server/sandbox-index.ts`, default `http://localhost:5174`), and the Vite client on `http://localhost:5173`. The API reads `PORT` from `.env` or the environment (default `8787`); Vite proxies `/api` to that same port (see `vite.config.ts`). Always open the app on `5173`, not the API or sandbox ports directly. Run it in a background/tmux session since it stays attached.
-- **API server endpoints:** `GET /api/health`, `GET /api/models`, `POST /api/preview-sessions`, `GET /api/preview-sessions/:token`, `POST /api/generation-jobs`, `GET /api/generation-jobs/:id`, `POST /api/generation-jobs/:id/cancel`, `POST /api/generation-jobs/:id/retry` (tool-based agent loop via generation jobs). Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
+- **API server endpoints:** `GET /api/health`, `GET /api/models`, deck CRUD (`GET/POST /api/decks`, `GET/PUT/PATCH/DELETE /api/decks/:id`), element patches (`POST /api/decks/:id/patch`), versions (`GET /api/decks/:id/versions`, `GET /api/decks/:id/versions/:versionId`, `POST /api/decks/:id/rollback`), chat (`GET /api/decks/:id/chat`, `POST /api/decks/:id/chat/messages`, `DELETE /api/decks/:id/chat`), generation jobs (`POST /api/generation-jobs`, `GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry`), preview sessions (`POST /api/preview-sessions`, `GET /api/preview-sessions/:token`), `POST /api/runtime-errors`, and `GET /api/deck-assets`. Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
 - **No API keys required for CI.** Verification is `pnpm lint`, `pnpm format:check`, `pnpm audit`, `pnpm build`, `pnpm test`, and `pnpm smoke:reveal-runtime` (also enforced in GitHub Actions). CI pins `ARK_CHROMIUM_PATH=/usr/bin/google-chrome` so the headless browser smoke test uses the preinstalled Chrome on `ubuntu-latest`. Always run `pnpm format` before committing. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
