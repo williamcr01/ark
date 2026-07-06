@@ -32,6 +32,29 @@ export type GenerationJobError = {
   message: string
   code?: string | null
   validation?: unknown
+  errorCategory?: string | null
+}
+
+export type ProviderTokenUsage = {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+}
+
+export type ProviderCallMetrics = {
+  latencyMs: number
+  model: string
+  provider: string
+  tokenUsage?: ProviderTokenUsage | null
+  finishReason?: string | null
+  retryCount?: number
+  errorCategory?: string | null
+}
+
+export type GenerationJobObservability = {
+  requestId?: string | null
+  providerMetrics?: ProviderCallMetrics | null
+  durationMs?: number | null
 }
 
 export type GenerationJobResult = {
@@ -54,6 +77,7 @@ export type GenerationJob = {
   progress: GenerationJobProgress
   result: GenerationJobResult | null
   error: GenerationJobError | null
+  observability?: GenerationJobObservability | null
   retryOfJobId: string | null
   createdAt: string
   updatedAt: string

@@ -4,6 +4,7 @@ import {
   type CreateGenerationJobInput,
   type GenerationJob,
   type GenerationJobError,
+  type GenerationJobObservability,
   type GenerationJobProgress,
   type GenerationJobRequest,
   type GenerationJobResult,
@@ -115,7 +116,20 @@ function readErrorMetadata(metadata: Record<string, unknown> | null): Generation
     message: metadata.message,
     code: typeof metadata.code === 'string' ? metadata.code : null,
     validation: metadata.validation,
+    errorCategory: typeof metadata.errorCategory === 'string' ? metadata.errorCategory : null,
   }
+}
+
+function readObservabilityMetadata(
+  metadata: Record<string, unknown> | null,
+): GenerationJobObservability | null {
+  const observability = metadata?.observability
+
+  if (!observability || typeof observability !== 'object' || Array.isArray(observability)) {
+    return null
+  }
+
+  return observability as GenerationJobObservability
 }
 
 function rowToJob(row: GenerationJobRow): GenerationJob {
@@ -135,6 +149,7 @@ function rowToJob(row: GenerationJobRow): GenerationJob {
     progress: readProgressMetadata(requestMetadata),
     result: readResultMetadata(requestMetadata),
     error: readErrorMetadata(errorMetadata),
+    observability: readObservabilityMetadata(requestMetadata),
     retryOfJobId:
       typeof requestMetadata.retryOfJobId === 'string' ? requestMetadata.retryOfJobId : null,
     createdAt: toIsoString(row.created_at),
@@ -260,6 +275,7 @@ export function createPostgresGenerationJobStore(
       progress: GenerationJobProgress
       result: GenerationJobResult | null
       error: GenerationJobError | null
+      observability: GenerationJobObservability | null
       startedAt: string | null
       completedAt: string | null
     }>,
@@ -285,6 +301,8 @@ export function createPostgresGenerationJobStore(
       retryOfJobId: existing.retryOfJobId,
       progress: patch.progress ?? existing.progress,
       result: patch.result === undefined ? existing.result : patch.result,
+      observability:
+        patch.observability === undefined ? existing.observability : patch.observability,
     }
     const errorMetadata =
       patch.error === undefined
@@ -294,6 +312,7 @@ export function createPostgresGenerationJobStore(
               message: patch.error.message,
               code: patch.error.code ?? null,
               validation: patch.error.validation ?? null,
+              errorCategory: patch.error.errorCategory ?? null,
             }
           : null
 
@@ -360,6 +379,7 @@ export function createPostgresGenerationJobStore(
       progress: GenerationJobProgress
       result: GenerationJobResult | null
       error: GenerationJobError | null
+      observability: GenerationJobObservability | null
       startedAt: string | null
       completedAt: string | null
     }>,
@@ -385,6 +405,8 @@ export function createPostgresGenerationJobStore(
       retryOfJobId: existing.retryOfJobId,
       progress: patch.progress ?? existing.progress,
       result: patch.result === undefined ? existing.result : patch.result,
+      observability:
+        patch.observability === undefined ? existing.observability : patch.observability,
     }
     const errorMetadata =
       patch.error === undefined
@@ -394,6 +416,7 @@ export function createPostgresGenerationJobStore(
               message: patch.error.message,
               code: patch.error.code ?? null,
               validation: patch.error.validation ?? null,
+              errorCategory: patch.error.errorCategory ?? null,
             }
           : null
 

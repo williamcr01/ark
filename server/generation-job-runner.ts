@@ -20,6 +20,8 @@ import {
 } from './chat-persistence.ts'
 import { cloneGenerationJobRequest, type GenerationJobStore } from './generation-job-record.ts'
 import { createLanguageModel } from './provider-runtime.ts'
+import { categorizeProviderError } from './observability/provider-errors.ts'
+import { createLogger } from './observability/logger.ts'
 
 export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
@@ -33,6 +35,7 @@ export type GenerationJobRunnerOptions = {
 export type StartGenerationJobOptions = {
   body: StartGenerationJobRequest
   defaultModel: string
+  requestId?: string | null
 }
 
 export type GenerationJobRunner = {
@@ -87,7 +90,7 @@ export function createGenerationJobRunner({
     })
   }
 
-  const processJob = async (jobId: string) => {
+  const processJob = async (jobId: string, requestId: string | null = null) => {
     const claimed = await jobStore.claimQueuedJob(jobId, now().toISOString())
 
     if (!claimed) {
@@ -97,12 +100,27 @@ export function createGenerationJobRunner({
     const abortController = new AbortController()
     runningControllers.set(jobId, abortController)
     const currentJob = claimed
+    const jobLogger = createLogger({
+      service: 'ark-generation',
+      requestId,
+      jobId,
+      deckId: currentJob.deckId,
+    })
+    const jobStartedAt = performance.now()
+
+    jobLogger.info('generation.job.started', {
+      model: currentJob.model,
+      provider: currentJob.provider,
+      status: currentJob.status,
+    })
 
     try {
       const { model, provider } = createModel(currentJob.model)
 
       const agentResult = await runAgent({
         model: model as LanguageModel,
+        provider,
+        modelRef: currentJob.model,
         messages: currentJob.request.messages,
         currentHtml: currentJob.request.currentHtml,
         abortSignal: abortController.signal,
@@ -124,12 +142,23 @@ export function createGenerationJobRunner({
         },
       })
 
+      const observability = {
+        requestId,
+        providerMetrics: agentResult.providerMetrics ?? null,
+        durationMs: Math.round(performance.now() - jobStartedAt),
+      }
+
       const refreshed = await jobStore.getJob(jobId)
 
       if (!refreshed || refreshed.status === 'canceling') {
         const canceledJob = await jobStore.updateJob(jobId, {
           status: 'canceled',
+          observability,
           completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.canceled', {
+          durationMs: observability.durationMs,
         })
 
         if (canceledJob?.deckId) {
@@ -157,8 +186,16 @@ export function createGenerationJobRunner({
             message: agentResult.error,
             code: 'provider_error',
             validation: agentResult.validation,
+            errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
           },
+          observability,
           completedAt: now().toISOString(),
+        })
+
+        jobLogger.warn('generation.job.failed', {
+          durationMs: observability.durationMs,
+          errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+          stepCount: agentResult.steps.length,
         })
 
         if (failedJob?.deckId) {
@@ -191,6 +228,7 @@ export function createGenerationJobRunner({
               message: 'The target deck no longer exists.',
               code: 'deck_not_found',
             },
+            observability,
             completedAt: now().toISOString(),
           })
 
@@ -222,6 +260,7 @@ export function createGenerationJobRunner({
                 'The deck changed while generation was running. Retry from the latest version.',
               code: 'version_conflict',
             },
+            observability,
             completedAt: now().toISOString(),
           })
 
@@ -256,6 +295,7 @@ export function createGenerationJobRunner({
               message: 'Could not save the generated deck.',
               code: 'save_failed',
             },
+            observability,
             completedAt: now().toISOString(),
           })
 
@@ -286,7 +326,14 @@ export function createGenerationJobRunner({
             validation: agentResult.validation,
             assistantText: agentResult.assistantText,
           },
+          observability,
           completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.succeeded', {
+          durationMs: observability.durationMs,
+          stepCount: agentResult.steps.length,
+          tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
         })
 
         if (succeededJob) {
@@ -336,7 +383,14 @@ export function createGenerationJobRunner({
           validation: agentResult.validation,
           assistantText: agentResult.assistantText,
         },
+        observability,
         completedAt: now().toISOString(),
+      })
+
+      jobLogger.info('generation.job.succeeded', {
+        durationMs: observability.durationMs,
+        stepCount: agentResult.steps.length,
+        tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
       })
 
       if (succeededJob) {
@@ -350,12 +404,26 @@ export function createGenerationJobRunner({
       }
     } catch (error) {
       const latest = await jobStore.getJob(jobId)
+      const durationMs = Math.round(performance.now() - jobStartedAt)
+      const errorDetails = categorizeProviderError(error)
 
       if (isAbortError(error) || latest?.status === 'canceling') {
         const canceledJob = await jobStore.updateJob(jobId, {
           status: 'canceled',
+          observability: {
+            requestId,
+            durationMs,
+            providerMetrics: {
+              latencyMs: durationMs,
+              model: latest?.model ?? currentJob.model,
+              provider: latest?.provider ?? currentJob.provider ?? 'unknown',
+              errorCategory: 'aborted',
+            },
+          },
           completedAt: now().toISOString(),
         })
+
+        jobLogger.info('generation.job.canceled', { durationMs })
 
         if (canceledJob?.deckId) {
           await persistTerminalAssistantMessage(canceledJob, {
@@ -375,9 +443,26 @@ export function createGenerationJobRunner({
         status: 'failed',
         error: {
           message,
-          code: 'provider_error',
+          code: errorDetails.apiErrorCode,
+          errorCategory: errorDetails.category,
+        },
+        observability: {
+          requestId,
+          durationMs,
+          providerMetrics: {
+            latencyMs: durationMs,
+            model: latest?.model ?? currentJob.model,
+            provider: latest?.provider ?? currentJob.provider ?? 'unknown',
+            errorCategory: errorDetails.category,
+          },
         },
         completedAt: now().toISOString(),
+      })
+
+      jobLogger.error('generation.job.failed', {
+        durationMs,
+        errorCategory: errorDetails.category,
+        message,
       })
 
       if (failedJob?.deckId) {
@@ -393,11 +478,11 @@ export function createGenerationJobRunner({
     }
   }
 
-  const enqueueJob = (jobId: string) => {
-    void processJob(jobId)
+  const enqueueJob = (jobId: string, requestId: string | null = null) => {
+    void processJob(jobId, requestId)
   }
 
-  const startJob = async ({ body, defaultModel }: StartGenerationJobOptions) => {
+  const startJob = async ({ body, defaultModel, requestId = null }: StartGenerationJobOptions) => {
     const parsedMessages = parseGenerateMessages(body.messages)
 
     if (!parsedMessages.ok) {
@@ -478,7 +563,7 @@ export function createGenerationJobRunner({
     }
 
     const job = await jobStore.createJob(input)
-    enqueueJob(job.id)
+    enqueueJob(job.id, requestId)
     return job
   }
 
@@ -520,7 +605,7 @@ export function createGenerationJobRunner({
     }
 
     const job = await jobStore.createJob(input)
-    enqueueJob(job.id)
+    enqueueJob(job.id, existing.observability?.requestId ?? null)
     return job
   }
 
@@ -573,6 +658,7 @@ export function toGenerationJobResponse(job: GenerationJob) {
       model: job.model,
       provider: job.provider,
       progress: job.progress,
+      observability: job.observability ?? null,
       result: job.result
         ? {
             deckId: job.result.deckId,

@@ -2,6 +2,7 @@ import type {
   CreateGenerationJobInput,
   GenerationJob,
   GenerationJobError,
+  GenerationJobObservability,
   GenerationJobProgress,
   GenerationJobRequest,
   GenerationJobResult,
@@ -14,6 +15,7 @@ type GenerationJobPatch = Partial<{
   progress: GenerationJobProgress
   result: GenerationJobResult | null
   error: GenerationJobError | null
+  observability: GenerationJobObservability | null
   startedAt: string | null
   completedAt: string | null
 }>

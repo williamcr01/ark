@@ -94,6 +94,7 @@ function parseStoredJob(parsed: unknown): StoredGenerationJobFile | null {
     },
     result: record.result ?? null,
     error: record.error ?? null,
+    observability: record.observability ?? null,
     retryOfJobId: typeof record.retryOfJobId === 'string' ? record.retryOfJobId : null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -159,6 +160,7 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
       progress: createEmptyGenerationJobProgress(),
       result: null,
       error: null,
+      observability: null,
       retryOfJobId: input.retryOfJobId ?? null,
       createdAt: now,
       updatedAt: now,
@@ -195,6 +197,7 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
       progress: GenerationJobProgress
       result: GenerationJobResult | null
       error: GenerationJobError | null
+      observability: GenerationJob['observability']
       startedAt: string | null
       completedAt: string | null
     }>,
@@ -231,6 +234,7 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
       progress: GenerationJobProgress
       result: GenerationJobResult | null
       error: GenerationJobError | null
+      observability: GenerationJob['observability']
       startedAt: string | null
       completedAt: string | null
     }>,
