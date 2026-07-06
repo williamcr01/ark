@@ -31,7 +31,8 @@ export type AssetValidationSuccess = {
   checksum: string
 }
 
-export type AssetValidationResult = AssetValidationSuccess | { ok: false; error: AssetValidationError }
+export type AssetValidationResult =
+  AssetValidationSuccess | { ok: false; error: AssetValidationError }
 
 /**
  * Decode a base64 string or a `data:` URL payload into a Buffer. Returns null

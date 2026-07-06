@@ -4,10 +4,13 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import type { AssetStore } from './asset-record.ts'
+import { createAssetStore } from './asset-store.ts'
 import type { ChatStore } from './chat-record.ts'
 import { createChatStore } from './chat-store.ts'
 import type { DeckStore } from './deck-record.ts'
 import { createDeckStore } from './deck-store.ts'
+import { createPostgresAssetStore } from './db/repositories/assets.ts'
 import { createPostgresChatStore } from './db/repositories/chat.ts'
 import { createPostgresDeckStore } from './db/repositories/decks.ts'
 import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
@@ -29,6 +32,7 @@ const sampleHtml = `<!DOCTYPE html>
 type TestStores = {
   deckStore: DeckStore
   chatStore: ChatStore
+  assetStore: AssetStore
   generationJobStore: GenerationJobStore
   cleanup: () => Promise<void>
 }
@@ -38,10 +42,12 @@ async function makeJsonStores(): Promise<TestStores> {
   const deckDir = path.join(root, 'decks')
   const chatDir = path.join(root, 'chat')
   const jobDir = path.join(root, 'jobs')
+  const assetDir = path.join(root, 'assets')
 
   return {
     deckStore: createDeckStore(deckDir),
     chatStore: createChatStore(chatDir),
+    assetStore: createAssetStore(assetDir),
     generationJobStore: createGenerationJobStore(jobDir),
     cleanup: async () => rm(root, { recursive: true, force: true }),
   }
@@ -53,6 +59,7 @@ function makePgMemStores(): TestStores {
   return {
     deckStore: createPostgresDeckStore({ pool }),
     chatStore: createPostgresChatStore({ pool }),
+    assetStore: createPostgresAssetStore({ pool }),
     generationJobStore: createPostgresGenerationJobStore({ pool }),
     cleanup: async () => pool.end?.(),
   }
@@ -133,6 +140,75 @@ describe.each([
       messages: [],
       hasMore: false,
     })
+  })
+
+  it('creates, lists, and soft-deletes assets scoped to a deck', async () => {
+    stores = await makeStores()
+    const { deckStore, assetStore } = stores
+
+    const deck = await deckStore.createDeck(sampleHtml)
+    const created = await assetStore.createAsset({
+      deckId: deck.id,
+      chatMessageId: null,
+      filename: 'logo.png',
+      mediaType: 'image/png',
+      category: 'image',
+      byteSize: 128,
+      checksum: 'abc123',
+      source: 'upload',
+      storageKind: 'local',
+      storageKey: '00000000-0000-4000-8000-0000000005a1',
+    })
+
+    expect(created.deckId).toBe(deck.id)
+    expect(await assetStore.getAsset(created.id)).toMatchObject({
+      filename: 'logo.png',
+      byteSize: 128,
+      category: 'image',
+    })
+
+    const listed = await assetStore.listAssetsByDeck(deck.id)
+    expect(listed).toHaveLength(1)
+
+    const deleted = await assetStore.deleteAsset(created.id)
+    expect(deleted?.storageKey).toBe('00000000-0000-4000-8000-0000000005a1')
+    expect(await assetStore.getAsset(created.id)).toBeNull()
+    expect(await assetStore.listAssetsByDeck(deck.id)).toHaveLength(0)
+  })
+
+  it('cleans up every asset when a deck is deleted', async () => {
+    stores = await makeStores()
+    const { deckStore, assetStore } = stores
+
+    const deck = await deckStore.createDeck(sampleHtml)
+    await assetStore.createAsset({
+      deckId: deck.id,
+      chatMessageId: null,
+      filename: 'a.png',
+      mediaType: 'image/png',
+      category: 'image',
+      byteSize: 1,
+      checksum: 'a',
+      source: 'upload',
+      storageKind: 'local',
+      storageKey: '00000000-0000-4000-8000-0000000005b1',
+    })
+    await assetStore.createAsset({
+      deckId: deck.id,
+      chatMessageId: null,
+      filename: 'b.csv',
+      mediaType: 'text/csv',
+      category: 'text',
+      byteSize: 2,
+      checksum: 'b',
+      source: 'upload',
+      storageKind: 'local',
+      storageKey: '00000000-0000-4000-8000-0000000005b2',
+    })
+
+    const removed = await assetStore.deleteAssetsByDeck(deck.id)
+    expect(removed).toHaveLength(2)
+    expect(await assetStore.listAssetsByDeck(deck.id)).toHaveLength(0)
   })
 
   it('runs generation job lifecycle with cancel and retry semantics', async () => {

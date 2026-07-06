@@ -141,7 +141,10 @@ export const parseChatAttachments = (
     const url = (item as { url?: unknown }).url
     const rawAssetId = (item as { assetId?: unknown }).assetId
 
-    if (rawAssetId !== undefined && (typeof rawAssetId !== 'string' || !isValidAssetId(rawAssetId))) {
+    if (
+      rawAssetId !== undefined &&
+      (typeof rawAssetId !== 'string' || !isValidAssetId(rawAssetId))
+    ) {
       return {
         ok: false,
         error: `messages[${messageIndex}].attachments[${attachmentIndex}].assetId must be a valid asset id.`,

@@ -44,8 +44,7 @@ export const ALLOWED_ASSET_MEDIA_TYPES: Record<string, AssetMediaTypeSpec> = {
 /** `accept` attribute value for asset file inputs. */
 export const ASSET_UPLOAD_ACCEPT = Object.keys(ALLOWED_ASSET_MEDIA_TYPES).join(',')
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function isValidAssetId(id: string) {
   return UUID_PATTERN.test(id)
@@ -87,6 +86,8 @@ export function isArkAssetUrl(url: string) {
   return parseAssetIdFromUrl(url) !== null
 }
 
+// Intentionally matches control characters to strip them from filenames.
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g
 
 /**

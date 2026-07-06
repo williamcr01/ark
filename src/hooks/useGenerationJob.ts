@@ -206,11 +206,7 @@ export function useGenerationJob({
   )
 
   const startGeneration = useCallback(
-    async (
-      messages: ChatMessage[],
-      currentHtml: string,
-      options: { assetIds?: string[] } = {},
-    ) => {
+    async (messages: ChatMessage[], currentHtml: string, options: { assetIds?: string[] } = {}) => {
       if (isGenerating || !canGenerate) {
         return null
       }

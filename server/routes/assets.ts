@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'
+import express, { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody } from '../../shared/api/common.ts'
 import { uploadAssetRequestSchema } from '../../shared/api/assets.ts'
@@ -17,12 +17,19 @@ export type AssetsRouterDeps = {
   deckStore: DeckStore
 }
 
+// Uploaded bytes travel as base64 (~33% larger than the raw file), so the
+// upload body limit must exceed MAX_ASSET_UPLOAD_BYTES plus that overhead. This
+// route parses its own body so the global (smaller) JSON limit does not reject
+// legitimate max-size uploads before validation runs.
+const ASSET_UPLOAD_JSON_LIMIT = '24mb'
+
 export function createAssetsRouter(deps: AssetsRouterDeps): Router {
   const { assetStore, assetStorage, deckStore } = deps
   const router = Router()
 
   router.post(
     '/api/decks/:id/assets',
+    express.json({ limit: ASSET_UPLOAD_JSON_LIMIT }),
     async (request: Request<{ id: string }>, response: Response) => {
       const deckId = request.params.id?.trim()
 
@@ -58,7 +65,9 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
             errorCategory: validation.error.code,
             statusCode: 400,
           })
-          response.status(400).json({ error: validation.error.message, code: validation.error.code })
+          response
+            .status(400)
+            .json({ error: validation.error.message, code: validation.error.code })
           return
         }
 
@@ -148,7 +157,10 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
       response.setHeader('X-Content-Type-Options', 'nosniff')
       // Assets are Ark-owned but treated as untrusted content: neutralize any
       // active content (e.g. scripted SVG) if a browser opens the URL directly.
-      response.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+      response.setHeader(
+        'Content-Security-Policy',
+        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      )
       response.setHeader(
         'Content-Disposition',
         `inline; filename="${encodeURIComponent(record.filename)}"`,

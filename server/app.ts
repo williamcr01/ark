@@ -51,12 +51,16 @@ export function createApp(options: CreateAppOptions = {}) {
   const defaultModel = getDefaultModel()
 
   app.use(createObservabilityMiddleware())
+
+  // Assets are mounted before the global JSON parser so the upload route can
+  // apply its own larger body limit for base64-encoded files.
+  app.use(createAssetsRouter({ assetStore, assetStorage, deckStore }))
+
   app.use(express.json({ limit: '12mb' }))
 
   app.use(createRuntimesAndAssetsRouter())
   app.use(createMiscRouter({ defaultModel, runtimeErrorStore }))
   app.use(createPreviewSessionsRouter({ previewSessionStore }))
-  app.use(createAssetsRouter({ assetStore, assetStorage, deckStore }))
   app.use(createDecksRouter({ deckStore, assetStore, assetStorage }))
   app.use(createDeckVersionsRouter({ deckStore }))
   app.use(createDeckChatRouter({ deckStore, chatStore }))

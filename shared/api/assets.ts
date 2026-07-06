@@ -24,10 +24,12 @@ export const assetMetadataSchema = z.object({
 
 export type AssetMetadataResponse = z.infer<typeof assetMetadataSchema>
 
-const chatMessageIdSchema = z.string().regex(
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-  'Invalid chat message id.',
-)
+const chatMessageIdSchema = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    'Invalid chat message id.',
+  )
 
 /**
  * Upload request. Bytes are transported as a base64 string (or `data:` URL),

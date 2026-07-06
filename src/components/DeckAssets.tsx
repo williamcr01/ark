@@ -80,7 +80,10 @@ export function DeckAssets({
   const hasItems = assets.length > 0 || uploads.length > 0
 
   return (
-    <section aria-label="Deck assets" className="mb-3 rounded-lg border border-border/70 bg-muted/20 p-2.5">
+    <section
+      aria-label="Deck assets"
+      className="mb-3 rounded-lg border border-border/70 bg-muted/20 p-2.5"
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           <PaperclipIcon aria-hidden className="size-3.5 text-muted-foreground" />
@@ -89,13 +92,7 @@ export function DeckAssets({
             <span className="text-muted-foreground">({assets.length})</span>
           ) : null}
         </div>
-        <Button
-          disabled={disabled}
-          onClick={handlePick}
-          size="xs"
-          type="button"
-          variant="outline"
-        >
+        <Button disabled={disabled} onClick={handlePick} size="xs" type="button" variant="outline">
           Upload
         </Button>
         <input
@@ -134,7 +131,10 @@ export function DeckAssets({
             key={upload.id}
           >
             {upload.status === 'uploading' ? (
-              <Loader2Icon aria-hidden className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+              <Loader2Icon
+                aria-hidden
+                className="size-3.5 shrink-0 animate-spin text-muted-foreground"
+              />
             ) : (
               <AlertCircleIcon aria-hidden className="size-3.5 shrink-0 text-destructive" />
             )}
