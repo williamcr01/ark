@@ -42,6 +42,7 @@ import {
   type ApiKeyStatus,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
+import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
 import type { AgentStep, ChatAttachment, ChatMessage, ChatMessagePart } from '../../shared/chat.ts'
 import {
   agentStepsToChatParts,
@@ -133,6 +134,44 @@ function formatToolLabel(toolName: string) {
   return toolName.replace(/_/g, ' ')
 }
 
+function ChatMessageDeliveryStatus({
+  status,
+  onRetry,
+}: {
+  status: MessageDeliveryStatus | undefined
+  onRetry?: () => void
+}) {
+  if (!status || status === 'saved') {
+    return null
+  }
+
+  if (status === 'saving') {
+    return (
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2Icon aria-hidden className="size-3 animate-spin" />
+        <span>Saving to server…</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs text-destructive">
+      <AlertCircleIcon aria-hidden className="size-3.5 shrink-0" />
+      <span>Not saved to server</span>
+      {onRetry ? (
+        <button
+          className="inline-flex items-center gap-1 rounded-sm font-medium text-destructive underline-offset-2 hover:underline"
+          onClick={onRetry}
+          type="button"
+        >
+          <RefreshCwIcon aria-hidden className="size-3" />
+          Retry
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
   return (
     <div className="flex flex-col gap-2">
@@ -206,6 +245,8 @@ export type ChatPanelProps = {
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
   onRetryGeneration: () => void | Promise<void>
+  getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
+  onRetryPersist?: (messageId: string) => void | Promise<void>
 }
 
 function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
@@ -259,6 +300,8 @@ export function ChatPanel({
   onAttachmentError,
   onCancelGeneration,
   onRetryGeneration,
+  getMessageDeliveryStatus,
+  onRetryPersist,
 }: ChatPanelProps) {
   const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
   const isInputDisabled = isGenerating || !canGenerate
@@ -296,6 +339,16 @@ export function ChatPanel({
                     {message.attachments?.length ? (
                       <ChatMessageAttachments attachments={message.attachments} />
                     ) : null}
+                    <ChatMessageDeliveryStatus
+                      onRetry={
+                        onRetryPersist
+                          ? () => {
+                              void onRetryPersist(message.id)
+                            }
+                          : undefined
+                      }
+                      status={getMessageDeliveryStatus?.(message.id)}
+                    />
                   </MessageContent>
                 </Message>
               ))

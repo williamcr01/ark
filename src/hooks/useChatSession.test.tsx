@@ -255,4 +255,215 @@ describe('useChatSession', () => {
       },
     ])
   })
+
+  it('marks append failures and exposes them from the hook', async () => {
+    const onPersistFailure = vi.fn()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.includes('/chat/messages') && init?.method === 'POST') {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Server error' }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ thread: null, messages: [], hasMore: false }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1', onPersistFailure }))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.appendMessage({
+        id: '00000000-0000-4000-8000-000000000101',
+        role: 'user',
+        content: 'hello',
+      })
+    })
+
+    expect(result.current.messages).toEqual([
+      { id: '00000000-0000-4000-8000-000000000101', role: 'user', content: 'hello' },
+    ])
+    expect(result.current.failedPersistIds).toEqual(
+      new Set(['00000000-0000-4000-8000-000000000101']),
+    )
+    expect(result.current.getMessageDeliveryStatus('00000000-0000-4000-8000-000000000101')).toBe(
+      'failed',
+    )
+    expect(onPersistFailure).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000101')
+  })
+
+  it('retries failed persists and clears the failure marker on success', async () => {
+    let appendAttempts = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.includes('/chat/messages') && init?.method === 'POST') {
+        appendAttempts += 1
+
+        if (appendAttempts === 1) {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({ error: 'Server error' }),
+          }
+        }
+
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            message: {
+              id: '00000000-0000-4000-8000-000000000101',
+              role: 'user',
+              content: 'hello',
+              threadId: 'thread-1',
+              deckId: 'deck-1',
+              deckVersionId: null,
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ thread: null, messages: [], hasMore: false }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.appendMessage({
+        id: '00000000-0000-4000-8000-000000000101',
+        role: 'user',
+        content: 'hello',
+      })
+    })
+
+    expect(result.current.failedPersistIds.size).toBe(1)
+
+    await act(async () => {
+      await result.current.retryPersist('00000000-0000-4000-8000-000000000101')
+    })
+
+    expect(appendAttempts).toBe(2)
+    expect(result.current.failedPersistIds.size).toBe(0)
+    expect(result.current.getMessageDeliveryStatus('00000000-0000-4000-8000-000000000101')).toBe(
+      'saved',
+    )
+  })
+
+  it('keeps failed messages when reloadChat succeeds', async () => {
+    writeChatSession('deck-1', {
+      messages: [
+        { id: 'm1', role: 'user', content: 'synced' },
+        { id: 'm2', role: 'user', content: 'unsynced' },
+      ],
+      updatedAt: new Date().toISOString(),
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes('/chat')) {
+        return {
+          ok: true,
+          json: async () => ({
+            thread: null,
+            messages: [
+              {
+                id: 'm1',
+                role: 'user',
+                content: 'synced',
+                threadId: 'thread-1',
+                deckId: 'deck-1',
+                deckVersionId: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+            hasMore: false,
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ thread: null, messages: [], hasMore: false }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.messages).toEqual([
+      { id: 'm1', role: 'user', content: 'synced' },
+      { id: 'm2', role: 'user', content: 'unsynced' },
+    ])
+    expect(result.current.failedPersistIds).toEqual(new Set(['m2']))
+
+    await act(async () => {
+      await result.current.reloadChat('deck-1')
+    })
+
+    expect(result.current.messages).toEqual([
+      { id: 'm1', role: 'user', content: 'synced' },
+      { id: 'm2', role: 'user', content: 'unsynced' },
+    ])
+    expect(result.current.failedPersistIds).toEqual(new Set(['m2']))
+  })
+
+  it('surfaces reset failures through the callback', async () => {
+    const onResetFailure = vi.fn()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.includes('/chat') && init?.method === 'DELETE') {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Server error' }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ thread: null, messages: [], hasMore: false }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1', onResetFailure }))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      const succeeded = await result.current.resetChat()
+      expect(succeeded).toBe(false)
+    })
+
+    expect(result.current.messages).toEqual([])
+    expect(onResetFailure).toHaveBeenCalledTimes(1)
+  })
 })

@@ -65,9 +65,26 @@ function App() {
     versionNumber,
     versions,
   } = useDeckPersistence()
-  const { appendMessage, messages, reloadChat, resetChat, setMessages } = useChatSession({
+  const {
+    appendMessage,
+    getMessageDeliveryStatus,
+    messages,
+    reloadChat,
+    resetChat,
+    retryPersist,
+    setMessages,
+  } = useChatSession({
     deckId,
     deckVersionId: activeVersionId,
+    onPersistFailure: useCallback(() => {
+      toast.error("Message couldn't be saved to the server — kept locally")
+    }, []),
+    onResetFailure: useCallback(() => {
+      toast.error('Chat was cleared locally but may still exist on the server')
+    }, []),
+    onReloadFallback: useCallback(() => {
+      toast.warning('Could not refresh chat from server — showing cached messages')
+    }, []),
   })
   const [input, setInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(true)
@@ -626,6 +643,7 @@ function App() {
                       error={displayError}
                       failedJobId={failedJob?.id ?? null}
                       generationStatus={generationStatus}
+                      getMessageDeliveryStatus={getMessageDeliveryStatus}
                       input={input}
                       isGenerating={isGenerating}
                       isLoadingModels={isLoadingModels}
@@ -640,6 +658,7 @@ function App() {
                       onPromptSubmit={handlePromptSubmit}
                       onRefreshModels={loadModels}
                       onRetryGeneration={handleRetryGeneration}
+                      onRetryPersist={retryPersist}
                       selectedModel={selectedModel}
                     />
                   </ResizablePanel>
@@ -678,6 +697,7 @@ function App() {
                     error={displayError}
                     failedJobId={failedJob?.id ?? null}
                     generationStatus={generationStatus}
+                    getMessageDeliveryStatus={getMessageDeliveryStatus}
                     input={input}
                     isGenerating={isGenerating}
                     isLoadingModels={isLoadingModels}
@@ -692,6 +712,7 @@ function App() {
                     onPromptSubmit={handlePromptSubmit}
                     onRefreshModels={loadModels}
                     onRetryGeneration={handleRetryGeneration}
+                    onRetryPersist={retryPersist}
                     selectedModel={selectedModel}
                   />
                 </div>
