@@ -12,6 +12,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useChatSession } from '@/hooks/useChatSession'
+import { useDeckEditHistory } from '@/hooks/useDeckEditHistory'
 import { useDeckPersistence } from '@/hooks/useDeckPersistence'
 import { useGenerationJob, type GenerationJobOutcome } from '@/hooks/useGenerationJob'
 import { useElementSize } from '@/hooks/useElementSize'
@@ -31,6 +32,8 @@ import { deckHasExecutableContent, type DeckDownloadVariant } from '@/lib/deck-e
 import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckValidationReport } from '../shared/deck-validate.ts'
 import type { DeckElementPatchOperation } from '../shared/deck-patch.ts'
+import { buildManualEditProvenance } from '../shared/deck-edit-provenance.ts'
+import type { PatchDeckResponse } from '@/lib/deck-api'
 import { newId } from '@/lib/id'
 import {
   startRevealThumbnailStylesPreload,
@@ -59,6 +62,7 @@ function App() {
     refreshActiveDeck,
     refreshVersions,
     renameActiveDeck,
+    restoreHtmlSnapshot,
     rollbackToVersion,
     saveError,
     selectDeck,
@@ -66,6 +70,7 @@ function App() {
     versionNumber,
     versions,
   } = useDeckPersistence()
+  const editHistory = useDeckEditHistory()
   const {
     appendMessage,
     getMessageDeliveryStatus,
@@ -143,6 +148,21 @@ function App() {
     }
   }, [])
 
+  const generatedHtmlRef = useRef(generatedHtml)
+
+  useEffect(() => {
+    generatedHtmlRef.current = generatedHtml
+  }, [generatedHtml])
+
+  const { reset: resetEditHistory, record: recordEditHistory } = editHistory
+
+  // Clear undo/redo history whenever the active deck changes (switch, new deck,
+  // delete). AI generation, upload, and rollback reset explicitly below since
+  // they can keep the same deck id.
+  useEffect(() => {
+    resetEditHistory()
+  }, [deckId, resetEditHistory])
+
   const parsedDeck = useMemo(() => {
     void thumbnailStylesRevision
     return parseDeckSlides(generatedHtml)
@@ -171,6 +191,10 @@ function App() {
 
   const applySucceededOutcome = useCallback(
     async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) => {
+      // AI generation is a manual-edit history boundary: prior undo/redo entries
+      // reference stale HTML snapshots once the agent rewrites the deck.
+      resetEditHistory()
+
       try {
         await refreshActiveDeck(outcome.job.result?.deckId)
       } catch {
@@ -214,7 +238,7 @@ function App() {
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
-    [deckId, refreshActiveDeck, reloadChat, setMessages],
+    [deckId, refreshActiveDeck, reloadChat, resetEditHistory, setMessages],
   )
 
   useEffect(() => {
@@ -406,6 +430,7 @@ function App() {
   const handleRollbackVersion = async (versionId: string) => {
     try {
       await rollbackToVersion(versionId)
+      resetEditHistory()
       await resetChat()
       setInput('')
       setError('')
@@ -469,6 +494,8 @@ function App() {
         toast.error('Deck loaded but could not be saved')
       }
 
+      resetEditHistory()
+
       setError('')
       const uploadMessage: ChatMessage = {
         id: newId(),
@@ -528,6 +555,33 @@ function App() {
     }
   }
 
+  const recordManualEdit = useCallback(
+    (
+      beforeHtml: string,
+      result: (PatchDeckResponse & { suggestedSlideIndex?: number }) | undefined,
+      operations: DeckElementPatchOperation[],
+      summary: string,
+      slideIndex: number,
+    ) => {
+      if (!result?.deck) {
+        return
+      }
+
+      recordEditHistory({
+        beforeHtml,
+        afterHtml: result.deck.html,
+        slideIndex,
+        provenance: buildManualEditProvenance({
+          operations,
+          summary,
+          slideIndexes: result.patch.changedSlideIndexes,
+          elementIds: result.patch.changedElementIds,
+        }),
+      })
+    },
+    [recordEditHistory],
+  )
+
   const handleCommitTextEdit = useCallback(
     async (commit: {
       elementId: string
@@ -540,20 +594,21 @@ function App() {
         throw new Error('Deck is not saved')
       }
 
+      const operations: DeckElementPatchOperation[] = [
+        {
+          op: 'replace_text',
+          elementId: commit.elementId,
+          slideIndex: commit.slideIndex,
+          ...(commit.slideId ? { slideId: commit.slideId } : {}),
+          text: commit.text,
+        },
+      ]
+      const summary = 'Edited text in preview'
+      const beforeHtml = generatedHtmlRef.current
+
       try {
-        await patchDeckOperations(
-          [
-            {
-              op: 'replace_text',
-              elementId: commit.elementId,
-              slideIndex: commit.slideIndex,
-              ...(commit.slideId ? { slideId: commit.slideId } : {}),
-              text: commit.text,
-            },
-          ],
-          commit.slideIndex,
-          { summary: 'Edited text in preview' },
-        )
+        const result = await patchDeckOperations(operations, commit.slideIndex, { summary })
+        recordManualEdit(beforeHtml, result, operations, summary, commit.slideIndex)
       } catch (patchError) {
         toast.error(
           patchError instanceof Error ? patchError.message : 'Could not save the text edit',
@@ -566,7 +621,7 @@ function App() {
         throw patchError
       }
     },
-    [deckId, patchDeckOperations, refreshActiveDeck],
+    [deckId, patchDeckOperations, recordManualEdit, refreshActiveDeck],
   )
 
   const handlePatchEditorOperations = useCallback(
@@ -576,8 +631,11 @@ function App() {
         throw new Error('Deck is not saved')
       }
 
+      const beforeHtml = generatedHtmlRef.current
+
       try {
-        await patchDeckOperations(operations, activeSlideIndex, { summary })
+        const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
+        recordManualEdit(beforeHtml, result, operations, summary, activeSlideIndex)
       } catch (patchError) {
         toast.error(patchError instanceof Error ? patchError.message : 'Could not save the edit')
         try {
@@ -588,8 +646,52 @@ function App() {
         throw patchError
       }
     },
-    [deckId, patchDeckOperations, refreshActiveDeck],
+    [deckId, patchDeckOperations, recordManualEdit, refreshActiveDeck],
   )
+
+  const handleUndoEdit = useCallback(async () => {
+    const entry = editHistory.undoEntry
+
+    if (!entry) {
+      return
+    }
+
+    try {
+      await restoreHtmlSnapshot(entry.beforeHtml, {
+        summary: `Undo: ${entry.provenance.summary}`,
+      })
+      editHistory.commitUndo()
+    } catch (undoError) {
+      toast.error(undoError instanceof Error ? undoError.message : 'Could not undo the last edit')
+      try {
+        await refreshActiveDeck()
+      } catch {
+        // Ignore refresh failures after a failed undo.
+      }
+    }
+  }, [editHistory, refreshActiveDeck, restoreHtmlSnapshot])
+
+  const handleRedoEdit = useCallback(async () => {
+    const entry = editHistory.redoEntry
+
+    if (!entry) {
+      return
+    }
+
+    try {
+      await restoreHtmlSnapshot(entry.afterHtml, {
+        summary: `Redo: ${entry.provenance.summary}`,
+      })
+      editHistory.commitRedo()
+    } catch (redoError) {
+      toast.error(redoError instanceof Error ? redoError.message : 'Could not redo the edit')
+      try {
+        await refreshActiveDeck()
+      } catch {
+        // Ignore refresh failures after a failed redo.
+      }
+    }
+  }, [editHistory, refreshActiveDeck, restoreHtmlSnapshot])
 
   return (
     <TooltipProvider>
@@ -638,6 +740,8 @@ function App() {
                 minSize={isChatOpen ? '45%' : '100%'}
               >
                 <DeckPreview
+                  canRedo={editHistory.canRedo}
+                  canUndo={editHistory.canUndo}
                   deckId={deckId}
                   editorBridgeEnabled
                   html={generatedHtml}
@@ -647,7 +751,11 @@ function App() {
                   layout="desktop"
                   onCommitTextEdit={handleCommitTextEdit}
                   onPatchEditorOperations={handlePatchEditorOperations}
+                  onRedo={handleRedoEdit}
+                  onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
+                  redoSlideIndex={editHistory.redoEntry?.slideIndex ?? null}
+                  undoSlideIndex={editHistory.undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
               </ResizablePanel>
@@ -699,6 +807,8 @@ function App() {
             >
               <div className="min-h-0 overflow-hidden">
                 <DeckPreview
+                  canRedo={editHistory.canRedo}
+                  canUndo={editHistory.canUndo}
                   deckId={deckId}
                   editorBridgeEnabled
                   html={generatedHtml}
@@ -707,7 +817,11 @@ function App() {
                   isTextEditSaving={isDeckPatching}
                   layout="mobile"
                   onCommitTextEdit={handleCommitTextEdit}
+                  onRedo={handleRedoEdit}
+                  onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
+                  redoSlideIndex={editHistory.redoEntry?.slideIndex ?? null}
+                  undoSlideIndex={editHistory.undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
               </div>

@@ -20,6 +20,8 @@ import { cn } from '@/lib/utils'
 export type EditModeToolbarProps = {
   activeTool: EditorTool
   canEditText: boolean
+  canRedo?: boolean
+  canUndo?: boolean
   hasDeck: boolean
   hasSelection: boolean
   isGenerating: boolean
@@ -27,12 +29,14 @@ export type EditModeToolbarProps = {
   selectionLocked: boolean
   selectionManaged: boolean
   textEditActive: boolean
+  onBringForward?: () => void
   onDelete?: () => void
   onDuplicate?: () => void
-  onBringForward?: () => void
-  onSendBackward?: () => void
   onEditText?: () => void
+  onRedo?: () => void
+  onSendBackward?: () => void
   onToolChange: (tool: EditorTool) => void
+  onUndo?: () => void
 }
 
 type ToolbarButtonProps = {
@@ -82,6 +86,8 @@ function ToolbarButton({
 export function EditModeToolbar({
   activeTool,
   canEditText,
+  canRedo = false,
+  canUndo = false,
   hasDeck,
   hasSelection,
   isGenerating,
@@ -89,17 +95,21 @@ export function EditModeToolbar({
   selectionLocked,
   selectionManaged,
   textEditActive,
+  onBringForward,
   onDelete,
   onDuplicate,
-  onBringForward,
-  onSendBackward,
   onEditText,
+  onRedo,
+  onSendBackward,
   onToolChange,
+  onUndo,
 }: EditModeToolbarProps) {
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
   const canModifySelection = hasSelection && !selectionLocked && !toolbarDisabled && !textEditActive
   const canModifyManagedSelection = canModifySelection && selectionManaged
   const canUseTools = hasDeck && !isGenerating && !isSaving
+  const undoDisabled = !canUndo || toolbarDisabled || textEditActive
+  const redoDisabled = !canRedo || toolbarDisabled || textEditActive
 
   return (
     <div
@@ -229,10 +239,10 @@ export function EditModeToolbar({
       />
 
       <ButtonGroup aria-label="History" className="shrink-0">
-        <ToolbarButton disabled label="Undo (coming soon)">
+        <ToolbarButton disabled={undoDisabled} label="Undo" onClick={onUndo}>
           <Undo2Icon className="size-3.5" />
         </ToolbarButton>
-        <ToolbarButton disabled label="Redo (coming soon)">
+        <ToolbarButton disabled={redoDisabled} label="Redo" onClick={onRedo}>
           <Redo2Icon className="size-3.5" />
         </ToolbarButton>
       </ButtonGroup>
