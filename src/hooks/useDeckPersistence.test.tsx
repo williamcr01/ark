@@ -70,6 +70,18 @@ const jsonResponse = (body: unknown, options: { ok?: boolean; status?: number } 
   json: async () => body,
 })
 
+const validValidation = {
+  valid: true,
+  slideCount: 1,
+  scripts: [],
+  forms: 0,
+  iframes: 0,
+  externalUrls: [],
+  malformedSlides: [],
+  runtimeMarkers: {},
+  issues: [],
+}
+
 describe('useDeckPersistence', () => {
   beforeEach(() => {
     installTestLocalStorage()
@@ -425,5 +437,70 @@ describe('useDeckPersistence', () => {
     })
 
     expect(result.current.previewVersion).toEqual(versionB)
+  })
+
+  it('patches the active deck without toggling the general save state', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const patchedHtml = sampleHtml.replace('One', 'Patched')
+    const patchedDeck = {
+      ...deck,
+      html: patchedHtml,
+      updatedAt: '2026-01-02T00:00:00.000Z',
+      versionNumber: 2,
+    }
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          deck: patchedDeck,
+          validation: validValidation,
+          patch: {
+            appliedCount: 1,
+            changedSlideIndexes: [0],
+            changedElementIds: ['transient-el-0-0'],
+            summary: 'Edited text in preview',
+            suggestedActiveSlideIndex: 0,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    let patchPromise: Promise<unknown> | undefined
+
+    act(() => {
+      patchPromise = result.current.patchDeckOperations(
+        [{ op: 'replace_text', elementId: 'transient-el-0-0', slideIndex: 0, text: 'Patched' }],
+        0,
+        { summary: 'Edited text in preview' },
+      )
+    })
+
+    expect(result.current.isPatching).toBe(true)
+    expect(result.current.isSaving).toBe(false)
+
+    await act(async () => {
+      await patchPromise
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/decks/${deck.id}/patch`,
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(result.current.html).toBe(patchedHtml)
+    expect(result.current.isPatching).toBe(false)
+    expect(result.current.isSaving).toBe(false)
   })
 })

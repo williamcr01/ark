@@ -634,7 +634,31 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
     postSlideChange(nextIndex, slides.length);
   }
 
+  function isTypingTarget(target) {
+    if (!target || typeof target !== 'object') {
+      return false;
+    }
+
+    var element = target;
+
+    if (element.isContentEditable) {
+      return true;
+    }
+
+    if (element.closest) {
+      return Boolean(
+        element.closest('[contenteditable="true"], [data-ark-editor-text-edit]'),
+      );
+    }
+
+    return false;
+  }
+
   function handleNavKey(event) {
+    if (isTypingTarget(event.target) || document.querySelector('[data-ark-editor-text-edit]')) {
+      return;
+    }
+
     var delta = C.NAV_KEYS[event.key];
 
     if (!delta) {
