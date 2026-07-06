@@ -38,6 +38,7 @@ export const chatAttachmentSchema = z.object({
   mediaType: z.string(),
   filename: z.string().optional(),
   url: z.string(),
+  assetId: z.string().optional(),
 })
 
 export const persistedChatMessageSchema = z.object({

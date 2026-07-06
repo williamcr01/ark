@@ -100,6 +100,8 @@ export const startGenerationJobRequestSchema = z.object({
   model: z.string().optional(),
   deckId: deckIdSchema.nullable().optional(),
   baseVersionId: deckIdSchema.nullable().optional(),
+  /** Uploaded asset ids to resolve into file inputs for the model. */
+  assetIds: z.array(z.string()).max(20).optional(),
 })
 
 export type StartGenerationJobRequest = z.infer<typeof startGenerationJobRequestSchema>
