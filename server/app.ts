@@ -218,7 +218,9 @@ export function createApp(options: CreateAppOptions = {}) {
       return
     }
 
-    const session = previewSessionStore.createSession(parsed.data.html)
+    const session = previewSessionStore.createSession(parsed.data.html, {
+      editorBridge: parsed.data.editorBridge === true,
+    })
 
     response.status(201).json({
       token: session.token,
@@ -251,6 +253,7 @@ export function createApp(options: CreateAppOptions = {}) {
       response.json({
         token: session.token,
         html: session.html,
+        editorBridge: session.editorBridge,
         expiresAt: session.expiresAt,
       })
     },

@@ -154,6 +154,7 @@ describe('getPreviewHtml', () => {
 
     expect(previewHtml).toContain('data-ark-preview-fill')
     expect(previewHtml).toContain('data-ark-preview-nav')
+    expect(previewHtml).not.toContain('data-ark-preview-editor')
     expect(previewHtml).toContain('Content-Security-Policy')
     expect(previewHtml).toContain("connect-src 'none'")
     expect(previewHtml).not.toContain('data-ark-preview-bridge')
@@ -162,6 +163,16 @@ describe('getPreviewHtml', () => {
     expect(previewHtml).not.toContain('onload=')
     expect(previewHtml).not.toContain('onclick=')
     expect(previewHtml).not.toContain('onerror=')
+  })
+
+  it('injects the editor bridge only when preview opts in', () => {
+    const withoutEditor = getPreviewHtml(plainCssDeck)
+    const withEditor = getPreviewHtml(plainCssDeck, { editorBridge: true })
+
+    expect(withoutEditor).not.toContain('data-ark-preview-editor')
+    expect(withEditor).toContain('data-ark-preview-editor')
+    expect(withEditor).toContain('data-ark-preview-nav')
+    expect(withEditor).toContain("connect-src 'none'")
   })
 
   it('keeps deck scripts and injects only the bridge for explicit custom-js decks', () => {

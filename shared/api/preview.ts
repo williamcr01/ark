@@ -4,6 +4,7 @@ import { withRequestId } from './common.ts'
 
 export const createPreviewSessionRequestSchema = z.object({
   html: z.string().refine((value) => value.trim().length > 0, 'HTML is required.'),
+  editorBridge: z.boolean().optional(),
 })
 
 export type CreatePreviewSessionRequest = z.infer<typeof createPreviewSessionRequestSchema>
@@ -20,6 +21,7 @@ export type PreviewSessionResponse = z.infer<typeof previewSessionResponseSchema
 export const getPreviewSessionResponseSchema = withRequestId({
   token: z.string().min(1),
   html: z.string(),
+  editorBridge: z.boolean(),
   expiresAt: z.number(),
 })
 

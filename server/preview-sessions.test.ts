@@ -8,9 +8,17 @@ describe('preview session store', () => {
     const session = store.createSession('<html><body>demo</body></html>')
 
     expect(session.token).toHaveLength(32)
+    expect(session.editorBridge).toBe(false)
     expect(store.getSession(session.token)?.html).toContain('demo')
     expect(store.deleteSession(session.token)).toBe(true)
     expect(store.getSession(session.token)).toBeNull()
+  })
+
+  it('stores editor bridge render options with the preview session', () => {
+    const store = createPreviewSessionStore({ ttlMs: 60_000 })
+    const session = store.createSession('<html><body>demo</body></html>', { editorBridge: true })
+
+    expect(store.getSession(session.token)?.editorBridge).toBe(true)
   })
 
   it('expires preview sessions after the configured ttl', () => {

@@ -4,6 +4,7 @@ import {
   buildDeckCssNavRuntimeScript,
   buildRevealNavRuntimeScript,
 } from './deck-bridge.ts'
+import { buildDeckEditorBridgeRuntimeScript } from './deck-editor-bridge.ts'
 import type { DeckRuntimeManifest } from './deck-runtime-manifest.ts'
 import {
   detectRuntimeMode,
@@ -19,6 +20,7 @@ import { getApprovedRuntimeAssetUrls } from './deck-runtime-registry.ts'
 export type PreviewHtmlOptions = {
   parentOrigin?: string
   manifest?: Pick<DeckRuntimeManifest, 'runtimeMode' | 'usesRevealAdapter' | 'previewMode'>
+  editorBridge?: boolean
 }
 
 const previewHistoryShim = `
@@ -104,6 +106,31 @@ function absolutizeApprovedRuntimeAssetReferences(html: string, assetOrigin?: st
   return output
 }
 
+function injectRuntimeScripts(html: string, scripts: string[]) {
+  if (scripts.length === 0) {
+    return html
+  }
+
+  return injectBeforeBodyClose(html, scripts.join('\n'))
+}
+
+function buildEditorBridgeInjection(
+  options: PreviewHtmlOptions,
+  runtimeOptions: { slideSelectors: readonly string[]; parentOrigin?: string },
+) {
+  if (!options.editorBridge) {
+    return ''
+  }
+
+  return wrapRuntimeScript(
+    buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: runtimeOptions.slideSelectors,
+      parentOrigin: runtimeOptions.parentOrigin,
+    }),
+    'data-ark-preview-editor',
+  )
+}
+
 export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   if (!html) {
     return ''
@@ -120,11 +147,14 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
   }
 
   if (runtimeModeAllowsDeckScripts(mode)) {
-    return injectBeforeBodyClose(
+    return injectRuntimeScripts(
       injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(withCsp, assetOrigin), {
         historyShim: true,
       }),
-      wrapRuntimeScript(buildDeckBridgeRuntimeScript(runtimeOptions), 'data-ark-preview-bridge'),
+      [
+        wrapRuntimeScript(buildDeckBridgeRuntimeScript(runtimeOptions), 'data-ark-preview-bridge'),
+        buildEditorBridgeInjection(options, runtimeOptions),
+      ].filter(Boolean),
     )
   }
 
@@ -134,9 +164,12 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
     })
     const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
-    return injectBeforeBodyClose(
+    return injectRuntimeScripts(
       injectPreviewFill(previewHtml, { historyShim: true }),
-      wrapRuntimeScript(buildRevealNavRuntimeScript(runtimeOptions), 'data-ark-preview-reveal'),
+      [
+        wrapRuntimeScript(buildRevealNavRuntimeScript(runtimeOptions), 'data-ark-preview-reveal'),
+        buildEditorBridgeInjection(options, runtimeOptions),
+      ].filter(Boolean),
     )
   }
 
@@ -145,9 +178,12 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
   })
   const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
-  return injectBeforeBodyClose(
+  return injectRuntimeScripts(
     injectPreviewFill(previewHtml),
-    wrapRuntimeScript(buildDeckCssNavRuntimeScript(runtimeOptions), 'data-ark-preview-nav'),
+    [
+      wrapRuntimeScript(buildDeckCssNavRuntimeScript(runtimeOptions), 'data-ark-preview-nav'),
+      buildEditorBridgeInjection(options, runtimeOptions),
+    ].filter(Boolean),
   )
 }
 
