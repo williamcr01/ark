@@ -5,8 +5,12 @@ import type {
   CreateGenerationJobInput,
   GenerationJob,
   GenerationJobStatus,
-  StartGenerationJobRequest,
 } from '../shared/generation-job.ts'
+import type {
+  GenerationJobApi,
+  GenerationJobResponse,
+  StartGenerationJobRequest,
+} from '../shared/api/generation-jobs.ts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '../shared/generation-job.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'
@@ -648,31 +652,32 @@ export function createGenerationJobRunner({
   }
 }
 
-export function toGenerationJobResponse(job: GenerationJob) {
-  return {
-    job: {
-      id: job.id,
-      deckId: job.deckId,
-      baseVersionId: job.baseVersionId,
-      status: job.status,
-      model: job.model,
-      provider: job.provider,
-      progress: job.progress,
-      observability: job.observability ?? null,
-      result: job.result
-        ? {
-            deckId: job.result.deckId,
-            versionId: job.result.versionId,
-            validation: job.result.validation,
-            assistantText: job.result.assistantText,
-          }
-        : null,
-      error: job.error,
-      retryOfJobId: job.retryOfJobId,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
-      startedAt: job.startedAt,
-      completedAt: job.completedAt,
-    },
+export function toGenerationJobResponse(job: GenerationJob): GenerationJobResponse {
+  const apiJob: GenerationJobApi = {
+    id: job.id,
+    deckId: job.deckId,
+    baseVersionId: job.baseVersionId,
+    editingExistingDeck: job.request.editingExistingDeck ?? false,
+    status: job.status,
+    model: job.model,
+    provider: job.provider,
+    progress: job.progress,
+    observability: job.observability ?? null,
+    result: job.result
+      ? {
+          deckId: job.result.deckId,
+          versionId: job.result.versionId,
+          validation: job.result.validation,
+          assistantText: job.result.assistantText,
+        }
+      : null,
+    error: job.error,
+    retryOfJobId: job.retryOfJobId,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
   }
+
+  return { job: apiJob }
 }

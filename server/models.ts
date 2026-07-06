@@ -1,15 +1,10 @@
-import { getProviderApiKey, parseProviderHttpError, type ProviderId } from './credentials.ts'
+import type { ProviderId } from '../shared/api/common.ts'
+import type { ModelInfo } from '../shared/api/health.ts'
+import { getProviderApiKey, parseProviderHttpError } from './credentials.ts'
 
-export type ModelUnavailableReason = 'missing_api_key' | 'not_found'
+export type { ProviderId, ModelInfo }
 
-export type ModelInfo = {
-  id: string
-  provider: ProviderId
-  modelId: string
-  name?: string
-  available: boolean
-  unavailableReason?: ModelUnavailableReason
-}
+type ModelUnavailableReason = NonNullable<ModelInfo['unavailableReason']>
 
 const OPENAI_CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i
 

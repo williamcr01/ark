@@ -1,40 +1,25 @@
-import type {
-  AppendChatMessageRequest,
-  DeckChatResponse,
-  PersistedChatMessage,
-} from '../../shared/chat-thread.ts'
+import type { AppendChatMessageRequest } from '../../shared/chat-thread.ts'
 import { CHAT_HISTORY_PAGE_SIZE } from '../../shared/chat-thread.ts'
+import {
+  appendChatMessageResponseSchema,
+  deckChatResponseSchema,
+  type DeckChatResponse,
+  type PersistedChatMessage,
+} from '../../shared/api/chat.ts'
+import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
 
-type DeckChatApiResponse = DeckChatResponse & {
-  error?: string
-}
-
-type AppendChatMessageResponse = {
-  message?: PersistedChatMessage
-  error?: string
-}
+export type { DeckChatResponse, PersistedChatMessage }
 
 async function readDeckChatResponse(response: Response) {
-  const data = (await response.json().catch(() => ({
-    error: 'The API returned an unreadable response.',
-  }))) as DeckChatApiResponse
-
-  if (!response.ok || !Array.isArray(data.messages)) {
-    throw new Error(data.error ?? 'Could not load deck chat.')
-  }
-
-  return data
+  return fetchApiJsonOrThrow(response, deckChatResponseSchema, {
+    fallbackMessage: 'Could not load deck chat.',
+  })
 }
 
 async function readAppendMessageResponse(response: Response) {
-  const data = (await response.json().catch(() => ({
-    error: 'The API returned an unreadable response.',
-  }))) as AppendChatMessageResponse
-
-  if (!response.ok || !data.message) {
-    throw new Error(data.error ?? 'Could not save chat message.')
-  }
-
+  const data = await fetchApiJsonOrThrow(response, appendChatMessageResponseSchema, {
+    fallbackMessage: 'Could not save chat message.',
+  })
   return data.message
 }
 

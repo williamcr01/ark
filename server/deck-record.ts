@@ -1,46 +1,36 @@
 import type { DeckRuntimeManifest } from '../shared/deck-runtime-manifest.ts'
 
-export type DeckVersionSource = 'manual' | 'agent' | 'upload' | 'repair' | 'rollback'
+export type {
+  DeckSummary,
+  DeckValidationStatus,
+  DeckVersionDetail,
+  DeckVersionSource,
+  DeckVersionSummary,
+  StoredDeck,
+} from '../shared/api/decks.ts'
 
-export type DeckValidationStatus = 'unknown' | 'valid' | 'invalid'
+export type { DeckVersionOptions as DeckVersionRequestOptions } from '../shared/api/decks.ts'
 
-export type DeckVersionOptions = {
-  source?: DeckVersionSource
-  summary?: string | null
-  modelProvider?: string | null
-  modelName?: string | null
+export {
+  isValidDeckId,
+  normalizeDeckTitle,
+  normalizeDeckVersionSource,
+} from '../shared/api/decks.ts'
+
+import type {
+  DeckSummary,
+  DeckValidationStatus,
+  DeckVersionDetail,
+  DeckVersionSummary,
+  StoredDeck,
+} from '../shared/api/decks.ts'
+import type { DeckVersionOptions as SharedDeckVersionOptions } from '../shared/api/decks.ts'
+import { normalizeDeckTitle } from '../shared/api/decks.ts'
+
+export type DeckVersionOptions = SharedDeckVersionOptions & {
   validationStatus?: DeckValidationStatus
   runtimeManifest?: DeckRuntimeManifest
   validationReport?: Record<string, unknown>
-}
-
-export type StoredDeck = {
-  id: string
-  html: string
-  title: string
-  createdAt: string
-  updatedAt: string
-  activeVersionId?: string | null
-  versionNumber?: number | null
-}
-
-export type DeckSummary = Omit<StoredDeck, 'html'>
-
-export type DeckVersionSummary = {
-  id: string
-  deckId: string
-  versionNumber: number
-  title: string
-  source: DeckVersionSource
-  summary: string | null
-  validationStatus: DeckValidationStatus
-  runtimeManifest: DeckRuntimeManifest | null
-  createdAt: string
-  isActive: boolean
-}
-
-export type DeckVersionDetail = DeckVersionSummary & {
-  html: string
 }
 
 export type DeckStore = {
@@ -55,37 +45,15 @@ export type DeckStore = {
   rollbackToVersion: (deckId: string, versionId: string) => Promise<StoredDeck | null>
 }
 
-const DECK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-export function isValidDeckId(id: string) {
-  return DECK_ID_PATTERN.test(id)
-}
-
 export function extractDeckTitle(html: string) {
   const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
 
   return normalizeDeckTitle(match?.[1])
 }
 
-export function normalizeDeckTitle(title: unknown) {
-  return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled deck'
-}
-
-export function normalizeDeckVersionSource(source: unknown): DeckVersionSource {
-  if (
-    source === 'agent' ||
-    source === 'upload' ||
-    source === 'repair' ||
-    source === 'rollback' ||
-    source === 'manual'
-  ) {
-    return source
-  }
-
-  return 'manual'
-}
-
-export function normalizeDeckValidationStatus(status: unknown): DeckValidationStatus {
+export function normalizeDeckValidationStatus(
+  status: unknown,
+): import('../shared/api/decks.ts').DeckValidationStatus {
   if (status === 'valid' || status === 'invalid' || status === 'unknown') {
     return status
   }

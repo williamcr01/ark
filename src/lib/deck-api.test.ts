@@ -78,6 +78,7 @@ describe('deck-api', () => {
       source: 'manual' as const,
       summary: null,
       validationStatus: 'valid' as const,
+      runtimeManifest: null,
       createdAt: deck.createdAt,
       isActive: true,
       html: deck.html,
@@ -89,7 +90,20 @@ describe('deck-api', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(listDeckVersions(deck.id)).resolves.toEqual([version])
+    await expect(listDeckVersions(deck.id)).resolves.toEqual([
+      {
+        id: version.id,
+        deckId: version.deckId,
+        versionNumber: version.versionNumber,
+        title: version.title,
+        source: version.source,
+        summary: version.summary,
+        validationStatus: version.validationStatus,
+        runtimeManifest: version.runtimeManifest,
+        createdAt: version.createdAt,
+        isActive: version.isActive,
+      },
+    ])
     await expect(fetchDeckVersion(deck.id, version.id)).resolves.toEqual(version)
   })
 
