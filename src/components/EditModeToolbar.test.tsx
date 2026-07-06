@@ -91,14 +91,41 @@ describe('EditModeToolbar', () => {
     expect(screen.getByRole('button', { name: 'Send backward' })).toBeEnabled()
   })
 
-  it('marks history actions as disabled', () => {
+  it('disables history actions when there is nothing to undo or redo', () => {
     renderToolbar({ hasSelection: true })
 
-    expect(screen.getByRole('button', { name: 'Undo (coming soon)' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Redo (coming soon)' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
     expect(
       screen.getByRole('button', { name: 'Duplicate selected element (not managed)' }),
     ).toBeDisabled()
+  })
+
+  it('enables and triggers undo and redo when available', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+    const onRedo = vi.fn()
+
+    renderToolbar({ canUndo: true, canRedo: true, onUndo, onRedo })
+
+    const undoButton = screen.getByRole('button', { name: 'Undo' })
+    const redoButton = screen.getByRole('button', { name: 'Redo' })
+
+    expect(undoButton).toBeEnabled()
+    expect(redoButton).toBeEnabled()
+
+    await user.click(undoButton)
+    await user.click(redoButton)
+
+    expect(onUndo).toHaveBeenCalledTimes(1)
+    expect(onRedo).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables history actions while saving or editing text', () => {
+    renderToolbar({ canUndo: true, canRedo: true, isSaving: true })
+
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
   })
 })
 

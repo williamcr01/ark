@@ -453,6 +453,50 @@ export function useDeckPersistence() {
     [refreshVersions],
   )
 
+  const restoreHtmlSnapshot = useCallback(
+    async (nextHtml: string, options: DeckVersionOptions = {}) => {
+      if (!deckId) {
+        throw new Error('Save the deck before editing.')
+      }
+
+      const requestId = ++patchRequestIdRef.current
+
+      setIsPatching(true)
+      setSaveError('')
+
+      try {
+        const deck = await updateDeck(deckId, nextHtml, { source: 'manual', ...options })
+
+        if (requestId !== patchRequestIdRef.current) {
+          return undefined
+        }
+
+        setHtml(deck.html)
+        setSavedHtml(deck.html)
+        setActiveVersionId(deck.activeVersionId ?? null)
+        setVersionNumber(deck.versionNumber ?? null)
+        setPreviewVersion(null)
+        setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+        void refreshVersions(deck.id)
+        return deck
+      } catch (error) {
+        if (requestId !== patchRequestIdRef.current) {
+          return undefined
+        }
+
+        const message = error instanceof Error ? error.message : 'Could not update the deck.'
+
+        setSaveError(message)
+        throw error
+      } finally {
+        if (requestId === patchRequestIdRef.current) {
+          setIsPatching(false)
+        }
+      }
+    },
+    [deckId, refreshVersions],
+  )
+
   const patchDeckOperations = useCallback(
     async (
       operations: DeckPatchOperation[],
@@ -526,6 +570,7 @@ export function useDeckPersistence() {
     refreshActiveDeck,
     refreshVersions,
     renameActiveDeck,
+    restoreHtmlSnapshot,
     rollbackToVersion,
     saveError,
     selectDeck,

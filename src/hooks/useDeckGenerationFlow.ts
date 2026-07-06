@@ -34,6 +34,8 @@ export type UseDeckGenerationFlowOptions = {
   onError: (message: string) => void
   /** Clears any pending attachment error when a new generation starts. */
   onGenerationStart?: () => void
+  /** Called when generation succeeds and the deck is about to be refreshed. */
+  onGenerationSucceeded?: () => void
 }
 
 /**
@@ -50,6 +52,7 @@ export function useDeckGenerationFlow({
   loadModels,
   onError,
   onGenerationStart,
+  onGenerationSucceeded,
 }: UseDeckGenerationFlowOptions) {
   const { deckId, activeVersionId, generatedHtml, isDeckLoading, refreshActiveDeck } = deck
   const { messages, appendMessage, reloadChat, setMessages } = chat
@@ -77,6 +80,8 @@ export function useDeckGenerationFlow({
 
   const applySucceededOutcome = useCallback(
     async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) => {
+      onGenerationSucceeded?.()
+
       try {
         await refreshActiveDeck(outcome.job.result?.deckId)
       } catch {
@@ -120,7 +125,7 @@ export function useDeckGenerationFlow({
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
-    [deckId, refreshActiveDeck, reloadChat, setMessages],
+    [deckId, onGenerationSucceeded, refreshActiveDeck, reloadChat, setMessages],
   )
 
   useEffect(() => {

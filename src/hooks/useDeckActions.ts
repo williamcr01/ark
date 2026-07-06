@@ -44,6 +44,8 @@ export type UseDeckActionsOptions = {
   chat: DeckActionsChatSlice
   setInput: Dispatch<SetStateAction<string>>
   setError: Dispatch<SetStateAction<string>>
+  /** Called when undo/redo history should reset (rollback, upload). */
+  onEditHistoryBoundary?: () => void
 }
 
 /**
@@ -57,6 +59,7 @@ export function useDeckActions({
   chat,
   setInput,
   setError,
+  onEditHistoryBoundary,
 }: UseDeckActionsOptions) {
   const {
     deckId,
@@ -74,6 +77,7 @@ export function useDeckActions({
     async (versionId: string) => {
       try {
         await rollbackToVersion(versionId)
+        onEditHistoryBoundary?.()
         await resetChat()
         setInput('')
         setError('')
@@ -83,7 +87,7 @@ export function useDeckActions({
         throw new Error('Could not restore that version')
       }
     },
-    [resetChat, rollbackToVersion, setError, setInput],
+    [onEditHistoryBoundary, resetChat, rollbackToVersion, setError, setInput],
   )
 
   const handleDownload = useCallback(
@@ -143,6 +147,8 @@ export function useDeckActions({
           toast.error('Deck loaded but could not be saved')
         }
 
+        onEditHistoryBoundary?.()
+
         setError('')
         const uploadMessage: ChatMessage = {
           id: newId(),
@@ -160,7 +166,7 @@ export function useDeckActions({
         toast.error('Could not read that HTML file')
       }
     },
-    [appendMessage, deckId, persistHtml, setError, setMessages],
+    [appendMessage, deckId, onEditHistoryBoundary, persistHtml, setError, setMessages],
   )
 
   const handleNewDeck = useCallback(() => {
