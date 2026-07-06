@@ -64,6 +64,50 @@ describe('applyDeckPatches element operations', () => {
     expect(result.changedElementIds).toContain('ark-el-title')
   })
 
+  it('resolves path-based transient ids for nested managed elements', () => {
+    const nestedDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Nested</title></head>
+<body>
+  <section class="slide">
+    <div class="wrapper">
+      <p data-ark-managed="true" style="position: absolute; left: 20px; top: 30px;">Nested copy</p>
+    </div>
+  </section>
+</body>
+</html>`
+    const elementId = parseDeckHtml(nestedDeck).editableElements[0]?.elements.find(
+      (element) => element.textPreview === 'Nested copy',
+    )?.id
+
+    expect(elementId).toBe('transient-el-0-0.0')
+
+    const result = applyDeckPatches(nestedDeck, [
+      {
+        op: 'replace_text',
+        slideIndex: 0,
+        elementId: elementId!,
+        text: 'Updated nested copy',
+      },
+    ])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    expect(result.html).toContain('<p')
+    expect(result.html).toContain('Updated nested copy</p>')
+    expect(parseDeckHtml(result.html).editableElements[0]?.elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tagName: 'p',
+          textPreview: 'Updated nested copy',
+        }),
+      ]),
+    )
+  })
+
   it('inserts, deletes, and updates attributes on managed elements', () => {
     const inserted = applyDeckPatches(
       arkManagedDeck,
@@ -268,10 +312,21 @@ describe('applyDeckPatches element operations', () => {
           elementId: notesId,
         },
       ]),
-    ).toMatchObject({ ok: false, error: expect.stringContaining('locked') })
+    ).toMatchObject({ ok: false, error: expect.stringContaining('not editable') })
   })
 
-  it('rejects no-op patches and unsafe attribute/style updates', () => {
+  it('rejects malformed ids, no-op patches, and unsafe attribute/style updates', () => {
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        {
+          op: 'replace_text',
+          slideIndex: 0,
+          elementId: 'bad"\nselector',
+          text: 'Nope',
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('was not found') })
+
     expect(
       applyDeckPatches(arkManagedDeck, [
         {
@@ -297,6 +352,17 @@ describe('applyDeckPatches element operations', () => {
     expect(
       applyDeckPatches(arkManagedDeck, [
         {
+          op: 'set_attrs',
+          slideIndex: 0,
+          elementId: 'ark-el-title',
+          attrs: { href: 'javascript:alert(1)' },
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('unsafe') })
+
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        {
           op: 'set_inline_style',
           slideIndex: 0,
           elementId: 'ark-el-body',
@@ -309,10 +375,21 @@ describe('applyDeckPatches element operations', () => {
       applyDeckPatches(arkManagedDeck, [
         {
           op: 'insert_element',
-          html: '<script>alert(1)</script>',
+          slideIndex: 0,
+          html: '<div><script>alert(1)</script></div>',
         },
       ]),
-    ).toMatchObject({ ok: false })
+    ).toMatchObject({ ok: false, error: expect.stringContaining('unsafe <script>') })
+
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        {
+          op: 'insert_element',
+          slideIndex: 0,
+          html: '<p onclick="alert(1)">Unsafe handler</p>',
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('onclick') })
   })
 
   it('can mix slide and element operations in one request', () => {
