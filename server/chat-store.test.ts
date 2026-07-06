@@ -30,7 +30,14 @@ describe('createChatStore', () => {
       role: 'user',
       content: 'Make a deck',
       deckVersionId: versionId,
-      attachments: [{ type: 'text', name: 'notes.txt', content: 'Q1 results' }],
+      attachments: [
+        {
+          type: 'file',
+          mediaType: 'text/plain',
+          filename: 'notes.txt',
+          url: 'data:text/plain;base64,UTEgcmVzdWx0cw==',
+        },
+      ],
     })
     const second = await store.appendMessage(deckId, {
       id: '00000000-0000-4000-8000-000000000201',
