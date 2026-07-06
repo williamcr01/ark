@@ -616,6 +616,7 @@ export function buildDeckEditorBridgeRuntimeScript(
   var currentSlideIndex = 0;
   var selectedElement = null;
   var textEditElement = null;
+  var originalTextBeforeEdit = null;
   var listenersBound = false;
 
   function isRecord(value) {
@@ -767,6 +768,22 @@ export function buildDeckEditorBridgeRuntimeScript(
     return text || null;
   }
 
+  function isTextEditableTag(tag) {
+    return (
+      tag === 'h1' ||
+      tag === 'h2' ||
+      tag === 'h3' ||
+      tag === 'h4' ||
+      tag === 'h5' ||
+      tag === 'h6' ||
+      tag === 'p' ||
+      tag === 'li' ||
+      tag === 'blockquote' ||
+      tag === 'figcaption' ||
+      tag === 'span'
+    );
+  }
+
   function buildSelection(element, slide, slideIndex) {
     return {
       elementId: resolveElementId(element, slide, slideIndex),
@@ -885,6 +902,10 @@ export function buildDeckEditorBridgeRuntimeScript(
     var element = textEditElement;
     var slideIndex = currentSlideIndex;
 
+    if (!commit && originalTextBeforeEdit !== null) {
+      element.textContent = originalTextBeforeEdit;
+    }
+
     textEditElement.removeAttribute('contenteditable');
     textEditElement.removeAttribute('data-ark-editor-text-edit');
 
@@ -897,7 +918,42 @@ export function buildDeckEditorBridgeRuntimeScript(
       });
     }
 
+    originalTextBeforeEdit = null;
     textEditElement = null;
+  }
+
+  function startTextEditOnElement(element, slide, slideIndex) {
+    if (element.getAttribute(C.LOCKED_ATTR) === 'true') {
+      postError('Element is locked.', 'locked-element');
+      return;
+    }
+
+    var tag = element.tagName.toLowerCase();
+
+    if (!isTextEditableTag(tag)) {
+      postError('Element is not text-editable.', 'non-text-element');
+      return;
+    }
+
+    endTextEdit(false);
+    textEditElement = element;
+    originalTextBeforeEdit = element.textContent || '';
+    element.setAttribute('contenteditable', 'true');
+    element.setAttribute('data-ark-editor-text-edit', '');
+    element.focus();
+
+    try {
+      var selection = window.getSelection();
+
+      if (selection) {
+        var range = document.createRange();
+        range.selectNodeContents(element);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } catch (error) {
+      // Ignore selection failures in older browsers.
+    }
   }
 
   function applyTransform(element, slide, geometry, preview) {
@@ -969,6 +1025,40 @@ export function buildDeckEditorBridgeRuntimeScript(
     postSelection(target, slide, currentSlideIndex);
   }
 
+  function onDoubleClick(event) {
+    if (!enabled || textEditElement) {
+      return;
+    }
+
+    var slide = getActiveSlide();
+
+    if (!slide) {
+      return;
+    }
+
+    var target = findEditableTarget(event.target, slide);
+
+    if (!target || !isTextEditableTag(target.tagName.toLowerCase())) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedElement(target);
+    postSelection(target, slide, currentSlideIndex);
+    startTextEditOnElement(target, slide, currentSlideIndex);
+  }
+
+  function onKeyDown(event) {
+    if (!textEditElement || event.key !== 'Escape') {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    endTextEdit(false);
+  }
+
   function bindListeners() {
     if (listenersBound) {
       return;
@@ -976,6 +1066,8 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('dblclick', onDoubleClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
     listenersBound = true;
   }
 
@@ -986,6 +1078,8 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     document.removeEventListener('pointermove', onPointerMove, true);
     document.removeEventListener('pointerdown', onPointerDown, true);
+    document.removeEventListener('dblclick', onDoubleClick, true);
+    document.removeEventListener('keydown', onKeyDown, true);
     listenersBound = false;
   }
 
@@ -1085,16 +1179,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         }
 
         if (data.type === C.START_TEXT_EDIT) {
-          if (element.getAttribute(C.LOCKED_ATTR) === 'true') {
-            postError('Element is locked.', 'locked-element');
-            return;
-          }
-
-          endTextEdit(false);
-          textEditElement = element;
-          element.setAttribute('contenteditable', 'true');
-          element.setAttribute('data-ark-editor-text-edit', '');
-          element.focus();
+          startTextEditOnElement(element, slide, data.slideIndex);
           return;
         }
       }

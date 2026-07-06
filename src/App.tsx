@@ -51,6 +51,7 @@ function App() {
     deckTitle,
     decks,
     deleteActiveDeck,
+    patchDeckOperations,
     persistHtml,
     previewVersion,
     refreshActiveDeck,
@@ -508,6 +509,42 @@ function App() {
     }
   }
 
+  const handleCommitTextEdit = useCallback(
+    async (commit: {
+      elementId: string
+      slideIndex: number
+      slideId: string | null
+      text: string
+    }) => {
+      if (!deckId) {
+        toast.error('Save the deck before editing text')
+        throw new Error('Deck is not saved')
+      }
+
+      try {
+        await patchDeckOperations(
+          [
+            {
+              op: 'replace_text',
+              elementId: commit.elementId,
+              slideIndex: commit.slideIndex,
+              ...(commit.slideId ? { slideId: commit.slideId } : {}),
+              text: commit.text,
+            },
+          ],
+          commit.slideIndex,
+          { summary: 'Edited text in preview' },
+        )
+      } catch (patchError) {
+        toast.error(
+          patchError instanceof Error ? patchError.message : 'Could not save the text edit',
+        )
+        throw patchError
+      }
+    },
+    [deckId, patchDeckOperations],
+  )
+
   return (
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
@@ -556,10 +593,13 @@ function App() {
               >
                 <DeckPreview
                   deckId={deckId}
+                  editorBridgeEnabled
                   html={generatedHtml}
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
+                  isTextEditSaving={isDeckSaving}
                   layout="desktop"
+                  onCommitTextEdit={handleCommitTextEdit}
                   parsedDeck={parsedDeck}
                   versionId={activeVersionId}
                 />
@@ -611,10 +651,13 @@ function App() {
               <div className="min-h-0 overflow-hidden">
                 <DeckPreview
                   deckId={deckId}
+                  editorBridgeEnabled
                   html={generatedHtml}
                   isGenerating={isGenerating}
                   isStripOpen={isStripOpen}
+                  isTextEditSaving={isDeckSaving}
                   layout="mobile"
+                  onCommitTextEdit={handleCommitTextEdit}
                   parsedDeck={parsedDeck}
                   versionId={activeVersionId}
                 />

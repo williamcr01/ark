@@ -334,6 +334,26 @@ describe('useDeckSlideNavigation', () => {
     expect(postMessage).not.toHaveBeenCalled()
   })
 
+  it('does not hijack arrow keys from contenteditable text editing', () => {
+    render(
+      <div>
+        <NavigationHarness />
+        <div aria-label="Editable heading" contentEditable suppressContentEditableWarning>
+          Heading
+        </div>
+      </div>,
+    )
+    const iframeWindow = getIframeWindow()
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+    const editable = screen.getByLabelText('Editable heading')
+
+    editable.focus()
+    fireEvent.keyDown(editable, { key: 'ArrowRight' })
+
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
   it('handles reveal slide-change acknowledgements for registry decks', async () => {
     const onSlideChange = vi.fn()
     const metadata = createDeckMetadata({
