@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { withRequestId } from './common.ts'
 
 export const createPreviewSessionRequestSchema = z.object({
-  html: z.string().min(1, 'HTML is required.'),
+  html: z.string().refine((value) => value.trim().length > 0, 'HTML is required.'),
 })
 
 export type CreatePreviewSessionRequest = z.infer<typeof createPreviewSessionRequestSchema>

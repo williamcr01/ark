@@ -44,30 +44,23 @@ export function parseApiResponse<T extends z.ZodType>(
   return parsed.data
 }
 
-export async function fetchApiJson<T extends z.ZodType>(
-  input: RequestInfo | URL,
-  schema: T,
-  init?: RequestInit,
-): Promise<z.infer<T>> {
-  const response = await fetch(input, init)
-  const data = await readJsonBody(response)
+export function parseApiErrorResponse(
+  data: unknown,
+  options: { fallbackMessage?: string } = {},
+): never {
+  const apiError = apiErrorPayloadSchema.safeParse(data)
 
-  if (!response.ok) {
-    const simple = simpleErrorResponseSchema.safeParse(data)
-    const apiError = apiErrorPayloadSchema.safeParse(data)
-
-    if (apiError.success) {
-      throw new ApiResponseError(apiError.data.error, { code: apiError.data.code })
-    }
-
-    if (simple.success) {
-      throw new ApiResponseError(simple.data.error)
-    }
-
-    throw new ApiResponseError(UNREADABLE_RESPONSE)
+  if (apiError.success) {
+    throw new ApiResponseError(apiError.data.error, { code: apiError.data.code })
   }
 
-  return parseApiResponse(schema, data)
+  const simple = simpleErrorResponseSchema.safeParse(data)
+
+  if (simple.success) {
+    throw new ApiResponseError(simple.data.error)
+  }
+
+  throw new ApiResponseError(options.fallbackMessage ?? UNREADABLE_RESPONSE)
 }
 
 export async function fetchApiJsonOrThrow<T extends z.ZodType>(
@@ -78,18 +71,7 @@ export async function fetchApiJsonOrThrow<T extends z.ZodType>(
   const data = await readJsonBody(response)
 
   if (!response.ok) {
-    const simple = simpleErrorResponseSchema.safeParse(data)
-    const apiError = apiErrorPayloadSchema.safeParse(data)
-
-    if (apiError.success) {
-      throw new ApiResponseError(apiError.data.error, { code: apiError.data.code })
-    }
-
-    if (simple.success) {
-      throw new ApiResponseError(simple.data.error)
-    }
-
-    throw new ApiResponseError(options.fallbackMessage ?? UNREADABLE_RESPONSE)
+    parseApiErrorResponse(data, options)
   }
 
   return parseApiResponse(schema, data, options)

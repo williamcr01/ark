@@ -3,6 +3,7 @@ import express, { type Request, type Response } from 'express'
 import { appendChatMessageRequestSchema, deckChatQuerySchema } from '../shared/api/chat.ts'
 import {
   createDeckRequestSchema,
+  deckPatchRequestSchema,
   renameDeckRequestSchema,
   rollbackDeckRequestSchema,
 } from '../shared/api/decks.ts'
@@ -408,15 +409,14 @@ export function createApp(options: CreateAppOptions = {}) {
       return
     }
 
-    const { deckPatchRequestSchema } = await import('../shared/deck-patch.ts')
-    const parsedBody = deckPatchRequestSchema.safeParse({
+    const parsedBody = parseRequestBody(deckPatchRequestSchema, {
       operations: request.body?.operations,
       activeSlideIndex: request.body?.activeSlideIndex,
     })
 
-    if (!parsedBody.success) {
+    if (!parsedBody.ok) {
       response.status(400).json({
-        error: parsedBody.error.issues[0]?.message ?? 'Invalid patch request.',
+        error: parsedBody.error,
       })
       return
     }

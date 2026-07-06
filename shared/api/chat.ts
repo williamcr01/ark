@@ -65,7 +65,7 @@ export const appendChatMessageRequestSchema = z
     content: z.string(),
     parts: z.array(chatMessagePartSchema).optional(),
     attachments: z.array(chatAttachmentSchema).optional(),
-    deckVersionId: z.string().nullable().optional(),
+    deckVersionId: deckIdSchema.nullable().optional(),
     generationJobId: z.string().nullable().optional(),
     generationStatus: z.string().nullable().optional(),
     model: z.string().nullable().optional(),

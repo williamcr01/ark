@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ApiErrorCode, ProviderId } from '../../shared/api/common.ts'
 import type { ModelInfo } from '../../shared/api/health.ts'
 import { healthResponseSchema, modelsResponseSchema } from '../../shared/api/health.ts'
-import { ApiResponseError, fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
 
 export type { ProviderId, ApiErrorCode }
 export type AvailableModel = ModelInfo
@@ -84,23 +84,14 @@ async function fetchHealth() {
 
 async function fetchAvailableModels() {
   const response = await fetch('/api/models')
+  const data = await fetchApiJsonOrThrow(response, modelsResponseSchema, {
+    fallbackMessage: 'Could not load available models.',
+  })
 
-  try {
-    const data = await fetchApiJsonOrThrow(response, modelsResponseSchema, {
-      fallbackMessage: 'Could not load available models.',
-    })
-
-    return {
-      defaultModel: data.defaultModel,
-      models: data.models,
-      warnings: data.warnings,
-    }
-  } catch (error) {
-    if (error instanceof ApiResponseError && error.code) {
-      throw Object.assign(error, { code: error.code })
-    }
-
-    throw error
+  return {
+    defaultModel: data.defaultModel,
+    models: data.models,
+    warnings: data.warnings,
   }
 }
 

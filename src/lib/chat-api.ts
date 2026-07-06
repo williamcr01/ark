@@ -6,7 +6,8 @@ import {
   type DeckChatResponse,
   type PersistedChatMessage,
 } from '../../shared/api/chat.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import { ApiResponseError, fetchApiJsonOrThrow, readJsonBody } from '../../shared/api/fetch.ts'
+import { simpleErrorResponseSchema } from '../../shared/api/common.ts'
 
 export type { DeckChatResponse, PersistedChatMessage }
 
@@ -105,11 +106,13 @@ export async function clearDeckChat(deckId: string, signal?: AbortSignal) {
     signal,
   })
 
-  if (!response.ok && response.status !== 204) {
-    const data = (await response.json().catch(() => ({ error: 'Could not clear deck chat.' }))) as {
-      error?: string
-    }
+  if (response.status === 204) {
+    return
+  }
 
-    throw new Error(data.error ?? 'Could not clear deck chat.')
+  if (!response.ok) {
+    const data = await readJsonBody(response)
+    const parsed = simpleErrorResponseSchema.safeParse(data)
+    throw new ApiResponseError(parsed.success ? parsed.data.error : 'Could not clear deck chat.')
   }
 }

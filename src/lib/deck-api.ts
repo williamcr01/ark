@@ -1,5 +1,7 @@
-import type { DeckPatchOperation, DeckPatchRequest } from '../../shared/deck-patch.ts'
+import type { DeckPatchOperation } from '../../shared/deck-patch.ts'
 import type {
+  DeckPatchRequest,
+  DeckPatchResponse,
   DeckSummary,
   DeckVersionDetail,
   DeckVersionOptions,
@@ -17,6 +19,7 @@ import {
 import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
 
 export type {
+  DeckPatchResponse,
   DeckSummary,
   DeckVersionDetail,
   DeckVersionOptions,
@@ -25,16 +28,7 @@ export type {
   StoredDeck,
 }
 
-export type DeckPatchResponse = {
-  deck: StoredDeck
-  patch: {
-    appliedCount: number
-    changedSlideIndexes: number[]
-    changedElementIds: string[]
-    summary: string
-    suggestedActiveSlideIndex?: number
-  }
-}
+export type PatchDeckResponse = Pick<DeckPatchResponse, 'deck' | 'patch'>
 
 export type PatchDeckOptions = DeckVersionOptions &
   Pick<DeckPatchRequest, 'activeSlideIndex'> & {
@@ -109,7 +103,7 @@ export async function renameDeck(id: string, title: string) {
   return readDeckResponse(response)
 }
 
-async function readPatchResponse(response: Response): Promise<DeckPatchResponse> {
+async function readPatchResponse(response: Response): Promise<PatchDeckResponse> {
   const data = await fetchApiJsonOrThrow(response, deckPatchResponseSchema, {
     fallbackMessage: 'Could not patch the deck.',
   })

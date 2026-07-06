@@ -11,6 +11,7 @@ import type {
   GenerationJobResponse,
   StartGenerationJobRequest,
 } from '../shared/api/generation-jobs.ts'
+import { deckValidationReportSchema } from '../shared/api/decks.ts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '../shared/generation-job.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'
@@ -667,7 +668,7 @@ export function toGenerationJobResponse(job: GenerationJob): GenerationJobRespon
       ? {
           deckId: job.result.deckId,
           versionId: job.result.versionId,
-          validation: job.result.validation,
+          validation: deckValidationReportSchema.parse(job.result.validation),
           assistantText: job.result.assistantText,
         }
       : null,

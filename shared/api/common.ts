@@ -1,16 +1,15 @@
 import { z } from 'zod'
 
-export const DECK_ID_PATTERN =
+export const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-export const GENERATION_JOB_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export const DECK_ID_PATTERN = UUID_V4_PATTERN
 
-export const deckIdSchema = z.string().regex(DECK_ID_PATTERN, 'Invalid deck id.')
+export const GENERATION_JOB_ID_PATTERN = UUID_V4_PATTERN
 
-export const generationJobIdSchema = z
-  .string()
-  .regex(GENERATION_JOB_ID_PATTERN, 'Invalid generation job id.')
+export const deckIdSchema = z.string().regex(UUID_V4_PATTERN, 'Invalid deck id.')
+
+export const generationJobIdSchema = z.string().regex(UUID_V4_PATTERN, 'Invalid generation job id.')
 
 export function isValidDeckId(id: string) {
   return DECK_ID_PATTERN.test(id)

@@ -3,24 +3,16 @@ import type {
   StartGenerationJobRequest,
 } from '../../shared/api/generation-jobs.ts'
 import { generationJobResponseSchema } from '../../shared/api/generation-jobs.ts'
-import { ApiResponseError, fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
 import type { GenerationJobStatus } from '../../shared/generation-job.ts'
 
 export type { GenerationJobApi, StartGenerationJobRequest }
 
 async function readGenerationJobResponse(response: Response) {
-  try {
-    const data = await fetchApiJsonOrThrow(response, generationJobResponseSchema, {
-      fallbackMessage: 'Could not load the generation job.',
-    })
-    return data.job
-  } catch (error) {
-    if (error instanceof ApiResponseError && error.code) {
-      throw Object.assign(error, { code: error.code })
-    }
-
-    throw error
-  }
+  const data = await fetchApiJsonOrThrow(response, generationJobResponseSchema, {
+    fallbackMessage: 'Could not load the generation job.',
+  })
+  return data.job
 }
 
 export type StartGenerationJobOptions = StartGenerationJobRequest & {

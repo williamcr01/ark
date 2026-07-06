@@ -189,6 +189,9 @@ export const deckPatchErrorResponseSchema = withRequestId({
 
 export type DeckPatchErrorResponse = z.infer<typeof deckPatchErrorResponseSchema>
 
+export { deckPatchRequestSchema } from '../deck-patch.ts'
+export type { DeckPatchRequest } from '../deck-patch.ts'
+
 export function normalizeDeckVersionSource(source: unknown): DeckVersionSource {
   const parsed = deckVersionSourceSchema.safeParse(source)
   return parsed.success ? parsed.data : 'manual'

@@ -60,7 +60,7 @@ export const generationJobObservabilitySchema = z.object({
 export const generationJobApiResultSchema = z.object({
   deckId: deckIdSchema,
   versionId: deckIdSchema,
-  validation: deckValidationReportSchema.or(z.unknown()),
+  validation: deckValidationReportSchema,
   assistantText: z.string(),
 })
 

@@ -138,6 +138,7 @@ describe('shared API contracts', () => {
     expect(createPreviewSessionRequestSchema.safeParse({ html: '<html></html>' }).success).toBe(
       true,
     )
+    expect(createPreviewSessionRequestSchema.safeParse({ html: '   ' }).success).toBe(false)
     expect(
       previewSessionResponseSchema.parse({
         token: 'abc',
