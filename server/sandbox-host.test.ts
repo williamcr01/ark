@@ -81,7 +81,44 @@ describe('sandbox preview host', () => {
 
     expect(html).toContain('data-ark-preview-nav')
     expect(html).toContain('Content-Security-Policy')
+    expect(html).not.toContain('data-ark-preview-editor')
     expect(html).not.toContain('<script>window.top.location')
+  })
+
+  it('injects the editor bridge for editor-enabled sandbox sessions', async () => {
+    const previewSessionStore = createPreviewSessionStore()
+    const app = createApp({ previewSessionStore })
+
+    apiServer = app.listen(0)
+    const apiPort = (apiServer.address() as AddressInfo).port
+    const apiOrigin = `http://127.0.0.1:${apiPort}`
+    const appOrigin = 'http://localhost:5173'
+
+    const sessionResponse = await fetch(`${apiOrigin}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: plainCssDeck, editorBridge: true }),
+    })
+
+    expect(sessionResponse.status).toBe(201)
+
+    const sessionPayload = (await sessionResponse.json()) as { token: string }
+    const sandboxApp = createSandboxHost({ previewSessionStore, apiOrigin })
+
+    sandboxServer = sandboxApp.listen(0)
+    const sandboxPort = (sandboxServer.address() as AddressInfo).port
+    const sandboxOrigin = `http://127.0.0.1:${sandboxPort}`
+    const renderUrl = buildSandboxRenderUrl(sessionPayload.token, {
+      sandboxOrigin,
+      appOrigin,
+    })
+
+    const renderResponse = await fetch(renderUrl)
+    const html = await renderResponse.text()
+
+    expect(renderResponse.status).toBe(200)
+    expect(html).toContain('data-ark-preview-editor')
+    expect(html).toContain('data-ark-preview-nav')
   })
 
   it('rejects render requests with an invalid parent origin', async () => {

@@ -3,6 +3,10 @@ import { useMemo } from 'react'
 import { useSandboxPreview } from '@/hooks/useSandboxPreview'
 import { getPreviewHtml, useSrcDocPreviewFallback } from '@/lib/deck-preview'
 
+export type DeckPreviewFrameOptions = {
+  editorBridge?: boolean
+}
+
 export type DeckPreviewFrameModel = {
   iframeKey: string
   iframeSrc?: string
@@ -13,15 +17,25 @@ export type DeckPreviewFrameModel = {
   usesSandboxHost: boolean
 }
 
-export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreviewFrameModel {
+export function useDeckPreviewFrame(
+  html: string,
+  enabled: boolean,
+  options: DeckPreviewFrameOptions = {},
+): DeckPreviewFrameModel {
   const usesSrcDocFallback = useSrcDocPreviewFallback()
-  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback)
+  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback, {
+    editorBridge: options.editorBridge,
+  })
 
   return useMemo(() => {
+    const previewOptions = { editorBridge: options.editorBridge }
+
     if (usesSrcDocFallback || !enabled || !html.trim()) {
       return {
-        iframeKey: usesSrcDocFallback ? `srcdoc:${html.length}` : 'empty',
-        iframeSrcDoc: enabled && html.trim() ? getPreviewHtml(html) : undefined,
+        iframeKey: usesSrcDocFallback
+          ? `srcdoc:${options.editorBridge ? 'edit:' : ''}${html.length}`
+          : 'empty',
+        iframeSrcDoc: enabled && html.trim() ? getPreviewHtml(html, previewOptions) : undefined,
         sandboxOrigin: null,
         isLoading: false,
         error: null,
@@ -31,7 +45,9 @@ export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreview
 
     return {
       iframeKey:
-        sandboxPreview.sessionToken ?? sandboxPreview.previewUrl ?? `pending:${html.length}`,
+        sandboxPreview.sessionToken ??
+        sandboxPreview.previewUrl ??
+        `pending:${options.editorBridge ? 'edit:' : ''}${html.length}`,
       iframeSrc: sandboxPreview.previewUrl ?? undefined,
       sandboxOrigin: sandboxPreview.sandboxOrigin,
       isLoading: sandboxPreview.isLoading,
@@ -41,6 +57,7 @@ export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreview
   }, [
     enabled,
     html,
+    options.editorBridge,
     sandboxPreview.error,
     sandboxPreview.isLoading,
     sandboxPreview.previewUrl,

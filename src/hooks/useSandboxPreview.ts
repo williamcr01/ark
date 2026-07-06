@@ -8,6 +8,10 @@ import {
   resolveSandboxOrigin,
 } from '../../shared/sandbox-origin.ts'
 
+export type SandboxPreviewOptions = {
+  editorBridge?: boolean
+}
+
 export type SandboxPreviewState = {
   previewUrl: string | null
   sandboxOrigin: string
@@ -19,7 +23,11 @@ export type SandboxPreviewState = {
 
 const PREVIEW_SESSION_DEBOUNCE_MS = 300
 
-export function useSandboxPreview(html: string, enabled: boolean): SandboxPreviewState {
+export function useSandboxPreview(
+  html: string,
+  enabled: boolean,
+  options: SandboxPreviewOptions = {},
+): SandboxPreviewState {
   const sandboxOrigin = resolveSandboxOrigin()
   const appOrigin = resolveAppOrigin()
   const shouldLoad = enabled && html.trim().length > 0
@@ -69,7 +77,10 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ html: debouncedHtml }),
+          body: JSON.stringify({
+            html: debouncedHtml,
+            editorBridge: options.editorBridge === true,
+          }),
           signal: controller.signal,
         })
 
@@ -111,7 +122,7 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
     return () => {
       controller.abort()
     }
-  }, [appOrigin, debouncedHtml, sandboxOrigin, shouldLoad])
+  }, [appOrigin, debouncedHtml, options.editorBridge, sandboxOrigin, shouldLoad])
 
   if (!shouldLoad) {
     return {
