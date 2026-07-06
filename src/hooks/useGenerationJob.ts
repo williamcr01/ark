@@ -7,7 +7,7 @@ import {
   type AgentStep,
   type ChatMessage,
 } from '../../shared/chat.ts'
-import type { GenerationJob, GenerationJobStatus } from '../../shared/generation-job.ts'
+import type { GenerationJobApi, GenerationJobStatus } from '../../shared/api/generation-jobs.ts'
 import {
   cancelGenerationJob,
   fetchGenerationJob,
@@ -57,13 +57,13 @@ const clearStoredJobId = (deckKey: string) => {
 export type GenerationJobOutcome =
   | {
       status: 'succeeded'
-      job: GenerationJob
+      job: GenerationJobApi
       assistantParts: ReturnType<typeof agentStepsToChatParts>
       assistantContent: string
     }
   | {
       status: 'failed' | 'canceled'
-      job: GenerationJob
+      job: GenerationJobApi
       message: string
       retryable: boolean
     }
@@ -85,10 +85,10 @@ export function useGenerationJob({
   canGenerate,
   onReloadModels,
 }: UseGenerationJobOptions) {
-  const [activeJob, setActiveJob] = useState<GenerationJob | null>(null)
+  const [activeJob, setActiveJob] = useState<GenerationJobApi | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState('')
-  const [failedJob, setFailedJob] = useState<GenerationJob | null>(null)
+  const [failedJob, setFailedJob] = useState<GenerationJobApi | null>(null)
   const pollAbortRef = useRef<AbortController | null>(null)
   const deckKey = deckId ?? 'new'
 
@@ -98,7 +98,7 @@ export function useGenerationJob({
   }, [])
 
   const pollUntilTerminal = useCallback(
-    async (jobId: string): Promise<GenerationJob> => {
+    async (jobId: string): Promise<GenerationJobApi> => {
       stopPolling()
       const controller = new AbortController()
       pollAbortRef.current = controller
@@ -129,13 +129,13 @@ export function useGenerationJob({
     [stopPolling],
   )
 
-  const buildOutcome = useCallback((job: GenerationJob): GenerationJobOutcome => {
+  const buildOutcome = useCallback((job: GenerationJobApi): GenerationJobOutcome => {
     if (job.status === 'succeeded' && job.result) {
       const steps = job.progress.steps
       const assistantContent = buildAssistantMessageContent(
         job.result.assistantText,
         steps,
-        job.request.editingExistingDeck ?? false,
+        job.editingExistingDeck ?? false,
       )
 
       return {
@@ -161,7 +161,7 @@ export function useGenerationJob({
   }, [])
 
   const finalizeJob = useCallback(
-    (job: GenerationJob) => {
+    (job: GenerationJobApi) => {
       clearStoredJobId(deckKey)
       setActiveJob(job)
       setIsGenerating(false)

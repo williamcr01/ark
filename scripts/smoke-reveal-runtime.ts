@@ -972,7 +972,7 @@ async function runSmoke() {
       await stopServers(servers)
     }
 
-    await rm(tempRoot, { force: true, recursive: true })
+    await rm(tempRoot, { force: true, maxRetries: 5, recursive: true, retryDelay: 250 })
   }
 }
 
