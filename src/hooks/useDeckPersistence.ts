@@ -7,6 +7,7 @@ import {
   fetchDeckVersion,
   listDeckVersions,
   listDecks,
+  patchDeck,
   renameDeck,
   rollbackDeck,
   updateDeck,
@@ -14,8 +15,10 @@ import {
   type DeckVersionDetail,
   type DeckVersionOptions,
   type DeckVersionSummary,
+  type PatchDeckResponse,
   type StoredDeck,
 } from '@/lib/deck-api'
+import type { DeckPatchOperation } from '../../shared/deck-patch.ts'
 
 const ACTIVE_DECK_STORAGE_KEY = 'ark:active-deck-id'
 
@@ -431,6 +434,72 @@ export function useDeckPersistence() {
     [deckId, refreshVersions, setActiveDeck],
   )
 
+  const applyPatchedDeck = useCallback(
+    (patchResult: PatchDeckResponse) => {
+      const { deck, patch } = patchResult
+
+      setHtml(deck.html)
+      setSavedHtml(deck.html)
+      setActiveVersionId(deck.activeVersionId ?? null)
+      setVersionNumber(deck.versionNumber ?? null)
+      setPreviewVersion(null)
+      setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+      void refreshVersions(deck.id)
+
+      return patch.suggestedActiveSlideIndex
+    },
+    [refreshVersions],
+  )
+
+  const patchDeckOperations = useCallback(
+    async (
+      operations: DeckPatchOperation[],
+      activeSlideIndex?: number,
+      options: DeckVersionOptions = {},
+    ) => {
+      if (!deckId) {
+        throw new Error('Save the deck before editing.')
+      }
+
+      const requestId = ++saveRequestIdRef.current
+
+      setIsSaving(true)
+      setSaveError('')
+
+      try {
+        const patchResult = await patchDeck(deckId, {
+          operations,
+          activeSlideIndex,
+          source: options.source ?? 'manual',
+          summary: options.summary,
+          modelProvider: options.modelProvider,
+          modelName: options.modelName,
+        })
+
+        if (requestId !== saveRequestIdRef.current) {
+          return undefined
+        }
+
+        const suggestedSlideIndex = applyPatchedDeck(patchResult)
+        return { ...patchResult, suggestedSlideIndex }
+      } catch (error) {
+        if (requestId !== saveRequestIdRef.current) {
+          return undefined
+        }
+
+        const message = error instanceof Error ? error.message : 'Could not patch the deck.'
+
+        setSaveError(message)
+        throw error
+      } finally {
+        if (requestId === saveRequestIdRef.current) {
+          setIsSaving(false)
+        }
+      }
+    },
+    [applyPatchedDeck, deckId],
+  )
+
   const hasDeck = html.length > 0
   const isDirty = hasDeck && html !== savedHtml
 
@@ -448,6 +517,7 @@ export function useDeckPersistence() {
     isLoading,
     isLoadingVersions,
     isSaving,
+    patchDeckOperations,
     persistHtml,
     previewVersion,
     refreshActiveDeck,
