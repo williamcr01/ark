@@ -27,8 +27,10 @@ import {
   type EditorTransformPreviewMessage,
   postEditorShellMessage,
 } from '../../shared/deck-editor-bridge.ts'
-import { getDeckBridgeTargetOrigin } from '../../shared/deck-bridge.ts'
-import { isAllowedBridgeMessageOrigin } from '../../shared/sandbox-origin.ts'
+import {
+  DECK_BRIDGE_POST_MESSAGE_TARGET,
+  isAllowedBridgeMessageOrigin,
+} from '../../shared/sandbox-origin.ts'
 
 export type DeckEditorBridgeState = {
   editorReady: boolean
@@ -39,6 +41,7 @@ export type DeckEditorBridgeState = {
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
   textEditActive: boolean
+  hoverGeometry: EditorNormalizedRect | null
   lastTextCommit: {
     elementId: string
     slideIndex: number
@@ -67,6 +70,7 @@ const initialState: DeckEditorBridgeState = {
   transformPreview: null,
   transformCommit: null,
   textEditActive: false,
+  hoverGeometry: null,
   lastTextCommit: null,
 }
 
@@ -78,7 +82,7 @@ export function useDeckEditorBridge(
     enabled,
     activeSlideIndex,
     sandboxOrigin = null,
-    parentOrigin = null,
+    parentOrigin: _parentOrigin = null,
     iframeGenerationKey = '',
     onSelectionChange,
     onEditorError,
@@ -99,14 +103,10 @@ export function useDeckEditorBridge(
         return false
       }
 
-      postEditorShellMessage(
-        iframeWindow,
-        message,
-        getDeckBridgeTargetOrigin(parentOrigin ?? undefined),
-      )
+      postEditorShellMessage(iframeWindow, message, DECK_BRIDGE_POST_MESSAGE_TARGET)
       return true
     },
-    [iframeRef, parentOrigin],
+    [iframeRef],
   )
 
   const enableEditor = useCallback(
@@ -201,6 +201,7 @@ export function useDeckEditorBridge(
         setState((current) => ({
           ...current,
           hover: { elementId: data.elementId, slideIndex: data.slideIndex },
+          hoverGeometry: current.hover?.elementId === data.elementId ? current.hoverGeometry : null,
         }))
         return
       }
@@ -215,10 +216,26 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorGeometryMessage(data)) {
-        setState((current) => ({
-          ...current,
-          geometry: data.geometry,
-        }))
+        setState((current) => {
+          if (current.selection?.elementId === data.elementId) {
+            return {
+              ...current,
+              geometry: data.geometry,
+            }
+          }
+
+          if (current.hover?.elementId === data.elementId) {
+            return {
+              ...current,
+              hoverGeometry: data.geometry,
+            }
+          }
+
+          return {
+            ...current,
+            geometry: data.geometry,
+          }
+        })
         return
       }
 

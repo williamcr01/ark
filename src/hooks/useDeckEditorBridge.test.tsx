@@ -11,7 +11,11 @@ import {
   createEditorSelectionChangeMessage,
   createEditorTextEditStateMessage,
 } from '../../shared/deck-editor-bridge.ts'
-import { OPAQUE_SANDBOX_ORIGIN, resolveSandboxOrigin } from '../../shared/sandbox-origin.ts'
+import {
+  DECK_BRIDGE_POST_MESSAGE_TARGET,
+  OPAQUE_SANDBOX_ORIGIN,
+  resolveSandboxOrigin,
+} from '../../shared/sandbox-origin.ts'
 
 import { useDeckEditorBridge } from './useDeckEditorBridge'
 
@@ -125,7 +129,7 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
   })
 
-  it('posts validated shell messages to the iframe window', async () => {
+  it('posts validated shell messages to an opaque sandbox iframe', async () => {
     const user = userEvent.setup()
     render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
     const iframeWindow = getIframeWindow()
@@ -133,7 +137,10 @@ describe('useDeckEditorBridge', () => {
 
     await user.click(screen.getByRole('button', { name: 'Enable editor' }))
 
-    expect(postMessage).toHaveBeenCalledWith(createEditorEnableMessage(0), expect.any(String))
+    expect(postMessage).toHaveBeenCalledWith(
+      createEditorEnableMessage(0),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
   })
 
   it('surfaces bridge errors without throwing', async () => {
