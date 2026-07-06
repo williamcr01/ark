@@ -375,6 +375,7 @@ describe('useChatSession', () => {
         { id: 'm1', role: 'user', content: 'synced' },
         { id: 'm2', role: 'user', content: 'unsynced' },
       ],
+      failedPersistIds: ['m2'],
       updatedAt: new Date().toISOString(),
     })
 
@@ -430,6 +431,35 @@ describe('useChatSession', () => {
       { id: 'm2', role: 'user', content: 'unsynced' },
     ])
     expect(result.current.failedPersistIds).toEqual(new Set(['m2']))
+  })
+
+  it('does not resurrect stale cached messages cleared on the server', async () => {
+    writeChatSession('deck-1', {
+      messages: [
+        { id: 'm1', role: 'user', content: 'old cache' },
+        { id: 'm2', role: 'assistant', content: 'also stale' },
+      ],
+      updatedAt: new Date().toISOString(),
+    })
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        thread: null,
+        messages: [],
+        hasMore: false,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.messages).toEqual([])
+    expect(result.current.failedPersistIds).toEqual(new Set())
   })
 
   it('surfaces reset failures through the callback', async () => {

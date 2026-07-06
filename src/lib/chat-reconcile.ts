@@ -1,9 +1,8 @@
 import type { ChatMessage } from '../../shared/chat.ts'
 
 /**
- * Merge server chat with local cache without dropping messages that never
- * reached the server. Preserves local ordering for messages the user already
- * saw; appends server-only messages (e.g. from another device) at the end.
+ * Merge server chat with local state, preserving only messages explicitly marked
+ * as failed to persist. Server history is authoritative for everything else.
  */
 export function reconcileChatMessages(
   localMessages: ChatMessage[],
@@ -11,13 +10,7 @@ export function reconcileChatMessages(
   knownFailedIds: Iterable<string> = [],
 ): { messages: ChatMessage[]; failedIds: Set<string> } {
   const serverMap = new Map(serverMessages.map((message) => [message.id, message]))
-  const failedIds = new Set(knownFailedIds)
-
-  for (const local of localMessages) {
-    if (!serverMap.has(local.id)) {
-      failedIds.add(local.id)
-    }
-  }
+  const failedIds = new Set([...knownFailedIds].filter((id) => !serverMap.has(id)))
 
   const merged: ChatMessage[] = []
   const included = new Set<string>()
@@ -28,7 +21,6 @@ export function reconcileChatMessages(
     if (server) {
       merged.push(server)
       included.add(local.id)
-      failedIds.delete(local.id)
       continue
     }
 

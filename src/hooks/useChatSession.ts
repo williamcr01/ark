@@ -54,7 +54,13 @@ export function useChatSession({
     () => readChatSession(deckId)?.messages ?? createChatSession().messages,
   )
   const [isLoading, setIsLoading] = useState(Boolean(deckId))
-  const [failedPersistIds, setFailedPersistIds] = useState<Set<string>>(() => new Set())
+  const [failedPersistIds, setFailedPersistIds] = useState<Set<string>>(() => {
+    if (!deckId) {
+      return new Set()
+    }
+
+    return new Set(readChatSession(deckId)?.failedPersistIds ?? [])
+  })
   const [deliveryStatus, setDeliveryStatus] = useState<Map<string, MessageDeliveryStatus>>(
     () => new Map(),
   )
@@ -92,7 +98,7 @@ export function useChatSession({
       setFailedPersistIds(failedIds)
       setDeliveryStatus(buildDeliveryStatusMap(merged, failedIds))
 
-      return merged
+      return { messages: merged, failedIds }
     },
     [],
   )
@@ -118,7 +124,9 @@ export function useChatSession({
         return
       }
 
-      const localMessages = readChatSession(deckId)?.messages ?? []
+      const localSession = readChatSession(deckId)
+      const localMessages = localSession?.messages ?? []
+      const storedFailedIds = new Set(localSession?.failedPersistIds ?? [])
 
       try {
         const data = await fetchAllDeckChat(deckId)
@@ -128,10 +136,15 @@ export function useChatSession({
           return
         }
 
-        const merged = applyReconciledMessages(localMessages, serverMessages)
+        const { messages: merged, failedIds } = applyReconciledMessages(
+          localMessages,
+          serverMessages,
+          storedFailedIds,
+        )
         writeChatSession(deckId, {
           messages: merged,
           updatedAt: new Date().toISOString(),
+          failedPersistIds: [...failedIds],
         })
       } catch {
         if (loadRequestIdRef.current !== requestId) {
@@ -154,8 +167,9 @@ export function useChatSession({
     writeChatSession(deckId, {
       messages,
       updatedAt: new Date().toISOString(),
+      ...(deckId ? { failedPersistIds: [...failedPersistIds] } : {}),
     })
-  }, [deckId, messages])
+  }, [deckId, failedPersistIds, messages])
 
   const markDeliveryStatus = useCallback(
     (messageId: string, status: MessageDeliveryStatus) => {
@@ -281,11 +295,15 @@ export function useChatSession({
       try {
         const data = await fetchAllDeckChat(activeDeckId)
         const serverMessages = data.messages.map(persistedMessageToChatMessage)
-        const merged = applyReconciledMessages(localMessages, serverMessages)
+        const { messages: merged, failedIds } = applyReconciledMessages(
+          localMessages,
+          serverMessages,
+        )
         setIsReloadStale(false)
         writeChatSession(activeDeckId, {
           messages: merged,
           updatedAt: new Date().toISOString(),
+          failedPersistIds: [...failedIds],
         })
         return merged
       } catch {
