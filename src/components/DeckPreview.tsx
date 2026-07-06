@@ -29,7 +29,7 @@ import { parseDeckSlides } from '@/lib/deck-slides'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
-import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
+import { validateDeckHtmlInBrowser } from '../../shared/deck-validate.ts'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 

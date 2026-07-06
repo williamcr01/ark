@@ -29,7 +29,7 @@ import {
 } from '@/lib/deck-io'
 import { deckHasExecutableContent, type DeckDownloadVariant } from '@/lib/deck-export'
 import { parseDeckSlides } from '@/lib/deck-slides'
-import type { DeckValidationReport } from '@/lib/deck-validate'
+import type { DeckValidationReport } from '../shared/deck-validate.ts'
 import { newId } from '@/lib/id'
 import {
   startRevealThumbnailStylesPreload,

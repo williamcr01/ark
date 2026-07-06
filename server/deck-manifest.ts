@@ -5,7 +5,7 @@ import {
 } from '../shared/deck-runtime-manifest.ts'
 import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import type { DeckValidationReport } from '../src/lib/deck-validate.ts'
+import type { DeckValidationReport } from '../shared/deck-validate.ts'
 
 function resolveUsesRevealAdapter(
   validation: DeckValidationReport,

@@ -1,4 +1,4 @@
-import { collectExternalUrls, NETWORK_REQUEST_ERROR_MESSAGE } from '../../shared/deck-network.ts'
+import { collectExternalUrls, NETWORK_REQUEST_ERROR_MESSAGE } from './deck-network.ts'
 import {
   collectInvalidRuntimeMarkers,
   collectRuntimeAssetReferences,
@@ -6,14 +6,14 @@ import {
   readDeckRuntimeLibraryMarkers,
   resolveDeckApprovedRuntime,
   validateRuntimeAssetReferences,
-} from '../../shared/deck-runtime-registry.ts'
+} from './deck-runtime-registry.ts'
 
-import { findSlideElements } from '../../shared/deck-preview-slides.ts'
+import { findSlideElements } from './deck-preview-slides.ts'
 import {
   detectRuntimeModeFromDocument,
   runtimeModeAllowsDeckScripts,
   type DeckRuntimeMode,
-} from './deck-runtime'
+} from './deck-runtime.ts'
 
 export type DeckScriptInfo = {
   inline: boolean

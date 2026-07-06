@@ -36,5 +36,21 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  {
+    files: ['server/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/src/*', '../src/*', '../src/**'],
+              message: 'Server code must not import from src/. Use shared/ instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   eslintConfigPrettier,
 ])
