@@ -1,4 +1,4 @@
-import type { DeckValidationReport } from '../src/lib/deck-validate.ts'
+import type { DeckValidationReport } from '../shared/deck-validate.ts'
 
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 

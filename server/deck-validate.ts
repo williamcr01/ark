@@ -1,6 +1,6 @@
 import { JSDOM } from 'jsdom'
 
-import { validateDeckHtml, type DeckValidationReport } from '../src/lib/deck-validate.ts'
+import { validateDeckHtml, type DeckValidationReport } from '../shared/deck-validate.ts'
 
 export type { DeckValidationReport }
 

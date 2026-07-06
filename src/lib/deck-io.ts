@@ -3,7 +3,7 @@ import {
   formatDeckValidationSummary,
   validateDeckHtmlInBrowser,
   type DeckValidationReport,
-} from '@/lib/deck-validate'
+} from '../../shared/deck-validate.ts'
 
 export type DownloadHtmlOptions = {
   variant?: DeckDownloadVariant

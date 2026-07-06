@@ -34,7 +34,7 @@ import {
 } from '@/lib/deck-runtime'
 import { getPreviewHtml } from '@/lib/deck-preview'
 import { parseDeckSlides, stripDeckScriptsForPreview } from '@/lib/deck-slides'
-import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
+import { validateDeckHtmlInBrowser } from '../../shared/deck-validate.ts'
 
 type SecurityFixture = {
   name: string
