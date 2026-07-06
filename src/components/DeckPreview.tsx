@@ -6,10 +6,10 @@ import {
   MonitorPlayIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
-  TypeIcon,
   WandSparklesIcon,
 } from 'lucide-react'
 
+import { EditModeToolbar, PreviewEditModeToggle } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
 import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
@@ -32,6 +32,7 @@ import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
 import { validateDeckHtmlInBrowser } from '@/lib/deck-validate'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
+import type { EditorTool } from '../../shared/deck-editor-bridge.ts'
 
 export type DeckTextEditCommit = {
   elementId: string
@@ -70,6 +71,7 @@ export function DeckPreview({
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
   const [editModeActive, setEditModeActive] = useState(false)
+  const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
   const processedTextCommitRef = useRef<string | null>(null)
@@ -85,12 +87,14 @@ export function DeckPreview({
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
   const hasSlides = parsedDeck.slideCount > 0
-  const editorBridgeInjected = editorBridgeEnabled && editModeActive
+  const editChromeActive = editModeActive && !isGenerating
+  const editorBridgeInjected = editorBridgeEnabled && editChromeActive
   const previewFrame = useDeckPreviewFrame(html, html.length > 0 && hasSlides && !isPresentOpen, {
     editorBridge: editorBridgeInjected,
   })
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
+  const textEditActiveRef = useRef(false)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
@@ -99,6 +103,7 @@ export function DeckPreview({
     {
       runtimeMode,
       keyboardMode: isPresentOpen ? 'off' : 'preview',
+      shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,
       onRuntimeError: (message, source) => {
         const fingerprint = `${message}:${source ?? ''}`
@@ -131,7 +136,9 @@ export function DeckPreview({
   const {
     editorReady,
     selection,
+    hover,
     geometry,
+    hoverGeometry,
     editorError,
     lastTextCommit,
     textEditActive,
@@ -140,6 +147,7 @@ export function DeckPreview({
     requestGeometry,
     startTextEdit,
     cancelTextEdit,
+    setTool,
   } = useDeckEditorBridge(iframeRef, {
     enabled: editorBridgeInjected && html.length > 0 && hasSlides && !isPresentOpen,
     activeSlideIndex,
@@ -147,9 +155,13 @@ export function DeckPreview({
     iframeGenerationKey: previewFrame.iframeKey,
   })
 
+  useEffect(() => {
+    textEditActiveRef.current = textEditActive
+  }, [textEditActive])
+
   const canEditSelectedText = useMemo(
-    () => editModeActive && isTextEditableSelection(selection),
-    [editModeActive, selection],
+    () => editChromeActive && isTextEditableSelection(selection),
+    [editChromeActive, selection],
   )
 
   const beginTextEdit = useCallback(() => {
@@ -167,6 +179,37 @@ export function DeckPreview({
 
     cancelTextEdit()
   }, [cancelTextEdit, textEditActive])
+
+  const exitEditMode = useCallback(() => {
+    endTextEditing()
+    disableEditor()
+    setActiveTool('select')
+    setEditModeActive(false)
+  }, [disableEditor, endTextEditing])
+
+  const handleEditModeChange = useCallback(
+    (nextActive: boolean) => {
+      if (!nextActive) {
+        exitEditMode()
+        return
+      }
+
+      if (!(html.length > 0 && hasSlides && !isGenerating)) {
+        return
+      }
+
+      setEditModeActive(true)
+    },
+    [exitEditMode, hasSlides, html.length, isGenerating],
+  )
+
+  const handleToolChange = useCallback(
+    (tool: EditorTool) => {
+      setActiveTool(tool)
+      setTool(tool)
+    },
+    [setTool],
+  )
 
   useEffect(() => {
     if (!lastTextCommit || !onCommitTextEdit) {
@@ -210,7 +253,7 @@ export function DeckPreview({
   }, [goToSlide, html, previewFrame.iframeKey])
 
   useEffect(() => {
-    if (!editModeActive) {
+    if (!editChromeActive) {
       return
     }
 
@@ -219,6 +262,12 @@ export function DeckPreview({
         if (textEditActive) {
           event.preventDefault()
           endTextEditing()
+          return
+        }
+
+        if (activeTool !== 'select') {
+          event.preventDefault()
+          handleToolChange('select')
         }
 
         return
@@ -251,23 +300,59 @@ export function DeckPreview({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [beginTextEdit, canEditSelectedText, editModeActive, endTextEditing, textEditActive])
+  }, [
+    activeTool,
+    beginTextEdit,
+    canEditSelectedText,
+    editChromeActive,
+    endTextEditing,
+    handleToolChange,
+    textEditActive,
+  ])
+
+  useEffect(() => {
+    if (!editModeActive || !isGenerating) {
+      return
+    }
+
+    endTextEditing()
+    disableEditor()
+  }, [disableEditor, editModeActive, endTextEditing, isGenerating])
 
   useEffect(() => {
     if (!editorBridgeInjected || !editorReady) {
       return
     }
 
-    enableEditor(activeSlideIndex)
-  }, [activeSlideIndex, editorBridgeInjected, editorReady, enableEditor, previewFrame.iframeKey])
+    enableEditor(activeSlideIndex, activeTool)
+  }, [
+    activeSlideIndex,
+    activeTool,
+    editorBridgeInjected,
+    editorReady,
+    enableEditor,
+    previewFrame.iframeKey,
+  ])
 
   useEffect(() => {
-    if (!editModeActive || !selection?.elementId) {
+    if (!editChromeActive || !selection?.elementId) {
       return
     }
 
     requestGeometry(selection.elementId, selection.slideIndex)
-  }, [editModeActive, requestGeometry, selection])
+  }, [editChromeActive, requestGeometry, selection])
+
+  useEffect(() => {
+    if (!editChromeActive || !hover?.elementId) {
+      return
+    }
+
+    if (hover.elementId === selection?.elementId) {
+      return
+    }
+
+    requestGeometry(hover.elementId, hover.slideIndex)
+  }, [editChromeActive, hover, requestGeometry, selection?.elementId])
 
   useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
@@ -294,7 +379,15 @@ export function DeckPreview({
             aria-hidden
             className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
           />
-          <span className="truncate text-xs font-medium">Preview</span>
+          {editorBridgeEnabled ? (
+            <PreviewEditModeToggle
+              active={editModeActive}
+              disabled={!canPresent || isPresentOpen}
+              onChange={handleEditModeChange}
+            />
+          ) : (
+            <span className="truncate text-xs font-medium">Preview</span>
+          )}
           <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
             ›
           </span>
@@ -315,49 +408,6 @@ export function DeckPreview({
             <Maximize2Icon className="size-3" />
             Present
           </button>
-          {editorBridgeEnabled ? (
-            <button
-              aria-label={editModeActive ? 'Disable edit mode' : 'Enable edit mode'}
-              aria-pressed={editModeActive}
-              className={cn(
-                'inline-flex h-6 items-center rounded-sm border px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45',
-                editModeActive
-                  ? 'border-[var(--ark-accent)] bg-[var(--ark-accent-soft)] text-[var(--ark-accent)]'
-                  : 'border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] text-[var(--ark-titlebar-fg)] hover:bg-[var(--ark-titlebar-hover)]',
-              )}
-              disabled={!canPresent || isPresentOpen}
-              onClick={() => {
-                if (editModeActive) {
-                  endTextEditing()
-                  disableEditor()
-                  setEditModeActive(false)
-                  return
-                }
-
-                setEditModeActive(true)
-              }}
-              type="button"
-            >
-              {editModeActive ? 'Editing' : 'Edit'}
-            </button>
-          ) : null}
-          {editModeActive && canEditSelectedText ? (
-            <button
-              aria-label="Edit selected text"
-              className="inline-flex h-6 items-center gap-1 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={textEditActive || isTextEditSaving}
-              onClick={beginTextEdit}
-              type="button"
-            >
-              <TypeIcon className="size-3" />
-              Edit text
-            </button>
-          ) : null}
-          {editModeActive && selection?.locked ? (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-              Locked
-            </span>
-          ) : null}
           {isTextEditSaving ? (
             <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
               <Loader2Icon className="size-3 animate-spin" />
@@ -383,6 +433,21 @@ export function DeckPreview({
           </span>
         </span>
       </div>
+
+      {editorBridgeEnabled && editChromeActive ? (
+        <EditModeToolbar
+          activeTool={activeTool}
+          canEditText={canEditSelectedText}
+          hasDeck={html.length > 0 && hasSlides}
+          hasSelection={Boolean(selection?.elementId)}
+          isGenerating={isGenerating}
+          isSaving={isTextEditSaving}
+          onEditText={beginTextEdit}
+          onToolChange={handleToolChange}
+          selectionLocked={selection?.locked ?? false}
+          textEditActive={textEditActive}
+        />
+      ) : null}
 
       <div
         className={cn(
@@ -417,7 +482,7 @@ export function DeckPreview({
                   key={previewFrame.iframeKey}
                   onLoad={() => {
                     if (editorBridgeInjected) {
-                      enableEditor(activeSlideIndex)
+                      enableEditor(activeSlideIndex, activeTool)
                     }
                   }}
                   ref={iframeRef}
@@ -439,9 +504,10 @@ export function DeckPreview({
                     Loading sandbox preview…
                   </div>
                 ) : null}
-                {editModeActive ? (
+                {editChromeActive ? (
                   <EditorSelectionOverlay
                     geometry={geometry}
+                    hoverGeometry={hoverGeometry}
                     isEditing={textEditActive}
                     locked={selection?.locked ?? false}
                     scale={previewFrameScale}

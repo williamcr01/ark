@@ -39,6 +39,7 @@ export type DeckEditorBridgeState = {
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
   textEditActive: boolean
+  hoverGeometry: EditorNormalizedRect | null
   lastTextCommit: {
     elementId: string
     slideIndex: number
@@ -67,6 +68,7 @@ const initialState: DeckEditorBridgeState = {
   transformPreview: null,
   transformCommit: null,
   textEditActive: false,
+  hoverGeometry: null,
   lastTextCommit: null,
 }
 
@@ -201,6 +203,7 @@ export function useDeckEditorBridge(
         setState((current) => ({
           ...current,
           hover: { elementId: data.elementId, slideIndex: data.slideIndex },
+          hoverGeometry: current.hover?.elementId === data.elementId ? current.hoverGeometry : null,
         }))
         return
       }
@@ -215,10 +218,26 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorGeometryMessage(data)) {
-        setState((current) => ({
-          ...current,
-          geometry: data.geometry,
-        }))
+        setState((current) => {
+          if (current.selection?.elementId === data.elementId) {
+            return {
+              ...current,
+              geometry: data.geometry,
+            }
+          }
+
+          if (current.hover?.elementId === data.elementId) {
+            return {
+              ...current,
+              hoverGeometry: data.geometry,
+            }
+          }
+
+          return {
+            ...current,
+            geometry: data.geometry,
+          }
+        })
         return
       }
 

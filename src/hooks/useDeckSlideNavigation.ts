@@ -24,6 +24,7 @@ export type DeckNavOptions = {
   runtimeMode?: DeckRuntimeMode
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
+  shouldSuspendKeyboard?: () => boolean
   sandboxOrigin?: string | null
   onSlideChange?: (index: number) => void
   onDeckReady?: (payload: { index: number; slideCount: number; metadata: DeckMetadata }) => void
@@ -105,6 +106,7 @@ export function useDeckSlideNavigation(
   const {
     initialSlideIndex = 0,
     keyboardMode = 'preview',
+    shouldSuspendKeyboard,
     sandboxOrigin = null,
     onSlideChange,
     onDeckReady,
@@ -284,6 +286,10 @@ export function useDeckSlideNavigation(
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldSuspendKeyboard?.()) {
+        return
+      }
+
       if (isTypingTarget(event.target)) {
         return
       }
@@ -314,7 +320,7 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [enabled, goToSlide, keyboardMode, slideCount])
+  }, [enabled, goToSlide, keyboardMode, shouldSuspendKeyboard, slideCount])
 
   useEffect(() => {
     if (!enabled || slideCount === 0 || !syncOnLoad) {
