@@ -54,6 +54,9 @@ export function withDomEnvironment<T>(callback: () => T): T {
   }
 }
 
-export function renderPreviewHtml(html: string, options: { parentOrigin?: string } = {}) {
+export function renderPreviewHtml(
+  html: string,
+  options: { parentOrigin?: string; editorBridge?: boolean } = {},
+) {
   return withDomEnvironment(() => buildPreviewHtml(html, options))
 }

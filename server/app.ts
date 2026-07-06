@@ -247,7 +247,10 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.post(
     '/api/preview-sessions',
-    async (request: Request<unknown, unknown, { html?: string }>, response: Response) => {
+    async (
+      request: Request<unknown, unknown, { html?: string; editorBridge?: boolean }>,
+      response: Response,
+    ) => {
       const html = request.body.html ?? ''
 
       if (!html.trim()) {
@@ -255,7 +258,9 @@ export function createApp(options: CreateAppOptions = {}) {
         return
       }
 
-      const session = previewSessionStore.createSession(html)
+      const session = previewSessionStore.createSession(html, {
+        editorBridge: request.body.editorBridge === true,
+      })
 
       response.status(201).json({
         token: session.token,
@@ -289,6 +294,7 @@ export function createApp(options: CreateAppOptions = {}) {
       response.json({
         token: session.token,
         html: session.html,
+        editorBridge: session.editorBridge,
         expiresAt: session.expiresAt,
       })
     },

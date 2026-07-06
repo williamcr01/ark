@@ -23,7 +23,9 @@ export function useDeckPreviewFrame(
   options: DeckPreviewFrameOptions = {},
 ): DeckPreviewFrameModel {
   const usesSrcDocFallback = useSrcDocPreviewFallback()
-  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback)
+  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback, {
+    editorBridge: options.editorBridge,
+  })
 
   return useMemo(() => {
     const previewOptions = { editorBridge: options.editorBridge }

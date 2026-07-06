@@ -59,12 +59,16 @@ export function createSandboxHost(options: CreateSandboxHostOptions) {
         )
 
         if (sessionResponse.ok) {
-          const payload = (await sessionResponse.json()) as { html?: string }
+          const payload = (await sessionResponse.json()) as {
+            html?: string
+            editorBridge?: boolean
+          }
 
           if (payload.html?.trim()) {
             session = {
               token,
               html: payload.html,
+              editorBridge: payload.editorBridge === true,
               createdAt: Date.now(),
               expiresAt: Date.now() + 60_000,
             }
@@ -80,7 +84,10 @@ export function createSandboxHost(options: CreateSandboxHostOptions) {
       return
     }
 
-    const previewHtml = renderPreviewHtml(session.html, { parentOrigin })
+    const previewHtml = renderPreviewHtml(session.html, {
+      parentOrigin,
+      editorBridge: session.editorBridge,
+    })
 
     applySandboxSecurityHeaders(response, parentOrigin)
     response.type('html').send(previewHtml)
