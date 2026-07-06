@@ -30,9 +30,16 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
     slides: parsed.slides.map((slide) => ({
       index: slide.index,
       slideId: slide.slideId,
+      slideIdTransient: slide.slideIdTransient,
       title: slide.title,
       preview: slide.preview,
       notes: slide.notes,
+    })),
+    editableElements: parsed.editableElements.map((group) => ({
+      slideIndex: group.slideIndex,
+      slideId: group.slideId,
+      slideIdTransient: group.slideIdTransient,
+      elements: group.elements,
     })),
     styles: parsed.styles.map((style) => ({
       index: style.index,

@@ -10,6 +10,7 @@ import type {
 import { ACTIVE_GENERATION_JOB_STATUSES } from '../shared/generation-job.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'
+import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import { type ChatStore } from './chat-record.ts'
 import {
   ensureChatThreadForJob,
@@ -276,13 +277,16 @@ export function createGenerationJobRunner({
           return
         }
 
-        const updatedDeck = await deckStore.updateDeck(targetDeckId, agentResult.html, {
-          source: 'agent',
-          summary: refreshed.request.editingExistingDeck ? 'AI edit' : 'AI generation',
-          modelProvider: provider,
-          modelName: refreshed.model,
-          validationStatus: 'valid',
-        })
+        const updatedDeck = await deckStore.updateDeck(
+          targetDeckId,
+          agentResult.html,
+          buildDeckVersionOptions(agentResult.html, {
+            source: 'agent',
+            summary: refreshed.request.editingExistingDeck ? 'AI edit' : 'AI generation',
+            modelProvider: provider,
+            modelName: refreshed.model,
+          }),
+        )
 
         if (!updatedDeck) {
           const failedJob = await jobStore.updateJob(jobId, {
@@ -345,13 +349,15 @@ export function createGenerationJobRunner({
         return
       }
 
-      const createdDeck = await deckStore.createDeck(agentResult.html, {
-        source: 'agent',
-        summary: 'AI generation',
-        modelProvider: provider,
-        modelName: refreshed.model,
-        validationStatus: 'valid',
-      })
+      const createdDeck = await deckStore.createDeck(
+        agentResult.html,
+        buildDeckVersionOptions(agentResult.html, {
+          source: 'agent',
+          summary: 'AI generation',
+          modelProvider: provider,
+          modelName: refreshed.model,
+        }),
+      )
 
       if (chatStore) {
         await persistInitialDeckChatHistory(

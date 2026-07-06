@@ -48,6 +48,8 @@ describe('parseDeckHtml', () => {
       title: 'Quarterly planning',
       preview: expect.stringContaining('Quarterly planning'),
       notes: null,
+      slideId: 'transient-slide-0',
+      slideIdTransient: true,
     })
     expect(parsed.styles).toHaveLength(1)
     expect(parsed.styles[0]?.inline).toBe(true)
@@ -118,9 +120,17 @@ describe('parseDeckHtml', () => {
 
     expect(parsed.slideCount).toBe(0)
     expect(parsed.slides).toEqual([])
+    expect(parsed.editableElements).toEqual([])
     expect(parsed.styles).toEqual([])
     expect(parsed.scripts).toEqual([])
     expect(parsed.assets).toEqual([])
+  })
+
+  it('returns editableElements grouped by slide', () => {
+    const parsed = parseDeckHtml(plainCssDeck)
+
+    expect(parsed.editableElements).toHaveLength(parsed.slideCount)
+    expect(parsed.editableElements[0]?.elements.length).toBeGreaterThan(0)
   })
 })
 
