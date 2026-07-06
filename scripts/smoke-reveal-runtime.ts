@@ -50,6 +50,7 @@ const requiredRuntimeAssetPaths = [
 ]
 const requiredRuntimeFontAssetPath =
   '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff'
+const SMOKE_SLOW_TIMEOUT_MS = 45_000
 
 function networkIncludesAssetPaths(requestUrls: Map<string, string>, assetPaths: string[]) {
   const urls = [...requestUrls.values()]
@@ -681,22 +682,32 @@ async function runSmoke() {
 
     await setUploadFile(cdp, revealFixturePath)
 
-    await waitFor('uploaded Reveal deck in shell', async () => {
-      const text = await evaluate<string>(cdp!, 'document.body.innerText')
-      return text.includes('Reveal Registry Deck') && text.includes('Slide 1 of 2')
-    })
+    await waitFor(
+      'uploaded Reveal deck in shell',
+      async () => {
+        const text = await evaluate<string>(cdp!, 'document.body.innerText')
+        return text.includes('Reveal Registry Deck') && text.includes('Slide 1 of 2')
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
 
-    const mainPreviewSrc = await waitFor('main sandbox preview iframe src', async () => {
-      const src = await evaluate<string>(
-        cdp!,
-        `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
-      )
+    const mainPreviewSrc = await waitFor(
+      'main sandbox preview iframe src',
+      async () => {
+        const src = await evaluate<string>(
+          cdp!,
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
 
-      return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
-    })
+        return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
 
-    const mainPreview = await waitFor('main sandbox preview frame context', () =>
-      findContextByUrl(cdp!, contexts, mainPreviewSrc),
+    const mainPreview = await waitFor(
+      'main sandbox preview frame context',
+      () => findContextByUrl(cdp!, contexts, mainPreviewSrc),
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
     const renderedPreviewHtml = await (await fetch(mainPreviewSrc)).text()
@@ -720,31 +731,36 @@ async function runSmoke() {
       return !loading
     })
 
-    await waitFor('approved runtime asset requests', async () => {
-      const revealReady = await evaluate<boolean>(
-        cdp!,
-        `(() => {
-          const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
-          const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
-          return (
-            typeof window.Reveal !== 'undefined' &&
-            scripts.some((src) => src.includes('/api/runtimes/reveal.js/5.1.0/reveal.js')) &&
-            styles.some((href) => href.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'))
-          )
-        })()`,
-        { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
-      )
+    await waitFor(
+      'approved runtime asset requests',
+      async () => {
+        const revealReady = await evaluate<boolean>(
+          cdp!,
+          `(() => {
+            const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+            const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src)
+            return (
+              typeof window.Reveal !== 'undefined' &&
+              scripts.some((src) => src.includes('/api/runtimes/reveal.js/5.1.0/reveal.js')) &&
+              styles.some((href) => href.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'))
+            )
+          })()`,
+          { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
+        )
 
-      if (revealReady) {
-        return true
-      }
+        if (revealReady) {
+          return true
+        }
 
-      if (networkIncludesAssetPaths(requestUrls, requiredRuntimeAssetPaths)) {
-        return true
-      }
+        if (networkIncludesAssetPaths(requestUrls, requiredRuntimeAssetPaths)) {
+          return true
+        }
 
-      return previewIncludesAssetPaths(cdp!, mainPreview, requiredRuntimeAssetPaths)
-    })
+        // Child-frame network events can race CDP attachment on slower CI runners.
+        return previewIncludesAssetPaths(cdp!, mainPreview, requiredRuntimeAssetPaths)
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
 
     await waitFor('Source Sans Pro font load', () =>
       evaluate<boolean>(
@@ -821,6 +837,7 @@ async function runSmoke() {
           sandbox: string | null
           hasRevealCss: boolean
           hasThemeCss: boolean
+          hasRevealShim: boolean
           hasScript: boolean
           hasCsp: boolean
         }>
@@ -829,8 +846,13 @@ async function runSmoke() {
         `Array.from(document.querySelectorAll('iframe[title$="thumbnail"]')).map((frame) => ({
           title: frame.title,
           sandbox: frame.getAttribute('sandbox'),
-          hasRevealCss: frame.srcdoc.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'),
-          hasThemeCss: frame.srcdoc.includes('/api/runtimes/reveal.js/5.1.0/theme/white.css'),
+          hasRevealCss:
+            frame.srcdoc.includes('data-ark-runtime-css="reveal.js@5.1.0/reveal.css"') ||
+            frame.srcdoc.includes('/api/runtimes/reveal.js/5.1.0/reveal.css'),
+          hasThemeCss:
+            frame.srcdoc.includes('data-ark-runtime-css="reveal.js@5.1.0/theme/white.css"') ||
+            frame.srcdoc.includes('/api/runtimes/reveal.js/5.1.0/theme/white.css'),
+          hasRevealShim: frame.srcdoc.includes('data-ark-reveal-thumb-shim'),
           hasScript: frame.srcdoc.includes('<script'),
           hasCsp: frame.srcdoc.includes('Content-Security-Policy')
         }))`,
@@ -844,6 +866,7 @@ async function runSmoke() {
           thumbnail.sandbox === '' &&
           thumbnail.hasRevealCss &&
           thumbnail.hasThemeCss &&
+          thumbnail.hasRevealShim &&
           !thumbnail.hasScript &&
           thumbnail.hasCsp,
       ),
