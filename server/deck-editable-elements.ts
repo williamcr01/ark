@@ -505,12 +505,29 @@ function hasHigherPriorityDescendant(element: Element, slide: Element) {
   return false
 }
 
+function getElementPath(element: Element, slide: Element) {
+  const path: number[] = []
+  let current: Element | null = element
+
+  while (current && current !== slide) {
+    const parentElement: Element | null = current.parentElement
+
+    if (!parentElement) {
+      break
+    }
+
+    path.unshift([...parentElement.children].indexOf(current))
+    current = parentElement
+  }
+
+  return path.join('.')
+}
+
 function classifyElement(
   element: Element,
   slide: Element,
   slideIndex: number,
   slideId: string | null,
-  transientCounter: { value: number },
 ): ParsedEditableElement | null {
   if (!isCandidateElement(element, slide)) {
     return null
@@ -522,7 +539,8 @@ function classifyElement(
 
   const tag = element.tagName.toLowerCase()
   const nativeId = element.getAttribute(ARK_ELEMENT_ID_ATTR)?.trim()
-  const id = nativeId || `${TRANSIENT_ELEMENT_ID_PREFIX}${slideIndex}-${transientCounter.value++}`
+  const id =
+    nativeId || `${TRANSIENT_ELEMENT_ID_PREFIX}${slideIndex}-${getElementPath(element, slide)}`
   const style = parseStyle(element)
   const kind = readKind(element)
   const role = readRole(element, slide, slideIndex)
@@ -575,7 +593,6 @@ export function parseEditableElementsForSlide(
   slideIndex: number,
 ): SlideEditableElements {
   const { slideId, slideIdTransient } = resolveSlideId(slide, slideIndex)
-  const transientCounter = { value: 0 }
   const elements: ParsedEditableElement[] = []
 
   for (const element of slide.querySelectorAll('*')) {
@@ -583,7 +600,7 @@ export function parseEditableElementsForSlide(
       continue
     }
 
-    const parsed = classifyElement(element, slide, slideIndex, slideId, transientCounter)
+    const parsed = classifyElement(element, slide, slideIndex, slideId)
 
     if (parsed) {
       elements.push(parsed)
@@ -609,7 +626,6 @@ function parseDeckLevelElements(
   }
 
   const slideSet = new Set(slideElements)
-  const transientCounter = { value: 0 }
   const elements: ParsedEditableElement[] = []
 
   for (const element of body.querySelectorAll('*')) {
@@ -621,7 +637,7 @@ function parseDeckLevelElements(
       continue
     }
 
-    const parsed = classifyElement(element, body, -1, null, transientCounter)
+    const parsed = classifyElement(element, body, -1, null)
 
     if (parsed) {
       elements.push(parsed)
