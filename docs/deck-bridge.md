@@ -2,6 +2,8 @@
 
 Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `shared/deck-bridge.ts`.
 
+When the user enables **Edit** mode in the preview chrome, Ark also injects a separate manual editor runtime (`shared/deck-editor-bridge.ts`) that handles `ark:editor-*` messages for selection, geometry, and inline text editing. See [deck-editor-bridge.md](./deck-editor-bridge.md) for that protocol.
+
 ## Transport
 
 | Direction            | Mechanism                                                                                  |

@@ -4,6 +4,8 @@
  * The shell and sandboxed deck iframe coordinate selection and editing through
  * validated postMessage payloads. The injected runtime stays dormant until the
  * parent sends `ark:editor-enable`.
+ *
+ * @see docs/deck-editor-bridge.md
  */
 
 import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable.ts'

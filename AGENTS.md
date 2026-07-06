@@ -81,7 +81,7 @@ Deck preview blocks all network access from generated or uploaded HTML:
 
 ### Preview JavaScript
 
-The shell uses preview modes based on runtime detection (see `detectPreviewMode` in `src/lib/deck-preview.ts`). The parent ↔ iframe contract is defined in `shared/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md).
+The shell uses preview modes based on runtime detection (see `detectPreviewMode` in `src/lib/deck-preview.ts`). The parent ↔ iframe contract is defined in `shared/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`shared/deck-editor-bridge.ts`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
 
 - **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for plain decks and reveal decks without approved runtime assets.
 - **Full-JS (custom)** — deck scripts run when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set. Ark injects a bridge (`postMessage` ↔ DOM `CustomEvent`); the deck owns navigation.
@@ -169,7 +169,7 @@ Fully working editor, not a scaffold. Implemented today:
 - **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
 - **Sandboxed preview** on a separate origin with CSP isolation, CSS-only and full-JS modes, thumbnails, and Present mode.
 - **Approved runtime registry** with vendored reveal.js 5.1.0 served from `/api/runtimes/...`.
-- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol (`shared/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, text boxes, undo/redo, and image insertion are tracked in issues #76 and #78–#84.
+- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `shared/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, text boxes, undo/redo, and image insertion are tracked in issues #76 and #78–#84.
 
 Typed API contracts shared by client and server live in `shared/api/`.
 
