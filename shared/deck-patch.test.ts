@@ -62,6 +62,33 @@ describe('deck patch schema', () => {
     ).toBe(false)
   })
 
+  it('accepts reorder_element with an absolute z-index or a direction', () => {
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'reorder_element',
+        elementId: 'ark-el-1',
+        zIndex: 4,
+      }).success,
+    ).toBe(true)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'reorder_element',
+        elementId: 'ark-el-1',
+        direction: 'front',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects reorder_element without a z-index or direction', () => {
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'reorder_element',
+        elementId: 'ark-el-1',
+      }).success,
+    ).toBe(false)
+  })
+
   it('rejects slide targets without index or id', () => {
     const parsed = deckSlidePatchOperationSchema.safeParse({ op: 'delete_slide' })
     expect(parsed.success).toBe(false)

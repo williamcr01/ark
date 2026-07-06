@@ -143,11 +143,11 @@ Coordinates are **slide-relative normalized fractions** (0–1), derived from `g
 
 #### Deletion and errors
 
-| Type                        | Payload fields                               | When fired                                           | Semantics                                                               |
-| --------------------------- | -------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch op after server validation  |
-| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                             | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)` |
-| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)      | Surface in preview chrome; optional `onEditorError` callback            |
+| Type                        | Payload fields                               | When fired                                                              | Semantics                                                               |
+| --------------------------- | -------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes an **Ark-managed** selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch op after server validation  |
+| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                                                | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)` |
+| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)                         | Surface in preview chrome; optional `onEditorError` callback            |
 
 Known error codes from the injected runtime: `locked-element`, `non-text-element`, `missing-element`, `missing-slide`, `editor-runtime`.
 
@@ -200,6 +200,10 @@ Parsed by `server/deck-editable-elements.ts` and enforced again in `server/deck-
 | **Unmanaged uploaded content**                                                                                                    | Recognized text/image candidates without stable ids | Selectable; inline text may work for inline tags          | `replace_text` allowed; reposition ops rejected (`layout-not-managed`) |
 
 Lock reasons include: `explicit-lock`, `unsafe-tag`, `runtime-control`, `speaker-notes`, `hidden`, `no-text-content`, `layout-not-managed`.
+
+Keyboard **Delete/Backspace** in the runtime only fires `ark:editor-delete-request` for Ark-managed selections, matching the toolbar. Selecting a deck-authored heading or paragraph and pressing Backspace does nothing, so authored content cannot be destroyed with a stray keystroke.
+
+`reorder_element` accepts either an absolute `zIndex` or a `direction` (`'front'` / `'back'`). The manual editor sends `direction`; the server resolves it against the sibling z-index range (top sibling + 1 for front, floored at 0 for back) so layering is predictable even when the element and its siblings sit at the default `auto`/`0` level.
 
 ### What the parent must not trust
 

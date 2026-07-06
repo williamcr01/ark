@@ -200,6 +200,31 @@ describe('applyDeckPatches element operations', () => {
 
     expect(duplicated.html.match(/Managed body copy/g)?.length).toBe(2)
     expect(duplicated.changedElementIds.some((id) => id.startsWith('ark-el-'))).toBe(true)
+    // The source is absolutely positioned, so the clone keeps absolute layout and
+    // is nudged by the default offset.
+    expect(duplicated.html.match(/position: absolute/g)?.length).toBe(2)
+    expect(duplicated.html).toContain('left: 74px')
+    expect(duplicated.html).toContain('top: 134px')
+  })
+
+  it('duplicates flow-positioned elements without forcing absolute layout', () => {
+    const duplicated = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'duplicate_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+      },
+    ])
+
+    expect(duplicated.ok).toBe(true)
+    if (!duplicated.ok) {
+      return
+    }
+
+    expect(duplicated.html.match(/Opening/g)?.length).toBe(2)
+    // Only the pre-existing managed body copy stays absolutely positioned; the
+    // flow-positioned heading clone must not be ripped out of flow.
+    expect(duplicated.html.match(/position: absolute/g)?.length).toBe(1)
   })
 
   it('moves, resizes, and reorders managed elements using normalized geometry', () => {
@@ -258,6 +283,54 @@ describe('applyDeckPatches element operations', () => {
     }
 
     expect(reordered.html).toContain('z-index: 5')
+  })
+
+  it('reorders relative to siblings when given a direction', () => {
+    const layeredDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Layered</title></head>
+<body>
+  <section class="slide" data-ark-slide-id="ark-slide-layers">
+    <p data-ark-id="ark-el-a" data-ark-managed="true" data-ark-editable="true" style="position: absolute; left: 10px; top: 10px; z-index: 3;">A</p>
+    <p data-ark-id="ark-el-b" data-ark-managed="true" data-ark-editable="true" style="position: absolute; left: 20px; top: 20px; z-index: 1;">B</p>
+    <p data-ark-id="ark-el-c" data-ark-managed="true" data-ark-editable="true" style="position: absolute; left: 30px; top: 30px;">C</p>
+  </section>
+</body>
+</html>`
+
+    const front = applyDeckPatches(layeredDeck, [
+      {
+        op: 'reorder_element',
+        slideIndex: 0,
+        elementId: 'ark-el-b',
+        direction: 'front',
+      },
+    ])
+
+    expect(front.ok).toBe(true)
+    if (!front.ok) {
+      return
+    }
+
+    // Siblings A (3) and C (auto → 0): front lands above the top sibling.
+    expect(front.html).toMatch(/data-ark-id="ark-el-b"[^>]*z-index: 4/)
+
+    const back = applyDeckPatches(layeredDeck, [
+      {
+        op: 'reorder_element',
+        slideIndex: 0,
+        elementId: 'ark-el-a',
+        direction: 'back',
+      },
+    ])
+
+    expect(back.ok).toBe(true)
+    if (!back.ok) {
+      return
+    }
+
+    // Siblings B (1) and C (auto → 0): back floors at 0.
+    expect(back.html).toMatch(/data-ark-id="ark-el-a"[^>]*z-index: 0/)
   })
 
   it('applies inline style updates and lock management', () => {

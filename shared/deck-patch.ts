@@ -124,13 +124,33 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     width: normalizedUnitSchema,
     height: normalizedUnitSchema,
   }),
-  z.object({
-    op: z.literal('reorder_element'),
-    slideIndex: z.number().int().min(0).optional(),
-    slideId: z.string().min(1).optional(),
-    elementId: z.string().min(1),
-    zIndex: z.number().int(),
-  }),
+  z
+    .object({
+      op: z.literal('reorder_element'),
+      slideIndex: z.number().int().min(0).optional(),
+      slideId: z.string().min(1).optional(),
+      elementId: z.string().min(1),
+      zIndex: z
+        .number()
+        .int()
+        .optional()
+        .describe('Absolute z-index to assign. Omit when using direction.'),
+      direction: z
+        .enum(['front', 'back'])
+        .optional()
+        .describe(
+          'Stack relative to siblings: "front" moves above the top sibling, "back" below the bottom.',
+        ),
+    })
+    .superRefine((value, context) => {
+      if (value.zIndex === undefined && value.direction === undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Provide zIndex or direction.',
+          path: ['zIndex'],
+        })
+      }
+    }),
   z.object({
     op: z.literal('lock_element'),
     slideIndex: z.number().int().min(0).optional(),
