@@ -56,6 +56,12 @@ export type DeckPreviewProps = {
   parsedDeck: ReturnType<typeof parseDeckSlides>
   editorBridgeEnabled?: boolean
   isTextEditSaving?: boolean
+  canUndo?: boolean
+  canRedo?: boolean
+  undoSlideIndex?: number | null
+  redoSlideIndex?: number | null
+  onUndo?: () => void | Promise<void>
+  onRedo?: () => void | Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
   onPatchEditorOperations?: (
     operations: import('../../shared/deck-patch.ts').DeckElementPatchOperation[],
@@ -74,6 +80,12 @@ export function DeckPreview({
   parsedDeck,
   editorBridgeEnabled = false,
   isTextEditSaving = false,
+  canUndo = false,
+  canRedo = false,
+  undoSlideIndex = null,
+  redoSlideIndex = null,
+  onUndo,
+  onRedo,
   onCommitTextEdit,
   onPatchEditorOperations,
 }: DeckPreviewProps) {
@@ -251,6 +263,26 @@ export function DeckPreview({
     },
     [canModifySelection, onPatchEditorOperations, selection],
   )
+
+  const handleUndo = useCallback(() => {
+    if (!canUndo || !onUndo || textEditActive || isTextEditSaving) {
+      return
+    }
+
+    // Jump to the slide the reverted edit happened on so the change is visible;
+    // fall back to the current slide when it is unknown.
+    preserveSlideIndexRef.current = undoSlideIndex ?? activeSlideIndex
+    void onUndo()
+  }, [activeSlideIndex, canUndo, isTextEditSaving, onUndo, textEditActive, undoSlideIndex])
+
+  const handleRedo = useCallback(() => {
+    if (!canRedo || !onRedo || textEditActive || isTextEditSaving) {
+      return
+    }
+
+    preserveSlideIndexRef.current = redoSlideIndex ?? activeSlideIndex
+    void onRedo()
+  }, [activeSlideIndex, canRedo, isTextEditSaving, onRedo, redoSlideIndex, textEditActive])
 
   // Track the element's geometry from *before* a transform begins so a commit can
   // be diffed against the real starting rect. While a drag is in progress the
@@ -471,6 +503,53 @@ export function DeckPreview({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const historyModifier = event.metaKey || event.ctrlKey
+
+      if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
+        // Leave undo/redo to the browser while editing text so contenteditable
+        // history keeps working inside the deck.
+        if (textEditActive || isTextEditSaving) {
+          return
+        }
+
+        if (event.shiftKey) {
+          if (!canRedo || !onRedo) {
+            return
+          }
+
+          event.preventDefault()
+          handleRedo()
+        } else {
+          if (!canUndo || !onUndo) {
+            return
+          }
+
+          event.preventDefault()
+          handleUndo()
+        }
+
+        return
+      }
+
+      if (
+        historyModifier &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.key === 'y' || event.key === 'Y')
+      ) {
+        if (textEditActive || isTextEditSaving) {
+          return
+        }
+
+        if (!canRedo || !onRedo) {
+          return
+        }
+
+        event.preventDefault()
+        handleRedo()
+        return
+      }
+
       if (event.key === 'Escape') {
         if (textEditActive) {
           event.preventDefault()
@@ -517,9 +596,16 @@ export function DeckPreview({
     activeTool,
     beginTextEdit,
     canEditSelectedText,
+    canRedo,
+    canUndo,
     editChromeActive,
     endTextEditing,
+    handleRedo,
     handleToolChange,
+    handleUndo,
+    isTextEditSaving,
+    onRedo,
+    onUndo,
     textEditActive,
   ])
 
@@ -651,6 +737,8 @@ export function DeckPreview({
         <EditModeToolbar
           activeTool={activeTool}
           canEditText={canEditSelectedText}
+          canRedo={canRedo}
+          canUndo={canUndo}
           hasDeck={html.length > 0 && hasSlides}
           hasSelection={Boolean(selection?.elementId)}
           isGenerating={isGenerating}
@@ -659,8 +747,10 @@ export function DeckPreview({
           onDelete={handleDeleteSelection}
           onDuplicate={handleDuplicateSelection}
           onEditText={beginTextEdit}
+          onRedo={handleRedo}
           onSendBackward={() => handleReorderSelection('back')}
           onToolChange={handleToolChange}
+          onUndo={handleUndo}
           selectionLocked={selection?.locked ?? false}
           selectionManaged={selection?.managed ?? false}
           textEditActive={textEditActive}
