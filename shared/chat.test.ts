@@ -5,9 +5,13 @@ import {
   buildAgentModelMessages,
   buildAssistantMessageContent,
   buildModelMessages,
+  chatAttachmentsToFileParts,
+  collectAssetIds,
   parseGenerateMessages,
   wrapUserPromptForGeneration,
 } from './chat.ts'
+
+const ASSET_ID = '00000000-0000-4000-8000-000000000901'
 
 const sampleAttachment = {
   type: 'file' as const,
@@ -107,7 +111,7 @@ describe('parseGenerateMessages', () => {
     })
   })
 
-  it('rejects non-data attachment URLs', () => {
+  it('rejects external attachment URLs without an asset reference', () => {
     expect(
       parseGenerateMessages([
         {
@@ -118,8 +122,46 @@ describe('parseGenerateMessages', () => {
       ]),
     ).toEqual({
       ok: false,
-      error: 'messages[0].attachments[0].url must be a data URL.',
+      error: 'messages[0].attachments[0].url must be a data URL or Ark asset reference.',
     })
+  })
+
+  it('accepts lightweight Ark asset reference attachments', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'Use the uploaded chart',
+        attachments: [
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'chart.png',
+            url: `/api/assets/${ASSET_ID}`,
+            assetId: ASSET_ID,
+          },
+        ],
+      },
+    ])
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.messages[0]?.attachments?.[0]?.assetId).toBe(ASSET_ID)
+    }
+  })
+
+  it('infers the asset id from an Ark asset URL', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'ref',
+        attachments: [{ type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}` }],
+      },
+    ])
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.messages[0]?.attachments?.[0]?.assetId).toBe(ASSET_ID)
+    }
   })
 
   it('preserves valid client message ids for server-side deduplication', () => {
@@ -220,6 +262,34 @@ describe('buildAgentModelMessages', () => {
     })
     expect(content[1]?.type).toBe('text')
     expect(content[1]?.text).toContain('attached 1 file')
+  })
+})
+
+describe('chatAttachmentsToFileParts', () => {
+  it('emits file parts only for inline data URLs', () => {
+    const parts = chatAttachmentsToFileParts([
+      sampleAttachment,
+      { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
+    ])
+
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ type: 'file', mediaType: 'image/png' })
+  })
+})
+
+describe('collectAssetIds', () => {
+  it('collects unique asset ids from references and URLs', () => {
+    expect(
+      collectAssetIds([
+        { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
+        { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}` },
+        sampleAttachment,
+      ]),
+    ).toEqual([ASSET_ID])
+  })
+
+  it('returns an empty array for no attachments', () => {
+    expect(collectAssetIds(undefined)).toEqual([])
   })
 })
 

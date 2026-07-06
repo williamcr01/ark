@@ -7,7 +7,7 @@ import { type AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from './app.ts'
-import { type RunDeckAgentResult } from './deck-agent.ts'
+import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
@@ -48,7 +48,7 @@ describe('generation job runner', () => {
   })
 
   async function createRunner(options?: {
-    runAgent?: () => Promise<RunDeckAgentResult>
+    runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
     chatDir?: string
   }) {
     deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
@@ -97,6 +97,54 @@ describe('generation job runner', () => {
     const stored = await jobStore.getJob(job.id)
     expect(stored?.status).toBe('canceled')
     expect(stored?.completedAt).toBeTruthy()
+  })
+
+  it('merges resolved asset attachments into the latest user model message', async () => {
+    let capturedMessages: unknown = null
+    let resolveCaptured: () => void = () => {}
+    const captured = new Promise<void>((resolve) => {
+      resolveCaptured = resolve
+    })
+
+    const { runner } = await createRunner({
+      runAgent: async (options) => {
+        capturedMessages = options.messages
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+    })
+
+    const job = await runner.startJob({
+      body: { messages: [{ role: 'user', content: 'Use the chart' }] },
+      defaultModel: 'openai:gpt-4.1-mini',
+      assetAttachments: [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          url: 'data:image/png;base64,AAAA',
+          assetId: '00000000-0000-4000-8000-000000000801',
+          filename: 'chart.png',
+        },
+      ],
+    })
+
+    await captured
+
+    // Wait for the job to fully settle so cleanup does not race with writes.
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const latest = await runner.getJob(job.id)
+      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    const messages = capturedMessages as Array<{ role: string; attachments?: unknown[] }>
+    expect(messages.at(-1)?.attachments).toHaveLength(1)
+    expect(messages.at(-1)?.attachments?.[0]).toMatchObject({
+      assetId: '00000000-0000-4000-8000-000000000801',
+      mediaType: 'image/png',
+    })
   })
 
   it('does not overwrite a canceled queued job with running', async () => {

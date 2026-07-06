@@ -47,9 +47,20 @@ export function useDeckAssets(deckId: string | null) {
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [trackedDeckId, setTrackedDeckId] = useState(deckId)
   const deckIdRef = useRef(deckId)
 
-  deckIdRef.current = deckId
+  // Reset transient state synchronously when the active deck changes
+  // (React's "adjust state during render" pattern, not an effect).
+  if (trackedDeckId !== deckId) {
+    setTrackedDeckId(deckId)
+    setUploads([])
+    setSelectedAssetIds([])
+  }
+
+  useEffect(() => {
+    deckIdRef.current = deckId
+  }, [deckId])
 
   const reload = useCallback(async () => {
     if (!deckId) {
@@ -77,39 +88,26 @@ export function useDeckAssets(deckId: string | null) {
   }, [deckId])
 
   useEffect(() => {
-    setUploads([])
-    setSelectedAssetIds([])
-    void reload()
+    const load = async () => {
+      await reload()
+    }
+
+    void load()
   }, [reload])
 
-  const uploadFiles = useCallback(
-    async (files: File[]) => {
-      const targetDeckId = deckIdRef.current
+  const uploadFiles = useCallback(async (files: File[]) => {
+    const targetDeckId = deckIdRef.current
 
-      if (!targetDeckId) {
-        setError('Save the deck before uploading assets.')
-        return
-      }
+    if (!targetDeckId) {
+      setError('Save the deck before uploading assets.')
+      return
+    }
 
-      for (const file of files) {
-        const uploadId = nextUploadId()
-        const validationError = validateFile(file)
+    for (const file of files) {
+      const uploadId = nextUploadId()
+      const validationError = validateFile(file)
 
-        if (validationError) {
-          setUploads((current) => [
-            ...current,
-            {
-              id: uploadId,
-              filename: file.name,
-              byteSize: file.size,
-              mediaType: file.type,
-              status: 'error',
-              error: validationError,
-            },
-          ])
-          continue
-        }
-
+      if (validationError) {
         setUploads((current) => [
           ...current,
           {
@@ -117,44 +115,56 @@ export function useDeckAssets(deckId: string | null) {
             filename: file.name,
             byteSize: file.size,
             mediaType: file.type,
-            status: 'uploading',
+            status: 'error',
+            error: validationError,
           },
         ])
-
-        try {
-          const dataUrl = await readFileAsDataUrl(file)
-          const asset = await uploadDeckAsset(targetDeckId, {
-            filename: file.name,
-            mediaType: file.type,
-            data: dataUrl,
-          })
-
-          if (deckIdRef.current !== targetDeckId) {
-            return
-          }
-
-          setUploads((current) => current.filter((upload) => upload.id !== uploadId))
-          setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
-          setSelectedAssetIds((current) =>
-            current.includes(asset.id) ? current : [...current, asset.id],
-          )
-        } catch (uploadError) {
-          if (deckIdRef.current !== targetDeckId) {
-            return
-          }
-
-          const message =
-            uploadError instanceof Error ? uploadError.message : 'Could not upload the file.'
-          setUploads((current) =>
-            current.map((upload) =>
-              upload.id === uploadId ? { ...upload, status: 'error', error: message } : upload,
-            ),
-          )
-        }
+        continue
       }
-    },
-    [],
-  )
+
+      setUploads((current) => [
+        ...current,
+        {
+          id: uploadId,
+          filename: file.name,
+          byteSize: file.size,
+          mediaType: file.type,
+          status: 'uploading',
+        },
+      ])
+
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        const asset = await uploadDeckAsset(targetDeckId, {
+          filename: file.name,
+          mediaType: file.type,
+          data: dataUrl,
+        })
+
+        if (deckIdRef.current !== targetDeckId) {
+          return
+        }
+
+        setUploads((current) => current.filter((upload) => upload.id !== uploadId))
+        setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
+        setSelectedAssetIds((current) =>
+          current.includes(asset.id) ? current : [...current, asset.id],
+        )
+      } catch (uploadError) {
+        if (deckIdRef.current !== targetDeckId) {
+          return
+        }
+
+        const message =
+          uploadError instanceof Error ? uploadError.message : 'Could not upload the file.'
+        setUploads((current) =>
+          current.map((upload) =>
+            upload.id === uploadId ? { ...upload, status: 'error', error: message } : upload,
+          ),
+        )
+      }
+    }
+  }, [])
 
   const removeAsset = useCallback(async (assetId: string) => {
     try {
@@ -172,9 +182,7 @@ export function useDeckAssets(deckId: string | null) {
 
   const toggleAssetSelected = useCallback((assetId: string) => {
     setSelectedAssetIds((current) =>
-      current.includes(assetId)
-        ? current.filter((id) => id !== assetId)
-        : [...current, assetId],
+      current.includes(assetId) ? current.filter((id) => id !== assetId) : [...current, assetId],
     )
   }, [])
 
