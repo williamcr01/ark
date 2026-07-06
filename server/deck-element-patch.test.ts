@@ -538,6 +538,38 @@ describe('applyDeckPatches element operations', () => {
     ).toMatchObject({ ok: false, error: expect.stringContaining('Remote image URLs') })
   })
 
+  it('rejects external image URLs on set_attrs src', () => {
+    const inserted = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'insert_element',
+        slideIndex: 0,
+        html: `<img data-ark-editable="image" data-ark-managed="true" alt="Logo" src="${tinyPngDataUrl}" style="position:absolute;left:128px;top:108px;width:512px;height:288px;object-fit:contain;z-index:1" />`,
+      },
+    ])
+
+    expect(inserted.ok).toBe(true)
+    if (!inserted.ok) {
+      return
+    }
+
+    const image = inserted.changedElementIds.find((id) => id.startsWith('ark-el-'))
+    expect(image).toBeTruthy()
+    if (!image) {
+      return
+    }
+
+    expect(
+      applyDeckPatches(inserted.html, [
+        {
+          op: 'set_attrs',
+          elementId: image,
+          slideIndex: 0,
+          attrs: { src: 'https://example.com/photo.png' },
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('Remote image URLs') })
+  })
+
   it('can mix slide and element operations in one request', () => {
     const result = applyDeckPatches(arkManagedDeck, [
       { op: 'update_slide_title', slideIndex: 1, title: 'Renamed second slide' },

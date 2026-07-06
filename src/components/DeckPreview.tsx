@@ -34,6 +34,7 @@ import {
 import {
   buildImageInsertOperation,
   clientPointToNormalizedSlidePoint,
+  isEditableClipboardTarget,
   prepareImageInsertFromFile,
 } from '@/lib/deck-image-insert'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
@@ -98,6 +99,7 @@ export function DeckPreview({
   onPatchEditorOperations,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const previewStageRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
@@ -230,7 +232,7 @@ export function DeckPreview({
     imageFitOverride !== null &&
     imageFitOverride.elementId === selection?.elementId
       ? imageFitOverride.fit
-      : 'contain'
+      : (selection?.imageFit ?? 'contain')
 
   const handleDeleteSelection = useCallback(() => {
     if (!selection || !canModifySelection || !onPatchEditorOperations) {
@@ -358,6 +360,7 @@ export function DeckPreview({
     endTextEditing()
     disableEditor()
     setActiveTool('select')
+    setImageFitOverride(null)
     setEditModeActive(false)
   }, [disableEditor, endTextEditing])
 
@@ -635,6 +638,10 @@ export function DeckPreview({
     }
 
     const handlePaste = (event: ClipboardEvent) => {
+      if (isEditableClipboardTarget(event.target)) {
+        return
+      }
+
       const clipboard = event.clipboardData
 
       if (!clipboard) {
@@ -993,7 +1000,7 @@ export function DeckPreview({
               const position = clientPointToNormalizedSlidePoint(
                 event.clientX,
                 event.clientY,
-                iframeRef.current,
+                previewStageRef.current,
               )
               void handleInsertImageFile(file, position)
             }}
@@ -1002,6 +1009,7 @@ export function DeckPreview({
             {html ? (
               <div
                 className="relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
+                ref={previewStageRef}
                 style={previewStageStyle}
               >
                 <iframe

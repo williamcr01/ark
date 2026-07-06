@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
   buildImageHtml,
   computeImageGeometry,
+  estimateDataUrlDecodedSize,
   isRemoteImageUrl,
   MAX_IMAGE_FILE_SIZE_BYTES,
   parseDataUrlImage,
+  validateImageDataUrlSize,
   validateImageFile,
   validateImageMimeType,
   validateImageSrcForInsert,
@@ -82,6 +84,16 @@ describe('validateImageSrcForInsert', () => {
       expect(result.error).toMatch(/Blob URLs/i)
     }
   })
+
+  it('rejects oversized embedded data URLs', () => {
+    const oversizedPayload = 'A'.repeat(Math.ceil((MAX_IMAGE_FILE_SIZE_BYTES * 4) / 3) + 4)
+    const result = validateImageSrcForInsert(`data:image/png;base64,${oversizedPayload}`)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toMatch(/too large/i)
+    }
+  })
 })
 
 describe('parseDataUrlImage', () => {
@@ -102,6 +114,17 @@ describe('isRemoteImageUrl', () => {
   it('detects common remote image URLs', () => {
     expect(isRemoteImageUrl('https://example.com/hero.png')).toBe(true)
     expect(isRemoteImageUrl('data:image/png;base64,abc')).toBe(false)
+  })
+
+  it('does not treat generic paths containing "image" as image URLs', () => {
+    expect(isRemoteImageUrl('https://example.com/blog/image-gallery')).toBe(false)
+  })
+})
+
+describe('estimateDataUrlDecodedSize', () => {
+  it('estimates base64 payload size', () => {
+    expect(estimateDataUrlDecodedSize(`${tinyPngDataUrl}`)).toBeGreaterThan(0)
+    expect(validateImageDataUrlSize(tinyPngDataUrl).ok).toBe(true)
   })
 })
 

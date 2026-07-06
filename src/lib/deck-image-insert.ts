@@ -110,13 +110,13 @@ export function buildImageInsertOperation(
 export function clientPointToNormalizedSlidePoint(
   clientX: number,
   clientY: number,
-  iframe: HTMLIFrameElement | null,
+  stage: HTMLElement | null,
 ): { x: number; y: number } {
-  if (!iframe) {
+  if (!stage) {
     return { x: 0.5, y: 0.5 }
   }
 
-  const rect = iframe.getBoundingClientRect()
+  const rect = stage.getBoundingClientRect()
 
   if (!rect.width || !rect.height) {
     return { x: 0.5, y: 0.5 }
@@ -126,4 +126,12 @@ export function clientPointToNormalizedSlidePoint(
   const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
 
   return { x, y }
+}
+
+export function isEditableClipboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }

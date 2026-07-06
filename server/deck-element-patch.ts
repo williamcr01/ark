@@ -748,6 +748,14 @@ function applySetAttrs(
       return { error: `set_attrs does not allow unsafe "${name}" values.` }
     }
 
+    if (name === 'src' && resolved.element.tagName.toLowerCase() === 'img') {
+      const srcValidation = validateImageSrcForInsert(value)
+
+      if (!srcValidation.ok) {
+        return { error: `set_attrs cannot set img src: ${srcValidation.error}` }
+      }
+    }
+
     if (resolved.element.getAttribute(name) !== value) {
       resolved.element.setAttribute(name, value)
       changed = true

@@ -89,6 +89,30 @@ export function validateImageFile(file: { type: string; size: number }): ImageVa
   return validateImageFileSize(file.size)
 }
 
+/** Estimate decoded byte length of a base64 data-URL payload. */
+export function estimateDataUrlDecodedSize(dataUrl: string): number | null {
+  const commaIndex = dataUrl.indexOf(',')
+
+  if (commaIndex === -1) {
+    return null
+  }
+
+  const payload = dataUrl.slice(commaIndex + 1)
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0
+
+  return Math.max(0, Math.floor((payload.length * 3) / 4) - padding)
+}
+
+export function validateImageDataUrlSize(dataUrl: string): ImageValidationResult {
+  const size = estimateDataUrlDecodedSize(dataUrl)
+
+  if (size === null) {
+    return { ok: false, error: 'Image must be embedded as a base64 data URL.' }
+  }
+
+  return validateImageFileSize(size)
+}
+
 export function parseDataUrlImage(
   dataUrl: string,
 ): { mimeType: SupportedImageMimeType; dataUrl: string } | ImageValidationFailure {
@@ -143,7 +167,7 @@ export function validateImageSrcForInsert(src: string | null | undefined): Image
     return parsed
   }
 
-  return { ok: true }
+  return validateImageDataUrlSize(trimmed)
 }
 
 export function isRemoteImageUrl(value: string): boolean {
@@ -153,7 +177,7 @@ export function isRemoteImageUrl(value: string): boolean {
     return false
   }
 
-  return REMOTE_IMAGE_URL_PATTERN.test(trimmed) || trimmed.includes('/image')
+  return REMOTE_IMAGE_URL_PATTERN.test(trimmed)
 }
 
 export function formatNormalizedToPixels(normalized: number, reference: number) {

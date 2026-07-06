@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { createEditorTransformCommitMessage } from '../../shared/deck-editor-bridge.ts'
 import {
-  buildImageInsertOperation,
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
 } from './deck-editor-patches.ts'
+import { buildImageInsertOperation } from './deck-image-insert.ts'
 
 const tinyPngDataUrl =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -26,10 +26,13 @@ describe('deck-editor-patches', () => {
     expect(
       buildImageInsertOperation(
         0,
-        { x: 0.1, y: 0.15, width: 0.4, height: 0.225 },
-        { kind: 'data-url', mimeType: 'image/png', dataUrl: tinyPngDataUrl },
+        {
+          asset: { kind: 'data-url', mimeType: 'image/png', dataUrl: tinyPngDataUrl },
+          geometry: { x: 0.1, y: 0.15, width: 0.4, height: 0.225 },
+          aspectRatio: 16 / 9,
+        },
         'slide-1',
-        { alt: 'Logo', aspectRatio: 16 / 9 },
+        { alt: 'Logo' },
       ),
     ).toEqual({
       op: 'insert_element',

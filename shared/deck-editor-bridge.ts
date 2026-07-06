@@ -88,6 +88,8 @@ export type EditorNormalizedRect = {
   height: number
 }
 
+export type EditorImageFitMode = 'contain' | 'cover' | 'fill'
+
 export type EditorSelectionInfo = {
   elementId: string
   slideIndex: number
@@ -97,6 +99,7 @@ export type EditorSelectionInfo = {
   managed: boolean
   editableKind: string | null
   textPreview: string | null
+  imageFit?: EditorImageFitMode | null
 }
 
 export type EditorEnableMessage = {
@@ -293,7 +296,12 @@ export function isEditorSelectionInfo(value: unknown): value is EditorSelectionI
     typeof value.locked === 'boolean' &&
     typeof value.managed === 'boolean' &&
     (value.editableKind === null || typeof value.editableKind === 'string') &&
-    (value.textPreview === null || typeof value.textPreview === 'string')
+    (value.textPreview === null || typeof value.textPreview === 'string') &&
+    (value.imageFit === undefined ||
+      value.imageFit === null ||
+      value.imageFit === 'contain' ||
+      value.imageFit === 'cover' ||
+      value.imageFit === 'fill')
   )
 }
 
@@ -907,6 +915,26 @@ export function buildDeckEditorBridgeRuntimeScript(
     postToParent({ type: C.TEXT_EDIT_STATE, active: false });
   }
 
+  function readImageFit(element) {
+    if (!isImageElement(element)) {
+      return null;
+    }
+
+    var stored = element.getAttribute('data-ark-fit');
+
+    if (stored === 'contain' || stored === 'cover' || stored === 'fill') {
+      return stored;
+    }
+
+    var computed = window.getComputedStyle(element).objectFit;
+
+    if (computed === 'cover' || computed === 'fill') {
+      return computed;
+    }
+
+    return 'contain';
+  }
+
   function buildSelection(element, slide, slideIndex) {
     return {
       elementId: resolveElementId(element, slide, slideIndex),
@@ -917,6 +945,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       managed: isManagedElement(element),
       editableKind: element.getAttribute(C.EDITABLE_ATTR) || null,
       textPreview: readTextPreview(element),
+      imageFit: readImageFit(element),
     };
   }
 
@@ -1021,7 +1050,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     return 1;
   }
 
-  function applyImageAspectRatio(rect, aspectRatio, slide) {
+  function applyImageAspectRatio(rect, aspectRatio, slide, start) {
     var slideRect = slide.getBoundingClientRect();
 
     if (!slideRect.width || !slideRect.height || !Number.isFinite(aspectRatio) || aspectRatio <= 0) {
@@ -1029,7 +1058,15 @@ export function buildDeckEditorBridgeRuntimeScript(
     }
 
     var slideAspect = slideRect.width / slideRect.height;
-    rect.height = rect.width * slideAspect / aspectRatio;
+    var widthDelta = Math.abs(rect.width - start.width);
+    var heightDelta = Math.abs(rect.height - start.height);
+
+    if (heightDelta > widthDelta) {
+      rect.width = rect.height * aspectRatio / slideAspect;
+    } else {
+      rect.height = rect.width * slideAspect / aspectRatio;
+    }
+
     return clampRect(rect);
   }
 
@@ -1380,7 +1417,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (element && isImageElement(element)) {
       var aspectRatio = getImageAspectRatio(element);
-      var locked = applyImageAspectRatio(rect, aspectRatio, slide);
+      var locked = applyImageAspectRatio(rect, aspectRatio, slide, start);
 
       if (handle.indexOf('w') !== -1) {
         locked.x = start.x + start.width - locked.width;
