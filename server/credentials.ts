@@ -1,13 +1,7 @@
 import { APICallError } from 'ai'
 
-export type ProviderId = 'openai' | 'anthropic' | 'google'
-
-export type ApiErrorCode = 'missing_api_key' | 'invalid_api_key' | 'provider_error'
-
-export type ApiErrorPayload = {
-  error: string
-  code: ApiErrorCode
-}
+export type { ApiErrorCode, ApiErrorPayload, ProviderId } from '../shared/api/common.ts'
+import type { ApiErrorPayload, ProviderId } from '../shared/api/common.ts'
 
 const PLACEHOLDER_API_KEYS = new Set([
   'your_openai_api_key_here',

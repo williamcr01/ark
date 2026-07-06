@@ -16,7 +16,7 @@ describe('useChatSession', () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
-        thread: { id: 'thread-1', deckId: 'deck-1' },
+        thread: null,
         messages: [
           {
             id: 'm1',
@@ -54,7 +54,7 @@ describe('useChatSession', () => {
         return {
           ok: true,
           json: async () => ({
-            thread: { id: 'thread-1', deckId: 'deck-1' },
+            thread: null,
             messages: [
               {
                 id: 'm1',
@@ -74,7 +74,7 @@ describe('useChatSession', () => {
       return {
         ok: true,
         json: async () => ({
-          thread: { id: 'thread-2', deckId: 'deck-2' },
+          thread: null,
           messages: [
             {
               id: 'm2',
@@ -153,7 +153,7 @@ describe('useChatSession', () => {
         return {
           ok: true,
           json: async () => ({
-            thread: { id: 'thread-new', deckId: 'deck-new' },
+            thread: null,
             messages: [
               {
                 id: 'm-user',

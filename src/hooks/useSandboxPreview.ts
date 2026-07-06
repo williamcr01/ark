@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { previewSessionResponseSchema } from '../../shared/api/preview.ts'
+import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
 import {
   buildSandboxRenderUrl,
   resolveAppOrigin,
   resolveSandboxOrigin,
 } from '../../shared/sandbox-origin.ts'
-
-type PreviewSessionResponse = {
-  token: string
-  renderUrl: string
-  expiresAt: number
-  sandboxOrigin: string
-}
 
 export type SandboxPreviewOptions = {
   editorBridge?: boolean
@@ -89,12 +84,9 @@ export function useSandboxPreview(
           signal: controller.signal,
         })
 
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null
-          throw new Error(payload?.error ?? 'Failed to create preview session.')
-        }
-
-        const payload = (await response.json()) as PreviewSessionResponse
+        const payload = await fetchApiJsonOrThrow(response, previewSessionResponseSchema, {
+          fallbackMessage: 'Failed to create preview session.',
+        })
 
         if (requestIdRef.current !== requestId) {
           return

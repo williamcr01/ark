@@ -192,7 +192,7 @@ function App() {
         ])
       }
 
-      toast.success(outcome.job.request.editingExistingDeck ? 'Deck updated' : 'Deck generated')
+      toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
     [deckId, refreshActiveDeck, reloadChat, setMessages],
   )
