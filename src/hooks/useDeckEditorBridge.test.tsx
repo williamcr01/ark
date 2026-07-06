@@ -9,6 +9,7 @@ import {
   createEditorGeometryMessage,
   createEditorReadyMessage,
   createEditorSelectionChangeMessage,
+  createEditorTextEditStateMessage,
 } from '../../shared/deck-editor-bridge.ts'
 import { OPAQUE_SANDBOX_ORIGIN, resolveSandboxOrigin } from '../../shared/sandbox-origin.ts'
 
@@ -172,5 +173,51 @@ describe('useDeckEditorBridge', () => {
     })
 
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+  })
+
+  it('tracks iframe text-edit lifecycle state', async () => {
+    function TextEditHarness() {
+      const iframeRef = useRef<HTMLIFrameElement>(null)
+      const bridge = useDeckEditorBridge(iframeRef, {
+        enabled: true,
+        activeSlideIndex: 0,
+        sandboxOrigin,
+        iframeGenerationKey: 'test-frame',
+      })
+
+      return (
+        <div>
+          <iframe ref={iframeRef} title="Deck preview" />
+          <output aria-label="Text edit active">{bridge.textEditActive ? 'yes' : 'no'}</output>
+        </div>
+      )
+    }
+
+    render(<TextEditHarness />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTextEditStateMessage(true, 'ark-el-title', 0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Text edit active')).toHaveTextContent('yes')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTextEditStateMessage(false),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Text edit active')).toHaveTextContent('no')
   })
 })

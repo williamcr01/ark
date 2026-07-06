@@ -16,6 +16,7 @@ import {
   isEditorRuntimeMessage,
   isEditorSelectionChangeMessage,
   isEditorTextCommitMessage,
+  isEditorTextEditStateMessage,
   isEditorTransformCommitMessage,
   isEditorTransformPreviewMessage,
   type EditorHoverMessage,
@@ -37,7 +38,14 @@ export type DeckEditorBridgeState = {
   editorError: string | null
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
-  lastTextCommit: { elementId: string; slideIndex: number; text: string } | null
+  textEditActive: boolean
+  lastTextCommit: {
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    text: string
+    originalText: string
+  } | null
 }
 
 export type UseDeckEditorBridgeOptions = {
@@ -58,6 +66,7 @@ const initialState: DeckEditorBridgeState = {
   editorError: null,
   transformPreview: null,
   transformCommit: null,
+  textEditActive: false,
   lastTextCommit: null,
 }
 
@@ -216,11 +225,22 @@ export function useDeckEditorBridge(
       if (isEditorTextCommitMessage(data)) {
         setState((current) => ({
           ...current,
+          textEditActive: false,
           lastTextCommit: {
             elementId: data.elementId,
             slideIndex: data.slideIndex,
+            slideId: data.slideId,
             text: data.text,
+            originalText: data.originalText,
           },
+        }))
+        return
+      }
+
+      if (isEditorTextEditStateMessage(data)) {
+        setState((current) => ({
+          ...current,
+          textEditActive: data.active,
         }))
         return
       }

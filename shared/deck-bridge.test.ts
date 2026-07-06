@@ -8,6 +8,7 @@ import {
   DECK_RUNTIME_ERROR_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
+  buildDeckCssNavRuntimeScript,
   clampDeckSlideIndex,
   createDeckGotoMessage,
   createDeckMetadata,
@@ -103,5 +104,15 @@ describe('deck bridge protocol', () => {
     expect(createDeckMetadata({ previewMode: 'full-js' }).protocolVersion).toBe(
       DECK_BRIDGE_PROTOCOL_VERSION,
     )
+  })
+
+  it('skips arrow-key navigation while inline text editing', () => {
+    const script = buildDeckCssNavRuntimeScript({
+      slideSelectors: ['section.slide'],
+      previewMode: 'css-only',
+    })
+
+    expect(script).toContain('isTypingTarget')
+    expect(script).toContain('data-ark-editor-text-edit')
   })
 })

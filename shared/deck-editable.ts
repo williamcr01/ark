@@ -55,3 +55,22 @@ export type SlideEditableElements = {
   slideIdTransient: boolean
   elements: ParsedEditableElement[]
 }
+
+/** Tags supported for inline plain-text editing (issue #78). */
+export const INLINE_TEXT_EDITABLE_TAGS = new Set([
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'p',
+  'li',
+  'blockquote',
+  'figcaption',
+  'span',
+])
+
+export function isInlineTextEditableTag(tagName: string) {
+  return INLINE_TEXT_EDITABLE_TAGS.has(tagName.toLowerCase())
+}

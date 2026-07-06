@@ -11,11 +11,29 @@ import { DeckPreview } from './DeckPreview'
 
 const editorBridgeMock = vi.hoisted(() => ({
   editorReady: false,
-  selection: null,
+  selection: null as {
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    tagName: string
+    locked: boolean
+    textPreview: string | null
+  } | null,
+  geometry: null,
   editorError: null,
+  textEditActive: false,
+  lastTextCommit: null as {
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    text: string
+    originalText: string
+  } | null,
   enableEditor: vi.fn(),
   disableEditor: vi.fn(),
   requestGeometry: vi.fn(),
+  startTextEdit: vi.fn(),
+  cancelTextEdit: vi.fn(),
 }))
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
@@ -48,10 +66,15 @@ describe('DeckPreview script divergence UI', () => {
   beforeEach(() => {
     editorBridgeMock.editorReady = false
     editorBridgeMock.selection = null
+    editorBridgeMock.geometry = null
     editorBridgeMock.editorError = null
+    editorBridgeMock.textEditActive = false
+    editorBridgeMock.lastTextCommit = null
     editorBridgeMock.enableEditor.mockClear()
     editorBridgeMock.disableEditor.mockClear()
     editorBridgeMock.requestGeometry.mockClear()
+    editorBridgeMock.startTextEdit.mockClear()
+    editorBridgeMock.cancelTextEdit.mockClear()
   })
 
   it('shows static preview messaging for uploaded scripted decks', () => {
@@ -157,5 +180,217 @@ describe('DeckPreview script divergence UI', () => {
     fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
 
     expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0)
+  })
+
+  it('shows an edit-text action for unlocked text selections', async () => {
+    const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      textPreview: 'Quarterly planning',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+
+    expect(screen.getByRole('button', { name: 'Edit selected text' })).toBeInTheDocument()
+  })
+
+  it('starts text editing from the toolbar action', async () => {
+    const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      textPreview: 'Quarterly planning',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+    await user.click(screen.getByRole('button', { name: 'Edit selected text' }))
+
+    expect(editorBridgeMock.startTextEdit).toHaveBeenCalledWith('transient-el-0-0', 0)
+  })
+
+  it('starts text editing when Enter is pressed with a text selection', async () => {
+    const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'p',
+      locked: false,
+      textPreview: 'Body copy',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(editorBridgeMock.startTextEdit).toHaveBeenCalledWith('transient-el-0-0', 0)
+  })
+
+  it('cancels text editing when Escape is pressed', async () => {
+    const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      textPreview: 'Quarterly planning',
+    }
+    editorBridgeMock.textEditActive = true
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(editorBridgeMock.cancelTextEdit).toHaveBeenCalled()
+  })
+
+  it('commits text edits through the patch callback', async () => {
+    const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      textPreview: 'Quarterly planning',
+    }
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Updated planning',
+      originalText: 'Quarterly planning',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        onCommitTextEdit={onCommitTextEdit}
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    expect(onCommitTextEdit).toHaveBeenCalledWith({
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Updated planning',
+      originalText: 'Quarterly planning',
+    })
+  })
+
+  it('skips patch commits when text did not change', () => {
+    const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Quarterly planning',
+      originalText: 'Quarterly planning',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        onCommitTextEdit={onCommitTextEdit}
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    expect(onCommitTextEdit).not.toHaveBeenCalled()
+  })
+
+  it('shows locked messaging for locked selections', async () => {
+    const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'locked-el',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: true,
+      textPreview: 'Runtime title',
+    }
+
+    render(
+      <DeckPreview
+        editorBridgeEnabled
+        html={plainCssDeck}
+        isGenerating={false}
+        isStripOpen={false}
+        layout="desktop"
+        parsedDeck={parseDeckSlides(plainCssDeck)}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Enable edit mode' }))
+
+    expect(screen.getByText('Locked')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit selected text' })).not.toBeInTheDocument()
   })
 })
