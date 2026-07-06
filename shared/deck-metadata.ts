@@ -18,3 +18,7 @@ export const ARK_MANAGED_ATTR = 'data-ark-managed' as const
 
 export const TRANSIENT_SLIDE_ID_PREFIX = 'transient-slide-' as const
 export const TRANSIENT_ELEMENT_ID_PREFIX = 'transient-el-' as const
+
+/** Canonical slide size for converting normalized editor geometry to inline CSS. */
+export const ARK_SLIDE_REFERENCE_WIDTH = 1280 as const
+export const ARK_SLIDE_REFERENCE_HEIGHT = 720 as const

@@ -12,6 +12,7 @@ import {
   summarizePatchOperation,
 } from '../shared/deck-patch.ts'
 import { applyDeckEdits } from './deck-edit.ts'
+import { applyElementPatch } from './deck-element-patch.ts'
 import { stampEditableElementIds } from './deck-editable-elements.ts'
 
 export type ApplyDeckPatchesOptions = {
@@ -422,8 +423,7 @@ function applySlidePatch(context: PatchContext, operation: DeckPatchOperation) {
 }
 
 /**
- * Apply structured deck patch operations. Slide-level ops are supported today;
- * element-level ops (issue #77) return a clear not-implemented error.
+ * Apply structured deck patch operations. Slide-level and element-level ops are supported.
  */
 export function applyDeckPatches(
   html: string,
@@ -447,11 +447,33 @@ export function applyDeckPatches(
 
   for (const [operationIndex, operation] of operations.entries()) {
     if (isElementPatchOperation(operation)) {
-      return {
-        ok: false,
-        error: `operations[${operationIndex}] (${operation.op}) is not supported yet. Element-level patches are planned for the manual editor.`,
-        operationIndex,
+      const dom = new JSDOM(workingHtml)
+      const context: PatchContext = {
+        dom,
+        doc: dom.window.document,
+        slides: findSlideElements(dom.window.document),
+        changedSlideIndexes: new Set<number>(),
+        changedElementIds: new Set<string>(),
+        summaries: [],
+        activeSlideIndex,
       }
+
+      const result = applyElementPatch(context, operation)
+
+      if ('error' in result) {
+        return { ok: false, error: result.error ?? 'Patch operation failed.', operationIndex }
+      }
+
+      workingHtml = serializeDeckHtml(context.dom)
+      for (const index of context.changedSlideIndexes) {
+        aggregateChangedSlides.add(index)
+      }
+      for (const elementId of context.changedElementIds) {
+        aggregateChangedElements.add(elementId)
+      }
+      aggregateSummaries.push(...context.summaries)
+      appliedCount += 1
+      continue
     }
 
     if (isTextReplacePatchOperation(operation)) {

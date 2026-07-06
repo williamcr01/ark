@@ -61,8 +61,7 @@ export const deckSlidePatchOperationSchema = z.discriminatedUnion('op', [
 
 /**
  * Element-level operations for the manual editor (issue #77).
- * Schema is defined here so frontend and backend share one contract;
- * server apply support lands in a follow-up.
+ * Schema is defined here so frontend and backend share one contract.
  */
 export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
   z.object({
