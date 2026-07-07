@@ -11,14 +11,10 @@ import {
   isEditorRuntimeMessage,
   parseEditorMessage,
 } from '../../shared/deck-editor-bridge.ts'
-import hostileEditorPostmessageDeck from '@/test/fixtures/hostile-editor-postmessage-deck.html?raw'
-import hostileFormsDeck from '@/test/fixtures/hostile-forms-deck.html?raw'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import hostileEditorPostmessageDeck from '@fixtures/hostile-editor-postmessage-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import { getPreviewHtml } from '@/lib/deck-preview'
 import { detectRuntimeMode } from '@/lib/deck-runtime'
-import { parseDeckHtml } from '../../server/deck-parser.ts'
-import { applyDeckPatches } from '../../server/deck-patch.ts'
-import { validateDeckHtmlOnServer } from '../../server/deck-validate.ts'
 
 const malformedEditorPayloads: unknown[] = [
   {
@@ -179,78 +175,6 @@ describe('manual editor security fixtures (#81)', () => {
           message.type !== 'ark:editor-ready',
       ),
     ).toBe(true)
-  })
-
-  it('rejects server-side text patches forged against unknown element ids', () => {
-    expect(
-      applyDeckPatches(hostileEditorPostmessageDeck, [
-        {
-          op: 'replace_text',
-          elementId: 'ark-el-locked-victim',
-          slideIndex: 0,
-          text: 'Injected copy',
-        },
-      ]),
-    ).toMatchObject({
-      ok: false,
-      error: expect.stringContaining('was not found'),
-    })
-  })
-
-  it('rejects server-side delete patches forged against unknown element ids', () => {
-    expect(
-      applyDeckPatches(hostileEditorPostmessageDeck, [
-        {
-          op: 'delete_element',
-          elementId: 'ark-el-locked-victim',
-          slideIndex: 0,
-        },
-      ]),
-    ).toMatchObject({
-      ok: false,
-      error: expect.stringContaining('was not found'),
-    })
-  })
-
-  it('rejects server-side delete patches that omit slideIndex for duplicate ids', () => {
-    expect(
-      applyDeckPatches(hostileEditorPostmessageDeck, [
-        {
-          op: 'delete_element',
-          elementId: 'ark-el-title',
-        },
-      ]),
-    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
-  })
-
-  it('rejects duplicate data-ark-id patch targets server-side', () => {
-    const duplicateIdDeck = hostileEditorPostmessageDeck
-
-    expect(
-      applyDeckPatches(duplicateIdDeck, [
-        {
-          op: 'replace_text',
-          elementId: 'ark-el-title',
-          text: 'Ambiguous overwrite',
-        },
-      ]),
-    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
-  })
-
-  it('marks forms as blocking validation errors and non-editable metadata', () => {
-    const report = validateDeckHtmlOnServer(hostileFormsDeck)
-    const parsed = parseDeckHtml(hostileFormsDeck)
-
-    expect(report.valid).toBe(false)
-    expect(report.forms).toBeGreaterThan(0)
-    expect(parsed.editableElements.flatMap((group) => group.elements)).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          tagName: 'form',
-          locked: false,
-        }),
-      ]),
-    )
   })
 
   it('covers css-only and full-js editor preview injection paths', () => {

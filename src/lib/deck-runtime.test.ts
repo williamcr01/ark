@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import fullJsDeck from '@/test/fixtures/full-js-deck.html?raw'
-import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
-import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
+import fullJsDeck from '@fixtures/full-js-deck.html?raw'
+import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealDeck from '@fixtures/reveal-deck.html?raw'
 
 import {
   buildCspMetaTag,

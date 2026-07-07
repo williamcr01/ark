@@ -5,10 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { parseDeckHtml, summarizeParsedDeck, toDeckSlideSummaries } from './deck-parser.ts'
 
-const fixtureDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../src/test/fixtures',
-)
+const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../test/fixtures')
 
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
 const revealDeck = readFileSync(path.join(fixtureDir, 'reveal-deck.html'), 'utf8')

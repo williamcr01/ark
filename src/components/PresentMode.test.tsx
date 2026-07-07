@@ -2,8 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
-import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
 import { PresentMode } from './PresentMode'
 
