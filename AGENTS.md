@@ -42,7 +42,7 @@ ark/
 │   └── db/                 # Postgres repositories + migrations (optional path)
 ├── shared/                 # code shared by client and server (bridge, patches, API contracts)
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
-├── docs/                   # runtime/preview/bridge documentation
+├── docs/                   # runtime/preview/bridge + backend architecture notes
 ├── scripts/                # runtime sync + smoke tests
 ├── data/                   # local dev persistence (gitignored): decks, chat
 ├── public/                 # static assets

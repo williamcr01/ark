@@ -4,6 +4,8 @@ import type { SlideEditableElements } from '../shared/deck-editable.ts'
 import { parseEditableElements, resolveSlideId } from './deck-editable-elements.ts'
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '../shared/deck-preview-slides.ts'
 import { extractDeckTitle } from './deck-record.ts'
+import type { Logger } from './observability/logger.ts'
+import { logTimedEvent, measureSync } from './observability/timing.ts'
 
 export type DeckStructure = 'plain' | 'reveal' | 'unknown'
 
@@ -269,11 +271,31 @@ const emptyParseResult: DeckParseResult = {
   assets: [],
 }
 
-export function parseDeckHtml(html: string): DeckParseResult {
+export type DeckParseOptions = {
+  logger?: Logger
+}
+
+export function parseDeckHtml(html: string, options: DeckParseOptions = {}): DeckParseResult {
   if (!html.trim()) {
     return emptyParseResult
   }
 
+  const { result, durationMs } = measureSync(() => parseDeckHtmlCore(html))
+
+  if (options.logger) {
+    logTimedEvent(options.logger, 'deck.parse.completed', durationMs, {
+      htmlBytes: Buffer.byteLength(html, 'utf8'),
+      slideCount: result.slideCount,
+      structure: result.structure,
+      scriptCount: result.scripts.length,
+      assetCount: result.assets.length,
+    })
+  }
+
+  return result
+}
+
+function parseDeckHtmlCore(html: string): DeckParseResult {
   const doc = new JSDOM(html).window.document
   const slideSelector = detectSlideSelector(doc)
   const slideElements = findSlideElements(doc)

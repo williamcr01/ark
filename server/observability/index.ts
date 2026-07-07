@@ -28,3 +28,5 @@ export type {
   RuntimeErrorStore,
 } from './runtime-errors.ts'
 export { createObservabilityMiddleware, getRequestId, getRequestLogger } from './middleware.ts'
+export { logTimedEvent, measureAsync, measureSync } from './timing.ts'
+export type { TimedResult } from './timing.ts'
