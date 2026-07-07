@@ -10,13 +10,13 @@ import {
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
 } from '../../shared/deck-bridge.ts'
-import fullJsDeck from '@/test/fixtures/full-js-deck.html?raw'
-import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
-import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
-import revealDeck from '@/test/fixtures/reveal-deck.html?raw'
-import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
-import revealVerticalDeck from '@/test/fixtures/reveal-vertical-deck.html?raw'
+import fullJsDeck from '@fixtures/full-js-deck.html?raw'
+import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
+import malformedDeck from '@fixtures/malformed-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealDeck from '@fixtures/reveal-deck.html?raw'
+import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
+import revealVerticalDeck from '@fixtures/reveal-vertical-deck.html?raw'
 
 import { resolveAppOrigin } from '../../shared/sandbox-origin.ts'
 import { STRICT_DECK_CSP } from './deck-runtime'

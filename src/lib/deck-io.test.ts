@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 
 import { downloadHtml } from './deck-io'
 

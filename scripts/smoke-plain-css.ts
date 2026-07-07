@@ -25,14 +25,14 @@ import {
   type RuntimeContext,
 } from './lib/browser-smoke.ts'
 
-const plainCssFixturePath = path.join(repoRoot, 'src/test/fixtures/plain-css-deck.html')
+const plainCssFixturePath = path.join(repoRoot, 'test/fixtures/plain-css-deck.html')
 const hostileExternalFetchFixturePath = path.join(
   repoRoot,
-  'src/test/fixtures/hostile-external-fetch-deck.html',
+  'test/fixtures/hostile-external-fetch-deck.html',
 )
 const hostileSandboxNetworkFixturePath = path.join(
   repoRoot,
-  'src/test/fixtures/hostile-sandbox-network-deck.html',
+  'test/fixtures/hostile-sandbox-network-deck.html',
 )
 
 async function runSmoke() {

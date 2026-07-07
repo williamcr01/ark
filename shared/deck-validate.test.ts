@@ -1,12 +1,12 @@
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
-import fullJsDeck from '../src/test/fixtures/full-js-deck.html?raw'
-import hostileScriptsDeck from '../src/test/fixtures/hostile-scripts-deck.html?raw'
-import malformedDeck from '../src/test/fixtures/malformed-deck.html?raw'
-import plainCssDeck from '../src/test/fixtures/plain-css-deck.html?raw'
-import revealDeck from '../src/test/fixtures/reveal-deck.html?raw'
-import revealRegistryDeck from '../src/test/fixtures/reveal-registry-deck.html?raw'
+import fullJsDeck from '../test/fixtures/full-js-deck.html?raw'
+import hostileScriptsDeck from '../test/fixtures/hostile-scripts-deck.html?raw'
+import malformedDeck from '../test/fixtures/malformed-deck.html?raw'
+import plainCssDeck from '../test/fixtures/plain-css-deck.html?raw'
+import revealDeck from '../test/fixtures/reveal-deck.html?raw'
+import revealRegistryDeck from '../test/fixtures/reveal-registry-deck.html?raw'
 
 import {
   formatDeckValidationSummary,

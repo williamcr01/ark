@@ -26,7 +26,7 @@ import {
   type RuntimeContext,
 } from './lib/browser-smoke.ts'
 
-const revealFixturePath = path.join(repoRoot, 'src/test/fixtures/reveal-registry-deck.html')
+const revealFixturePath = path.join(repoRoot, 'test/fixtures/reveal-registry-deck.html')
 const requiredRuntimeAssetPaths = [
   '/api/runtimes/reveal.js/5.1.0/reveal.js',
   '/api/runtimes/reveal.js/5.1.0/reveal.css',

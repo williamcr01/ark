@@ -10,7 +10,8 @@
   ],
   "compilerOptions": {
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@fixtures/*": ["./test/fixtures/*"]
     }
   }
 }
