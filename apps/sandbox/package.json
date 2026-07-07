@@ -1,0 +1,27 @@
+{
+  "name": "@ark/sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch sandbox-index.ts",
+    "start": "tsx sandbox-index.ts",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@ark/api": "workspace:*",
+    "@ark/deck-core": "workspace:*",
+    "@ark/runtime-registry": "workspace:*",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsdom": "^29.1.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^24.12.3",
+    "tsx": "^4.22.4",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.9"
+  }
+}

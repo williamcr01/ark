@@ -3,7 +3,7 @@
   "info": {
     "title": "Ark API",
     "version": "1.0.0",
-    "description": "HTTP API for the Ark presentation builder. Zod schemas in `shared/api/` are the source of truth; this document is generated for cross-language clients and drift checks."
+    "description": "HTTP API for the Ark presentation builder. Zod schemas in `packages/contracts/` are the source of truth; this document is generated for cross-language clients and drift checks."
   },
   "servers": [{ "url": "http://localhost:8787", "description": "Local API (default PORT)" }],
   "components": { "schemas": {}, "parameters": {} },
