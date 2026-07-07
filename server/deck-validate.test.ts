@@ -1,10 +1,15 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import fullJsDeck from '../test/fixtures/full-js-deck.html?raw'
-import plainCssDeck from '../test/fixtures/plain-css-deck.html?raw'
-import revealDeck from '../test/fixtures/reveal-deck.html?raw'
-
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
+
+const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../test/fixtures')
+
+const fullJsDeck = readFileSync(path.join(fixtureDir, 'full-js-deck.html'), 'utf8')
+const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
+const revealDeck = readFileSync(path.join(fixtureDir, 'reveal-deck.html'), 'utf8')
 
 describe('validateDeckHtmlOnServer', () => {
   it('accepts a plain CSS deck and reports slide metadata', () => {
