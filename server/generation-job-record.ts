@@ -33,7 +33,7 @@ export type GenerationJobStore = {
   listJobsForDeck: (deckId: string) => Promise<GenerationJob[]>
 }
 
-import { isValidGenerationJobId } from '../shared/api/common.ts'
+import { isValidGenerationJobId } from '../shared/api/index.ts'
 
 export { isValidGenerationJobId }
 

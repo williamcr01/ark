@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 
-import { parseRequestBody } from '../../shared/api/common.ts'
-import { startGenerationJobRequestSchema } from '../../shared/api/generation-jobs.ts'
+import { parseRequestBody, startGenerationJobRequestSchema } from '../../shared/api/index.ts'
 import { hasAnyConfiguredProvider, missingApiKeyError } from '../credentials.ts'
 import { isValidDeckId } from '../deck-record.ts'
 import { isValidGenerationJobId } from '../generation-job-record.ts'

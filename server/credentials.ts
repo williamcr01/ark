@@ -1,7 +1,7 @@
 import { APICallError } from 'ai'
 
-export type { ApiErrorCode, ApiErrorPayload, ProviderId } from '../shared/api/common.ts'
-import type { ApiErrorPayload, ProviderId } from '../shared/api/common.ts'
+export type { ApiErrorCode, ApiErrorPayload, ProviderId } from '../shared/api/index.ts'
+import type { ApiErrorPayload, ProviderId } from '../shared/api/index.ts'
 
 const PLACEHOLDER_API_KEYS = new Set([
   'your_openai_api_key_here',

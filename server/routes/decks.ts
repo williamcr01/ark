@@ -1,11 +1,11 @@
 import { Router, type Request, type Response } from 'express'
 
-import { parseRequestBody } from '../../shared/api/common.ts'
 import {
+  parseRequestBody,
   createDeckRequestSchema,
   deckPatchRequestSchema,
   renameDeckRequestSchema,
-} from '../../shared/api/decks.ts'
+} from '../../shared/api/index.ts'
 import { type AssetStore } from '../asset-record.ts'
 import { type AssetStorage } from '../asset-storage.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'

@@ -3,11 +3,13 @@ import { CHAT_HISTORY_PAGE_SIZE } from '../../shared/chat-thread.ts'
 import {
   appendChatMessageResponseSchema,
   deckChatResponseSchema,
+  ApiResponseError,
+  fetchApiJsonOrThrow,
+  readJsonBody,
+  simpleErrorResponseSchema,
   type DeckChatResponse,
   type PersistedChatMessage,
-} from '../../shared/api/chat.ts'
-import { ApiResponseError, fetchApiJsonOrThrow, readJsonBody } from '../../shared/api/fetch.ts'
-import { simpleErrorResponseSchema } from '../../shared/api/common.ts'
+} from '../../shared/api/index.ts'
 
 export type { DeckChatResponse, PersistedChatMessage }
 

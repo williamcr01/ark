@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 
-import { parseRequestBody } from '../../shared/api/common.ts'
-import { createPreviewSessionRequestSchema } from '../../shared/api/preview.ts'
+import { parseRequestBody, createPreviewSessionRequestSchema } from '../../shared/api/index.ts'
 import {
   buildSandboxRenderUrl,
   resolveAppOrigin,

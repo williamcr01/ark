@@ -189,5 +189,5 @@ Implementation references:
 - `runtimes/manifest.json` — Source of truth for approved assets
 - `shared/deck-runtime-registry.ts` — Registry lookup and validation helpers
 - `server/deck-runtimes.ts` — `/api/runtimes` route handlers
-- `shared/deck-validate.ts` — Portable deck validation (browser via `validateDeckHtmlInBrowser`, server via `server/deck-validate.ts`)
+- `shared/deck-validate.ts` — Portable deck validation (`validateDeckHtml`); browser wrapper in `src/lib/deck-validate.ts`, server wrapper in `server/deck-validate.ts`
 - `docs/deck-bridge.md` — Parent ↔ iframe protocol including reveal adapter

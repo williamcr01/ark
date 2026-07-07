@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 
-import { parseRequestBody } from '../../shared/api/common.ts'
-import { rollbackDeckRequestSchema } from '../../shared/api/decks.ts'
+import { parseRequestBody, rollbackDeckRequestSchema } from '../../shared/api/index.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'

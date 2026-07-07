@@ -6,6 +6,13 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
+const apiContractPatterns = [
+  {
+    group: ['**/shared/api/!(index)*', '../shared/api/!(index)*'],
+    message: 'Import API contracts from shared/api/index.ts only.',
+  },
+]
+
 const boundaryPatterns = {
   src: [
     {
@@ -70,13 +77,19 @@ export default defineConfig([
   {
     files: ['src/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: boundaryPatterns.src }],
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...boundaryPatterns.src, ...apiContractPatterns] },
+      ],
     },
   },
   {
     files: ['server/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: boundaryPatterns.server }],
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...boundaryPatterns.server, ...apiContractPatterns] },
+      ],
     },
   },
   {

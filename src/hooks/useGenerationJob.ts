@@ -7,7 +7,7 @@ import {
   type AgentStep,
   type ChatMessage,
 } from '../../shared/chat.ts'
-import type { GenerationJobApi, GenerationJobStatus } from '../../shared/api/generation-jobs.ts'
+import type { GenerationJobApi, GenerationJobStatus } from '../../shared/api/index.ts'
 import {
   cancelGenerationJob,
   fetchGenerationJob,
