@@ -20,6 +20,7 @@ import hostileObjectEmbedDeck from '@/test/fixtures/hostile-object-embed-deck.ht
 import hostilePopupsDeck from '@/test/fixtures/hostile-popups-deck.html?raw'
 import hostilePostmessageDeck from '@/test/fixtures/hostile-postmessage-deck.html?raw'
 import hostileRunawayScriptsDeck from '@/test/fixtures/hostile-runaway-scripts-deck.html?raw'
+import hostileSandboxNetworkDeck from '@/test/fixtures/hostile-sandbox-network-deck.html?raw'
 import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@/test/fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
@@ -70,6 +71,12 @@ const securityFixtures: SecurityFixture[] = [
     name: 'hostile-external-fetch',
     html: hostileExternalFetchDeck,
     runtimeMode: 'static',
+    category: 'external-fetch',
+  },
+  {
+    name: 'hostile-sandbox-network',
+    html: hostileSandboxNetworkDeck,
+    runtimeMode: 'custom-js',
     category: 'external-fetch',
   },
   { name: 'hostile-forms', html: hostileFormsDeck, runtimeMode: 'static', category: 'forms' },
@@ -316,6 +323,14 @@ describe('sandbox security fixtures', () => {
       )
       expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
       expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(true)
+    })
+
+    it('allows runtime fetch probes without static external URLs', () => {
+      const report = validateDeckHtmlInBrowser(hostileSandboxNetworkDeck)
+
+      expect(report.externalUrls).toEqual([])
+      expect(report.valid).toBe(true)
+      expect(hostileSandboxNetworkDeck).toContain('https://evil.example/sandbox-fetch')
     })
 
     it('strips fetch and XHR scripts from static previews', () => {

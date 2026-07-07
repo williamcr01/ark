@@ -586,17 +586,29 @@ export function collectExternalRequestUrls(
   requestUrls: Map<string, string>,
   allowedOrigins: string[],
 ) {
-  return [...requestUrls.values()].filter((url) => {
-    try {
-      const parsed = new URL(url)
-      return (
-        parsed.protocol.startsWith('http') &&
-        !allowedOrigins.some((origin) => parsed.origin === origin)
-      )
-    } catch {
-      return false
-    }
-  })
+  return [...requestUrls.values()].filter((url) => isExternalRequestUrl(url, allowedOrigins))
+}
+
+export function isExternalRequestUrl(url: string, allowedOrigins: string[]) {
+  try {
+    const parsed = new URL(url)
+    return (
+      parsed.protocol.startsWith('http') &&
+      !allowedOrigins.some((origin) => parsed.origin === origin)
+    )
+  } catch {
+    return false
+  }
+}
+
+export function collectCompletedExternalRequestUrls(
+  requestUrls: Map<string, string>,
+  completedRequestIds: ReadonlySet<string>,
+  allowedOrigins: string[],
+) {
+  return [...completedRequestIds]
+    .map((requestId) => requestUrls.get(requestId))
+    .filter((url): url is string => Boolean(url && isExternalRequestUrl(url, allowedOrigins)))
 }
 
 export async function attachCdpTargets(cdp: CdpClient) {

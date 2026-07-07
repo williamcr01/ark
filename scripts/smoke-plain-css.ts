@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
 import {
   assert,
   attachCdpTargets,
+  collectCompletedExternalRequestUrls,
   collectExternalRequestUrls,
   createPage,
   evaluate,
@@ -25,9 +26,25 @@ import {
 } from './lib/browser-smoke.ts'
 
 const plainCssFixturePath = path.join(repoRoot, 'src/test/fixtures/plain-css-deck.html')
+const hostileExternalFetchFixturePath = path.join(
+  repoRoot,
+  'src/test/fixtures/hostile-external-fetch-deck.html',
+)
+const hostileSandboxNetworkFixturePath = path.join(
+  repoRoot,
+  'src/test/fixtures/hostile-sandbox-network-deck.html',
+)
 
 async function runSmoke() {
   assert(existsSync(plainCssFixturePath), `Missing fixture ${plainCssFixturePath}`)
+  assert(
+    existsSync(hostileExternalFetchFixturePath),
+    `Missing fixture ${hostileExternalFetchFixturePath}`,
+  )
+  assert(
+    existsSync(hostileSandboxNetworkFixturePath),
+    `Missing fixture ${hostileSandboxNetworkFixturePath}`,
+  )
 
   const [apiPort, sandboxPort, webPort, debugPort] = await Promise.all([
     getFreePort(),
@@ -57,6 +74,7 @@ async function runSmoke() {
     cdp = await createPage(browser.debugPort)
 
     const requestUrls = new Map<string, string>()
+    const completedRequestIds = new Set<string>()
     const contexts = new Map<string, RuntimeContext>()
 
     cdp.on('Runtime.executionContextCreated', (params, sessionId) => {
@@ -79,6 +97,13 @@ async function runSmoke() {
 
       if (typeof requestId === 'string' && typeof url === 'string') {
         requestUrls.set(requestId, url)
+      }
+    })
+    cdp.on('Network.responseReceived', (params) => {
+      const requestId = (params as { requestId?: unknown }).requestId
+
+      if (typeof requestId === 'string') {
+        completedRequestIds.add(requestId)
       }
     })
 
@@ -255,6 +280,42 @@ async function runSmoke() {
       `Plain CSS thumbnails were not locked down as expected: ${JSON.stringify(thumbnails, null, 2)}`,
     )
 
+    await setUploadFile(cdp, hostileExternalFetchFixturePath)
+
+    await waitFor('hostile deck upload rejection toast', async () => {
+      const text = await evaluate<string>(cdp!, 'document.body.innerText')
+      return text.includes('cannot load external resources')
+    })
+
+    const deckAfterHostileUpload = await evaluate<string>(cdp!, 'document.body.innerText')
+    assert(
+      deckAfterHostileUpload.includes('Slide 2 of 3'),
+      'Hostile external-fetch upload should be rejected without replacing the active deck.',
+    )
+
+    const hostileUploadPreviewSrc = await evaluate<string>(
+      cdp!,
+      `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+    )
+    const hostileUploadPreview = await waitFor(
+      'active deck preview after hostile upload rejection',
+      () => findContextByUrl(cdp!, contexts, hostileUploadPreviewSrc),
+    )
+
+    await waitFor('active deck preview still on slide 2 after hostile upload rejection', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `(() => {
+          const active = document.querySelector('section.slide.active, section.slide.is-active')
+          return Boolean(active && (active.textContent || '').includes('Metrics that moved'))
+        })()`,
+        {
+          contextId: hostileUploadPreview.id,
+          sessionId: hostileUploadPreview.sessionId,
+        },
+      ),
+    )
+
     await evaluate<boolean>(
       cdp,
       `Boolean(document.querySelector('button[aria-label="Present fullscreen"]')?.click())`,
@@ -286,14 +347,45 @@ async function runSmoke() {
       return snapshot.activeText.includes('Metrics that moved')
     })
 
-    const requestedExternalUrls = collectExternalRequestUrls(requestUrls, [
-      servers.appOrigin,
-      servers.sandboxOrigin,
-    ])
+    const sandboxNetworkDeckHtml = await readFile(hostileSandboxNetworkFixturePath, 'utf8')
+    const sessionResponse = await fetch(`http://127.0.0.1:${apiPort}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sandboxNetworkDeckHtml }),
+    })
+
+    if (!sessionResponse.ok) {
+      assert(
+        false,
+        `Preview session creation failed: ${sessionResponse.status} ${await sessionResponse.text()}`,
+      )
+    }
+
+    const session = (await sessionResponse.json()) as { renderUrl: string }
+
+    await cdp.send('Page.navigate', { url: session.renderUrl })
+    await cdp.waitForEvent('Page.loadEventFired')
+
+    await waitFor('sandbox network probe script execution', async () =>
+      evaluate<boolean>(cdp!, 'window.__arkNetworkProbeAttempted === true'),
+    )
+
+    const allowedOrigins = [servers.appOrigin, servers.sandboxOrigin]
+    const attemptedExternalUrls = collectExternalRequestUrls(requestUrls, allowedOrigins)
+    const completedExternalUrls = collectCompletedExternalRequestUrls(
+      requestUrls,
+      completedRequestIds,
+      allowedOrigins,
+    )
+    const attemptedHostileUrls = attemptedExternalUrls.filter((url) => url.includes('evil.example'))
 
     assert(
-      requestedExternalUrls.length === 0,
-      `Unexpected external network requests: ${requestedExternalUrls.join(', ')}`,
+      attemptedHostileUrls.length > 0,
+      'Sandbox network probe should attempt hostile external requests.',
+    )
+    assert(
+      completedExternalUrls.length === 0,
+      `Unexpected completed external network requests: ${completedExternalUrls.join(', ')}`,
     )
 
     console.log('Plain CSS browser smoke passed.')

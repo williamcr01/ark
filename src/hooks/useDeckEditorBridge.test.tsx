@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -35,6 +35,7 @@ function EditorHarness({
   onSelectionChange?: (selection: { elementId: string } | null) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const previousGenerationKeyRef = useRef(iframeGenerationKey)
   const bridge = useDeckEditorBridge(iframeRef, {
     enabled,
     activeSlideIndex: 0,
@@ -42,10 +43,23 @@ function EditorHarness({
     iframeGenerationKey,
     onSelectionChange,
   })
+  const { enableEditor } = bridge
+
+  useEffect(() => {
+    if (previousGenerationKeyRef.current === iframeGenerationKey) {
+      return
+    }
+
+    previousGenerationKeyRef.current = iframeGenerationKey
+
+    if (enabled) {
+      enableEditor(0)
+    }
+  }, [enableEditor, enabled, iframeGenerationKey])
 
   return (
     <div>
-      <iframe ref={iframeRef} title="Deck preview" />
+      <iframe key={iframeGenerationKey} ref={iframeRef} title="Deck preview" />
       <output aria-label="Editor ready">{bridge.editorReady ? 'ready' : 'pending'}</output>
       <output aria-label="Selection">{bridge.selection?.elementId ?? 'none'}</output>
       <output aria-label="Geometry">{bridge.geometry ? 'geometry' : 'none'}</output>
@@ -278,6 +292,22 @@ describe('useDeckEditorBridge', () => {
 
     rerender(<EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-2" />)
 
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('pending')
+
+    const newIframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: newIframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+
     await act(async () => {
       window.dispatchEvent(
         new MessageEvent('message', {
@@ -306,6 +336,27 @@ describe('useDeckEditorBridge', () => {
 
     expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
     expect(screen.getByLabelText('Text commit')).toHaveTextContent('none')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'fresh-selection',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Fresh',
+          }),
+          origin: sandboxOrigin,
+          source: newIframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('fresh-selection')
   })
 
   it('tracks iframe text-edit lifecycle state', async () => {
