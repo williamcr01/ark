@@ -24,11 +24,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lockfile:check
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm audit
       - run: pnpm build
       - run: pnpm test
-      - run: pnpm smoke:reveal-runtime
+      - run: pnpm smoke:browser
         env:
           ARK_CHROMIUM_PATH: /usr/bin/google-chrome

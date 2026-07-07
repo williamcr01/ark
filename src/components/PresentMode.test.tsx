@@ -8,6 +8,21 @@ import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
 import { PresentMode } from './PresentMode'
 
 describe('PresentMode', () => {
+  it('does not expose edit controls in presentation mode', () => {
+    render(
+      <PresentMode
+        html={plainCssDeck}
+        initialSlideIndex={0}
+        onExit={vi.fn()}
+        runtimeMode="static"
+        slideCount={3}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+  })
+
   it('renders the deck in an allow-scripts sandbox and exits with the current slide', async () => {
     const user = userEvent.setup()
     const onExit = vi.fn()

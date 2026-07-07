@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-ark-deck="nav">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Editor PostMessage Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide">
+      <h1 data-ark-id="ark-el-title" data-ark-editable="true">Editor bridge hijack</h1>
+    </section>
+    <section class="slide">
+      <h2>Second slide</h2>
+      <p
+        data-ark-id="ark-el-title"
+        data-ark-managed="true"
+        data-ark-editable="true"
+        style="position: absolute; left: 40px; top: 120px; width: 320px; height: 80px"
+      >
+        Duplicate id target
+      </p>
+    </section>
+    <script>
+      function postToParent(payload) {
+        if (window.parent !== window) {
+          window.parent.postMessage(payload, '*')
+        }
+      }
+
+      postToParent({
+        type: 'ark:editor-ready',
+        slideIndex: 0,
+        protocolVersion: 99,
+      })
+
+      postToParent({
+        type: 'ark:editor-text-commit',
+        elementId: 'ark-el-locked-victim',
+        slideIndex: 0,
+        slideId: null,
+        text: 'Injected copy',
+        originalText: 'Victim',
+      })
+
+      postToParent({
+        type: 'ark:editor-transform-commit',
+        elementId: 'ark-el-title',
+        slideIndex: 0,
+        geometry: { x: 99, y: 99, width: 2, height: 2 },
+      })
+
+      postToParent({
+        type: 'ark:editor-delete-request',
+        elementId: 'ark-el-title',
+        slideIndex: 0,
+      })
+
+      postToParent({
+        type: 'ark:editor-insert-request',
+        kind: 'text-box',
+        slideIndex: 0,
+        geometry: { x: -1, y: -1, width: 5, height: 5 },
+      })
+
+      postToParent({
+        type: 'ark:editor-selection-change',
+        selection: {
+          elementId: 'evil-selection',
+          slideIndex: 0,
+        },
+      })
+
+      postToParent({ type: 'ark:editor-evil-hijack', slideIndex: 0 })
+    </script>
+  </body>
+</html>
