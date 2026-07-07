@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   agentStepsToChatParts,
+  applyResolvedAssetAttachments,
   buildAgentModelMessages,
   buildAssistantMessageContent,
   buildModelMessages,
   chatAttachmentsToFileParts,
   collectAssetIds,
+  collectAssetIdsFromMessages,
   parseGenerateMessages,
   wrapUserPromptForGeneration,
 } from './chat.ts'
@@ -290,6 +292,69 @@ describe('collectAssetIds', () => {
 
   it('returns an empty array for no attachments', () => {
     expect(collectAssetIds(undefined)).toEqual([])
+  })
+})
+
+describe('collectAssetIdsFromMessages', () => {
+  it('collects asset ids from user messages only', () => {
+    expect(
+      collectAssetIdsFromMessages([
+        {
+          role: 'user',
+          content: 'first',
+          attachments: [
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              url: `/api/decks/deck-id/assets/${ASSET_ID}`,
+              assetId: ASSET_ID,
+            },
+          ],
+        },
+        { role: 'assistant', content: 'ok' },
+        { role: 'user', content: 'second' },
+      ]),
+    ).toEqual([ASSET_ID])
+  })
+})
+
+describe('applyResolvedAssetAttachments', () => {
+  it('replaces Ark references with resolved data URLs across user turns', () => {
+    const resolved = new Map([
+      [
+        ASSET_ID,
+        {
+          type: 'file' as const,
+          mediaType: 'image/png',
+          url: 'data:image/png;base64,BBBB',
+          assetId: ASSET_ID,
+          filename: 'chart.png',
+        },
+      ],
+    ])
+
+    const messages = applyResolvedAssetAttachments(
+      [
+        {
+          role: 'user',
+          content: 'Use the chart',
+          attachments: [
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              url: `/api/decks/deck-id/assets/${ASSET_ID}`,
+              assetId: ASSET_ID,
+            },
+          ],
+        },
+        { role: 'assistant', content: 'Done' },
+        { role: 'user', content: 'Add another slide from the chart' },
+      ],
+      resolved,
+    )
+
+    expect(messages[0]?.attachments?.[0]?.url).toBe('data:image/png;base64,BBBB')
+    expect(messages[2]?.attachments).toBeUndefined()
   })
 })
 

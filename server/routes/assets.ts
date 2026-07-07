@@ -264,6 +264,19 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
   return router
 }
 
+export type ResolveAssetAttachmentsResult =
+  | {
+      ok: true
+      attachments: ChatAttachment[]
+      byId: ReadonlyMap<string, ChatAttachment>
+    }
+  | { ok: false; assetIds: string[] }
+
+export type ResolveAssetAttachmentsOptions = {
+  /** When true, missing or cross-deck ids are reported instead of skipped. */
+  strict?: boolean
+}
+
 /**
  * Resolve uploaded asset ids into inline `data:` URL attachments for a
  * generation run. Only assets scoped to the given deck are resolved, keeping
@@ -273,45 +286,73 @@ export async function resolveAssetAttachments(
   deps: { assetStore: AssetStore; assetStorage: AssetStorage },
   deckId: string | null,
   assetIds: readonly string[],
-): Promise<ChatAttachment[]> {
+  options: ResolveAssetAttachmentsOptions = {},
+): Promise<ResolveAssetAttachmentsResult> {
+  const empty = { ok: true as const, attachments: [], byId: new Map<string, ChatAttachment>() }
+
   if (!deckId || !isValidDeckId(deckId) || assetIds.length === 0) {
-    return []
+    return empty
   }
 
   const attachments: ChatAttachment[] = []
+  const byId = new Map<string, ChatAttachment>()
   const seen = new Set<string>()
+  const unresolved: string[] = []
 
   for (const rawId of assetIds) {
     const id = rawId.trim()
 
-    if (!isValidAssetId(id) || seen.has(id)) {
+    if (!id || seen.has(id)) {
       continue
     }
 
     seen.add(id)
 
+    if (!isValidAssetId(id)) {
+      if (options.strict) {
+        unresolved.push(id)
+      }
+
+      continue
+    }
+
     const record = await deps.assetStore.getAsset(id)
 
     if (!record || record.deckId !== deckId) {
+      if (options.strict) {
+        unresolved.push(id)
+      }
+
       continue
     }
 
     const bytes = await deps.assetStorage.read(record.storageKey)
 
     if (!bytes) {
+      if (options.strict) {
+        unresolved.push(id)
+      }
+
       continue
     }
 
     const dataUrl = `data:${record.mediaType};base64,${bytes.toString('base64')}`
 
-    attachments.push({
+    const attachment: ChatAttachment = {
       type: 'file',
       mediaType: record.mediaType,
       url: dataUrl,
       assetId: record.id,
       ...(record.filename ? { filename: record.filename } : {}),
-    })
+    }
+
+    attachments.push(attachment)
+    byId.set(record.id, attachment)
   }
 
-  return attachments
+  if (options.strict && unresolved.length > 0) {
+    return { ok: false, assetIds: unresolved }
+  }
+
+  return { ok: true, attachments, byId }
 }

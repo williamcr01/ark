@@ -5,6 +5,7 @@ import {
   MAX_ASSET_UPLOAD_BYTES,
   isAllowedAssetMediaType,
 } from '../../shared/assets.ts'
+import { MAX_CHAT_ATTACHMENTS } from '../../shared/chat.ts'
 import {
   deleteAsset as deleteAssetRequest,
   listDeckAssets,
@@ -148,7 +149,9 @@ export function useDeckAssets(deckId: string | null) {
         setUploads((current) => current.filter((upload) => upload.id !== uploadId))
         setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
         setSelectedAssetIds((current) =>
-          current.includes(asset.id) ? current : [...current, asset.id],
+          current.includes(asset.id) || current.length >= MAX_CHAT_ATTACHMENTS
+            ? current
+            : [...current, asset.id],
         )
       } catch (uploadError) {
         if (deckIdRef.current !== targetDeckId) {
@@ -188,9 +191,19 @@ export function useDeckAssets(deckId: string | null) {
   }, [])
 
   const toggleAssetSelected = useCallback((assetId: string) => {
-    setSelectedAssetIds((current) =>
-      current.includes(assetId) ? current.filter((id) => id !== assetId) : [...current, assetId],
-    )
+    setSelectedAssetIds((current) => {
+      if (current.includes(assetId)) {
+        return current.filter((id) => id !== assetId)
+      }
+
+      if (current.length >= MAX_CHAT_ATTACHMENTS) {
+        setError(`You can include up to ${MAX_CHAT_ATTACHMENTS} deck assets per message.`)
+        return current
+      }
+
+      setError('')
+      return [...current, assetId]
+    })
   }, [])
 
   const clearSelection = useCallback(() => {

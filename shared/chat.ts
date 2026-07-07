@@ -422,6 +422,55 @@ export function toChatAttachments(
   }))
 }
 
+/** Collect unique Ark asset ids referenced by user messages in chat history. */
+export function collectAssetIdsFromMessages(messages: readonly ApiChatMessage[]): string[] {
+  const ids = new Set<string>()
+
+  for (const message of messages) {
+    if (message.role !== 'user') {
+      continue
+    }
+
+    for (const id of collectAssetIds(message.attachments)) {
+      ids.add(id)
+    }
+  }
+
+  return [...ids]
+}
+
+/**
+ * Swap lightweight Ark asset references for resolved inline attachments. Used
+ * when building model input so prior turns keep their file context without
+ * storing bytes in persisted chat history.
+ */
+export function applyResolvedAssetAttachments(
+  messages: readonly ApiChatMessage[],
+  resolvedById: ReadonlyMap<string, ChatAttachment>,
+): ApiChatMessage[] {
+  return messages.map((message) => {
+    if (message.role !== 'user' || !message.attachments?.length) {
+      return message
+    }
+
+    const attachments = message.attachments.map((attachment) => {
+      if (attachment.url.startsWith('data:')) {
+        return attachment
+      }
+
+      const assetId = attachment.assetId ?? parseAssetIdFromUrl(attachment.url)
+
+      if (!assetId) {
+        return attachment
+      }
+
+      return resolvedById.get(assetId) ?? attachment
+    })
+
+    return { ...message, attachments }
+  })
+}
+
 /** Collect the unique Ark asset ids referenced by a set of attachments. */
 export function collectAssetIds(attachments: ChatAttachment[] | undefined): string[] {
   if (!attachments?.length) {

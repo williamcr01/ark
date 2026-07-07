@@ -238,19 +238,24 @@ describe('asset API routes', () => {
     })
     const { asset } = await uploadResponse.json()
 
-    const attachments = await resolveAssetAttachments({ assetStore, assetStorage }, deckId, [
+    const resolved = await resolveAssetAttachments({ assetStore, assetStorage }, deckId, [
       asset.id,
       '00000000-0000-4000-8000-0000000000aa',
     ])
 
-    expect(attachments).toHaveLength(1)
-    expect(attachments[0]).toMatchObject({
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) {
+      return
+    }
+
+    expect(resolved.attachments).toHaveLength(1)
+    expect(resolved.attachments[0]).toMatchObject({
       type: 'file',
       mediaType: 'image/png',
       assetId: asset.id,
       filename: 'logo.png',
     })
-    expect(attachments[0].url.startsWith('data:image/png;base64,')).toBe(true)
+    expect(resolved.attachments[0].url.startsWith('data:image/png;base64,')).toBe(true)
   })
 
   it('rejects cross-deck asset resolution when deck ids differ', async () => {
@@ -263,9 +268,14 @@ describe('asset API routes', () => {
     const { asset } = await uploadResponse.json()
 
     const otherDeck = 'ffffffff-0000-4000-8000-000000000001'
-    expect(
-      await resolveAssetAttachments({ assetStore, assetStorage }, otherDeck, [asset.id]),
-    ).toHaveLength(0)
+    const resolved = await resolveAssetAttachments(
+      { assetStore, assetStorage },
+      otherDeck,
+      [asset.id],
+      { strict: true },
+    )
+
+    expect(resolved).toEqual({ ok: false, assetIds: [asset.id] })
   })
 
   it('returns no attachments when deck id is missing', async () => {
@@ -277,9 +287,22 @@ describe('asset API routes', () => {
     })
     const { asset } = await uploadResponse.json()
 
-    expect(await resolveAssetAttachments({ assetStore, assetStorage }, null, [asset.id])).toEqual(
-      [],
-    )
+    expect(await resolveAssetAttachments({ assetStore, assetStorage }, null, [asset.id])).toEqual({
+      ok: true,
+      attachments: [],
+      byId: new Map(),
+    })
+  })
+
+  it('reports unresolved asset ids in strict mode', async () => {
+    const { deckId } = await startApi()
+    const missingId = '00000000-0000-4000-8000-0000000000aa'
+
+    expect(
+      await resolveAssetAttachments({ assetStore, assetStorage }, deckId, [missingId], {
+        strict: true,
+      }),
+    ).toEqual({ ok: false, assetIds: [missingId] })
   })
 
   it('rejects unscoped asset fetch from another deck', async () => {
