@@ -1,6 +1,10 @@
 import { type LanguageModel } from 'ai'
 
-import { parseGenerateMessages } from '../shared/chat.ts'
+import {
+  applyResolvedAssetAttachments,
+  collectAssetIdsFromMessages,
+  parseGenerateMessages,
+} from '../shared/chat.ts'
 import type { ApiChatMessage, ChatAttachment } from '../shared/chat.ts'
 import type {
   CreateGenerationJobInput,
@@ -50,24 +54,28 @@ export type StartGenerationJobOptions = {
 }
 
 /**
- * Merge resolved asset attachments into the latest user message so the model
- * receives the bytes, while the persisted chat history stays reference-only.
+ * Build model-facing messages with resolved asset bytes. Prior user turns keep
+ * their referenced files; the latest turn also receives any extra `assetIds`
+ * selected for this job.
  */
-function withResolvedAttachments(
+function prepareMessagesForModel(
   messages: ApiChatMessage[],
-  attachments: ChatAttachment[],
+  resolvedById: ReadonlyMap<string, ChatAttachment>,
+  latestTurnAssetIds: readonly string[],
 ): ApiChatMessage[] {
-  if (attachments.length === 0) {
-    return messages
+  const withHistory = applyResolvedAssetAttachments(messages, resolvedById)
+
+  if (latestTurnAssetIds.length === 0) {
+    return withHistory
   }
 
-  const lastUserIndex = messages.map((message) => message.role).lastIndexOf('user')
+  const lastUserIndex = withHistory.map((message) => message.role).lastIndexOf('user')
 
   if (lastUserIndex === -1) {
-    return messages
+    return withHistory
   }
 
-  return messages.map((message, index) => {
+  return withHistory.map((message, index) => {
     if (index !== lastUserIndex) {
       return message
     }
@@ -76,12 +84,16 @@ function withResolvedAttachments(
     const existingAssetIds = new Set(
       existing.map((attachment) => attachment.assetId).filter(Boolean),
     )
-    const merged = [
-      ...existing,
-      ...attachments.filter((attachment) => !existingAssetIds.has(attachment.assetId)),
-    ]
+    const extras = latestTurnAssetIds
+      .map((id) => resolvedById.get(id))
+      .filter((attachment): attachment is ChatAttachment => Boolean(attachment))
+      .filter((attachment) => !existingAssetIds.has(attachment.assetId))
 
-    return { ...message, attachments: merged }
+    if (extras.length === 0) {
+      return message
+    }
+
+    return { ...message, attachments: [...existing, ...extras] }
   })
 }
 
@@ -168,13 +180,24 @@ export function createGenerationJobRunner({
 
       let modelMessages = currentJob.request.messages
 
-      if (currentJob.assetIds?.length && assetStore && assetStorage) {
-        const assetAttachments = await resolveAssetAttachments(
+      const historyAssetIds = collectAssetIdsFromMessages(currentJob.request.messages)
+      const latestTurnAssetIds = currentJob.assetIds ?? []
+      const allAssetIds = [...new Set([...historyAssetIds, ...latestTurnAssetIds])]
+
+      if (allAssetIds.length > 0 && assetStore && assetStorage && currentJob.deckId) {
+        const resolved = await resolveAssetAttachments(
           { assetStore, assetStorage },
           currentJob.deckId,
-          currentJob.assetIds,
+          allAssetIds,
         )
-        modelMessages = withResolvedAttachments(currentJob.request.messages, assetAttachments)
+
+        if (resolved.ok) {
+          modelMessages = prepareMessagesForModel(
+            currentJob.request.messages,
+            resolved.byId,
+            latestTurnAssetIds,
+          )
+        }
       }
 
       const agentResult = await runAgent({
@@ -587,6 +610,33 @@ export function createGenerationJobRunner({
           error: 'assetIds require a saved deck id.',
         },
       })
+    }
+
+    if (assetIds.length > 0) {
+      if (!assetStore || !assetStorage) {
+        throw Object.assign(new Error('Asset storage is not configured.'), {
+          apiError: {
+            code: 'provider_error',
+            error: 'Asset storage is not configured.',
+          },
+        })
+      }
+
+      const resolved = await resolveAssetAttachments(
+        { assetStore, assetStorage },
+        deckId,
+        assetIds,
+        { strict: true },
+      )
+
+      if (!resolved.ok) {
+        throw Object.assign(new Error('One or more asset ids could not be resolved.'), {
+          apiError: {
+            code: 'provider_error',
+            error: `Could not resolve asset(s): ${resolved.assetIds.join(', ')}`,
+          },
+        })
+      }
     }
 
     const baseVersionId =

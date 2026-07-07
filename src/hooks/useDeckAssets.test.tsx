@@ -133,4 +133,27 @@ describe('useDeckAssets', () => {
     expect(uploadDeckAsset).not.toHaveBeenCalled()
     expect(result.current.error).toContain('Save the deck')
   })
+
+  it('limits deck asset selection to the chat attachment maximum', async () => {
+    const assets = Array.from({ length: 6 }, (_, index) =>
+      makeAsset({
+        id: `00000000-0000-4000-8000-00000000070${index}`,
+        filename: `logo-${index}.png`,
+        url: `/api/decks/${deckId}/assets/00000000-0000-4000-8000-00000000070${index}`,
+      }),
+    )
+    listDeckAssets.mockResolvedValueOnce(assets)
+
+    const { result } = renderHook(() => useDeckAssets(deckId))
+    await waitFor(() => expect(result.current.assets).toHaveLength(6))
+
+    await act(async () => {
+      for (const asset of assets) {
+        result.current.toggleAssetSelected(asset.id)
+      }
+    })
+
+    expect(result.current.selectedAssetIds).toHaveLength(5)
+    expect(result.current.error).toContain('5 deck assets')
+  })
 })

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type ChangeEvent } from 'react'
 
-import { toChatAttachments, type ChatAttachment } from '../shared/chat.ts'
+import { MAX_CHAT_ATTACHMENTS, toChatAttachments, type ChatAttachment } from '../shared/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
@@ -311,6 +311,11 @@ function App() {
     const prompt =
       rawPrompt.trim() ||
       (allAttachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
+
+    if (allAttachments.length > MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError(`You can attach up to ${MAX_CHAT_ATTACHMENTS} files per message.`)
+      return
+    }
 
     if ((!prompt && allAttachments.length === 0) || isGenerating || !canGenerate) {
       return
