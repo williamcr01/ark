@@ -4,15 +4,15 @@ Ark splits the codebase into workspace apps and shared packages. Import rules ke
 
 ## Layers
 
-| Location | Role | May import from |
-| --- | --- | --- |
-| `apps/web` | React shell (Vite client) | `@ark/contracts`, `@ark/deck-core`, `@ark/runtime-registry` |
-| `apps/api` | Express API, agent loop, persistence | workspace packages |
-| `apps/sandbox` | Preview sandbox host | `@ark/api/preview-sessions`, workspace packages |
-| `packages/contracts` | HTTP API Zod schemas and client helpers | `@ark/deck-core`, `@ark/runtime-registry` |
-| `packages/deck-core` | Deck helpers, bridge protocols, validation | `@ark/runtime-registry` |
-| `packages/runtime-registry` | Approved runtime manifest and registry helpers | other `packages/runtime-registry` modules only |
-| `test/` | Cross-layer HTML fixtures | not part of the app graph (tests/scripts only) |
+| Location                    | Role                                           | May import from                                             |
+| --------------------------- | ---------------------------------------------- | ----------------------------------------------------------- |
+| `apps/web`                  | React shell (Vite client)                      | `@ark/contracts`, `@ark/deck-core`, `@ark/runtime-registry` |
+| `apps/api`                  | Express API, agent loop, persistence           | workspace packages                                          |
+| `apps/sandbox`              | Preview sandbox host                           | `@ark/api/preview-sessions`, workspace packages             |
+| `packages/contracts`        | HTTP API Zod schemas and client helpers        | `@ark/deck-core`, `@ark/runtime-registry`                   |
+| `packages/deck-core`        | Deck helpers, bridge protocols, validation     | `@ark/runtime-registry`                                     |
+| `packages/runtime-registry` | Approved runtime manifest and registry helpers | other `packages/runtime-registry` modules only              |
+| `test/`                     | Cross-layer HTML fixtures                      | not part of the app graph (tests/scripts only)              |
 
 Neutral directories (`test/`, `scripts/`, `docs/`, `runtimes/`, `data/`) are not import targets for production code except where noted (e.g. `packages/runtime-registry/deck-runtime-registry.ts` reads `runtimes/manifest.json`).
 
