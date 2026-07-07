@@ -7,6 +7,60 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      '@ark/contracts':
+        specifier: workspace:*
+        version: link:packages/contracts
+      '@asteasolutions/zod-to-openapi':
+        specifier: 8.5.0
+        version: 8.5.0(zod@4.4.3)
+      '@eslint/js':
+        specifier: ^10.0.1
+        version: 10.0.1(eslint@10.4.1(jiti@2.7.0))
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      concurrently:
+        specifier: ^10.0.3
+        version: 10.0.3
+      eslint:
+        specifier: ^10.3.0
+        version: 10.4.1(jiti@2.7.0)
+      eslint-config-prettier:
+        specifier: ^10.1.8
+        version: 10.1.8(eslint@10.4.1(jiti@2.7.0))
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@10.4.1(jiti@2.7.0))
+      eslint-plugin-react-refresh:
+        specifier: ^0.5.2
+        version: 0.5.2(eslint@10.4.1(jiti@2.7.0))
+      globals:
+        specifier: ^17.6.0
+        version: 17.6.0
+      prettier:
+        specifier: ^3.9.3
+        version: 3.9.3
+      reveal.js:
+        specifier: 5.1.0
+        version: 5.1.0
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      typescript-eslint:
+        specifier: ^8.59.2
+        version: 8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3)
+      vite:
+        specifier: ^8.0.12
+        version: 8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/api:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: ^4.0.1
@@ -17,6 +71,113 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.69
         version: 3.0.69(zod@4.4.3)
+      '@ark/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ark/deck-core':
+        specifier: workspace:*
+        version: link:../../packages/deck-core
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../../packages/runtime-registry
+      ai:
+        specifier: ^6.0.199
+        version: 6.0.199(zod@4.4.3)
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
+      nanoid:
+        specifier: ^5.1.11
+        version: 5.1.11
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
+      pg-mem:
+        specifier: ^3.0.14
+        version: 3.0.14
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/sandbox:
+    dependencies:
+      '@ark/api':
+        specifier: workspace:*
+        version: link:../api
+      '@ark/deck-core':
+        specifier: workspace:*
+        version: link:../../packages/deck-core
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../../packages/runtime-registry
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/web:
+    dependencies:
+      '@ark/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ark/deck-core':
+        specifier: workspace:*
+        version: link:../../packages/deck-core
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../../packages/runtime-registry
       '@fontsource-variable/geist':
         specifier: ^5.2.9
         version: 5.2.9
@@ -44,24 +205,12 @@ importers:
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
-      express:
-        specifier: ^5.2.1
-        version: 5.2.1
-      jsdom:
-        specifier: ^29.1.1
-        version: 29.1.1(@noble/hashes@1.8.0)
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.7)
       nanoid:
         specifier: ^5.1.11
         version: 5.1.11
-      pg:
-        specifier: ^8.22.0
-        version: 8.22.0
       radix-ui:
         specifier: ^1.5.0
         version: 1.5.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -96,12 +245,6 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@asteasolutions/zod-to-openapi':
-        specifier: 8.5.0
-        version: 8.5.0(zod@4.4.3)
-      '@eslint/js':
-        specifier: ^10.0.1
-        version: 10.0.1(eslint@10.4.1(jiti@2.7.0))
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.0(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -114,18 +257,12 @@ importers:
       '@testing-library/user-event':
         specifier: ^14.6.1
         version: 14.6.1(@testing-library/dom@10.4.1)
-      '@types/express':
-        specifier: ^5.0.6
-        version: 5.0.6
       '@types/jsdom':
         specifier: ^28.0.3
         version: 28.0.3
       '@types/node':
         specifier: ^24.12.3
         version: 24.13.1
-      '@types/pg':
-        specifier: ^8.20.0
-        version: 8.20.0
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.17
@@ -135,48 +272,74 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.2(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
-      concurrently:
-        specifier: ^10.0.3
-        version: 10.0.3
-      eslint:
-        specifier: ^10.3.0
-        version: 10.4.1(jiti@2.7.0)
-      eslint-config-prettier:
-        specifier: ^10.1.8
-        version: 10.1.8(eslint@10.4.1(jiti@2.7.0))
-      eslint-plugin-react-hooks:
-        specifier: ^7.1.1
-        version: 7.1.1(eslint@10.4.1(jiti@2.7.0))
-      eslint-plugin-react-refresh:
-        specifier: ^0.5.2
-        version: 0.5.2(eslint@10.4.1(jiti@2.7.0))
-      globals:
-        specifier: ^17.6.0
-        version: 17.6.0
-      pg-mem:
-        specifier: ^3.0.14
-        version: 3.0.14
-      prettier:
-        specifier: ^3.9.3
-        version: 3.9.3
-      reveal.js:
-        specifier: 5.1.0
-        version: 5.1.0
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
-      tsx:
-        specifier: ^4.22.4
-        version: 4.22.4
       typescript:
         specifier: ~6.0.2
         version: 6.0.3
-      typescript-eslint:
-        specifier: ^8.59.2
-        version: 8.61.0(eslint@10.4.1(jiti@2.7.0))(typescript@6.0.3)
       vite:
         specifier: ^8.0.12
         version: 8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/contracts:
+    dependencies:
+      '@ark/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../runtime-registry
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/deck-core:
+    dependencies:
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../runtime-registry
+      ai:
+        specifier: ^6.0.199
+        version: 6.0.199(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/runtime-registry:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))

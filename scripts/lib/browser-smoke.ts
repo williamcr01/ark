@@ -480,12 +480,12 @@ export async function startServers(options: {
   process.env.VITE_ARK_SANDBOX_ORIGIN = sandboxOrigin
   process.env.VITE_DEV_PORT = String(options.webPort)
 
-  const { createPreviewSessionStore } = await import('../../server/preview-sessions.ts')
-  const { createDeckStore } = await import('../../server/deck-store.ts')
-  const { createChatStore } = await import('../../server/chat-store.ts')
-  const { createGenerationJobStore } = await import('../../server/generation-job-store.ts')
-  const { createApp } = await import('../../server/app.ts')
-  const { createSandboxHost } = await import('../../server/sandbox-host.ts')
+  const { createPreviewSessionStore } = await import('../../apps/api/preview-sessions.ts')
+  const { createDeckStore } = await import('../../apps/api/deck-store.ts')
+  const { createChatStore } = await import('../../apps/api/chat-store.ts')
+  const { createGenerationJobStore } = await import('../../apps/api/generation-job-store.ts')
+  const { createApp } = await import('../../apps/api/app.ts')
+  const { createSandboxHost } = await import('../../apps/api/sandbox-host.ts')
   const { createServer: createViteServer } = await import('vite')
 
   const previewSessionStore = createPreviewSessionStore()
@@ -506,7 +506,7 @@ export async function startServers(options: {
   await listen(sandboxServer, options.sandboxPort)
 
   const vite = await createViteServer({
-    configFile: path.join(repoRoot, 'vite.config.ts'),
+    configFile: path.join(repoRoot, 'apps/web/vite.config.ts'),
     mode: 'development',
     root: repoRoot,
     server: {

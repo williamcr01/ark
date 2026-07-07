@@ -1,69 +1,44 @@
 # Architecture boundaries
 
-Ark splits the codebase into three application layers plus neutral support directories. Import rules keep the React shell, Express API, and shared contracts decoupled so the backend can evolve independently.
+Ark splits the codebase into workspace apps and shared packages. Import rules keep the React shell, Express API, sandbox host, and shared libraries decoupled.
 
 ## Layers
 
-| Directory     | Role                                                    | May import from                                                 |
-| ------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| `src/`        | React shell (Vite client)                               | `shared/`                                                       |
-| `server/`     | Express API, agent loop, persistence                    | `shared/`                                                       |
-| `shared/`     | Types, validation, bridge protocols, deck helpers       | other `shared/` modules only                                    |
-| `shared/api/` | HTTP API contracts (Zod schemas, types, client helpers) | other `shared/api/` modules and portable `shared/` helpers only |
-| `test/`       | Cross-layer HTML fixtures and helpers                   | not part of the app graph (tests/scripts only)                  |
+| Location | Role | May import from |
+| --- | --- | --- |
+| `apps/web` | React shell (Vite client) | `@ark/contracts`, `@ark/deck-core`, `@ark/runtime-registry` |
+| `apps/api` | Express API, agent loop, persistence | workspace packages |
+| `apps/sandbox` | Preview sandbox host | `@ark/api/preview-sessions`, workspace packages |
+| `packages/contracts` | HTTP API Zod schemas and client helpers | `@ark/deck-core`, `@ark/runtime-registry` |
+| `packages/deck-core` | Deck helpers, bridge protocols, validation | `@ark/runtime-registry` |
+| `packages/runtime-registry` | Approved runtime manifest and registry helpers | other `packages/runtime-registry` modules only |
+| `test/` | Cross-layer HTML fixtures | not part of the app graph (tests/scripts only) |
 
-Neutral directories (`test/`, `scripts/`, `docs/`, `runtimes/`, `data/`) are not import targets for production code except where noted (e.g. `shared/deck-runtime-registry.ts` reads `runtimes/manifest.json`).
+Neutral directories (`test/`, `scripts/`, `docs/`, `runtimes/`, `data/`) are not import targets for production code except where noted (e.g. `packages/runtime-registry/deck-runtime-registry.ts` reads `runtimes/manifest.json`).
 
 ## Rules
 
-1. **`src/` must not import from `server/`.** The browser talks to the API over HTTP; shared types and helpers live in `shared/`.
-2. **`server/` must not import from `src/`.** Server code must not depend on React components or client-only helpers.
-3. **`shared/` must not import from `src/` or `server/`.** Shared modules are the contract both sides import.
-4. **HTTP API contracts live in `shared/api/`.** Import from `shared/api/index.ts` only in `src/` and `server/` — not from individual files under `shared/api/`. See [shared/api/README.md](../shared/api/README.md).
-5. **`shared/` must not depend on React, Express, or environment-specific APIs** unless the file name makes the environment explicit (e.g. `shared/runtime-stylesheet-disk.ts` for Node disk reads). Browser-only DOM usage belongs in `src/`; server adapters (e.g. `server/deck-validate.ts` wrapping `shared/deck-validate.ts` with JSDOM) belong in `server/`.
+1. **`apps/web` must not import from `apps/api`.** The browser talks to the API over HTTP; shared types and helpers live in workspace packages.
+2. **`apps/api` must not import from `apps/web`.** Server code must not depend on React components or client-only helpers.
+3. **`packages/*` must not import from `apps/`.** Packages are the contract both apps import.
+4. **HTTP API contracts live in `packages/contracts/`.** Import from `@ark/contracts` only in application code — not from individual files under `packages/contracts/`. See [packages/contracts/README.md](../packages/contracts/README.md).
+5. **Packages must not depend on React, Express, or environment-specific APIs** unless the file name makes the environment explicit (e.g. `packages/runtime-registry/runtime-stylesheet-disk.ts`).
+
+Package dependency direction (no cycles):
+
+```txt
+apps/web ──► @ark/contracts, @ark/deck-core, @ark/runtime-registry
+apps/api ──► @ark/contracts, @ark/deck-core, @ark/runtime-registry
+apps/sandbox ──► @ark/api/preview-sessions, @ark/contracts, @ark/deck-core, @ark/runtime-registry
+@ark/contracts ──► @ark/deck-core, @ark/runtime-registry
+@ark/deck-core ──► @ark/runtime-registry
+```
 
 ## Enforcement
 
 Boundary violations fail `pnpm lint` via ESLint `no-restricted-imports` rules in `eslint.config.js`. CI runs the same check on every push and pull request.
 
-When adding cross-cutting logic:
-
-- Put portable types and pure functions in `shared/`.
-- Put React UI and hooks in `src/`.
-- Put persistence, HTTP routes, and agent tools in `server/`.
-- Put HTML fixtures used by multiple layers in `test/fixtures/` (import as `@fixtures/...` in Vitest).
-
-## Examples
-
-**Allowed**
-
-```ts
-// src/components/DeckPreview.tsx
-import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
-
-// server/routes/decks.ts
-import { validateDeckHtmlOnServer } from '../deck-validate.ts'
-import { deckResponseSchema } from '../../shared/api/index.ts'
-
-// server/deck-validate.ts
-import { validateDeckHtml } from '../shared/deck-validate.ts'
-```
-
-**Forbidden**
-
-```ts
-// src/hooks/useDeckGenerationFlow.ts
-import { parseDeckHtml } from '../../server/deck-parser.ts' // ❌
-
-// server/deck-agent.ts
-import { getPreviewHtml } from '../src/lib/deck-preview.ts' // ❌
-
-// shared/deck-validate.ts
-import express from 'express' // ❌
-```
-
 ## Related docs
 
 - [AGENTS.md](../AGENTS.md) — agent and contributor guide
-- [shared/api/README.md](../shared/api/README.md) — HTTP API contract boundary
-- [README.md](../README.md) — setup and checks
+- [packages/contracts/README.md](../packages/contracts/README.md) — HTTP API contract boundary
