@@ -10,6 +10,7 @@ import {
   readDeckSlideHtml,
 } from './deck-html.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import type { Logger } from './observability/logger.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
 
 const editSchema = z.object({
@@ -53,7 +54,9 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
   }
 }
 
-export function createDeckTools(workspace: DeckWorkspace) {
+export function createDeckTools(workspace: DeckWorkspace, options: { logger?: Logger } = {}) {
+  const { logger } = options
+  const timingOptions = logger ? { logger } : {}
   return {
     parse_deck: tool({
       description:
@@ -66,7 +69,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
           }
         }
 
-        const parsed = parseDeckStructure(workspace.html)
+        const parsed = parseDeckStructure(workspace.html, timingOptions)
 
         return projectParsedDeck(parsed)
       },
@@ -152,7 +155,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
         html: z.string().min(1).describe('Complete self-contained HTML document.'),
       }),
       execute: async ({ html }) => {
-        const validation = validateDeckHtmlOnServer(html)
+        const validation = validateDeckHtmlOnServer(html, timingOptions)
 
         if (!validation.valid) {
           const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
@@ -194,7 +197,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
           return { ok: false, error: applied.error }
         }
 
-        const validation = validateDeckHtmlOnServer(applied.html)
+        const validation = validateDeckHtmlOnServer(applied.html, timingOptions)
 
         if (!validation.valid) {
           const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
@@ -246,7 +249,7 @@ export function createDeckTools(workspace: DeckWorkspace) {
           return { ok: false, error: patched.error, operationIndex: patched.operationIndex }
         }
 
-        const validation = validateDeckHtmlOnServer(patched.html)
+        const validation = validateDeckHtmlOnServer(patched.html, timingOptions)
 
         if (!validation.valid) {
           const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')

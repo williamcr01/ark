@@ -207,7 +207,17 @@ export function createGenerationJobRunner({
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
         abortSignal: abortController.signal,
+        logger: jobLogger,
         onStepProgress: async (steps) => {
+          const latestStep = steps.at(-1)
+
+          jobLogger.debug('generation.job.step', {
+            stepCount: steps.length,
+            latestStepType: latestStep?.type ?? null,
+            latestToolName: latestStep?.toolName ?? null,
+            elapsedMs: Math.round(performance.now() - jobStartedAt),
+          })
+
           const latest = await jobStore.getJob(jobId)
 
           if (!latest || latest.status === 'canceling' || latest.status === 'canceled') {
