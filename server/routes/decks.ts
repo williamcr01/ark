@@ -6,6 +6,8 @@ import {
   deckPatchRequestSchema,
   renameDeckRequestSchema,
 } from '../../shared/api/decks.ts'
+import { type AssetStore } from '../asset-record.ts'
+import { type AssetStorage } from '../asset-storage.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { buildDeckVersionOptions } from '../deck-version-payload.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
@@ -17,9 +19,25 @@ import {
   sendDeckValidationError,
 } from './shared.ts'
 
-export function createDecksRouter(deps: { deckStore: DeckStore }): Router {
-  const { deckStore } = deps
+export function createDecksRouter(deps: {
+  deckStore: DeckStore
+  assetStore?: AssetStore
+  assetStorage?: AssetStorage
+}): Router {
+  const { deckStore, assetStore, assetStorage } = deps
   const router = Router()
+
+  const cleanupDeckAssets = async (deckId: string) => {
+    if (!assetStore) {
+      return
+    }
+
+    const removed = await assetStore.deleteAssetsByDeck(deckId)
+
+    if (assetStorage) {
+      await Promise.all(removed.map((asset) => assetStorage.delete(asset.storageKey)))
+    }
+  }
 
   router.get('/api/decks', async (_request: Request, response: Response) => {
     try {
@@ -281,6 +299,8 @@ export function createDecksRouter(deps: { deckStore: DeckStore }): Router {
         response.status(404).json({ error: 'Deck not found.' })
         return
       }
+
+      await cleanupDeckAssets(id)
 
       response.status(204).send()
     } catch (error) {

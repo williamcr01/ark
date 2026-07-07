@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 
-import { toChatAttachments } from '../shared/chat.ts'
+import { MAX_CHAT_ATTACHMENTS, toChatAttachments, type ChatAttachment } from '../shared/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
 import { ChatPanel } from '@/components/ChatPanel'
+import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { DeckPreview } from '@/components/DeckPreview'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
@@ -12,6 +13,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useChatSession } from '@/hooks/useChatSession'
+import { useDeckAssets } from '@/hooks/useDeckAssets'
 import { useDeckActions } from '@/hooks/useDeckActions'
 import { useDeckEditHistory } from '@/hooks/useDeckEditHistory'
 import { useDeckGenerationFlow } from '@/hooks/useDeckGenerationFlow'
@@ -85,6 +87,17 @@ function App() {
       toast.warning('Could not refresh chat from server — showing cached messages')
     }, []),
   })
+  const {
+    assets: deckAssets,
+    uploads: assetUploads,
+    selectedAssetIds,
+    error: assetError,
+    uploadFiles: uploadAssetFiles,
+    removeAsset,
+    dismissUpload,
+    toggleAssetSelected,
+    clearSelection: clearAssetSelection,
+  } = useDeckAssets(deckId)
   const [input, setInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
@@ -146,7 +159,10 @@ function App() {
     loadModels,
     onError: setError,
     onGenerationStart: useCallback(() => setAttachmentError(''), []),
-    onGenerationSucceeded: resetEditHistory,
+    onGenerationSucceeded: useCallback(() => {
+      clearAssetSelection()
+      resetEditHistory()
+    }, [clearAssetSelection, resetEditHistory]),
   })
 
   useEffect(() => {
@@ -200,6 +216,19 @@ function App() {
               ? 'saved'
               : 'new'
   const displayError = error || generationError
+  const deckAssetsSlot = deckId ? (
+    <DeckAssets
+      assets={deckAssets}
+      disabled={isGenerating}
+      error={assetError}
+      onDismissUpload={dismissUpload}
+      onRemoveAsset={removeAsset}
+      onToggleSelected={toggleAssetSelected}
+      onUploadFiles={uploadAssetFiles}
+      selectedAssetIds={selectedAssetIds}
+      uploads={assetUploads}
+    />
+  ) : null
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
@@ -235,15 +264,34 @@ function App() {
   })
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
-    const attachments = toChatAttachments(message.files)
+    const promptAttachments = toChatAttachments(message.files)
+    const selectedDeckAttachments: ChatAttachment[] = deckId
+      ? selectedAssetIds
+          .map((id) => deckAssets.find((asset) => asset.id === id))
+          .filter((asset): asset is (typeof deckAssets)[number] => Boolean(asset))
+          .map((asset) => ({
+            type: 'file' as const,
+            mediaType: asset.mediaType,
+            filename: asset.filename,
+            url: asset.url,
+            assetId: asset.id,
+          }))
+      : []
+    const attachments = [...selectedDeckAttachments, ...promptAttachments]
     const hasContent = Boolean(message.text.trim() || attachments.length > 0)
 
     if (!hasContent || !canGenerate) {
       return
     }
 
+    if (attachments.length > MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError(`You can attach up to ${MAX_CHAT_ATTACHMENTS} files per message.`)
+      return
+    }
+
     setInput('')
-    await generateDeck(message.text, attachments)
+    const assetIds = deckId ? selectedAssetIds : []
+    await generateDeck(message.text, attachments, { assetIds })
   }
 
   const recordManualEdit = useCallback(
@@ -410,6 +458,7 @@ function App() {
     <ChatPanel
       activeSteps={activeSteps}
       apiKeyStatus={apiKeyStatus}
+      assetsSlot={deckAssetsSlot}
       attachmentError={attachmentError}
       canGenerate={canGenerate}
       error={displayError}
@@ -431,6 +480,7 @@ function App() {
       onRefreshModels={loadModels}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}
+      selectedAssetIds={selectedAssetIds}
       selectedModel={selectedModel}
     />
   )

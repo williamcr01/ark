@@ -96,6 +96,9 @@ function parseStoredJob(parsed: unknown): StoredGenerationJobFile | null {
     error: record.error ?? null,
     observability: record.observability ?? null,
     retryOfJobId: typeof record.retryOfJobId === 'string' ? record.retryOfJobId : null,
+    assetIds: Array.isArray(record.assetIds)
+      ? record.assetIds.filter((id): id is string => typeof id === 'string')
+      : undefined,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     startedAt: typeof record.startedAt === 'string' ? record.startedAt : null,
@@ -162,6 +165,7 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
       error: null,
       observability: null,
       retryOfJobId: input.retryOfJobId ?? null,
+      assetIds: input.assetIds,
       createdAt: now,
       updatedAt: now,
       startedAt: null,

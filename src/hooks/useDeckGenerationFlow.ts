@@ -188,7 +188,11 @@ export function useDeckGenerationFlow({
   ])
 
   const generateDeck = useCallback(
-    async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
+    async (
+      rawPrompt: string,
+      attachments: ChatAttachment[] = [],
+      options: { assetIds?: string[] } = {},
+    ) => {
       const prompt =
         rawPrompt.trim() ||
         (attachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
@@ -215,7 +219,7 @@ export function useDeckGenerationFlow({
       }
 
       try {
-        const outcome = await startGeneration(nextMessages, generatedHtml)
+        const outcome = await startGeneration(nextMessages, generatedHtml, options)
 
         if (!outcome) {
           return
