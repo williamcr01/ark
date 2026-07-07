@@ -485,7 +485,7 @@ export async function startServers(options: {
   const { createChatStore } = await import('../../apps/api/chat-store.ts')
   const { createGenerationJobStore } = await import('../../apps/api/generation-job-store.ts')
   const { createApp } = await import('../../apps/api/app.ts')
-  const { createSandboxHost } = await import('../../apps/api/sandbox-host.ts')
+  const { createSandboxHost } = await import('../../apps/sandbox/sandbox-host.ts')
   const { createServer: createViteServer } = await import('vite')
 
   const previewSessionStore = createPreviewSessionStore()
