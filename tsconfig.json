@@ -1,17 +1,11 @@
 {
   "files": [],
   "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.node.json"
-    }
-  ],
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"],
-      "@fixtures/*": ["./test/fixtures/*"]
-    }
-  }
+    { "path": "./apps/web" },
+    { "path": "./apps/api" },
+    { "path": "./apps/sandbox" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/deck-core" },
+    { "path": "./packages/runtime-registry" }
+  ]
 }

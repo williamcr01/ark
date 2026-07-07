@@ -8,40 +8,42 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 const apiContractPatterns = [
   {
-    group: ['**/shared/api/!(index)*', '../shared/api/!(index)*'],
-    message: 'Import API contracts from shared/api/index.ts only.',
+    group: ['@ark/contracts/*', '**/packages/contracts/!(index)*'],
+    message: 'Import API contracts from @ark/contracts only.',
   },
 ]
 
 const boundaryPatterns = {
-  src: [
+  web: [
     {
-      group: ['**/server/*', '../server/*', '../server/**', 'server/*', 'server/**'],
-      message: 'Frontend code must not import from server/. Use shared/ instead.',
+      group: ['**/apps/api/**', '@ark/api', '@ark/api/*'],
+      message: 'Frontend code must not import from apps/api. Use workspace packages instead.',
     },
   ],
-  server: [
+  api: [
     {
-      group: ['**/src/*', '../src/*', '../src/**', 'src/*', 'src/**'],
-      message: 'Server code must not import from src/. Use shared/ instead.',
+      group: ['**/apps/web/**', '@ark/web', '@ark/web/*'],
+      message: 'API code must not import from apps/web. Use workspace packages instead.',
     },
   ],
-  shared: [
+  sandbox: [
     {
-      group: ['**/src/*', '../src/*', '../src/**', 'src/*', 'src/**'],
-      message: 'Shared code must not import from src/.',
+      group: ['**/apps/web/**', '@ark/web', '@ark/web/*'],
+      message: 'Sandbox code must not import from apps/web. Use workspace packages instead.',
     },
+  ],
+  packages: [
     {
-      group: ['**/server/*', '../server/*', '../server/**', 'server/*', 'server/**'],
-      message: 'Shared code must not import from server/.',
+      group: ['**/apps/web/**', '**/apps/api/**', '**/apps/sandbox/**'],
+      message: 'Packages must not import from apps/.',
     },
   ],
 }
 
 const environmentOnlyPaths = [
-  { name: 'react', message: 'Shared code must not depend on React. Keep UI in src/.' },
-  { name: 'react-dom', message: 'Shared code must not depend on React. Keep UI in src/.' },
-  { name: 'express', message: 'Shared code must not depend on Express. Keep HTTP in server/.' },
+  { name: 'react', message: 'Packages must not depend on React. Keep UI in apps/web.' },
+  { name: 'react-dom', message: 'Packages must not depend on React. Keep UI in apps/web.' },
+  { name: 'express', message: 'Packages must not depend on Express. Keep HTTP in apps/api.' },
 ]
 
 export default defineConfig([
@@ -69,42 +71,51 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/components/ui/**/*.{ts,tsx}', 'src/components/ai-elements/**/*.{ts,tsx}'],
+    files: [
+      'apps/web/src/components/ui/**/*.{ts,tsx}',
+      'apps/web/src/components/ai-elements/**/*.{ts,tsx}',
+    ],
     rules: {
       'react-refresh/only-export-components': 'off',
     },
   },
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['apps/web/src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [...boundaryPatterns.src, ...apiContractPatterns] },
+        { patterns: [...boundaryPatterns.web, ...apiContractPatterns] },
       ],
     },
   },
   {
-    files: ['server/**/*.{ts,tsx}'],
+    files: ['apps/api/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [...boundaryPatterns.server, ...apiContractPatterns] },
+        { patterns: [...boundaryPatterns.api, ...apiContractPatterns] },
       ],
     },
   },
   {
-    files: ['shared/**/*.ts'],
-    ignores: ['shared/**/*.test.ts', 'shared/**/*.spec.ts'],
+    files: ['apps/sandbox/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: boundaryPatterns.sandbox }],
+    },
+  },
+  {
+    files: ['packages/**/*.ts'],
+    ignores: ['packages/**/*.test.ts', 'packages/**/*.spec.ts', 'packages/**/vitest.config.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
-            ...boundaryPatterns.shared,
+            ...boundaryPatterns.packages,
             {
               group: ['node:*'],
               message:
-                'Shared code must not use Node built-ins unless the file name makes the environment explicit (e.g. *-disk.ts).',
+                'Packages must not use Node built-ins unless the file name makes the environment explicit (e.g. *-disk.ts).',
             },
           ],
           paths: environmentOnlyPaths,
@@ -113,24 +124,36 @@ export default defineConfig([
     },
   },
   {
-    files: ['shared/**/*-disk.ts'],
+    files: ['packages/**/*-disk.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          patterns: boundaryPatterns.shared,
+          patterns: boundaryPatterns.packages,
           paths: environmentOnlyPaths,
         },
       ],
     },
   },
   {
-    files: ['shared/**/*.test.ts', 'shared/**/*.spec.ts'],
+    files: ['packages/contracts/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          patterns: boundaryPatterns.shared,
+          patterns: boundaryPatterns.packages,
+          paths: environmentOnlyPaths,
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/**/*.test.ts', 'packages/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: boundaryPatterns.packages,
           paths: environmentOnlyPaths,
         },
       ],
