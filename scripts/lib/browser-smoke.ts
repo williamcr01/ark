@@ -505,10 +505,11 @@ export async function startServers(options: {
   await listen(apiServer, options.apiPort)
   await listen(sandboxServer, options.sandboxPort)
 
+  const webRoot = path.join(repoRoot, 'apps/web')
   const vite = await createViteServer({
-    configFile: path.join(repoRoot, 'apps/web/vite.config.ts'),
+    configFile: path.join(webRoot, 'vite.config.ts'),
     mode: 'development',
-    root: repoRoot,
+    root: webRoot,
     server: {
       host: '127.0.0.1',
       port: options.webPort,
