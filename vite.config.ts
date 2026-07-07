@@ -10,6 +10,10 @@ const DEFAULT_API_PORT = '8787'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiPort = process.env.PORT ?? env.PORT ?? DEFAULT_API_PORT
+  const resolveAlias = {
+    '@': path.resolve(__dirname, './src'),
+    '@fixtures': path.resolve(__dirname, './test/fixtures'),
+  }
 
   return {
     plugins: [react(), tailwindcss()],
@@ -21,10 +25,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 800,
     },
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-        '@fixtures': path.resolve(__dirname, './test/fixtures'),
-      },
+      alias: resolveAlias,
     },
     server: {
       proxy: {
@@ -32,17 +33,41 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
-      environment: 'jsdom',
-      environmentOptions: {
-        jsdom: {
-          url: 'http://localhost:5173',
+      projects: [
+        {
+          resolve: { alias: resolveAlias },
+          plugins: [react(), tailwindcss()],
+          test: {
+            name: 'server',
+            environment: 'node',
+            include: ['server/**/*.{test,spec}.ts'],
+            setupFiles: ['./src/test/setup.ts'],
+          },
         },
-      },
-      setupFiles: './src/test/setup.ts',
-      include: [
-        'src/**/*.{test,spec}.{ts,tsx}',
-        'shared/**/*.{test,spec}.ts',
-        'server/**/*.{test,spec}.ts',
+        {
+          resolve: { alias: resolveAlias },
+          test: {
+            name: 'shared',
+            environment: 'node',
+            include: ['shared/**/*.{test,spec}.ts'],
+            setupFiles: ['./src/test/setup.ts'],
+          },
+        },
+        {
+          resolve: { alias: resolveAlias },
+          plugins: [react(), tailwindcss()],
+          test: {
+            name: 'client',
+            environment: 'jsdom',
+            include: ['src/**/*.{test,spec}.{ts,tsx}'],
+            setupFiles: ['./src/test/setup.ts'],
+            environmentOptions: {
+              jsdom: {
+                url: 'http://localhost:5173',
+              },
+            },
+          },
+        },
       ],
     },
   }
