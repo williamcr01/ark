@@ -45,6 +45,13 @@ describe('asset URLs', () => {
     expect(parseAssetIdFromUrl('https://example.com/logo.png')).toBeNull()
     expect(parseAssetIdFromUrl('/api/assets/not-a-uuid')).toBeNull()
     expect(isArkAssetUrl('https://evil.example/api/assets/x')).toBe(false)
+    expect(
+      parseAssetIdFromUrl(`https://evil.example/api/decks/${DECK_ID}/assets/${ASSET_ID}`),
+    ).toBeNull()
+    expect(isArkAssetUrl(`https://evil.example/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBe(
+      false,
+    )
+    expect(parseAssetIdFromUrl(`//evil.example/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBeNull()
   })
 })
 

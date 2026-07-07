@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   FileCode2Icon,
   Loader2Icon,
@@ -8,6 +8,7 @@ import {
   ShieldCheckIcon,
   WandSparklesIcon,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { EditModeToolbar, PreviewEditModeToggle } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
@@ -30,6 +31,12 @@ import {
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
 } from '@/lib/deck-editor-patches'
+import {
+  buildImageInsertOperation,
+  clientPointToNormalizedSlidePoint,
+  isEditableClipboardTarget,
+  prepareImageInsertFromFile,
+} from '@/lib/deck-image-insert'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
@@ -37,6 +44,8 @@ import { validateDeckHtmlInBrowser } from '../../shared/deck-validate.ts'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 import type { EditorTool } from '../../shared/deck-editor-bridge.ts'
+import { isRemoteImageUrl } from '../../shared/deck-image.ts'
+import type { ImageFitMode } from '../../shared/deck-image.ts'
 
 export type DeckTextEditCommit = {
   elementId: string
@@ -56,6 +65,12 @@ export type DeckPreviewProps = {
   parsedDeck: ReturnType<typeof parseDeckSlides>
   editorBridgeEnabled?: boolean
   isTextEditSaving?: boolean
+  canUndo?: boolean
+  canRedo?: boolean
+  undoSlideIndex?: number | null
+  redoSlideIndex?: number | null
+  onUndo?: () => void | Promise<void>
+  onRedo?: () => void | Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
   onPatchEditorOperations?: (
     operations: import('../../shared/deck-patch.ts').DeckElementPatchOperation[],
@@ -74,14 +89,26 @@ export function DeckPreview({
   parsedDeck,
   editorBridgeEnabled = false,
   isTextEditSaving = false,
+  canUndo = false,
+  canRedo = false,
+  undoSlideIndex = null,
+  redoSlideIndex = null,
+  onUndo,
+  onRedo,
   onCommitTextEdit,
   onPatchEditorOperations,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const previewStageRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
   const [editModeActive, setEditModeActive] = useState(false)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
+  const [imageFitOverride, setImageFitOverride] = useState<{
+    elementId: string
+    fit: ImageFitMode
+  } | null>(null)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
   const processedTextCommitRef = useRef<string | null>(null)
@@ -191,6 +218,22 @@ export function DeckPreview({
   const canModifySelection =
     Boolean(selection?.managed) && !selection?.locked && editChromeActive && !textEditActive
 
+  const selectedImage = Boolean(
+    selection &&
+    !selection.locked &&
+    selection.managed &&
+    (selection.editableKind === 'image' || selection.tagName === 'img'),
+  )
+
+  const selectedImageAlt = selectedImage ? (selection?.textPreview ?? '') : ''
+
+  const selectedImageFit: ImageFitMode =
+    selectedImage &&
+    imageFitOverride !== null &&
+    imageFitOverride.elementId === selection?.elementId
+      ? imageFitOverride.fit
+      : (selection?.imageFit ?? 'contain')
+
   const handleDeleteSelection = useCallback(() => {
     if (!selection || !canModifySelection || !onPatchEditorOperations) {
       return
@@ -252,6 +295,26 @@ export function DeckPreview({
     [canModifySelection, onPatchEditorOperations, selection],
   )
 
+  const handleUndo = useCallback(() => {
+    if (!canUndo || !onUndo || textEditActive || isTextEditSaving) {
+      return
+    }
+
+    // Jump to the slide the reverted edit happened on so the change is visible;
+    // fall back to the current slide when it is unknown.
+    preserveSlideIndexRef.current = undoSlideIndex ?? activeSlideIndex
+    void onUndo()
+  }, [activeSlideIndex, canUndo, isTextEditSaving, onUndo, textEditActive, undoSlideIndex])
+
+  const handleRedo = useCallback(() => {
+    if (!canRedo || !onRedo || textEditActive || isTextEditSaving) {
+      return
+    }
+
+    preserveSlideIndexRef.current = redoSlideIndex ?? activeSlideIndex
+    void onRedo()
+  }, [activeSlideIndex, canRedo, isTextEditSaving, onRedo, redoSlideIndex, textEditActive])
+
   // Track the element's geometry from *before* a transform begins so a commit can
   // be diffed against the real starting rect. While a drag is in progress the
   // runtime streams `ark:editor-geometry` on every preview frame, so we must stop
@@ -297,6 +360,7 @@ export function DeckPreview({
     endTextEditing()
     disableEditor()
     setActiveTool('select')
+    setImageFitOverride(null)
     setEditModeActive(false)
   }, [disableEditor, endTextEditing])
 
@@ -322,6 +386,109 @@ export function DeckPreview({
       setTool(tool)
     },
     [setTool],
+  )
+
+  const openImagePicker = useCallback(() => {
+    imageInputRef.current?.click()
+  }, [])
+
+  const handleInsertImageFile = useCallback(
+    async (file: File, position?: { x: number; y: number }) => {
+      if (!onPatchEditorOperations) {
+        toast.error('Save the deck before inserting images')
+        return
+      }
+
+      try {
+        const prepared = await prepareImageInsertFromFile(file, position)
+        preserveSlideIndexRef.current = activeSlideIndex
+
+        await onPatchEditorOperations(
+          [buildImageInsertOperation(activeSlideIndex, prepared, null)],
+          activeSlideIndex,
+          'Inserted image in preview',
+        )
+        handleToolChange('select')
+      } catch (insertError) {
+        toast.error(
+          insertError instanceof Error ? insertError.message : 'Could not insert the image',
+        )
+      }
+    },
+    [activeSlideIndex, handleToolChange, onPatchEditorOperations],
+  )
+
+  const handleImageInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+
+      if (!file) {
+        handleToolChange('select')
+        return
+      }
+
+      void handleInsertImageFile(file)
+    },
+    [handleInsertImageFile, handleToolChange],
+  )
+
+  const handleImageAltChange = useCallback(
+    (alt: string) => {
+      if (!selection || !selectedImage || !onPatchEditorOperations) {
+        return
+      }
+
+      void onPatchEditorOperations(
+        [
+          {
+            op: 'set_attrs',
+            elementId: selection.elementId,
+            slideIndex: selection.slideIndex,
+            ...(selection.slideId ? { slideId: selection.slideId } : {}),
+            attrs: { alt },
+          },
+        ],
+        selection.slideIndex,
+        'Updated image alt text',
+      )
+    },
+    [onPatchEditorOperations, selectedImage, selection],
+  )
+
+  const handleImageFitChange = useCallback(
+    (fit: ImageFitMode) => {
+      if (!selection || !selectedImage || !onPatchEditorOperations) {
+        return
+      }
+
+      setImageFitOverride({
+        elementId: selection.elementId,
+        fit,
+      })
+
+      void onPatchEditorOperations(
+        [
+          {
+            op: 'set_inline_style',
+            elementId: selection.elementId,
+            slideIndex: selection.slideIndex,
+            ...(selection.slideId ? { slideId: selection.slideId } : {}),
+            style: { 'object-fit': fit },
+          },
+          {
+            op: 'set_attrs',
+            elementId: selection.elementId,
+            slideIndex: selection.slideIndex,
+            ...(selection.slideId ? { slideId: selection.slideId } : {}),
+            attrs: { 'data-ark-fit': fit },
+          },
+        ],
+        selection.slideIndex,
+        'Updated image fit mode',
+      )
+    },
+    [onPatchEditorOperations, selectedImage, selection],
   )
 
   useEffect(() => {
@@ -466,11 +633,107 @@ export function DeckPreview({
   }, [goToSlide, html, previewFrame.iframeKey])
 
   useEffect(() => {
+    if (!editChromeActive || textEditActive) {
+      return
+    }
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (isEditableClipboardTarget(event.target)) {
+        return
+      }
+
+      const clipboard = event.clipboardData
+
+      if (!clipboard) {
+        return
+      }
+
+      for (const item of clipboard.items) {
+        if (!item.type.startsWith('image/')) {
+          continue
+        }
+
+        const file = item.getAsFile()
+
+        if (!file) {
+          continue
+        }
+
+        event.preventDefault()
+        void handleInsertImageFile(file)
+        return
+      }
+
+      const pastedText = clipboard.getData('text/plain').trim()
+
+      if (pastedText && isRemoteImageUrl(pastedText)) {
+        event.preventDefault()
+        toast.error(
+          'Remote image URLs cannot be inserted directly. Use a local file or paste image data.',
+        )
+      }
+    }
+
+    window.addEventListener('paste', handlePaste)
+
+    return () => {
+      window.removeEventListener('paste', handlePaste)
+    }
+  }, [editChromeActive, handleInsertImageFile, textEditActive])
+
+  useEffect(() => {
     if (!editChromeActive) {
       return
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const historyModifier = event.metaKey || event.ctrlKey
+
+      if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
+        // Leave undo/redo to the browser while editing text so contenteditable
+        // history keeps working inside the deck.
+        if (textEditActive || isTextEditSaving) {
+          return
+        }
+
+        if (event.shiftKey) {
+          if (!canRedo || !onRedo) {
+            return
+          }
+
+          event.preventDefault()
+          handleRedo()
+        } else {
+          if (!canUndo || !onUndo) {
+            return
+          }
+
+          event.preventDefault()
+          handleUndo()
+        }
+
+        return
+      }
+
+      if (
+        historyModifier &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.key === 'y' || event.key === 'Y')
+      ) {
+        if (textEditActive || isTextEditSaving) {
+          return
+        }
+
+        if (!canRedo || !onRedo) {
+          return
+        }
+
+        event.preventDefault()
+        handleRedo()
+        return
+      }
+
       if (event.key === 'Escape') {
         if (textEditActive) {
           event.preventDefault()
@@ -517,9 +780,16 @@ export function DeckPreview({
     activeTool,
     beginTextEdit,
     canEditSelectedText,
+    canRedo,
+    canUndo,
     editChromeActive,
     endTextEditing,
+    handleRedo,
     handleToolChange,
+    handleUndo,
+    isTextEditSaving,
+    onRedo,
+    onUndo,
     textEditActive,
   ])
 
@@ -651,21 +921,39 @@ export function DeckPreview({
         <EditModeToolbar
           activeTool={activeTool}
           canEditText={canEditSelectedText}
+          canRedo={canRedo}
+          canUndo={canUndo}
           hasDeck={html.length > 0 && hasSlides}
           hasSelection={Boolean(selection?.elementId)}
+          imageAlt={selectedImageAlt}
+          imageFit={selectedImageFit}
           isGenerating={isGenerating}
           isSaving={isTextEditSaving}
           onBringForward={() => handleReorderSelection('front')}
           onDelete={handleDeleteSelection}
           onDuplicate={handleDuplicateSelection}
           onEditText={beginTextEdit}
+          onImageAltChange={handleImageAltChange}
+          onImageFitChange={handleImageFitChange}
+          onPickImage={openImagePicker}
+          onRedo={handleRedo}
           onSendBackward={() => handleReorderSelection('back')}
           onToolChange={handleToolChange}
+          onUndo={handleUndo}
+          selectedImage={selectedImage}
           selectionLocked={selection?.locked ?? false}
           selectionManaged={selection?.managed ?? false}
           textEditActive={textEditActive}
         />
       ) : null}
+
+      <input
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={handleImageInputChange}
+        ref={imageInputRef}
+        type="file"
+      />
 
       <div
         className={cn(
@@ -688,11 +976,40 @@ export function DeckPreview({
         <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
           <div
             className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden"
+            onDragOver={(event) => {
+              if (!editChromeActive || textEditActive) {
+                return
+              }
+
+              if ([...event.dataTransfer.types].includes('Files')) {
+                event.preventDefault()
+              }
+            }}
+            onDrop={(event) => {
+              if (!editChromeActive || textEditActive) {
+                return
+              }
+
+              const file = event.dataTransfer.files[0]
+
+              if (!file?.type.startsWith('image/')) {
+                return
+              }
+
+              event.preventDefault()
+              const position = clientPointToNormalizedSlidePoint(
+                event.clientX,
+                event.clientY,
+                previewStageRef.current,
+              )
+              void handleInsertImageFile(file, position)
+            }}
             ref={previewViewportRef}
           >
             {html ? (
               <div
                 className="relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
+                ref={previewStageRef}
                 style={previewStageStyle}
               >
                 <iframe

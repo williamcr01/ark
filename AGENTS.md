@@ -169,7 +169,7 @@ Fully working editor, not a scaffold. Implemented today:
 - **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
 - **Sandboxed preview** on a separate origin with CSP isolation, CSS-only and full-JS modes, thumbnails, and Present mode.
 - **Approved runtime registry** with vendored reveal.js 5.1.0 served from `/api/runtimes/...`.
-- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `shared/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, text boxes, undo/redo, and image insertion are tracked in issues #76 and #78–#84.
+- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `shared/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, and text boxes ship today. Client-side undo/redo with manual-edit provenance (#82) is implemented via `src/hooks/useDeckEditHistory.ts` and `shared/deck-edit-provenance.ts` — each committed manual edit records before/after HTML snapshots plus structured provenance (source, operation, slide indexes, element ids, summary), and AI generation/upload/rollback act as history boundaries. Remaining manual-editing work (image insertion, etc.) is tracked in issues #76 and #78–#84.
 
 Typed API contracts shared by client and server live in `shared/api/`.
 

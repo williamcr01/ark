@@ -494,6 +494,111 @@ describe('DeckPreview script divergence UI', () => {
     ])
   })
 
+  it('triggers undo and redo from the toolbar history buttons', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+    const onRedo = vi.fn()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      canRedo: true,
+      onUndo,
+      onRedo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    await user.click(screen.getByRole('button', { name: 'Redo' }))
+
+    expect(onUndo).toHaveBeenCalledTimes(1)
+    expect(onRedo).toHaveBeenCalledTimes(1)
+  })
+
+  it('undoes and redoes with keyboard shortcuts in edit mode', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+    const onRedo = vi.fn()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      canRedo: true,
+      onUndo,
+      onRedo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(onUndo).toHaveBeenCalledTimes(1)
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true })
+    expect(onRedo).toHaveBeenCalledTimes(1)
+
+    fireEvent.keyDown(window, { key: 'y', ctrlKey: true })
+    expect(onRedo).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not hijack undo shortcut while editing text', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+
+    editorBridgeMock.textEditActive = true
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      onUndo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+
+    expect(onUndo).not.toHaveBeenCalled()
+  })
+
+  it('does not undo with keyboard when nothing is undoable', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: false,
+      onUndo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+
+    expect(onUndo).not.toHaveBeenCalled()
+  })
+
+  it('does not undo with keyboard while a patch is saving', async () => {
+    const user = userEvent.setup()
+    const onUndo = vi.fn()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      isTextEditSaving: true,
+      onUndo,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+
+    expect(onUndo).not.toHaveBeenCalled()
+  })
+
   it('shows locked messaging for locked selections', async () => {
     const user = userEvent.setup()
 
