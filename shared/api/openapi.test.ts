@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { generateArkOpenApiDocument } from './openapi-registry.ts'
+import { serializeArkOpenApiDocument } from './openapi-serialize.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const specPath = path.join(repoRoot, 'openapi', 'ark.openapi.json')
@@ -29,8 +30,10 @@ describe('OpenAPI registry', () => {
     expect(serialized).toContain('Job accepted (wire shape omits request messages and `assetIds`)')
   })
 
-  it('matches the committed OpenAPI artifact', () => {
-    const generated = `${JSON.stringify(generateArkOpenApiDocument(), null, 2)}\n`
+  it('matches the committed OpenAPI artifact', async () => {
+    const generated = await serializeArkOpenApiDocument(generateArkOpenApiDocument(), {
+      filepath: specPath,
+    })
     const committed = readFileSync(specPath, 'utf8')
 
     expect(generated).toBe(committed)

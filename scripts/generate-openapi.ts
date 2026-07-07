@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { generateArkOpenApiDocument } from '../shared/api/openapi-registry.ts'
+import { serializeArkOpenApiDocument } from '../shared/api/openapi-serialize.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
@@ -11,7 +12,7 @@ const outputPath = path.join(repoRoot, 'openapi', 'ark.openapi.json')
 async function main() {
   const checkOnly = process.argv.includes('--check')
   const document = generateArkOpenApiDocument()
-  const serialized = `${JSON.stringify(document, null, 2)}\n`
+  const serialized = await serializeArkOpenApiDocument(document, { filepath: outputPath })
 
   if (checkOnly) {
     let existing = ''
