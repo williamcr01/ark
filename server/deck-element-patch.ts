@@ -9,6 +9,7 @@ import {
   ARK_SLIDE_REFERENCE_WIDTH,
   TRANSIENT_ELEMENT_ID_PREFIX,
 } from '../shared/deck-metadata.ts'
+import { validateImageSrcForInsert } from '../shared/deck-image.ts'
 import type { DeckElementPatchOperation } from '../shared/deck-patch.ts'
 import {
   createElementId,
@@ -60,6 +61,8 @@ const PATCHABLE_ATTRS = new Set([
   'alt',
   'aria-label',
   'class',
+  'data-ark-aspect-ratio',
+  'data-ark-fit',
   'data-ark-role',
   'data-slide-title',
   'data-title',
@@ -77,6 +80,7 @@ const PATCHABLE_STYLE_PROPS = new Set([
   'font-weight',
   'height',
   'left',
+  'object-fit',
   'opacity',
   'position',
   'text-align',
@@ -309,6 +313,21 @@ function findUnsafeInsertedAttribute(root: Element) {
   return null
 }
 
+function validateInsertedImageSources(root: Element) {
+  const images = root.tagName.toLowerCase() === 'img' ? [root] : [...root.querySelectorAll('img')]
+
+  for (const image of images) {
+    const src = image.getAttribute('src')
+    const validation = validateImageSrcForInsert(src)
+
+    if (!validation.ok) {
+      return validation.error
+    }
+  }
+
+  return null
+}
+
 function assertElementPatchable(
   resolved: ResolvedElement,
   operation: DeckElementPatchOperation,
@@ -398,6 +417,12 @@ function parseElementHtml(doc: Document, html: string) {
     return {
       error: `insert_element cannot insert unsafe "${unsafeAttribute}" attributes.`,
     } as const
+  }
+
+  const imageValidationError = validateInsertedImageSources(element)
+
+  if (imageValidationError) {
+    return { error: `insert_element cannot insert image: ${imageValidationError}` } as const
   }
 
   return { element }
@@ -721,6 +746,14 @@ function applySetAttrs(
 
     if (isUnsafeAttributeValue(name, value)) {
       return { error: `set_attrs does not allow unsafe "${name}" values.` }
+    }
+
+    if (name === 'src' && resolved.element.tagName.toLowerCase() === 'img') {
+      const srcValidation = validateImageSrcForInsert(value)
+
+      if (!srcValidation.ok) {
+        return { error: `set_attrs cannot set img src: ${srcValidation.error}` }
+      }
     }
 
     if (resolved.element.getAttribute(name) !== value) {
