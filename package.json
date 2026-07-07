@@ -23,7 +23,9 @@
     "smoke:plain-css": "tsx scripts/smoke-plain-css.ts",
     "smoke:reveal-runtime": "tsx scripts/smoke-reveal-runtime.ts",
     "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime",
-    "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts"
+    "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
+    "openapi:generate": "tsx scripts/generate-openapi.ts",
+    "openapi:check": "tsx scripts/generate-openapi.ts --check"
   },
   "engines": {
     "node": ">=22"
@@ -60,6 +62,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "8.5.0",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",

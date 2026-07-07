@@ -11,18 +11,13 @@ import type {
   GenerationJob,
   GenerationJobStatus,
 } from '../shared/generation-job.ts'
-import {
-  deckValidationReportSchema,
-  type GenerationJobApi,
-  type GenerationJobResponse,
-  type StartGenerationJobRequest,
-} from '../shared/api/index.ts'
-import { ACTIVE_GENERATION_JOB_STATUSES } from '../shared/generation-job.ts'
+import { type GenerationJobResponse, type StartGenerationJobRequest } from '../shared/api/index.ts'
+import { ACTIVE_GENERATION_JOB_STATUSES, toGenerationJobApi } from '../shared/generation-job.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'
 import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import { type ChatStore } from './chat-record.ts'
-import { resolveAssetAttachments } from './routes/assets.ts'
+import { resolveAssetAttachments } from './asset-resolve.ts'
 import { type AssetStorage } from './asset-storage.ts'
 import { type AssetStore } from './asset-record.ts'
 import {
@@ -782,31 +777,5 @@ export function createGenerationJobRunner({
 }
 
 export function toGenerationJobResponse(job: GenerationJob): GenerationJobResponse {
-  const apiJob: GenerationJobApi = {
-    id: job.id,
-    deckId: job.deckId,
-    baseVersionId: job.baseVersionId,
-    editingExistingDeck: job.request.editingExistingDeck ?? false,
-    status: job.status,
-    model: job.model,
-    provider: job.provider,
-    progress: job.progress,
-    observability: job.observability ?? null,
-    result: job.result
-      ? {
-          deckId: job.result.deckId,
-          versionId: job.result.versionId,
-          validation: deckValidationReportSchema.parse(job.result.validation),
-          assistantText: job.result.assistantText,
-        }
-      : null,
-    error: job.error,
-    retryOfJobId: job.retryOfJobId,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
-    startedAt: job.startedAt,
-    completedAt: job.completedAt,
-  }
-
-  return { job: apiJob }
+  return { job: toGenerationJobApi(job) }
 }
