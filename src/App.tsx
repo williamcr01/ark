@@ -731,6 +731,7 @@ function App() {
                       onRefreshModels={loadModels}
                       onRetryGeneration={handleRetryGeneration}
                       onRetryPersist={retryPersist}
+                      selectedAssetIds={selectedAssetIds}
                       selectedModel={selectedModel}
                     />
                   </ResizablePanel>
@@ -786,6 +787,7 @@ function App() {
                     onRefreshModels={loadModels}
                     onRetryGeneration={handleRetryGeneration}
                     onRetryPersist={retryPersist}
+                    selectedAssetIds={selectedAssetIds}
                     selectedModel={selectedModel}
                   />
                 </div>

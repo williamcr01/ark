@@ -303,6 +303,7 @@ export function createPostgresGenerationJobStore(
       baseVersionId: existing.baseVersionId,
       editingExistingDeck: existing.request.editingExistingDeck ?? false,
       retryOfJobId: existing.retryOfJobId,
+      assetIds: existing.assetIds ?? [],
       progress: patch.progress ?? existing.progress,
       result: patch.result === undefined ? existing.result : patch.result,
       observability:
@@ -407,6 +408,7 @@ export function createPostgresGenerationJobStore(
       baseVersionId: existing.baseVersionId,
       editingExistingDeck: existing.request.editingExistingDeck ?? false,
       retryOfJobId: existing.retryOfJobId,
+      assetIds: existing.assetIds ?? [],
       progress: patch.progress ?? existing.progress,
       result: patch.result === undefined ? existing.result : patch.result,
       observability:
