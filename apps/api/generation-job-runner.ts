@@ -202,6 +202,7 @@ export function createGenerationJobRunner({
         modelRef: currentJob.model,
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
+        editorSelection: currentJob.request.editorSelection,
         abortSignal: abortController.signal,
         logger: jobLogger,
         onStepProgress: async (steps) => {
@@ -687,6 +688,7 @@ export function createGenerationJobRunner({
         currentHtml,
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
+        ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
       },
     }
 

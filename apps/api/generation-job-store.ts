@@ -86,6 +86,9 @@ function parseStoredJob(parsed: unknown): StoredGenerationJobFile | null {
       baseVersionId:
         typeof record.request.baseVersionId === 'string' ? record.request.baseVersionId : null,
       editingExistingDeck: record.request.editingExistingDeck === true,
+      ...(record.request.editorSelection && typeof record.request.editorSelection === 'object'
+        ? { editorSelection: record.request.editorSelection }
+        : {}),
     },
     progress: {
       steps: record.progress.steps,

@@ -32,7 +32,9 @@ import {
 import { deckHasExecutableContent } from '@/lib/deck-export'
 import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
+import { toEditorSelectionContext } from '@/lib/editor-selection-context'
 import type { PatchDeckResponse } from '@/lib/deck-api'
 import {
   startRevealThumbnailStylesPreload,
@@ -103,6 +105,7 @@ function App() {
     clearSelection: clearAssetSelection,
   } = useDeckAssets(deckId)
   const [input, setInput] = useState('')
+  const editorSelectionRef = useRef<EditorSelectionInfo | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
   const [error, setError] = useState('')
@@ -267,6 +270,10 @@ function App() {
     onEditHistoryBoundary: resetEditHistory,
   })
 
+  const handleEditorSelectionChange = useCallback((selection: EditorSelectionInfo | null) => {
+    editorSelectionRef.current = selection
+  }, [])
+
   const handlePromptSubmit = async (message: PromptInputMessage) => {
     const promptAttachments = toChatAttachments(message.files)
     const selectedDeckAttachments: ChatAttachment[] = deckId
@@ -295,7 +302,11 @@ function App() {
 
     setInput('')
     const assetIds = deckId ? selectedAssetIds : []
-    await generateDeck(message.text, attachments, { assetIds })
+    const editorSelection = toEditorSelectionContext(editorSelectionRef.current)
+    await generateDeck(message.text, attachments, {
+      assetIds,
+      ...(editorSelection ? { editorSelection } : {}),
+    })
   }
 
   const recordManualEdit = useCallback(
@@ -546,6 +557,7 @@ function App() {
                   isTextEditSaving={isDeckPatching}
                   layout="desktop"
                   onCommitTextEdit={handleCommitTextEdit}
+                  onEditorSelectionChange={handleEditorSelectionChange}
                   onPatchEditorOperations={handlePatchEditorOperations}
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
@@ -588,6 +600,7 @@ function App() {
                   isTextEditSaving={isDeckPatching}
                   layout="mobile"
                   onCommitTextEdit={handleCommitTextEdit}
+                  onEditorSelectionChange={handleEditorSelectionChange}
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
