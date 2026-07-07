@@ -1,15 +1,19 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  createEditorDeleteRequestMessage,
   createEditorEnableMessage,
   createEditorErrorMessage,
   createEditorGeometryMessage,
+  createEditorInsertRequestMessage,
   createEditorReadyMessage,
   createEditorSelectionChangeMessage,
+  createEditorTextCommitMessage,
   createEditorTextEditStateMessage,
+  createEditorTransformCommitMessage,
 } from '../../shared/deck-editor-bridge.ts'
 import {
   DECK_BRIDGE_POST_MESSAGE_TARGET,
@@ -22,25 +26,48 @@ import { useDeckEditorBridge } from './useDeckEditorBridge'
 function EditorHarness({
   enabled = true,
   sandboxOrigin = null,
+  iframeGenerationKey = 'test-frame',
+  onSelectionChange,
 }: {
   enabled?: boolean
   sandboxOrigin?: string | null
+  iframeGenerationKey?: string
+  onSelectionChange?: (selection: { elementId: string } | null) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const previousGenerationKeyRef = useRef(iframeGenerationKey)
   const bridge = useDeckEditorBridge(iframeRef, {
     enabled,
     activeSlideIndex: 0,
     sandboxOrigin,
-    iframeGenerationKey: 'test-frame',
+    iframeGenerationKey,
+    onSelectionChange,
   })
+  const { enableEditor } = bridge
+
+  useEffect(() => {
+    if (previousGenerationKeyRef.current === iframeGenerationKey) {
+      return
+    }
+
+    previousGenerationKeyRef.current = iframeGenerationKey
+
+    if (enabled) {
+      enableEditor(0)
+    }
+  }, [enableEditor, enabled, iframeGenerationKey])
 
   return (
     <div>
-      <iframe ref={iframeRef} title="Deck preview" />
+      <iframe key={iframeGenerationKey} ref={iframeRef} title="Deck preview" />
       <output aria-label="Editor ready">{bridge.editorReady ? 'ready' : 'pending'}</output>
       <output aria-label="Selection">{bridge.selection?.elementId ?? 'none'}</output>
       <output aria-label="Geometry">{bridge.geometry ? 'geometry' : 'none'}</output>
       <output aria-label="Editor error">{bridge.editorError ?? 'none'}</output>
+      <output aria-label="Text commit">{bridge.lastTextCommit?.text ?? 'none'}</output>
+      <output aria-label="Transform commit">{bridge.transformCommit?.elementId ?? 'none'}</output>
+      <output aria-label="Delete request">{bridge.lastDeleteRequest?.elementId ?? 'none'}</output>
+      <output aria-label="Insert request">{bridge.lastInsertRequest?.kind ?? 'none'}</output>
       <button onClick={() => bridge.enableEditor(0)} type="button">
         Enable editor
       </button>
@@ -182,6 +209,154 @@ describe('useDeckEditorBridge', () => {
     })
 
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+  })
+
+  it('ignores forged editor commits and mutation requests from hostile origins', async () => {
+    const onSelectionChange = vi.fn()
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} onSelectionChange={onSelectionChange} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTextCommitMessage('evil-el', 0, 'Injected', 'Victim', null),
+          origin: 'https://evil.example',
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTransformCommitMessage('evil-el', 0, {
+            x: 0.2,
+            y: 0.2,
+            width: 0.3,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: {} as Window,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorDeleteRequestMessage('evil-el', 0),
+          origin: 'https://evil.example',
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorInsertRequestMessage('text-box', 0, {
+            x: 0.1,
+            y: 0.1,
+            width: 0.2,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: {} as Window,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'ark:editor-selection-change', selection: { elementId: 'evil' } },
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Text commit')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Transform commit')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Delete request')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
+    expect(onSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it('drops runtime messages after the preview iframe generation changes', async () => {
+    const { rerender } = render(
+      <EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-1" />,
+    )
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+
+    rerender(<EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-2" />)
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('pending')
+
+    const newIframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: newIframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'stale-selection',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Stale',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTextCommitMessage('stale-el', 0, 'Injected', 'Original', null),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Text commit')).toHaveTextContent('none')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'fresh-selection',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Fresh',
+          }),
+          origin: sandboxOrigin,
+          source: newIframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('fresh-selection')
   })
 
   it('tracks iframe text-edit lifecycle state', async () => {
