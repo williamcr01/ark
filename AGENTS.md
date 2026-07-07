@@ -41,6 +41,7 @@ ark/
 ├── server/                 # Express API, agent loop, deck/chat stores, sandbox host
 │   └── db/                 # Postgres repositories + migrations (optional path)
 ├── shared/                 # code shared by client and server (bridge, patches, API contracts)
+├── test/                   # cross-layer HTML fixtures (`test/fixtures/`) for tests and smoke scripts
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
 ├── docs/                   # runtime/preview/bridge documentation
 ├── scripts/                # runtime sync + smoke tests
@@ -48,6 +49,17 @@ ark/
 ├── public/                 # static assets
 └── AGENTS.md               # this file
 ```
+
+## Import boundaries
+
+`src/`, `server/`, and `shared/` have enforced dependency directions (issue #131):
+
+- `src/` may import from `shared/` only — never from `server/`.
+- `server/` may import from `shared/` only — never from `src/`.
+- `shared/` must not import from `src/` or `server/`, and must not depend on React, Express, or Node/browser APIs unless the filename makes the environment explicit (e.g. `*-disk.ts`).
+- Cross-layer HTML fixtures live in `test/fixtures/` (Vitest alias `@fixtures/...`).
+
+`pnpm lint` fails on forbidden imports. See [docs/architecture-boundaries.md](docs/architecture-boundaries.md).
 
 ## React app conventions
 

@@ -4,9 +4,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
-import hostileScriptsDeck from '@/test/fixtures/hostile-scripts-deck.html?raw'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
-import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
+import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import { parseDeckSlides } from '@/lib/deck-slides'
 import {
   createEditorTransformCommitMessage,

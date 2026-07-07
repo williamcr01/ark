@@ -5,10 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 
-const fixtureDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../src/test/fixtures',
-)
+const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../test/fixtures')
 
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
 const malformedDeck = readFileSync(path.join(fixtureDir, 'malformed-deck.html'), 'utf8')

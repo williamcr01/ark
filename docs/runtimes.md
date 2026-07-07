@@ -167,7 +167,7 @@ Minimum checklist for contributors:
 1. **Vendor assets** — Add pinned files under `runtimes/<id>/<version>/`.
 2. **Manifest entry** — Add id, version, markers, `requiredAssets`, and per-file `sha256` + `size` to `runtimes/manifest.json`.
 3. **Registry types** — Extend `ApprovedRuntimeEntry` in `shared/deck-runtime-registry.ts` if new fields are needed.
-4. **Validation tests** — Cover marker checks, required assets, version mismatch, and CDN rejection (`src/lib/deck-validate.test.ts`, `shared/deck-runtime-registry.test.ts`).
+4. **Validation tests** — Cover marker checks, required assets, version mismatch, and CDN rejection (`shared/deck-validate.test.ts`, `shared/deck-runtime-registry.test.ts`).
 5. **Server route tests** — List and serve assets (`server/deck-runtimes.test.ts`).
 6. **Preview tests** — Asset preservation, CSP, adapter injection (`server/render-preview-html.test.ts`, `src/lib/deck-preview.test.ts`).
 7. **Thumbnail tests** — CSS inlining and slide selection if the runtime affects sidebar previews (`src/lib/deck-slides.test.ts`).
@@ -189,5 +189,5 @@ Implementation references:
 - `runtimes/manifest.json` — Source of truth for approved assets
 - `shared/deck-runtime-registry.ts` — Registry lookup and validation helpers
 - `server/deck-runtimes.ts` — `/api/runtimes` route handlers
-- `src/lib/deck-validate.ts` — Client/server deck validation
+- `shared/deck-validate.ts` — Portable deck validation (browser via `validateDeckHtmlInBrowser`, server via `server/deck-validate.ts`)
 - `docs/deck-bridge.md` — Parent ↔ iframe protocol including reveal adapter

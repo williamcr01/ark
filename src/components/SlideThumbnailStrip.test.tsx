@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { parseDeckSlides } from '@/lib/deck-slides'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 
 import { SlideThumbnailStrip } from './SlideThumbnailStrip'
 

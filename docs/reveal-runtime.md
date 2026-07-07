@@ -58,7 +58,7 @@ The registry also ships optional assets (`reset.css`, Source Sans Pro font files
 
 ## Minimal deck skeleton
 
-Copy-paste starting point (also available as `src/test/fixtures/reveal-registry-deck.html`):
+Copy-paste starting point (also available as `test/fixtures/reveal-registry-deck.html`):
 
 ```html
 <!doctype html>
@@ -218,7 +218,7 @@ Registry reveal decks should not use this path.
 
 - [runtimes.md](./runtimes.md) — Registry model and `/api/runtimes`
 - [deck-bridge.md](./deck-bridge.md) — Reveal adapter and slide index model
-- `src/test/fixtures/reveal-registry-deck.html` — Minimal valid fixture
-- `src/test/fixtures/reveal-vertical-deck.html` — Vertical stack fixture
-- `src/test/fixtures/reveal-fragments-deck.html` — Fragments and backgrounds fixture
+- `test/fixtures/reveal-registry-deck.html` — Minimal valid fixture
+- `test/fixtures/reveal-vertical-deck.html` — Vertical stack fixture
+- `test/fixtures/reveal-fragments-deck.html` — Fragments and backgrounds fixture
 - `scripts/smoke-reveal-runtime.ts` — CI smoke test for preview asset loading

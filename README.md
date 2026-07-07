@@ -104,13 +104,15 @@ Run these locally before opening a pull request (CI runs the same gates on `ubun
 
 ```bash
 pnpm lockfile:check
-pnpm lint
+pnpm lint          # includes frontend/backend import boundary checks
 pnpm format:check
 pnpm audit
 pnpm build
 pnpm test
 pnpm smoke:browser
 ```
+
+Import boundaries between `src/`, `server/`, and `shared/` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
 
 `pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`src/test/sandbox-fixtures.test.ts`, `src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
 

@@ -16,8 +16,8 @@ import {
   resolveSandboxOrigin,
 } from '../../shared/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
-import plainCssDeck from '@/test/fixtures/plain-css-deck.html?raw'
-import revealRegistryDeck from '@/test/fixtures/reveal-registry-deck.html?raw'
+import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
 import { useDeckSlideNavigation, type DeckNavOptions } from './useDeckSlideNavigation'
 
