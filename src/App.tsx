@@ -159,7 +159,10 @@ function App() {
     loadModels,
     onError: setError,
     onGenerationStart: useCallback(() => setAttachmentError(''), []),
-    onGenerationSucceeded: resetEditHistory,
+    onGenerationSucceeded: useCallback(() => {
+      clearAssetSelection()
+      resetEditHistory()
+    }, [clearAssetSelection, resetEditHistory]),
   })
 
   useEffect(() => {
