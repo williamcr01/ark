@@ -112,9 +112,9 @@ pnpm test
 pnpm smoke:browser
 ```
 
-Import boundaries between `src/`, `server/`, and `shared/` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
+Import boundaries between `apps/*` and `packages/*` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
 
-`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`src/test/sandbox-fixtures.test.ts`, `src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
 
 Format before pushing substantive changes:
 

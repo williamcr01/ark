@@ -1,7 +1,7 @@
 /**
  * OpenAPI path registry for Ark's HTTP API.
  *
- * Schemas are sourced from `shared/api/*.ts` Zod contracts. Run
+ * Schemas are sourced from `packages/contracts/*.ts` Zod contracts. Run
  * `pnpm openapi:generate` to emit `openapi/ark.openapi.json`.
  */
 import {
@@ -525,7 +525,7 @@ export function generateArkOpenApiDocument() {
       title: 'Ark API',
       version: '1.0.0',
       description:
-        'HTTP API for the Ark presentation builder. Zod schemas in `shared/api/` are the source of truth; this document is generated for cross-language clients and drift checks.',
+        'HTTP API for the Ark presentation builder. Zod schemas in `packages/contracts/` are the source of truth; this document is generated for cross-language clients and drift checks.',
     },
     servers: [{ url: 'http://localhost:8787', description: 'Local API (default PORT)' }],
   })
