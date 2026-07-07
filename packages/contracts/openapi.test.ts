@@ -19,6 +19,9 @@ describe('OpenAPI registry', () => {
     expect(document.paths?.['/api/generation-jobs/{id}']?.get).toBeTruthy()
     expect(document.paths?.['/api/generation-jobs/{id}/cancel']?.post).toBeTruthy()
     expect(document.paths?.['/api/generation-jobs/{id}/retry']?.post).toBeTruthy()
+    expect(document.paths?.['/api/runtimes']?.get).toBeTruthy()
+    expect(document.paths?.['/api/runtimes/{runtimeId}/{version}/{assetPath}']?.get).toBeTruthy()
+    expect(document.paths?.['/api/deck-assets']?.get).toBeTruthy()
   })
 
   it('documents assetIds on job start but not on job responses', () => {

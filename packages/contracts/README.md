@@ -22,12 +22,16 @@ The contracts layer depends on **Zod** and portable shared helpers only. It must
 | Generation     | `POST/GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry` (includes `assetIds` on job start) | `generation-jobs.ts`     |
 | Preview        | `POST /api/preview-sessions`, `GET /api/preview-sessions/:token`                                            | `preview.ts`             |
 | Runtime errors | `POST /api/runtime-errors`                                                                                  | `runtime-errors.ts`      |
+| Runtimes       | `GET /api/runtimes`, `GET /api/runtimes/:runtimeId/:version/:assetPath`                                     | `runtimes.ts`            |
+| Asset proxy    | `GET /api/deck-assets?url=...`                                                                              | `deck-asset-proxy.ts`    |
 
 Shared client helpers (`fetchApiJsonOrThrow`, `parseRequestBody`, `assertApiContract`) live in `fetch.ts` and `common.ts` and are re-exported from `index.ts`.
 
 ## OpenAPI
 
 `packages/contracts/openapi-registry.ts` registers every route above against the Zod contracts. `pnpm openapi:generate` writes `openapi/ark.openapi.json`; CI runs `pnpm openapi:check` to prevent drift. Generation job `assetIds` appear on `POST /api/generation-jobs` only — poll responses use `generationJobApiSchema`, which omits request-only fields.
+
+For cross-language clients and regeneration workflow, see [docs/openapi.md](../docs/openapi.md).
 
 ## Contract tests
 

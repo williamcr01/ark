@@ -18,6 +18,8 @@ import {
   uploadAssetResponseSchema,
 } from './assets.ts'
 import { runtimeErrorInputSchema, runtimeErrorResponseSchema } from './runtime-errors.ts'
+import { runtimeRegistryResponseSchema } from './runtimes.ts'
+import { deckAssetProxyBlockedResponseSchema } from './deck-asset-proxy.ts'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 const jobId = 'a0000000-0000-4000-8000-000000000001'
@@ -216,6 +218,40 @@ describe('shared API contracts', () => {
       runtimeErrorResponseSchema.parse({
         id: jobId,
         createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toBeTruthy()
+  })
+
+  it('parses runtime registry and deck asset proxy contracts', () => {
+    expect(
+      runtimeRegistryResponseSchema.parse({
+        schemaVersion: 1,
+        runtimes: [
+          {
+            id: 'reveal.js',
+            version: '5.1.0',
+            runtimeMode: 'reveal',
+            deprecated: false,
+            previewMode: 'css-only',
+            allowsDeckScripts: true,
+            assets: [
+              {
+                path: 'reveal.js',
+                kind: 'script',
+                url: '/api/runtimes/reveal.js/5.1.0/reveal.js',
+                sha256: 'a'.repeat(64),
+                size: 1024,
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBeTruthy()
+
+    expect(
+      deckAssetProxyBlockedResponseSchema.parse({
+        error: 'External assets are blocked.',
+        proxyUrl: '/api/deck-assets?url=https%3A%2F%2Fexample.com%2Flogo.png',
       }),
     ).toBeTruthy()
   })
