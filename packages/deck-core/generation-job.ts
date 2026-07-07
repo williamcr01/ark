@@ -1,4 +1,4 @@
-import type { AgentStep, ApiChatMessage } from './chat.ts'
+import type { AgentStep, ApiChatMessage, EditorSelectionContext } from './chat.ts'
 
 export type GenerationJobStatus =
   'queued' | 'running' | 'canceling' | 'succeeded' | 'failed' | 'canceled'
@@ -20,6 +20,8 @@ export type GenerationJobRequest = {
   currentHtml: string
   baseVersionId?: string | null
   editingExistingDeck?: boolean
+  /** Manual-editor selection captured when the request was submitted (issue #83). */
+  editorSelection?: EditorSelectionContext
 }
 
 export type GenerationJobProgress = {

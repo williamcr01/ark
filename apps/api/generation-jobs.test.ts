@@ -107,6 +107,57 @@ describe('generation job runner', () => {
     expect(stored?.completedAt).toBeTruthy()
   })
 
+  it('threads editor selection context into the agent run and stores it on the job', async () => {
+    let capturedSelection: unknown = 'unset'
+    let resolveCaptured: () => void = () => {}
+    const captured = new Promise<void>((resolve) => {
+      resolveCaptured = resolve
+    })
+
+    const { runner } = await createRunner({
+      runAgent: async (options) => {
+        capturedSelection = options.editorSelection
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+    })
+
+    const editorSelection = {
+      slideIndex: 1,
+      slideId: 'ark-slide-1',
+      elementId: 'ark-el-9',
+      elementKind: 'text',
+      textPreview: 'Headline',
+      locked: false,
+      managed: true,
+    }
+
+    const job = await runner.startJob({
+      body: {
+        messages: [{ role: 'user', content: 'make this punchier' }],
+        currentHtml: sampleHtml,
+        editorSelection,
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    await captured
+
+    // Let the job settle so temp-dir cleanup does not race with pending writes.
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const latest = await runner.getJob(job.id)
+      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    expect(capturedSelection).toMatchObject(editorSelection)
+
+    const stored = await runner.getJob(job.id)
+    expect(stored?.request.editorSelection).toMatchObject(editorSelection)
+  })
+
   it('merges resolved asset attachments into the latest user model message at run time', async () => {
     let capturedMessages: unknown = null
     let resolveCaptured: () => void = () => {}

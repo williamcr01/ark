@@ -214,6 +214,39 @@ describe('DeckPreview script divergence UI', () => {
     expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
   })
 
+  it('reports editor selection to the shell only while edit mode is active', async () => {
+    const user = userEvent.setup()
+    const onEditorSelectionChange = vi.fn()
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-1',
+      slideIndex: 0,
+      slideId: 'ark-slide-1',
+      tagName: 'h1',
+      locked: false,
+      managed: true,
+      editableKind: 'text',
+      textPreview: 'Headline',
+    }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onEditorSelectionChange,
+    })
+
+    // Edit mode is off on mount, so the shell mirror is cleared.
+    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null)
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ elementId: 'ark-el-1' }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Preview mode' }))
+    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null)
+  })
+
   it('enables the editor bridge when the edit-mode iframe loads', async () => {
     const user = userEvent.setup()
 

@@ -65,6 +65,22 @@ export type ApiChatMessage = {
 }
 
 /**
+ * Manual-editor selection forwarded with a generation request (issue #83). Lets
+ * the agent resolve "this"/"the selected element" to a concrete element id and
+ * prefer id-based patches over full-document rewrites.
+ */
+export type EditorSelectionContext = {
+  slideIndex: number
+  slideId?: string
+  elementId: string
+  elementKind?: string
+  elementRole?: string
+  textPreview?: string
+  locked?: boolean
+  managed?: boolean
+}
+
+/**
  * Context policy (pi-style): every generation request replays the full visible
  * conversation plus the latest deck HTML. Assistant turns store short status
  * text only — never full HTML — so follow-ups stay affordable while intent is
@@ -280,7 +296,47 @@ ${prompt}
 Return the complete HTML document only.`
 }
 
-export function wrapUserPromptForAgent(prompt: string, currentHtml: string, attachmentCount = 0) {
+function describeEditorSelection(selection: EditorSelectionContext): string {
+  const descriptors: string[] = []
+
+  if (selection.elementKind) {
+    descriptors.push(selection.elementKind)
+  }
+
+  if (selection.elementRole && selection.elementRole !== selection.elementKind) {
+    descriptors.push(selection.elementRole)
+  }
+
+  const descriptor = descriptors.length > 0 ? ` (${descriptors.join(', ')})` : ''
+  const slideRef = selection.slideId
+    ? `slide ${selection.slideIndex} (slide id "${selection.slideId}")`
+    : `slide ${selection.slideIndex}`
+  const textNote = selection.textPreview ? `, text: "${selection.textPreview}"` : ''
+
+  const statuses: string[] = []
+  if (selection.locked) {
+    statuses.push('locked')
+  }
+  if (selection.managed) {
+    statuses.push('Ark-managed')
+  }
+  const statusNote = statuses.length > 0 ? ` It is ${statuses.join(' and ')}.` : ''
+
+  const lockGuidance = selection.locked
+    ? ' Because it is locked, explain what can and cannot be changed or make a safe patch instead of forcing a risky edit.'
+    : ''
+
+  return `The user has an element selected in the editor. When the instruction refers to "this", "it", or "the selected element", target it.
+Selected element: id "${selection.elementId}"${descriptor} on ${slideRef}${textNote}.${statusNote}
+Verify it with parse_deck or read_deck, then prefer patch_element with this elementId. If the id is missing or no longer matches (stale selection), inspect the deck and pick the closest element or ask before guessing.${lockGuidance}`
+}
+
+export function wrapUserPromptForAgent(
+  prompt: string,
+  currentHtml: string,
+  attachmentCount = 0,
+  editorSelection?: EditorSelectionContext,
+) {
   const effectivePrompt =
     prompt.trim() ||
     (attachmentCount > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
@@ -290,13 +346,15 @@ export function wrapUserPromptForAgent(prompt: string, currentHtml: string, atta
       ? `\n\nThe user attached ${attachmentCount} file(s). Use them as reference for content, layout, branding, or visuals.`
       : ''
 
+  const selectionNote = editorSelection ? `\n\n${describeEditorSelection(editorSelection)}` : ''
+
   if (currentHtml.trim()) {
     return `The user wants to revise their Ark HTML deck.
 
 User instruction:
-${effectivePrompt}${attachmentNote}
+${effectivePrompt}${attachmentNote}${selectionNote}
 
-Use parse_deck, list_slides, and/or read_deck to inspect the deck. Apply slide changes with patch_deck (preferred), small inline tweaks with edit_deck, or write_deck only for a full rewrite.`
+Use parse_deck, list_slides, and/or read_deck to inspect the deck. Apply element changes with patch_element (preferred for a selected element), slide changes with patch_deck, small inline tweaks with edit_deck, or write_deck only for a full rewrite.`
   }
 
   return `Create a new complete Ark HTML slide deck from this user request:
@@ -322,14 +380,23 @@ export function chatAttachmentsToFileParts(attachments: ChatAttachment[]): FileP
 
 export function buildUserModelContent(
   message: ApiChatMessage,
-  options?: { wrapForAgent?: boolean; currentHtml?: string },
+  options?: {
+    wrapForAgent?: boolean
+    currentHtml?: string
+    editorSelection?: EditorSelectionContext
+  },
 ): string | Array<TextPart | FilePart> {
   const attachments = message.attachments ?? []
   const wrapForAgent = options?.wrapForAgent ?? false
   const currentHtml = options?.currentHtml ?? ''
   const prompt =
     wrapForAgent && message.role === 'user'
-      ? wrapUserPromptForAgent(message.content, currentHtml, attachments.length)
+      ? wrapUserPromptForAgent(
+          message.content,
+          currentHtml,
+          attachments.length,
+          options?.editorSelection,
+        )
       : message.content
 
   if (attachments.length === 0) {
@@ -353,6 +420,7 @@ export function toModelMessage(message: ApiChatMessage): ModelMessage {
 export function buildAgentModelMessages(
   messages: ApiChatMessage[],
   currentHtml: string,
+  editorSelection?: EditorSelectionContext,
 ): ModelMessage[] {
   if (messages.length === 0) {
     return []
@@ -369,7 +437,7 @@ export function buildAgentModelMessages(
     ...prior,
     {
       role: 'user' as const,
-      content: buildUserModelContent(last, { wrapForAgent: true, currentHtml }),
+      content: buildUserModelContent(last, { wrapForAgent: true, currentHtml, editorSelection }),
     },
   ]
 }
