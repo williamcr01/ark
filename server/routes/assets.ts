@@ -1,7 +1,6 @@
 import express, { Router, type Request, type Response } from 'express'
 
-import { parseRequestBody } from '../../shared/api/common.ts'
-import { uploadAssetRequestSchema } from '../../shared/api/assets.ts'
+import { parseRequestBody, uploadAssetRequestSchema } from '../../shared/api/index.ts'
 import type { ChatAttachment } from '../../shared/chat.ts'
 import { getAssetCategory, isValidAssetId } from '../../shared/assets.ts'
 import {

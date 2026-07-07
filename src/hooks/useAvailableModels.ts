@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import type { ApiErrorCode, ProviderId } from '../../shared/api/common.ts'
-import type { ModelInfo } from '../../shared/api/health.ts'
-import { healthResponseSchema, modelsResponseSchema } from '../../shared/api/health.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import {
+  healthResponseSchema,
+  modelsResponseSchema,
+  fetchApiJsonOrThrow,
+  type ApiErrorCode,
+  type ModelInfo,
+  type ProviderId,
+} from '../../shared/api/index.ts'
 
 export type { ProviderId, ApiErrorCode }
 export type AvailableModel = ModelInfo

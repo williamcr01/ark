@@ -40,7 +40,7 @@ import {
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
-import { validateDeckHtmlInBrowser } from '../../shared/deck-validate.ts'
+import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 import type { EditorTool } from '../../shared/deck-editor-bridge.ts'

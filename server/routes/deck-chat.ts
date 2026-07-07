@@ -1,7 +1,10 @@
 import { Router, type Request, type Response } from 'express'
 
-import { appendChatMessageRequestSchema, deckChatQuerySchema } from '../../shared/api/chat.ts'
-import { parseRequestBody } from '../../shared/api/common.ts'
+import {
+  appendChatMessageRequestSchema,
+  deckChatQuerySchema,
+  parseRequestBody,
+} from '../../shared/api/index.ts'
 import { type ChatStore, normalizeChatMessageLimit } from '../chat-record.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { getApiErrorFromUnknown, sendApiError, toChatApiMessage } from './shared.ts'

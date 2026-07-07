@@ -6,22 +6,24 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { assertApiContract } from '../shared/api/fetch.ts'
 import {
+  assertApiContract,
   apiErrorPayloadSchema,
+  appendChatMessageResponseSchema,
   createDeckResponseSchema,
+  deckChatResponseSchema,
   deckListResponseSchema,
   deckPatchResponseSchema,
   deckResponseSchema,
   deckRollbackResponseSchema,
   deckVersionListResponseSchema,
   deckVersionResponseSchema,
+  generationJobResponseSchema,
+  healthResponseSchema,
+  modelsResponseSchema,
+  previewSessionResponseSchema,
   simpleErrorResponseSchema,
 } from '../shared/api/index.ts'
-import { appendChatMessageResponseSchema, deckChatResponseSchema } from '../shared/api/chat.ts'
-import { healthResponseSchema, modelsResponseSchema } from '../shared/api/health.ts'
-import { generationJobResponseSchema } from '../shared/api/generation-jobs.ts'
-import { previewSessionResponseSchema } from '../shared/api/preview.ts'
 import { createApp } from './app.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'

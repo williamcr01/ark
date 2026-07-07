@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { GenerationJobApi } from '../../shared/api/generation-jobs.ts'
+import type { GenerationJobApi } from '../../shared/api/index.ts'
 import type { ChatMessage } from '../../shared/chat.ts'
 
 import { useDeckGenerationFlow, type UseDeckGenerationFlowOptions } from './useDeckGenerationFlow'

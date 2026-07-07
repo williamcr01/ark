@@ -1,6 +1,5 @@
-import type { RuntimeErrorInput } from '../../shared/api/runtime-errors.ts'
-import { runtimeErrorResponseSchema } from '../../shared/api/runtime-errors.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import type { RuntimeErrorInput } from '../../shared/api/index.ts'
+import { runtimeErrorResponseSchema, fetchApiJsonOrThrow } from '../../shared/api/index.ts'
 
 export type ReportRuntimeErrorInput = RuntimeErrorInput
 

@@ -353,10 +353,6 @@ export function validateDeckHtml(
   return validateDeckDocument(doc, html)
 }
 
-export function validateDeckHtmlInBrowser(html: string): DeckValidationReport {
-  return validateDeckHtml(html, (source) => new DOMParser().parseFromString(source, 'text/html'))
-}
-
 export function formatDeckValidationSummary(report: DeckValidationReport) {
   const parts = [`${report.slideCount} slide${report.slideCount === 1 ? '' : 's'}`]
 

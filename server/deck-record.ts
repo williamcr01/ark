@@ -7,15 +7,15 @@ export type {
   DeckVersionSource,
   DeckVersionSummary,
   StoredDeck,
-} from '../shared/api/decks.ts'
+} from '../shared/api/index.ts'
 
-export type { DeckVersionOptions as DeckVersionRequestOptions } from '../shared/api/decks.ts'
+export type { DeckVersionOptions as DeckVersionRequestOptions } from '../shared/api/index.ts'
 
 export {
   isValidDeckId,
   normalizeDeckTitle,
   normalizeDeckVersionSource,
-} from '../shared/api/decks.ts'
+} from '../shared/api/index.ts'
 
 import type {
   DeckSummary,
@@ -23,9 +23,9 @@ import type {
   DeckVersionDetail,
   DeckVersionSummary,
   StoredDeck,
-} from '../shared/api/decks.ts'
-import type { DeckVersionOptions as SharedDeckVersionOptions } from '../shared/api/decks.ts'
-import { normalizeDeckTitle } from '../shared/api/decks.ts'
+  DeckVersionOptions as SharedDeckVersionOptions,
+} from '../shared/api/index.ts'
+import { normalizeDeckTitle } from '../shared/api/index.ts'
 
 export type DeckVersionOptions = SharedDeckVersionOptions & {
   validationStatus?: DeckValidationStatus
