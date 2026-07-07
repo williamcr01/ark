@@ -5,6 +5,10 @@ import {
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
 } from './deck-editor-patches.ts'
+import { buildImageInsertOperation } from './deck-image-insert.ts'
+
+const tinyPngDataUrl =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 describe('deck-editor-patches', () => {
   it('builds insert_element operations for text boxes', () => {
@@ -15,6 +19,26 @@ describe('deck-editor-patches', () => {
       slideIndex: 1,
       slideId: 'slide-1',
       html: expect.stringContaining('class="ark-text-box"'),
+    })
+  })
+
+  it('builds insert_element operations for embedded images', () => {
+    expect(
+      buildImageInsertOperation(
+        0,
+        {
+          asset: { kind: 'data-url', mimeType: 'image/png', dataUrl: tinyPngDataUrl },
+          geometry: { x: 0.1, y: 0.15, width: 0.4, height: 0.225 },
+          aspectRatio: 16 / 9,
+        },
+        'slide-1',
+        { alt: 'Logo' },
+      ),
+    ).toEqual({
+      op: 'insert_element',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      html: expect.stringContaining('data-ark-editable="image"'),
     })
   })
 
