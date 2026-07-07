@@ -1,5 +1,4 @@
-import type { ProviderId } from '../shared/api/common.ts'
-import type { ModelInfo } from '../shared/api/health.ts'
+import type { ModelInfo, ProviderId } from '../shared/api/index.ts'
 import { getProviderApiKey, parseProviderHttpError } from './credentials.ts'
 
 export type { ProviderId, ModelInfo }

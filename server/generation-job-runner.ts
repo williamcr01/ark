@@ -11,12 +11,12 @@ import type {
   GenerationJob,
   GenerationJobStatus,
 } from '../shared/generation-job.ts'
-import type {
-  GenerationJobApi,
-  GenerationJobResponse,
-  StartGenerationJobRequest,
-} from '../shared/api/generation-jobs.ts'
-import { deckValidationReportSchema } from '../shared/api/decks.ts'
+import {
+  deckValidationReportSchema,
+  type GenerationJobApi,
+  type GenerationJobResponse,
+  type StartGenerationJobRequest,
+} from '../shared/api/index.ts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '../shared/generation-job.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'

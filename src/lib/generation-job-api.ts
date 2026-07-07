@@ -1,9 +1,9 @@
-import type {
-  GenerationJobApi,
-  StartGenerationJobRequest,
-} from '../../shared/api/generation-jobs.ts'
-import { generationJobResponseSchema } from '../../shared/api/generation-jobs.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import {
+  generationJobResponseSchema,
+  fetchApiJsonOrThrow,
+  type GenerationJobApi,
+  type StartGenerationJobRequest,
+} from '../../shared/api/index.ts'
 import type { GenerationJobStatus } from '../../shared/generation-job.ts'
 
 export type { GenerationJobApi, StartGenerationJobRequest }

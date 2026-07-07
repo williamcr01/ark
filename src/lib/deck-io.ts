@@ -1,9 +1,9 @@
 import { resolveDownloadHtml, type DeckDownloadVariant } from '@/lib/deck-export'
 import {
   formatDeckValidationSummary,
-  validateDeckHtmlInBrowser,
   type DeckValidationReport,
 } from '../../shared/deck-validate.ts'
+import { validateDeckHtmlInBrowser } from './deck-validate.ts'
 
 export type DownloadHtmlOptions = {
   variant?: DeckDownloadVariant

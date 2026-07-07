@@ -138,6 +138,14 @@ describe('shared API contracts', () => {
         deckId,
       }).success,
     ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'Hello' }],
+        deckId,
+        assetIds: [assetId],
+      }).success,
+    ).toBe(true)
   })
 
   it('parses preview session contracts', () => {

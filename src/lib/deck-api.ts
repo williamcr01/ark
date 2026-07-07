@@ -1,22 +1,20 @@
 import type { DeckPatchOperation } from '../../shared/deck-patch.ts'
-import type {
-  DeckPatchRequest,
-  DeckPatchResponse,
-  DeckSummary,
-  DeckVersionDetail,
-  DeckVersionOptions,
-  DeckVersionSource,
-  DeckVersionSummary,
-  StoredDeck,
-} from '../../shared/api/decks.ts'
 import {
   deckListResponseSchema,
   deckPatchResponseSchema,
   deckResponseSchema,
   deckVersionListResponseSchema,
   deckVersionResponseSchema,
-} from '../../shared/api/decks.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+  fetchApiJsonOrThrow,
+  type DeckPatchRequest,
+  type DeckPatchResponse,
+  type DeckSummary,
+  type DeckVersionDetail,
+  type DeckVersionOptions,
+  type DeckVersionSource,
+  type DeckVersionSummary,
+  type StoredDeck,
+} from '../../shared/api/index.ts'
 
 export type {
   DeckPatchResponse,

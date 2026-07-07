@@ -6,8 +6,8 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { assertApiContract } from '../../shared/api/fetch.ts'
 import {
+  assertApiContract,
   assetListResponseSchema,
   simpleErrorResponseSchema,
   uploadAssetResponseSchema,

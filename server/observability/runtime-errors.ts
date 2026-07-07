@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
 
 import { isValidDeckId } from '../deck-record.ts'
-import { runtimeErrorInputSchema } from '../../shared/api/runtime-errors.ts'
-import type { RuntimeErrorInput, RuntimeErrorSeverity } from '../../shared/api/runtime-errors.ts'
+import {
+  runtimeErrorInputSchema,
+  type RuntimeErrorInput,
+  type RuntimeErrorSeverity,
+} from '../../shared/api/index.ts'
 import { sanitizeRuntimeErrorText } from './redact.ts'
 
-export type { RuntimeErrorInput, RuntimeErrorSeverity } from '../../shared/api/runtime-errors.ts'
+export type { RuntimeErrorInput, RuntimeErrorSeverity } from '../../shared/api/index.ts'
 
 export type RuntimeErrorRecord = {
   id: string

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { previewSessionResponseSchema } from '../../shared/api/preview.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+import { previewSessionResponseSchema, fetchApiJsonOrThrow } from '../../shared/api/index.ts'
 import {
   buildSandboxRenderUrl,
   resolveAppOrigin,

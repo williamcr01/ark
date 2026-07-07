@@ -58,6 +58,7 @@ ark/
 - `server/` may import from `shared/` only — never from `src/`.
 - `shared/` must not import from `src/` or `server/`, and must not depend on React, Express, or Node/browser APIs unless the filename makes the environment explicit (e.g. `*-disk.ts`).
 - Cross-layer HTML fixtures live in `test/fixtures/` (Vitest alias `@fixtures/...`).
+- HTTP API contracts live in `shared/api/` — import from `shared/api/index.ts` in `src/` and `server/`. See [shared/api/README.md](shared/api/README.md).
 
 `pnpm lint` fails on forbidden imports. See [docs/architecture-boundaries.md](docs/architecture-boundaries.md).
 

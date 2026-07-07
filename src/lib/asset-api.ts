@@ -1,9 +1,9 @@
 import {
   assetListResponseSchema,
   uploadAssetResponseSchema,
+  fetchApiJsonOrThrow,
   type AssetMetadataResponse,
-} from '../../shared/api/assets.ts'
-import { fetchApiJsonOrThrow } from '../../shared/api/fetch.ts'
+} from '../../shared/api/index.ts'
 
 export type { AssetMetadataResponse }
 
