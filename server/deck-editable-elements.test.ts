@@ -176,6 +176,7 @@ describe('parseEditableElements', () => {
       ]),
     )
   })
+
   it('locks scripts and forms even when decks mark them as editable', () => {
     const hostileEditableDeck = `<!DOCTYPE html>
 <html lang="en">

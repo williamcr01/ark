@@ -23,6 +23,21 @@ describe('PresentMode', () => {
     expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
   })
 
+  it('does not expose edit controls in reveal presentation mode', () => {
+    render(
+      <PresentMode
+        html={revealRegistryDeck}
+        initialSlideIndex={0}
+        onExit={vi.fn()}
+        runtimeMode="reveal"
+        slideCount={2}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+  })
+
   it('renders the deck in an allow-scripts sandbox and exits with the current slide', async () => {
     const user = userEvent.setup()
     const onExit = vi.fn()

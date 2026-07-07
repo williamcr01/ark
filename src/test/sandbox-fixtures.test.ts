@@ -10,6 +10,7 @@ import {
 } from '../../shared/deck-bridge.ts'
 import fullJsDeck from '@/test/fixtures/full-js-deck.html?raw'
 import hostileBrokenRevealDeck from '@/test/fixtures/hostile-broken-reveal-deck.html?raw'
+import hostileEditorPostmessageDeck from '@/test/fixtures/hostile-editor-postmessage-deck.html?raw'
 import hostileExternalFetchDeck from '@/test/fixtures/hostile-external-fetch-deck.html?raw'
 import hostileFormsDeck from '@/test/fixtures/hostile-forms-deck.html?raw'
 import hostileIframesDeck from '@/test/fixtures/hostile-iframes-deck.html?raw'
@@ -58,6 +59,12 @@ const securityFixtures: SecurityFixture[] = [
     html: hostilePostmessageDeck,
     runtimeMode: 'custom-js',
     category: 'postmessage-spoofing',
+  },
+  {
+    name: 'hostile-editor-postmessage',
+    html: hostileEditorPostmessageDeck,
+    runtimeMode: 'custom-js',
+    category: 'editor-postmessage-spoofing',
   },
   {
     name: 'hostile-external-fetch',

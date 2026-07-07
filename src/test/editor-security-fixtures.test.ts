@@ -2,6 +2,9 @@ import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
+  EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
+  EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
+  EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
   EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
   EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
   createEditorTextCommitMessage,
@@ -139,25 +142,34 @@ describe('manual editor security fixtures (#81)', () => {
     const { parentMessages } = await loadExecutablePreview(previewHtml)
 
     const accepted = parentMessages.filter((message) => isEditorRuntimeMessage(message))
-    const forgedReady = parentMessages.find(
-      (message) =>
-        typeof message === 'object' &&
-        message !== null &&
-        'type' in message &&
-        message.type === 'ark:editor-ready',
-    )
-    const forgedCommit = parentMessages.find(
-      (message) =>
-        typeof message === 'object' &&
-        message !== null &&
-        'type' in message &&
-        message.type === EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
-    )
+    const findByType = (type: string) =>
+      parentMessages.find(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === type,
+      )
+    const forgedReady = findByType('ark:editor-ready')
+    const forgedCommit = findByType(EDITOR_TEXT_COMMIT_MESSAGE_TYPE)
+    const forgedTransform = findByType(EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)
+    const forgedDelete = findByType(EDITOR_DELETE_REQUEST_MESSAGE_TYPE)
+    const forgedInsert = findByType(EDITOR_INSERT_REQUEST_MESSAGE_TYPE)
+    const forgedSelection = findByType(EDITOR_SELECTION_CHANGE_MESSAGE_TYPE)
 
     expect(forgedReady).toBeDefined()
     expect(forgedCommit).toBeDefined()
+    expect(forgedTransform).toBeDefined()
+    expect(forgedDelete).toBeDefined()
+    expect(forgedInsert).toBeDefined()
+    expect(forgedSelection).toBeDefined()
+
     expect(accepted.some((message) => message === forgedReady)).toBe(false)
+    expect(accepted.some((message) => message === forgedTransform)).toBe(false)
+    expect(accepted.some((message) => message === forgedInsert)).toBe(false)
+    expect(accepted.some((message) => message === forgedSelection)).toBe(false)
     expect(accepted.some((message) => message === forgedCommit)).toBe(true)
+    expect(accepted.some((message) => message === forgedDelete)).toBe(true)
     expect(
       accepted.every(
         (message) =>
@@ -167,6 +179,48 @@ describe('manual editor security fixtures (#81)', () => {
           message.type !== 'ark:editor-ready',
       ),
     ).toBe(true)
+  })
+
+  it('rejects server-side text patches forged against unknown element ids', () => {
+    expect(
+      applyDeckPatches(hostileEditorPostmessageDeck, [
+        {
+          op: 'replace_text',
+          elementId: 'ark-el-locked-victim',
+          slideIndex: 0,
+          text: 'Injected copy',
+        },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('was not found'),
+    })
+  })
+
+  it('rejects server-side delete patches forged against unknown element ids', () => {
+    expect(
+      applyDeckPatches(hostileEditorPostmessageDeck, [
+        {
+          op: 'delete_element',
+          elementId: 'ark-el-locked-victim',
+          slideIndex: 0,
+        },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('was not found'),
+    })
+  })
+
+  it('rejects server-side delete patches that omit slideIndex for duplicate ids', () => {
+    expect(
+      applyDeckPatches(hostileEditorPostmessageDeck, [
+        {
+          op: 'delete_element',
+          elementId: 'ark-el-title',
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
   })
 
   it('rejects duplicate data-ark-id patch targets server-side', () => {

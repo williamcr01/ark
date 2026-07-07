@@ -146,6 +146,65 @@ async function runSmoke() {
 
     await evaluate<boolean>(
       cdp,
+      `Boolean(document.querySelector('button[aria-label="Edit mode"]')?.click())`,
+    )
+
+    await waitFor('edit mode toolbar', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('[aria-label="Edit mode toolbar"]'))`,
+      ),
+    )
+
+    const editPreviewSrc = await waitFor(
+      'editor-enabled sandbox preview iframe src',
+      async () => {
+        const src = await evaluate<string>(
+          cdp!,
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
+
+        return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+
+    const editRenderedPreviewHtml = await (await fetch(editPreviewSrc)).text()
+    assert(
+      editRenderedPreviewHtml.includes('data-ark-preview-editor'),
+      `Edit mode sandbox render did not include the editor bridge shim.\n${editRenderedPreviewHtml.slice(0, 800)}`,
+    )
+
+    await evaluate<boolean>(
+      cdp,
+      `Boolean(document.querySelector('button[aria-label="Preview mode"]')?.click())`,
+    )
+
+    await waitFor('preview mode after leaving edit mode', async () =>
+      evaluate<boolean>(cdp!, `!document.querySelector('[aria-label="Edit mode toolbar"]')`),
+    )
+
+    const previewSrcAfterEdit = await waitFor(
+      'sandbox preview iframe src after edit mode',
+      async () => {
+        const src = await evaluate<string>(
+          cdp!,
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
+
+        return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+
+    const mainPreviewAfterEdit = await waitFor(
+      'main sandbox preview frame context after edit mode',
+      () => findContextByUrl(cdp!, contexts, previewSrcAfterEdit),
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+
+    await evaluate<boolean>(
+      cdp,
       `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
     )
 
@@ -157,7 +216,7 @@ async function runSmoke() {
           const active = document.querySelector('section.slide.active, section.slide.is-active');
           return Boolean(active && (active.textContent || '').includes('Metrics that moved'));
         })()`,
-        { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
+        { contextId: mainPreviewAfterEdit.id, sessionId: mainPreviewAfterEdit.sessionId },
       )
 
       return appText.includes('Slide 2 of 3') && frameActive
