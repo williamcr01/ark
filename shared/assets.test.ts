@@ -11,6 +11,7 @@ import {
 } from './assets.ts'
 
 const ASSET_ID = '00000000-0000-4000-8000-000000000001'
+const DECK_ID = '00000000-0000-4000-8000-000000000002'
 
 describe('media type helpers', () => {
   it('allows known types and rejects others', () => {
@@ -28,10 +29,15 @@ describe('media type helpers', () => {
 })
 
 describe('asset URLs', () => {
-  it('builds and parses Ark-owned asset URLs', () => {
-    expect(buildAssetUrl(ASSET_ID)).toBe(`/api/assets/${ASSET_ID}`)
+  it('builds and parses deck-scoped Ark asset URLs', () => {
+    expect(buildAssetUrl(DECK_ID, ASSET_ID)).toBe(`/api/decks/${DECK_ID}/assets/${ASSET_ID}`)
+    expect(parseAssetIdFromUrl(`/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBe(ASSET_ID)
+    expect(parseAssetIdFromUrl(`/api/decks/${DECK_ID}/assets/${ASSET_ID}?x=1`)).toBe(ASSET_ID)
+    expect(isArkAssetUrl(`/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBe(true)
+  })
+
+  it('still parses legacy /api/assets/:id URLs for chat replay', () => {
     expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}`)).toBe(ASSET_ID)
-    expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}?x=1`)).toBe(ASSET_ID)
     expect(isArkAssetUrl(`/api/assets/${ASSET_ID}`)).toBe(true)
   })
 

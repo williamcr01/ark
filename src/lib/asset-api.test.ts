@@ -15,7 +15,7 @@ const asset = {
   checksum: 'abc',
   source: 'upload' as const,
   storageKind: 'local',
-  url: '/api/assets/00000000-0000-4000-8000-000000000701',
+  url: `/api/decks/${deckId}/assets/00000000-0000-4000-8000-000000000701`,
   createdAt: '2026-01-01T00:00:00.000Z',
 }
 
@@ -60,9 +60,9 @@ describe('asset-api', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json: async () => ({}) })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(deleteAsset(asset.id)).resolves.toBeUndefined()
+    await expect(deleteAsset(deckId, asset.id)).resolves.toBeUndefined()
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/assets/${asset.id}`,
+      `/api/decks/${deckId}/assets/${asset.id}`,
       expect.objectContaining({ method: 'DELETE' }),
     )
   })

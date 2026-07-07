@@ -96,7 +96,7 @@ describe('asset API routes', () => {
 
     expect(response.status).toBe(201)
     assertApiContract(uploadAssetResponseSchema, json)
-    expect(json.asset.url).toBe(`/api/assets/${json.asset.id}`)
+    expect(json.asset.url).toBe(`/api/decks/${deckId}/assets/${json.asset.id}`)
     expect(json.asset.byteSize).toBe(PNG_BYTES.length)
     expect(json.asset.category).toBe('image')
     expect(json.asset.checksum).toHaveLength(64)
@@ -198,10 +198,12 @@ describe('asset API routes', () => {
     })
     const { asset } = await uploadResponse.json()
 
-    const deleteResponse = await fetch(`${baseUrl}/api/assets/${asset.id}`, { method: 'DELETE' })
+    const deleteResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`, {
+      method: 'DELETE',
+    })
     expect(deleteResponse.status).toBe(204)
 
-    const bytesResponse = await fetch(`${baseUrl}/api/assets/${asset.id}`)
+    const bytesResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`)
     expect(bytesResponse.status).toBe(404)
 
     const listResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets`)
@@ -217,12 +219,14 @@ describe('asset API routes', () => {
       data: pngDataUrl,
     })
     const { asset } = await uploadResponse.json()
+    const stored = await assetStore.getAsset(asset.id)
+    expect(stored).not.toBeNull()
 
     const deleteDeckResponse = await fetch(`${baseUrl}/api/decks/${deckId}`, { method: 'DELETE' })
     expect(deleteDeckResponse.status).toBe(204)
 
     expect(await assetStore.getAsset(asset.id)).toBeNull()
-    expect(await assetStorage.read(asset.id)).toBeNull()
+    expect(stored && (await assetStorage.read(stored.storageKey))).toBeNull()
   })
 
   it('resolves asset ids into inline data-url attachments scoped to the deck', async () => {
@@ -247,11 +251,48 @@ describe('asset API routes', () => {
       filename: 'logo.png',
     })
     expect(attachments[0].url.startsWith('data:image/png;base64,')).toBe(true)
+  })
 
-    // Cross-deck reference is refused.
+  it('rejects cross-deck asset resolution when deck ids differ', async () => {
+    const { baseUrl, deckId } = await startApi()
+    const uploadResponse = await upload(baseUrl, deckId, {
+      filename: 'logo.png',
+      mediaType: 'image/png',
+      data: pngDataUrl,
+    })
+    const { asset } = await uploadResponse.json()
+
     const otherDeck = 'ffffffff-0000-4000-8000-000000000001'
     expect(
       await resolveAssetAttachments({ assetStore, assetStorage }, otherDeck, [asset.id]),
     ).toHaveLength(0)
+  })
+
+  it('returns no attachments when deck id is missing', async () => {
+    const { baseUrl, deckId } = await startApi()
+    const uploadResponse = await upload(baseUrl, deckId, {
+      filename: 'logo.png',
+      mediaType: 'image/png',
+      data: pngDataUrl,
+    })
+    const { asset } = await uploadResponse.json()
+
+    expect(await resolveAssetAttachments({ assetStore, assetStorage }, null, [asset.id])).toEqual(
+      [],
+    )
+  })
+
+  it('rejects unscoped asset fetch from another deck', async () => {
+    const { baseUrl, deckId } = await startApi()
+    const uploadResponse = await upload(baseUrl, deckId, {
+      filename: 'logo.png',
+      mediaType: 'image/png',
+      data: pngDataUrl,
+    })
+    const { asset } = await uploadResponse.json()
+
+    const otherDeck = 'ffffffff-0000-4000-8000-000000000001'
+    const bytesResponse = await fetch(`${baseUrl}/api/decks/${otherDeck}/assets/${asset.id}`)
+    expect(bytesResponse.status).toBe(404)
   })
 })

@@ -194,7 +194,7 @@ describe('shared API contracts', () => {
       checksum: 'abc',
       source: 'upload' as const,
       storageKind: 'local',
-      url: `/api/assets/${assetId}`,
+      url: `/api/decks/${deckId}/assets/${assetId}`,
       createdAt: '2026-01-01T00:00:00.000Z',
     }
 

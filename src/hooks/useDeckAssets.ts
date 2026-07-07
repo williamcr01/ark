@@ -167,8 +167,15 @@ export function useDeckAssets(deckId: string | null) {
   }, [])
 
   const removeAsset = useCallback(async (assetId: string) => {
+    const targetDeckId = deckIdRef.current
+
+    if (!targetDeckId) {
+      setError('Save the deck before removing assets.')
+      return
+    }
+
     try {
-      await deleteAssetRequest(assetId)
+      await deleteAssetRequest(targetDeckId, assetId)
       setAssets((current) => current.filter((asset) => asset.id !== assetId))
       setSelectedAssetIds((current) => current.filter((id) => id !== assetId))
     } catch (deleteError) {

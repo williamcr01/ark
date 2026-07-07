@@ -5,9 +5,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { DeckAssets, type DeckAssetsProps } from './DeckAssets'
 import type { AssetMetadataResponse, AssetUploadState } from '@/hooks/useDeckAssets'
 
+const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
+
 const asset: AssetMetadataResponse = {
   id: '00000000-0000-4000-8000-000000000701',
-  deckId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+  deckId,
   chatMessageId: null,
   filename: 'logo.png',
   mediaType: 'image/png',
@@ -16,7 +18,7 @@ const asset: AssetMetadataResponse = {
   checksum: 'abc',
   source: 'upload',
   storageKind: 'local',
-  url: '/api/assets/00000000-0000-4000-8000-000000000701',
+  url: `/api/decks/${deckId}/assets/00000000-0000-4000-8000-000000000701`,
   createdAt: '2026-01-01T00:00:00.000Z',
 }
 

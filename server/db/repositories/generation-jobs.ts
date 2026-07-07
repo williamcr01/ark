@@ -152,6 +152,9 @@ function rowToJob(row: GenerationJobRow): GenerationJob {
     observability: readObservabilityMetadata(requestMetadata),
     retryOfJobId:
       typeof requestMetadata.retryOfJobId === 'string' ? requestMetadata.retryOfJobId : null,
+    assetIds: Array.isArray(requestMetadata.assetIds)
+      ? requestMetadata.assetIds.filter((id): id is string => typeof id === 'string')
+      : undefined,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
     startedAt: row.started_at ? toIsoString(row.started_at) : null,
@@ -189,6 +192,7 @@ export function createPostgresGenerationJobStore(
       baseVersionId: input.baseVersionId ?? request.baseVersionId ?? null,
       editingExistingDeck: request.editingExistingDeck ?? false,
       retryOfJobId: input.retryOfJobId ?? null,
+      assetIds: input.assetIds ?? [],
       progress: createEmptyGenerationJobProgress(),
     }
 

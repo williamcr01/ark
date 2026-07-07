@@ -68,7 +68,7 @@ export function toAssetMetadata(record: AssetRecord): AssetMetadata {
     checksum: record.checksum,
     source: record.source,
     storageKind: record.storageKind,
-    url: buildAssetUrl(record.id),
+    url: buildAssetUrl(record.deckId ?? '', record.id),
     createdAt: record.createdAt,
   }
 }

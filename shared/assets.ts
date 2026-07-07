@@ -3,7 +3,7 @@
  *
  * Assets are user-provided files (images, screenshots, CSV/text, PDFs) that Ark
  * stores as first-class, deck-scoped resources. They are always served through
- * Ark-owned URLs (`/api/assets/:id`) — never arbitrary external URLs — so deck
+ * Ark-owned URLs (`/api/decks/:deckId/assets/:id`) — never arbitrary external URLs — so deck
  * preview and export never trigger uncontrolled network requests.
  */
 
@@ -66,19 +66,35 @@ export function getAssetExtensions(mediaType: string): readonly string[] {
   return ALLOWED_ASSET_MEDIA_TYPES[normalizeAssetMediaType(mediaType)]?.extensions ?? []
 }
 
-/** Build the stable, Ark-owned URL used to fetch an asset's bytes. */
-export function buildAssetUrl(id: string) {
-  return `/api/assets/${id}`
+/** Build the stable, deck-scoped URL used to fetch an asset's bytes. */
+export function buildAssetUrl(deckId: string, id: string) {
+  return `/api/decks/${deckId}/assets/${id}`
 }
 
-const ASSET_URL_PATTERN = /\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
+const DECK_SCOPED_ASSET_URL_PATTERN =
+  /\/api\/decks\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
+const LEGACY_ASSET_URL_PATTERN = /\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
 
 /** Extract an asset id from an Ark-owned asset URL, if present. */
 export function parseAssetIdFromUrl(url: string): string | null {
-  const match = ASSET_URL_PATTERN.exec(url.trim())
-  const id = match?.[1]
+  const trimmed = url.trim()
+  const deckScoped = DECK_SCOPED_ASSET_URL_PATTERN.exec(trimmed)
+  const id = deckScoped?.[2] ?? LEGACY_ASSET_URL_PATTERN.exec(trimmed)?.[1]
 
   return id && isValidAssetId(id) ? id : null
+}
+
+/** Extract deck and asset ids from a deck-scoped Ark asset URL. */
+export function parseDeckAssetFromUrl(url: string): { deckId: string; assetId: string } | null {
+  const match = DECK_SCOPED_ASSET_URL_PATTERN.exec(url.trim())
+  const deckId = match?.[1]
+  const assetId = match?.[2]
+
+  if (!deckId || !assetId || !isValidAssetId(assetId)) {
+    return null
+  }
+
+  return { deckId, assetId }
 }
 
 /** True when a URL points at an Ark-owned asset (safe for preview/export). */
