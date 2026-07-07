@@ -4,7 +4,12 @@ import { parseRequestBody } from '../../shared/api/common.ts'
 import { uploadAssetRequestSchema } from '../../shared/api/assets.ts'
 import type { ChatAttachment } from '../../shared/chat.ts'
 import { getAssetCategory, isValidAssetId } from '../../shared/assets.ts'
-import { type AssetSource, type AssetStore, toAssetMetadata } from '../asset-record.ts'
+import {
+  type AssetRecord,
+  type AssetSource,
+  type AssetStore,
+  toAssetMetadata,
+} from '../asset-record.ts'
 import { createAssetStorageKey, type AssetStorage } from '../asset-storage.ts'
 import { validateAssetUpload } from '../asset-validate.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
@@ -22,6 +27,50 @@ export type AssetsRouterDeps = {
 // route parses its own body so the global (smaller) JSON limit does not reject
 // legitimate max-size uploads before validation runs.
 const ASSET_UPLOAD_JSON_LIMIT = '24mb'
+
+function sendAssetBytes(response: Response, record: AssetRecord, bytes: Buffer) {
+  response.setHeader('Content-Type', record.mediaType)
+  response.setHeader('Content-Length', String(bytes.byteLength))
+  response.setHeader('Cache-Control', 'private, max-age=3600')
+  response.setHeader('X-Content-Type-Options', 'nosniff')
+  // Assets are Ark-owned but treated as untrusted content: neutralize any
+  // active content (e.g. scripted SVG) if a browser opens the URL directly.
+  response.setHeader(
+    'Content-Security-Policy',
+    "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  )
+  response.setHeader(
+    'Content-Disposition',
+    `inline; filename="${encodeURIComponent(record.filename)}"`,
+  )
+  response.send(bytes)
+}
+
+async function getDeckScopedAsset(
+  deps: AssetsRouterDeps,
+  deckId: string,
+  assetId: string,
+): Promise<{ record: AssetRecord; bytes: Buffer } | null> {
+  const deck = await deps.deckStore.getDeck(deckId)
+
+  if (!deck) {
+    return null
+  }
+
+  const record = await deps.assetStore.getAsset(assetId)
+
+  if (!record || record.deckId !== deckId) {
+    return null
+  }
+
+  const bytes = await deps.assetStorage.read(record.storageKey)
+
+  if (!bytes) {
+    return null
+  }
+
+  return { record, bytes }
+}
 
 export function createAssetsRouter(deps: AssetsRouterDeps): Router {
   const { assetStore, assetStorage, deckStore } = deps
@@ -74,18 +123,25 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
         const storageKey = createAssetStorageKey()
         await assetStorage.write(storageKey, validation.bytes)
 
-        const record = await assetStore.createAsset({
-          deckId,
-          chatMessageId: parsed.data.chatMessageId ?? null,
-          filename: validation.filename,
-          mediaType: validation.mediaType,
-          category: getAssetCategory(validation.mediaType),
-          byteSize: validation.byteSize,
-          checksum: validation.checksum,
-          source: (parsed.data.source as AssetSource | undefined) ?? 'upload',
-          storageKind: assetStorage.kind,
-          storageKey,
-        })
+        let record: AssetRecord
+
+        try {
+          record = await assetStore.createAsset({
+            deckId,
+            chatMessageId: parsed.data.chatMessageId ?? null,
+            filename: validation.filename,
+            mediaType: validation.mediaType,
+            category: getAssetCategory(validation.mediaType),
+            byteSize: validation.byteSize,
+            checksum: validation.checksum,
+            source: (parsed.data.source as AssetSource | undefined) ?? 'upload',
+            storageKind: assetStorage.kind,
+            storageKey,
+          })
+        } catch (error) {
+          await assetStorage.delete(storageKey)
+          throw error
+        }
 
         getRequestLogger(request).info('asset.uploaded', {
           deckId,
@@ -128,78 +184,82 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
     },
   )
 
-  router.get('/api/assets/:id', async (request: Request<{ id: string }>, response: Response) => {
-    const id = request.params.id?.trim()
+  router.get(
+    '/api/decks/:deckId/assets/:assetId',
+    async (request: Request<{ deckId: string; assetId: string }>, response: Response) => {
+      const deckId = request.params.deckId?.trim()
+      const assetId = request.params.assetId?.trim()
 
-    if (!id || !isValidAssetId(id)) {
-      response.status(400).json({ error: 'Invalid asset id.' })
-      return
-    }
-
-    try {
-      const record = await assetStore.getAsset(id)
-
-      if (!record) {
-        response.status(404).json({ error: 'Asset not found.' })
+      if (!deckId || !isValidDeckId(deckId)) {
+        response.status(400).json({ error: 'Invalid deck id.' })
         return
       }
 
-      const bytes = await assetStorage.read(record.storageKey)
-
-      if (!bytes) {
-        response.status(404).json({ error: 'Asset bytes are unavailable.' })
+      if (!assetId || !isValidAssetId(assetId)) {
+        response.status(400).json({ error: 'Invalid asset id.' })
         return
       }
 
-      response.setHeader('Content-Type', record.mediaType)
-      response.setHeader('Content-Length', String(bytes.byteLength))
-      response.setHeader('Cache-Control', 'private, max-age=3600')
-      response.setHeader('X-Content-Type-Options', 'nosniff')
-      // Assets are Ark-owned but treated as untrusted content: neutralize any
-      // active content (e.g. scripted SVG) if a browser opens the URL directly.
-      response.setHeader(
-        'Content-Security-Policy',
-        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-      )
-      response.setHeader(
-        'Content-Disposition',
-        `inline; filename="${encodeURIComponent(record.filename)}"`,
-      )
-      response.send(bytes)
-    } catch (error) {
-      sendApiError(response, 500, getApiErrorFromUnknown(error))
-    }
-  })
+      try {
+        const scoped = await getDeckScopedAsset(deps, deckId, assetId)
 
-  router.delete('/api/assets/:id', async (request: Request<{ id: string }>, response: Response) => {
-    const id = request.params.id?.trim()
+        if (!scoped) {
+          response.status(404).json({ error: 'Asset not found.' })
+          return
+        }
 
-    if (!id || !isValidAssetId(id)) {
-      response.status(400).json({ error: 'Invalid asset id.' })
-      return
-    }
+        sendAssetBytes(response, scoped.record, scoped.bytes)
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
 
-    try {
-      const record = await assetStore.deleteAsset(id)
+  router.delete(
+    '/api/decks/:deckId/assets/:assetId',
+    async (request: Request<{ deckId: string; assetId: string }>, response: Response) => {
+      const deckId = request.params.deckId?.trim()
+      const assetId = request.params.assetId?.trim()
 
-      if (!record) {
-        response.status(404).json({ error: 'Asset not found.' })
+      if (!deckId || !isValidDeckId(deckId)) {
+        response.status(400).json({ error: 'Invalid deck id.' })
         return
       }
 
-      await assetStorage.delete(record.storageKey)
+      if (!assetId || !isValidAssetId(assetId)) {
+        response.status(400).json({ error: 'Invalid asset id.' })
+        return
+      }
 
-      getRequestLogger(request).info('asset.deleted', {
-        assetId: id,
-        deckId: record.deckId,
-        statusCode: 204,
-      })
+      try {
+        const existing = await assetStore.getAsset(assetId)
 
-      response.status(204).send()
-    } catch (error) {
-      sendApiError(response, 500, getApiErrorFromUnknown(error))
-    }
-  })
+        if (!existing || existing.deckId !== deckId) {
+          response.status(404).json({ error: 'Asset not found.' })
+          return
+        }
+
+        const record = await assetStore.deleteAsset(assetId)
+
+        if (!record) {
+          response.status(404).json({ error: 'Asset not found.' })
+          return
+        }
+
+        await assetStorage.delete(record.storageKey)
+
+        getRequestLogger(request).info('asset.deleted', {
+          assetId,
+          deckId,
+          statusCode: 204,
+        })
+
+        response.status(204).send()
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
 
   return router
 }
@@ -214,6 +274,10 @@ export async function resolveAssetAttachments(
   deckId: string | null,
   assetIds: readonly string[],
 ): Promise<ChatAttachment[]> {
+  if (!deckId || !isValidDeckId(deckId) || assetIds.length === 0) {
+    return []
+  }
+
   const attachments: ChatAttachment[] = []
   const seen = new Set<string>()
 
@@ -228,12 +292,7 @@ export async function resolveAssetAttachments(
 
     const record = await deps.assetStore.getAsset(id)
 
-    if (!record) {
-      continue
-    }
-
-    // Enforce deck scoping: never let one deck pull another deck's assets.
-    if (deckId && record.deckId && record.deckId !== deckId) {
+    if (!record || record.deckId !== deckId) {
       continue
     }
 

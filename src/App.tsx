@@ -295,11 +295,24 @@ function App() {
   }, [applySucceededOutcome, deckId, isDeckLoading, reloadChat, resumeStoredJob, setMessages])
 
   const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
+    const selectedDeckAttachments: ChatAttachment[] = deckId
+      ? selectedAssetIds
+          .map((id) => deckAssets.find((asset) => asset.id === id))
+          .filter((asset): asset is (typeof deckAssets)[number] => Boolean(asset))
+          .map((asset) => ({
+            type: 'file' as const,
+            mediaType: asset.mediaType,
+            filename: asset.filename,
+            url: asset.url,
+            assetId: asset.id,
+          }))
+      : []
+    const allAttachments = [...selectedDeckAttachments, ...attachments]
     const prompt =
       rawPrompt.trim() ||
-      (attachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
+      (allAttachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
 
-    if ((!prompt && attachments.length === 0) || isGenerating || !canGenerate) {
+    if ((!prompt && allAttachments.length === 0) || isGenerating || !canGenerate) {
       return
     }
 
@@ -310,7 +323,7 @@ function App() {
       id: newId(),
       role: 'user',
       content: rawPrompt.trim(),
-      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(allAttachments.length > 0 ? { attachments: allAttachments } : {}),
     }
     const nextMessages: ChatMessage[] = [...messages, userMessage]
 

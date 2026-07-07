@@ -9,7 +9,7 @@ export type ChatMessageRole = 'user' | 'assistant'
  *
  * Two shapes are supported:
  * - Inline data URL (`url` starts with `data:`) — bytes travel with the message.
- * - Ark asset reference (`assetId` set, `url` is an Ark-owned `/api/assets/:id`
+ * - Ark asset reference (`assetId` set, `url` is a deck-scoped `/api/decks/:deckId/assets/:id`
  *   URL) — the persisted message stays lightweight and the server resolves the
  *   bytes from asset storage when needed for generation.
  */
