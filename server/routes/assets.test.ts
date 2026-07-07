@@ -16,7 +16,7 @@ import { createApp } from '../app.ts'
 import { createAssetStore } from '../asset-store.ts'
 import { createLocalAssetStorage } from '../asset-storage.ts'
 import { createDeckStore } from '../deck-store.ts'
-import { resolveAssetAttachments } from './assets.ts'
+import { resolveAssetAttachments } from '../asset-resolve.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">

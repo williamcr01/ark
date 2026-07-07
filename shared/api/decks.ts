@@ -30,9 +30,18 @@ export const deckSummarySchema = storedDeckSchema.omit({ html: true })
 
 export type DeckSummary = z.infer<typeof deckSummarySchema>
 
-const deckRuntimeManifestSchema = z.custom<DeckRuntimeManifest>((value) =>
-  isDeckRuntimeManifest(value),
-)
+const deckRuntimeManifestSchema: z.ZodType<DeckRuntimeManifest> = z
+  .object({
+    schemaVersion: z.number().optional(),
+    runtimeMode: z.string().optional(),
+    previewMode: z.string().optional(),
+    slideCount: z.number().optional(),
+    structure: z.enum(['plain', 'reveal', 'unknown']).optional(),
+    slideSelector: z.string().nullable().optional(),
+    aspectRatio: z.string().optional(),
+  })
+  .passthrough()
+  .refine((value) => isDeckRuntimeManifest(value), 'Invalid runtime manifest.')
 
 export const deckVersionSummarySchema = z.object({
   id: deckIdSchema,

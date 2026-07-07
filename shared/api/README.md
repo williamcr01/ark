@@ -25,6 +25,10 @@ The contracts layer depends on **Zod** and portable shared helpers only. It must
 
 Shared client helpers (`fetchApiJsonOrThrow`, `parseRequestBody`, `assertApiContract`) live in `fetch.ts` and `common.ts` and are re-exported from `index.ts`.
 
+## OpenAPI
+
+`shared/api/openapi-registry.ts` registers every route above against the Zod contracts. `pnpm openapi:generate` writes `openapi/ark.openapi.json`; CI runs `pnpm openapi:check` to prevent drift. Generation job `assetIds` appear on `POST /api/generation-jobs` only — poll responses use `generationJobApiSchema`, which omits request-only fields.
+
 ## Related docs
 
 - [architecture-boundaries.md](../docs/architecture-boundaries.md) — layer import rules
