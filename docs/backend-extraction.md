@@ -33,17 +33,17 @@ These are **candidates for measurement**, not a migration backlog.
 
 ## Keep in TypeScript by default
 
-These components share semantics with the React shell, `shared/` contracts, or agent tools. Extract only with a strong measured case **and** a stable cross-language contract.
+These components share semantics with the React shell, workspace packages, or agent tools. Extract only with a strong measured case **and** a stable cross-language contract.
 
-| Component                                                                              | Rationale                                                                                                                                                        |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **HTTP API orchestration**                                                             | Route validation, auth (future), request IDs, and error shaping are tightly coupled to Zod schemas in `shared/api/`.                                             |
-| **Agent tool loop** (`server/deck-agent.ts`, `server/deck-tools.ts`)                   | Tools call parsing, patching, and validation in-process; duplicating slide patch semantics elsewhere is high-risk.                                               |
-| **Deck patch & element edit** (`server/deck-patch.ts`, element patch API)              | Same HTML rules as client manual editing and `shared/deck-editor-bridge.ts`.                                                                                     |
-| **Preview bridge contracts** (`shared/deck-bridge.ts`, `shared/deck-editor-bridge.ts`) | Parent ↔ iframe protocol is versioned with the shell; preview mode detection lives in `src/lib/deck-preview.ts`.                                                 |
-| **Runtime registry** (`runtimes/`, `/api/runtimes/...`)                                | Approved asset paths and reveal adapter behavior must match client detection.                                                                                    |
-| **Chat persistence & generation job API**                                              | Job state, chat replay, and `assetIds` flow through shared types; OpenAPI will describe the wire format ([#134](https://github.com/williamcr01/ark/issues/134)). |
-| **Sandbox host** (`server/sandbox-host.ts`)                                            | CSP headers and token lookup are security boundaries tied to preview session shape.                                                                              |
+| Component                                                                                                      | Rationale                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP API orchestration**                                                                                     | Route validation, auth (future), request IDs, and error shaping are tightly coupled to Zod schemas in `packages/contracts/`.                                     |
+| **Agent tool loop** (`apps/api/deck-agent.ts`, `apps/api/deck-tools.ts`)                                       | Tools call parsing, patching, and validation in-process; duplicating slide patch semantics elsewhere is high-risk.                                               |
+| **Deck patch & element edit** (`apps/api/deck-patch.ts`, element patch API)                                    | Same HTML rules as client manual editing and `packages/deck-core/deck-editor-bridge.ts`.                                                                         |
+| **Preview bridge contracts** (`packages/deck-core/deck-bridge.ts`, `packages/deck-core/deck-editor-bridge.ts`) | Parent ↔ iframe protocol is versioned with the shell; preview mode detection lives in `apps/web/src/lib/deck-preview.ts`.                                        |
+| **Runtime registry** (`runtimes/`, `/api/runtimes/...`)                                                        | Approved asset paths and reveal adapter behavior must match client detection.                                                                                    |
+| **Chat persistence & generation job API**                                                                      | Job state, chat replay, and `assetIds` flow through shared types; OpenAPI will describe the wire format ([#134](https://github.com/williamcr01/ark/issues/134)). |
+| **Sandbox host** (`apps/sandbox/sandbox-host.ts`)                                                              | CSP headers and token lookup are security boundaries tied to preview session shape.                                                                              |
 
 ## OpenAPI and non-TypeScript implementations
 
@@ -54,7 +54,7 @@ Issue [#134](https://github.com/williamcr01/ark/issues/134) adds a generated Ope
 3. **Shared semantics without shared code** — Parsing rules that must stay identical should be specified as test fixtures (HTML samples in `presentations/` and Vitest fixtures), not re-derived from TypeScript types alone.
 4. **Generation jobs** — The runner interface ([#137](https://github.com/williamcr01/ark/issues/137)) is the in-process analogue of an OpenAPI-described `POST /api/generation-jobs` + poll/cancel contract; an external worker would honor the same job record shape.
 
-Until OpenAPI ships, treat `shared/api/*.ts` Zod schemas as the source of truth; after #134, prefer the generated schema for cross-language clients and drift checks.
+Treat `packages/contracts/*.ts` Zod schemas as the source of truth; prefer the generated OpenAPI schema for cross-language clients and drift checks.
 
 ## Recommended workflow
 

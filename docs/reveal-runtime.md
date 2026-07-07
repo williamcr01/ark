@@ -193,7 +193,7 @@ When generating or editing reveal decks, the agent should:
 7. Do not promise fragment step-through or speaker-notes UI in the shell.
 8. Do not add custom bridge scripts — Ark injects the reveal adapter.
 
-The system prompt in `server/deck-agent.ts` includes live registry URLs from `buildRuntimeRegistryPromptSection()`.
+The system prompt in `apps/api/deck-agent.ts` includes live registry URLs from `buildRuntimeRegistryPromptSection()`.
 
 ## Validation errors
 
