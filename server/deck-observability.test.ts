@@ -9,7 +9,7 @@ import { createLogger, type StructuredLogEntry } from './observability/logger.ts
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../src/test/fixtures',
+  '../test/fixtures',
 )
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
 
