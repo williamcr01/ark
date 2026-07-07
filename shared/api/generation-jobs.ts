@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { MAX_CHAT_ATTACHMENTS } from '../chat.ts'
 import { deckIdSchema, generationJobIdSchema, withRequestId } from './common.ts'
 import { deckValidationReportSchema } from './decks.ts'
 
@@ -100,8 +101,8 @@ export const startGenerationJobRequestSchema = z.object({
   model: z.string().optional(),
   deckId: deckIdSchema.nullable().optional(),
   baseVersionId: deckIdSchema.nullable().optional(),
-  /** Uploaded asset ids to resolve into file inputs for the model. */
-  assetIds: z.array(z.string()).max(20).optional(),
+  /** Uploaded asset ids to resolve into file inputs for the model (requires deckId). */
+  assetIds: z.array(z.string()).max(MAX_CHAT_ATTACHMENTS).optional(),
 })
 
 export type StartGenerationJobRequest = z.infer<typeof startGenerationJobRequestSchema>

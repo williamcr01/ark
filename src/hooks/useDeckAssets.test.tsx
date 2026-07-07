@@ -30,7 +30,7 @@ const makeAsset = (overrides: Partial<AssetMetadataResponse> = {}): AssetMetadat
   checksum: 'abc',
   source: 'upload',
   storageKind: 'local',
-  url: '/api/assets/00000000-0000-4000-8000-000000000701',
+  url: `/api/decks/${deckId}/assets/00000000-0000-4000-8000-000000000701`,
   createdAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
 })
@@ -118,7 +118,7 @@ describe('useDeckAssets', () => {
       await result.current.removeAsset(existing.id)
     })
 
-    expect(deleteAsset).toHaveBeenCalledWith(existing.id)
+    expect(deleteAsset).toHaveBeenCalledWith(deckId, existing.id)
     expect(result.current.assets).toHaveLength(0)
   })
 

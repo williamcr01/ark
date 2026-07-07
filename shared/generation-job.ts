@@ -70,6 +70,8 @@ export type GenerationJob = {
   deckId: string | null
   baseVersionId: string | null
   chatThreadId?: string | null
+  /** Asset ids resolved to bytes at run time — kept out of persisted request messages. */
+  assetIds?: string[]
   status: GenerationJobStatus
   model: string
   provider: string | null
@@ -94,6 +96,7 @@ export type CreateGenerationJobInput = {
   deckId?: string | null
   baseVersionId?: string | null
   chatThreadId?: string | null
+  assetIds?: string[]
   model: string
   provider?: string | null
   request: GenerationJobRequest

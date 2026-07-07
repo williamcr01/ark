@@ -64,11 +64,18 @@ export async function listDeckAssets(
   return data.assets
 }
 
-export async function deleteAsset(assetId: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/assets/${encodeURIComponent(assetId)}`, {
-    method: 'DELETE',
-    signal,
-  })
+export async function deleteAsset(
+  deckId: string,
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(
+    `/api/decks/${encodeURIComponent(deckId)}/assets/${encodeURIComponent(assetId)}`,
+    {
+      method: 'DELETE',
+      signal,
+    },
+  )
 
   if (!response.ok && response.status !== 204) {
     const data = await response.json().catch(() => ({}))

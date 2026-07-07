@@ -18,6 +18,9 @@ import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { type DeckStore } from './deck-record.ts'
 import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import { type ChatStore } from './chat-record.ts'
+import { resolveAssetAttachments } from './routes/assets.ts'
+import { type AssetStorage } from './asset-storage.ts'
+import { type AssetStore } from './asset-record.ts'
 import {
   ensureChatThreadForJob,
   persistAssistantGenerationMessage,
@@ -33,6 +36,8 @@ export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
   jobStore: GenerationJobStore
   chatStore?: ChatStore | null
+  assetStore?: AssetStore | null
+  assetStorage?: AssetStorage | null
   createModel?: typeof createLanguageModel
   runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
   now?: () => Date
@@ -41,11 +46,6 @@ export type GenerationJobRunnerOptions = {
 export type StartGenerationJobOptions = {
   body: StartGenerationJobRequest
   defaultModel: string
-  /**
-   * Inline attachments resolved from uploaded asset ids. Merged into the model
-   * input for the latest user turn, but NOT into the lightweight chat history.
-   */
-  assetAttachments?: ChatAttachment[]
   requestId?: string | null
 }
 
@@ -106,6 +106,8 @@ export function createGenerationJobRunner({
   deckStore,
   jobStore,
   chatStore = null,
+  assetStore = null,
+  assetStorage = null,
   createModel = createLanguageModel,
   runAgent = runDeckAgent,
   now = () => new Date(),
@@ -164,11 +166,22 @@ export function createGenerationJobRunner({
     try {
       const { model, provider } = createModel(currentJob.model)
 
+      let modelMessages = currentJob.request.messages
+
+      if (currentJob.assetIds?.length && assetStore && assetStorage) {
+        const assetAttachments = await resolveAssetAttachments(
+          { assetStore, assetStorage },
+          currentJob.deckId,
+          currentJob.assetIds,
+        )
+        modelMessages = withResolvedAttachments(currentJob.request.messages, assetAttachments)
+      }
+
       const agentResult = await runAgent({
         model: model as LanguageModel,
         provider,
         modelRef: currentJob.model,
-        messages: currentJob.request.messages,
+        messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
         abortSignal: abortController.signal,
         onStepProgress: async (steps) => {
@@ -529,12 +542,7 @@ export function createGenerationJobRunner({
     void processJob(jobId, requestId)
   }
 
-  const startJob = async ({
-    body,
-    defaultModel,
-    assetAttachments = [],
-    requestId = null,
-  }: StartGenerationJobOptions) => {
+  const startJob = async ({ body, defaultModel, requestId = null }: StartGenerationJobOptions) => {
     const parsedMessages = parseGenerateMessages(body.messages)
 
     if (!parsedMessages.ok) {
@@ -570,6 +578,17 @@ export function createGenerationJobRunner({
     const { provider } = createModel(modelRef)
     const currentHtml = body.currentHtml ?? ''
     const deckId = typeof body.deckId === 'string' && body.deckId.trim() ? body.deckId.trim() : null
+    const assetIds = body.assetIds?.map((id) => id.trim()).filter(Boolean) ?? []
+
+    if (assetIds.length > 0 && !deckId) {
+      throw Object.assign(new Error('assetIds require a saved deck id.'), {
+        apiError: {
+          code: 'provider_error',
+          error: 'assetIds require a saved deck id.',
+        },
+      })
+    }
+
     const baseVersionId =
       typeof body.baseVersionId === 'string' && body.baseVersionId.trim()
         ? body.baseVersionId.trim()
@@ -600,16 +619,15 @@ export function createGenerationJobRunner({
       }
     }
 
-    const modelMessages = withResolvedAttachments(messages, assetAttachments)
-
     const input: CreateGenerationJobInput = {
       deckId,
       baseVersionId,
       chatThreadId,
+      assetIds: assetIds.length > 0 ? assetIds : undefined,
       model: modelRef,
       provider,
       request: {
-        messages: modelMessages,
+        messages,
         currentHtml,
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
@@ -652,6 +670,7 @@ export function createGenerationJobRunner({
     const input: CreateGenerationJobInput = {
       deckId,
       baseVersionId,
+      assetIds: existing.assetIds,
       model: existing.model,
       provider: existing.provider,
       request,

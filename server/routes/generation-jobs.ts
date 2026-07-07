@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody } from '../../shared/api/common.ts'
 import { startGenerationJobRequestSchema } from '../../shared/api/generation-jobs.ts'
-import type { ChatAttachment } from '../../shared/chat.ts'
 import { hasAnyConfiguredProvider, missingApiKeyError } from '../credentials.ts'
 import { isValidDeckId } from '../deck-record.ts'
 import { isValidGenerationJobId } from '../generation-job-record.ts'
@@ -13,12 +12,8 @@ import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 export function createGenerationJobsRouter(deps: {
   generationJobs: GenerationJobRunner
   defaultModel: string
-  resolveAssetAttachments?: (
-    deckId: string | null,
-    assetIds: readonly string[],
-  ) => Promise<ChatAttachment[]>
 }): Router {
-  const { generationJobs, defaultModel, resolveAssetAttachments } = deps
+  const { generationJobs, defaultModel } = deps
   const router = Router()
 
   router.post('/api/generation-jobs', async (request: Request, response: Response) => {
@@ -42,22 +37,15 @@ export function createGenerationJobsRouter(deps: {
       return
     }
 
-    let assetAttachments: ChatAttachment[] = []
-
-    if (resolveAssetAttachments && body.assetIds?.length) {
-      try {
-        assetAttachments = await resolveAssetAttachments(deckId ?? null, body.assetIds)
-      } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
-        return
-      }
+    if (body.assetIds?.length && !deckId) {
+      response.status(400).json({ error: 'assetIds require a deck id.' })
+      return
     }
 
     try {
       const job = await generationJobs.startJob({
         body,
         defaultModel,
-        assetAttachments,
         requestId: getRequestId(request),
       })
 

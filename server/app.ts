@@ -17,7 +17,7 @@ import {
   createRuntimeErrorStore,
   type RuntimeErrorStore,
 } from './observability/index.ts'
-import { createAssetsRouter, resolveAssetAttachments } from './routes/assets.ts'
+import { createAssetsRouter } from './routes/assets.ts'
 import { createDecksRouter } from './routes/decks.ts'
 import { createDeckVersionsRouter } from './routes/deck-versions.ts'
 import { createDeckChatRouter } from './routes/deck-chat.ts'
@@ -45,7 +45,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const assetStorage = options.assetStorage ?? createDefaultAssetStorage()
   const jobStore = options.generationJobStore ?? createDefaultGenerationJobStore()
   const generationJobs =
-    options.generationJobRunner ?? createGenerationJobRunner({ deckStore, jobStore, chatStore })
+    options.generationJobRunner ??
+    createGenerationJobRunner({ deckStore, jobStore, chatStore, assetStore, assetStorage })
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
@@ -68,8 +69,6 @@ export function createApp(options: CreateAppOptions = {}) {
     createGenerationJobsRouter({
       generationJobs,
       defaultModel,
-      resolveAssetAttachments: (deckId, assetIds) =>
-        resolveAssetAttachments({ assetStore, assetStorage }, deckId, assetIds),
     }),
   )
 
