@@ -72,12 +72,15 @@ export function buildAssetUrl(deckId: string, id: string) {
 }
 
 const DECK_SCOPED_ASSET_URL_PATTERN =
-  /\/api\/decks\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
-const LEGACY_ASSET_URL_PATTERN = /\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
+  /^\/api\/decks\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
+const LEGACY_ASSET_URL_PATTERN = /^\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
 
 /** Extract an asset id from an Ark-owned asset URL, if present. */
 export function parseAssetIdFromUrl(url: string): string | null {
   const trimmed = url.trim()
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith('//')) {
+    return null
+  }
   const deckScoped = DECK_SCOPED_ASSET_URL_PATTERN.exec(trimmed)
   const id = deckScoped?.[2] ?? LEGACY_ASSET_URL_PATTERN.exec(trimmed)?.[1]
 
@@ -86,7 +89,11 @@ export function parseAssetIdFromUrl(url: string): string | null {
 
 /** Extract deck and asset ids from a deck-scoped Ark asset URL. */
 export function parseDeckAssetFromUrl(url: string): { deckId: string; assetId: string } | null {
-  const match = DECK_SCOPED_ASSET_URL_PATTERN.exec(url.trim())
+  const trimmed = url.trim()
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith('//')) {
+    return null
+  }
+  const match = DECK_SCOPED_ASSET_URL_PATTERN.exec(trimmed)
   const deckId = match?.[1]
   const assetId = match?.[2]
 

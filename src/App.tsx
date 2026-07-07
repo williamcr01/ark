@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState, useEffect, useCallback, type ChangeEvent } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 
 import { MAX_CHAT_ATTACHMENTS, toChatAttachments, type ChatAttachment } from '../shared/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
-import { ChatPanel, type ChatMessage } from '@/components/ChatPanel'
+import { ChatPanel } from '@/components/ChatPanel'
 import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { DeckPreview } from '@/components/DeckPreview'
@@ -14,8 +14,10 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useChatSession } from '@/hooks/useChatSession'
 import { useDeckAssets } from '@/hooks/useDeckAssets'
+import { useDeckActions } from '@/hooks/useDeckActions'
+import { useDeckEditHistory } from '@/hooks/useDeckEditHistory'
+import { useDeckGenerationFlow } from '@/hooks/useDeckGenerationFlow'
 import { useDeckPersistence } from '@/hooks/useDeckPersistence'
-import { useGenerationJob, type GenerationJobOutcome } from '@/hooks/useGenerationJob'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -23,17 +25,11 @@ import {
   getChatPanelDefaultSize,
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat-panel-layout'
-import {
-  describeDeckValidation,
-  downloadHtml,
-  isHtmlDeckFile,
-  validateUploadedDeck,
-} from '@/lib/deck-io'
-import { deckHasExecutableContent, type DeckDownloadVariant } from '@/lib/deck-export'
+import { deckHasExecutableContent } from '@/lib/deck-export'
 import { parseDeckSlides } from '@/lib/deck-slides'
-import type { DeckValidationReport } from '../shared/deck-validate.ts'
 import type { DeckElementPatchOperation } from '../shared/deck-patch.ts'
-import { newId } from '@/lib/id'
+import { buildManualEditProvenance } from '../shared/deck-edit-provenance.ts'
+import type { PatchDeckResponse } from '@/lib/deck-api'
 import {
   startRevealThumbnailStylesPreload,
   waitForRevealThumbnailStylesPreload,
@@ -61,6 +57,7 @@ function App() {
     refreshActiveDeck,
     refreshVersions,
     renameActiveDeck,
+    restoreHtmlSnapshot,
     rollbackToVersion,
     saveError,
     selectDeck,
@@ -68,6 +65,7 @@ function App() {
     versionNumber,
     versions,
   } = useDeckPersistence()
+  const editHistory = useDeckEditHistory()
   const {
     appendMessage,
     getMessageDeliveryStatus,
@@ -107,7 +105,6 @@ function App() {
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
-  const recoveredJobIdsRef = useRef(new Set<string>())
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const {
@@ -121,23 +118,48 @@ function App() {
     setSelectedModel,
     warnings: modelWarnings,
   } = useAvailableModels()
+
+  const {
+    canRedo,
+    canUndo,
+    commitRedo,
+    commitUndo,
+    redoEntry,
+    record: recordEditHistory,
+    reset: resetEditHistory,
+    undoEntry,
+  } = editHistory
+  const undoRedoInFlightRef = useRef(false)
+
   const {
     activeSteps,
-    cancelGeneration,
-    error: generationError,
-    failedJob,
+    cancelGeneration: handleCancelGeneration,
+    failedJobId,
+    generateDeck,
+    generationError,
+    generationStatus,
     isGenerating,
-    retryGeneration,
-    resumeStoredJob,
-    setError: setGenerationError,
-    startGeneration,
-    status: generationStatus,
-  } = useGenerationJob({
-    deckId,
-    baseVersionId: activeVersionId,
+    retryGeneration: handleRetryGeneration,
+  } = useDeckGenerationFlow({
+    deck: {
+      deckId,
+      activeVersionId,
+      generatedHtml,
+      isDeckLoading,
+      refreshActiveDeck,
+    },
+    chat: {
+      messages,
+      appendMessage,
+      reloadChat,
+      setMessages,
+    },
     selectedModel,
     canGenerate,
-    onReloadModels: loadModels,
+    loadModels,
+    onError: setError,
+    onGenerationStart: useCallback(() => setAttachmentError(''), []),
+    onGenerationSucceeded: resetEditHistory,
   })
 
   useEffect(() => {
@@ -155,6 +177,18 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  const generatedHtmlRef = useRef(generatedHtml)
+
+  useEffect(() => {
+    generatedHtmlRef.current = generatedHtml
+  }, [generatedHtml])
+
+  // Clear undo/redo history whenever the active deck changes (switch, new deck,
+  // delete). AI generation, upload, and rollback reset explicitly via callbacks.
+  useEffect(() => {
+    resetEditHistory()
+  }, [deckId, resetEditHistory])
 
   const parsedDeck = useMemo(() => {
     void thumbnailStylesRevision
@@ -195,106 +229,39 @@ function App() {
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
-  const applySucceededOutcome = useCallback(
-    async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) => {
-      try {
-        await refreshActiveDeck(outcome.job.result?.deckId)
-      } catch {
-        toast.error('Deck generated but could not be refreshed in the editor')
-      }
-
-      const targetDeckId = outcome.job.result?.deckId ?? deckId
-
-      if (targetDeckId) {
-        await reloadChat(targetDeckId)
-      } else {
-        const validationNote = outcome.job.result?.validation
-          ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
-          : ''
-        const assistantParts = [
-          ...outcome.assistantParts,
-          ...(outcome.assistantContent
-            ? [
-                {
-                  type: 'text' as const,
-                  content: `${outcome.assistantContent}${validationNote}`,
-                },
-              ]
-            : validationNote
-              ? [{ type: 'text' as const, content: validationNote.trim() }]
-              : []),
-        ]
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: newId(),
-            role: 'assistant',
-            content: outcome.assistantContent
-              ? `${outcome.assistantContent}${validationNote}`
-              : `Generated a complete self-contained HTML slide deck.${validationNote}`,
-            parts: assistantParts.length > 0 ? assistantParts : undefined,
-          },
-        ])
-      }
-
-      toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
+  const {
+    handleDeleteDeck,
+    handleDownload,
+    handleHtmlUpload,
+    handleNewDeck,
+    handleRenameDeck,
+    handleRollbackVersion,
+    handleSelectDeck,
+    handleUploadClick,
+  } = useDeckActions({
+    fileInputRef,
+    deck: {
+      deckId,
+      html: generatedHtml,
+      persistHtml,
+      rollbackToVersion,
+      selectDeck,
+      startNewDeck,
+      renameActiveDeck,
+      deleteActiveDeck,
     },
-    [deckId, refreshActiveDeck, reloadChat, setMessages],
-  )
+    chat: {
+      appendMessage,
+      setMessages,
+      resetChat,
+    },
+    setInput,
+    setError,
+    onEditHistoryBoundary: resetEditHistory,
+  })
 
-  useEffect(() => {
-    if (isDeckLoading) {
-      return
-    }
-
-    void (async () => {
-      const outcome = await resumeStoredJob()
-
-      if (!outcome) {
-        return
-      }
-
-      if (outcome.status === 'succeeded') {
-        if (recoveredJobIdsRef.current.has(outcome.job.id)) {
-          return
-        }
-
-        recoveredJobIdsRef.current.add(outcome.job.id)
-        await applySucceededOutcome(outcome)
-        return
-      }
-
-      if (deckId) {
-        await reloadChat(deckId)
-      } else {
-        setMessages((current) => {
-          const failedContent =
-            outcome.status === 'canceled'
-              ? `Generation canceled. ${outcome.message}`
-              : `I could not generate the deck yet. ${outcome.message}`
-          const last = current.at(-1)
-
-          if (last?.role === 'assistant' && last.content === failedContent) {
-            return current
-          }
-
-          return [
-            ...current,
-            {
-              id: newId(),
-              role: 'assistant' as const,
-              content: failedContent,
-            },
-          ]
-        })
-      }
-
-      setError(outcome.message)
-    })()
-  }, [applySucceededOutcome, deckId, isDeckLoading, reloadChat, resumeStoredJob, setMessages])
-
-  const generateDeck = async (rawPrompt: string, attachments: ChatAttachment[] = []) => {
+  const handlePromptSubmit = async (message: PromptInputMessage) => {
+    const promptAttachments = toChatAttachments(message.files)
     const selectedDeckAttachments: ChatAttachment[] = deckId
       ? selectedAssetIds
           .map((id) => deckAssets.find((asset) => asset.id === id))
@@ -307,273 +274,49 @@ function App() {
             assetId: asset.id,
           }))
       : []
-    const allAttachments = [...selectedDeckAttachments, ...attachments]
-    const prompt =
-      rawPrompt.trim() ||
-      (allAttachments.length > 0 ? 'Use the attached file(s) as reference for the deck.' : '')
-
-    if (allAttachments.length > MAX_CHAT_ATTACHMENTS) {
-      setAttachmentError(`You can attach up to ${MAX_CHAT_ATTACHMENTS} files per message.`)
-      return
-    }
-
-    if ((!prompt && allAttachments.length === 0) || isGenerating || !canGenerate) {
-      return
-    }
-
-    setError('')
-    setGenerationError('')
-    setAttachmentError('')
-    const userMessage: ChatMessage = {
-      id: newId(),
-      role: 'user',
-      content: rawPrompt.trim(),
-      ...(allAttachments.length > 0 ? { attachments: allAttachments } : {}),
-    }
-    const nextMessages: ChatMessage[] = [...messages, userMessage]
-
-    if (deckId) {
-      await appendMessage(userMessage)
-    } else {
-      setMessages(nextMessages)
-    }
-
-    const assetIds = deckId ? selectedAssetIds : []
-
-    try {
-      const outcome = await startGeneration(nextMessages, generatedHtml, { assetIds })
-
-      if (!outcome) {
-        return
-      }
-
-      if (outcome.status === 'succeeded') {
-        clearAssetSelection()
-        await applySucceededOutcome(outcome)
-        return
-      }
-
-      const message = outcome.message
-      setError(message)
-
-      if (deckId) {
-        await reloadChat()
-      } else {
-        setMessages((current) => [
-          ...current,
-          {
-            id: newId(),
-            role: 'assistant',
-            content:
-              outcome.status === 'canceled'
-                ? `Generation canceled. ${message}`
-                : `I could not generate the deck yet. ${message}`,
-          },
-        ])
-      }
-
-      if (outcome.status === 'canceled') {
-        toast.info('Generation canceled')
-      } else if (outcome.job.error?.code === 'version_conflict') {
-        toast.error('Deck changed during generation')
-      } else {
-        toast.error('Generation failed')
-      }
-    } catch (generationFailure) {
-      const message =
-        generationFailure instanceof Error
-          ? generationFailure.message
-          : 'Something went wrong while generating the deck.'
-
-      setError(message)
-
-      if (deckId) {
-        await reloadChat()
-      } else {
-        setMessages((current) => [
-          ...current,
-          {
-            id: newId(),
-            role: 'assistant',
-            content: `I could not generate the deck yet. ${message}`,
-          },
-        ])
-      }
-      toast.error('Generation failed')
-    }
-  }
-
-  const handleCancelGeneration = async () => {
-    try {
-      await cancelGeneration()
-      toast.info('Canceling generation…')
-    } catch {
-      toast.error('Could not cancel generation')
-    }
-  }
-
-  const handleRetryGeneration = async () => {
-    try {
-      const outcome = await retryGeneration()
-
-      if (!outcome) {
-        return
-      }
-
-      if (outcome.status === 'succeeded') {
-        await applySucceededOutcome(outcome)
-        return
-      }
-
-      const message = outcome.message
-      setError(message)
-
-      if (deckId) {
-        await reloadChat()
-      }
-
-      toast.error(outcome.status === 'canceled' ? 'Generation canceled' : 'Generation failed')
-    } catch {
-      toast.error('Could not retry generation')
-    }
-  }
-
-  const handlePromptSubmit = async (message: PromptInputMessage) => {
-    const attachments = toChatAttachments(message.files)
+    const attachments = [...selectedDeckAttachments, ...promptAttachments]
     const hasContent = Boolean(message.text.trim() || attachments.length > 0)
 
     if (!hasContent || !canGenerate) {
       return
     }
 
+    if (attachments.length > MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError(`You can attach up to ${MAX_CHAT_ATTACHMENTS} files per message.`)
+      return
+    }
+
     setInput('')
-    await generateDeck(message.text, attachments)
+    const assetIds = deckId ? selectedAssetIds : []
+    await generateDeck(message.text, attachments, { assetIds })
   }
 
-  const handleRollbackVersion = async (versionId: string) => {
-    try {
-      await rollbackToVersion(versionId)
-      await resetChat()
-      setInput('')
-      setError('')
-      toast.success('Deck restored to selected version')
-    } catch {
-      toast.error('Could not restore that version')
-      throw new Error('Could not restore that version')
-    }
-  }
-
-  const handleDownload = (variant: DeckDownloadVariant = 'original') => {
-    if (!generatedHtml) {
-      return
-    }
-
-    downloadHtml(generatedHtml, { variant })
-    toast.success(
-      variant === 'sanitized' ? 'Sanitized HTML deck downloaded' : 'HTML deck downloaded',
-    )
-  }
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleHtmlUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0]
-    event.currentTarget.value = ''
-
-    if (!file) {
-      return
-    }
-
-    if (!isHtmlDeckFile(file)) {
-      toast.error('Upload an .html file')
-      return
-    }
-
-    try {
-      const html = await file.text()
-      const validation = validateUploadedDeck(html)
-
-      if (!validation.valid) {
-        const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
-        toast.error(primaryIssue?.message ?? 'That file does not look like a valid Ark HTML deck')
+  const recordManualEdit = useCallback(
+    (
+      beforeHtml: string,
+      result: (PatchDeckResponse & { suggestedSlideIndex?: number }) | undefined,
+      operations: DeckElementPatchOperation[],
+      summary: string,
+      slideIndex: number,
+    ) => {
+      if (!result?.deck) {
         return
       }
 
-      let savedDeckId = deckId
-
-      try {
-        const savedDeck = await persistHtml(html, {
-          source: 'upload',
-          summary: `Uploaded ${file.name}`,
-        })
-
-        if (savedDeck?.id) {
-          savedDeckId = savedDeck.id
-        }
-      } catch {
-        toast.error('Deck loaded but could not be saved')
-      }
-
-      setError('')
-      const uploadMessage: ChatMessage = {
-        id: newId(),
-        role: 'assistant',
-        content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
-      }
-
-      if (savedDeckId) {
-        await appendMessage(uploadMessage, savedDeckId)
-      } else {
-        setMessages((current) => [...current, uploadMessage])
-      }
-      toast.success('HTML deck loaded')
-    } catch {
-      toast.error('Could not read that HTML file')
-    }
-  }
-
-  const handleNewDeck = () => {
-    startNewDeck()
-    void resetChat()
-    setInput('')
-    setError('')
-    toast.info('Started a fresh deck')
-  }
-
-  const handleSelectDeck = async (nextDeckId: string) => {
-    try {
-      await selectDeck(nextDeckId)
-      setInput('')
-      setError('')
-      toast.success('Deck loaded')
-    } catch {
-      toast.error('Could not load that deck')
-    }
-  }
-
-  const handleRenameDeck = async (title: string) => {
-    try {
-      await renameActiveDeck(title)
-      toast.success('Deck renamed')
-    } catch (renameError) {
-      toast.error('Could not rename deck')
-      throw renameError
-    }
-  }
-
-  const handleDeleteDeck = async () => {
-    try {
-      await deleteActiveDeck()
-      await resetChat()
-      setInput('')
-      setError('')
-      toast.success('Deck deleted')
-    } catch {
-      toast.error('Could not delete deck')
-    }
-  }
+      recordEditHistory({
+        beforeHtml,
+        afterHtml: result.deck.html,
+        slideIndex,
+        provenance: buildManualEditProvenance({
+          operations,
+          summary,
+          slideIndexes: result.patch.changedSlideIndexes,
+          elementIds: result.patch.changedElementIds,
+        }),
+      })
+    },
+    [recordEditHistory],
+  )
 
   const handleCommitTextEdit = useCallback(
     async (commit: {
@@ -587,20 +330,21 @@ function App() {
         throw new Error('Deck is not saved')
       }
 
+      const operations: DeckElementPatchOperation[] = [
+        {
+          op: 'replace_text',
+          elementId: commit.elementId,
+          slideIndex: commit.slideIndex,
+          ...(commit.slideId ? { slideId: commit.slideId } : {}),
+          text: commit.text,
+        },
+      ]
+      const summary = 'Edited text in preview'
+      const beforeHtml = generatedHtmlRef.current
+
       try {
-        await patchDeckOperations(
-          [
-            {
-              op: 'replace_text',
-              elementId: commit.elementId,
-              slideIndex: commit.slideIndex,
-              ...(commit.slideId ? { slideId: commit.slideId } : {}),
-              text: commit.text,
-            },
-          ],
-          commit.slideIndex,
-          { summary: 'Edited text in preview' },
-        )
+        const result = await patchDeckOperations(operations, commit.slideIndex, { summary })
+        recordManualEdit(beforeHtml, result, operations, summary, commit.slideIndex)
       } catch (patchError) {
         toast.error(
           patchError instanceof Error ? patchError.message : 'Could not save the text edit',
@@ -613,7 +357,7 @@ function App() {
         throw patchError
       }
     },
-    [deckId, patchDeckOperations, refreshActiveDeck],
+    [deckId, patchDeckOperations, recordManualEdit, refreshActiveDeck],
   )
 
   const handlePatchEditorOperations = useCallback(
@@ -623,8 +367,11 @@ function App() {
         throw new Error('Deck is not saved')
       }
 
+      const beforeHtml = generatedHtmlRef.current
+
       try {
-        await patchDeckOperations(operations, activeSlideIndex, { summary })
+        const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
+        recordManualEdit(beforeHtml, result, operations, summary, activeSlideIndex)
       } catch (patchError) {
         toast.error(patchError instanceof Error ? patchError.message : 'Could not save the edit')
         try {
@@ -635,7 +382,104 @@ function App() {
         throw patchError
       }
     },
-    [deckId, patchDeckOperations, refreshActiveDeck],
+    [deckId, patchDeckOperations, recordManualEdit, refreshActiveDeck],
+  )
+
+  const handleUndoEdit = useCallback(async () => {
+    if (undoRedoInFlightRef.current) {
+      return
+    }
+
+    const entry = undoEntry
+
+    if (!entry) {
+      return
+    }
+
+    undoRedoInFlightRef.current = true
+
+    try {
+      const deck = await restoreHtmlSnapshot(entry.beforeHtml, {
+        summary: `Undo: ${entry.provenance.summary}`,
+      })
+
+      if (deck) {
+        commitUndo()
+      }
+    } catch (undoError) {
+      toast.error(undoError instanceof Error ? undoError.message : 'Could not undo the last edit')
+      try {
+        await refreshActiveDeck()
+      } catch {
+        // Ignore refresh failures after a failed undo.
+      }
+    } finally {
+      undoRedoInFlightRef.current = false
+    }
+  }, [commitUndo, refreshActiveDeck, restoreHtmlSnapshot, undoEntry])
+
+  const handleRedoEdit = useCallback(async () => {
+    if (undoRedoInFlightRef.current) {
+      return
+    }
+
+    const entry = redoEntry
+
+    if (!entry) {
+      return
+    }
+
+    undoRedoInFlightRef.current = true
+
+    try {
+      const deck = await restoreHtmlSnapshot(entry.afterHtml, {
+        summary: `Redo: ${entry.provenance.summary}`,
+      })
+
+      if (deck) {
+        commitRedo()
+      }
+    } catch (redoError) {
+      toast.error(redoError instanceof Error ? redoError.message : 'Could not redo the edit')
+      try {
+        await refreshActiveDeck()
+      } catch {
+        // Ignore refresh failures after a failed redo.
+      }
+    } finally {
+      undoRedoInFlightRef.current = false
+    }
+  }, [commitRedo, refreshActiveDeck, restoreHtmlSnapshot, redoEntry])
+
+  const chatPanel = (
+    <ChatPanel
+      activeSteps={activeSteps}
+      apiKeyStatus={apiKeyStatus}
+      assetsSlot={deckAssetsSlot}
+      attachmentError={attachmentError}
+      canGenerate={canGenerate}
+      error={displayError}
+      failedJobId={failedJobId}
+      generationStatus={generationStatus}
+      getMessageDeliveryStatus={getMessageDeliveryStatus}
+      input={input}
+      isGenerating={isGenerating}
+      isLoadingModels={isLoadingModels}
+      messages={messages}
+      models={models}
+      modelsError={modelsError}
+      modelWarnings={modelWarnings}
+      onAttachmentError={setAttachmentError}
+      onCancelGeneration={handleCancelGeneration}
+      onInputChange={setInput}
+      onModelChange={setSelectedModel}
+      onPromptSubmit={handlePromptSubmit}
+      onRefreshModels={loadModels}
+      onRetryGeneration={handleRetryGeneration}
+      onRetryPersist={retryPersist}
+      selectedAssetIds={selectedAssetIds}
+      selectedModel={selectedModel}
+    />
   )
 
   return (
@@ -685,6 +529,8 @@ function App() {
                 minSize={isChatOpen ? '45%' : '100%'}
               >
                 <DeckPreview
+                  canRedo={canRedo}
+                  canUndo={canUndo}
                   deckId={deckId}
                   editorBridgeEnabled
                   html={generatedHtml}
@@ -694,7 +540,11 @@ function App() {
                   layout="desktop"
                   onCommitTextEdit={handleCommitTextEdit}
                   onPatchEditorOperations={handlePatchEditorOperations}
+                  onRedo={handleRedoEdit}
+                  onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
+                  redoSlideIndex={redoEntry?.slideIndex ?? null}
+                  undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
               </ResizablePanel>
@@ -706,34 +556,7 @@ function App() {
                     id="ark-chat-panel"
                     minSize={CHAT_PANEL_MIN_WIDTH_PX}
                   >
-                    <ChatPanel
-                      activeSteps={activeSteps}
-                      apiKeyStatus={apiKeyStatus}
-                      assetsSlot={deckAssetsSlot}
-                      attachmentError={attachmentError}
-                      canGenerate={canGenerate}
-                      error={displayError}
-                      failedJobId={failedJob?.id ?? null}
-                      generationStatus={generationStatus}
-                      getMessageDeliveryStatus={getMessageDeliveryStatus}
-                      input={input}
-                      isGenerating={isGenerating}
-                      isLoadingModels={isLoadingModels}
-                      messages={messages}
-                      models={models}
-                      modelsError={modelsError}
-                      modelWarnings={modelWarnings}
-                      onAttachmentError={setAttachmentError}
-                      onCancelGeneration={handleCancelGeneration}
-                      onInputChange={setInput}
-                      onModelChange={setSelectedModel}
-                      onPromptSubmit={handlePromptSubmit}
-                      onRefreshModels={loadModels}
-                      onRetryGeneration={handleRetryGeneration}
-                      onRetryPersist={retryPersist}
-                      selectedAssetIds={selectedAssetIds}
-                      selectedModel={selectedModel}
-                    />
+                    {chatPanel}
                   </ResizablePanel>
                 </>
               ) : null}
@@ -748,6 +571,8 @@ function App() {
             >
               <div className="min-h-0 overflow-hidden">
                 <DeckPreview
+                  canRedo={canRedo}
+                  canUndo={canUndo}
                   deckId={deckId}
                   editorBridgeEnabled
                   html={generatedHtml}
@@ -756,40 +581,17 @@ function App() {
                   isTextEditSaving={isDeckPatching}
                   layout="mobile"
                   onCommitTextEdit={handleCommitTextEdit}
+                  onRedo={handleRedoEdit}
+                  onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
+                  redoSlideIndex={redoEntry?.slideIndex ?? null}
+                  undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
               </div>
               {isChatOpen ? (
                 <div className="min-h-0 overflow-hidden" id="ark-chat-panel">
-                  <ChatPanel
-                    activeSteps={activeSteps}
-                    apiKeyStatus={apiKeyStatus}
-                    assetsSlot={deckAssetsSlot}
-                    attachmentError={attachmentError}
-                    canGenerate={canGenerate}
-                    error={displayError}
-                    failedJobId={failedJob?.id ?? null}
-                    generationStatus={generationStatus}
-                    getMessageDeliveryStatus={getMessageDeliveryStatus}
-                    input={input}
-                    isGenerating={isGenerating}
-                    isLoadingModels={isLoadingModels}
-                    messages={messages}
-                    models={models}
-                    modelsError={modelsError}
-                    modelWarnings={modelWarnings}
-                    onAttachmentError={setAttachmentError}
-                    onCancelGeneration={handleCancelGeneration}
-                    onInputChange={setInput}
-                    onModelChange={setSelectedModel}
-                    onPromptSubmit={handlePromptSubmit}
-                    onRefreshModels={loadModels}
-                    onRetryGeneration={handleRetryGeneration}
-                    onRetryPersist={retryPersist}
-                    selectedAssetIds={selectedAssetIds}
-                    selectedModel={selectedModel}
-                  />
+                  {chatPanel}
                 </div>
               ) : null}
             </div>

@@ -14,25 +14,36 @@ import {
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { EditorTool } from '../../shared/deck-editor-bridge.ts'
+import type { ImageFitMode } from '../../shared/deck-image.ts'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export type EditModeToolbarProps = {
   activeTool: EditorTool
   canEditText: boolean
+  canRedo?: boolean
+  canUndo?: boolean
   hasDeck: boolean
   hasSelection: boolean
+  imageAlt?: string
+  imageFit?: ImageFitMode
   isGenerating: boolean
   isSaving: boolean
+  selectedImage?: boolean
   selectionLocked: boolean
   selectionManaged: boolean
   textEditActive: boolean
+  onBringForward?: () => void
   onDelete?: () => void
   onDuplicate?: () => void
-  onBringForward?: () => void
-  onSendBackward?: () => void
   onEditText?: () => void
+  onImageAltChange?: (alt: string) => void
+  onImageFitChange?: (fit: ImageFitMode) => void
+  onPickImage?: () => void
+  onRedo?: () => void
+  onSendBackward?: () => void
   onToolChange: (tool: EditorTool) => void
+  onUndo?: () => void
 }
 
 type ToolbarButtonProps = {
@@ -82,24 +93,36 @@ function ToolbarButton({
 export function EditModeToolbar({
   activeTool,
   canEditText,
+  canRedo = false,
+  canUndo = false,
   hasDeck,
   hasSelection,
+  imageAlt = '',
+  imageFit = 'contain',
   isGenerating,
   isSaving,
+  selectedImage = false,
   selectionLocked,
   selectionManaged,
   textEditActive,
+  onBringForward,
   onDelete,
   onDuplicate,
-  onBringForward,
-  onSendBackward,
   onEditText,
+  onImageAltChange,
+  onImageFitChange,
+  onPickImage,
+  onRedo,
+  onSendBackward,
   onToolChange,
+  onUndo,
 }: EditModeToolbarProps) {
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
   const canModifySelection = hasSelection && !selectionLocked && !toolbarDisabled && !textEditActive
   const canModifyManagedSelection = canModifySelection && selectionManaged
   const canUseTools = hasDeck && !isGenerating && !isSaving
+  const undoDisabled = !canUndo || toolbarDisabled || textEditActive
+  const redoDisabled = !canRedo || toolbarDisabled || textEditActive
 
   return (
     <div
@@ -130,12 +153,50 @@ export function EditModeToolbar({
           active={activeTool === 'insert'}
           disabled={!canUseTools || textEditActive}
           label="Image"
-          onClick={() => onToolChange('insert')}
+          onClick={() => {
+            onToolChange('insert')
+            onPickImage?.()
+          }}
           toggle
         >
           <ImageIcon className="size-3.5" />
         </ToolbarButton>
       </ButtonGroup>
+
+      {selectedImage ? (
+        <>
+          <ButtonGroupSeparator
+            className="h-5 bg-[var(--ark-titlebar-border)]"
+            orientation="vertical"
+          />
+          <label className="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--ark-titlebar-muted)]">
+            <span className="sr-only">Image alt text</span>
+            <span aria-hidden>Alt</span>
+            <input
+              className="h-6 min-w-0 max-w-40 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)]"
+              disabled={toolbarDisabled || textEditActive}
+              onChange={(event) => onImageAltChange?.(event.target.value)}
+              placeholder="Describe image"
+              type="text"
+              value={imageAlt}
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] text-[var(--ark-titlebar-muted)]">
+            <span className="sr-only">Image fit mode</span>
+            <span aria-hidden>Fit</span>
+            <select
+              className="h-6 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)]"
+              disabled={toolbarDisabled || textEditActive}
+              onChange={(event) => onImageFitChange?.(event.target.value as ImageFitMode)}
+              value={imageFit}
+            >
+              <option value="contain">Contain</option>
+              <option value="cover">Cover</option>
+              <option value="fill">Fill</option>
+            </select>
+          </label>
+        </>
+      ) : null}
 
       {canEditText ? (
         <>
@@ -229,10 +290,10 @@ export function EditModeToolbar({
       />
 
       <ButtonGroup aria-label="History" className="shrink-0">
-        <ToolbarButton disabled label="Undo (coming soon)">
+        <ToolbarButton disabled={undoDisabled} label="Undo" onClick={onUndo}>
           <Undo2Icon className="size-3.5" />
         </ToolbarButton>
-        <ToolbarButton disabled label="Redo (coming soon)">
+        <ToolbarButton disabled={redoDisabled} label="Redo" onClick={onRedo}>
           <Redo2Icon className="size-3.5" />
         </ToolbarButton>
       </ButtonGroup>
