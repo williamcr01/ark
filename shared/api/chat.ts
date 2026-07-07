@@ -41,6 +41,16 @@ export const chatAttachmentSchema = z.object({
   assetId: z.string().optional(),
 })
 
+/** API chat turn sent with generation jobs and chat append requests. */
+export const apiChatMessageSchema = z.object({
+  id: z.string().optional(),
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+  attachments: z.array(chatAttachmentSchema).optional(),
+})
+
+export type ApiChatMessageWire = z.infer<typeof apiChatMessageSchema>
+
 export const persistedChatMessageSchema = z.object({
   id: z.string().min(1),
   threadId: z.string().min(1),

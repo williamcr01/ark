@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { MAX_CHAT_ATTACHMENTS } from '../chat.ts'
+import { apiChatMessageSchema } from './chat.ts'
 import { deckIdSchema, generationJobIdSchema, UUID_V4_PATTERN, withRequestId } from './common.ts'
 import { deckValidationReportSchema } from './decks.ts'
 
@@ -96,12 +97,17 @@ export const generationJobResponseSchema = withRequestId({
 export type GenerationJobResponse = z.infer<typeof generationJobResponseSchema>
 
 export const startGenerationJobRequestSchema = z.object({
-  messages: z.unknown().optional(),
+  /** Full visible chat history replayed for this generation run. */
+  messages: z.array(apiChatMessageSchema).optional(),
   currentHtml: z.string().nullable().optional(),
   model: z.string().optional(),
   deckId: deckIdSchema.nullable().optional(),
   baseVersionId: deckIdSchema.nullable().optional(),
-  /** Uploaded asset ids to resolve into file inputs for the model (requires deckId). */
+  /**
+   * Deck-scoped uploaded asset ids to resolve into file inputs for the latest
+   * user turn. Requires `deckId`. Omitted from job poll responses — clients
+   * already know what they sent; the runner stores ids on the job record.
+   */
   assetIds: z
     .array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.'))
     .max(MAX_CHAT_ATTACHMENTS)

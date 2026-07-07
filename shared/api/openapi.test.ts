@@ -1,0 +1,41 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+import { generateArkOpenApiDocument } from './openapi-registry.ts'
+import { serializeArkOpenApiDocument } from './openapi-serialize.ts'
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const specPath = path.join(repoRoot, 'openapi', 'ark.openapi.json')
+
+describe('OpenAPI registry', () => {
+  it('generates a document with core generation job paths', () => {
+    const document = generateArkOpenApiDocument()
+
+    expect(document.openapi).toBe('3.0.3')
+    expect(document.paths?.['/api/generation-jobs']?.post).toBeTruthy()
+    expect(document.paths?.['/api/generation-jobs/{id}']?.get).toBeTruthy()
+    expect(document.paths?.['/api/generation-jobs/{id}/cancel']?.post).toBeTruthy()
+    expect(document.paths?.['/api/generation-jobs/{id}/retry']?.post).toBeTruthy()
+  })
+
+  it('documents assetIds on job start but not on job responses', () => {
+    const document = generateArkOpenApiDocument()
+    const postOperation = document.paths?.['/api/generation-jobs']?.post
+    const serialized = JSON.stringify(postOperation)
+
+    expect(serialized).toContain('assetIds')
+    expect(serialized).toContain('Job accepted (wire shape omits request messages and `assetIds`)')
+  })
+
+  it('matches the committed OpenAPI artifact', async () => {
+    const generated = await serializeArkOpenApiDocument(generateArkOpenApiDocument(), {
+      filepath: specPath,
+    })
+    const committed = readFileSync(specPath, 'utf8')
+
+    expect(generated).toBe(committed)
+  })
+})
