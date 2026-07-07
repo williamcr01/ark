@@ -6,6 +6,7 @@ import { buildRuntimeRegistryPromptSection } from '../shared/deck-runtime-regist
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import type { Logger } from './observability/logger.ts'
 
 export const AGENT_MAX_STEPS = 12
 
@@ -62,6 +63,7 @@ export type RunDeckAgentOptions = {
   currentHtml: string
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
+  logger?: Logger
 }
 
 function buildProviderMetrics(input: {
@@ -241,6 +243,7 @@ export async function runDeckAgent({
   currentHtml,
   abortSignal,
   onStepProgress,
+  logger,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
   const provider = providerInput ?? 'unknown'
   const modelRef = modelRefInput ?? 'unknown'
@@ -248,7 +251,7 @@ export async function runDeckAgent({
 
   const workspace = createDeckWorkspace(currentHtml)
   const { createDeckTools } = await import('./deck-tools.ts')
-  const tools = createDeckTools(workspace)
+  const tools = createDeckTools(workspace, { logger })
   const accumulatedSteps: AgentStep[] = []
   const startedAt = performance.now()
 
@@ -304,7 +307,7 @@ export async function runDeckAgent({
   const steps = accumulatedSteps.length > 0 ? accumulatedSteps : extractAgentSteps(result.steps)
 
   if (workspace.changed && workspace.html.trim()) {
-    const validation = validateDeckHtmlOnServer(workspace.html)
+    const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
 
     if (!validation.valid) {
       const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')

@@ -8,6 +8,8 @@ import {
   resolveSandboxOrigin,
 } from '../../shared/sandbox-origin.ts'
 import { type PreviewSessionStore } from '../preview-sessions.ts'
+import { getRequestLogger } from '../observability/index.ts'
+import { logTimedEvent, measureSync } from '../observability/timing.ts'
 
 export function createPreviewSessionsRouter(deps: {
   previewSessionStore: PreviewSessionStore
@@ -23,7 +25,14 @@ export function createPreviewSessionsRouter(deps: {
       return
     }
 
-    const session = previewSessionStore.createSession(parsed.data.html, {
+    const { result: session, durationMs } = measureSync(() =>
+      previewSessionStore.createSession(parsed.data.html, {
+        editorBridge: parsed.data.editorBridge === true,
+      }),
+    )
+
+    logTimedEvent(getRequestLogger(request), 'preview.session.created', durationMs, {
+      htmlBytes: Buffer.byteLength(parsed.data.html, 'utf8'),
       editorBridge: parsed.data.editorBridge === true,
     })
 

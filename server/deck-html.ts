@@ -2,6 +2,7 @@ import {
   parseDeckHtml,
   summarizeParsedDeck,
   toDeckSlideSummaries,
+  type DeckParseOptions,
   type DeckParseResult,
 } from './deck-parser.ts'
 
@@ -94,6 +95,6 @@ export function readDeckSlideHtml(html: string, slideIndex: number) {
   }
 }
 
-export function parseDeckStructure(html: string): DeckParseResult {
-  return parseDeckHtml(html)
+export function parseDeckStructure(html: string, options?: DeckParseOptions): DeckParseResult {
+  return parseDeckHtml(html, options)
 }
