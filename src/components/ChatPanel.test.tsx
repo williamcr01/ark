@@ -54,3 +54,29 @@ describe('ChatPanel delivery status', () => {
     expect(onRetryPersist).toHaveBeenCalledWith('m1')
   })
 })
+
+describe('ChatPanel submit control', () => {
+  it('enables submit when only deck assets are selected', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          input=""
+          selectedAssetIds={['00000000-0000-4000-8000-000000000001']}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
+  })
+
+  it('keeps submit disabled with no prompt, attachments, or selected assets', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} input="" selectedAssetIds={[]} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+  })
+})

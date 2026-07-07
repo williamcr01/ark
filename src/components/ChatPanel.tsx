@@ -115,13 +115,17 @@ function ChatPromptInputSubmit({
   input,
   isInputDisabled,
   isGenerating,
+  selectedAssetIds,
 }: {
   input: string
   isInputDisabled: boolean
   isGenerating: boolean
+  selectedAssetIds: string[]
 }) {
   const attachments = usePromptInputAttachments()
-  const canSubmit = Boolean(input.trim() || attachments.files.length > 0)
+  const canSubmit = Boolean(
+    input.trim() || attachments.files.length > 0 || selectedAssetIds.length > 0,
+  )
 
   return (
     <PromptInputSubmit
@@ -239,6 +243,7 @@ export type ChatPanelProps = {
   modelWarnings: string[]
   apiKeyStatus: ApiKeyStatus
   canGenerate: boolean
+  selectedAssetIds?: string[]
   assetsSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
@@ -295,6 +300,7 @@ export function ChatPanel({
   modelWarnings,
   apiKeyStatus,
   canGenerate,
+  selectedAssetIds = [],
   assetsSlot,
   onInputChange,
   onModelChange,
@@ -525,6 +531,7 @@ export function ChatPanel({
                 input={input}
                 isGenerating={isGenerating}
                 isInputDisabled={isInputDisabled}
+                selectedAssetIds={selectedAssetIds}
               />
             </PromptInputFooter>
           </PromptInput>
