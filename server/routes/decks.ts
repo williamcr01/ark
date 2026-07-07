@@ -85,7 +85,7 @@ export function createDecksRouter(deps: {
     }
 
     const { html, ...versionBody } = parsed.data
-    const validation = validateDeckHtmlOnServer(html)
+    const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
 
     if (!validation.valid) {
       sendDeckValidationError(response, validation, request)
@@ -133,7 +133,7 @@ export function createDecksRouter(deps: {
     }
 
     const { html, ...versionBody } = parsed.data
-    const validation = validateDeckHtmlOnServer(html)
+    const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
 
     if (!validation.valid) {
       sendDeckValidationError(response, validation, request)
@@ -211,7 +211,9 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const validation = validateDeckHtmlOnServer(patched.html)
+        const validation = validateDeckHtmlOnServer(patched.html, {
+          logger: getRequestLogger(request),
+        })
 
         if (!validation.valid) {
           sendDeckValidationError(response, validation, request)

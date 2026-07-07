@@ -4,6 +4,7 @@ import { parseRequestBody } from '../../shared/api/common.ts'
 import { rollbackDeckRequestSchema } from '../../shared/api/decks.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
+import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 
 export function createDeckVersionsRouter(deps: { deckStore: DeckStore }): Router {
@@ -102,7 +103,9 @@ export function createDeckVersionsRouter(deps: { deckStore: DeckStore }): Router
           return
         }
 
-        const validation = validateDeckHtmlOnServer(targetVersion.html)
+        const validation = validateDeckHtmlOnServer(targetVersion.html, {
+          logger: getRequestLogger(request),
+        })
 
         if (!validation.valid) {
           sendDeckValidationError(response, validation, request)
