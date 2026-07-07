@@ -321,7 +321,7 @@ export function useDeckEditorBridge(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [enabled, iframeRef, onEditorError, onSelectionChange, sandboxOrigin])
+  }, [enabled, iframeGenerationKey, iframeRef, onEditorError, onSelectionChange, sandboxOrigin])
 
   return {
     ...state,

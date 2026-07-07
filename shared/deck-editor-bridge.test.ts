@@ -99,6 +99,39 @@ describe('deck editor bridge protocol', () => {
     expect(parseEditorMessage(null)).toBeNull()
   })
 
+  it('rejects hostile editor payloads with invalid geometry and incomplete fields', () => {
+    const hostilePayloads = [
+      createEditorGeometryMessage('ark-el-title', 0, { x: 1.5, y: 0, width: 0.2, height: 0.1 }),
+      createEditorGeometryMessage('ark-el-title', 0, { x: 0, y: -0.1, width: 0.2, height: 0.1 }),
+      createEditorTransformCommitMessage('ark-el-body', 0, { x: 0, y: 0, width: 2, height: 0.1 }),
+      {
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection: { elementId: 'evil', slideIndex: 0 },
+      },
+      {
+        type: EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+        elementId: 'evil',
+        slideIndex: 0,
+        text: 'Injected',
+      },
+      {
+        type: EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
+        active: true,
+      },
+      {
+        type: EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
+        elementId: 'evil',
+        slideIndex: 0,
+        geometry: { x: '0', y: 0, width: 0.2, height: 0.1 },
+      },
+    ]
+
+    for (const payload of hostilePayloads) {
+      expect(isEditorRuntimeMessage(payload)).toBe(false)
+      expect(parseEditorMessage(payload)).toBeNull()
+    }
+  })
+
   it('embeds shared inline text tags and text-edit lifecycle hooks in the runtime script', () => {
     const script = buildDeckEditorBridgeRuntimeScript({
       slideSelectors: ['section.slide'],

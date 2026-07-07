@@ -363,6 +363,32 @@ describe('DeckPreview script divergence UI', () => {
     })
   })
 
+  it('forwards forged text commits to onCommitTextEdit without client-side element validation', () => {
+    const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'ark-el-locked-victim',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Injected copy',
+      originalText: 'Victim',
+    }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onCommitTextEdit,
+    })
+
+    expect(onCommitTextEdit).toHaveBeenCalledWith({
+      elementId: 'ark-el-locked-victim',
+      slideIndex: 0,
+      slideId: null,
+      text: 'Injected copy',
+      originalText: 'Victim',
+    })
+  })
+
   it('skips patch commits when text did not change', () => {
     const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
 

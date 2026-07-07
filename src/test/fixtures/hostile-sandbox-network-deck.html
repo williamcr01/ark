@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-ark-preview="full-js">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sandbox Network Probe</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide active">
+      <h1>Sandbox network probe</h1>
+    </section>
+    <script>
+      window.__arkNetworkProbeAttempted = true
+      fetch('https://evil.example/sandbox-fetch').catch(() => {})
+      try {
+        const xhr = new XMLHttpRequest()
+        xhr.open('GET', 'https://evil.example/sandbox-xhr')
+        xhr.send()
+      } catch {}
+      new Image().src = 'https://evil.example/sandbox-pixel.gif'
+    </script>
+  </body>
+</html>

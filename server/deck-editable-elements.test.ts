@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { createElementId, stampEditableElementIds } from './deck-editable-elements.ts'
+import { applyDeckPatches } from './deck-patch.ts'
 import { parseDeckHtml } from './deck-parser.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -173,6 +175,59 @@ describe('parseEditableElements', () => {
         }),
       ]),
     )
+  })
+
+  it('locks scripts and forms even when decks mark them as editable', () => {
+    const hostileEditableDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Hostile editable</title></head>
+<body>
+  <section class="slide">
+    <script data-ark-id="evil-script" data-ark-editable="true">alert(1)</script>
+    <form data-ark-id="evil-form" data-ark-editable="true" data-ark-managed="true">
+      <input name="token" />
+    </form>
+  </section>
+</body>
+</html>`
+    const parsed = parseDeckHtml(hostileEditableDeck)
+    const elements = parsed.editableElements[0]?.elements ?? []
+
+    expect(elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tagName: 'script',
+          locked: true,
+          lockReason: 'unsafe-tag',
+        }),
+        expect.objectContaining({
+          tagName: 'form',
+          locked: true,
+        }),
+      ]),
+    )
+    expect(validateDeckHtmlOnServer(hostileEditableDeck).valid).toBe(false)
+  })
+
+  it('reports duplicate stable ids as ambiguous patch targets', () => {
+    const duplicateDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Duplicate ids</title></head>
+<body>
+  <section class="slide">
+    <h1 data-ark-id="dup-id" data-ark-editable="true">First</h1>
+  </section>
+  <section class="slide">
+    <h2 data-ark-id="dup-id" data-ark-editable="true">Second</h2>
+  </section>
+</body>
+</html>`
+
+    expect(
+      applyDeckPatches(duplicateDeck, [
+        { op: 'replace_text', elementId: 'dup-id', text: 'Ambiguous' },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
   })
 })
 

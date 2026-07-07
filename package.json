@@ -19,7 +19,10 @@
     "audit": "pnpm audit --audit-level=high",
     "preview": "vite preview",
     "test": "vitest run",
+    "lockfile:check": "pnpm install --frozen-lockfile",
+    "smoke:plain-css": "tsx scripts/smoke-plain-css.ts",
     "smoke:reveal-runtime": "tsx scripts/smoke-reveal-runtime.ts",
+    "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts"
   },
   "engines": {
