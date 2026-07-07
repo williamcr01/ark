@@ -340,4 +340,39 @@ describe('createPostgresGenerationJobStore', () => {
       await pool.end?.()
     }
   })
+
+  it('preserves assetIds through claim and update paths', async () => {
+    const { pool, jobStore } = createStores()
+    const assetIds = ['00000000-0000-4000-8000-000000000099']
+    const startedAt = '2026-07-01T12:00:00.000Z'
+
+    try {
+      const created = await jobStore.createJob({
+        deckId: null,
+        baseVersionId: null,
+        assetIds,
+        model: 'openai:gpt-4.1-mini',
+        provider: 'openai',
+        request: sampleRequest,
+      })
+
+      expect(created.assetIds).toEqual(assetIds)
+
+      const running = await jobStore.claimQueuedJob(created.id, startedAt)
+      expect(running?.assetIds).toEqual(assetIds)
+
+      const updated = await jobStore.updateJob(created.id, {
+        progress: {
+          steps: [{ type: 'text', summary: 'Working' }],
+          stepCount: 1,
+        },
+      })
+      expect(updated?.assetIds).toEqual(assetIds)
+
+      const stored = await jobStore.getJob(created.id)
+      expect(stored?.assetIds).toEqual(assetIds)
+    } finally {
+      await pool.end?.()
+    }
+  })
 })

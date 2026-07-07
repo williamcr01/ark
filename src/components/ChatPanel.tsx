@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
 
 import {
@@ -114,13 +115,17 @@ function ChatPromptInputSubmit({
   input,
   isInputDisabled,
   isGenerating,
+  selectedAssetIds,
 }: {
   input: string
   isInputDisabled: boolean
   isGenerating: boolean
+  selectedAssetIds: string[]
 }) {
   const attachments = usePromptInputAttachments()
-  const canSubmit = Boolean(input.trim() || attachments.files.length > 0)
+  const canSubmit = Boolean(
+    input.trim() || attachments.files.length > 0 || selectedAssetIds.length > 0,
+  )
 
   return (
     <PromptInputSubmit
@@ -238,6 +243,8 @@ export type ChatPanelProps = {
   modelWarnings: string[]
   apiKeyStatus: ApiKeyStatus
   canGenerate: boolean
+  selectedAssetIds?: string[]
+  assetsSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
   onRefreshModels: () => Promise<void>
@@ -293,6 +300,8 @@ export function ChatPanel({
   modelWarnings,
   apiKeyStatus,
   canGenerate,
+  selectedAssetIds = [],
+  assetsSlot,
   onInputChange,
   onModelChange,
   onRefreshModels,
@@ -377,6 +386,7 @@ export function ChatPanel({
         </Conversation>
 
         <div className="shrink-0 border-t bg-white p-4">
+          {assetsSlot}
           {error ? (
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />
@@ -521,6 +531,7 @@ export function ChatPanel({
                 input={input}
                 isGenerating={isGenerating}
                 isInputDisabled={isInputDisabled}
+                selectedAssetIds={selectedAssetIds}
               />
             </PromptInputFooter>
           </PromptInput>

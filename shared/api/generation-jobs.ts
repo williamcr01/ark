@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-import { deckIdSchema, generationJobIdSchema, withRequestId } from './common.ts'
+import { MAX_CHAT_ATTACHMENTS } from '../chat.ts'
+import { deckIdSchema, generationJobIdSchema, UUID_V4_PATTERN, withRequestId } from './common.ts'
 import { deckValidationReportSchema } from './decks.ts'
 
 export const generationJobStatusSchema = z.enum([
@@ -100,6 +101,11 @@ export const startGenerationJobRequestSchema = z.object({
   model: z.string().optional(),
   deckId: deckIdSchema.nullable().optional(),
   baseVersionId: deckIdSchema.nullable().optional(),
+  /** Uploaded asset ids to resolve into file inputs for the model (requires deckId). */
+  assetIds: z
+    .array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.'))
+    .max(MAX_CHAT_ATTACHMENTS)
+    .optional(),
 })
 
 export type StartGenerationJobRequest = z.infer<typeof startGenerationJobRequestSchema>

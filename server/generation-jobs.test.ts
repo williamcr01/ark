@@ -7,7 +7,9 @@ import { type AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from './app.ts'
-import { type RunDeckAgentResult } from './deck-agent.ts'
+import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
+import { createAssetStore } from './asset-store.ts'
+import { createAssetStorageKey, createLocalAssetStorage } from './asset-storage.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
@@ -48,21 +50,27 @@ describe('generation job runner', () => {
   })
 
   async function createRunner(options?: {
-    runAgent?: () => Promise<RunDeckAgentResult>
+    runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
     chatDir?: string
   }) {
     deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
     jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
     chatDir = options?.chatDir ?? (await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-')))
+    const assetMetaDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-meta-'))
+    const assetBlobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-blobs-'))
 
     const deckStore = createDeckStore(deckDir)
     const jobStore = createGenerationJobStore(jobDir)
     const chatStore = createChatStore(chatDir)
+    const assetStore = createAssetStore(assetMetaDir)
+    const assetStorage = createLocalAssetStorage(assetBlobDir)
 
     const runner = createGenerationJobRunner({
       deckStore,
       jobStore,
       chatStore,
+      assetStore,
+      assetStorage,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
@@ -72,7 +80,7 @@ describe('generation job runner', () => {
       now: () => new Date('2026-07-01T12:00:00.000Z'),
     })
 
-    return { chatStore, deckStore, jobStore, runner }
+    return { assetStore, assetStorage, chatStore, deckStore, jobStore, runner }
   }
 
   it('marks canceled queued jobs without running the agent', async () => {
@@ -97,6 +105,212 @@ describe('generation job runner', () => {
     const stored = await jobStore.getJob(job.id)
     expect(stored?.status).toBe('canceled')
     expect(stored?.completedAt).toBeTruthy()
+  })
+
+  it('merges resolved asset attachments into the latest user model message at run time', async () => {
+    let capturedMessages: unknown = null
+    let resolveCaptured: () => void = () => {}
+    const captured = new Promise<void>((resolve) => {
+      resolveCaptured = resolve
+    })
+
+    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
+    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
+    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-'))
+    const assetMetaDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-meta-'))
+    const assetBlobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-blobs-'))
+
+    const deckStore = createDeckStore(deckDir)
+    const jobStore = createGenerationJobStore(jobDir)
+    const chatStore = createChatStore(chatDir)
+    const assetStore = createAssetStore(assetMetaDir)
+    const assetStorage = createLocalAssetStorage(assetBlobDir)
+    const deck = await deckStore.createDeck(sampleHtml)
+    const storageKey = createAssetStorageKey()
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await assetStorage.write(storageKey, pngBytes)
+    const asset = await assetStore.createAsset({
+      deckId: deck.id,
+      chatMessageId: null,
+      filename: 'chart.png',
+      mediaType: 'image/png',
+      category: 'image',
+      byteSize: pngBytes.length,
+      checksum: 'test-checksum',
+      source: 'upload',
+      storageKind: 'local',
+      storageKey,
+    })
+
+    const runner = createGenerationJobRunner({
+      deckStore,
+      jobStore,
+      chatStore,
+      assetStore,
+      assetStorage,
+      createModel: () => ({
+        model: {} as never,
+        provider: 'openai',
+        modelId: 'gpt-4.1-mini',
+      }),
+      runAgent: async (options) => {
+        capturedMessages = options.messages
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+      now: () => new Date('2026-07-01T12:00:00.000Z'),
+    })
+
+    const job = await runner.startJob({
+      body: {
+        messages: [{ role: 'user', content: 'Use the chart' }],
+        deckId: deck.id,
+        assetIds: [asset.id],
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    await captured
+
+    // Wait for the job to fully settle so cleanup does not race with writes.
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const latest = await runner.getJob(job.id)
+      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    const stored = await runner.getJob(job.id)
+    expect(stored?.request.messages.at(-1)?.attachments).toBeUndefined()
+    expect(stored?.assetIds).toEqual([asset.id])
+
+    const messages = capturedMessages as Array<{ role: string; attachments?: unknown[] }>
+    expect(messages.at(-1)?.attachments).toHaveLength(1)
+    expect(messages.at(-1)?.attachments?.[0]).toMatchObject({
+      assetId: asset.id,
+      mediaType: 'image/png',
+      filename: 'chart.png',
+    })
+    expect(
+      (messages.at(-1)?.attachments?.[0] as { url?: string }).url?.startsWith(
+        'data:image/png;base64,',
+      ),
+    ).toBe(true)
+  })
+
+  it('resolves asset references from prior user turns at run time', async () => {
+    let capturedMessages: unknown = null
+    let resolveCaptured: () => void = () => {}
+    const captured = new Promise<void>((resolve) => {
+      resolveCaptured = resolve
+    })
+
+    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
+    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
+    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-'))
+    const assetMetaDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-meta-'))
+    const assetBlobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-blobs-'))
+
+    const deckStore = createDeckStore(deckDir)
+    const jobStore = createGenerationJobStore(jobDir)
+    const chatStore = createChatStore(chatDir)
+    const assetStore = createAssetStore(assetMetaDir)
+    const assetStorage = createLocalAssetStorage(assetBlobDir)
+    const deck = await deckStore.createDeck(sampleHtml)
+    const storageKey = createAssetStorageKey()
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await assetStorage.write(storageKey, pngBytes)
+    const asset = await assetStore.createAsset({
+      deckId: deck.id,
+      chatMessageId: null,
+      filename: 'chart.png',
+      mediaType: 'image/png',
+      category: 'image',
+      byteSize: pngBytes.length,
+      checksum: 'test-checksum',
+      source: 'upload',
+      storageKind: 'local',
+      storageKey,
+    })
+
+    const runner = createGenerationJobRunner({
+      deckStore,
+      jobStore,
+      chatStore,
+      assetStore,
+      assetStorage,
+      createModel: () => ({
+        model: {} as never,
+        provider: 'openai',
+        modelId: 'gpt-4.1-mini',
+      }),
+      runAgent: async (options) => {
+        capturedMessages = options.messages
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+      now: () => new Date('2026-07-01T12:00:00.000Z'),
+    })
+
+    const assetReference = {
+      type: 'file' as const,
+      mediaType: 'image/png',
+      filename: 'chart.png',
+      url: `/api/decks/${deck.id}/assets/${asset.id}`,
+      assetId: asset.id,
+    }
+
+    const job = await runner.startJob({
+      body: {
+        messages: [
+          {
+            role: 'user',
+            content: 'Use the chart',
+            attachments: [assetReference],
+          },
+          { role: 'assistant', content: 'Created the deck.' },
+          { role: 'user', content: 'Add another slide from the chart' },
+        ],
+        deckId: deck.id,
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    await captured
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const latest = await runner.getJob(job.id)
+      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    const messages = capturedMessages as Array<{ role: string; attachments?: unknown[] }>
+    expect(messages[0]?.attachments?.[0]).toMatchObject({
+      assetId: asset.id,
+      mediaType: 'image/png',
+    })
+    expect(
+      (messages[0]?.attachments?.[0] as { url?: string }).url?.startsWith('data:image/png;base64,'),
+    ).toBe(true)
+  })
+
+  it('rejects startJob when assetIds cannot be resolved', async () => {
+    const { runner, deckStore } = await createRunner()
+    const deck = await deckStore.createDeck(sampleHtml)
+
+    await expect(
+      runner.startJob({
+        body: {
+          messages: [{ role: 'user', content: 'Use the chart' }],
+          deckId: deck.id,
+          assetIds: ['00000000-0000-4000-8000-000000000099'],
+        },
+        defaultModel: 'openai:gpt-4.1-mini',
+      }),
+    ).rejects.toThrow('One or more asset ids could not be resolved.')
   })
 
   it('does not overwrite a canceled queued job with running', async () => {

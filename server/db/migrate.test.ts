@@ -11,6 +11,7 @@ describe('Postgres migrations', () => {
       '001_foundation',
       '002_generation_job_statuses',
       '003_chat_message_metadata',
+      '004_asset_upload_columns',
     ])
   })
 
@@ -25,11 +26,13 @@ describe('Postgres migrations', () => {
         '001_foundation',
         '002_generation_job_statuses',
         '003_chat_message_metadata',
+        '004_asset_upload_columns',
       ])
       expect(secondRun.skipped).toEqual([
         '001_foundation',
         '002_generation_job_statuses',
         '003_chat_message_metadata',
+        '004_asset_upload_columns',
       ])
 
       const userResult = await pool.query('SELECT id FROM users')

@@ -206,7 +206,7 @@ export function useGenerationJob({
   )
 
   const startGeneration = useCallback(
-    async (messages: ChatMessage[], currentHtml: string) => {
+    async (messages: ChatMessage[], currentHtml: string, options: { assetIds?: string[] } = {}) => {
       if (isGenerating || !canGenerate) {
         return null
       }
@@ -222,6 +222,7 @@ export function useGenerationJob({
           model: selectedModel || undefined,
           deckId,
           baseVersionId,
+          ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
         })
 
         setActiveJob(job)

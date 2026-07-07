@@ -12,10 +12,16 @@ import { healthResponseSchema, modelsResponseSchema } from './health.ts'
 import { generationJobResponseSchema, startGenerationJobRequestSchema } from './generation-jobs.ts'
 import { createPreviewSessionRequestSchema, previewSessionResponseSchema } from './preview.ts'
 import { appendChatMessageRequestSchema, deckChatResponseSchema } from './chat.ts'
+import {
+  assetListResponseSchema,
+  uploadAssetRequestSchema,
+  uploadAssetResponseSchema,
+} from './assets.ts'
 import { runtimeErrorInputSchema, runtimeErrorResponseSchema } from './runtime-errors.ts'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 const jobId = 'a0000000-0000-4000-8000-000000000001'
+const assetId = '00000000-0000-4000-8000-000000000701'
 
 describe('shared API contracts', () => {
   it('parses health and models responses', () => {
@@ -164,6 +170,36 @@ describe('shared API contracts', () => {
         hasMore: false,
       }),
     ).toBeTruthy()
+  })
+
+  it('parses asset contracts', () => {
+    expect(
+      uploadAssetRequestSchema.safeParse({
+        filename: 'logo.png',
+        mediaType: 'image/png',
+        data: 'data:image/png;base64,AAAA',
+      }).success,
+    ).toBe(true)
+
+    expect(uploadAssetRequestSchema.safeParse({ filename: 'logo.png' }).success).toBe(false)
+
+    const asset = {
+      id: assetId,
+      deckId,
+      chatMessageId: null,
+      filename: 'logo.png',
+      mediaType: 'image/png',
+      category: 'image' as const,
+      byteSize: 128,
+      checksum: 'abc',
+      source: 'upload' as const,
+      storageKind: 'local',
+      url: `/api/decks/${deckId}/assets/${assetId}`,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    expect(uploadAssetResponseSchema.parse({ asset })).toBeTruthy()
+    expect(assetListResponseSchema.parse({ assets: [asset] })).toBeTruthy()
   })
 
   it('parses runtime error contracts', () => {

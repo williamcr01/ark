@@ -37,6 +37,11 @@ export function createGenerationJobsRouter(deps: {
       return
     }
 
+    if (body.assetIds?.length && !deckId) {
+      response.status(400).json({ error: 'assetIds require a deck id.' })
+      return
+    }
+
     try {
       const job = await generationJobs.startJob({
         body,
