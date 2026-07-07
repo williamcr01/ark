@@ -1,6 +1,6 @@
 # Ark manual editor bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). When the user enables **Edit** mode, the shell and deck runtime coordinate selection, geometry, and inline text editing through a versioned `postMessage` protocol defined in `shared/deck-editor-bridge.ts`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). When the user enables **Edit** mode, the shell and deck runtime coordinate selection, geometry, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
 
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
@@ -13,11 +13,11 @@ This protocol is separate from, but co-injected with, the navigation bridge docu
 
 Protocol version: `EDITOR_BRIDGE_PROTOCOL_VERSION` (currently `1`).
 
-All message types use the `ark:editor-*` prefix. TypeScript types, validators (`isEditor*Message`), and factory helpers (`createEditor*Message`) live in `shared/deck-editor-bridge.ts`.
+All message types use the `ark:editor-*` prefix. TypeScript types, validators (`isEditor*Message`), and factory helpers (`createEditor*Message`) live in `packages/deck-core/deck-editor-bridge.ts`.
 
 ## Relationship to the navigation bridge
 
-Preview HTML is built by `buildPreviewHtml` in `shared/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). The **editor** runtime is injected only when `editorBridge: true` is passed — in the shell this happens when Edit mode is active (`DeckPreview` sets `editorBridgeInjected = editorBridgeEnabled && editModeActive`).
+Preview HTML is built by `buildPreviewHtml` in `packages/deck-core/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). The **editor** runtime is injected only when `editorBridge: true` is passed — in the shell this happens when Edit mode is active (`DeckPreview` sets `editorBridgeInjected = editorBridgeEnabled && editModeActive`).
 
 Load order (before `</body>`):
 
@@ -117,7 +117,7 @@ type EditorNormalizedRect = {
 }
 ```
 
-Coordinates are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `shared/deck-metadata.ts` and applied server-side when converting to inline CSS.
+Coordinates are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `packages/deck-core/deck-metadata.ts` and applied server-side when converting to inline CSS.
 
 #### Text editing
 
@@ -130,7 +130,7 @@ Coordinates are **slide-relative normalized fractions** (0–1), derived from `g
 
 **Locked elements:** the runtime rejects `ark:editor-start-text-edit` on locked elements with `ark:editor-error` (`code: locked-element`). The shell also hides the **Edit text** button when `selection.locked` is true.
 
-**Supported tags** for inline text edit (runtime and shell): `h1`–`h6`, `p`, `li`, `blockquote`, `figcaption`, `span` (`INLINE_TEXT_EDITABLE_TAGS` in `shared/deck-editable.ts`). Plain text only — nested markup inside the element is flattened to `textContent` on save.
+**Supported tags** for inline text edit (runtime and shell): `h1`–`h6`, `p`, `li`, `blockquote`, `figcaption`, `span` (`INLINE_TEXT_EDITABLE_TAGS` in `packages/deck-core/deck-editable.ts`). Plain text only — nested markup inside the element is flattened to `textContent` on save.
 
 #### Transforms
 
@@ -191,7 +191,7 @@ Iframe → parent posts use `PARENT_ORIGIN` (embedded in the injected script) or
 
 ### Managed vs locked semantics
 
-Parsed by `server/deck-editable-elements.ts` and enforced again in `server/deck-element-patch.ts` on every patch:
+Parsed by `apps/api/deck-editable-elements.ts` and enforced again in `apps/api/deck-element-patch.ts` on every patch:
 
 | State                                                                                                                             | Meaning                                             | Editor behavior                                           | Patch behavior                                                         |
 | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -223,7 +223,7 @@ User edits text in contenteditable (iframe)
   → onCommitTextEdit (App.handleCommitTextEdit)
   → patchDeckOperations([{ op: 'replace_text', elementId, slideIndex, slideId?, text }])
   → POST /api/decks/:id/patch
-  → server/deck-element-patch.ts: resolve element, assertElementPatchable, apply text
+  → apps/api/deck-element-patch.ts: resolve element, assertElementPatchable, apply text
   → new deck version persisted; response includes updated HTML
   → useDeckPersistence.applyPatchedDeck updates shell html state
   → preview refreshes; preserveSlideIndexRef restores slide index
@@ -243,17 +243,17 @@ Transform and delete persistence will follow the same pattern once toolbar/delet
 
 ## Shell integration
 
-| Component / module                          | Role                                                                     |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `src/components/DeckPreview.tsx`            | Edit mode toggle, text commit orchestration, overlay, keyboard shortcuts |
-| `src/hooks/useDeckEditorBridge.ts`          | `postMessage` listener and shell command helpers                         |
-| `src/hooks/useDeckPersistence.ts`           | `patchDeckOperations`, `refreshActiveDeck`                               |
-| `src/App.tsx`                               | `handleCommitTextEdit` → `replace_text` patch                            |
-| `src/components/EditorSelectionOverlay.tsx` | Selection box from normalized geometry                                   |
-| `src/lib/deck-text-edit.ts`                 | `isTextEditableSelection` guard for inline text                          |
-| `shared/deck-preview-html.ts`               | Injects editor runtime when `editorBridge: true`                         |
-| `server/deck-element-patch.ts`              | Server-side patch application and validation                             |
-| `server/deck-editable-elements.ts`          | Editable metadata parsing (#74)                                          |
+| Component / module                                   | Role                                                                     |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| `apps/web/src/components/DeckPreview.tsx`            | Edit mode toggle, text commit orchestration, overlay, keyboard shortcuts |
+| `apps/web/src/hooks/useDeckEditorBridge.ts`          | `postMessage` listener and shell command helpers                         |
+| `apps/web/src/hooks/useDeckPersistence.ts`           | `patchDeckOperations`, `refreshActiveDeck`                               |
+| `apps/web/src/App.tsx`                               | `handleCommitTextEdit` → `replace_text` patch                            |
+| `apps/web/src/components/EditorSelectionOverlay.tsx` | Selection box from normalized geometry                                   |
+| `apps/web/src/lib/deck-text-edit.ts`                 | `isTextEditableSelection` guard for inline text                          |
+| `packages/deck-core/deck-preview-html.ts`            | Injects editor runtime when `editorBridge: true`                         |
+| `apps/api/deck-element-patch.ts`                     | Server-side patch application and validation                             |
+| `apps/api/deck-editable-elements.ts`                 | Editable metadata parsing (#74)                                          |
 
 Preview sessions record `editorBridge` so the sandbox host serves HTML with the editor script only when requested (`POST /api/preview-sessions` with `editorBridge: true`).
 
@@ -261,13 +261,13 @@ Preview sessions record `editorBridge` so the sandbox host serves HTML with the 
 
 To add a new `ark:editor-*` message safely:
 
-1. **Type union** — Add the constant, payload interface, and entry in `EDITOR_SHELL_MESSAGE_TYPES` or `EDITOR_RUNTIME_MESSAGE_TYPES` in `shared/deck-editor-bridge.ts`.
+1. **Type union** — Add the constant, payload interface, and entry in `EDITOR_SHELL_MESSAGE_TYPES` or `EDITOR_RUNTIME_MESSAGE_TYPES` in `packages/deck-core/deck-editor-bridge.ts`.
 2. **Validator** — Implement `isEditorFooMessage` with strict field checks; register it in `isEditorShellMessage` or `isEditorRuntimeMessage`.
 3. **Factory** — Add `createEditorFooMessage` for tests and shell callers.
 4. **Runtime handler** — Update `buildDeckEditorBridgeRuntimeScript` to emit or consume the message; keep handlers inside the existing `message` listener with origin/source checks.
 5. **Hook handler** — Handle the message in `useDeckEditorBridge` (or a dedicated hook) with generation, source, and origin guards.
-6. **Persistence** — Map commit-style messages to `DeckPatchOperation` types in `shared/deck-patch.ts` and `server/deck-element-patch.ts`; never write deck HTML from the client alone.
-7. **Tests** — Add validator tests in `shared/deck-editor-bridge.test.ts`; add hook/integration tests in `src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.
+6. **Persistence** — Map commit-style messages to `DeckPatchOperation` types in `packages/deck-core/deck-patch.ts` and `apps/api/deck-element-patch.ts`; never write deck HTML from the client alone.
+7. **Tests** — Add validator tests in `packages/deck-core/deck-editor-bridge.test.ts`; add hook/integration tests in `apps/web/src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.
 
 Update this document in the same PR as any protocol change.
 

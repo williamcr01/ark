@@ -1,0 +1,782 @@
+import { type LanguageModel } from 'ai'
+
+import {
+  applyResolvedAssetAttachments,
+  collectAssetIdsFromMessages,
+  parseGenerateMessages,
+} from '@ark/deck-core/chat.ts'
+import type { ApiChatMessage, ChatAttachment } from '@ark/deck-core/chat.ts'
+import type {
+  CreateGenerationJobInput,
+  GenerationJob,
+  GenerationJobStatus,
+} from '@ark/deck-core/generation-job.ts'
+import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark/contracts'
+import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
+import { toGenerationJobApi } from './generation-job-wire.ts'
+import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
+import { type DeckStore } from './deck-record.ts'
+import { buildDeckVersionOptions } from './deck-version-payload.ts'
+import { type ChatStore } from './chat-record.ts'
+import { resolveAssetAttachments } from './asset-resolve.ts'
+import { type AssetStorage } from './asset-storage.ts'
+import { type AssetStore } from './asset-record.ts'
+import {
+  ensureChatThreadForJob,
+  persistAssistantGenerationMessage,
+  persistInitialDeckChatHistory,
+  persistLatestUserMessage,
+} from './chat-persistence.ts'
+import { cloneGenerationJobRequest, type GenerationJobStore } from './generation-job-record.ts'
+import { createLanguageModel } from './provider-runtime.ts'
+import { categorizeProviderError } from './observability/provider-errors.ts'
+import { createLogger } from './observability/logger.ts'
+
+export type GenerationJobRunnerOptions = {
+  deckStore: DeckStore
+  jobStore: GenerationJobStore
+  chatStore?: ChatStore | null
+  assetStore?: AssetStore | null
+  assetStorage?: AssetStorage | null
+  createModel?: typeof createLanguageModel
+  runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
+  now?: () => Date
+}
+
+export type StartGenerationJobOptions = {
+  body: StartGenerationJobRequest
+  defaultModel: string
+  requestId?: string | null
+}
+
+/**
+ * Build model-facing messages with resolved asset bytes. Prior user turns keep
+ * their referenced files; the latest turn also receives any extra `assetIds`
+ * selected for this job.
+ */
+function prepareMessagesForModel(
+  messages: ApiChatMessage[],
+  resolvedById: ReadonlyMap<string, ChatAttachment>,
+  latestTurnAssetIds: readonly string[],
+): ApiChatMessage[] {
+  const withHistory = applyResolvedAssetAttachments(messages, resolvedById)
+
+  if (latestTurnAssetIds.length === 0) {
+    return withHistory
+  }
+
+  const lastUserIndex = withHistory.map((message) => message.role).lastIndexOf('user')
+
+  if (lastUserIndex === -1) {
+    return withHistory
+  }
+
+  return withHistory.map((message, index) => {
+    if (index !== lastUserIndex) {
+      return message
+    }
+
+    const existing = message.attachments ?? []
+    const existingAssetIds = new Set(
+      existing.map((attachment) => attachment.assetId).filter(Boolean),
+    )
+    const extras = latestTurnAssetIds
+      .map((id) => resolvedById.get(id))
+      .filter((attachment): attachment is ChatAttachment => Boolean(attachment))
+      .filter((attachment) => !existingAssetIds.has(attachment.assetId))
+
+    if (extras.length === 0) {
+      return message
+    }
+
+    return { ...message, attachments: [...existing, ...extras] }
+  })
+}
+
+export type GenerationJobRunner = {
+  startJob: (options: StartGenerationJobOptions) => Promise<GenerationJob>
+  retryJob: (jobId: string) => Promise<GenerationJob | null>
+  cancelJob: (jobId: string) => Promise<GenerationJob | null>
+  getJob: (jobId: string) => Promise<GenerationJob | null>
+}
+
+const runningControllers = new Map<string, AbortController>()
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function isTerminalStatus(status: GenerationJobStatus) {
+  return status === 'succeeded' || status === 'failed' || status === 'canceled'
+}
+
+export function createGenerationJobRunner({
+  deckStore,
+  jobStore,
+  chatStore = null,
+  assetStore = null,
+  assetStorage = null,
+  createModel = createLanguageModel,
+  runAgent = runDeckAgent,
+  now = () => new Date(),
+}: GenerationJobRunnerOptions): GenerationJobRunner {
+  const persistTerminalAssistantMessage = async (
+    job: GenerationJob,
+    options: {
+      status: GenerationJobStatus
+      steps: GenerationJob['progress']['steps']
+      assistantText?: string | null
+      deckId: string
+      deckVersionId?: string | null
+      error?: GenerationJob['error']
+    },
+  ) => {
+    if (!chatStore) {
+      return
+    }
+
+    await persistAssistantGenerationMessage(chatStore, options.deckId, {
+      jobId: job.id,
+      model: job.model,
+      status: options.status,
+      steps: options.steps,
+      assistantText: options.assistantText,
+      editingExistingDeck: job.request.editingExistingDeck ?? false,
+      deckVersionId: options.deckVersionId ?? null,
+      error: options.error ?? null,
+    })
+  }
+
+  const processJob = async (jobId: string, requestId: string | null = null) => {
+    const claimed = await jobStore.claimQueuedJob(jobId, now().toISOString())
+
+    if (!claimed) {
+      return
+    }
+
+    const abortController = new AbortController()
+    runningControllers.set(jobId, abortController)
+    const currentJob = claimed
+    const jobLogger = createLogger({
+      service: 'ark-generation',
+      requestId,
+      jobId,
+      deckId: currentJob.deckId,
+    })
+    const jobStartedAt = performance.now()
+
+    jobLogger.info('generation.job.started', {
+      model: currentJob.model,
+      provider: currentJob.provider,
+      status: currentJob.status,
+    })
+
+    try {
+      const { model, provider } = createModel(currentJob.model)
+
+      let modelMessages = currentJob.request.messages
+
+      const historyAssetIds = collectAssetIdsFromMessages(currentJob.request.messages)
+      const latestTurnAssetIds = currentJob.assetIds ?? []
+      const allAssetIds = [...new Set([...historyAssetIds, ...latestTurnAssetIds])]
+
+      if (allAssetIds.length > 0 && assetStore && assetStorage && currentJob.deckId) {
+        const resolved = await resolveAssetAttachments(
+          { assetStore, assetStorage },
+          currentJob.deckId,
+          allAssetIds,
+        )
+
+        if (resolved.ok) {
+          modelMessages = prepareMessagesForModel(
+            currentJob.request.messages,
+            resolved.byId,
+            latestTurnAssetIds,
+          )
+        }
+      }
+
+      const agentResult = await runAgent({
+        model: model as LanguageModel,
+        provider,
+        modelRef: currentJob.model,
+        messages: modelMessages,
+        currentHtml: currentJob.request.currentHtml,
+        abortSignal: abortController.signal,
+        logger: jobLogger,
+        onStepProgress: async (steps) => {
+          const latestStep = steps.at(-1)
+
+          jobLogger.debug('generation.job.step', {
+            stepCount: steps.length,
+            latestStepType: latestStep?.type ?? null,
+            latestToolName: latestStep?.toolName ?? null,
+            elapsedMs: Math.round(performance.now() - jobStartedAt),
+          })
+
+          const latest = await jobStore.getJob(jobId)
+
+          if (!latest || latest.status === 'canceling' || latest.status === 'canceled') {
+            abortController.abort()
+            return
+          }
+
+          await jobStore.updateJob(jobId, {
+            progress: {
+              steps,
+              stepCount: steps.length,
+              assistantText: latest.progress.assistantText ?? null,
+            },
+          })
+        },
+      })
+
+      const observability = {
+        requestId,
+        providerMetrics: agentResult.providerMetrics ?? null,
+        durationMs: Math.round(performance.now() - jobStartedAt),
+      }
+
+      const refreshed = await jobStore.getJob(jobId)
+
+      if (!refreshed || refreshed.status === 'canceling') {
+        const canceledJob = await jobStore.updateJob(jobId, {
+          status: 'canceled',
+          observability,
+          completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.canceled', {
+          durationMs: observability.durationMs,
+        })
+
+        if (canceledJob?.deckId) {
+          await persistTerminalAssistantMessage(canceledJob, {
+            status: 'canceled',
+            steps: canceledJob.progress.steps,
+            assistantText: canceledJob.progress.assistantText,
+            deckId: canceledJob.deckId,
+            error: { message: 'Generation was canceled.', code: 'canceled' },
+          })
+        }
+
+        return
+      }
+
+      if (!agentResult.ok) {
+        const failedJob = await jobStore.updateJob(jobId, {
+          status: 'failed',
+          progress: {
+            steps: agentResult.steps,
+            stepCount: agentResult.steps.length,
+            assistantText: null,
+          },
+          error: {
+            message: agentResult.error,
+            code: 'provider_error',
+            validation: agentResult.validation,
+            errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+          },
+          observability,
+          completedAt: now().toISOString(),
+        })
+
+        jobLogger.warn('generation.job.failed', {
+          durationMs: observability.durationMs,
+          errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+          stepCount: agentResult.steps.length,
+        })
+
+        if (failedJob?.deckId) {
+          await persistTerminalAssistantMessage(failedJob, {
+            status: 'failed',
+            steps: agentResult.steps,
+            deckId: failedJob.deckId,
+            error: failedJob.error,
+          })
+        }
+
+        return
+      }
+
+      const targetDeckId = refreshed.deckId
+      const baseVersionId = refreshed.baseVersionId
+
+      if (targetDeckId) {
+        const existingDeck = await deckStore.getDeck(targetDeckId)
+
+        if (!existingDeck) {
+          const failedJob = await jobStore.updateJob(jobId, {
+            status: 'failed',
+            progress: {
+              steps: agentResult.steps,
+              stepCount: agentResult.steps.length,
+              assistantText: agentResult.assistantText,
+            },
+            error: {
+              message: 'The target deck no longer exists.',
+              code: 'deck_not_found',
+            },
+            observability,
+            completedAt: now().toISOString(),
+          })
+
+          if (failedJob?.deckId) {
+            await persistTerminalAssistantMessage(failedJob, {
+              status: 'failed',
+              steps: agentResult.steps,
+              assistantText: agentResult.assistantText,
+              deckId: failedJob.deckId,
+              error: failedJob.error,
+            })
+          }
+
+          return
+        }
+
+        const currentActiveVersionId = existingDeck.activeVersionId ?? null
+
+        if (baseVersionId && currentActiveVersionId && baseVersionId !== currentActiveVersionId) {
+          const failedJob = await jobStore.updateJob(jobId, {
+            status: 'failed',
+            progress: {
+              steps: agentResult.steps,
+              stepCount: agentResult.steps.length,
+              assistantText: agentResult.assistantText,
+            },
+            error: {
+              message:
+                'The deck changed while generation was running. Retry from the latest version.',
+              code: 'version_conflict',
+            },
+            observability,
+            completedAt: now().toISOString(),
+          })
+
+          if (failedJob?.deckId) {
+            await persistTerminalAssistantMessage(failedJob, {
+              status: 'failed',
+              steps: agentResult.steps,
+              assistantText: agentResult.assistantText,
+              deckId: failedJob.deckId,
+              error: failedJob.error,
+            })
+          }
+
+          return
+        }
+
+        const updatedDeck = await deckStore.updateDeck(
+          targetDeckId,
+          agentResult.html,
+          buildDeckVersionOptions(agentResult.html, {
+            source: 'agent',
+            summary: refreshed.request.editingExistingDeck ? 'AI edit' : 'AI generation',
+            modelProvider: provider,
+            modelName: refreshed.model,
+          }),
+        )
+
+        if (!updatedDeck) {
+          const failedJob = await jobStore.updateJob(jobId, {
+            status: 'failed',
+            error: {
+              message: 'Could not save the generated deck.',
+              code: 'save_failed',
+            },
+            observability,
+            completedAt: now().toISOString(),
+          })
+
+          if (failedJob?.deckId) {
+            await persistTerminalAssistantMessage(failedJob, {
+              status: 'failed',
+              steps: agentResult.steps,
+              deckId: failedJob.deckId,
+              error: failedJob.error,
+            })
+          }
+
+          return
+        }
+
+        const succeededJob = await jobStore.updateJob(jobId, {
+          status: 'succeeded',
+          deckId: updatedDeck.id,
+          progress: {
+            steps: agentResult.steps,
+            stepCount: agentResult.steps.length,
+            assistantText: agentResult.assistantText,
+          },
+          result: {
+            deckId: updatedDeck.id,
+            versionId: updatedDeck.activeVersionId ?? '',
+            html: updatedDeck.html,
+            validation: agentResult.validation,
+            assistantText: agentResult.assistantText,
+          },
+          observability,
+          completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.succeeded', {
+          durationMs: observability.durationMs,
+          stepCount: agentResult.steps.length,
+          tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+        })
+
+        if (succeededJob) {
+          await persistTerminalAssistantMessage(succeededJob, {
+            status: 'succeeded',
+            steps: agentResult.steps,
+            assistantText: agentResult.assistantText,
+            deckId: updatedDeck.id,
+            deckVersionId: updatedDeck.activeVersionId ?? null,
+          })
+        }
+
+        return
+      }
+
+      const createdDeck = await deckStore.createDeck(
+        agentResult.html,
+        buildDeckVersionOptions(agentResult.html, {
+          source: 'agent',
+          summary: 'AI generation',
+          modelProvider: provider,
+          modelName: refreshed.model,
+        }),
+      )
+
+      if (chatStore) {
+        await persistInitialDeckChatHistory(
+          chatStore,
+          createdDeck.id,
+          refreshed.request.messages,
+          createdDeck.activeVersionId ?? null,
+        )
+      }
+
+      const succeededJob = await jobStore.updateJob(jobId, {
+        status: 'succeeded',
+        deckId: createdDeck.id,
+        progress: {
+          steps: agentResult.steps,
+          stepCount: agentResult.steps.length,
+          assistantText: agentResult.assistantText,
+        },
+        result: {
+          deckId: createdDeck.id,
+          versionId: createdDeck.activeVersionId ?? '',
+          html: createdDeck.html,
+          validation: agentResult.validation,
+          assistantText: agentResult.assistantText,
+        },
+        observability,
+        completedAt: now().toISOString(),
+      })
+
+      jobLogger.info('generation.job.succeeded', {
+        durationMs: observability.durationMs,
+        stepCount: agentResult.steps.length,
+        tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+      })
+
+      if (succeededJob) {
+        await persistTerminalAssistantMessage(succeededJob, {
+          status: 'succeeded',
+          steps: agentResult.steps,
+          assistantText: agentResult.assistantText,
+          deckId: createdDeck.id,
+          deckVersionId: createdDeck.activeVersionId ?? null,
+        })
+      }
+    } catch (error) {
+      const latest = await jobStore.getJob(jobId)
+      const durationMs = Math.round(performance.now() - jobStartedAt)
+      const errorDetails = categorizeProviderError(error)
+
+      if (isAbortError(error) || latest?.status === 'canceling') {
+        const canceledJob = await jobStore.updateJob(jobId, {
+          status: 'canceled',
+          observability: {
+            requestId,
+            durationMs,
+            providerMetrics: {
+              latencyMs: durationMs,
+              model: latest?.model ?? currentJob.model,
+              provider: latest?.provider ?? currentJob.provider ?? 'unknown',
+              errorCategory: 'aborted',
+            },
+          },
+          completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.canceled', { durationMs })
+
+        if (canceledJob?.deckId) {
+          await persistTerminalAssistantMessage(canceledJob, {
+            status: 'canceled',
+            steps: canceledJob.progress.steps,
+            deckId: canceledJob.deckId,
+            error: { message: 'Generation was canceled.', code: 'canceled' },
+          })
+        }
+
+        return
+      }
+
+      const message = error instanceof Error ? error.message : 'Generation failed.'
+
+      const failedJob = await jobStore.updateJob(jobId, {
+        status: 'failed',
+        error: {
+          message,
+          code: errorDetails.apiErrorCode,
+          errorCategory: errorDetails.category,
+        },
+        observability: {
+          requestId,
+          durationMs,
+          providerMetrics: {
+            latencyMs: durationMs,
+            model: latest?.model ?? currentJob.model,
+            provider: latest?.provider ?? currentJob.provider ?? 'unknown',
+            errorCategory: errorDetails.category,
+          },
+        },
+        completedAt: now().toISOString(),
+      })
+
+      jobLogger.error('generation.job.failed', {
+        durationMs,
+        errorCategory: errorDetails.category,
+        message,
+      })
+
+      if (failedJob?.deckId) {
+        await persistTerminalAssistantMessage(failedJob, {
+          status: 'failed',
+          steps: failedJob.progress.steps,
+          deckId: failedJob.deckId,
+          error: failedJob.error,
+        })
+      }
+    } finally {
+      runningControllers.delete(jobId)
+    }
+  }
+
+  const enqueueJob = (jobId: string, requestId: string | null = null) => {
+    void processJob(jobId, requestId)
+  }
+
+  const startJob = async ({ body, defaultModel, requestId = null }: StartGenerationJobOptions) => {
+    const parsedMessages = parseGenerateMessages(body.messages)
+
+    if (!parsedMessages.ok) {
+      throw Object.assign(new Error(parsedMessages.error), {
+        apiError: {
+          code: 'provider_error',
+          error: parsedMessages.error,
+        },
+      })
+    }
+
+    const messages = parsedMessages.messages
+
+    if (messages.length === 0) {
+      throw Object.assign(new Error('At least one user message is required.'), {
+        apiError: {
+          code: 'provider_error',
+          error: 'At least one user message is required.',
+        },
+      })
+    }
+
+    if (messages.at(-1)?.role !== 'user') {
+      throw Object.assign(new Error('The latest chat message must be from the user.'), {
+        apiError: {
+          code: 'provider_error',
+          error: 'The latest chat message must be from the user.',
+        },
+      })
+    }
+
+    const modelRef = body.model?.trim() || defaultModel
+    const { provider } = createModel(modelRef)
+    const currentHtml = body.currentHtml ?? ''
+    const deckId = typeof body.deckId === 'string' && body.deckId.trim() ? body.deckId.trim() : null
+    const assetIds = body.assetIds?.map((id) => id.trim()).filter(Boolean) ?? []
+
+    if (assetIds.length > 0 && !deckId) {
+      throw Object.assign(new Error('assetIds require a saved deck id.'), {
+        apiError: {
+          code: 'provider_error',
+          error: 'assetIds require a saved deck id.',
+        },
+      })
+    }
+
+    if (assetIds.length > 0) {
+      if (!assetStore || !assetStorage) {
+        throw Object.assign(new Error('Asset storage is not configured.'), {
+          apiError: {
+            code: 'provider_error',
+            error: 'Asset storage is not configured.',
+          },
+        })
+      }
+
+      const resolved = await resolveAssetAttachments(
+        { assetStore, assetStorage },
+        deckId,
+        assetIds,
+        { strict: true },
+      )
+
+      if (!resolved.ok) {
+        throw Object.assign(new Error('One or more asset ids could not be resolved.'), {
+          apiError: {
+            code: 'provider_error',
+            error: `Could not resolve asset(s): ${resolved.assetIds.join(', ')}`,
+          },
+        })
+      }
+    }
+
+    const baseVersionId =
+      typeof body.baseVersionId === 'string' && body.baseVersionId.trim()
+        ? body.baseVersionId.trim()
+        : null
+
+    if (deckId) {
+      const jobs = await jobStore.listJobsForDeck(deckId)
+      const inFlight = jobs.find((job) => ACTIVE_GENERATION_JOB_STATUSES.has(job.status))
+
+      if (inFlight) {
+        throw Object.assign(new Error('A generation job is already in progress for this deck.'), {
+          apiError: {
+            code: 'provider_error',
+            error: 'A generation job is already in progress for this deck.',
+          },
+        })
+      }
+    }
+
+    let chatThreadId: string | null = null
+
+    if (deckId && chatStore) {
+      const thread = await ensureChatThreadForJob(chatStore, deckStore, deckId, baseVersionId)
+
+      if (thread) {
+        chatThreadId = thread.id
+        await persistLatestUserMessage(chatStore, deckId, messages, baseVersionId)
+      }
+    }
+
+    const input: CreateGenerationJobInput = {
+      deckId,
+      baseVersionId,
+      chatThreadId,
+      assetIds: assetIds.length > 0 ? assetIds : undefined,
+      model: modelRef,
+      provider,
+      request: {
+        messages,
+        currentHtml,
+        baseVersionId,
+        editingExistingDeck: Boolean(deckId && currentHtml.trim()),
+      },
+    }
+
+    const job = await jobStore.createJob(input)
+    enqueueJob(job.id, requestId)
+    return job
+  }
+
+  const retryJob = async (jobId: string) => {
+    const existing = await jobStore.getJob(jobId)
+
+    if (
+      !existing ||
+      existing.status === 'succeeded' ||
+      existing.status === 'queued' ||
+      existing.status === 'running' ||
+      existing.status === 'canceling'
+    ) {
+      return null
+    }
+
+    const request = cloneGenerationJobRequest(existing.request)
+    const deckId = existing.deckId
+    let baseVersionId = existing.baseVersionId
+
+    if (deckId) {
+      const deck = await deckStore.getDeck(deckId)
+
+      if (deck) {
+        baseVersionId = deck.activeVersionId ?? null
+        request.currentHtml = deck.html
+        request.baseVersionId = baseVersionId
+        request.editingExistingDeck = true
+      }
+    }
+
+    const input: CreateGenerationJobInput = {
+      deckId,
+      baseVersionId,
+      assetIds: existing.assetIds,
+      model: existing.model,
+      provider: existing.provider,
+      request,
+      retryOfJobId: existing.id,
+    }
+
+    const job = await jobStore.createJob(input)
+    enqueueJob(job.id, existing.observability?.requestId ?? null)
+    return job
+  }
+
+  const cancelJob = async (jobId: string) => {
+    const existing = await jobStore.getJob(jobId)
+
+    if (!existing) {
+      return null
+    }
+
+    if (isTerminalStatus(existing.status)) {
+      return existing
+    }
+
+    const controller = runningControllers.get(jobId)
+    controller?.abort()
+
+    if (existing.status === 'queued') {
+      const canceled =
+        (await jobStore.updateJobIfStatus(jobId, 'queued', {
+          status: 'canceled',
+          completedAt: now().toISOString(),
+        })) ?? (await jobStore.getJob(jobId))
+
+      return canceled
+    }
+
+    return jobStore.updateJob(jobId, {
+      status: 'canceling',
+    })
+  }
+
+  const getJob = async (jobId: string) => jobStore.getJob(jobId)
+
+  return {
+    startJob,
+    retryJob,
+    cancelJob,
+    getJob,
+  }
+}
+
+export function toGenerationJobResponse(job: GenerationJob): GenerationJobResponse {
+  return { job: toGenerationJobApi(job) }
+}

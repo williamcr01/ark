@@ -4,8 +4,10 @@ Ark is a presentation builder: a PowerPoint-like app where each presentation is 
 
 ## Product model
 
-- **Shell app** (`src/`): React + TypeScript + Vite. Hosts the editor UI, slide preview, and agent chat panel.
-- **API server** (`server/`): Express. Persists decks and chat, runs the generation agent loop, serves approved runtime assets, and hosts the sandbox preview origin.
+- **Shell app** (`apps/web/`): React + TypeScript + Vite. Hosts the editor UI, slide preview, and agent chat panel.
+- **API server** (`apps/api/`): Express. Persists decks and chat, runs the generation agent loop, and serves approved runtime assets.
+- **Sandbox host** (`apps/sandbox/`): Separate-origin preview renderer with strict CSP isolation.
+- **Workspace packages** (`packages/`): `@ark/contracts` (HTTP API Zod schemas), `@ark/deck-core` (deck helpers and bridge protocols), `@ark/runtime-registry` (approved runtime manifest and validation).
 - **Decks**: Self-contained single-page HTML documents (HTML + CSS, optionally approved runtimes like reveal.js). Decks are **persisted server-side** — JSON files under `data/decks/` by default, or Postgres when `DATABASE_URL` is set — and edited through the API/agent tools, not as files in the repo. (The `presentations/` directory exists for ad-hoc local fixtures but is not part of the persistence path.)
 - **Agent chat**: Side panel beside the slide preview. User supplies content (notes, data, bullet points); the agent writes or updates the active deck HTML via tools.
 
@@ -34,31 +36,32 @@ pnpm preview    # preview production build
 
 ```
 ark/
-├── src/                    # React shell app
-│   ├── components/         # UI components (chat, preview, toolbar)
-│   ├── hooks/              # shared React hooks
-│   └── lib/                # client-side helpers (deck preview, validation, API)
-├── server/                 # Express API, agent loop, deck/chat stores, sandbox host
-│   └── db/                 # Postgres repositories + migrations (optional path)
-├── shared/                 # code shared by client and server (bridge, patches, API contracts)
+├── apps/
+│   ├── web/                # React/Vite shell (`@ark/web`)
+│   ├── api/                # Express API (`@ark/api`)
+│   └── sandbox/            # Sandbox preview host (`@ark/sandbox`)
+├── packages/
+│   ├── contracts/          # HTTP API contracts (`@ark/contracts`)
+│   ├── deck-core/          # Shared deck logic (`@ark/deck-core`)
+│   └── runtime-registry/   # Runtime manifest + validation (`@ark/runtime-registry`)
 ├── test/                   # cross-layer HTML fixtures (`test/fixtures/`) for tests and smoke scripts
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
 ├── docs/                   # runtime/preview/bridge + backend architecture notes
 ├── scripts/                # runtime sync + smoke tests
 ├── data/                   # local dev persistence (gitignored): decks, chat
-├── public/                 # static assets
 └── AGENTS.md               # this file
 ```
 
 ## Import boundaries
 
-`src/`, `server/`, and `shared/` have enforced dependency directions (issue #131):
+`apps/web`, `apps/api`, `apps/sandbox`, and `packages/*` have enforced dependency directions (issues #131, #136):
 
-- `src/` may import from `shared/` only — never from `server/`.
-- `server/` may import from `shared/` only — never from `src/`.
-- `shared/` must not import from `src/` or `server/`, and must not depend on React, Express, or Node/browser APIs unless the filename makes the environment explicit (e.g. `*-disk.ts`).
+- `apps/web` may import from `@ark/contracts`, `@ark/deck-core`, and `@ark/runtime-registry` only — never from `apps/api`.
+- `apps/api` may import from workspace packages only — never from `apps/web`.
+- `apps/sandbox` may import from `@ark/api/preview-sessions` (shared in-memory store), workspace packages, and its own files — never from `apps/web`.
+- `packages/*` must not import from `apps/`. `@ark/contracts` may depend on `@ark/deck-core` and `@ark/runtime-registry`; `@ark/deck-core` depends on `@ark/runtime-registry` only (no cycle back to contracts).
 - Cross-layer HTML fixtures live in `test/fixtures/` (Vitest alias `@fixtures/...`).
-- HTTP API contracts live in `shared/api/` — import from `shared/api/index.ts` in `src/` and `server/`. See [shared/api/README.md](shared/api/README.md).
+- HTTP API contracts live in `packages/contracts/` — import from `@ark/contracts` in application code. See [packages/contracts/README.md](packages/contracts/README.md).
 
 `pnpm lint` fails on forbidden imports. See [docs/architecture-boundaries.md](docs/architecture-boundaries.md).
 
@@ -177,20 +180,20 @@ One user message → one agent run → up to 12 tool/model steps → deck update
 
 Fully working editor, not a scaffold. Implemented today:
 
-- **Multi-deck persistence** with immutable versions and rollback (JSON files under `data/` by default; Postgres repositories + migrations under `server/db/` when `DATABASE_URL` is set).
+- **Multi-deck persistence** with immutable versions and rollback (JSON files under `data/` by default; Postgres repositories + migrations under `apps/api/db/` when `DATABASE_URL` is set).
 - **Server-persisted chat** per deck with `localStorage` caching.
 - **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
 - **Sandboxed preview** on a separate origin with CSP isolation, CSS-only and full-JS modes, thumbnails, and Present mode.
 - **Approved runtime registry** with vendored reveal.js 5.1.0 served from `/api/runtimes/...`.
-- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `shared/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, and text boxes ship today. Client-side undo/redo with manual-edit provenance (#82) is implemented via `src/hooks/useDeckEditHistory.ts` and `shared/deck-edit-provenance.ts` — each committed manual edit records before/after HTML snapshots plus structured provenance (source, operation, slide indexes, element ids, summary), and AI generation/upload/rollback act as history boundaries. Remaining manual-editing work (image insertion, etc.) is tracked in issues #76 and #78–#84.
+- **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `packages/deck-core/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, and text boxes ship today. Client-side undo/redo with manual-edit provenance (#82) is implemented via `apps/web/src/hooks/useDeckEditHistory.ts` and `packages/deck-core/deck-edit-provenance.ts` — each committed manual edit records before/after HTML snapshots plus structured provenance (source, operation, slide indexes, element ids, summary), and AI generation/upload/rollback act as history boundaries. Remaining manual-editing work (image insertion, etc.) is tracked in issues #76 and #78–#84.
 
-Typed API contracts shared by client and server live in `shared/api/`.
+Typed API contracts shared by client and server live in `packages/contracts/` (`@ark/contracts`).
 
 ## Cursor Cloud specific instructions
 
 Standard commands live in the `## Commands` section above and in `README.md`. Notes specific to this environment:
 
-- **Dev server runs three processes.** `pnpm dev` uses `concurrently` to start the Express API (`tsx watch server/index.ts`), the sandbox preview host (`tsx watch server/sandbox-index.ts`, default `http://localhost:5174`), and the Vite client on `http://localhost:5173`. The API reads `PORT` from `.env` or the environment (default `8787`); Vite proxies `/api` to that same port (see `vite.config.ts`). Always open the app on `5173`, not the API or sandbox ports directly. Run it in a background/tmux session since it stays attached.
+- **Dev server runs three processes.** `pnpm dev` uses `concurrently` to start the Express API (`apps/api`), the sandbox preview host (`apps/sandbox`, default `http://localhost:5174`), and the Vite client (`apps/web`, `http://localhost:5173`). The API reads `PORT` from `.env` or the environment (default `8787`); Vite proxies `/api` to that same port (see `apps/web/vite.config.ts`). Always open the app on `5173`, not the API or sandbox ports directly. Run it in a background/tmux session since it stays attached.
 - **API server endpoints:** `GET /api/health`, `GET /api/models`, deck CRUD (`GET/POST /api/decks`, `GET/PUT/PATCH/DELETE /api/decks/:id`), element patches (`POST /api/decks/:id/patch`), versions (`GET /api/decks/:id/versions`, `GET /api/decks/:id/versions/:versionId`, `POST /api/decks/:id/rollback`), chat (`GET /api/decks/:id/chat`, `POST /api/decks/:id/chat/messages`, `DELETE /api/decks/:id/chat`), generation jobs (`POST /api/generation-jobs`, `GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry`), preview sessions (`POST /api/preview-sessions`, `GET /api/preview-sessions/:token`), `POST /api/runtime-errors`, and `GET /api/deck-assets`. Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.

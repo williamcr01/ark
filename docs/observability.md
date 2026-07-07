@@ -22,13 +22,13 @@ Each line is a single JSON object:
 }
 ```
 
-| Field        | Meaning                                                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------------------------ |
-| `service`    | `ark-api` (HTTP + deck routes), `ark-generation` (job runner), or per-request middleware default.            |
-| `event`      | Stable event name (see tables below).                                                                        |
-| `requestId`  | From `X-Request-Id` header or auto-generated; echoed on JSON responses.                                      |
-| `durationMs` | Elapsed time for the operation when applicable.                                                              |
-| `fields`     | Event-specific metadata (HTML sizes and counts are not full content — see `server/observability/redact.ts`). |
+| Field        | Meaning                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `service`    | `ark-api` (HTTP + deck routes), `ark-generation` (job runner), or per-request middleware default.              |
+| `event`      | Stable event name (see tables below).                                                                          |
+| `requestId`  | From `X-Request-Id` header or auto-generated; echoed on JSON responses.                                        |
+| `durationMs` | Elapsed time for the operation when applicable.                                                                |
+| `fields`     | Event-specific metadata (HTML sizes and counts are not full content — see `apps/api/observability/redact.ts`). |
 
 ## HTTP requests
 

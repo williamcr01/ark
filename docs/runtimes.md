@@ -124,7 +124,7 @@ Optional assets (e.g. `reset.css`, theme fonts) may be referenced when listed in
 
 ## Preview behavior
 
-Preview processing lives in `shared/deck-preview-html.ts` and `server/render-preview-html.ts`.
+Preview processing lives in `packages/deck-core/deck-preview-html.ts` and `apps/sandbox/render-preview-html.ts`.
 
 | Deck type                                | Preview mode             | What runs                                                 |
 | ---------------------------------------- | ------------------------ | --------------------------------------------------------- |
@@ -150,7 +150,7 @@ Main preview and Present mode load processed HTML from the sandbox host (default
 
 ## Agent generation
 
-The deck agent system prompt in `server/deck-agent.ts` includes a registry summary built from `buildRuntimeRegistryPromptSection()`. Agents must:
+The deck agent system prompt in `apps/api/deck-agent.ts` includes a registry summary built from `buildRuntimeRegistryPromptSection()`. Agents must:
 
 - Prefer plain Ark decks unless reveal.js is requested or clearly needed
 - Use exact markers and `/api/runtimes/...` URLs from the registry
@@ -166,11 +166,11 @@ Minimum checklist for contributors:
 
 1. **Vendor assets** — Add pinned files under `runtimes/<id>/<version>/`.
 2. **Manifest entry** — Add id, version, markers, `requiredAssets`, and per-file `sha256` + `size` to `runtimes/manifest.json`.
-3. **Registry types** — Extend `ApprovedRuntimeEntry` in `shared/deck-runtime-registry.ts` if new fields are needed.
-4. **Validation tests** — Cover marker checks, required assets, version mismatch, and CDN rejection (`shared/deck-validate.test.ts`, `shared/deck-runtime-registry.test.ts`).
-5. **Server route tests** — List and serve assets (`server/deck-runtimes.test.ts`).
-6. **Preview tests** — Asset preservation, CSP, adapter injection (`server/render-preview-html.test.ts`, `src/lib/deck-preview.test.ts`).
-7. **Thumbnail tests** — CSS inlining and slide selection if the runtime affects sidebar previews (`src/lib/deck-slides.test.ts`).
+3. **Registry types** — Extend `ApprovedRuntimeEntry` in `packages/runtime-registry/deck-runtime-registry.ts` if new fields are needed.
+4. **Validation tests** — Cover marker checks, required assets, version mismatch, and CDN rejection (`packages/deck-core/deck-validate.test.ts`, `packages/runtime-registry/deck-runtime-registry.test.ts`).
+5. **Server route tests** — List and serve assets (`apps/api/deck-runtimes.test.ts`).
+6. **Preview tests** — Asset preservation, CSP, adapter injection (`apps/sandbox/render-preview-html.test.ts`, `apps/web/src/lib/deck-preview.test.ts`).
+7. **Thumbnail tests** — CSS inlining and slide selection if the runtime affects sidebar previews (`apps/web/src/lib/deck-slides.test.ts`).
 8. **Smoke test** — Add or extend `scripts/smoke-reveal-runtime.ts` pattern for end-to-end preview if the runtime runs scripts.
 9. **Agent prompt** — Registry section updates automatically from manifest; add runtime-specific guidance if needed.
 10. **Documentation** — Add or update a runtime guide under `docs/` and link from this file.
@@ -187,7 +187,7 @@ Staged reveal.js support:
 Implementation references:
 
 - `runtimes/manifest.json` — Source of truth for approved assets
-- `shared/deck-runtime-registry.ts` — Registry lookup and validation helpers
-- `server/deck-runtimes.ts` — `/api/runtimes` route handlers
-- `shared/deck-validate.ts` — Portable deck validation (`validateDeckHtml`); browser wrapper in `src/lib/deck-validate.ts`, server wrapper in `server/deck-validate.ts`
+- `packages/runtime-registry/deck-runtime-registry.ts` — Registry lookup and validation helpers
+- `apps/api/deck-runtimes.ts` — `/api/runtimes` route handlers
+- `packages/deck-core/deck-validate.ts` — Portable deck validation (`validateDeckHtml`); browser wrapper in `apps/web/src/lib/deck-validate.ts`, server wrapper in `apps/api/deck-validate.ts`
 - `docs/deck-bridge.md` — Parent ↔ iframe protocol including reveal adapter
