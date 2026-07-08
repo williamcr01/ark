@@ -18,6 +18,7 @@ import {
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
   isEditorMessage,
   isEditorRuntimeMessage,
+  isEditorSelectionInfo,
   isEditorShellMessage,
   parseEditorMessage,
 } from './deck-editor-bridge'
@@ -97,6 +98,70 @@ describe('deck editor bridge protocol', () => {
       ),
     ).toMatchObject({ type: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE })
     expect(parseEditorMessage(null)).toBeNull()
+  })
+
+  it('accepts optional inspector selection fields (issue #84)', () => {
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        role: 'title',
+        textStyle: {
+          fontSize: 32,
+          fontWeight: '700',
+          color: 'rgb(15, 23, 42)',
+          textAlign: 'left',
+          lineHeight: 40,
+        },
+        imageNaturalSize: null,
+      }),
+    ).toBe(true)
+
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        role: null,
+        textStyle: null,
+        imageNaturalSize: { width: 800, height: 600 },
+      }),
+    ).toBe(true)
+
+    // lineHeight "normal" is reported as null.
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        textStyle: {
+          fontSize: 18,
+          fontWeight: '400',
+          color: 'rgb(0, 0, 0)',
+          textAlign: 'center',
+          lineHeight: null,
+        },
+      }),
+    ).toBe(true)
+  })
+
+  it('rejects malformed inspector selection fields', () => {
+    expect(isEditorSelectionInfo({ ...selection, role: 5 })).toBe(false)
+    expect(isEditorSelectionInfo({ ...selection, textStyle: { fontSize: 'big' } })).toBe(false)
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        textStyle: {
+          fontSize: 18,
+          fontWeight: 400,
+          color: 'rgb(0, 0, 0)',
+          textAlign: 'left',
+          lineHeight: null,
+        },
+      }),
+    ).toBe(false)
+    expect(isEditorSelectionInfo({ ...selection, imageNaturalSize: { width: 800 } })).toBe(false)
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        imageNaturalSize: { width: Number.NaN, height: 10 },
+      }),
+    ).toBe(false)
   })
 
   it('rejects hostile editor payloads with invalid geometry and incomplete fields', () => {
