@@ -90,6 +90,25 @@ export type EditorNormalizedRect = {
 
 export type EditorImageFitMode = 'contain' | 'cover' | 'fill'
 
+/** Computed text styling for the selected element (issue #84). */
+export type EditorSelectionTextStyle = {
+  /** Computed font size in pixels. */
+  fontSize: number
+  /** Computed font weight (numeric string, e.g. "400" or "700"). */
+  fontWeight: string
+  /** Computed text color (CSS color string, typically rgb()). */
+  color: string
+  /** Computed text alignment keyword. */
+  textAlign: string
+  /** Computed line height in pixels, or null when "normal". */
+  lineHeight: number | null
+}
+
+export type EditorSelectionImageSize = {
+  width: number
+  height: number
+}
+
 export type EditorSelectionInfo = {
   elementId: string
   slideIndex: number
@@ -100,6 +119,12 @@ export type EditorSelectionInfo = {
   editableKind: string | null
   textPreview: string | null
   imageFit?: EditorImageFitMode | null
+  /** Semantic role from data-ark-role, when present (issue #84). */
+  role?: string | null
+  /** Computed text styles for text-like selections (issue #84). */
+  textStyle?: EditorSelectionTextStyle | null
+  /** Intrinsic image dimensions for img selections (issue #84). */
+  imageNaturalSize?: EditorSelectionImageSize | null
 }
 
 export type EditorEnableMessage = {
@@ -282,6 +307,28 @@ export function isEditorNormalizedRect(value: unknown): value is EditorNormalize
   )
 }
 
+export function isEditorSelectionTextStyle(value: unknown): value is EditorSelectionTextStyle {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return (
+    isFiniteNumber(value.fontSize) &&
+    typeof value.fontWeight === 'string' &&
+    typeof value.color === 'string' &&
+    typeof value.textAlign === 'string' &&
+    (value.lineHeight === null || isFiniteNumber(value.lineHeight))
+  )
+}
+
+export function isEditorSelectionImageSize(value: unknown): value is EditorSelectionImageSize {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return isFiniteNumber(value.width) && isFiniteNumber(value.height)
+}
+
 export function isEditorSelectionInfo(value: unknown): value is EditorSelectionInfo {
   if (!isRecord(value)) {
     return false
@@ -301,7 +348,14 @@ export function isEditorSelectionInfo(value: unknown): value is EditorSelectionI
       value.imageFit === null ||
       value.imageFit === 'contain' ||
       value.imageFit === 'cover' ||
-      value.imageFit === 'fill')
+      value.imageFit === 'fill') &&
+    (value.role === undefined || value.role === null || typeof value.role === 'string') &&
+    (value.textStyle === undefined ||
+      value.textStyle === null ||
+      isEditorSelectionTextStyle(value.textStyle)) &&
+    (value.imageNaturalSize === undefined ||
+      value.imageNaturalSize === null ||
+      isEditorSelectionImageSize(value.imageNaturalSize))
   )
 }
 
@@ -718,6 +772,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     LOCKED_ATTR: ARK_LOCKED_ATTR,
     MANAGED_ATTR: 'data-ark-managed',
     EDITABLE_ATTR: 'data-ark-editable',
+    ROLE_ATTR: 'data-ark-role',
     TRANSIENT_PREFIX: TRANSIENT_ELEMENT_ID_PREFIX,
     INLINE_TEXT_TAGS: [...INLINE_TEXT_EDITABLE_TAGS],
     TEXT_BOX_EDITABLE: ARK_TEXT_BOX_EDITABLE_VALUE,
@@ -873,12 +928,28 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
+  function findTextBoxAncestor(element, slide) {
+    var current = element;
+
+    while (current && current !== slide) {
+      if (current.nodeType === 1 && isTextBox(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
   function findEditableTarget(node, slide) {
     var current = node;
 
     while (current && current !== slide) {
       if (current.nodeType === 1 && isEditableCandidate(current, slide)) {
-        return current;
+        // Prefer the Ark text-box wrapper over its inner text elements so the
+        // whole box is selected, moved, and styled as one object (#84).
+        return findTextBoxAncestor(current, slide) || current;
       }
 
       current = current.parentElement;
@@ -935,6 +1006,41 @@ export function buildDeckEditorBridgeRuntimeScript(
     return 'contain';
   }
 
+  function readTextStyle(element) {
+    if (isImageElement(element)) {
+      return null;
+    }
+
+    var target = getTextEditTarget(element) || element;
+    var computed = window.getComputedStyle(target);
+    var fontSize = Number.parseFloat(computed.fontSize);
+    var lineHeight = Number.parseFloat(computed.lineHeight);
+
+    if (!Number.isFinite(fontSize)) {
+      return null;
+    }
+
+    return {
+      fontSize: fontSize,
+      fontWeight: String(computed.fontWeight || '400'),
+      color: String(computed.color || ''),
+      textAlign: String(computed.textAlign || ''),
+      lineHeight: Number.isFinite(lineHeight) ? lineHeight : null,
+    };
+  }
+
+  function readImageNaturalSize(element) {
+    if (
+      element.tagName.toLowerCase() === 'img' &&
+      element.naturalWidth > 0 &&
+      element.naturalHeight > 0
+    ) {
+      return { width: element.naturalWidth, height: element.naturalHeight };
+    }
+
+    return null;
+  }
+
   function buildSelection(element, slide, slideIndex) {
     return {
       elementId: resolveElementId(element, slide, slideIndex),
@@ -946,6 +1052,9 @@ export function buildDeckEditorBridgeRuntimeScript(
       editableKind: element.getAttribute(C.EDITABLE_ATTR) || null,
       textPreview: readTextPreview(element),
       imageFit: readImageFit(element),
+      role: element.getAttribute(C.ROLE_ATTR) || null,
+      textStyle: readTextStyle(element),
+      imageNaturalSize: readImageNaturalSize(element),
     };
   }
 

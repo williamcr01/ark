@@ -18,6 +18,7 @@ import {
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
   isEditorMessage,
   isEditorRuntimeMessage,
+  isEditorSelectionInfo,
   isEditorShellMessage,
   parseEditorMessage,
 } from './deck-editor-bridge'
@@ -99,6 +100,70 @@ describe('deck editor bridge protocol', () => {
     expect(parseEditorMessage(null)).toBeNull()
   })
 
+  it('accepts optional inspector selection fields (issue #84)', () => {
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        role: 'title',
+        textStyle: {
+          fontSize: 32,
+          fontWeight: '700',
+          color: 'rgb(15, 23, 42)',
+          textAlign: 'left',
+          lineHeight: 40,
+        },
+        imageNaturalSize: null,
+      }),
+    ).toBe(true)
+
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        role: null,
+        textStyle: null,
+        imageNaturalSize: { width: 800, height: 600 },
+      }),
+    ).toBe(true)
+
+    // lineHeight "normal" is reported as null.
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        textStyle: {
+          fontSize: 18,
+          fontWeight: '400',
+          color: 'rgb(0, 0, 0)',
+          textAlign: 'center',
+          lineHeight: null,
+        },
+      }),
+    ).toBe(true)
+  })
+
+  it('rejects malformed inspector selection fields', () => {
+    expect(isEditorSelectionInfo({ ...selection, role: 5 })).toBe(false)
+    expect(isEditorSelectionInfo({ ...selection, textStyle: { fontSize: 'big' } })).toBe(false)
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        textStyle: {
+          fontSize: 18,
+          fontWeight: 400,
+          color: 'rgb(0, 0, 0)',
+          textAlign: 'left',
+          lineHeight: null,
+        },
+      }),
+    ).toBe(false)
+    expect(isEditorSelectionInfo({ ...selection, imageNaturalSize: { width: 800 } })).toBe(false)
+    expect(
+      isEditorSelectionInfo({
+        ...selection,
+        imageNaturalSize: { width: Number.NaN, height: 10 },
+      }),
+    ).toBe(false)
+  })
+
   it('rejects hostile editor payloads with invalid geometry and incomplete fields', () => {
     const hostilePayloads = [
       createEditorGeometryMessage('ark-el-title', 0, { x: 1.5, y: 0, width: 0.2, height: 0.1 }),
@@ -144,6 +209,18 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain(EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE)
     expect(script).toContain('originalText')
     expect(script).toContain('ArrowLeft')
+  })
+
+  it('prefers the text-box wrapper over inner text elements as the editable target', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    const findTargetIndex = script.indexOf('function findEditableTarget')
+    expect(findTargetIndex).toBeGreaterThan(-1)
+
+    const ancestorPreferenceIndex = script.indexOf('findTextBoxAncestor(current, slide) || current')
+    expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
   })
 
   it('gates keyboard deletion to Ark-managed elements in the runtime script', () => {
