@@ -99,7 +99,16 @@ export function useDeckEditorBridge(
   } = options
 
   const [state, setState] = useState<DeckEditorBridgeState>(initialState)
+  const [trackedGenerationKey, setTrackedGenerationKey] = useState(iframeGenerationKey)
   const iframeGenerationRef = useRef(0)
+
+  // Hard-reset when the preview iframe remounts. Same-iframe enableEditor keeps
+  // in-flight commits; a new generation key is a boundary (React "adjust state
+  // when a prop changes" pattern — not an effect).
+  if (trackedGenerationKey !== iframeGenerationKey) {
+    setTrackedGenerationKey(iframeGenerationKey)
+    setState(initialState)
+  }
 
   useEffect(() => {
     iframeGenerationRef.current += 1
@@ -121,7 +130,20 @@ export function useDeckEditorBridge(
 
   const enableEditor = useCallback(
     (slideIndex = activeSlideIndex, tool: EditorTool = 'select') => {
-      setState({ ...initialState, editorError: null })
+      // Preserve readiness and in-flight commit requests across re-enable so
+      // DeckPreview can still apply them (and so we do not retrigger an
+      // enable/ready loop when editorReady would flip false → true).
+      // Do not preserve selection/geometry/text-edit UI state: slide-change
+      // re-enables must not leave the inspector targeting another slide.
+      setState((current) => ({
+        ...initialState,
+        editorError: null,
+        editorReady: current.editorReady,
+        lastInsertRequest: current.lastInsertRequest,
+        lastDeleteRequest: current.lastDeleteRequest,
+        transformCommit: current.transformCommit,
+        lastTextCommit: current.lastTextCommit,
+      }))
       return postToFrame(createEditorEnableMessage(slideIndex, tool))
     },
     [activeSlideIndex, postToFrame],

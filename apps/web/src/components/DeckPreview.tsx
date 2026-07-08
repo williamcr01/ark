@@ -867,15 +867,12 @@ export function DeckPreview({
       return
     }
 
+    // Tool changes are pushed via setTool; re-enable only when the slide or
+    // iframe generation changes so we do not clear pending insert/transform
+    // requests on every toolbar click.
     enableEditor(activeSlideIndex, activeTool)
-  }, [
-    activeSlideIndex,
-    activeTool,
-    editorBridgeInjected,
-    editorReady,
-    enableEditor,
-    previewFrame.iframeKey,
-  ])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTool is initial enable payload only; setTool owns later updates
+  }, [activeSlideIndex, editorBridgeInjected, editorReady, enableEditor, previewFrame.iframeKey])
 
   useEffect(() => {
     if (!editChromeActive || !selection?.elementId) {
