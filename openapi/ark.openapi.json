@@ -192,13 +192,8 @@
                 "type": "object",
                 "properties": {
                   "html": { "type": "string" },
-                  "source": {
-                    "type": "string",
-                    "enum": ["manual", "agent", "upload", "repair", "rollback"]
-                  },
+                  "source": { "type": "string" },
                   "summary": { "type": "string", "nullable": true },
-                  "modelProvider": { "type": "string", "nullable": true },
-                  "modelName": { "type": "string", "nullable": true },
                   "provenance": {
                     "type": "object",
                     "properties": {
@@ -242,79 +237,6 @@
                         "maxItems": 200
                       }
                     }
-                  },
-                  "diff": {
-                    "type": "object",
-                    "properties": {
-                      "kind": { "type": "string", "enum": ["structural", "coarse"] },
-                      "slideCountBefore": { "type": "integer", "minimum": 0 },
-                      "slideCountAfter": { "type": "integer", "minimum": 0 },
-                      "addedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "index": { "type": "integer", "minimum": 0 },
-                            "title": { "type": "string" }
-                          },
-                          "required": ["index", "title"]
-                        },
-                        "maxItems": 100
-                      },
-                      "deletedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "index": { "type": "integer", "minimum": 0 },
-                            "title": { "type": "string" }
-                          },
-                          "required": ["index", "title"]
-                        },
-                        "maxItems": 100
-                      },
-                      "movedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "fromIndex": { "type": "integer", "minimum": 0 },
-                            "toIndex": { "type": "integer", "minimum": 0 }
-                          },
-                          "required": ["fromIndex", "toIndex"]
-                        },
-                        "maxItems": 100
-                      },
-                      "changedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "index": { "type": "integer", "minimum": 0 },
-                            "titleChanged": { "type": "boolean" },
-                            "notesChanged": { "type": "boolean" },
-                            "contentChanged": { "type": "boolean" },
-                            "title": { "type": "string" }
-                          },
-                          "required": ["index"]
-                        },
-                        "maxItems": 100
-                      },
-                      "titleChanged": { "type": "boolean" },
-                      "assetsAdded": {
-                        "type": "array",
-                        "items": { "type": "string", "maxLength": 2048 },
-                        "maxItems": 50
-                      },
-                      "assetsRemoved": {
-                        "type": "array",
-                        "items": { "type": "string", "maxLength": 2048 },
-                        "maxItems": 50
-                      },
-                      "htmlBytesBefore": { "type": "integer", "minimum": 0 },
-                      "htmlBytesAfter": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["kind"]
                   }
                 },
                 "required": ["html"]
@@ -644,13 +566,8 @@
                 "type": "object",
                 "properties": {
                   "html": { "type": "string" },
-                  "source": {
-                    "type": "string",
-                    "enum": ["manual", "agent", "upload", "repair", "rollback"]
-                  },
+                  "source": { "type": "string" },
                   "summary": { "type": "string", "nullable": true },
-                  "modelProvider": { "type": "string", "nullable": true },
-                  "modelName": { "type": "string", "nullable": true },
                   "provenance": {
                     "type": "object",
                     "properties": {
@@ -694,79 +611,6 @@
                         "maxItems": 200
                       }
                     }
-                  },
-                  "diff": {
-                    "type": "object",
-                    "properties": {
-                      "kind": { "type": "string", "enum": ["structural", "coarse"] },
-                      "slideCountBefore": { "type": "integer", "minimum": 0 },
-                      "slideCountAfter": { "type": "integer", "minimum": 0 },
-                      "addedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "index": { "type": "integer", "minimum": 0 },
-                            "title": { "type": "string" }
-                          },
-                          "required": ["index", "title"]
-                        },
-                        "maxItems": 100
-                      },
-                      "deletedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "index": { "type": "integer", "minimum": 0 },
-                            "title": { "type": "string" }
-                          },
-                          "required": ["index", "title"]
-                        },
-                        "maxItems": 100
-                      },
-                      "movedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "fromIndex": { "type": "integer", "minimum": 0 },
-                            "toIndex": { "type": "integer", "minimum": 0 }
-                          },
-                          "required": ["fromIndex", "toIndex"]
-                        },
-                        "maxItems": 100
-                      },
-                      "changedSlides": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "index": { "type": "integer", "minimum": 0 },
-                            "titleChanged": { "type": "boolean" },
-                            "notesChanged": { "type": "boolean" },
-                            "contentChanged": { "type": "boolean" },
-                            "title": { "type": "string" }
-                          },
-                          "required": ["index"]
-                        },
-                        "maxItems": 100
-                      },
-                      "titleChanged": { "type": "boolean" },
-                      "assetsAdded": {
-                        "type": "array",
-                        "items": { "type": "string", "maxLength": 2048 },
-                        "maxItems": 50
-                      },
-                      "assetsRemoved": {
-                        "type": "array",
-                        "items": { "type": "string", "maxLength": 2048 },
-                        "maxItems": 50
-                      },
-                      "htmlBytesBefore": { "type": "integer", "minimum": 0 },
-                      "htmlBytesAfter": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["kind"]
                   }
                 },
                 "required": ["html"]
@@ -1782,7 +1626,7 @@
                                   "type": "object",
                                   "properties": {
                                     "index": { "type": "integer", "minimum": 0 },
-                                    "title": { "type": "string" }
+                                    "title": { "type": "string", "maxLength": 200 }
                                   },
                                   "required": ["index", "title"]
                                 },
@@ -1794,7 +1638,7 @@
                                   "type": "object",
                                   "properties": {
                                     "index": { "type": "integer", "minimum": 0 },
-                                    "title": { "type": "string" }
+                                    "title": { "type": "string", "maxLength": 200 }
                                   },
                                   "required": ["index", "title"]
                                 },
@@ -1821,7 +1665,7 @@
                                     "titleChanged": { "type": "boolean" },
                                     "notesChanged": { "type": "boolean" },
                                     "contentChanged": { "type": "boolean" },
-                                    "title": { "type": "string" }
+                                    "title": { "type": "string", "maxLength": 200 }
                                   },
                                   "required": ["index"]
                                 },
@@ -2066,7 +1910,7 @@
                                 "type": "object",
                                 "properties": {
                                   "index": { "type": "integer", "minimum": 0 },
-                                  "title": { "type": "string" }
+                                  "title": { "type": "string", "maxLength": 200 }
                                 },
                                 "required": ["index", "title"]
                               },
@@ -2078,7 +1922,7 @@
                                 "type": "object",
                                 "properties": {
                                   "index": { "type": "integer", "minimum": 0 },
-                                  "title": { "type": "string" }
+                                  "title": { "type": "string", "maxLength": 200 }
                                 },
                                 "required": ["index", "title"]
                               },
@@ -2105,7 +1949,7 @@
                                   "titleChanged": { "type": "boolean" },
                                   "notesChanged": { "type": "boolean" },
                                   "contentChanged": { "type": "boolean" },
-                                  "title": { "type": "string" }
+                                  "title": { "type": "string", "maxLength": 200 }
                                 },
                                 "required": ["index"]
                               },

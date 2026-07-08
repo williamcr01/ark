@@ -24,6 +24,7 @@ import {
 import {
   normalizeDeckVersionDiff,
   normalizeDeckVersionProvenance,
+  truncateDeckVersionSummary,
   type DeckVersionDiff,
   type DeckVersionProvenance,
 } from '@ark/contracts'
@@ -271,7 +272,8 @@ function createVersion(
     html,
     title,
     source: normalizeDeckVersionSource(options.source),
-    summary: options.summary ?? null,
+    summary:
+      typeof options.summary === 'string' ? truncateDeckVersionSummary(options.summary) : null,
     modelProvider: options.modelProvider ?? null,
     modelName: options.modelName ?? null,
     provenance: normalizeDeckVersionProvenance(options.provenance),
