@@ -265,6 +265,55 @@ describe('buildAgentModelMessages', () => {
     expect(content[1]?.type).toBe('text')
     expect(content[1]?.text).toContain('attached 1 file')
   })
+
+  it('injects editor selection context into the latest user turn', () => {
+    const messages = buildAgentModelMessages(
+      [{ role: 'user', content: 'make this punchier' }],
+      '<html><body><section class="slide">cats</section></body></html>',
+      {
+        slideIndex: 1,
+        slideId: 'ark-slide-abc',
+        elementId: 'ark-el-42',
+        elementKind: 'text',
+        textPreview: 'Our Mission',
+        locked: false,
+        managed: true,
+      },
+    )
+
+    const content = messages[0]?.content as string
+    expect(content).toContain('make this punchier')
+    expect(content).toContain('ark-el-42')
+    expect(content).toContain('slide 1')
+    expect(content).toContain('Our Mission')
+    expect(content).toContain('patch_element')
+  })
+
+  it('adds lock guidance when the selected element is locked', () => {
+    const messages = buildAgentModelMessages(
+      [{ role: 'user', content: 'change this' }],
+      '<html><body><section class="slide">cats</section></body></html>',
+      {
+        slideIndex: 0,
+        elementId: 'ark-el-7',
+        locked: true,
+      },
+    )
+
+    const content = messages[0]?.content as string
+    expect(content).toContain('locked')
+    expect(content).toMatch(/cannot be changed|safe patch/)
+  })
+
+  it('omits selection context when none is provided', () => {
+    const messages = buildAgentModelMessages(
+      [{ role: 'user', content: 'update the deck' }],
+      '<html><body><section class="slide">cats</section></body></html>',
+    )
+
+    const content = messages[0]?.content as string
+    expect(content).not.toContain('selected in the editor')
+  })
 })
 
 describe('chatAttachmentsToFileParts', () => {

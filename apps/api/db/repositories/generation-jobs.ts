@@ -61,6 +61,9 @@ function readRequestMetadata(metadata: Record<string, unknown> | null): Generati
     currentHtml,
     baseVersionId: typeof metadata?.baseVersionId === 'string' ? metadata.baseVersionId : null,
     editingExistingDeck: metadata?.editingExistingDeck === true,
+    ...(metadata?.editorSelection && typeof metadata.editorSelection === 'object'
+      ? { editorSelection: metadata.editorSelection as GenerationJobRequest['editorSelection'] }
+      : {}),
   }
 }
 
@@ -191,6 +194,7 @@ export function createPostgresGenerationJobStore(
       currentHtml: request.currentHtml,
       baseVersionId: input.baseVersionId ?? request.baseVersionId ?? null,
       editingExistingDeck: request.editingExistingDeck ?? false,
+      ...(request.editorSelection ? { editorSelection: request.editorSelection } : {}),
       retryOfJobId: input.retryOfJobId ?? null,
       assetIds: input.assetIds ?? [],
       progress: createEmptyGenerationJobProgress(),
@@ -302,6 +306,9 @@ export function createPostgresGenerationJobStore(
       currentHtml: existing.request.currentHtml,
       baseVersionId: existing.baseVersionId,
       editingExistingDeck: existing.request.editingExistingDeck ?? false,
+      ...(existing.request.editorSelection
+        ? { editorSelection: existing.request.editorSelection }
+        : {}),
       retryOfJobId: existing.retryOfJobId,
       assetIds: existing.assetIds ?? [],
       progress: patch.progress ?? existing.progress,
@@ -407,6 +414,9 @@ export function createPostgresGenerationJobStore(
       currentHtml: existing.request.currentHtml,
       baseVersionId: existing.baseVersionId,
       editingExistingDeck: existing.request.editingExistingDeck ?? false,
+      ...(existing.request.editorSelection
+        ? { editorSelection: existing.request.editorSelection }
+        : {}),
       retryOfJobId: existing.retryOfJobId,
       assetIds: existing.assetIds ?? [],
       progress: patch.progress ?? existing.progress,
