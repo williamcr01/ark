@@ -359,6 +359,109 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Selection')).toHaveTextContent('fresh-selection')
   })
 
+  it('preserves in-flight insert requests across same-iframe re-enable', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'selected-before-enable',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Selected',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('selected-before-enable', 0, {
+            x: 0.1,
+            y: 0.1,
+            width: 0.2,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorInsertRequestMessage('text-box', 0, {
+            x: 0.1,
+            y: 0.2,
+            width: 0.3,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('selected-before-enable')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('text-box')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enable editor' }))
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('text-box')
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
+  })
+
+  it('drops in-flight insert requests when the preview iframe remounts', async () => {
+    const { rerender } = render(
+      <EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-1" />,
+    )
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorInsertRequestMessage('text-box', 0, {
+            x: 0.1,
+            y: 0.2,
+            width: 0.3,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('text-box')
+
+    rerender(<EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-2" />)
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('pending')
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('none')
+  })
+
   it('tracks iframe text-edit lifecycle state', async () => {
     function TextEditHarness() {
       const iframeRef = useRef<HTMLIFrameElement>(null)

@@ -604,6 +604,7 @@ function App() {
                   layout="mobile"
                   onCommitTextEdit={handleCommitTextEdit}
                   onEditorSelectionChange={handleEditorSelectionChange}
+                  onPatchEditorOperations={handlePatchEditorOperations}
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
                   parsedDeck={parsedDeck}
