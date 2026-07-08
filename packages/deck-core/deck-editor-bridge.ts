@@ -928,12 +928,28 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
+  function findTextBoxAncestor(element, slide) {
+    var current = element;
+
+    while (current && current !== slide) {
+      if (current.nodeType === 1 && isTextBox(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
   function findEditableTarget(node, slide) {
     var current = node;
 
     while (current && current !== slide) {
       if (current.nodeType === 1 && isEditableCandidate(current, slide)) {
-        return current;
+        // Prefer the Ark text-box wrapper over its inner text elements so the
+        // whole box is selected, moved, and styled as one object (#84).
+        return findTextBoxAncestor(current, slide) || current;
       }
 
       current = current.parentElement;
