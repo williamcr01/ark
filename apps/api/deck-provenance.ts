@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto'
 
-import type { DeckVersionProvenance, DeckProvenanceOperation } from '@ark/contracts'
+import {
+  truncateDeckVersionText,
+  type DeckVersionProvenance,
+  type DeckProvenanceOperation,
+  type DeckVersionDetail,
+  type DeckVersionDiff,
+} from '@ark/contracts'
 import type { AgentStep } from '@ark/deck-core/chat.ts'
 import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import type { DeckVersionDetail } from '@ark/contracts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 
 const PROVENANCE_OPERATION_SET = new Set<DeckProvenanceOperation>([
@@ -33,16 +38,7 @@ const MAX_TOOL_CALLS = 50
 const MAX_SUMMARY_LENGTH = 300
 
 function truncateSummary(summary: string) {
-  const withoutHtml = summary
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (withoutHtml.length <= MAX_SUMMARY_LENGTH) {
-    return withoutHtml
-  }
-
-  return `${withoutHtml.slice(0, MAX_SUMMARY_LENGTH - 1)}…`
+  return truncateDeckVersionText(summary, MAX_SUMMARY_LENGTH)
 }
 
 function toProvenanceOperation(op: string): DeckProvenanceOperation | null {
@@ -131,5 +127,33 @@ export function compactVersionProvenanceForAgent(
     restoredVersionId: provenance.restoredVersionId,
     restoredVersionNumber: provenance.restoredVersionNumber,
     runtimeManifestHash: provenance.runtimeManifestHash,
+  }
+}
+
+/** Compact structural diffs for the agent loop — never returns full data: URIs. */
+export function compactVersionDiffForAgent(diff: DeckVersionDiff | null | undefined) {
+  if (!diff) {
+    return null
+  }
+
+  if (diff.kind === 'coarse') {
+    return {
+      kind: 'coarse' as const,
+      htmlBytesBefore: diff.htmlBytesBefore,
+      htmlBytesAfter: diff.htmlBytesAfter,
+    }
+  }
+
+  return {
+    kind: 'structural' as const,
+    slideCountBefore: diff.slideCountBefore,
+    slideCountAfter: diff.slideCountAfter,
+    addedSlides: diff.addedSlides,
+    deletedSlides: diff.deletedSlides,
+    movedSlides: diff.movedSlides,
+    changedSlides: diff.changedSlides,
+    titleChanged: diff.titleChanged,
+    assetsAddedCount: diff.assetsAdded?.length,
+    assetsRemovedCount: diff.assetsRemoved?.length,
   }
 }

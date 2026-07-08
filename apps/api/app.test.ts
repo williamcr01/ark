@@ -108,7 +108,7 @@ describe('deck API routes', () => {
     const updateResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml, source: 'agent', summary: 'AI edit' }),
+      body: JSON.stringify({ html: updatedHtml, source: 'manual', summary: 'Manual edit' }),
     })
     const updated = await updateResponse.json()
 
@@ -256,13 +256,16 @@ describe('deck API routes', () => {
     expect(forgedManualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
     expect(JSON.stringify(forgedManualVersions.versions?.[0].provenance)).not.toContain('<section')
 
-    const agentHtml = manualHtml.replace('Manual edit', 'Agent edit')
+    const forgedAgentHtml = manualHtml.replace('Manual edit', 'Forged agent')
     await fetch(`${baseUrl}/api/decks/${deckId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        html: agentHtml,
+        html: forgedAgentHtml,
         source: 'agent',
+        modelProvider: 'openai',
+        modelName: 'gpt-forged',
+        diff: { kind: 'coarse', htmlBytesBefore: 1, htmlBytesAfter: 2 },
         provenance: {
           jobId: 'forged-job-id',
           operations: ['undo'],
@@ -270,15 +273,23 @@ describe('deck API routes', () => {
       }),
     })
 
-    const agentVersions = await (await fetch(`${baseUrl}/api/decks/${deckId}/versions`)).json()
-    expect(agentVersions.versions?.[0]).toMatchObject({
-      source: 'agent',
+    const forgedAgentVersions = await (
+      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    ).json()
+    // Spoofed agent/rollback sources coerce to manual; only manual provenance fields stick.
+    expect(forgedAgentVersions.versions?.[0]).toMatchObject({
+      source: 'manual',
       provenance: {
+        operations: ['undo'],
         runtimeManifestHash: expect.any(String),
       },
     })
-    expect(agentVersions.versions?.[0].provenance?.jobId).toBeUndefined()
-    expect(agentVersions.versions?.[0].provenance?.operations).toBeUndefined()
+    expect(forgedAgentVersions.versions?.[0].modelProvider ?? null).toBeNull()
+    expect(forgedAgentVersions.versions?.[0].modelName ?? null).toBeNull()
+    expect(forgedAgentVersions.versions?.[0].diff?.kind).toBe('structural')
+    expect(forgedAgentVersions.versions?.[0].diff?.htmlBytesBefore).toBeUndefined()
+    expect(forgedAgentVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(forgedAgentVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
   })
 
   it('lists versions, fetches one version, and rolls back without losing history', async () => {
@@ -297,7 +308,7 @@ describe('deck API routes', () => {
     await fetch(`${baseUrl}/api/decks/${deckId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml, source: 'agent' }),
+      body: JSON.stringify({ html: updatedHtml, source: 'manual' }),
     })
 
     const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
@@ -308,7 +319,7 @@ describe('deck API routes', () => {
     expect(versionsPayload.versions).toHaveLength(2)
     expect(versionsPayload.versions?.[0]).toMatchObject({
       versionNumber: 2,
-      source: 'agent',
+      source: 'manual',
       isActive: true,
     })
     expect(versionsPayload.versions?.[1]).toMatchObject({

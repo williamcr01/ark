@@ -1,13 +1,23 @@
-import type { DeckVersionDiff } from '@ark/contracts'
+import {
+  normalizeDeckVersionDiff,
+  truncateDeckVersionSlideTitle,
+  type DeckVersionDiff,
+} from '@ark/contracts'
 
 import { parseDeckHtml, type ParsedDeckSlide } from './deck-parser.ts'
 
 function coarseDiff(beforeHtml: string, afterHtml: string): DeckVersionDiff {
-  return {
-    kind: 'coarse',
-    htmlBytesBefore: Buffer.byteLength(beforeHtml, 'utf8'),
-    htmlBytesAfter: Buffer.byteLength(afterHtml, 'utf8'),
-  }
+  return (
+    normalizeDeckVersionDiff({
+      kind: 'coarse',
+      htmlBytesBefore: Buffer.byteLength(beforeHtml, 'utf8'),
+      htmlBytesAfter: Buffer.byteLength(afterHtml, 'utf8'),
+    }) ?? {
+      kind: 'coarse',
+      htmlBytesBefore: Buffer.byteLength(beforeHtml, 'utf8'),
+      htmlBytesAfter: Buffer.byteLength(afterHtml, 'utf8'),
+    }
+  )
 }
 
 function slideMatchKey(slide: ParsedDeckSlide) {
@@ -24,31 +34,43 @@ type MatchedSlidePair = {
 }
 
 function matchSlides(beforeSlides: ParsedDeckSlide[], afterSlides: ParsedDeckSlide[]) {
-  const beforeByKey = new Map<string, ParsedDeckSlide>()
-  const afterByKey = new Map<string, ParsedDeckSlide>()
+  const beforeByKey = new Map<string, ParsedDeckSlide[]>()
+  const afterByKey = new Map<string, ParsedDeckSlide[]>()
 
   for (const slide of beforeSlides) {
-    beforeByKey.set(slideMatchKey(slide), slide)
+    const key = slideMatchKey(slide)
+    const bucket = beforeByKey.get(key) ?? []
+    bucket.push(slide)
+    beforeByKey.set(key, bucket)
   }
 
   for (const slide of afterSlides) {
-    afterByKey.set(slideMatchKey(slide), slide)
+    const key = slideMatchKey(slide)
+    const bucket = afterByKey.get(key) ?? []
+    bucket.push(slide)
+    afterByKey.set(key, bucket)
   }
 
   const matched: MatchedSlidePair[] = []
   const matchedBefore = new Set<ParsedDeckSlide>()
   const matchedAfter = new Set<ParsedDeckSlide>()
 
-  for (const [key, beforeSlide] of beforeByKey) {
-    const afterSlide = afterByKey.get(key)
+  for (const [key, beforeBucket] of beforeByKey) {
+    const afterBucket = afterByKey.get(key)
 
-    if (!afterSlide) {
+    if (!afterBucket) {
       continue
     }
 
-    matched.push({ before: beforeSlide, after: afterSlide })
-    matchedBefore.add(beforeSlide)
-    matchedAfter.add(afterSlide)
+    const pairCount = Math.min(beforeBucket.length, afterBucket.length)
+
+    for (let index = 0; index < pairCount; index += 1) {
+      const beforeSlide = beforeBucket[index]
+      const afterSlide = afterBucket[index]
+      matched.push({ before: beforeSlide, after: afterSlide })
+      matchedBefore.add(beforeSlide)
+      matchedAfter.add(afterSlide)
+    }
   }
 
   const unmatchedBefore = beforeSlides.filter((slide) => !matchedBefore.has(slide))
@@ -80,6 +102,13 @@ function matchSlides(beforeSlides: ParsedDeckSlide[], afterSlides: ParsedDeckSli
 
 function assetUrls(assets: Array<{ url: string }>) {
   return [...new Set(assets.map((asset) => asset.url))].sort()
+}
+
+function slideRef(slide: ParsedDeckSlide) {
+  return {
+    index: slide.index,
+    title: truncateDeckVersionSlideTitle(slide.title),
+  }
 }
 
 export function computeDeckVersionDiff(beforeHtml: string, afterHtml: string): DeckVersionDiff {
@@ -117,7 +146,7 @@ export function computeDeckVersionDiff(beforeHtml: string, afterHtml: string): D
 
         return {
           index: afterSlide.index,
-          title: afterSlide.title,
+          title: truncateDeckVersionSlideTitle(afterSlide.title),
           titleChanged: titleChanged || undefined,
           notesChanged: notesChanged || undefined,
           contentChanged: contentChanged || undefined,
@@ -130,18 +159,20 @@ export function computeDeckVersionDiff(beforeHtml: string, afterHtml: string): D
     const assetsAdded = afterAssets.filter((url) => !beforeAssets.includes(url))
     const assetsRemoved = beforeAssets.filter((url) => !afterAssets.includes(url))
 
-    return {
-      kind: 'structural',
-      slideCountBefore: before.slideCount,
-      slideCountAfter: after.slideCount,
-      addedSlides: added.map((slide) => ({ index: slide.index, title: slide.title })),
-      deletedSlides: deleted.map((slide) => ({ index: slide.index, title: slide.title })),
-      movedSlides,
-      changedSlides,
-      titleChanged: before.title !== after.title ? true : undefined,
-      assetsAdded: assetsAdded.length > 0 ? assetsAdded : undefined,
-      assetsRemoved: assetsRemoved.length > 0 ? assetsRemoved : undefined,
-    }
+    return (
+      normalizeDeckVersionDiff({
+        kind: 'structural',
+        slideCountBefore: before.slideCount,
+        slideCountAfter: after.slideCount,
+        addedSlides: added.map(slideRef),
+        deletedSlides: deleted.map(slideRef),
+        movedSlides,
+        changedSlides,
+        titleChanged: before.title !== after.title ? true : undefined,
+        assetsAdded: assetsAdded.length > 0 ? assetsAdded : undefined,
+        assetsRemoved: assetsRemoved.length > 0 ? assetsRemoved : undefined,
+      }) ?? coarseDiff(beforeHtml, afterHtml)
+    )
   } catch {
     return coarseDiff(beforeHtml, afterHtml)
   }

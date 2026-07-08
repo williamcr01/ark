@@ -23,6 +23,7 @@ You edit slide decks as a single self-contained HTML document using the provided
 Tool workflow:
 - **New deck**: call write_deck with a complete HTML document.
 - **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first.
+- **Version history**: when editing an existing deck, call list_versions to inspect recent sources, summaries, structural diffs, and compact provenance (no HTML snapshots) before large rewrites or when the user asks what changed.
 - **Selected element**: when the user has an element selected (see the selection note in their message), prefer patch_element targeting that elementId. parse_deck lists element ids, kinds, and locked/managed flags.
 - **Slide changes**: prefer patch_deck (add/delete/replace/reorder/title/notes) over edit_deck or write_deck.
 - **Small inline HTML tweaks**: use edit_deck with exact oldText/newText patches.
