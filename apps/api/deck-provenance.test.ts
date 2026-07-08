@@ -6,6 +6,7 @@ import {
   buildAgentVersionProvenance,
   buildManualVersionProvenance,
   buildRollbackVersionProvenance,
+  compactVersionDiffForAgent,
   compactVersionProvenanceForAgent,
   hashRuntimeManifest,
 } from './deck-provenance.ts'
@@ -104,5 +105,27 @@ describe('deck provenance builders', () => {
       { toolName: 'patch_deck', summary: 'Applied Secret deck HTML' },
     ])
     expect(JSON.stringify(compact)).not.toContain('<section')
+  })
+
+  it('compacts structural diffs to asset counts for the agent', () => {
+    const compact = compactVersionDiffForAgent({
+      kind: 'structural',
+      slideCountBefore: 1,
+      slideCountAfter: 2,
+      assetsAdded: ['data-asset:data:image/png;base64;len=12;fp=abcd1234'],
+      assetsRemoved: ['/api/assets/x'],
+      addedSlides: [{ index: 1, title: 'New' }],
+    })
+
+    expect(compact).toMatchObject({
+      kind: 'structural',
+      slideCountBefore: 1,
+      slideCountAfter: 2,
+      assetsAddedCount: 1,
+      assetsRemovedCount: 1,
+      addedSlides: [{ index: 1, title: 'New' }],
+    })
+    expect(compact).not.toHaveProperty('assetsAdded')
+    expect(compact).not.toHaveProperty('assetsRemoved')
   })
 })

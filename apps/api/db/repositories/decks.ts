@@ -4,7 +4,11 @@ import { createPostgresPool, type ConnectablePool, type Queryable } from '../cli
 import { runMigrations } from '../migrate.ts'
 import { parseDeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { buildDeckRuntimeManifestFromHtml } from '../../deck-manifest.ts'
-import { normalizeDeckVersionDiff, normalizeDeckVersionProvenance } from '@ark/contracts'
+import {
+  normalizeDeckVersionDiff,
+  normalizeDeckVersionProvenance,
+  truncateDeckVersionSummary,
+} from '@ark/contracts'
 import {
   type DeckStore,
   type DeckSummary,
@@ -164,8 +168,8 @@ function buildVersionMetadata(options: DeckVersionOptions, html: string) {
   const metadata: Record<string, unknown> = {}
   const manifest = resolveVersionManifest(html, options)
 
-  if (options.summary) {
-    metadata.summary = options.summary
+  if (typeof options.summary === 'string' && options.summary.trim()) {
+    metadata.summary = truncateDeckVersionSummary(options.summary)
   }
 
   metadata.manifest = manifest
