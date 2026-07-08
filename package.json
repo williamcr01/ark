@@ -22,7 +22,8 @@
     "lockfile:check": "pnpm install --frozen-lockfile",
     "smoke:plain-css": "tsx scripts/smoke-plain-css.ts",
     "smoke:reveal-runtime": "tsx scripts/smoke-reveal-runtime.ts",
-    "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime",
+    "smoke:full-js-bridge": "tsx scripts/smoke-full-js-bridge.ts",
+    "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime && pnpm smoke:full-js-bridge",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check"
