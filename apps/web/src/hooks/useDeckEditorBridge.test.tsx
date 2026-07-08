@@ -359,6 +359,41 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Selection')).toHaveTextContent('fresh-selection')
   })
 
+  it('preserves in-flight insert requests across same-iframe re-enable', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorInsertRequestMessage('text-box', 0, {
+            x: 0.1,
+            y: 0.2,
+            width: 0.3,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('text-box')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enable editor' }))
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    expect(screen.getByLabelText('Insert request')).toHaveTextContent('text-box')
+  })
+
   it('tracks iframe text-edit lifecycle state', async () => {
     function TextEditHarness() {
       const iframeRef = useRef<HTMLIFrameElement>(null)

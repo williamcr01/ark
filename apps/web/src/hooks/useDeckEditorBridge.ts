@@ -99,7 +99,16 @@ export function useDeckEditorBridge(
   } = options
 
   const [state, setState] = useState<DeckEditorBridgeState>(initialState)
+  const [trackedGenerationKey, setTrackedGenerationKey] = useState(iframeGenerationKey)
   const iframeGenerationRef = useRef(0)
+
+  // Hard-reset when the preview iframe remounts. Same-iframe enableEditor keeps
+  // in-flight commits; a new generation key is a boundary (React "adjust state
+  // when a prop changes" pattern — not an effect).
+  if (trackedGenerationKey !== iframeGenerationKey) {
+    setTrackedGenerationKey(iframeGenerationKey)
+    setState(initialState)
+  }
 
   useEffect(() => {
     iframeGenerationRef.current += 1
