@@ -23,7 +23,8 @@
     "smoke:plain-css": "tsx scripts/smoke-plain-css.ts",
     "smoke:reveal-runtime": "tsx scripts/smoke-reveal-runtime.ts",
     "smoke:full-js-bridge": "tsx scripts/smoke-full-js-bridge.ts",
-    "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime && pnpm smoke:full-js-bridge",
+    "smoke:manual-edit": "tsx scripts/smoke-manual-edit.ts",
+    "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime && pnpm smoke:full-js-bridge && pnpm smoke:manual-edit",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check"
