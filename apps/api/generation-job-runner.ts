@@ -202,6 +202,7 @@ export function createGenerationJobRunner({
         modelRef: currentJob.model,
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
+        editorSelection: currentJob.request.editorSelection,
         abortSignal: abortController.signal,
         logger: jobLogger,
         onStepProgress: async (steps) => {
@@ -360,6 +361,46 @@ export function createGenerationJobRunner({
               assistantText: agentResult.assistantText,
               deckId: failedJob.deckId,
               error: failedJob.error,
+            })
+          }
+
+          return
+        }
+
+        if (agentResult.changed === false) {
+          const succeededJob = await jobStore.updateJob(jobId, {
+            status: 'succeeded',
+            deckId: existingDeck.id,
+            progress: {
+              steps: agentResult.steps,
+              stepCount: agentResult.steps.length,
+              assistantText: agentResult.assistantText,
+            },
+            result: {
+              deckId: existingDeck.id,
+              versionId: existingDeck.activeVersionId ?? '',
+              html: existingDeck.html,
+              validation: agentResult.validation,
+              assistantText: agentResult.assistantText,
+            },
+            observability,
+            completedAt: now().toISOString(),
+          })
+
+          jobLogger.info('generation.job.succeeded', {
+            changed: false,
+            durationMs: observability.durationMs,
+            stepCount: agentResult.steps.length,
+            tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+          })
+
+          if (succeededJob) {
+            await persistTerminalAssistantMessage(succeededJob, {
+              status: 'succeeded',
+              steps: agentResult.steps,
+              assistantText: agentResult.assistantText,
+              deckId: existingDeck.id,
+              deckVersionId: existingDeck.activeVersionId ?? null,
             })
           }
 
@@ -687,6 +728,7 @@ export function createGenerationJobRunner({
         currentHtml,
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
+        ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
       },
     }
 

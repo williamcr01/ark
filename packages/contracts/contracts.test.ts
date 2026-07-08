@@ -148,6 +148,38 @@ describe('shared API contracts', () => {
         assetIds: [assetId],
       }).success,
     ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'make this bigger' }],
+        deckId,
+        editorSelection: {
+          slideIndex: 2,
+          slideId: 'ark-slide-1',
+          elementId: 'ark-el-9',
+          elementKind: 'text',
+          textPreview: 'Headline',
+          locked: false,
+          managed: true,
+        },
+      }).success,
+    ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'make this bigger' }],
+        deckId,
+        editorSelection: { slideIndex: 0 },
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'make this bigger' }],
+        deckId,
+        editorSelection: { slideIndex: -1, elementId: 'ark-el-9' },
+      }).success,
+    ).toBe(false)
   })
 
   it('parses preview session contracts', () => {

@@ -6,6 +6,7 @@ import {
   toApiMessages,
   type AgentStep,
   type ChatMessage,
+  type EditorSelectionContext,
 } from '@ark/deck-core/chat.ts'
 import type { GenerationJobApi, GenerationJobStatus } from '@ark/contracts'
 import {
@@ -206,7 +207,11 @@ export function useGenerationJob({
   )
 
   const startGeneration = useCallback(
-    async (messages: ChatMessage[], currentHtml: string, options: { assetIds?: string[] } = {}) => {
+    async (
+      messages: ChatMessage[],
+      currentHtml: string,
+      options: { assetIds?: string[]; editorSelection?: EditorSelectionContext } = {},
+    ) => {
       if (isGenerating || !canGenerate) {
         return null
       }
@@ -223,6 +228,7 @@ export function useGenerationJob({
           deckId,
           baseVersionId,
           ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
+          ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
         })
 
         setActiveJob(job)

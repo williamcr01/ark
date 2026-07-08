@@ -12,6 +12,7 @@ import { createAssetStore } from './asset-store.ts'
 import { createAssetStorageKey, createLocalAssetStorage } from './asset-storage.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
 
@@ -31,6 +32,20 @@ const stubAgentFailure = async (): Promise<RunDeckAgentResult> => ({
   error: 'Stubbed agent failure for tests.',
   steps: [],
 })
+
+const stubProviderMetrics = {
+  latencyMs: 42,
+  model: 'openai:gpt-4.1-mini',
+  provider: 'openai',
+  tokenUsage: {
+    inputTokens: 10,
+    outputTokens: 20,
+    totalTokens: 30,
+  },
+  finishReason: 'stop',
+  retryCount: 0,
+  errorCategory: null,
+}
 
 describe('generation job runner', () => {
   let deckDir = ''
@@ -105,6 +120,121 @@ describe('generation job runner', () => {
     const stored = await jobStore.getJob(job.id)
     expect(stored?.status).toBe('canceled')
     expect(stored?.completedAt).toBeTruthy()
+  })
+
+  it('threads editor selection context into the agent run and stores it on the job', async () => {
+    let capturedSelection: unknown = 'unset'
+    let resolveCaptured: () => void = () => {}
+    const captured = new Promise<void>((resolve) => {
+      resolveCaptured = resolve
+    })
+
+    const { runner } = await createRunner({
+      runAgent: async (options) => {
+        capturedSelection = options.editorSelection
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+    })
+
+    const editorSelection = {
+      slideIndex: 1,
+      slideId: 'ark-slide-1',
+      elementId: 'ark-el-9',
+      elementKind: 'text',
+      textPreview: 'Headline',
+      locked: false,
+      managed: true,
+    }
+
+    const job = await runner.startJob({
+      body: {
+        messages: [{ role: 'user', content: 'make this punchier' }],
+        currentHtml: sampleHtml,
+        editorSelection,
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    await captured
+
+    // Let the job settle so temp-dir cleanup does not race with pending writes.
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const latest = await runner.getJob(job.id)
+      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    expect(capturedSelection).toMatchObject(editorSelection)
+
+    const stored = await runner.getJob(job.id)
+    expect(stored?.request.editorSelection).toMatchObject(editorSelection)
+  })
+
+  it('succeeds unchanged selected-element explanations without creating a version', async () => {
+    const assistantText = 'That selected element is locked, so I cannot change it directly.'
+    const { chatStore, deckStore, runner } = await createRunner({
+      runAgent: async () => ({
+        ok: true,
+        html: sampleHtml,
+        changed: false,
+        validation: validateDeckHtmlOnServer(sampleHtml),
+        steps: [{ type: 'text', summary: assistantText }],
+        assistantText,
+        providerMetrics: stubProviderMetrics,
+      }),
+    })
+    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const initialVersionId = deck.activeVersionId
+
+    const job = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseVersionId: initialVersionId ?? undefined,
+        currentHtml: deck.html,
+        messages: [{ role: 'user', content: 'Make this selected thing better' }],
+        editorSelection: {
+          slideIndex: 0,
+          elementId: 'ark-el-locked',
+          locked: true,
+        },
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    let stored = await runner.getJob(job.id)
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      stored = await runner.getJob(job.id)
+      if (stored && ['succeeded', 'failed', 'canceled'].includes(stored.status)) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    expect(stored?.status).toBe('succeeded')
+    expect(stored?.result).toMatchObject({
+      deckId: deck.id,
+      versionId: initialVersionId,
+      html: sampleHtml,
+      assistantText,
+    })
+
+    const latestDeck = await deckStore.getDeck(deck.id)
+    expect(latestDeck?.activeVersionId).toBe(initialVersionId)
+    expect(latestDeck?.versionNumber).toBe(1)
+    expect(latestDeck?.html).toBe(sampleHtml)
+
+    const versions = await deckStore.listVersions(deck.id)
+    expect(versions).toHaveLength(1)
+
+    const chat = await chatStore.listMessages(deck.id)
+    expect(chat.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: assistantText,
+      deckVersionId: initialVersionId,
+    })
   })
 
   it('merges resolved asset attachments into the latest user model message at run time', async () => {

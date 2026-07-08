@@ -160,6 +160,47 @@ describe('useDeckGenerationFlow', () => {
     expect(result.current.generationError).toBe('')
   })
 
+  it('forwards editor selection context in the start request', async () => {
+    const harness = makeHarness({ deckId: 'deck-1' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    const editorSelection = {
+      slideIndex: 2,
+      elementId: 'ark-el-9',
+      elementKind: 'text',
+      managed: true,
+    }
+
+    await act(async () => {
+      await result.current.generateDeck('make this punchier', [], { editorSelection })
+    })
+
+    expect(startGenerationJobMock).toHaveBeenCalledTimes(1)
+    expect(startGenerationJobMock.mock.calls[0]?.[0]).toMatchObject({ editorSelection })
+  })
+
+  it('omits editor selection when none is provided', async () => {
+    const harness = makeHarness({ deckId: 'deck-1' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(startGenerationJobMock).toHaveBeenCalledTimes(1)
+    expect(startGenerationJobMock.mock.calls[0]?.[0]).not.toHaveProperty('editorSelection')
+  })
+
   it('surfaces a failure without corrupting deck state', async () => {
     const harness = makeHarness({ deckId: 'deck-1' })
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))

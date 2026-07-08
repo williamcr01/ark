@@ -2,7 +2,10 @@ import { tool } from 'ai'
 import { z } from 'zod'
 
 import { applyDeckEdits } from './deck-edit.ts'
-import { deckSlidePatchOperationSchema } from '@ark/deck-core/deck-patch.ts'
+import {
+  deckElementPatchOperationSchema,
+  deckSlidePatchOperationSchema,
+} from '@ark/deck-core/deck-patch.ts'
 import {
   listDeckSlides,
   parseDeckStructure,
@@ -272,6 +275,62 @@ export function createDeckTools(workspace: DeckWorkspace, options: { logger?: Lo
           slideCount: validation.slideCount,
           changedSlideIndexes: patched.changedSlideIndexes,
           suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
+          summary: patched.summary,
+          message: patched.summary,
+        }
+      },
+    }),
+
+    patch_element: tool({
+      description:
+        'Apply element-level patch operations targeting elements by id (replace_text, set_attrs, set_inline_style, move_element, resize_element, reorder_element, duplicate_element, delete_element, insert_element, lock_element, unlock_element). Use this to edit the element the user selected. Call parse_deck first to get element ids, kinds, and locked/managed flags. Locked elements cannot be changed.',
+      inputSchema: z.object({
+        operations: z.array(deckElementPatchOperationSchema).min(1).max(20),
+        activeSlideIndex: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Current active slide index for context.'),
+      }),
+      execute: async ({ operations, activeSlideIndex }) => {
+        if (!workspace.html.trim()) {
+          return {
+            ok: false,
+            error: 'No deck HTML is loaded yet. Use write_deck to create one first.',
+          }
+        }
+
+        const { applyDeckPatches } = await import('./deck-patch.ts')
+        const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex })
+
+        if (!patched.ok) {
+          return { ok: false, error: patched.error, operationIndex: patched.operationIndex }
+        }
+
+        const validation = validateDeckHtmlOnServer(patched.html, timingOptions)
+
+        if (!validation.valid) {
+          const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+
+          return {
+            ok: false,
+            error:
+              primaryIssue?.message ??
+              'Applied element patches produced invalid deck HTML. Fix the operation and try again.',
+            validation,
+            operationIndex: patched.appliedCount,
+          }
+        }
+
+        setDeckWorkspaceHtml(workspace, patched.html)
+
+        return {
+          ok: true,
+          appliedCount: patched.appliedCount,
+          slideCount: validation.slideCount,
+          changedSlideIndexes: patched.changedSlideIndexes,
+          changedElementIds: patched.changedElementIds,
           summary: patched.summary,
           message: patched.summary,
         }

@@ -43,7 +43,7 @@ import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
 import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
-import type { EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
 import { isRemoteImageUrl } from '@ark/deck-core/deck-image.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
 
@@ -72,6 +72,8 @@ export type DeckPreviewProps = {
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
+  /** Reports the current editor selection to the shell (issue #83); null when edit mode is inactive. */
+  onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
   onPatchEditorOperations?: (
     operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
     activeSlideIndex: number,
@@ -96,6 +98,7 @@ export function DeckPreview({
   onUndo,
   onRedo,
   onCommitTextEdit,
+  onEditorSelectionChange,
   onPatchEditorOperations,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -824,6 +827,17 @@ export function DeckPreview({
 
     requestGeometry(selection.elementId, selection.slideIndex)
   }, [editChromeActive, requestGeometry, selection])
+
+  // Mirror the live selection up to the shell so chat requests can target the
+  // selected element. Report null whenever the edit chrome is inactive (edit
+  // mode off, generating, or presenting) so a stale id is never sent.
+  useEffect(() => {
+    if (!onEditorSelectionChange) {
+      return
+    }
+
+    onEditorSelectionChange(editChromeActive ? selection : null)
+  }, [editChromeActive, onEditorSelectionChange, selection])
 
   useEffect(() => {
     if (!editChromeActive || !hover?.elementId) {

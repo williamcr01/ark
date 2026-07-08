@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } fr
 
 import { toast } from 'sonner'
 
-import type { ChatAttachment, ChatMessage } from '@ark/deck-core/chat.ts'
+import type { ChatAttachment, ChatMessage, EditorSelectionContext } from '@ark/deck-core/chat.ts'
 import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
 import { describeDeckValidation } from '@/lib/deck-io'
 import { newId } from '@/lib/id'
@@ -191,7 +191,7 @@ export function useDeckGenerationFlow({
     async (
       rawPrompt: string,
       attachments: ChatAttachment[] = [],
-      options: { assetIds?: string[] } = {},
+      options: { assetIds?: string[]; editorSelection?: EditorSelectionContext } = {},
     ) => {
       const prompt =
         rawPrompt.trim() ||

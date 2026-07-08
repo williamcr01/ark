@@ -4,6 +4,7 @@ import {
   buildAgentModelMessages,
   type AgentStep,
   type ApiChatMessage,
+  type EditorSelectionContext,
 } from '@ark/deck-core/chat.ts'
 import type { ProviderCallMetrics } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
@@ -21,9 +22,11 @@ You edit slide decks as a single self-contained HTML document using the provided
 Tool workflow:
 - **New deck**: call write_deck with a complete HTML document.
 - **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first.
+- **Selected element**: when the user has an element selected (see the selection note in their message), prefer patch_element targeting that elementId. parse_deck lists element ids, kinds, and locked/managed flags.
 - **Slide changes**: prefer patch_deck (add/delete/replace/reorder/title/notes) over edit_deck or write_deck.
 - **Small inline HTML tweaks**: use edit_deck with exact oldText/newText patches.
 - Use write_deck only for brand-new decks or explicit full rewrites.
+- If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.
 - After edits, you may read_deck again to verify structure before replying.
 
 Hard requirements for deck HTML:
@@ -65,6 +68,7 @@ export type RunDeckAgentOptions = {
   modelRef?: string | null
   messages: ApiChatMessage[]
   currentHtml: string
+  editorSelection?: EditorSelectionContext
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
@@ -103,6 +107,7 @@ export type RunDeckAgentResult =
   | {
       ok: true
       html: string
+      changed?: boolean
       validation: ReturnType<typeof validateDeckHtmlOnServer>
       steps: AgentStep[]
       assistantText: string
@@ -136,6 +141,7 @@ function summarizeToolInput(toolName: string, input: unknown) {
     case 'edit_deck':
       return `${Array.isArray(record.edits) ? record.edits.length : 0} patch(es)`
     case 'patch_deck':
+    case 'patch_element':
       return `${Array.isArray(record.operations) ? record.operations.length : 0} op(s)`
     case 'write_deck':
       return 'full deck'
@@ -176,7 +182,8 @@ function summarizeToolOutput(toolName: string, output: unknown) {
         ? `Applied ${record.appliedCount} edit(s)`
         : 'Edit complete'
     case 'patch_deck':
-      if (typeof record.summary === 'string') {
+    case 'patch_element':
+      if (typeof record.summary === 'string' && record.summary) {
         return record.summary
       }
       return typeof record.appliedCount === 'number'
@@ -239,12 +246,29 @@ function throwIfAborted(abortSignal?: AbortSignal) {
   }
 }
 
+function canAcceptSelectionNoopReply(input: {
+  currentHtml: string
+  editorSelection?: EditorSelectionContext
+  assistantText: string
+  extractedText: string
+}) {
+  return (
+    !!input.editorSelection &&
+    !!input.currentHtml.trim() &&
+    !!input.assistantText &&
+    input.extractedText === input.assistantText &&
+    !/<html[\s>]/i.test(input.assistantText) &&
+    !/<!doctype html>/i.test(input.assistantText)
+  )
+}
+
 export async function runDeckAgent({
   model,
   provider: providerInput = 'unknown',
   modelRef: modelRefInput = 'unknown',
   messages,
   currentHtml,
+  editorSelection,
   abortSignal,
   onStepProgress,
   logger,
@@ -265,7 +289,7 @@ export async function runDeckAgent({
     result = await generateText({
       model,
       system: deckAgentSystemPrompt,
-      messages: buildAgentModelMessages(messages, currentHtml),
+      messages: buildAgentModelMessages(messages, currentHtml, editorSelection),
       tools,
       stopWhen: stepCountIs(AGENT_MAX_STEPS),
       maxOutputTokens: 8_000,
@@ -309,6 +333,7 @@ export async function runDeckAgent({
   throwIfAborted(abortSignal)
 
   const steps = accumulatedSteps.length > 0 ? accumulatedSteps : extractAgentSteps(result.steps)
+  const assistantText = result.text.trim()
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
@@ -330,9 +355,10 @@ export async function runDeckAgent({
     return {
       ok: true,
       html: workspace.html,
+      changed: true,
       validation,
       steps,
-      assistantText: result.text.trim(),
+      assistantText,
       providerMetrics,
     }
   }
@@ -343,9 +369,10 @@ export async function runDeckAgent({
     return {
       ok: true,
       html: fallback.html,
+      changed: true,
       validation: fallback.validation,
       steps,
-      assistantText: result.text.trim(),
+      assistantText,
       providerMetrics,
     }
   }
@@ -359,9 +386,33 @@ export async function runDeckAgent({
       return {
         ok: true,
         html: extractedFinal.html,
+        changed: true,
         validation: extractedFinal.validation,
         steps,
-        assistantText: result.text.trim(),
+        assistantText,
+        providerMetrics,
+      }
+    }
+  }
+
+  if (
+    canAcceptSelectionNoopReply({
+      currentHtml,
+      editorSelection,
+      assistantText,
+      extractedText: extracted,
+    })
+  ) {
+    const validation = validateDeckHtmlOnServer(currentHtml, logger ? { logger } : {})
+
+    if (validation.valid) {
+      return {
+        ok: true,
+        html: currentHtml,
+        changed: false,
+        validation,
+        steps,
+        assistantText,
         providerMetrics,
       }
     }
