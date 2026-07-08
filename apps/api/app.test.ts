@@ -222,8 +222,39 @@ describe('deck API routes', () => {
         operations: ['undo'],
         slideIndexes: [0],
         elementIds: ['ark-el-1'],
+        runtimeManifestHash: expect.any(String),
       },
     })
+    expect(manualVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(manualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
+
+    const leakedHtml = '<section class="slide"><h1>Secret deck HTML</h1></section>'
+    const forgedManualHtml = manualHtml.replace('Manual edit', 'Forged manual')
+    await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: forgedManualHtml,
+        source: 'manual',
+        summary: 'Forged manual provenance',
+        provenance: {
+          operations: ['undo'],
+          jobId: 'forged-job-id',
+          toolCalls: [{ toolName: 'patch_deck', summary: `Applied ${leakedHtml}` }],
+          restoredVersionId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+        },
+      }),
+    })
+
+    const forgedManualVersions = await (
+      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    ).json()
+    expect(forgedManualVersions.versions?.[0].provenance).toMatchObject({
+      operations: ['undo'],
+    })
+    expect(forgedManualVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(forgedManualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
+    expect(JSON.stringify(forgedManualVersions.versions?.[0].provenance)).not.toContain('<section')
 
     const agentHtml = manualHtml.replace('Manual edit', 'Agent edit')
     await fetch(`${baseUrl}/api/decks/${deckId}`, {

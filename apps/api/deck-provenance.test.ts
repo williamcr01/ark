@@ -6,6 +6,7 @@ import {
   buildAgentVersionProvenance,
   buildManualVersionProvenance,
   buildRollbackVersionProvenance,
+  compactVersionProvenanceForAgent,
   hashRuntimeManifest,
 } from './deck-provenance.ts'
 
@@ -89,5 +90,19 @@ describe('deck provenance builders', () => {
 
     expect(hashRuntimeManifest(manifest)).toMatch(/^[a-f0-9]{64}$/)
     expect(hashRuntimeManifest({ ...manifest })).toBe(hashRuntimeManifest(manifest))
+  })
+
+  it('strips HTML from tool-call summaries when compacting for the agent', () => {
+    const htmlSnippet = '<section class="slide"><h1>Secret deck HTML</h1></section>'
+    const compact = compactVersionProvenanceForAgent({
+      jobId: 'job-1',
+      stepCount: 1,
+      toolCalls: [{ toolName: 'patch_deck', summary: `Applied ${htmlSnippet}` }],
+    })
+
+    expect(compact?.toolCalls).toEqual([
+      { toolName: 'patch_deck', summary: 'Applied Secret deck HTML' },
+    ])
+    expect(JSON.stringify(compact)).not.toContain('<section')
   })
 })
