@@ -1,6 +1,7 @@
 import { type Response } from 'express'
 
 import type { AppendChatMessageRequest } from '@ark/contracts'
+import { deckVersionProvenanceSchema, normalizeDeckVersionProvenance } from '@ark/contracts'
 import { parseProviderError, type ApiErrorPayload } from '../credentials.ts'
 import { type DeckVersionOptions, normalizeDeckVersionSource } from '../deck-record.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
@@ -44,10 +45,12 @@ export function parseDeckVersionOptions(
     summary?: unknown
     modelProvider?: unknown
     modelName?: unknown
+    provenance?: unknown
   } = {},
 ): DeckVersionOptions {
+  const source = normalizeDeckVersionSource(body.source)
   const options: DeckVersionOptions = {
-    source: normalizeDeckVersionSource(body.source),
+    source,
     validationStatus: 'valid',
   }
 
@@ -61,6 +64,14 @@ export function parseDeckVersionOptions(
 
   if (typeof body.modelName === 'string' && body.modelName.trim()) {
     options.modelName = body.modelName.trim()
+  }
+
+  if (source === 'manual' && body.provenance !== undefined) {
+    const parsedProvenance = deckVersionProvenanceSchema.safeParse(body.provenance)
+
+    if (parsedProvenance.success) {
+      options.provenance = normalizeDeckVersionProvenance(parsedProvenance.data) ?? undefined
+    }
   }
 
   return options

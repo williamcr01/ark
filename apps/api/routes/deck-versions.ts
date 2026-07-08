@@ -1,7 +1,10 @@
 import { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody, rollbackDeckRequestSchema } from '@ark/contracts'
+import { computeDeckVersionDiff } from '../deck-diff.ts'
+import { buildRollbackVersionProvenance } from '../deck-provenance.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
+import { mergeDeckVersionOptions } from '../deck-version-payload.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
@@ -102,6 +105,13 @@ export function createDeckVersionsRouter(deps: { deckStore: DeckStore }): Router
           return
         }
 
+        const currentDeck = await deckStore.getDeck(id)
+
+        if (!currentDeck) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+
         const validation = validateDeckHtmlOnServer(targetVersion.html, {
           logger: getRequestLogger(request),
         })
@@ -111,7 +121,20 @@ export function createDeckVersionsRouter(deps: { deckStore: DeckStore }): Router
           return
         }
 
-        const deck = await deckStore.rollbackToVersion(id, versionId)
+        const rollbackOptions = mergeDeckVersionOptions(
+          targetVersion.html,
+          {
+            source: 'rollback',
+            summary: `Restored from version ${targetVersion.versionNumber}`,
+            validationStatus: targetVersion.validationStatus,
+            runtimeManifest: targetVersion.runtimeManifest ?? undefined,
+            provenance: buildRollbackVersionProvenance(targetVersion),
+            diff: computeDeckVersionDiff(currentDeck.html, targetVersion.html),
+          },
+          validation,
+        )
+
+        const deck = await deckStore.rollbackToVersion(id, versionId, rollbackOptions)
 
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })

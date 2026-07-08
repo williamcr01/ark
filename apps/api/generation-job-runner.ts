@@ -15,6 +15,8 @@ import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark
 import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
+import { computeDeckVersionDiff } from './deck-diff.ts'
+import { buildAgentVersionProvenance } from './deck-provenance.ts'
 import { type DeckStore } from './deck-record.ts'
 import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import { type ChatStore } from './chat-record.ts'
@@ -205,6 +207,16 @@ export function createGenerationJobRunner({
         editorSelection: currentJob.request.editorSelection,
         abortSignal: abortController.signal,
         logger: jobLogger,
+        versionInspector:
+          currentJob.request.editingExistingDeck && currentJob.deckId
+            ? {
+                listVersions: async (limit = 10) => {
+                  const versions = await deckStore.listVersions(currentJob.deckId!)
+
+                  return (versions ?? []).slice(0, limit)
+                },
+              }
+            : undefined,
         onStepProgress: async (steps) => {
           const latestStep = steps.at(-1)
 
@@ -415,6 +427,11 @@ export function createGenerationJobRunner({
             summary: refreshed.request.editingExistingDeck ? 'AI edit' : 'AI generation',
             modelProvider: provider,
             modelName: refreshed.model,
+            provenance: buildAgentVersionProvenance({
+              jobId,
+              steps: agentResult.steps,
+            }),
+            diff: computeDeckVersionDiff(existingDeck.html, agentResult.html),
           }),
         )
 
@@ -486,6 +503,10 @@ export function createGenerationJobRunner({
           summary: 'AI generation',
           modelProvider: provider,
           modelName: refreshed.model,
+          provenance: buildAgentVersionProvenance({
+            jobId,
+            steps: agentResult.steps,
+          }),
         }),
       )
 

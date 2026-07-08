@@ -21,6 +21,12 @@ import {
   normalizeDeckValidationStatus,
   normalizeDeckVersionSource,
 } from './deck-record.ts'
+import {
+  normalizeDeckVersionDiff,
+  normalizeDeckVersionProvenance,
+  type DeckVersionDiff,
+  type DeckVersionProvenance,
+} from '@ark/contracts'
 import { REPO_ROOT } from './repo-root.ts'
 
 export {
@@ -50,6 +56,10 @@ type StoredDeckVersion = {
   title: string
   source: DeckVersionSource
   summary: string | null
+  modelProvider: string | null
+  modelName: string | null
+  provenance: DeckVersionProvenance | null
+  diff: DeckVersionDiff | null
   validationStatus: DeckValidationStatus
   runtimeManifest: DeckRuntimeManifest | null
   createdAt: string
@@ -98,6 +108,10 @@ function toVersionSummary(
     title: version.title,
     source: version.source,
     summary: version.summary,
+    modelProvider: version.modelProvider,
+    modelName: version.modelName,
+    provenance: version.provenance,
+    diff: version.diff,
     validationStatus: version.validationStatus,
     runtimeManifest: version.runtimeManifest,
     createdAt: version.createdAt,
@@ -163,6 +177,10 @@ function migrateLegacyDeck(parsed: StoredDeck): StoredDeckFile | null {
         title,
         source: 'manual',
         summary: null,
+        modelProvider: null,
+        modelName: null,
+        provenance: null,
+        diff: null,
         validationStatus: 'valid',
         runtimeManifest: null,
         createdAt: parsed.createdAt,
@@ -193,6 +211,10 @@ function parseDeckFile(raw: string): StoredDeckFile | null {
         title: normalizeDeckTitle(version.title),
         source: normalizeDeckVersionSource(version.source),
         summary: typeof version.summary === 'string' ? version.summary : null,
+        modelProvider: typeof version.modelProvider === 'string' ? version.modelProvider : null,
+        modelName: typeof version.modelName === 'string' ? version.modelName : null,
+        provenance: normalizeDeckVersionProvenance(version.provenance),
+        diff: normalizeDeckVersionDiff(version.diff),
         validationStatus: normalizeDeckValidationStatus(version.validationStatus),
         runtimeManifest: parseDeckRuntimeManifest(version.runtimeManifest),
         createdAt: version.createdAt,
@@ -250,6 +272,10 @@ function createVersion(
     title,
     source: normalizeDeckVersionSource(options.source),
     summary: options.summary ?? null,
+    modelProvider: options.modelProvider ?? null,
+    modelName: options.modelName ?? null,
+    provenance: normalizeDeckVersionProvenance(options.provenance),
+    diff: normalizeDeckVersionDiff(options.diff),
     validationStatus: normalizeDeckValidationStatus(options.validationStatus ?? 'valid'),
     runtimeManifest: resolveVersionManifest(html, options),
     createdAt,
@@ -473,7 +499,11 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     return version ? toVersionDetail(deckId, version, file.activeVersionId) : null
   }
 
-  const rollbackToVersion = async (deckId: string, versionId: string) => {
+  const rollbackToVersion = async (
+    deckId: string,
+    versionId: string,
+    callerOptions: DeckVersionOptions = {},
+  ) => {
     if (!isValidDeckId(versionId)) {
       return null
     }
@@ -501,6 +531,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       summary: `Restored from version ${targetVersion.versionNumber}`,
       validationStatus: targetVersion.validationStatus,
       runtimeManifest: targetVersion.runtimeManifest ?? undefined,
+      ...callerOptions,
     })
   }
 

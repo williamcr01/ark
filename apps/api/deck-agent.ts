@@ -9,6 +9,7 @@ import {
 import type { ProviderCallMetrics } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
+import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
@@ -72,6 +73,7 @@ export type RunDeckAgentOptions = {
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
+  versionInspector?: DeckVersionInspector
 }
 
 function buildProviderMetrics(input: {
@@ -262,6 +264,8 @@ function canAcceptSelectionNoopReply(input: {
   )
 }
 
+type ExtractableAgentStep = Parameters<typeof extractAgentSteps>[0][number]
+
 export async function runDeckAgent({
   model,
   provider: providerInput = 'unknown',
@@ -272,6 +276,7 @@ export async function runDeckAgent({
   abortSignal,
   onStepProgress,
   logger,
+  versionInspector,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
   const provider = providerInput ?? 'unknown'
   const modelRef = modelRefInput ?? 'unknown'
@@ -279,7 +284,7 @@ export async function runDeckAgent({
 
   const workspace = createDeckWorkspace(currentHtml)
   const { createDeckTools } = await import('./deck-tools.ts')
-  const tools = createDeckTools(workspace, { logger })
+  const tools = createDeckTools(workspace, { logger, versionInspector })
   const accumulatedSteps: AgentStep[] = []
   const startedAt = performance.now()
 
@@ -297,7 +302,7 @@ export async function runDeckAgent({
       abortSignal,
       onStepFinish: async (step) => {
         throwIfAborted(abortSignal)
-        accumulatedSteps.push(...extractAgentSteps([step]))
+        accumulatedSteps.push(...extractAgentSteps([step as ExtractableAgentStep]))
         await onStepProgress?.(accumulatedSteps)
       },
     })
@@ -332,7 +337,10 @@ export async function runDeckAgent({
 
   throwIfAborted(abortSignal)
 
-  const steps = accumulatedSteps.length > 0 ? accumulatedSteps : extractAgentSteps(result.steps)
+  const steps =
+    accumulatedSteps.length > 0
+      ? accumulatedSteps
+      : extractAgentSteps(result.steps as ExtractableAgentStep[])
   const assistantText = result.text.trim()
 
   if (workspace.changed && workspace.html.trim()) {

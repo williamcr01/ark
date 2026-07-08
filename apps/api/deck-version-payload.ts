@@ -1,7 +1,25 @@
 import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
 import { buildDeckRuntimeManifestFromValidation } from './deck-manifest.ts'
+import { hashRuntimeManifest } from './deck-provenance.ts'
 import type { DeckVersionOptions } from './deck-record.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
+
+function withRuntimeManifestHash(
+  options: DeckVersionOptions,
+  runtimeManifest: NonNullable<DeckVersionOptions['runtimeManifest']>,
+): DeckVersionOptions {
+  const runtimeManifestHash = hashRuntimeManifest(runtimeManifest)
+  const provenance = {
+    ...(options.provenance ?? {}),
+    runtimeManifestHash,
+  }
+
+  return {
+    ...options,
+    runtimeManifest,
+    provenance,
+  }
+}
 
 export function buildDeckVersionOptions(
   html: string,
@@ -10,12 +28,15 @@ export function buildDeckVersionOptions(
 ): DeckVersionOptions {
   const runtimeManifest = buildDeckRuntimeManifestFromValidation(html, validation)
 
-  return {
-    ...base,
-    validationStatus: validation.valid ? 'valid' : 'invalid',
+  return withRuntimeManifestHash(
+    {
+      ...base,
+      validationStatus: validation.valid ? 'valid' : 'invalid',
+      runtimeManifest,
+      validationReport: validation,
+    },
     runtimeManifest,
-    validationReport: validation,
-  }
+  )
 }
 
 export function mergeDeckVersionOptions(
