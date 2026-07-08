@@ -5,6 +5,11 @@ import { runMigrations } from '../migrate.ts'
 import { parseDeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { buildDeckRuntimeManifestFromHtml } from '../../deck-manifest.ts'
 import {
+  normalizeDeckVersionDiff,
+  normalizeDeckVersionProvenance,
+  truncateDeckVersionSummary,
+} from '@ark/contracts'
+import {
   type DeckStore,
   type DeckSummary,
   type DeckValidationStatus,
@@ -41,6 +46,8 @@ type DeckVersionRow = {
   html: string
   title: string
   source: string
+  model_provider: string | null
+  model_name: string | null
   validation_status: string
   runtime_metadata: Record<string, unknown> | null
   created_at: Date | string
@@ -77,6 +84,10 @@ function readVersionSummary(row: DeckVersionRow): DeckVersionSummary {
     title: row.title,
     source: normalizeDeckVersionSource(row.source),
     summary: typeof metadata.summary === 'string' ? metadata.summary : null,
+    modelProvider: row.model_provider,
+    modelName: row.model_name,
+    provenance: normalizeDeckVersionProvenance(metadata.provenance),
+    diff: normalizeDeckVersionDiff(metadata.diff),
     validationStatus: normalizeDeckValidationStatus(row.validation_status),
     runtimeManifest: parseDeckRuntimeManifest(metadata.manifest),
     createdAt: toIsoString(row.created_at),
@@ -157,11 +168,19 @@ function buildVersionMetadata(options: DeckVersionOptions, html: string) {
   const metadata: Record<string, unknown> = {}
   const manifest = resolveVersionManifest(html, options)
 
-  if (options.summary) {
-    metadata.summary = options.summary
+  if (typeof options.summary === 'string' && options.summary.trim()) {
+    metadata.summary = truncateDeckVersionSummary(options.summary)
   }
 
   metadata.manifest = manifest
+
+  if (options.provenance) {
+    metadata.provenance = options.provenance
+  }
+
+  if (options.diff) {
+    metadata.diff = options.diff
+  }
 
   return metadata
 }
@@ -474,6 +493,8 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
           v.html,
           v.title,
           v.source,
+          v.model_provider,
+          v.model_name,
           v.validation_status,
           v.runtime_metadata,
           v.created_at,
@@ -504,6 +525,8 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
           v.html,
           v.title,
           v.source,
+          v.model_provider,
+          v.model_name,
           v.validation_status,
           v.runtime_metadata,
           v.created_at,
@@ -531,7 +554,11 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     } satisfies DeckVersionDetail
   }
 
-  const rollbackToVersion = async (deckId: string, versionId: string) => {
+  const rollbackToVersion = async (
+    deckId: string,
+    versionId: string,
+    callerOptions: DeckVersionOptions = {},
+  ) => {
     const targetVersion = await getVersion(deckId, versionId)
 
     if (!targetVersion) {
@@ -543,6 +570,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
       summary: `Restored from version ${targetVersion.versionNumber}`,
       validationStatus: targetVersion.validationStatus,
       runtimeManifest: targetVersion.runtimeManifest ?? undefined,
+      ...callerOptions,
     })
   }
 

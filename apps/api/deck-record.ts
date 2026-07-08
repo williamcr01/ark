@@ -27,6 +27,7 @@ export type DeckVersionOptions = SharedDeckVersionOptions & {
   validationStatus?: DeckValidationStatus
   runtimeManifest?: DeckRuntimeManifest
   validationReport?: Record<string, unknown>
+  diff?: import('@ark/contracts').DeckVersionDiff
 }
 
 export type DeckStore = {
@@ -38,7 +39,11 @@ export type DeckStore = {
   deleteDeck: (id: string) => Promise<boolean>
   listVersions: (deckId: string) => Promise<DeckVersionSummary[] | null>
   getVersion: (deckId: string, versionId: string) => Promise<DeckVersionDetail | null>
-  rollbackToVersion: (deckId: string, versionId: string) => Promise<StoredDeck | null>
+  rollbackToVersion: (
+    deckId: string,
+    versionId: string,
+    options?: DeckVersionOptions,
+  ) => Promise<StoredDeck | null>
 }
 
 export function extractDeckTitle(html: string) {
