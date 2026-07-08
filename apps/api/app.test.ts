@@ -167,6 +167,87 @@ describe('deck API routes', () => {
       summary: expect.stringContaining('Updated title'),
     })
     expect(patched.deck?.html).toContain('Updated second slide')
+
+    const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    const versionsPayload = await versionsResponse.json()
+
+    assertApiContract(deckVersionListResponseSchema, versionsPayload)
+    expect(versionsPayload.versions?.[0]).toMatchObject({
+      source: 'manual',
+      provenance: {
+        operations: ['update_slide_title'],
+        slideIndexes: [1],
+        runtimeManifestHash: expect.any(String),
+      },
+      diff: {
+        kind: 'structural',
+      },
+    })
+  })
+
+  it('persists manual provenance from PUT and ignores forged agent provenance', async () => {
+    const baseUrl = await startApi()
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+    })
+    const created = await createResponse.json()
+    const deckId = created.deck.id
+
+    const manualHtml = sampleHtml.replace('Hello', 'Manual edit')
+    const manualResponse = await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: manualHtml,
+        source: 'manual',
+        summary: 'Undo: replace text',
+        provenance: {
+          operations: ['undo'],
+          slideIndexes: [0],
+          elementIds: ['ark-el-1'],
+        },
+      }),
+    })
+
+    expect(manualResponse.status).toBe(200)
+
+    const manualVersions = await (await fetch(`${baseUrl}/api/decks/${deckId}/versions`)).json()
+    expect(manualVersions.versions?.[0]).toMatchObject({
+      source: 'manual',
+      summary: 'Undo: replace text',
+      provenance: {
+        operations: ['undo'],
+        slideIndexes: [0],
+        elementIds: ['ark-el-1'],
+      },
+    })
+
+    const agentHtml = manualHtml.replace('Manual edit', 'Agent edit')
+    await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: agentHtml,
+        source: 'agent',
+        provenance: {
+          jobId: 'forged-job-id',
+          operations: ['undo'],
+        },
+      }),
+    })
+
+    const agentVersions = await (await fetch(`${baseUrl}/api/decks/${deckId}/versions`)).json()
+    expect(agentVersions.versions?.[0]).toMatchObject({
+      source: 'agent',
+      provenance: {
+        runtimeManifestHash: expect.any(String),
+      },
+    })
+    expect(agentVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(agentVersions.versions?.[0].provenance?.operations).toBeUndefined()
   })
 
   it('lists versions, fetches one version, and rolls back without losing history', async () => {

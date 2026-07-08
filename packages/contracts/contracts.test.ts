@@ -5,6 +5,11 @@ import {
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  deckVersionDiffSchema,
+  deckVersionProvenanceSchema,
+  deckVersionSummarySchema,
+  normalizeDeckVersionDiff,
+  normalizeDeckVersionProvenance,
   renameDeckRequestSchema,
   rollbackDeckRequestSchema,
 } from './decks.ts'
@@ -302,5 +307,92 @@ describe('shared API contracts', () => {
     expect(simpleErrorResponseSchema.parse({ error: 'Bad request' })).toEqual({
       error: 'Bad request',
     })
+  })
+
+  it('parses deck version provenance and diff metadata', () => {
+    const provenance = deckVersionProvenanceSchema.parse({
+      operations: ['replace_text', 'undo'],
+      slideIndexes: [0],
+      elementIds: ['ark-el-1'],
+      jobId: 'a0000000-0000-4000-8000-000000000001',
+      stepCount: 3,
+      toolCalls: [{ toolName: 'patch_deck', summary: 'rename slide 0' }],
+      restoredVersionId: deckId,
+      restoredVersionNumber: 2,
+      runtimeManifestHash: 'abc123',
+    })
+
+    const diff = deckVersionDiffSchema.parse({
+      kind: 'structural',
+      slideCountBefore: 2,
+      slideCountAfter: 3,
+      addedSlides: [{ index: 2, title: 'Closing' }],
+      changedSlides: [{ index: 0, contentChanged: true, title: 'Opening' }],
+      titleChanged: true,
+      assetsAdded: ['data:image/png;base64,abc'],
+    })
+
+    expect(
+      deckVersionSummarySchema.parse({
+        id: deckId,
+        deckId,
+        versionNumber: 2,
+        title: 'Deck',
+        source: 'manual',
+        summary: 'Edited slide',
+        validationStatus: 'valid',
+        runtimeManifest: null,
+        modelProvider: 'openai',
+        modelName: 'gpt-4.1-mini',
+        provenance,
+        diff,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isActive: true,
+      }),
+    ).toMatchObject({
+      modelName: 'gpt-4.1-mini',
+      provenance: { operations: ['replace_text', 'undo'] },
+      diff: { kind: 'structural', slideCountAfter: 3 },
+    })
+  })
+
+  it('accepts legacy version summaries without provenance fields', () => {
+    expect(
+      deckVersionSummarySchema.parse({
+        id: deckId,
+        deckId,
+        versionNumber: 1,
+        title: 'Deck',
+        source: 'upload',
+        summary: null,
+        validationStatus: 'valid',
+        runtimeManifest: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isActive: true,
+      }),
+    ).toMatchObject({ versionNumber: 1 })
+  })
+
+  it('rejects oversized provenance arrays', () => {
+    expect(
+      deckVersionProvenanceSchema.safeParse({
+        operations: Array.from({ length: 41 }, () => 'undo'),
+      }).success,
+    ).toBe(false)
+    expect(
+      deckVersionDiffSchema.safeParse({
+        kind: 'structural',
+        addedSlides: Array.from({ length: 101 }, (_, index) => ({
+          index,
+          title: `Slide ${index}`,
+        })),
+      }).success,
+    ).toBe(false)
+  })
+
+  it('normalizes invalid provenance and diff payloads to null', () => {
+    expect(normalizeDeckVersionProvenance({ operations: ['not-an-op'] })).toBeNull()
+    expect(normalizeDeckVersionDiff({ kind: 'invalid' })).toBeNull()
+    expect(normalizeDeckVersionProvenance(null)).toBeNull()
   })
 })

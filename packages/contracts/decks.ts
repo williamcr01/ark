@@ -43,6 +43,106 @@ const deckRuntimeManifestSchema: z.ZodType<DeckRuntimeManifest> = z
   .passthrough()
   .refine((value) => isDeckRuntimeManifest(value), 'Invalid runtime manifest.')
 
+export const deckProvenanceOperationSchema = z.enum([
+  'add_slide',
+  'delete_slide',
+  'replace_slide',
+  'reorder_slide',
+  'update_slide_title',
+  'update_slide_notes',
+  'replace_text',
+  'insert_element',
+  'delete_element',
+  'duplicate_element',
+  'set_attrs',
+  'set_inline_style',
+  'move_element',
+  'resize_element',
+  'reorder_element',
+  'lock_element',
+  'unlock_element',
+  'text_replace',
+  'undo',
+  'redo',
+])
+
+export type DeckProvenanceOperation = z.infer<typeof deckProvenanceOperationSchema>
+
+export const deckVersionProvenanceSchema = z.object({
+  operations: z.array(deckProvenanceOperationSchema).max(40).optional(),
+  slideIndexes: z.array(z.number().int().min(0)).max(100).optional(),
+  elementIds: z.array(z.string().max(128)).max(200).optional(),
+  jobId: z.string().max(64).optional(),
+  stepCount: z.number().int().min(0).optional(),
+  toolCalls: z
+    .array(
+      z.object({
+        toolName: z.string().max(64),
+        summary: z.string().max(300),
+        error: z.boolean().optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
+  restoredVersionId: deckIdSchema.optional(),
+  restoredVersionNumber: z.number().int().min(1).optional(),
+  runtimeManifestHash: z.string().max(64).optional(),
+})
+
+export type DeckVersionProvenance = z.infer<typeof deckVersionProvenanceSchema>
+
+export const deckVersionDiffSchema = z.object({
+  kind: z.enum(['structural', 'coarse']),
+  slideCountBefore: z.number().int().min(0).optional(),
+  slideCountAfter: z.number().int().min(0).optional(),
+  addedSlides: z
+    .array(
+      z.object({
+        index: z.number().int().min(0),
+        title: z.string(),
+      }),
+    )
+    .max(100)
+    .optional(),
+  deletedSlides: z
+    .array(
+      z.object({
+        index: z.number().int().min(0),
+        title: z.string(),
+      }),
+    )
+    .max(100)
+    .optional(),
+  movedSlides: z
+    .array(
+      z.object({
+        fromIndex: z.number().int().min(0),
+        toIndex: z.number().int().min(0),
+      }),
+    )
+    .max(100)
+    .optional(),
+  changedSlides: z
+    .array(
+      z.object({
+        index: z.number().int().min(0),
+        titleChanged: z.boolean().optional(),
+        notesChanged: z.boolean().optional(),
+        contentChanged: z.boolean().optional(),
+        title: z.string().optional(),
+      }),
+    )
+    .max(100)
+    .optional(),
+  titleChanged: z.boolean().optional(),
+  assetsAdded: z.array(z.string().max(2048)).max(50).optional(),
+  assetsRemoved: z.array(z.string().max(2048)).max(50).optional(),
+  htmlBytesBefore: z.number().int().min(0).optional(),
+  htmlBytesAfter: z.number().int().min(0).optional(),
+})
+
+export type DeckVersionDiff = z.infer<typeof deckVersionDiffSchema>
+
 export const deckVersionSummarySchema = z.object({
   id: deckIdSchema,
   deckId: deckIdSchema,
@@ -52,6 +152,10 @@ export const deckVersionSummarySchema = z.object({
   summary: z.string().nullable(),
   validationStatus: deckValidationStatusSchema,
   runtimeManifest: deckRuntimeManifestSchema.nullable(),
+  modelProvider: z.string().nullable().optional(),
+  modelName: z.string().nullable().optional(),
+  provenance: deckVersionProvenanceSchema.nullable().optional(),
+  diff: deckVersionDiffSchema.nullable().optional(),
   createdAt: z.string(),
   isActive: z.boolean(),
 })
@@ -69,6 +173,8 @@ export const deckVersionOptionsFieldsSchema = z.object({
   summary: z.string().nullable().optional(),
   modelProvider: z.string().nullable().optional(),
   modelName: z.string().nullable().optional(),
+  provenance: deckVersionProvenanceSchema.optional(),
+  diff: deckVersionDiffSchema.optional(),
 })
 
 export type DeckVersionOptions = z.infer<typeof deckVersionOptionsFieldsSchema>
@@ -208,4 +314,14 @@ export function normalizeDeckVersionSource(source: unknown): DeckVersionSource {
 
 export function normalizeDeckTitle(title: unknown) {
   return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled deck'
+}
+
+export function normalizeDeckVersionProvenance(provenance: unknown): DeckVersionProvenance | null {
+  const parsed = deckVersionProvenanceSchema.safeParse(provenance)
+  return parsed.success ? parsed.data : null
+}
+
+export function normalizeDeckVersionDiff(diff: unknown): DeckVersionDiff | null {
+  const parsed = deckVersionDiffSchema.safeParse(diff)
+  return parsed.success ? parsed.data : null
 }
