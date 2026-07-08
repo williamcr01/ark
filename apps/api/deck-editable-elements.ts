@@ -539,6 +539,14 @@ function getElementPath(element: Element, slide: Element) {
   return path.join('.')
 }
 
+function isManagedWrapper(element: Element) {
+  return (
+    element.getAttribute(ARK_MANAGED_ATTR) === 'true' ||
+    element.getAttribute(ARK_EDITABLE_ATTR) === 'text-box' ||
+    element.classList.contains(ARK_TEXT_BOX_CLASS)
+  )
+}
+
 function classifyElement(
   element: Element,
   slide: Element,
@@ -549,7 +557,10 @@ function classifyElement(
     return null
   }
 
-  if (hasHigherPriorityDescendant(element, slide)) {
+  // Ark-managed wrappers (text boxes and other managed containers) stay
+  // recognized editable targets even though their inner text elements are
+  // candidates too — move/resize/style patches address the wrapper (#84).
+  if (!isManagedWrapper(element) && hasHigherPriorityDescendant(element, slide)) {
     return null
   }
 

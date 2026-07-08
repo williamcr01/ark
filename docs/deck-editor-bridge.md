@@ -98,7 +98,20 @@ type EditorSelectionInfo = {
   slideId: string | null // from data-ark-slide-id on the slide element
   tagName: string
   locked: boolean // data-ark-locked="true"
+  managed: boolean // data-ark-managed="true" or Ark text box
+  editableKind: string | null // data-ark-editable (e.g. "text-box", "image")
   textPreview: string | null // collapsed whitespace text or alt text
+  imageFit?: 'contain' | 'cover' | 'fill' | null // images only
+  // Inspector metadata (issue #84); optional for protocol compatibility.
+  role?: string | null // data-ark-role
+  textStyle?: {
+    fontSize: number // computed px
+    fontWeight: string // computed numeric string, e.g. "700"
+    color: string // computed CSS color
+    textAlign: string // computed alignment keyword
+    lineHeight: number | null // computed px, null when "normal"
+  } | null
+  imageNaturalSize?: { width: number; height: number } | null // img intrinsic size
 }
 ```
 

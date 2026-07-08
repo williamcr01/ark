@@ -80,6 +80,7 @@ const PATCHABLE_STYLE_PROPS = new Set([
   'font-weight',
   'height',
   'left',
+  'line-height',
   'object-fit',
   'opacity',
   'position',
