@@ -29,6 +29,14 @@ function getContentType(assetPath: string) {
   return MIME_TYPES[extension] ?? 'application/octet-stream'
 }
 
+function decodePathParam(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
+}
+
 function resolveRuntimeAssetFile(ref: RuntimeAssetRef) {
   const baseDir = path.join(RUNTIMES_DIR, ref.runtimeId, ref.version)
   const resolved = path.resolve(baseDir, ref.assetPath)
@@ -52,20 +60,21 @@ export function handleRuntimeRegistryRequest(_request: Request, response: Respon
 }
 
 export function handleRuntimeAssetRequest(request: Request, response: Response) {
-  const runtimeId = typeof request.params.runtimeId === 'string' ? request.params.runtimeId : ''
-  const version = typeof request.params.version === 'string' ? request.params.version : ''
-  const assetPath = typeof request.params.assetPath === 'string' ? request.params.assetPath : ''
+  const runtimeIdParam =
+    typeof request.params.runtimeId === 'string' ? request.params.runtimeId : ''
+  const versionParam = typeof request.params.version === 'string' ? request.params.version : ''
+  const assetPathParam =
+    typeof request.params.assetPath === 'string' ? request.params.assetPath : ''
+  const runtimeId = decodePathParam(runtimeIdParam)
+  const version = decodePathParam(versionParam)
+  const assetPath = decodePathParam(assetPathParam)
 
   if (!runtimeId || !version || !assetPath) {
     response.status(400).json({ error: 'runtimeId, version, and asset path are required.' })
     return
   }
 
-  const ref: RuntimeAssetRef = {
-    runtimeId: decodeURIComponent(runtimeId),
-    version: decodeURIComponent(version),
-    assetPath,
-  }
+  const ref: RuntimeAssetRef = { runtimeId, version, assetPath }
   const lookup = lookupRuntimeAsset(ref)
 
   if (!lookup) {
@@ -73,7 +82,7 @@ export function handleRuntimeAssetRequest(request: Request, response: Response) 
     return
   }
 
-  const runtime = getApprovedRuntime(runtimeId, version)
+  const runtime = getApprovedRuntime(ref.runtimeId, ref.version)
 
   if (!runtime) {
     response.status(404).json({ error: 'Runtime version is not approved.' })
@@ -87,7 +96,7 @@ export function handleRuntimeAssetRequest(request: Request, response: Response) 
     return
   }
 
-  response.setHeader('Content-Type', getContentType(assetPath))
+  response.setHeader('Content-Type', getContentType(ref.assetPath))
   response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
   response.setHeader('Access-Control-Allow-Origin', '*')
   response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')

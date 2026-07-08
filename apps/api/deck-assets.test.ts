@@ -1,5 +1,5 @@
 import express from 'express'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { handleDeckAssetRequest } from './deck-assets'
 
@@ -46,11 +46,21 @@ async function requestAsset(url: string) {
   }
 }
 
-describe('handleDeckAssetRequest', () => {
-  afterEach(() => {
-    delete process.env.ARK_DECK_ASSET_ALLOWLIST
-  })
+function unsetDeckAssetAllowlist() {
+  const previous = process.env.ARK_DECK_ASSET_ALLOWLIST
+  delete process.env.ARK_DECK_ASSET_ALLOWLIST
 
+  return () => {
+    if (previous === undefined) {
+      delete process.env.ARK_DECK_ASSET_ALLOWLIST
+      return
+    }
+
+    process.env.ARK_DECK_ASSET_ALLOWLIST = previous
+  }
+}
+
+describe('handleDeckAssetRequest', () => {
   it('rejects requests without a url parameter', async () => {
     const app = createTestApp()
     const server = app.listen(0)
@@ -81,12 +91,18 @@ describe('handleDeckAssetRequest', () => {
   })
 
   it('blocks external assets when no allowlist is configured', async () => {
-    const result = await requestAsset('https://example.com/logo.png')
+    const restoreDeckAssetAllowlist = unsetDeckAssetAllowlist()
 
-    expect(result.status).toBe(403)
-    expect(result.body).toMatchObject({
-      error: expect.stringMatching(/blocked/i),
-      proxyUrl: '/api/deck-assets?url=https%3A%2F%2Fexample.com%2Flogo.png',
-    })
+    try {
+      const result = await requestAsset('https://example.com/logo.png')
+
+      expect(result.status).toBe(403)
+      expect(result.body).toMatchObject({
+        error: expect.stringMatching(/blocked/i),
+        proxyUrl: '/api/deck-assets?url=https%3A%2F%2Fexample.com%2Flogo.png',
+      })
+    } finally {
+      restoreDeckAssetAllowlist()
+    }
   })
 })

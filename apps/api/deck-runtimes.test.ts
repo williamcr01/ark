@@ -78,6 +78,15 @@ describe('handleRuntimeRoutes', () => {
     expect(response.body).toContain('margin: 0')
   })
 
+  it('serves nested runtime assets when the asset path is encoded as one segment', async () => {
+    const response = await requestRuntime('/api/runtimes/reveal.js/5.1.0/theme%2Fwhite.css')
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/css')
+    expect(response.headers.get('x-checksum-sha256')).toMatch(/^[a-f0-9]{64}$/)
+    expect(response.body).toContain('White theme')
+  })
+
   it('serves approved runtime font assets with font content types', async () => {
     const response = await requestRuntime(
       '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
@@ -91,8 +100,10 @@ describe('handleRuntimeRoutes', () => {
   it('rejects unapproved runtime versions and assets', async () => {
     const badVersion = await requestRuntime('/api/runtimes/reveal.js/4.0.0/reveal.js')
     const badAsset = await requestRuntime('/api/runtimes/reveal.js/5.1.0/missing.js')
+    const malformedAsset = await requestRuntime('/api/runtimes/reveal.js/5.1.0/theme%2')
 
     expect(badVersion.status).toBe(404)
     expect(badAsset.status).toBe(404)
+    expect(malformedAsset.status).toBe(400)
   })
 })
