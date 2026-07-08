@@ -503,4 +503,110 @@ describe('useDeckPersistence', () => {
     expect(result.current.isPatching).toBe(false)
     expect(result.current.isSaving).toBe(false)
   })
+
+  it('forwards provenance on restoreHtmlSnapshot PUT requests', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const restoredHtml = sampleHtml.replace('One', 'Restored')
+    const restoredDeck = {
+      ...deck,
+      html: restoredHtml,
+      updatedAt: '2026-01-03T00:00:00.000Z',
+      versionNumber: 3,
+    }
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+      .mockResolvedValueOnce(jsonResponse({ deck: restoredDeck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.restoreHtmlSnapshot(restoredHtml, {
+        summary: 'Undo: Edited text in preview',
+        provenance: {
+          operations: ['undo'],
+          slideIndexes: [0],
+          elementIds: ['el-1'],
+        },
+      })
+    })
+
+    const restoreCall = fetchMock.mock.calls.find(
+      (call) => call[0] === `/api/decks/${deck.id}` && call[1]?.method === 'PUT',
+    )
+    expect(restoreCall).toBeTruthy()
+    expect(JSON.parse(String(restoreCall?.[1]?.body))).toEqual({
+      html: restoredHtml,
+      source: 'manual',
+      summary: 'Undo: Edited text in preview',
+      provenance: {
+        operations: ['undo'],
+        slideIndexes: [0],
+        elementIds: ['el-1'],
+      },
+    })
+    expect(result.current.html).toBe(restoredHtml)
+  })
+
+  it('keeps restoreHtmlSnapshot source locked to manual when options override it', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const restoredHtml = sampleHtml.replace('One', 'Locked')
+    const restoredDeck = {
+      ...deck,
+      html: restoredHtml,
+      updatedAt: '2026-01-03T00:00:00.000Z',
+      versionNumber: 3,
+    }
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+      .mockResolvedValueOnce(jsonResponse({ deck: restoredDeck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.restoreHtmlSnapshot(restoredHtml, {
+        source: 'upload',
+        summary: 'Should stay manual',
+        provenance: {
+          operations: ['redo'],
+        },
+      })
+    })
+
+    const restoreCall = fetchMock.mock.calls.find(
+      (call) => call[0] === `/api/decks/${deck.id}` && call[1]?.method === 'PUT',
+    )
+    expect(restoreCall).toBeTruthy()
+    expect(JSON.parse(String(restoreCall?.[1]?.body))).toEqual({
+      html: restoredHtml,
+      source: 'manual',
+      summary: 'Should stay manual',
+      provenance: {
+        operations: ['redo'],
+      },
+    })
+  })
 })

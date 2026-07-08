@@ -465,7 +465,9 @@ export function useDeckPersistence() {
       setSaveError('')
 
       try {
-        const deck = await updateDeck(deckId, nextHtml, { source: 'manual', ...options })
+        // Keep source locked to manual so callers cannot override it and
+        // accidentally drop client provenance (accepted only for manual).
+        const deck = await updateDeck(deckId, nextHtml, { ...options, source: 'manual' })
 
         if (requestId !== patchRequestIdRef.current) {
           return undefined
