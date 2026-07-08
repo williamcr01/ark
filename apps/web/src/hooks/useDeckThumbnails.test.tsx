@@ -1,10 +1,15 @@
-import { renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useDeckThumbnails } from './useDeckThumbnails'
 
 describe('useDeckThumbnails', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -52,18 +57,21 @@ describe('useDeckThumbnails', () => {
       ),
     )
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('pending')
+    await act(async () => {
+      await Promise.resolve()
     })
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('ready')
-      expect(result.current.thumbnailUrls).toEqual([
-        '/api/decks/d/thumbnails/v/0.png?hash=abc',
-        '/api/decks/d/thumbnails/v/1.png?hash=abc',
-      ])
+    expect(result.current.status).toBe('pending')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_300)
     })
 
+    expect(result.current.status).toBe('ready')
+    expect(result.current.thumbnailUrls).toEqual([
+      '/api/decks/d/thumbnails/v/0.png?hash=abc',
+      '/api/decks/d/thumbnails/v/1.png?hash=abc',
+    ])
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -86,10 +94,12 @@ describe('useDeckThumbnails', () => {
       ),
     )
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('disabled')
-      expect(result.current.thumbnailUrls).toBeNull()
+    await act(async () => {
+      await Promise.resolve()
     })
+
+    expect(result.current.status).toBe('disabled')
+    expect(result.current.thumbnailUrls).toBeNull()
   })
 
   it('keeps fallback behavior for failed status', async () => {
@@ -111,10 +121,12 @@ describe('useDeckThumbnails', () => {
       ),
     )
 
-    await waitFor(() => {
-      expect(result.current.status).toBe('failed')
-      expect(result.current.thumbnailUrls).toBeNull()
-      expect(result.current.error).toBe('boom')
+    await act(async () => {
+      await Promise.resolve()
     })
+
+    expect(result.current.status).toBe('failed')
+    expect(result.current.thumbnailUrls).toBeNull()
+    expect(result.current.error).toBe('boom')
   })
 })

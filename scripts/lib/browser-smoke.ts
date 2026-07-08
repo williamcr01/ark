@@ -607,6 +607,9 @@ export async function startServers(options: {
   process.env.VITE_ARK_APP_ORIGIN = appOrigin
   process.env.VITE_ARK_SANDBOX_ORIGIN = sandboxOrigin
   process.env.VITE_DEV_PORT = String(options.webPort)
+  // Keep browser smoke focused on preview/bridge behavior; thumbnail rendering
+  // has its own Chromium-backed unit tests and would leave a shared browser pool.
+  process.env.ARK_THUMBNAIL_RENDERER = 'off'
 
   const { createPreviewSessionStore } = await import('../../apps/api/preview-sessions.ts')
   const { createDeckStore } = await import('../../apps/api/deck-store.ts')

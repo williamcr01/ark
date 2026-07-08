@@ -92,12 +92,9 @@ function LazyThumbnail({
   trackVisibility,
 }: LazyThumbnailProps) {
   const containerRef = useRef<HTMLButtonElement>(null)
-  const [imageFailed, setImageFailed] = useState(false)
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
+  const imageFailed = Boolean(thumbnailUrl) && failedThumbnailUrl === thumbnailUrl
   const useImage = Boolean(thumbnailUrl) && !imageFailed
-
-  useEffect(() => {
-    setImageFailed(false)
-  }, [thumbnailUrl])
 
   useEffect(() => {
     if (!trackVisibility) {
@@ -149,7 +146,7 @@ function LazyThumbnail({
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
               decoding="async"
               loading="lazy"
-              onError={() => setImageFailed(true)}
+              onError={() => setFailedThumbnailUrl(thumbnailUrl)}
               src={thumbnailUrl}
               title={`Slide ${index + 1} thumbnail`}
             />

@@ -304,6 +304,11 @@ export async function spawnChromium(
     stderr += chunk.toString('utf8')
   })
 
+  // Do not keep the parent Node process alive solely for the shared Chromium pool.
+  child.unref()
+  child.stdout?.unref()
+  child.stderr?.unref()
+
   await waitFor('Chromium DevTools endpoint', async () => {
     if (child.exitCode !== null) {
       throw new Error(`Chromium exited early.\n${stderr}`)
