@@ -36,6 +36,26 @@ const arkManagedDeck = `<!DOCTYPE html>
 </body>
 </html>`
 
+const arkManagedLinkDeck = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Managed Link Deck</title>
+  <style>section.slide { width: 100vw; height: 100vh; }</style>
+</head>
+<body>
+  <section class="slide" data-ark-slide-id="ark-slide-title">
+    <a
+      data-ark-id="ark-el-link"
+      data-ark-managed="true"
+      data-ark-editable="true"
+      href="/internal/link"
+      style="position: absolute; left: 48px; top: 220px; width: 420px; z-index: 3;"
+    >Managed link</a>
+  </section>
+</body>
+</html>`
+
 function expectValidDeck(html: string) {
   const validation = validateDeckHtmlOnServer(html)
   expect(validation.valid).toBe(true)
@@ -647,6 +667,28 @@ describe('applyDeckPatches element operations', () => {
         },
       ]),
     ).toMatchObject({ ok: false, error: expect.stringContaining('Remote image URLs') })
+  })
+
+  it('rejects external href URLs on set_attrs href', () => {
+    const result = applyDeckPatches(arkManagedLinkDeck, [
+      {
+        op: 'set_attrs',
+        elementId: 'ark-el-link',
+        slideIndex: 0,
+        attrs: { href: 'https://evil.example/phish' },
+      },
+    ])
+
+    // Element patch should apply (server validation rejects the resulting HTML).
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    const validation = validateDeckHtmlOnServer(result.html)
+    expect(validation.valid).toBe(false)
+    expect(validation.issues.some((issue) => issue.code === 'external_url')).toBe(true)
+    expect(result.html).toContain('https://evil.example/phish')
   })
 
   it('can mix slide and element operations in one request', () => {
