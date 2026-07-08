@@ -184,6 +184,56 @@ describe('applyDeckPatches element operations', () => {
     expect(inserted.html).toContain('data-ark-editable="text-box"')
   })
 
+  it('patches text-box wrappers as recognized editable targets (#84)', () => {
+    const inserted = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'insert_element',
+        slideIndex: 0,
+        html: '<div class="ark-text-box" data-ark-editable="text-box" data-ark-managed="true" style="position:absolute;left:160px;top:144px;width:384px;min-height:58px;"><p>New text</p></div>',
+      },
+    ])
+
+    expect(inserted.ok).toBe(true)
+    if (!inserted.ok) {
+      return
+    }
+
+    const wrapperId = inserted.changedElementIds[0]!
+    expect(wrapperId).toBeTruthy()
+
+    const patched = applyDeckPatches(inserted.html, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: wrapperId,
+        x: 0.5,
+        y: 0.25,
+      },
+      {
+        op: 'set_inline_style',
+        slideIndex: 0,
+        elementId: wrapperId,
+        style: { 'font-size': '32px', 'line-height': '40px', 'text-align': 'center' },
+      },
+      {
+        op: 'reorder_element',
+        slideIndex: 0,
+        elementId: wrapperId,
+        direction: 'front',
+      },
+    ])
+
+    expect(patched.ok).toBe(true)
+    if (!patched.ok) {
+      return
+    }
+
+    expectValidDeck(patched.html)
+    expect(patched.html).toContain(`left: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(patched.html).toContain('font-size: 32px')
+    expect(patched.html).toContain('line-height: 40px')
+  })
+
   it('duplicates managed elements with a positional offset', () => {
     const duplicated = applyDeckPatches(arkManagedDeck, [
       {

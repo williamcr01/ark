@@ -211,6 +211,18 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain('ArrowLeft')
   })
 
+  it('prefers the text-box wrapper over inner text elements as the editable target', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    const findTargetIndex = script.indexOf('function findEditableTarget')
+    expect(findTargetIndex).toBeGreaterThan(-1)
+
+    const ancestorPreferenceIndex = script.indexOf('findTextBoxAncestor(current, slide) || current')
+    expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
+  })
+
   it('gates keyboard deletion to Ark-managed elements in the runtime script', () => {
     const script = buildDeckEditorBridgeRuntimeScript({
       slideSelectors: ['section.slide'],
