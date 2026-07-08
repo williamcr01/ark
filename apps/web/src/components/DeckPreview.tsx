@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner'
 
 import { EditModeToolbar, PreviewEditModeToggle } from '@/components/EditModeToolbar'
+import { ElementInspector } from '@/components/ElementInspector'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
 import { PresentMode } from '@/components/PresentMode'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
@@ -38,6 +39,7 @@ import {
   prepareImageInsertFromFile,
 } from '@/lib/deck-image-insert'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
+import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import { previewStripsDeckScripts } from '@/lib/deck-export'
 import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
 import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
@@ -114,6 +116,11 @@ export function DeckPreview({
   } | null>(null)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
+  const pendingReselectRef = useRef<{
+    elementId: string
+    slideIndex: number
+    iframeKey: string
+  } | null>(null)
   const processedTextCommitRef = useRef<string | null>(null)
   const processedInsertRequestRef = useRef<string | null>(null)
   const processedDeleteRequestRef = useRef<string | null>(null)
@@ -189,6 +196,7 @@ export function DeckPreview({
     hover,
     geometry,
     hoverGeometry,
+    selectionZIndex,
     editorError,
     lastTextCommit,
     lastInsertRequest,
@@ -198,6 +206,7 @@ export function DeckPreview({
     textEditActive,
     enableEditor,
     disableEditor,
+    selectElement,
     requestGeometry,
     startTextEdit,
     cancelTextEdit,
@@ -236,6 +245,38 @@ export function DeckPreview({
     imageFitOverride.elementId === selection?.elementId
       ? imageFitOverride.fit
       : (selection?.imageFit ?? 'contain')
+
+  // Remember the current selection so it can be restored after the preview
+  // iframe reloads with the patched HTML (issue #84). The recorded iframeKey
+  // marks the pre-patch frame; the reselect effect waits for a new frame.
+  const scheduleReselect = useCallback(() => {
+    if (!selection?.elementId) {
+      return
+    }
+
+    pendingReselectRef.current = {
+      elementId: selection.elementId,
+      slideIndex: selection.slideIndex,
+      iframeKey: previewFrame.iframeKey,
+    }
+  }, [previewFrame.iframeKey, selection])
+
+  const handleInspectorApply = useCallback(
+    (operations: DeckElementPatchOperation[], summary: string) => {
+      if (!selection || !onPatchEditorOperations || operations.length === 0) {
+        return
+      }
+
+      preserveSlideIndexRef.current = selection.slideIndex
+      scheduleReselect()
+
+      void onPatchEditorOperations(operations, selection.slideIndex, summary).catch(() => {
+        pendingReselectRef.current = null
+        preserveSlideIndexRef.current = null
+      })
+    },
+    [onPatchEditorOperations, scheduleReselect, selection],
+  )
 
   const handleDeleteSelection = useCallback(() => {
     if (!selection || !canModifySelection || !onPatchEditorOperations) {
@@ -281,6 +322,8 @@ export function DeckPreview({
         return
       }
 
+      scheduleReselect()
+
       void onPatchEditorOperations(
         [
           {
@@ -295,7 +338,7 @@ export function DeckPreview({
         direction === 'front' ? 'Brought element forward' : 'Sent element backward',
       )
     },
-    [canModifySelection, onPatchEditorOperations, selection],
+    [canModifySelection, onPatchEditorOperations, scheduleReselect, selection],
   )
 
   const handleUndo = useCallback(() => {
@@ -364,6 +407,7 @@ export function DeckPreview({
     disableEditor()
     setActiveTool('select')
     setImageFitOverride(null)
+    pendingReselectRef.current = null
     setEditModeActive(false)
   }, [disableEditor, endTextEditing])
 
@@ -442,6 +486,8 @@ export function DeckPreview({
         return
       }
 
+      scheduleReselect()
+
       void onPatchEditorOperations(
         [
           {
@@ -456,7 +502,7 @@ export function DeckPreview({
         'Updated image alt text',
       )
     },
-    [onPatchEditorOperations, selectedImage, selection],
+    [onPatchEditorOperations, scheduleReselect, selectedImage, selection],
   )
 
   const handleImageFitChange = useCallback(
@@ -469,6 +515,7 @@ export function DeckPreview({
         elementId: selection.elementId,
         fit,
       })
+      scheduleReselect()
 
       void onPatchEditorOperations(
         [
@@ -491,7 +538,7 @@ export function DeckPreview({
         'Updated image fit mode',
       )
     },
-    [onPatchEditorOperations, selectedImage, selection],
+    [onPatchEditorOperations, scheduleReselect, selectedImage, selection],
   )
 
   useEffect(() => {
@@ -512,6 +559,7 @@ export function DeckPreview({
     }
 
     preserveSlideIndexRef.current = activeSlideIndex
+    scheduleReselect()
 
     void onCommitTextEdit({
       elementId: lastTextCommit.elementId,
@@ -522,8 +570,9 @@ export function DeckPreview({
     }).catch(() => {
       processedTextCommitRef.current = null
       preserveSlideIndexRef.current = null
+      pendingReselectRef.current = null
     })
-  }, [activeSlideIndex, lastTextCommit, onCommitTextEdit])
+  }, [activeSlideIndex, lastTextCommit, onCommitTextEdit, scheduleReselect])
 
   useEffect(() => {
     if (!lastInsertRequest || !onPatchEditorOperations) {
@@ -614,6 +663,7 @@ export function DeckPreview({
 
     processedTransformCommitRef.current = commitKey
     preserveSlideIndexRef.current = activeSlideIndex
+    scheduleReselect()
 
     void onPatchEditorOperations(
       operations,
@@ -622,8 +672,15 @@ export function DeckPreview({
     ).catch(() => {
       processedTransformCommitRef.current = null
       preserveSlideIndexRef.current = null
+      pendingReselectRef.current = null
     })
-  }, [activeSlideIndex, onPatchEditorOperations, selection?.slideId, transformCommit])
+  }, [
+    activeSlideIndex,
+    onPatchEditorOperations,
+    scheduleReselect,
+    selection?.slideId,
+    transformCommit,
+  ])
 
   useEffect(() => {
     if (preserveSlideIndexRef.current === null) {
@@ -827,6 +884,46 @@ export function DeckPreview({
 
     requestGeometry(selection.elementId, selection.slideIndex)
   }, [editChromeActive, requestGeometry, selection])
+
+  // Restore the selection after the preview reloads with patched HTML so the
+  // inspector stays populated across saves (issue #84). Waits for a *new*
+  // iframe (key change) plus editor readiness, and gives up silently when the
+  // element no longer exists or the user selected something else meanwhile.
+  useEffect(() => {
+    const pending = pendingReselectRef.current
+
+    if (!pending) {
+      return
+    }
+
+    if (!editChromeActive) {
+      pendingReselectRef.current = null
+      return
+    }
+
+    if (pending.iframeKey === previewFrame.iframeKey) {
+      return
+    }
+
+    if (!editorReady || activeSlideIndex !== pending.slideIndex) {
+      return
+    }
+
+    if (selection?.elementId) {
+      pendingReselectRef.current = null
+      return
+    }
+
+    pendingReselectRef.current = null
+    selectElement(pending.elementId, pending.slideIndex)
+  }, [
+    activeSlideIndex,
+    editChromeActive,
+    editorReady,
+    previewFrame.iframeKey,
+    selectElement,
+    selection?.elementId,
+  ])
 
   // Mirror the live selection up to the shell so chat requests can target the
   // selected element. Report null whenever the edit chrome is inactive (edit
@@ -1129,6 +1226,17 @@ export function DeckPreview({
             )}
           </div>
         </div>
+
+        {editorBridgeEnabled && editChromeActive && layout === 'desktop' ? (
+          <ElementInspector
+            geometry={geometry}
+            isSaving={isTextEditSaving}
+            onApplyOperations={onPatchEditorOperations ? handleInspectorApply : undefined}
+            selection={selection}
+            textEditActive={textEditActive}
+            zIndex={selectionZIndex}
+          />
+        ) : null}
       </div>
 
       {isPresentOpen ? (

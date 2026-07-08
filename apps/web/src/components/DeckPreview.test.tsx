@@ -1,6 +1,6 @@
 import { type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -57,10 +57,16 @@ const editorBridgeMock = vi.hoisted(() => ({
   transformCommit: null as EditorTransformCommitMessage | null,
   enableEditor: vi.fn(),
   disableEditor: vi.fn(),
+  selectElement: vi.fn(),
+  clearSelection: vi.fn(),
   requestGeometry: vi.fn(),
   startTextEdit: vi.fn(),
   cancelTextEdit: vi.fn(),
   setTool: vi.fn(),
+}))
+
+const previewFrameMock = vi.hoisted(() => ({
+  iframeKey: 'test-preview',
 }))
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
@@ -76,7 +82,7 @@ vi.mock('@/hooks/useDeckSlideNavigation', () => ({
 
 vi.mock('@/hooks/useDeckPreviewFrame', () => ({
   useDeckPreviewFrame: () => ({
-    iframeKey: 'test-preview',
+    iframeKey: previewFrameMock.iframeKey,
     iframeSrcDoc: '<html></html>',
     sandboxOrigin: null,
     isLoading: false,
@@ -114,10 +120,13 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.transformCommit = null
     editorBridgeMock.enableEditor.mockClear()
     editorBridgeMock.disableEditor.mockClear()
+    editorBridgeMock.selectElement.mockClear()
+    editorBridgeMock.clearSelection.mockClear()
     editorBridgeMock.requestGeometry.mockClear()
     editorBridgeMock.startTextEdit.mockClear()
     editorBridgeMock.cancelTextEdit.mockClear()
     editorBridgeMock.setTool.mockClear()
+    previewFrameMock.iframeKey = 'test-preview'
   })
 
   it('shows static preview messaging for uploaded scripted decks', () => {
@@ -676,7 +685,216 @@ describe('DeckPreview script divergence UI', () => {
 
     await user.click(screen.getByRole('button', { name: 'Edit mode' }))
 
-    expect(screen.getByText('Locked')).toBeInTheDocument()
+    expect(screen.getAllByText('Locked').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Edit selected text' })).not.toBeInTheDocument()
+  })
+
+  it('shows the element inspector with an empty state in desktop edit mode only', async () => {
+    const user = userEvent.setup()
+
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+
+    expect(
+      screen.queryByRole('complementary', { name: 'Element inspector' }),
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    expect(screen.getByRole('complementary', { name: 'Element inspector' })).toBeInTheDocument()
+    expect(screen.getByText(/select an element on the slide/i)).toBeInTheDocument()
+  })
+
+  it('does not render the inspector in the mobile layout', async () => {
+    const user = userEvent.setup()
+
+    renderDeckPreview({ ...plainDeckProps, layout: 'mobile', editorBridgeEnabled: true })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    expect(
+      screen.queryByRole('complementary', { name: 'Element inspector' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('dispatches inspector geometry edits through the patch callback', async () => {
+    const user = userEvent.setup()
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    const xInput = screen.getByRole('textbox', { name: 'X (%)' })
+    await user.clear(xInput)
+    await user.type(xInput, '50{enter}')
+
+    expect(onPatchEditorOperations).toHaveBeenCalledTimes(1)
+    expect(onPatchEditorOperations).toHaveBeenCalledWith(
+      [
+        {
+          op: 'move_element',
+          elementId: 'ark-el-box',
+          slideIndex: 0,
+          slideId: 'slide-1',
+          x: 0.5,
+          y: 0.1,
+        },
+      ],
+      0,
+      'Moved element',
+    )
+  })
+
+  it('restores the selection after the preview reloads with patched HTML', async () => {
+    const user = userEvent.setup()
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.editorReady = true
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+
+    const props = {
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    }
+    const { rerender } = renderDeckPreview(props)
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    // Commit an inspector edit; this schedules a reselect for the element.
+    const xInput = screen.getByRole('textbox', { name: 'X (%)' })
+    await user.clear(xInput)
+    await user.type(xInput, '50{enter}')
+
+    expect(onPatchEditorOperations).toHaveBeenCalledTimes(1)
+    expect(editorBridgeMock.selectElement).not.toHaveBeenCalled()
+
+    // The patched HTML produces a new preview session; the bridge resets.
+    previewFrameMock.iframeKey = 'patched-preview'
+    editorBridgeMock.selection = null
+    editorBridgeMock.geometry = null
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+
+    expect(editorBridgeMock.selectElement).toHaveBeenCalledWith('ark-el-box', 0)
+  })
+
+  it('does not reselect when the user already selected another element', async () => {
+    const user = userEvent.setup()
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.editorReady = true
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+
+    const props = {
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    }
+    const { rerender } = renderDeckPreview(props)
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    const xInput = screen.getByRole('textbox', { name: 'X (%)' })
+    await user.clear(xInput)
+    await user.type(xInput, '50{enter}')
+
+    previewFrameMock.iframeKey = 'patched-preview'
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-other',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'p',
+      locked: false,
+      managed: false,
+      editableKind: null,
+      textPreview: 'Other',
+    }
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+
+    expect(editorBridgeMock.selectElement).not.toHaveBeenCalled()
+  })
+
+  it('shows inspector image controls for image selections and dispatches fit changes', async () => {
+    const user = userEvent.setup()
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-img',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'img',
+      locked: false,
+      managed: true,
+      editableKind: 'image',
+      textPreview: 'A chart',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    const inspector = screen.getByRole('complementary', { name: 'Element inspector' })
+    const fitSelect = within(inspector).getByRole('combobox', { name: 'Image fit mode' })
+    await user.selectOptions(fitSelect, 'cover')
+
+    expect(onPatchEditorOperations).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ op: 'set_inline_style', style: { 'object-fit': 'cover' } }),
+        expect.objectContaining({ op: 'set_attrs', attrs: { 'data-ark-fit': 'cover' } }),
+      ],
+      0,
+      'Updated image fit mode',
+    )
   })
 })
