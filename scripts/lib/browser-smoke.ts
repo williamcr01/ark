@@ -748,10 +748,15 @@ export async function attachCdpTargets(cdp: CdpClient) {
       return
     }
 
-    void cdp.send('Runtime.enable', {}, sessionId)
-    void cdp.send('Page.enable', {}, sessionId)
-    void cdp.send('Network.enable', {}, sessionId)
-    void cdp.send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => {})
+    // Iframe targets can detach before these fire-and-forget enables resolve
+    // (e.g. preview reload on edit-mode toggle). Ignore stale-session errors so
+    // they do not surface as unhandled rejections and fail CI.
+    const ignoreDetachedTarget = () => undefined
+
+    void cdp.send('Runtime.enable', {}, sessionId).catch(ignoreDetachedTarget)
+    void cdp.send('Page.enable', {}, sessionId).catch(ignoreDetachedTarget)
+    void cdp.send('Network.enable', {}, sessionId).catch(ignoreDetachedTarget)
+    void cdp.send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(ignoreDetachedTarget)
   })
 
   await cdp.send('Target.setAutoAttach', {
