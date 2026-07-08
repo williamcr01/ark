@@ -255,55 +255,152 @@ async function getCurrentEditPreview(
   return { editPreviewSrc, editPreview }
 }
 
-async function postEditorRuntimeMessageFromParent(
+async function dispatchPointerSequence(
   cdp: Awaited<ReturnType<typeof createPage>>,
-  servers: { sandboxOrigin: string },
-  message: Record<string, unknown>,
+  editPreview: RuntimeContext,
+  steps: Array<{
+    type: 'pointerdown' | 'pointermove' | 'pointerup'
+    selector: string
+    offsetX?: number
+    offsetY?: number
+    pointerId?: number
+  }>,
 ) {
-  const posted = await evaluate<boolean>(
+  const dispatched = await evaluate<boolean>(
     cdp,
     `(() => {
-      const iframe = document.querySelector('iframe[title="Generated Ark presentation preview"]');
-      if (!iframe || !iframe.contentWindow) return false;
-      const origin = (() => {
-        try {
-          return new URL(iframe.src).origin;
-        } catch {
-          return ${JSON.stringify(servers.sandboxOrigin)};
-        }
-      })();
-      // Opaque sandboxes report origin "null"; the shell accepts both.
-      window.dispatchEvent(new MessageEvent('message', {
-        data: ${JSON.stringify(message)},
-        origin: origin === 'null' ? 'null' : origin,
-        source: iframe.contentWindow,
-      }));
+      const steps = ${JSON.stringify(steps)};
+      for (const step of steps) {
+        const target = document.querySelector(step.selector);
+        if (!target) return false;
+        const rect = target.getBoundingClientRect();
+        const x = rect.left + rect.width * (step.offsetX ?? 0.5);
+        const y = rect.top + rect.height * (step.offsetY ?? 0.5);
+        const common = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          view: window,
+          pointerId: step.pointerId ?? 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          button: 0,
+          clientX: x,
+          clientY: y,
+        };
+        target.dispatchEvent(
+          new PointerEvent(step.type, {
+            ...common,
+            buttons: step.type === 'pointerup' ? 0 : 1,
+          }),
+        );
+      }
       return true;
     })()`,
+    { contextId: editPreview.id, sessionId: editPreview.sessionId },
   )
 
-  assert(posted, `Could not dispatch editor runtime message ${String(message.type)}`)
+  assert(dispatched, 'Could not dispatch pointer sequence in edit preview')
 }
 
-async function waitForDeckChangeFromParentMessage(
+async function moveTextBoxViaPointer(
   cdp: Awaited<ReturnType<typeof createPage>>,
   servers: { sandboxOrigin: string },
+  contexts: Map<string, RuntimeContext>,
   apiPort: number,
   deckId: string,
-  message: Record<string, unknown>,
-  predicate: (html: string, beforeHtml: string) => boolean,
-  label: string,
+  elementId: string,
 ) {
   const beforeHtml = (await fetchDeck(apiPort, deckId)).html
+  const { editPreview } = await getCurrentEditPreview(cdp, servers, contexts)
+  const boxSelector = `[data-ark-id="${elementId}"]`
+
+  await waitFor('text box present in edit preview', async () =>
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector(${JSON.stringify(boxSelector)}))`, {
+      contextId: editPreview.id,
+      sessionId: editPreview.sessionId,
+    }),
+  )
+
+  // Select + drag the managed text box so the iframe posts transform preview/commit.
+  await dispatchPointerSequence(cdp, editPreview, [
+    { type: 'pointerdown', selector: boxSelector, offsetX: 0.4, offsetY: 0.4 },
+    { type: 'pointermove', selector: boxSelector, offsetX: 0.7, offsetY: 0.75 },
+    { type: 'pointerup', selector: boxSelector, offsetX: 0.7, offsetY: 0.75 },
+  ])
 
   return waitFor(
-    label,
+    'moved text box persisted to deck HTML',
     async () => {
-      await postEditorRuntimeMessageFromParent(cdp, servers, message)
       const deck = await fetchDeck(apiPort, deckId)
-      return predicate(deck.html, beforeHtml) ? deck : null
+      return deck.html !== beforeHtml && deck.html.includes(`data-ark-id="${elementId}"`)
+        ? deck
+        : null
     },
-    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS, intervalMs: 400 },
+    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+  )
+}
+
+async function deleteTextBoxViaKeyboard(
+  cdp: Awaited<ReturnType<typeof createPage>>,
+  servers: { sandboxOrigin: string },
+  contexts: Map<string, RuntimeContext>,
+  apiPort: number,
+  deckId: string,
+  elementId: string,
+) {
+  const beforeHtml = (await fetchDeck(apiPort, deckId)).html
+  const { editPreview } = await getCurrentEditPreview(cdp, servers, contexts)
+  const boxSelector = `[data-ark-id="${elementId}"]`
+
+  await waitFor('text box present before delete', async () =>
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector(${JSON.stringify(boxSelector)}))`, {
+      contextId: editPreview.id,
+      sessionId: editPreview.sessionId,
+    }),
+  )
+
+  // Click to select the managed element, then Delete to request removal.
+  await dispatchPointerSequence(cdp, editPreview, [
+    { type: 'pointerdown', selector: boxSelector, offsetX: 0.5, offsetY: 0.5 },
+    { type: 'pointerup', selector: boxSelector, offsetX: 0.5, offsetY: 0.5 },
+  ])
+
+  await waitFor('text box selected in edit preview', async () =>
+    evaluate<boolean>(
+      cdp!,
+      `Boolean(document.querySelector(${JSON.stringify(`${boxSelector}[data-ark-editor-selected]`)}))`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    ),
+  )
+
+  await evaluate<boolean>(
+    cdp,
+    `(() => {
+      const target = document.querySelector(${JSON.stringify(boxSelector)}) || document.body;
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Delete',
+          code: 'Delete',
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        }),
+      );
+      return true;
+    })()`,
+    { contextId: editPreview.id, sessionId: editPreview.sessionId },
+  )
+
+  return waitFor(
+    'deleted text box from deck HTML',
+    async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html !== beforeHtml && !deck.html.includes(`data-ark-id="${elementId}"`)
+        ? deck
+        : null
+    },
+    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
   )
 }
 
@@ -576,21 +673,20 @@ async function runSmoke() {
     const textBoxElementId = textBoxIdMatch?.[1] || textBoxIdMatch?.[2]
     assert(textBoxElementId, 'Inserted text box is missing data-ark-id')
 
-    const beforeTransformHtml = (await fetchDeck(apiPort, deckId)).html
-    await waitForDeckChangeFromParentMessage(
+    // Ensure select tool is active before drag/delete (insert may leave text-box pressed briefly).
+    await evaluate<boolean>(
       cdp,
-      servers,
-      apiPort,
-      deckId,
-      {
-        type: 'ark:editor-transform-commit',
-        elementId: textBoxElementId,
-        slideIndex: 0,
-        geometry: { x: 0.2, y: 0.7, width: 0.4, height: 0.14 },
-      },
-      (html) => html !== beforeTransformHtml,
-      'transform persisted to deck HTML',
+      `Boolean(document.querySelector('button[aria-label="Select"]')?.click())`,
     )
+    await waitFor('select tool active before transform', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `document.querySelector('button[aria-label="Select"]')?.getAttribute('aria-pressed') === 'true'`,
+      ),
+    )
+
+    const beforeTransformHtml = (await fetchDeck(apiPort, deckId)).html
+    await moveTextBoxViaPointer(cdp, servers, contexts, apiPort, deckId, textBoxElementId)
 
     const transformVersion = await waitForNewestVersion(
       apiPort,
@@ -648,20 +744,18 @@ async function runSmoke() {
       'Quarterly planning',
     ))
 
-    const beforeDeleteHtml = (await fetchDeck(apiPort, deckId)).html
-    await waitForDeckChangeFromParentMessage(
+    await evaluate<boolean>(
       cdp,
-      servers,
-      apiPort,
-      deckId,
-      {
-        type: 'ark:editor-delete-request',
-        elementId: textBoxElementId,
-        slideIndex: 0,
-      },
-      (html) => html !== beforeDeleteHtml && !html.includes(`data-ark-id="${textBoxElementId}"`),
-      'delete removed text box from deck HTML',
+      `Boolean(document.querySelector('button[aria-label="Select"]')?.click())`,
     )
+    await waitFor('select tool active before delete', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `document.querySelector('button[aria-label="Select"]')?.getAttribute('aria-pressed') === 'true'`,
+      ),
+    )
+
+    await deleteTextBoxViaKeyboard(cdp, servers, contexts, apiPort, deckId, textBoxElementId)
 
     const deleteVersion = await waitForNewestVersion(
       apiPort,
