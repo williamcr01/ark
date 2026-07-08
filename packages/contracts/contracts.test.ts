@@ -26,6 +26,7 @@ import {
 import { runtimeErrorInputSchema, runtimeErrorResponseSchema } from './runtime-errors.ts'
 import { runtimeRegistryResponseSchema } from './runtimes.ts'
 import { deckAssetProxyBlockedResponseSchema } from './deck-asset-proxy.ts'
+import { deckThumbnailsQuerySchema, deckThumbnailsResponseSchema } from './thumbnails.ts'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 const jobId = 'a0000000-0000-4000-8000-000000000001'
@@ -201,6 +202,28 @@ describe('shared API contracts', () => {
         renderUrl: 'http://localhost:5174/render/abc',
       }),
     ).toBeTruthy()
+  })
+
+  it('parses thumbnail contracts', () => {
+    expect(deckThumbnailsQuerySchema.parse({ versionId: deckId })).toEqual({ versionId: deckId })
+    expect(deckThumbnailsQuerySchema.safeParse({ versionId: 'bad' }).success).toBe(false)
+
+    expect(
+      deckThumbnailsResponseSchema.parse({
+        status: 'ready',
+        slides: [{ index: 0, url: `/api/decks/${deckId}/thumbnails/${deckId}/0.png?hash=abc` }],
+        width: 480,
+        height: 270,
+      }),
+    ).toMatchObject({ status: 'ready' })
+
+    expect(
+      deckThumbnailsResponseSchema.parse({
+        status: 'failed',
+        slides: [],
+        error: 'Timed out waiting for deck ready during thumbnail render.',
+      }),
+    ).toMatchObject({ status: 'failed' })
   })
 
   it('parses chat contracts', () => {

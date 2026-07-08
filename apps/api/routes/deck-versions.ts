@@ -9,8 +9,11 @@ import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 
-export function createDeckVersionsRouter(deps: { deckStore: DeckStore }): Router {
-  const { deckStore } = deps
+export function createDeckVersionsRouter(deps: {
+  deckStore: DeckStore
+  onDeckVersionPersisted?: (deckId: string, versionId: string) => void
+}): Router {
+  const { deckStore, onDeckVersionPersisted } = deps
   const router = Router()
 
   router.get(
@@ -139,6 +142,10 @@ export function createDeckVersionsRouter(deps: { deckStore: DeckStore }): Router
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })
           return
+        }
+
+        if (deck.activeVersionId && onDeckVersionPersisted) {
+          onDeckVersionPersisted(deck.id, deck.activeVersionId)
         }
 
         response.json({ deck, validation })

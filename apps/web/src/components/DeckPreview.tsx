@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
+import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
   getPreviewFrameScale,
@@ -185,6 +186,7 @@ export function DeckPreview({
       },
     },
   )
+  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount)
 
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex
@@ -1078,6 +1080,7 @@ export function DeckPreview({
             onSelect={goToSlide}
             orientation={stripOrientation}
             parsedDeck={parsedDeck}
+            thumbnailUrls={thumbnailUrls}
           />
         ) : null}
 
