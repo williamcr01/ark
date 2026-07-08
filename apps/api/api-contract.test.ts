@@ -77,6 +77,20 @@ const stubAgentFailure = async (): Promise<RunDeckAgentResult> => ({
   steps: [],
 })
 
+function unsetDeckAssetAllowlist() {
+  const previous = process.env.ARK_DECK_ASSET_ALLOWLIST
+  delete process.env.ARK_DECK_ASSET_ALLOWLIST
+
+  return () => {
+    if (previous === undefined) {
+      delete process.env.ARK_DECK_ASSET_ALLOWLIST
+      return
+    }
+
+    process.env.ARK_DECK_ASSET_ALLOWLIST = previous
+  }
+}
+
 type ContractApi = {
   baseUrl: string
 }
@@ -470,26 +484,32 @@ describe('HTTP API contract drift prevention', () => {
   })
 
   it('matches runtime registry and deck asset proxy contracts', async () => {
-    const { baseUrl } = await startContractApi()
+    const restoreDeckAssetAllowlist = unsetDeckAssetAllowlist()
 
-    const runtimesResponse = await fetch(`${baseUrl}/api/runtimes`)
-    const runtimes = await runtimesResponse.json()
+    try {
+      const { baseUrl } = await startContractApi()
 
-    expect(runtimesResponse.status).toBe(200)
-    assertApiContract(runtimeRegistryResponseSchema, runtimes)
+      const runtimesResponse = await fetch(`${baseUrl}/api/runtimes`)
+      const runtimes = await runtimesResponse.json()
 
-    const missingUrlResponse = await fetch(`${baseUrl}/api/deck-assets`)
-    const missingUrl = await missingUrlResponse.json()
+      expect(runtimesResponse.status).toBe(200)
+      assertApiContract(runtimeRegistryResponseSchema, runtimes)
 
-    expect(missingUrlResponse.status).toBe(400)
-    assertApiContract(simpleErrorResponseSchema, missingUrl)
+      const missingUrlResponse = await fetch(`${baseUrl}/api/deck-assets`)
+      const missingUrl = await missingUrlResponse.json()
 
-    const blockedResponse = await fetch(
-      `${baseUrl}/api/deck-assets?url=${encodeURIComponent('https://example.com/logo.png')}`,
-    )
-    const blocked = await blockedResponse.json()
+      expect(missingUrlResponse.status).toBe(400)
+      assertApiContract(simpleErrorResponseSchema, missingUrl)
 
-    expect(blockedResponse.status).toBe(403)
-    assertApiContract(deckAssetProxyBlockedResponseSchema, blocked)
+      const blockedResponse = await fetch(
+        `${baseUrl}/api/deck-assets?url=${encodeURIComponent('https://example.com/logo.png')}`,
+      )
+      const blocked = await blockedResponse.json()
+
+      expect(blockedResponse.status).toBe(403)
+      assertApiContract(deckAssetProxyBlockedResponseSchema, blocked)
+    } finally {
+      restoreDeckAssetAllowlist()
+    }
   })
 })
