@@ -351,6 +351,35 @@ describe('applyDeckPatches element operations', () => {
     expect(styled.html).toContain('color: rgb(10, 20, 30)')
     expect(styled.html).toContain('font-weight: 600')
 
+    // Inspector typography controls rely on line-height being patchable (#84),
+    // while non-whitelisted properties stay blocked.
+    const lineHeight = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'set_inline_style',
+        slideIndex: 0,
+        elementId: 'ark-el-body',
+        style: { 'line-height': '1.6' },
+      },
+    ])
+
+    expect(lineHeight.ok).toBe(true)
+    if (!lineHeight.ok) {
+      return
+    }
+
+    expect(lineHeight.html).toContain('line-height: 1.6')
+
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        {
+          op: 'set_inline_style',
+          slideIndex: 0,
+          elementId: 'ark-el-body',
+          style: { 'font-family': 'Comic Sans MS' },
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('does not allow') })
+
     const locked = applyDeckPatches(styled.html, [
       {
         op: 'lock_element',
