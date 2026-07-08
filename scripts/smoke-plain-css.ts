@@ -21,6 +21,7 @@ import {
   startServers,
   stopChromium,
   stopServers,
+  writeBrowserSmokeArtifacts,
   waitFor,
   type RuntimeContext,
 } from './lib/browser-smoke.ts'
@@ -53,9 +54,12 @@ async function runSmoke() {
     getFreePort(),
   ])
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'ark-plain-css-smoke-'))
+  const artifactsRoot =
+    process.env.ARK_SMOKE_ARTIFACTS_DIR?.trim() || path.join(tempRoot, 'artifacts')
   let browser: Awaited<ReturnType<typeof spawnChromium>> | null = null
   let cdp: Awaited<ReturnType<typeof createPage>> | null = null
   let servers: Awaited<ReturnType<typeof startServers>> | null = null
+  let mainPreviewSrc: string | null = null
 
   try {
     servers = await startServers({ apiPort, sandboxPort, webPort, tempRoot })
@@ -120,7 +124,7 @@ async function runSmoke() {
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
-    const mainPreviewSrc = await waitFor(
+    mainPreviewSrc = await waitFor(
       'main sandbox preview iframe src',
       async () => {
         const src = await evaluate<string>(
@@ -389,6 +393,17 @@ async function runSmoke() {
     )
 
     console.log('Plain CSS browser smoke passed.')
+  } catch (error: unknown) {
+    await writeBrowserSmokeArtifacts({
+      label: 'plain-css',
+      artifactsRoot,
+      browser,
+      cdp,
+      appOrigin: servers?.appOrigin ?? null,
+      mainPreviewSrc,
+      error,
+    })
+    throw error
   } finally {
     cdp?.close()
     await stopChromium(browser)
