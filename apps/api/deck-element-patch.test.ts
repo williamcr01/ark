@@ -6,6 +6,7 @@ import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck-core/deck-metadata.ts'
+import { buildDeckAssetProxyUrl } from '@ark/deck-core/deck-network.ts'
 import { applyDeckPatches } from './deck-patch.ts'
 import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
@@ -670,25 +671,66 @@ describe('applyDeckPatches element operations', () => {
   })
 
   it('rejects external href URLs on set_attrs href', () => {
-    const result = applyDeckPatches(arkManagedLinkDeck, [
+    expect(
+      applyDeckPatches(arkManagedLinkDeck, [
+        {
+          op: 'set_attrs',
+          elementId: 'ark-el-link',
+          slideIndex: 0,
+          attrs: { href: 'https://evil.example/phish' },
+        },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      operationIndex: 0,
+      error: expect.stringContaining('external "href" URLs'),
+    })
+  })
+
+  it('allows safe href values on set_attrs href', () => {
+    const allowedHrefs = [
+      { href: '/docs/guide', label: 'relative path' },
+      { href: '#section', label: 'fragment' },
       {
-        op: 'set_attrs',
-        elementId: 'ark-el-link',
-        slideIndex: 0,
-        attrs: { href: 'https://evil.example/phish' },
+        href: buildDeckAssetProxyUrl('https://example.com/logo.png'),
+        label: 'asset proxy',
       },
-    ])
+    ]
 
-    // Element patch should apply (server validation rejects the resulting HTML).
-    expect(result.ok).toBe(true)
-    if (!result.ok) {
-      return
+    for (const { href } of allowedHrefs) {
+      const result = applyDeckPatches(arkManagedLinkDeck, [
+        {
+          op: 'set_attrs',
+          elementId: 'ark-el-link',
+          slideIndex: 0,
+          attrs: { href },
+        },
+      ])
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) {
+        return
+      }
+
+      expectValidDeck(result.html)
+      expect(result.html).toContain(`href="${href}"`)
     }
+  })
 
-    const validation = validateDeckHtmlOnServer(result.html)
-    expect(validation.valid).toBe(false)
-    expect(validation.issues.some((issue) => issue.code === 'external_url')).toBe(true)
-    expect(result.html).toContain('https://evil.example/phish')
+  it('rejects external href URLs on insert_element', () => {
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        {
+          op: 'insert_element',
+          slideIndex: 0,
+          html: '<a data-ark-managed="true" href="https://evil.example/phish" style="position:absolute;left:48px;top:220px;">Phish</a>',
+        },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      operationIndex: 0,
+      error: expect.stringContaining('unsafe "href"'),
+    })
   })
 
   it('can mix slide and element operations in one request', () => {
