@@ -123,7 +123,11 @@ export function compactVersionProvenanceForAgent(
     elementIds: provenance.elementIds?.length,
     jobId: provenance.jobId,
     stepCount: provenance.stepCount,
-    toolCalls: provenance.toolCalls,
+    toolCalls: provenance.toolCalls?.map((call) => ({
+      toolName: call.toolName,
+      summary: truncateSummary(call.summary),
+      ...(call.error ? { error: true } : {}),
+    })),
     restoredVersionId: provenance.restoredVersionId,
     restoredVersionNumber: provenance.restoredVersionNumber,
     runtimeManifestHash: provenance.runtimeManifestHash,

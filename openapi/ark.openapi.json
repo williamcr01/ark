@@ -240,28 +240,7 @@
                         "type": "array",
                         "items": { "type": "string", "maxLength": 128 },
                         "maxItems": 200
-                      },
-                      "jobId": { "type": "string", "maxLength": 64 },
-                      "stepCount": { "type": "integer", "minimum": 0 },
-                      "toolCalls": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "toolName": { "type": "string", "maxLength": 64 },
-                            "summary": { "type": "string", "maxLength": 300 },
-                            "error": { "type": "boolean" }
-                          },
-                          "required": ["toolName", "summary"]
-                        },
-                        "maxItems": 50
-                      },
-                      "restoredVersionId": {
-                        "type": "string",
-                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                      },
-                      "restoredVersionNumber": { "type": "integer", "minimum": 1 },
-                      "runtimeManifestHash": { "type": "string", "maxLength": 64 }
+                      }
                     }
                   },
                   "diff": {
@@ -713,28 +692,7 @@
                         "type": "array",
                         "items": { "type": "string", "maxLength": 128 },
                         "maxItems": 200
-                      },
-                      "jobId": { "type": "string", "maxLength": 64 },
-                      "stepCount": { "type": "integer", "minimum": 0 },
-                      "toolCalls": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "toolName": { "type": "string", "maxLength": 64 },
-                            "summary": { "type": "string", "maxLength": 300 },
-                            "error": { "type": "boolean" }
-                          },
-                          "required": ["toolName", "summary"]
-                        },
-                        "maxItems": 50
-                      },
-                      "restoredVersionId": {
-                        "type": "string",
-                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                      },
-                      "restoredVersionNumber": { "type": "integer", "minimum": 1 },
-                      "runtimeManifestHash": { "type": "string", "maxLength": 64 }
+                      }
                     }
                   },
                   "diff": {

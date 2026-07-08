@@ -91,6 +91,15 @@ export const deckVersionProvenanceSchema = z.object({
 
 export type DeckVersionProvenance = z.infer<typeof deckVersionProvenanceSchema>
 
+/** Client-supplied provenance on create/update — manual fields only. */
+export const deckManualVersionProvenanceSchema = deckVersionProvenanceSchema.pick({
+  operations: true,
+  slideIndexes: true,
+  elementIds: true,
+})
+
+export type DeckManualVersionProvenance = z.infer<typeof deckManualVersionProvenanceSchema>
+
 export const deckVersionDiffSchema = z.object({
   kind: z.enum(['structural', 'coarse']),
   slideCountBefore: z.number().int().min(0).optional(),
@@ -173,7 +182,7 @@ export const deckVersionOptionsFieldsSchema = z.object({
   summary: z.string().nullable().optional(),
   modelProvider: z.string().nullable().optional(),
   modelName: z.string().nullable().optional(),
-  provenance: deckVersionProvenanceSchema.optional(),
+  provenance: deckManualVersionProvenanceSchema.optional(),
   diff: deckVersionDiffSchema.optional(),
 })
 

@@ -6,6 +6,7 @@ import {
   deckListResponseSchema,
   deckResponseSchema,
   deckVersionDiffSchema,
+  deckManualVersionProvenanceSchema,
   deckVersionProvenanceSchema,
   deckVersionSummarySchema,
   normalizeDeckVersionDiff,
@@ -379,6 +380,20 @@ describe('shared API contracts', () => {
         operations: Array.from({ length: 41 }, () => 'undo'),
       }).success,
     ).toBe(false)
+    expect(
+      deckManualVersionProvenanceSchema.safeParse({
+        operations: Array.from({ length: 41 }, () => 'undo'),
+      }).success,
+    ).toBe(false)
+    expect(
+      deckManualVersionProvenanceSchema.safeParse({
+        operations: ['undo'],
+        jobId: 'forged',
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { operations: ['undo'] },
+    })
     expect(
       deckVersionDiffSchema.safeParse({
         kind: 'structural',
