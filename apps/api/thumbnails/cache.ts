@@ -161,21 +161,18 @@ export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCac
       dirs.map(async (entry) => {
         const dirPath = path.join(cacheDir, entry.name)
         const metaPath = path.join(dirPath, 'meta.json')
-        let mtimeMs = 0
 
         try {
           const metaStat = await stat(metaPath)
-          mtimeMs = metaStat.mtimeMs
+          return { dirPath, mtimeMs: metaStat.mtimeMs }
         } catch {
           try {
             const dirStat = await stat(dirPath)
-            mtimeMs = dirStat.mtimeMs
+            return { dirPath, mtimeMs: dirStat.mtimeMs }
           } catch {
-            mtimeMs = 0
+            return { dirPath, mtimeMs: 0 }
           }
         }
-
-        return { dirPath, mtimeMs }
       }),
     )
 

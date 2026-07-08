@@ -101,13 +101,15 @@ describe('thumbnail API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
-    const created = assertApiContract(createDeckResponseSchema, await createResponse.json())
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
     const versionId = created.deck.activeVersionId!
 
     const pendingResponse = await fetch(
       `${baseUrl}/api/decks/${created.deck.id}/thumbnails?versionId=${versionId}`,
     )
-    const pending = assertApiContract(deckThumbnailsResponseSchema, await pendingResponse.json())
+    const pending = await pendingResponse.json()
+    assertApiContract(deckThumbnailsResponseSchema, pending)
     expect(pending.status).toBe('pending')
 
     resolveRender?.(null)
@@ -116,7 +118,8 @@ describe('thumbnail API routes', () => {
       const readyResponse = await fetch(
         `${baseUrl}/api/decks/${created.deck.id}/thumbnails?versionId=${versionId}`,
       )
-      const ready = assertApiContract(deckThumbnailsResponseSchema, await readyResponse.json())
+      const ready = await readyResponse.json()
+      assertApiContract(deckThumbnailsResponseSchema, ready)
       expect(ready.status).toBe('ready')
       expect(ready.slides).toHaveLength(2)
 
@@ -140,13 +143,15 @@ describe('thumbnail API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
-    const created = assertApiContract(createDeckResponseSchema, await createResponse.json())
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
     const versionId = created.deck.activeVersionId!
 
     const response = await fetch(
       `${baseUrl}/api/decks/${created.deck.id}/thumbnails?versionId=${versionId}`,
     )
-    const payload = assertApiContract(deckThumbnailsResponseSchema, await response.json())
+    const payload = await response.json()
+    assertApiContract(deckThumbnailsResponseSchema, payload)
     expect(payload.status).toBe('disabled')
   })
 

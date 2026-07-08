@@ -51,6 +51,7 @@ export function useDeckThumbnails(
   versionId: string | null | undefined,
   slideCount: number,
 ): DeckThumbnailsState {
+  const enabled = Boolean(deckId && versionId && slideCount > 0)
   const [status, setStatus] = useState<ThumbnailStatus | null>(null)
   const [thumbnailUrls, setThumbnailUrls] = useState<(string | null)[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -58,11 +59,7 @@ export function useDeckThumbnails(
   const requestIdRef = useRef(0)
 
   useEffect(() => {
-    if (!deckId || !versionId || slideCount <= 0) {
-      setStatus(null)
-      setThumbnailUrls(null)
-      setError(null)
-      setIsLoading(false)
+    if (!enabled || !deckId || !versionId) {
       return
     }
 
@@ -131,7 +128,16 @@ export function useDeckThumbnails(
       cancelled = true
       clearTimer()
     }
-  }, [deckId, slideCount, versionId])
+  }, [deckId, enabled, slideCount, versionId])
+
+  if (!enabled) {
+    return {
+      status: null,
+      thumbnailUrls: null,
+      error: null,
+      isLoading: false,
+    }
+  }
 
   return {
     status,
