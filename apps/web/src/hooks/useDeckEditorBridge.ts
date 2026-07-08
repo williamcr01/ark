@@ -121,7 +121,23 @@ export function useDeckEditorBridge(
 
   const enableEditor = useCallback(
     (slideIndex = activeSlideIndex, tool: EditorTool = 'select') => {
-      setState({ ...initialState, editorError: null })
+      // Preserve readiness and any in-flight runtime requests across re-enable.
+      // Resetting those fields here used to drop insert/transform/delete commits
+      // before DeckPreview could apply them (and also retriggered an enable/ready
+      // loop when editorReady flipped false → true).
+      setState((current) => ({
+        ...initialState,
+        editorError: null,
+        editorReady: current.editorReady,
+        lastInsertRequest: current.lastInsertRequest,
+        lastDeleteRequest: current.lastDeleteRequest,
+        transformCommit: current.transformCommit,
+        lastTextCommit: current.lastTextCommit,
+        selection: current.selection,
+        geometry: current.geometry,
+        selectionZIndex: current.selectionZIndex,
+        textEditActive: current.textEditActive,
+      }))
       return postToFrame(createEditorEnableMessage(slideIndex, tool))
     },
     [activeSlideIndex, postToFrame],

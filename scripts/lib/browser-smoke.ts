@@ -271,6 +271,9 @@ export class CdpClient {
   }
 
   close() {
+    // Drop pending callbacks without rejecting so teardown does not surface
+    // unhandledRejection noise after the smoke assertions have already passed.
+    this.callbacks.clear()
     this.socket.close()
   }
 

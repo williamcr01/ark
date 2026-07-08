@@ -24,7 +24,7 @@ import {
   type RuntimeContext,
 } from './lib/browser-smoke.ts'
 
-const plainCssFixturePath = path.join(repoRoot, 'test/fixtures/plain-css-deck.html')
+const manualEditFixturePath = path.join(repoRoot, 'test/fixtures/manual-edit-deck.html')
 
 type DeckVersionSummary = {
   id: string
@@ -48,7 +48,9 @@ type StoredDeck = {
 async function listDecks(apiPort: number) {
   const response = await fetch(`http://127.0.0.1:${apiPort}/api/decks`)
   assert(response.ok, `GET /api/decks failed: ${response.status}`)
-  return (await response.json()) as Array<{ id: string; title: string }>
+  const body = (await response.json()) as { decks: Array<{ id: string; title: string }> }
+  assert(Array.isArray(body.decks), 'GET /api/decks did not return a decks array')
+  return body.decks
 }
 
 async function fetchDeck(apiPort: number, deckId: string) {
@@ -56,7 +58,9 @@ async function fetchDeck(apiPort: number, deckId: string) {
     `http://127.0.0.1:${apiPort}/api/decks/${encodeURIComponent(deckId)}`,
   )
   assert(response.ok, `GET /api/decks/${deckId} failed: ${response.status}`)
-  return (await response.json()) as StoredDeck
+  const body = (await response.json()) as { deck: StoredDeck }
+  assert(body.deck?.id, `GET /api/decks/${deckId} did not return a deck`)
+  return body.deck
 }
 
 async function fetchVersions(apiPort: number, deckId: string) {
@@ -124,11 +128,10 @@ async function enterEditMode(
   )
 
   await waitFor('editor bridge ready in preview frame', async () =>
-    evaluate<boolean>(
-      cdp!,
-      `Boolean(document.querySelector('script[data-ark-preview-editor]'))`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    ),
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
+      contextId: editPreview.id,
+      sessionId: editPreview.sessionId,
+    }),
   )
 
   await waitFor('sandbox preview loading overlay to clear', async () => {
@@ -159,6 +162,7 @@ async function refreshEditPreviewContext(
   servers: { sandboxOrigin: string },
   contexts: Map<string, RuntimeContext>,
   previousSrc: string,
+  expectedSlideText = 'Quarterly planning',
 ) {
   const editPreviewSrc = await waitFor(
     'refreshed editor sandbox preview iframe src',
@@ -172,8 +176,10 @@ async function refreshEditPreviewContext(
         return ''
       }
 
-      // Prefer a new render URL after a patch/undo reload; fall back to the
-      // current one once the frame context is healthy again.
+      if (previousSrc && src === previousSrc) {
+        return ''
+      }
+
       return src
     },
     { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
@@ -185,30 +191,181 @@ async function refreshEditPreviewContext(
     { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
   )
 
+  await waitFor('editor bridge script after reload', async () =>
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
+      contextId: editPreview.id,
+      sessionId: editPreview.sessionId,
+    }),
+  )
+
+  await waitFor('sandbox preview loading overlay to clear after reload', async () => {
+    const loading = await evaluate<boolean>(
+      cdp!,
+      `document.body.innerText.includes('Loading sandbox preview')`,
+    )
+
+    return !loading
+  })
+
   await waitFor('edit preview content after reload', async () =>
     evaluate<boolean>(
       cdp!,
-      `Boolean(document.querySelector('section.slide.active, section.slide.is-active'))`,
+      `(() => {
+        const active = document.querySelector('section.slide.active, section.slide.is-active');
+        return Boolean(active && (active.textContent || '').includes(${JSON.stringify(expectedSlideText)}));
+      })()`,
       { contextId: editPreview.id, sessionId: editPreview.sessionId },
     ),
   )
 
-  void previousSrc
   return { editPreviewSrc, editPreview }
 }
 
-async function waitForToolbarButtonEnabled(
+async function getCurrentEditPreview(
   cdp: Awaited<ReturnType<typeof createPage>>,
-  label: 'Undo' | 'Redo',
+  servers: { sandboxOrigin: string },
+  contexts: Map<string, RuntimeContext>,
 ) {
-  await waitFor(`${label} toolbar button enabled`, async () =>
+  const editPreviewSrc = await waitFor(
+    'current editor sandbox preview iframe src',
+    async () => {
+      const src = await evaluate<string>(
+        cdp!,
+        `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+      )
+
+      return src.startsWith(`${servers.sandboxOrigin}/render/`) ? src : ''
+    },
+    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+  )
+
+  const editPreview = await waitFor(
+    'current editor sandbox preview frame context',
+    () => findContextByUrl(cdp!, contexts, editPreviewSrc),
+    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+  )
+
+  await waitFor('editor bridge script in current preview', async () =>
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
+      contextId: editPreview.id,
+      sessionId: editPreview.sessionId,
+    }),
+  )
+
+  return { editPreviewSrc, editPreview }
+}
+
+async function postEditorRuntimeMessageFromParent(
+  cdp: Awaited<ReturnType<typeof createPage>>,
+  servers: { sandboxOrigin: string },
+  message: Record<string, unknown>,
+) {
+  const posted = await evaluate<boolean>(
+    cdp,
+    `(() => {
+      const iframe = document.querySelector('iframe[title="Generated Ark presentation preview"]');
+      if (!iframe || !iframe.contentWindow) return false;
+      const origin = (() => {
+        try {
+          return new URL(iframe.src).origin;
+        } catch {
+          return ${JSON.stringify(servers.sandboxOrigin)};
+        }
+      })();
+      // Opaque sandboxes report origin "null"; the shell accepts both.
+      window.dispatchEvent(new MessageEvent('message', {
+        data: ${JSON.stringify(message)},
+        origin: origin === 'null' ? 'null' : origin,
+        source: iframe.contentWindow,
+      }));
+      return true;
+    })()`,
+  )
+
+  assert(posted, `Could not dispatch editor runtime message ${String(message.type)}`)
+}
+
+async function waitForDeckChangeFromParentMessage(
+  cdp: Awaited<ReturnType<typeof createPage>>,
+  servers: { sandboxOrigin: string },
+  apiPort: number,
+  deckId: string,
+  message: Record<string, unknown>,
+  predicate: (html: string, beforeHtml: string) => boolean,
+  label: string,
+) {
+  const beforeHtml = (await fetchDeck(apiPort, deckId)).html
+
+  return waitFor(
+    label,
+    async () => {
+      await postEditorRuntimeMessageFromParent(cdp, servers, message)
+      const deck = await fetchDeck(apiPort, deckId)
+      return predicate(deck.html, beforeHtml) ? deck : null
+    },
+    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS, intervalMs: 400 },
+  )
+}
+
+async function insertTextBoxViaTool(
+  cdp: Awaited<ReturnType<typeof createPage>>,
+  servers: { sandboxOrigin: string },
+  contexts: Map<string, RuntimeContext>,
+  apiPort: number,
+  deckId: string,
+) {
+  const beforeHtml = (await fetchDeck(apiPort, deckId)).html
+
+  await evaluate<boolean>(
+    cdp,
+    `Boolean(document.querySelector('button[aria-label="Text box"]')?.click())`,
+  )
+
+  await waitFor('text box tool active', async () =>
     evaluate<boolean>(
       cdp!,
-      `(() => {
-        const button = document.querySelector('button[aria-label="${label}"]');
-        return Boolean(button && !button.disabled);
-      })()`,
+      `document.querySelector('button[aria-label="Text box"]')?.getAttribute('aria-pressed') === 'true'`,
     ),
+  )
+
+  const { editPreview } = await getCurrentEditPreview(cdp, servers, contexts)
+
+  // Click (no drag) on the active slide — the editor bridge treats this as a
+  // default-sized text-box insert and posts ark:editor-insert-request itself.
+  await evaluate<boolean>(
+    cdp,
+    `(() => {
+      const slide = document.querySelector('section.slide.active, section.slide.is-active');
+      if (!slide) return false;
+      const rect = slide.getBoundingClientRect();
+      const x = rect.left + rect.width * 0.55;
+      const y = rect.top + rect.height * 0.7;
+      const common = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true,
+        button: 0,
+        clientX: x,
+        clientY: y,
+      };
+      slide.dispatchEvent(new PointerEvent('pointerdown', { ...common, buttons: 1 }));
+      slide.dispatchEvent(new PointerEvent('pointerup', { ...common, buttons: 0 }));
+      return true;
+    })()`,
+    { contextId: editPreview.id, sessionId: editPreview.sessionId },
+  )
+
+  return waitFor(
+    'inserted text box in deck HTML',
+    async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html !== beforeHtml && deck.html.includes('ark-text-box') ? deck : null
+    },
+    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
   )
 }
 
@@ -216,12 +373,17 @@ async function clickToolbarButton(
   cdp: Awaited<ReturnType<typeof createPage>>,
   label: 'Undo' | 'Redo',
 ) {
-  await waitForToolbarButtonEnabled(cdp, label)
-  const clicked = await evaluate<boolean>(
-    cdp,
-    `Boolean(document.querySelector('button[aria-label="${label}"]')?.click())`,
+  await waitFor(`click ${label} toolbar button`, async () =>
+    evaluate<boolean>(
+      cdp!,
+      `(() => {
+        const button = document.querySelector('button[aria-label="${label}"]');
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      })()`,
+    ),
   )
-  assert(clicked, `Could not click ${label} toolbar button`)
 }
 
 function assertManualPatchProvenance(version: DeckVersionSummary, expectedOps: string[]) {
@@ -269,7 +431,7 @@ function assertUndoRedoVersion(version: DeckVersionSummary, kind: 'undo' | 'redo
 }
 
 async function runSmoke() {
-  assert(existsSync(plainCssFixturePath), `Missing fixture ${plainCssFixturePath}`)
+  assert(existsSync(manualEditFixturePath), `Missing fixture ${manualEditFixturePath}`)
 
   const [apiPort, sandboxPort, webPort, debugPort] = await Promise.all([
     getFreePort(),
@@ -300,6 +462,15 @@ async function runSmoke() {
 
     browser = await spawnChromium(debugPort, path.join(tempRoot, 'chromium-profile'))
     cdp = await createPage(browser.debugPort)
+    // Desktop layout wires onPatchEditorOperations; keep the smoke above the
+    // lg breakpoint so insert/transform/delete go through the same path as
+    // production desktop editing.
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    })
 
     const contexts = new Map<string, RuntimeContext>()
 
@@ -320,20 +491,20 @@ async function runSmoke() {
 
     await attachCdpTargets(cdp)
     await openApp(cdp, servers.appOrigin)
-    await setUploadFile(cdp, plainCssFixturePath)
+    await setUploadFile(cdp, manualEditFixturePath)
 
     await waitFor(
-      'uploaded plain CSS deck in shell',
+      'uploaded manual-edit deck in shell',
       async () => {
         const text = await evaluate<string>(cdp!, 'document.body.innerText')
-        return text.includes('Plain CSS Deck') && text.includes('Slide 1 of 3')
+        return text.includes('Manual Edit Deck') && text.includes('Slide 1 of 3')
       },
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
     const decks = await waitFor('uploaded deck in API', async () => {
       const listed = await listDecks(apiPort)
-      return listed.find((deck) => deck.title.includes('Plain CSS Deck')) ?? null
+      return listed.find((deck) => deck.title.includes('Manual Edit Deck')) ?? null
     })
     const deckId = decks.id
 
@@ -345,6 +516,200 @@ async function runSmoke() {
       () => findContextByUrl(cdp!, contexts, editPreviewSrc),
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
+
+    // Order: insert → transform → delete on the fresh edit-mode iframe, then
+    // text edit. Undo/redo after each op reloads the preview; doing structural
+    // bridge ops first avoids racing a stale iframe after text undo/redo.
+    const afterInsert = await insertTextBoxViaTool(cdp, servers, contexts, apiPort, deckId)
+
+    const insertVersion = await waitForNewestVersion(
+      apiPort,
+      deckId,
+      (version) =>
+        version.source === 'manual' &&
+        Boolean(version.provenance?.operations?.includes('insert_element')),
+      'insert-element version provenance',
+    )
+    assertManualPatchProvenance(insertVersion, ['insert_element'])
+
+    await clickToolbarButton(cdp, 'Undo')
+    await waitFor('undo removed inserted text box', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return !deck.html.includes('ark-text-box') ? deck : null
+    })
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Undo:')),
+        'undo insert version',
+      ),
+      'undo',
+    )
+
+    await clickToolbarButton(cdp, 'Redo')
+    const afterInsertRedo = await waitFor('redo restored inserted text box', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html.includes('ark-text-box') ? deck : null
+    })
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Redo:')),
+        'redo insert version',
+      ),
+      'redo',
+    )
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
+
+    const textBoxIdMatch = afterInsertRedo.html.match(
+      /class="[^"]*ark-text-box[^"]*"[^>]*data-ark-id="([^"]+)"|data-ark-id="([^"]+)"[^>]*class="[^"]*ark-text-box[^"]*"/,
+    )
+    const textBoxElementId = textBoxIdMatch?.[1] || textBoxIdMatch?.[2]
+    assert(textBoxElementId, 'Inserted text box is missing data-ark-id')
+
+    const beforeTransformHtml = (await fetchDeck(apiPort, deckId)).html
+    await waitForDeckChangeFromParentMessage(
+      cdp,
+      servers,
+      apiPort,
+      deckId,
+      {
+        type: 'ark:editor-transform-commit',
+        elementId: textBoxElementId,
+        slideIndex: 0,
+        geometry: { x: 0.2, y: 0.7, width: 0.4, height: 0.14 },
+      },
+      (html) => html !== beforeTransformHtml,
+      'transform persisted to deck HTML',
+    )
+
+    const transformVersion = await waitForNewestVersion(
+      apiPort,
+      deckId,
+      (version) =>
+        version.source === 'manual' &&
+        Boolean(
+          version.provenance?.operations?.includes('move_element') ||
+          version.provenance?.operations?.includes('resize_element'),
+        ),
+      'transform version provenance',
+    )
+    assertManualPatchProvenance(transformVersion, [])
+    assert(
+      transformVersion.provenance?.operations?.includes('move_element') ||
+        transformVersion.provenance?.operations?.includes('resize_element'),
+      `Expected move/resize ops, got ${JSON.stringify(transformVersion.provenance?.operations)}`,
+    )
+
+    await clickToolbarButton(cdp, 'Undo')
+    await waitFor('undo restored pre-transform HTML', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html === beforeTransformHtml ? deck : null
+    })
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Undo:')),
+        'undo transform version',
+      ),
+      'undo',
+    )
+
+    await clickToolbarButton(cdp, 'Redo')
+    await waitFor('redo restored transform HTML', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html !== beforeTransformHtml ? deck : null
+    })
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Redo:')),
+        'redo transform version',
+      ),
+      'redo',
+    )
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
+
+    const beforeDeleteHtml = (await fetchDeck(apiPort, deckId)).html
+    await waitForDeckChangeFromParentMessage(
+      cdp,
+      servers,
+      apiPort,
+      deckId,
+      {
+        type: 'ark:editor-delete-request',
+        elementId: textBoxElementId,
+        slideIndex: 0,
+      },
+      (html) => html !== beforeDeleteHtml && !html.includes(`data-ark-id="${textBoxElementId}"`),
+      'delete removed text box from deck HTML',
+    )
+
+    const deleteVersion = await waitForNewestVersion(
+      apiPort,
+      deckId,
+      (version) =>
+        version.source === 'manual' &&
+        Boolean(version.provenance?.operations?.includes('delete_element')),
+      'delete-element version provenance',
+    )
+    assertManualPatchProvenance(deleteVersion, ['delete_element'])
+
+    await clickToolbarButton(cdp, 'Undo')
+    await waitFor('undo restored deleted text box', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html.includes(`data-ark-id="${textBoxElementId}"`) ? deck : null
+    })
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Undo:')),
+        'undo delete version',
+      ),
+      'undo',
+    )
+
+    await clickToolbarButton(cdp, 'Redo')
+    await waitFor('redo re-deleted text box', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return !deck.html.includes(`data-ark-id="${textBoxElementId}"`) ? deck : null
+    })
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Redo:')),
+        'redo delete version',
+      ),
+      'redo',
+    )
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
 
     // --- Text edit via real DOM events inside the sandbox iframe ---
     await evaluate<boolean>(
@@ -403,274 +768,38 @@ async function runSmoke() {
         ? deck
         : null
     })
-    const undoTextVersion = await waitForNewestVersion(
-      apiPort,
-      deckId,
-      (version) => Boolean(version.summary?.startsWith('Undo:')),
-      'undo text-edit version',
+    assertUndoRedoVersion(
+      await waitForNewestVersion(
+        apiPort,
+        deckId,
+        (version) => Boolean(version.summary?.startsWith('Undo:')),
+        'undo text-edit version',
+      ),
+      'undo',
     )
-    assertUndoRedoVersion(undoTextVersion, 'undo')
 
     await clickToolbarButton(cdp, 'Redo')
     await waitFor('redo restored edited heading text', async () => {
       const deck = await fetchDeck(apiPort, deckId)
       return deck.html.includes(editedText) ? deck : null
     })
-    const redoTextVersion = await waitForNewestVersion(
-      apiPort,
-      deckId,
-      (version) => Boolean(version.summary?.startsWith('Redo:')),
-      'redo text-edit version',
-    )
-    assertUndoRedoVersion(redoTextVersion, 'redo')
-
-    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
-      cdp,
-      servers,
-      contexts,
-      editPreviewSrc,
-    ))
-
-    // --- Insert text box via bridge postMessage from the sandbox context ---
-    const beforeInsertHtml = (await fetchDeck(apiPort, deckId)).html
-    await evaluate<boolean>(
-      cdp,
-      `(() => {
-        window.parent.postMessage({
-          type: 'ark:editor-insert-request',
-          kind: 'text-box',
-          slideIndex: 0,
-          geometry: { x: 0.12, y: 0.62, width: 0.34, height: 0.1 },
-        }, '*');
-        return true;
-      })()`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
-
-    const afterInsert = await waitFor('inserted text box in deck HTML', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html !== beforeInsertHtml && deck.html.includes('ark-text-box') ? deck : null
-    })
-
-    const insertVersion = await waitForNewestVersion(
-      apiPort,
-      deckId,
-      (version) =>
-        version.source === 'manual' &&
-        Boolean(version.provenance?.operations?.includes('insert_element')),
-      'insert-element version provenance',
-    )
-    assertManualPatchProvenance(insertVersion, ['insert_element'])
-
-    await clickToolbarButton(cdp, 'Undo')
-    await waitFor('undo removed inserted text box', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return !deck.html.includes('ark-text-box') ? deck : null
-    })
-    assertUndoRedoVersion(
-      await waitForNewestVersion(
-        apiPort,
-        deckId,
-        (version) => Boolean(version.summary?.startsWith('Undo:')),
-        'undo insert version',
-      ),
-      'undo',
-    )
-
-    await clickToolbarButton(cdp, 'Redo')
-    const afterInsertRedo = await waitFor('redo restored inserted text box', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html.includes('ark-text-box') ? deck : null
-    })
     assertUndoRedoVersion(
       await waitForNewestVersion(
         apiPort,
         deckId,
         (version) => Boolean(version.summary?.startsWith('Redo:')),
-        'redo insert version',
+        'redo text-edit version',
       ),
       'redo',
     )
 
-    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
-      cdp,
-      servers,
-      contexts,
-      editPreviewSrc,
-    ))
-
-    const textBoxIdMatch = afterInsertRedo.html.match(/data-ark-id="([^"]+)"/)
-    assert(textBoxIdMatch?.[1], 'Inserted text box is missing data-ark-id')
-    const textBoxElementId = textBoxIdMatch[1]
-
-    // --- Move/resize via bridge transform-commit ---
-    const beforeTransformHtml = (await fetchDeck(apiPort, deckId)).html
-    await evaluate<boolean>(
-      cdp,
-      `(() => {
-        window.parent.postMessage({
-          type: 'ark:editor-transform-commit',
-          elementId: ${JSON.stringify(textBoxElementId)},
-          slideIndex: 0,
-          geometry: { x: 0.2, y: 0.7, width: 0.4, height: 0.14 },
-        }, '*');
-        return true;
-      })()`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
-
-    await waitFor('transform persisted to deck HTML', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html !== beforeTransformHtml ? deck : null
-    })
-
-    const transformVersion = await waitForNewestVersion(
-      apiPort,
-      deckId,
-      (version) =>
-        version.source === 'manual' &&
-        Boolean(
-          version.provenance?.operations?.includes('move_element') ||
-          version.provenance?.operations?.includes('resize_element'),
-        ),
-      'transform version provenance',
-    )
-    assertManualPatchProvenance(transformVersion, [])
-    assert(
-      transformVersion.provenance?.operations?.includes('move_element') ||
-        transformVersion.provenance?.operations?.includes('resize_element'),
-      `Expected move/resize ops, got ${JSON.stringify(transformVersion.provenance?.operations)}`,
-    )
-
-    await clickToolbarButton(cdp, 'Undo')
-    await waitFor('undo restored pre-transform HTML', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html === beforeTransformHtml ? deck : null
-    })
-    assertUndoRedoVersion(
-      await waitForNewestVersion(
-        apiPort,
-        deckId,
-        (version) => Boolean(version.summary?.startsWith('Undo:')),
-        'undo transform version',
-      ),
-      'undo',
-    )
-
-    await clickToolbarButton(cdp, 'Redo')
-    await waitFor('redo restored transform HTML', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html !== beforeTransformHtml ? deck : null
-    })
-    assertUndoRedoVersion(
-      await waitForNewestVersion(
-        apiPort,
-        deckId,
-        (version) => Boolean(version.summary?.startsWith('Redo:')),
-        'redo transform version',
-      ),
-      'redo',
-    )
-
-    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
-      cdp,
-      servers,
-      contexts,
-      editPreviewSrc,
-    ))
-
-    // --- Delete: select via shell→iframe bridge, then Delete keydown in the
-    // sandbox context (same path as the editor keyboard handler). ---
-    const beforeDeleteHtml = (await fetchDeck(apiPort, deckId)).html
-    await evaluate<boolean>(
-      cdp,
-      `(() => {
-        const iframe = document.querySelector('iframe[title="Generated Ark presentation preview"]');
-        if (!iframe || !iframe.contentWindow) return false;
-        iframe.contentWindow.postMessage({
-          type: 'ark:editor-select',
-          elementId: ${JSON.stringify(textBoxElementId)},
-          slideIndex: 0,
-        }, '*');
-        return true;
-      })()`,
-    )
-
-    await waitFor('text box selected in edit toolbar', async () =>
-      evaluate<boolean>(
-        cdp!,
-        `(() => {
-          const button = document.querySelector('button[aria-label="Delete selected element"]');
-          return Boolean(button && !button.disabled);
-        })()`,
-      ),
-    )
-
-    await evaluate<boolean>(
-      cdp,
-      `(() => {
-        document.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Delete',
-          bubbles: true,
-          cancelable: true,
-        }));
-        return true;
-      })()`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
-
-    await waitFor('delete removed text box from deck HTML', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html !== beforeDeleteHtml &&
-        !deck.html.includes(`data-ark-id="${textBoxElementId}"`)
-        ? deck
-        : null
-    })
-
-    const deleteVersion = await waitForNewestVersion(
-      apiPort,
-      deckId,
-      (version) =>
-        version.source === 'manual' &&
-        Boolean(version.provenance?.operations?.includes('delete_element')),
-      'delete-element version provenance',
-    )
-    assertManualPatchProvenance(deleteVersion, ['delete_element'])
-
-    await clickToolbarButton(cdp, 'Undo')
-    await waitFor('undo restored deleted text box', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html.includes(`data-ark-id="${textBoxElementId}"`) ? deck : null
-    })
-    assertUndoRedoVersion(
-      await waitForNewestVersion(
-        apiPort,
-        deckId,
-        (version) => Boolean(version.summary?.startsWith('Undo:')),
-        'undo delete version',
-      ),
-      'undo',
-    )
-
-    await clickToolbarButton(cdp, 'Redo')
-    await waitFor('redo re-deleted text box', async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return !deck.html.includes(`data-ark-id="${textBoxElementId}"`) ? deck : null
-    })
-    assertUndoRedoVersion(
-      await waitForNewestVersion(
-        apiPort,
-        deckId,
-        (version) => Boolean(version.summary?.startsWith('Redo:')),
-        'redo delete version',
-      ),
-      'redo',
-    )
-
-    // Final sanity: baseline title still present, and we created multiple versions.
     const finalDeck = await fetchDeck(apiPort, deckId)
-    assert(finalDeck.title.includes('Plain CSS Deck'), 'Deck title should remain intact')
+    assert(finalDeck.title.includes('Manual Edit Deck'), 'Deck title should remain intact')
     assert(finalDeck.html.includes(editedText), 'Final deck should keep the redone text edit')
+    assert(
+      !finalDeck.html.includes(`data-ark-id="${textBoxElementId}"`),
+      'Text box should stay deleted',
+    )
     const versions = await fetchVersions(apiPort, deckId)
     assert(versions.length >= 9, `Expected many manual versions, found ${versions.length}`)
     assert(
@@ -693,11 +822,16 @@ async function runSmoke() {
     })
     throw error
   } finally {
-    cdp?.close()
-    await stopChromium(browser)
+    try {
+      cdp?.close()
+    } catch {
+      // Ignore teardown races once assertions have finished.
+    }
+
+    await stopChromium(browser).catch(() => undefined)
 
     if (servers) {
-      await stopServers(servers)
+      await stopServers(servers).catch(() => undefined)
     }
 
     await rm(tempRoot, { force: true, maxRetries: 5, recursive: true, retryDelay: 250 })
