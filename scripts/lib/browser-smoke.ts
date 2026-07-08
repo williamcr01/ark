@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import net from 'node:net'
 import path from 'node:path'
@@ -29,6 +30,12 @@ export type BrowserProcess = {
   userDataDir: string
   debugPort: number
   stderr: () => string
+}
+
+export type SmokeArtifacts = {
+  dir: string
+  wroteFiles: string[]
+  errors: string[]
 }
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -459,6 +466,124 @@ export async function setUploadFile(cdp: CdpClient, fixturePath: string) {
     cdp,
     `Boolean(document.querySelector('input[type="file"]')?.dispatchEvent(new Event('change', { bubbles: true })))`,
   )
+}
+
+function safeFilename(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9._-]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+    .slice(0, 80)
+}
+
+async function captureScreenshotPng(cdp: CdpClient) {
+  const result = await cdp.send<{ data?: string }>('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: true,
+  })
+  return result.data ? Buffer.from(result.data, 'base64') : null
+}
+
+async function tryWriteFile(
+  targetPath: string,
+  contents: string | Buffer,
+  state: { wroteFiles: string[]; errors: string[] },
+) {
+  try {
+    await writeFile(targetPath, contents)
+    state.wroteFiles.push(targetPath)
+  } catch (error) {
+    state.errors.push(
+      `write ${path.basename(targetPath)}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+export async function writeBrowserSmokeArtifacts(options: {
+  label: string
+  artifactsRoot: string
+  browser: BrowserProcess | null
+  cdp: CdpClient | null
+  appOrigin: string | null
+  mainPreviewSrc: string | null
+  error: unknown
+}): Promise<SmokeArtifacts> {
+  const wroteFiles: string[] = []
+  const errors: string[] = []
+
+  const label = safeFilename(options.label || 'smoke')
+  const startedAt = new Date().toISOString().replaceAll(/[:.]/g, '-')
+  const dir = path.join(options.artifactsRoot, `${startedAt}-${label}`)
+
+  try {
+    await mkdir(dir, { recursive: true })
+  } catch (error) {
+    return {
+      dir,
+      wroteFiles,
+      errors: [
+        `mkdir ${dir}: ${error instanceof Error ? error.message : String(error)}`,
+        ...errors,
+      ],
+    }
+  }
+
+  const errorMessage =
+    options.error instanceof Error
+      ? (options.error.stack ?? options.error.message)
+      : String(options.error)
+  await tryWriteFile(path.join(dir, 'error.txt'), `${errorMessage}\n`, { wroteFiles, errors })
+
+  if (options.browser) {
+    await tryWriteFile(path.join(dir, 'chromium-stderr.txt'), options.browser.stderr(), {
+      wroteFiles,
+      errors,
+    })
+  }
+
+  if (options.cdp) {
+    try {
+      const png = await captureScreenshotPng(options.cdp)
+      if (png) {
+        await tryWriteFile(path.join(dir, 'screenshot.png'), png, { wroteFiles, errors })
+      }
+    } catch (error) {
+      errors.push(`screenshot: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    try {
+      const bodyText = await evaluate<string>(options.cdp, 'document.body?.innerText || ""')
+      await tryWriteFile(path.join(dir, 'shell-body-text.txt'), bodyText, { wroteFiles, errors })
+    } catch (error) {
+      errors.push(`shell body text: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  if (options.mainPreviewSrc) {
+    try {
+      const html = await (await fetch(options.mainPreviewSrc)).text()
+      await tryWriteFile(path.join(dir, 'sandbox-render.html'), html, { wroteFiles, errors })
+    } catch (error) {
+      errors.push(`sandbox render html: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  await tryWriteFile(
+    path.join(dir, 'meta.json'),
+    JSON.stringify(
+      {
+        label: options.label,
+        appOrigin: options.appOrigin,
+        mainPreviewSrc: options.mainPreviewSrc,
+      },
+      null,
+      2,
+    ),
+    { wroteFiles, errors },
+  )
+
+  return { dir, wroteFiles, errors }
 }
 
 export async function startServers(options: {
