@@ -46,13 +46,35 @@ describe('getVersionHistoryChips', () => {
             kind: 'structural',
             changedSlides: [{ index: 0, contentChanged: true }],
             addedSlides: [{ index: 1, title: 'New' }],
+            movedSlides: [{ fromIndex: 2, toIndex: 3 }],
           },
         }),
       ),
     ).toEqual([
       { key: 'added', label: '+1 slide' },
       { key: 'changed', label: '1 slide changed' },
+      { key: 'moved', label: '1 slide moved' },
       { key: 'history-op', label: 'Undo' },
+    ])
+  })
+
+  it('shows title and asset chips for structural diffs without slide edits', () => {
+    expect(
+      getVersionHistoryChips(
+        version({
+          provenance: { operations: ['set_attrs'] },
+          diff: {
+            kind: 'structural',
+            titleChanged: true,
+            assetsAdded: ['/api/assets/a', '/api/assets/b'],
+            assetsRemoved: ['/api/assets/old'],
+          },
+        }),
+      ),
+    ).toEqual([
+      { key: 'title', label: 'Title changed' },
+      { key: 'assets-added', label: '+2 assets' },
+      { key: 'assets-removed', label: '−1 asset' },
     ])
   })
 
@@ -112,7 +134,40 @@ describe('getVersionHistoryDetailSections', () => {
         { key: 'slides', label: 'Slides', value: '1, 2' },
         { key: 'elements', label: 'Elements', value: '2 elements' },
         { key: 'slide-diff', label: 'Slide changes', value: '1 changed' },
-        { key: 'assets-added', label: 'Assets added', value: '/api/assets/x' },
+        { key: 'assets-added', label: 'Assets added', value: '1 asset' },
+      ]),
+    )
+  })
+
+  it('describes coarse diffs and asset counts without dumping URLs', () => {
+    expect(
+      getVersionHistoryDetailSections(
+        version({
+          diff: {
+            kind: 'coarse',
+            htmlBytesBefore: 10,
+            htmlBytesAfter: 20,
+          },
+        }),
+      ),
+    ).toEqual([{ key: 'diff-kind', label: 'Diff', value: 'Coarse (10 → 20 bytes)' }])
+
+    expect(
+      getVersionHistoryDetailSections(
+        version({
+          diff: {
+            kind: 'structural',
+            titleChanged: true,
+            assetsAdded: ['/api/assets/a', 'data:image/png;base64,AAAA'],
+            assetsRemoved: ['/api/assets/old'],
+          },
+        }),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        { key: 'title-changed', label: 'Title', value: 'Changed' },
+        { key: 'assets-added', label: 'Assets added', value: '2 assets' },
+        { key: 'assets-removed', label: 'Assets removed', value: '1 asset' },
       ]),
     )
   })

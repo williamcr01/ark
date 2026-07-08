@@ -34,6 +34,8 @@ export function getVersionHistoryChips(version: DeckVersionSummary): VersionHist
     const deleted = diff.deletedSlides?.length ?? 0
     const changed = diff.changedSlides?.length ?? 0
     const moved = diff.movedSlides?.length ?? 0
+    const assetsAdded = diff.assetsAdded?.length ?? 0
+    const assetsRemoved = diff.assetsRemoved?.length ?? 0
 
     if (added > 0) {
       chips.push({ key: 'added', label: `+${pluralize(added, 'slide')}` })
@@ -44,8 +46,17 @@ export function getVersionHistoryChips(version: DeckVersionSummary): VersionHist
     if (changed > 0) {
       chips.push({ key: 'changed', label: `${pluralize(changed, 'slide')} changed` })
     }
-    if (moved > 0 && added === 0 && deleted === 0 && changed === 0) {
+    if (moved > 0) {
       chips.push({ key: 'moved', label: `${pluralize(moved, 'slide')} moved` })
+    }
+    if (diff.titleChanged) {
+      chips.push({ key: 'title', label: 'Title changed' })
+    }
+    if (assetsAdded > 0) {
+      chips.push({ key: 'assets-added', label: `+${pluralize(assetsAdded, 'asset')}` })
+    }
+    if (assetsRemoved > 0) {
+      chips.push({ key: 'assets-removed', label: `−${pluralize(assetsRemoved, 'asset')}` })
     }
   } else if (diff?.kind === 'coarse') {
     chips.push({ key: 'coarse', label: 'Content updated' })
@@ -229,7 +240,7 @@ function describeDiff(diff: DeckVersionDiff): VersionHistoryDetailSection[] {
     sections.push({
       key: 'assets-added',
       label: 'Assets added',
-      value: diff.assetsAdded.join('\n'),
+      value: pluralize(diff.assetsAdded.length, 'asset'),
     })
   }
 
@@ -237,7 +248,7 @@ function describeDiff(diff: DeckVersionDiff): VersionHistoryDetailSection[] {
     sections.push({
       key: 'assets-removed',
       label: 'Assets removed',
-      value: diff.assetsRemoved.join('\n'),
+      value: pluralize(diff.assetsRemoved.length, 'asset'),
     })
   }
 
