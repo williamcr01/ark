@@ -9,6 +9,7 @@ import {
 import type { ProviderCallMetrics } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
+import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
@@ -22,6 +23,7 @@ You edit slide decks as a single self-contained HTML document using the provided
 Tool workflow:
 - **New deck**: call write_deck with a complete HTML document.
 - **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first.
+- **Version history**: when editing an existing deck, call list_versions to inspect recent sources, summaries, structural diffs, and compact provenance (no HTML snapshots) before large rewrites or when the user asks what changed.
 - **Selected element**: when the user has an element selected (see the selection note in their message), prefer patch_element targeting that elementId. parse_deck lists element ids, kinds, and locked/managed flags.
 - **Slide changes**: prefer patch_deck (add/delete/replace/reorder/title/notes) over edit_deck or write_deck.
 - **Small inline HTML tweaks**: use edit_deck with exact oldText/newText patches.
@@ -72,6 +74,7 @@ export type RunDeckAgentOptions = {
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
+  versionInspector?: DeckVersionInspector
 }
 
 function buildProviderMetrics(input: {
@@ -262,6 +265,8 @@ function canAcceptSelectionNoopReply(input: {
   )
 }
 
+type ExtractableAgentStep = Parameters<typeof extractAgentSteps>[0][number]
+
 export async function runDeckAgent({
   model,
   provider: providerInput = 'unknown',
@@ -272,6 +277,7 @@ export async function runDeckAgent({
   abortSignal,
   onStepProgress,
   logger,
+  versionInspector,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
   const provider = providerInput ?? 'unknown'
   const modelRef = modelRefInput ?? 'unknown'
@@ -279,7 +285,7 @@ export async function runDeckAgent({
 
   const workspace = createDeckWorkspace(currentHtml)
   const { createDeckTools } = await import('./deck-tools.ts')
-  const tools = createDeckTools(workspace, { logger })
+  const tools = createDeckTools(workspace, { logger, versionInspector })
   const accumulatedSteps: AgentStep[] = []
   const startedAt = performance.now()
 
@@ -297,7 +303,7 @@ export async function runDeckAgent({
       abortSignal,
       onStepFinish: async (step) => {
         throwIfAborted(abortSignal)
-        accumulatedSteps.push(...extractAgentSteps([step]))
+        accumulatedSteps.push(...extractAgentSteps([step as ExtractableAgentStep]))
         await onStepProgress?.(accumulatedSteps)
       },
     })
@@ -332,7 +338,10 @@ export async function runDeckAgent({
 
   throwIfAborted(abortSignal)
 
-  const steps = accumulatedSteps.length > 0 ? accumulatedSteps : extractAgentSteps(result.steps)
+  const steps =
+    accumulatedSteps.length > 0
+      ? accumulatedSteps
+      : extractAgentSteps(result.steps as ExtractableAgentStep[])
   const assistantText = result.text.trim()
 
   if (workspace.changed && workspace.html.trim()) {

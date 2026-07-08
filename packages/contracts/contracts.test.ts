@@ -5,6 +5,12 @@ import {
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  deckVersionDiffSchema,
+  deckManualVersionProvenanceSchema,
+  deckVersionProvenanceSchema,
+  deckVersionSummarySchema,
+  normalizeDeckVersionDiff,
+  normalizeDeckVersionProvenance,
   renameDeckRequestSchema,
   rollbackDeckRequestSchema,
 } from './decks.ts'
@@ -302,5 +308,146 @@ describe('shared API contracts', () => {
     expect(simpleErrorResponseSchema.parse({ error: 'Bad request' })).toEqual({
       error: 'Bad request',
     })
+  })
+
+  it('parses deck version provenance and diff metadata', () => {
+    const provenance = deckVersionProvenanceSchema.parse({
+      operations: ['replace_text', 'undo'],
+      slideIndexes: [0],
+      elementIds: ['ark-el-1'],
+      jobId: 'a0000000-0000-4000-8000-000000000001',
+      stepCount: 3,
+      toolCalls: [{ toolName: 'patch_deck', summary: 'rename slide 0' }],
+      restoredVersionId: deckId,
+      restoredVersionNumber: 2,
+      runtimeManifestHash: 'abc123',
+    })
+
+    const diff = deckVersionDiffSchema.parse({
+      kind: 'structural',
+      slideCountBefore: 2,
+      slideCountAfter: 3,
+      addedSlides: [{ index: 2, title: 'Closing' }],
+      changedSlides: [{ index: 0, contentChanged: true, title: 'Opening' }],
+      titleChanged: true,
+      assetsAdded: ['data:image/png;base64,abc'],
+    })
+
+    expect(
+      deckVersionSummarySchema.parse({
+        id: deckId,
+        deckId,
+        versionNumber: 2,
+        title: 'Deck',
+        source: 'manual',
+        summary: 'Edited slide',
+        validationStatus: 'valid',
+        runtimeManifest: null,
+        modelProvider: 'openai',
+        modelName: 'gpt-4.1-mini',
+        provenance,
+        diff,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isActive: true,
+      }),
+    ).toMatchObject({
+      modelName: 'gpt-4.1-mini',
+      provenance: { operations: ['replace_text', 'undo'] },
+      diff: { kind: 'structural', slideCountAfter: 3 },
+    })
+  })
+
+  it('accepts legacy version summaries without provenance fields', () => {
+    expect(
+      deckVersionSummarySchema.parse({
+        id: deckId,
+        deckId,
+        versionNumber: 1,
+        title: 'Deck',
+        source: 'upload',
+        summary: null,
+        validationStatus: 'valid',
+        runtimeManifest: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isActive: true,
+      }),
+    ).toMatchObject({ versionNumber: 1 })
+  })
+
+  it('rejects oversized provenance arrays', () => {
+    expect(
+      deckVersionProvenanceSchema.safeParse({
+        operations: Array.from({ length: 41 }, () => 'undo'),
+      }).success,
+    ).toBe(false)
+    expect(
+      deckManualVersionProvenanceSchema.safeParse({
+        operations: Array.from({ length: 41 }, () => 'undo'),
+      }).success,
+    ).toBe(false)
+    expect(
+      deckManualVersionProvenanceSchema.safeParse({
+        operations: ['undo'],
+        jobId: 'forged',
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { operations: ['undo'] },
+    })
+    expect(
+      deckVersionDiffSchema.safeParse({
+        kind: 'structural',
+        addedSlides: Array.from({ length: 101 }, (_, index) => ({
+          index,
+          title: `Slide ${index}`,
+        })),
+      }).success,
+    ).toBe(false)
+  })
+
+  it('normalizes invalid provenance and diff payloads to null', () => {
+    expect(normalizeDeckVersionProvenance({ operations: ['not-an-op'] })).toBeNull()
+    expect(normalizeDeckVersionDiff({ kind: 'invalid' })).toBeNull()
+    expect(normalizeDeckVersionProvenance(null)).toBeNull()
+  })
+
+  it('soft-normalizes oversized asset URLs instead of dropping the whole diff', () => {
+    const huge = `data:image/png;base64,${'A'.repeat(5000)}`
+    const normalized = normalizeDeckVersionDiff({
+      kind: 'structural',
+      slideCountBefore: 1,
+      slideCountAfter: 1,
+      assetsAdded: [huge],
+      addedSlides: [{ index: 0, title: 'T'.repeat(500) }],
+    })
+
+    expect(normalized?.kind).toBe('structural')
+    expect(normalized?.assetsAdded?.[0]).toMatch(/^data-asset:/)
+    expect(normalized?.assetsAdded?.[0]?.length).toBeLessThanOrEqual(2048)
+    expect(normalized?.addedSlides?.[0]?.title.length).toBeLessThanOrEqual(200)
+    expect(JSON.stringify(normalized)).not.toContain('AAAA')
+  })
+
+  it('strips client-writable diff and model fields from create requests', () => {
+    const parsed = parseRequestBody(createDeckRequestSchema, {
+      html: '<!DOCTYPE html><html><body><section class="slide"></section></body></html>',
+      source: 'agent',
+      modelProvider: 'openai',
+      modelName: 'gpt-forged',
+      diff: { kind: 'coarse', htmlBytesBefore: 1, htmlBytesAfter: 2 },
+      provenance: { operations: ['undo'], jobId: 'forged' },
+    })
+
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.data).toEqual({
+        html: '<!DOCTYPE html><html><body><section class="slide"></section></body></html>',
+        source: 'agent',
+        provenance: { operations: ['undo'] },
+      })
+      expect('diff' in parsed.data).toBe(false)
+      expect('modelProvider' in parsed.data).toBe(false)
+      expect('modelName' in parsed.data).toBe(false)
+    }
   })
 })

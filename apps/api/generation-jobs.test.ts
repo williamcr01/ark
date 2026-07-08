@@ -173,6 +173,112 @@ describe('generation job runner', () => {
     expect(stored?.request.editorSelection).toMatchObject(editorSelection)
   })
 
+  it('passes a version inspector into edit-existing-deck agent runs', async () => {
+    let capturedInspector: unknown = 'unset'
+    let resolveCaptured: () => void = () => {}
+    const captured = new Promise<void>((resolve) => {
+      resolveCaptured = resolve
+    })
+
+    const { deckStore, runner } = await createRunner({
+      runAgent: async (options) => {
+        capturedInspector = options.versionInspector
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+    })
+
+    const deck = await deckStore.createDeck(sampleHtml)
+    const job = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseVersionId: deck.activeVersionId ?? undefined,
+        currentHtml: deck.html,
+        messages: [{ role: 'user', content: 'Review recent versions' }],
+        editingExistingDeck: true,
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    await captured
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const latest = await runner.getJob(job.id)
+      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    expect(capturedInspector).toBeTruthy()
+    expect(typeof (capturedInspector as { listVersions?: unknown }).listVersions).toBe('function')
+  })
+
+  it('persists agent version provenance without HTML substrings', async () => {
+    const updatedHtml = sampleHtml.replace('Hello', 'Agent updated')
+    const htmlLeak = '<section class="slide"><h1>Secret deck HTML</h1></section>'
+    const { deckStore, runner } = await createRunner({
+      runAgent: async () => ({
+        ok: true,
+        html: updatedHtml,
+        validation: validateDeckHtmlOnServer(updatedHtml),
+        steps: [
+          { type: 'text', summary: `Assistant said ${htmlLeak}` },
+          { type: 'tool-call', toolName: 'patch_deck', summary: 'rename slide 0' },
+          {
+            type: 'tool-result',
+            toolName: 'patch_deck',
+            summary: `Applied patch with ${htmlLeak}`,
+          },
+        ],
+        assistantText: 'Updated the headline.',
+        providerMetrics: stubProviderMetrics,
+      }),
+    })
+
+    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const job = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseVersionId: deck.activeVersionId ?? undefined,
+        currentHtml: deck.html,
+        messages: [{ role: 'user', content: 'Make the headline stronger' }],
+        editingExistingDeck: true,
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const stored = await runner.getJob(job.id)
+      if (stored && ['succeeded', 'failed', 'canceled'].includes(stored.status)) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    const versions = await deckStore.listVersions(deck.id)
+    const active = versions?.find((version) => version.isActive)
+
+    expect(active).toMatchObject({
+      source: 'agent',
+      modelProvider: 'openai',
+      modelName: 'openai:gpt-4.1-mini',
+      provenance: {
+        jobId: job.id,
+        stepCount: 3,
+        toolCalls: [
+          { toolName: 'patch_deck', summary: 'rename slide 0' },
+          { toolName: 'patch_deck', summary: 'Applied patch with Secret deck HTML' },
+        ],
+      },
+      diff: {
+        kind: 'structural',
+      },
+    })
+    expect(JSON.stringify(active?.provenance)).not.toContain('<section')
+    expect(JSON.stringify(active?.provenance)).not.toContain('<!doctype')
+  })
+
   it('succeeds unchanged selected-element explanations without creating a version', async () => {
     const assistantText = 'That selected element is locked, so I cannot change it directly.'
     const { chatStore, deckStore, runner } = await createRunner({

@@ -211,6 +211,77 @@ describe.each([
     expect(await assetStore.listAssetsByDeck(deck.id)).toHaveLength(0)
   })
 
+  it('persists provenance, diff, and model fields identically across backends', async () => {
+    stores = await makeStores()
+    const { deckStore } = stores
+
+    const created = await deckStore.createDeck(sampleHtml, {
+      source: 'upload',
+      summary: 'Initial upload',
+      modelProvider: 'openai',
+      modelName: 'gpt-4.1-mini',
+    })
+
+    const provenance = {
+      operations: ['update_slide_title' as const],
+      slideIndexes: [0],
+      runtimeManifestHash: 'abc123def456',
+    }
+    const diff = {
+      kind: 'structural' as const,
+      slideCountBefore: 1,
+      slideCountAfter: 1,
+      changedSlides: [{ index: 0, titleChanged: true, title: 'Updated' }],
+    }
+
+    await deckStore.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'), {
+      source: 'manual',
+      summary: 'Manual title edit',
+      modelProvider: 'openai',
+      modelName: 'gpt-4.1-mini',
+      provenance,
+      diff,
+    })
+
+    const versions = await deckStore.listVersions(created.id)
+    const active = versions?.find((version) => version.isActive)
+
+    expect(active).toMatchObject({
+      source: 'manual',
+      summary: 'Manual title edit',
+      modelProvider: 'openai',
+      modelName: 'gpt-4.1-mini',
+      provenance,
+      diff,
+    })
+
+    const firstVersion = versions?.find((version) => version.versionNumber === 1)
+    expect(firstVersion?.provenance).toBeNull()
+    expect(firstVersion?.diff).toBeNull()
+
+    const rolledBack = await deckStore.rollbackToVersion(created.id, firstVersion!.id, {
+      provenance: {
+        restoredVersionId: firstVersion!.id,
+        restoredVersionNumber: 1,
+        runtimeManifestHash: 'rollback-hash',
+      },
+      diff: {
+        kind: 'structural',
+        slideCountBefore: 1,
+        slideCountAfter: 1,
+      },
+    })
+
+    expect(rolledBack?.versionNumber).toBe(3)
+
+    const rollbackVersion = (await deckStore.listVersions(created.id))?.[0]
+    expect(rollbackVersion?.provenance).toMatchObject({
+      restoredVersionId: firstVersion!.id,
+      restoredVersionNumber: 1,
+    })
+    expect(rollbackVersion?.diff?.kind).toBe('structural')
+  })
+
   it('runs generation job lifecycle with cancel and retry semantics', async () => {
     stores = await makeStores()
     const { deckStore, generationJobStore: jobStore } = stores

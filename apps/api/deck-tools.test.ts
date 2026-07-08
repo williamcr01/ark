@@ -86,3 +86,104 @@ describe('patch_element tool', () => {
     expect(output.ok).toBe(false)
   })
 })
+
+describe('list_versions tool', () => {
+  it('returns compact version metadata without HTML', async () => {
+    const workspace = createDeckWorkspace(managedDeck)
+    const versions = [
+      {
+        id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+        deckId: 'a0000000-0000-4000-8000-000000000002',
+        versionNumber: 2,
+        title: 'Managed Deck',
+        source: 'agent' as const,
+        summary: 'AI edit',
+        validationStatus: 'valid' as const,
+        runtimeManifest: null,
+        modelProvider: 'openai',
+        modelName: 'gpt-4.1-mini',
+        provenance: {
+          jobId: 'job-1',
+          stepCount: 2,
+          toolCalls: [{ toolName: 'patch_deck', summary: 'rename slide' }],
+        },
+        diff: { kind: 'structural' as const, slideCountBefore: 1, slideCountAfter: 1 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isActive: true,
+      },
+    ]
+
+    const tools = createDeckTools(workspace, {
+      versionInspector: {
+        listVersions: async () => versions,
+      },
+    })
+
+    const execute = tools.list_versions.execute as unknown as ToolExecute
+    const output = await execute({ limit: 5 }, {})
+
+    expect(output.versions).toMatchObject([
+      {
+        versionNumber: 2,
+        source: 'agent',
+        summary: 'AI edit',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        validationStatus: 'valid',
+        modelName: 'gpt-4.1-mini',
+        diff: { kind: 'structural', slideCountBefore: 1, slideCountAfter: 1 },
+        provenance: {
+          jobId: 'job-1',
+          stepCount: 2,
+          toolCalls: [{ toolName: 'patch_deck', summary: 'rename slide' }],
+        },
+      },
+    ])
+    expect(JSON.stringify(output)).not.toContain('<html')
+  })
+
+  it('compacts asset URLs and truncates summaries for the agent', async () => {
+    const workspace = createDeckWorkspace(managedDeck)
+    const hugeSummary = `Applied <section>${'x'.repeat(600)}</section>`
+    const tools = createDeckTools(workspace, {
+      versionInspector: {
+        listVersions: async () => [
+          {
+            id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+            deckId: 'a0000000-0000-4000-8000-000000000002',
+            versionNumber: 3,
+            title: 'Managed Deck',
+            source: 'manual' as const,
+            summary: hugeSummary,
+            validationStatus: 'valid' as const,
+            runtimeManifest: null,
+            modelProvider: null,
+            modelName: null,
+            provenance: null,
+            diff: {
+              kind: 'structural' as const,
+              slideCountBefore: 1,
+              slideCountAfter: 1,
+              assetsAdded: ['data:image/png;base64,' + 'A'.repeat(3000)],
+            },
+            createdAt: '2026-01-01T00:00:00.000Z',
+            isActive: true,
+          },
+        ],
+      },
+    })
+
+    const execute = tools.list_versions.execute as unknown as ToolExecute
+    const output = await execute({ limit: 5 }, {})
+
+    expect(output.versions[0].summary.length).toBeLessThanOrEqual(500)
+    expect(output.versions[0].summary).not.toContain('<section')
+    expect(output.versions[0].diff).toMatchObject({
+      kind: 'structural',
+      slideCountBefore: 1,
+      slideCountAfter: 1,
+      assetsAddedCount: 1,
+    })
+    expect(output.versions[0].diff).not.toHaveProperty('assetsAdded')
+    expect(JSON.stringify(output)).not.toContain('base64,AAA')
+  })
+})

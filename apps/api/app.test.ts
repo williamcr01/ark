@@ -108,7 +108,7 @@ describe('deck API routes', () => {
     const updateResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml, source: 'agent', summary: 'AI edit' }),
+      body: JSON.stringify({ html: updatedHtml, source: 'manual', summary: 'Manual edit' }),
     })
     const updated = await updateResponse.json()
 
@@ -167,6 +167,129 @@ describe('deck API routes', () => {
       summary: expect.stringContaining('Updated title'),
     })
     expect(patched.deck?.html).toContain('Updated second slide')
+
+    const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    const versionsPayload = await versionsResponse.json()
+
+    assertApiContract(deckVersionListResponseSchema, versionsPayload)
+    expect(versionsPayload.versions?.[0]).toMatchObject({
+      source: 'manual',
+      provenance: {
+        operations: ['update_slide_title'],
+        slideIndexes: [1],
+        runtimeManifestHash: expect.any(String),
+      },
+      diff: {
+        kind: 'structural',
+      },
+    })
+  })
+
+  it('persists manual provenance from PUT and ignores forged agent provenance', async () => {
+    const baseUrl = await startApi()
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+    })
+    const created = await createResponse.json()
+    const deckId = created.deck.id
+
+    const manualHtml = sampleHtml.replace('Hello', 'Manual edit')
+    const manualResponse = await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: manualHtml,
+        source: 'manual',
+        summary: 'Undo: replace text',
+        provenance: {
+          operations: ['undo'],
+          slideIndexes: [0],
+          elementIds: ['ark-el-1'],
+        },
+      }),
+    })
+
+    expect(manualResponse.status).toBe(200)
+
+    const manualVersions = await (await fetch(`${baseUrl}/api/decks/${deckId}/versions`)).json()
+    expect(manualVersions.versions?.[0]).toMatchObject({
+      source: 'manual',
+      summary: 'Undo: replace text',
+      provenance: {
+        operations: ['undo'],
+        slideIndexes: [0],
+        elementIds: ['ark-el-1'],
+        runtimeManifestHash: expect.any(String),
+      },
+    })
+    expect(manualVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(manualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
+
+    const leakedHtml = '<section class="slide"><h1>Secret deck HTML</h1></section>'
+    const forgedManualHtml = manualHtml.replace('Manual edit', 'Forged manual')
+    await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: forgedManualHtml,
+        source: 'manual',
+        summary: 'Forged manual provenance',
+        provenance: {
+          operations: ['undo'],
+          jobId: 'forged-job-id',
+          toolCalls: [{ toolName: 'patch_deck', summary: `Applied ${leakedHtml}` }],
+          restoredVersionId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+        },
+      }),
+    })
+
+    const forgedManualVersions = await (
+      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    ).json()
+    expect(forgedManualVersions.versions?.[0].provenance).toMatchObject({
+      operations: ['undo'],
+    })
+    expect(forgedManualVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(forgedManualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
+    expect(JSON.stringify(forgedManualVersions.versions?.[0].provenance)).not.toContain('<section')
+
+    const forgedAgentHtml = manualHtml.replace('Manual edit', 'Forged agent')
+    await fetch(`${baseUrl}/api/decks/${deckId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: forgedAgentHtml,
+        source: 'agent',
+        modelProvider: 'openai',
+        modelName: 'gpt-forged',
+        diff: { kind: 'coarse', htmlBytesBefore: 1, htmlBytesAfter: 2 },
+        provenance: {
+          jobId: 'forged-job-id',
+          operations: ['undo'],
+        },
+      }),
+    })
+
+    const forgedAgentVersions = await (
+      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
+    ).json()
+    // Spoofed agent/rollback sources coerce to manual; only manual provenance fields stick.
+    expect(forgedAgentVersions.versions?.[0]).toMatchObject({
+      source: 'manual',
+      provenance: {
+        operations: ['undo'],
+        runtimeManifestHash: expect.any(String),
+      },
+    })
+    expect(forgedAgentVersions.versions?.[0].modelProvider ?? null).toBeNull()
+    expect(forgedAgentVersions.versions?.[0].modelName ?? null).toBeNull()
+    expect(forgedAgentVersions.versions?.[0].diff?.kind).toBe('structural')
+    expect(forgedAgentVersions.versions?.[0].diff?.htmlBytesBefore).toBeUndefined()
+    expect(forgedAgentVersions.versions?.[0].provenance?.jobId).toBeUndefined()
+    expect(forgedAgentVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
   })
 
   it('lists versions, fetches one version, and rolls back without losing history', async () => {
@@ -185,7 +308,7 @@ describe('deck API routes', () => {
     await fetch(`${baseUrl}/api/decks/${deckId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml, source: 'agent' }),
+      body: JSON.stringify({ html: updatedHtml, source: 'manual' }),
     })
 
     const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
@@ -196,7 +319,7 @@ describe('deck API routes', () => {
     expect(versionsPayload.versions).toHaveLength(2)
     expect(versionsPayload.versions?.[0]).toMatchObject({
       versionNumber: 2,
-      source: 'agent',
+      source: 'manual',
       isActive: true,
     })
     expect(versionsPayload.versions?.[1]).toMatchObject({

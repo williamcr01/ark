@@ -8,8 +8,10 @@ import {
 } from '@ark/contracts'
 import { type AssetStore } from '../asset-record.ts'
 import { type AssetStorage } from '../asset-storage.ts'
+import { computeDeckVersionDiff } from '../deck-diff.ts'
+import { buildManualVersionProvenance } from '../deck-provenance.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
-import { buildDeckVersionOptions } from '../deck-version-payload.ts'
+import { buildDeckVersionOptions, mergeDeckVersionOptions } from '../deck-version-payload.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import {
@@ -141,11 +143,20 @@ export function createDecksRouter(deps: {
     }
 
     try {
+      const existing = await deckStore.getDeck(id)
+
+      if (!existing) {
+        response.status(404).json({ error: 'Deck not found.' })
+        return
+      }
+
       const versionOptions = buildDeckVersionOptions(
         html,
         parseDeckVersionOptions(versionBody),
         validation,
       )
+      versionOptions.diff = computeDeckVersionDiff(existing.html, html)
+
       const deck = await deckStore.updateDeck(id, html, versionOptions)
 
       if (!deck) {
@@ -220,8 +231,17 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const versionOptions = parseDeckVersionOptions(request.body)
-        versionOptions.summary = versionOptions.summary ?? patched.summary
+        const parsedVersionOptions = parseDeckVersionOptions(request.body)
+        const versionOptions = mergeDeckVersionOptions(
+          patched.html,
+          {
+            ...parsedVersionOptions,
+            summary: parsedVersionOptions.summary ?? patched.summary,
+            provenance: buildManualVersionProvenance(parsedBody.data.operations, patched),
+            diff: computeDeckVersionDiff(existing.html, patched.html),
+          },
+          validation,
+        )
 
         const deck = await deckStore.updateDeck(id, patched.html, versionOptions)
 
