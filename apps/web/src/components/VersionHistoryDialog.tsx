@@ -12,6 +12,11 @@ import {
 } from '@/components/ui/dialog'
 import type { DeckVersionDetail, DeckVersionSource, DeckVersionSummary } from '@/lib/deck-api'
 import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from '@/lib/deck-preview'
+import {
+  findRestoredVersion,
+  getVersionHistoryChips,
+  getVersionHistoryDetailSections,
+} from '@/lib/version-history-display'
 import { cn } from '@/lib/utils'
 
 const SOURCE_LABELS: Record<DeckVersionSource, string> = {
@@ -71,6 +76,14 @@ function ValidationBadge({ status }: { status: DeckVersionSummary['validationSta
         status === 'unknown' && 'bg-muted text-muted-foreground',
       )}
     >
+      {label}
+    </span>
+  )
+}
+
+function ProvenanceChip({ label }: { label: string }) {
+  return (
+    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
       {label}
     </span>
   )
@@ -179,6 +192,14 @@ export function VersionHistoryDialog({
         : '',
     [previewManifest, previewSourceHtml],
   )
+  const selectedDetailSections = useMemo(
+    () => (selectedVersion ? getVersionHistoryDetailSections(selectedVersion) : []),
+    [selectedVersion],
+  )
+  const restoredTarget = useMemo(
+    () => (selectedVersion ? findRestoredVersion(versions, selectedVersion.provenance) : null),
+    [selectedVersion, versions],
+  )
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -208,6 +229,7 @@ export function VersionHistoryDialog({
                 <ul className="flex flex-col gap-1">
                   {versions.map((version) => {
                     const isSelected = selectedVersionId === version.id
+                    const chips = getVersionHistoryChips(version)
 
                     return (
                       <li key={version.id}>
@@ -239,6 +261,13 @@ export function VersionHistoryDialog({
                           </div>
                           {version.summary ? (
                             <span className="text-xs text-muted-foreground">{version.summary}</span>
+                          ) : null}
+                          {chips.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                              {chips.map((chip) => (
+                                <ProvenanceChip key={chip.key} label={chip.label} />
+                              ))}
+                            </div>
                           ) : null}
                           <div className="flex flex-wrap items-center gap-2 pt-1">
                             <ValidationBadge status={version.validationStatus} />
@@ -278,6 +307,34 @@ export function VersionHistoryDialog({
                       <p className="text-sm text-muted-foreground">{selectedVersion.summary}</p>
                     ) : null}
                   </div>
+
+                  {selectedDetailSections.length > 0 ? (
+                    <dl className="space-y-2 rounded-md border bg-muted/20 px-3 py-2">
+                      {selectedDetailSections.map((section) => (
+                        <div key={section.key} className="space-y-0.5">
+                          <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {section.label}
+                          </dt>
+                          <dd className="whitespace-pre-wrap text-xs text-foreground">
+                            {section.key === 'restored' && restoredTarget ? (
+                              <button
+                                className="text-primary underline-offset-2 hover:underline"
+                                disabled={disabled || isRollingBack || isInspecting}
+                                onClick={() => {
+                                  void handleInspect(restoredTarget.id)
+                                }}
+                                type="button"
+                              >
+                                {section.value}
+                              </button>
+                            ) : (
+                              section.value
+                            )}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
 
                   {sanitizedPreviewHtml ? (
                     <div className="min-h-0 flex-1 overflow-hidden rounded-md border bg-muted/20">

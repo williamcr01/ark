@@ -34,6 +34,7 @@ import { parseDeckSlides } from '@/lib/deck-slides'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
+import { buildUndoRedoVersionOptions } from '@/lib/undo-redo-version-options'
 import { toEditorSelectionContext } from '@/lib/editor-selection-context'
 import type { PatchDeckResponse } from '@/lib/deck-api'
 import {
@@ -417,9 +418,10 @@ function App() {
     undoRedoInFlightRef.current = true
 
     try {
-      const deck = await restoreHtmlSnapshot(entry.beforeHtml, {
-        summary: `Undo: ${entry.provenance.summary}`,
-      })
+      const deck = await restoreHtmlSnapshot(
+        entry.beforeHtml,
+        buildUndoRedoVersionOptions('undo', entry),
+      )
 
       if (deck) {
         commitUndo()
@@ -450,9 +452,10 @@ function App() {
     undoRedoInFlightRef.current = true
 
     try {
-      const deck = await restoreHtmlSnapshot(entry.afterHtml, {
-        summary: `Redo: ${entry.provenance.summary}`,
-      })
+      const deck = await restoreHtmlSnapshot(
+        entry.afterHtml,
+        buildUndoRedoVersionOptions('redo', entry),
+      )
 
       if (deck) {
         commitRedo()
