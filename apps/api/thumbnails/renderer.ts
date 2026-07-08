@@ -1,0 +1,328 @@
+import { resolveApiOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
+import { type PreviewSessionStore } from '../preview-sessions.ts'
+import { parseDeckHtml } from '../deck-parser.ts'
+import { createLogger, type Logger } from '../observability/logger.ts'
+import {
+  createChromiumPool,
+  evaluate,
+  isThumbnailRendererAvailable,
+  type ChromiumPool,
+  type CdpClient,
+} from './chromium.ts'
+import {
+  THUMBNAIL_DECK_TIMEOUT_MS,
+  THUMBNAIL_MAX_PNG_BYTES,
+  THUMBNAIL_MAX_SLIDES,
+  THUMBNAIL_OUTPUT_HEIGHT,
+  THUMBNAIL_OUTPUT_WIDTH,
+  THUMBNAIL_READY_TIMEOUT_MS,
+  THUMBNAIL_SETTLE_MS,
+  THUMBNAIL_SLIDE_TIMEOUT_MS,
+  THUMBNAIL_VIEWPORT_HEIGHT,
+  THUMBNAIL_VIEWPORT_WIDTH,
+} from './constants.ts'
+import { buildThumbnailRenderUrl } from './render-host.ts'
+
+export type ThumbnailRenderRequest = {
+  html: string
+  deckId?: string
+  versionId?: string
+}
+
+export type ThumbnailRenderSuccess = {
+  ok: true
+  slides: Buffer[]
+  slideCount: number
+  width: number
+  height: number
+  durationMs: number
+}
+
+export type ThumbnailRenderFailure = {
+  ok: false
+  error: string
+  durationMs: number
+}
+
+export type ThumbnailRenderResult = ThumbnailRenderSuccess | ThumbnailRenderFailure
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`Timed out waiting for ${label}.`))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }
+}
+
+async function waitForDeckReady(cdp: CdpClient, timeoutMs: number) {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await evaluate<{
+      ready: boolean
+      slideCount: number
+      index: number
+      errors: string[]
+    }>(
+      cdp,
+      `({
+        ready: Boolean(window.__arkThumbReady),
+        slideCount: Number(window.__arkThumbSlideCount || 0),
+        index: Number(window.__arkThumbIndex || 0),
+        errors: Array.isArray(window.__arkThumbErrors) ? window.__arkThumbErrors.slice() : [],
+      })`,
+    )
+
+    if (state.errors.length > 0) {
+      throw new Error(state.errors[0] ?? 'Deck runtime error during thumbnail render.')
+    }
+
+    if (state.ready) {
+      return state
+    }
+
+    await sleep(50)
+  }
+
+  throw new Error('Timed out waiting for deck ready during thumbnail render.')
+}
+
+async function gotoSlide(cdp: CdpClient, index: number) {
+  const sent = await evaluate<boolean>(
+    cdp,
+    `typeof window.__arkThumbGoto === 'function' ? window.__arkThumbGoto(${index}) : false`,
+  )
+
+  if (!sent) {
+    throw new Error(`Could not post goto for slide ${index}.`)
+  }
+
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < THUMBNAIL_SLIDE_TIMEOUT_MS) {
+    const current = await evaluate<number>(cdp, `Number(window.__arkThumbIndex || 0)`)
+
+    if (current === index) {
+      await sleep(THUMBNAIL_SETTLE_MS)
+      return
+    }
+
+    await sleep(40)
+  }
+
+  throw new Error(`Timed out waiting for slide ${index} during thumbnail render.`)
+}
+
+async function captureSlidePng(cdp: CdpClient) {
+  const result = await cdp.send<{ data: string }>('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+  })
+
+  const png = Buffer.from(result.data, 'base64')
+
+  if (png.byteLength === 0) {
+    throw new Error('Thumbnail screenshot was empty.')
+  }
+
+  if (png.byteLength > THUMBNAIL_MAX_PNG_BYTES) {
+    throw new Error(
+      `Thumbnail screenshot exceeded size limit (${png.byteLength} > ${THUMBNAIL_MAX_PNG_BYTES}).`,
+    )
+  }
+
+  return png
+}
+
+function collectExternalNetworkRequests(requests: Array<{ url: string }>, apiOrigin: string) {
+  const allowedOrigin = apiOrigin.replace(/\/+$/, '')
+
+  return requests.filter((request) => {
+    try {
+      const url = new URL(request.url)
+
+      if (url.protocol === 'data:' || url.protocol === 'blob:') {
+        return false
+      }
+
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return false
+      }
+
+      return url.origin !== allowedOrigin
+    } catch {
+      return true
+    }
+  })
+}
+
+export type ThumbnailRenderer = {
+  isAvailable: () => boolean
+  render: (request: ThumbnailRenderRequest) => Promise<ThumbnailRenderResult>
+  close: () => Promise<void>
+}
+
+export function createThumbnailRenderer(options: {
+  previewSessionStore: PreviewSessionStore
+  chromiumPool?: ChromiumPool
+  apiOrigin?: string
+  logger?: Logger
+  enabled?: boolean
+}): ThumbnailRenderer {
+  const logger = options.logger ?? createLogger({ service: 'ark-api' })
+  const enabled = options.enabled ?? isThumbnailRendererAvailable()
+  const chromiumPool = options.chromiumPool ?? createChromiumPool({ enabled })
+  const apiOrigin = options.apiOrigin ?? resolveApiOrigin()
+
+  return {
+    isAvailable: () => enabled && chromiumPool.isAvailable(),
+    async close() {
+      await chromiumPool.close()
+    },
+    async render(request) {
+      const startedAt = Date.now()
+
+      if (!enabled || !chromiumPool.isAvailable()) {
+        return {
+          ok: false,
+          error: 'Thumbnail renderer is disabled.',
+          durationMs: Date.now() - startedAt,
+        }
+      }
+
+      const parsed = parseDeckHtml(request.html)
+      const slideCount = parsed.slideCount
+
+      if (slideCount <= 0) {
+        return {
+          ok: false,
+          error: 'Deck has no slides to render.',
+          durationMs: Date.now() - startedAt,
+        }
+      }
+
+      if (slideCount > THUMBNAIL_MAX_SLIDES) {
+        return {
+          ok: false,
+          error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${THUMBNAIL_MAX_SLIDES}.`,
+          durationMs: Date.now() - startedAt,
+        }
+      }
+
+      const session = options.previewSessionStore.createSession(request.html)
+      const renderUrl = buildThumbnailRenderUrl(apiOrigin, session.token)
+      const pageRef: { current: CdpClient | null } = { current: null }
+      const networkRequests: Array<{ url: string }> = []
+
+      try {
+        const result = await withTimeout(
+          (async (): Promise<ThumbnailRenderSuccess> => {
+            const page = await chromiumPool.createPage()
+            pageRef.current = page.cdp
+            const { cdp } = page
+
+            await cdp.send('Page.enable')
+            await cdp.send('Runtime.enable')
+            await cdp.send('Network.enable')
+
+            cdp.on('Network.requestWillBeSent', (params) => {
+              const url = (params as { request?: { url?: string } })?.request?.url
+              if (url) {
+                networkRequests.push({ url })
+              }
+            })
+
+            await cdp.send('Emulation.setDeviceMetricsOverride', {
+              width: THUMBNAIL_VIEWPORT_WIDTH,
+              height: THUMBNAIL_VIEWPORT_HEIGHT,
+              deviceScaleFactor: THUMBNAIL_OUTPUT_WIDTH / THUMBNAIL_VIEWPORT_WIDTH,
+              mobile: false,
+            })
+
+            await cdp.send('Page.navigate', { url: renderUrl })
+            await cdp.waitForEvent('Page.loadEventFired', () => true, THUMBNAIL_READY_TIMEOUT_MS)
+            await waitForDeckReady(cdp, THUMBNAIL_READY_TIMEOUT_MS)
+
+            const slides: Buffer[] = []
+
+            for (let index = 0; index < slideCount; index += 1) {
+              await withTimeout(gotoSlide(cdp, index), THUMBNAIL_SLIDE_TIMEOUT_MS, `slide ${index}`)
+              const png = await withTimeout(
+                captureSlidePng(cdp),
+                THUMBNAIL_SLIDE_TIMEOUT_MS,
+                `screenshot ${index}`,
+              )
+              slides.push(png)
+            }
+
+            const external = collectExternalNetworkRequests(networkRequests, apiOrigin)
+
+            if (external.length > 0) {
+              throw new Error(
+                `Thumbnail render blocked external network request: ${external[0]?.url}`,
+              )
+            }
+
+            return {
+              ok: true,
+              slides,
+              slideCount,
+              width: THUMBNAIL_OUTPUT_WIDTH,
+              height: THUMBNAIL_OUTPUT_HEIGHT,
+              durationMs: Date.now() - startedAt,
+            }
+          })(),
+          THUMBNAIL_DECK_TIMEOUT_MS,
+          'deck thumbnail render',
+        )
+
+        logger.info('thumbnail.render.succeeded', {
+          deckId: request.deckId ?? null,
+          fields: {
+            versionId: request.versionId ?? null,
+            slideCount: result.slideCount,
+            durationMs: result.durationMs,
+          },
+        })
+
+        return result
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Thumbnail render failed.'
+
+        logger.warn('thumbnail.render.failed', {
+          deckId: request.deckId ?? null,
+          fields: {
+            versionId: request.versionId ?? null,
+            error: message,
+            durationMs: Date.now() - startedAt,
+          },
+        })
+
+        return {
+          ok: false,
+          error: message,
+          durationMs: Date.now() - startedAt,
+        }
+      } finally {
+        options.previewSessionStore.deleteSession(session.token)
+        pageRef.current?.close()
+      }
+    },
+  }
+}

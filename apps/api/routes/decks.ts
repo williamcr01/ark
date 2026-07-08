@@ -25,9 +25,18 @@ export function createDecksRouter(deps: {
   deckStore: DeckStore
   assetStore?: AssetStore
   assetStorage?: AssetStorage
+  onDeckVersionPersisted?: (deckId: string, versionId: string) => void
 }): Router {
-  const { deckStore, assetStore, assetStorage } = deps
+  const { deckStore, assetStore, assetStorage, onDeckVersionPersisted } = deps
   const router = Router()
+
+  const notifyVersionPersisted = (deckId: string, versionId: string | null | undefined) => {
+    if (!versionId || !onDeckVersionPersisted) {
+      return
+    }
+
+    onDeckVersionPersisted(deckId, versionId)
+  }
 
   const cleanupDeckAssets = async (deckId: string) => {
     if (!assetStore) {
@@ -101,6 +110,7 @@ export function createDecksRouter(deps: {
         validation,
       )
       const deck = await deckStore.createDeck(html, versionOptions)
+      notifyVersionPersisted(deck.id, deck.activeVersionId)
       getRequestLogger(request).info('deck.created', {
         deckId: deck.id,
         statusCode: 201,
@@ -163,6 +173,8 @@ export function createDecksRouter(deps: {
         response.status(404).json({ error: 'Deck not found.' })
         return
       }
+
+      notifyVersionPersisted(deck.id, deck.activeVersionId)
 
       response.json({
         deck,
@@ -249,6 +261,8 @@ export function createDecksRouter(deps: {
           response.status(404).json({ error: 'Deck not found.' })
           return
         }
+
+        notifyVersionPersisted(deck.id, deck.activeVersionId)
 
         response.json({
           deck,
