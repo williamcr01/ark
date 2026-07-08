@@ -367,6 +367,46 @@ export function createGenerationJobRunner({
           return
         }
 
+        if (agentResult.changed === false) {
+          const succeededJob = await jobStore.updateJob(jobId, {
+            status: 'succeeded',
+            deckId: existingDeck.id,
+            progress: {
+              steps: agentResult.steps,
+              stepCount: agentResult.steps.length,
+              assistantText: agentResult.assistantText,
+            },
+            result: {
+              deckId: existingDeck.id,
+              versionId: existingDeck.activeVersionId ?? '',
+              html: existingDeck.html,
+              validation: agentResult.validation,
+              assistantText: agentResult.assistantText,
+            },
+            observability,
+            completedAt: now().toISOString(),
+          })
+
+          jobLogger.info('generation.job.succeeded', {
+            changed: false,
+            durationMs: observability.durationMs,
+            stepCount: agentResult.steps.length,
+            tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+          })
+
+          if (succeededJob) {
+            await persistTerminalAssistantMessage(succeededJob, {
+              status: 'succeeded',
+              steps: agentResult.steps,
+              assistantText: agentResult.assistantText,
+              deckId: existingDeck.id,
+              deckVersionId: existingDeck.activeVersionId ?? null,
+            })
+          }
+
+          return
+        }
+
         const updatedDeck = await deckStore.updateDeck(
           targetDeckId,
           agentResult.html,

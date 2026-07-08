@@ -107,6 +107,7 @@ export type RunDeckAgentResult =
   | {
       ok: true
       html: string
+      changed?: boolean
       validation: ReturnType<typeof validateDeckHtmlOnServer>
       steps: AgentStep[]
       assistantText: string
@@ -245,6 +246,22 @@ function throwIfAborted(abortSignal?: AbortSignal) {
   }
 }
 
+function canAcceptSelectionNoopReply(input: {
+  currentHtml: string
+  editorSelection?: EditorSelectionContext
+  assistantText: string
+  extractedText: string
+}) {
+  return (
+    !!input.editorSelection &&
+    !!input.currentHtml.trim() &&
+    !!input.assistantText &&
+    input.extractedText === input.assistantText &&
+    !/<html[\s>]/i.test(input.assistantText) &&
+    !/<!doctype html>/i.test(input.assistantText)
+  )
+}
+
 export async function runDeckAgent({
   model,
   provider: providerInput = 'unknown',
@@ -316,6 +333,7 @@ export async function runDeckAgent({
   throwIfAborted(abortSignal)
 
   const steps = accumulatedSteps.length > 0 ? accumulatedSteps : extractAgentSteps(result.steps)
+  const assistantText = result.text.trim()
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
@@ -337,9 +355,10 @@ export async function runDeckAgent({
     return {
       ok: true,
       html: workspace.html,
+      changed: true,
       validation,
       steps,
-      assistantText: result.text.trim(),
+      assistantText,
       providerMetrics,
     }
   }
@@ -350,9 +369,10 @@ export async function runDeckAgent({
     return {
       ok: true,
       html: fallback.html,
+      changed: true,
       validation: fallback.validation,
       steps,
-      assistantText: result.text.trim(),
+      assistantText,
       providerMetrics,
     }
   }
@@ -366,9 +386,33 @@ export async function runDeckAgent({
       return {
         ok: true,
         html: extractedFinal.html,
+        changed: true,
         validation: extractedFinal.validation,
         steps,
-        assistantText: result.text.trim(),
+        assistantText,
+        providerMetrics,
+      }
+    }
+  }
+
+  if (
+    canAcceptSelectionNoopReply({
+      currentHtml,
+      editorSelection,
+      assistantText,
+      extractedText: extracted,
+    })
+  ) {
+    const validation = validateDeckHtmlOnServer(currentHtml, logger ? { logger } : {})
+
+    if (validation.valid) {
+      return {
+        ok: true,
+        html: currentHtml,
+        changed: false,
+        validation,
+        steps,
+        assistantText,
         providerMetrics,
       }
     }
