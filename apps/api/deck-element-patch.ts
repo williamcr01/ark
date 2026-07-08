@@ -10,6 +10,7 @@ import {
   TRANSIENT_ELEMENT_ID_PREFIX,
 } from '@ark/deck-core/deck-metadata.ts'
 import { validateImageSrcForInsert } from '@ark/deck-core/deck-image.ts'
+import { isExternalUrl } from '@ark/deck-core/deck-network.ts'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import {
   createElementId,
@@ -289,15 +290,23 @@ function findUnsafeInsertedElement(root: Element) {
 
 function isUnsafeAttributeValue(name: string, value: string) {
   const normalizedName = name.toLowerCase()
+  const trimmedValue = value.trim()
 
   if (normalizedName.startsWith('on')) {
     return true
   }
 
-  return (
-    (normalizedName === 'href' || normalizedName === 'src') &&
-    /^(?:javascript|vbscript):/i.test(value.trim())
-  )
+  if (normalizedName === 'href' || normalizedName === 'src') {
+    if (/^(?:javascript|vbscript):/i.test(trimmedValue)) {
+      return true
+    }
+
+    if (isExternalUrl(trimmedValue)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 function findUnsafeInsertedAttribute(root: Element) {
@@ -306,6 +315,11 @@ function findUnsafeInsertedAttribute(root: Element) {
       const value = element.getAttribute(name)?.trim() ?? ''
 
       if (isUnsafeAttributeValue(name, value)) {
+        // Image src is validated separately for a clearer error message.
+        if (name.toLowerCase() === 'src' && element.tagName.toLowerCase() === 'img') {
+          continue
+        }
+
         return name
       }
     }
@@ -745,16 +759,18 @@ function applySetAttrs(
       return { error: `set_attrs does not allow the "${name}" attribute.` }
     }
 
-    if (isUnsafeAttributeValue(name, value)) {
-      return { error: `set_attrs does not allow unsafe "${name}" values.` }
-    }
-
     if (name === 'src' && resolved.element.tagName.toLowerCase() === 'img') {
       const srcValidation = validateImageSrcForInsert(value)
 
       if (!srcValidation.ok) {
         return { error: `set_attrs cannot set img src: ${srcValidation.error}` }
       }
+    } else if (isUnsafeAttributeValue(name, value)) {
+      if ((name === 'href' || name === 'src') && isExternalUrl(value)) {
+        return { error: `set_attrs does not allow external "${name}" URLs.` }
+      }
+
+      return { error: `set_attrs does not allow unsafe "${name}" values.` }
     }
 
     if (resolved.element.getAttribute(name) !== value) {
