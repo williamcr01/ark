@@ -1,9 +1,14 @@
 import { type Response } from 'express'
 
 import type { AppendChatMessageRequest } from '@ark/contracts'
-import { deckManualVersionProvenanceSchema, normalizeDeckVersionProvenance } from '@ark/contracts'
+import {
+  deckClientVersionSourceSchema,
+  deckManualVersionProvenanceSchema,
+  normalizeDeckVersionProvenance,
+  truncateDeckVersionSummary,
+} from '@ark/contracts'
 import { parseProviderError, type ApiErrorPayload } from '../credentials.ts'
-import { type DeckVersionOptions, normalizeDeckVersionSource } from '../deck-record.ts'
+import { type DeckVersionOptions } from '../deck-record.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 
@@ -39,34 +44,29 @@ export function toChatApiMessage(message: {
   }
 }
 
+/**
+ * Parse client-supplied version options for public create/update/patch routes.
+ * Only manual/upload sources, truncated summaries, and manual provenance are accepted.
+ * Model metadata and diffs are never taken from the client.
+ */
 export function parseDeckVersionOptions(
   body: {
     source?: unknown
     summary?: unknown
-    modelProvider?: unknown
-    modelName?: unknown
     provenance?: unknown
   } = {},
 ): DeckVersionOptions {
-  const source = normalizeDeckVersionSource(body.source)
+  const parsedSource = deckClientVersionSourceSchema.safeParse(body.source)
   const options: DeckVersionOptions = {
-    source,
+    source: parsedSource.success ? parsedSource.data : 'manual',
     validationStatus: 'valid',
   }
 
   if (typeof body.summary === 'string' && body.summary.trim()) {
-    options.summary = body.summary.trim()
+    options.summary = truncateDeckVersionSummary(body.summary)
   }
 
-  if (typeof body.modelProvider === 'string' && body.modelProvider.trim()) {
-    options.modelProvider = body.modelProvider.trim()
-  }
-
-  if (typeof body.modelName === 'string' && body.modelName.trim()) {
-    options.modelName = body.modelName.trim()
-  }
-
-  if (source === 'manual' && body.provenance !== undefined) {
+  if (options.source === 'manual' && body.provenance !== undefined) {
     const parsedProvenance = deckManualVersionProvenanceSchema.safeParse(body.provenance)
 
     if (parsedProvenance.success) {

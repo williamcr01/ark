@@ -13,7 +13,8 @@ import {
   readDeckSlideHtml,
 } from './deck-html.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import { compactVersionProvenanceForAgent } from './deck-provenance.ts'
+import { compactVersionDiffForAgent, compactVersionProvenanceForAgent } from './deck-provenance.ts'
+import { truncateDeckVersionSummary } from '@ark/contracts'
 import type { Logger } from './observability/logger.ts'
 import type { DeckVersionSummary } from './deck-record.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
@@ -373,11 +374,14 @@ export function createDeckTools(
           versions: versions.map((version) => ({
             versionNumber: version.versionNumber,
             source: version.source,
-            summary: version.summary,
+            summary:
+              typeof version.summary === 'string'
+                ? truncateDeckVersionSummary(version.summary)
+                : version.summary,
             createdAt: version.createdAt,
             validationStatus: version.validationStatus,
             modelName: version.modelName ?? null,
-            diff: version.diff ?? null,
+            diff: compactVersionDiffForAgent(version.diff),
             provenance: compactVersionProvenanceForAgent(version.provenance),
           })),
         }

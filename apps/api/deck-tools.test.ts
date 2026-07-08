@@ -122,7 +122,7 @@ describe('list_versions tool', () => {
     const execute = tools.list_versions.execute as unknown as ToolExecute
     const output = await execute({ limit: 5 }, {})
 
-    expect(output.versions).toEqual([
+    expect(output.versions).toMatchObject([
       {
         versionNumber: 2,
         source: 'agent',
@@ -139,5 +139,51 @@ describe('list_versions tool', () => {
       },
     ])
     expect(JSON.stringify(output)).not.toContain('<html')
+  })
+
+  it('compacts asset URLs and truncates summaries for the agent', async () => {
+    const workspace = createDeckWorkspace(managedDeck)
+    const hugeSummary = `Applied <section>${'x'.repeat(600)}</section>`
+    const tools = createDeckTools(workspace, {
+      versionInspector: {
+        listVersions: async () => [
+          {
+            id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+            deckId: 'a0000000-0000-4000-8000-000000000002',
+            versionNumber: 3,
+            title: 'Managed Deck',
+            source: 'manual' as const,
+            summary: hugeSummary,
+            validationStatus: 'valid' as const,
+            runtimeManifest: null,
+            modelProvider: null,
+            modelName: null,
+            provenance: null,
+            diff: {
+              kind: 'structural' as const,
+              slideCountBefore: 1,
+              slideCountAfter: 1,
+              assetsAdded: ['data:image/png;base64,' + 'A'.repeat(3000)],
+            },
+            createdAt: '2026-01-01T00:00:00.000Z',
+            isActive: true,
+          },
+        ],
+      },
+    })
+
+    const execute = tools.list_versions.execute as unknown as ToolExecute
+    const output = await execute({ limit: 5 }, {})
+
+    expect(output.versions[0].summary.length).toBeLessThanOrEqual(500)
+    expect(output.versions[0].summary).not.toContain('<section')
+    expect(output.versions[0].diff).toMatchObject({
+      kind: 'structural',
+      slideCountBefore: 1,
+      slideCountAfter: 1,
+      assetsAddedCount: 1,
+    })
+    expect(output.versions[0].diff).not.toHaveProperty('assetsAdded')
+    expect(JSON.stringify(output)).not.toContain('base64,AAA')
   })
 })

@@ -410,4 +410,44 @@ describe('shared API contracts', () => {
     expect(normalizeDeckVersionDiff({ kind: 'invalid' })).toBeNull()
     expect(normalizeDeckVersionProvenance(null)).toBeNull()
   })
+
+  it('soft-normalizes oversized asset URLs instead of dropping the whole diff', () => {
+    const huge = `data:image/png;base64,${'A'.repeat(5000)}`
+    const normalized = normalizeDeckVersionDiff({
+      kind: 'structural',
+      slideCountBefore: 1,
+      slideCountAfter: 1,
+      assetsAdded: [huge],
+      addedSlides: [{ index: 0, title: 'T'.repeat(500) }],
+    })
+
+    expect(normalized?.kind).toBe('structural')
+    expect(normalized?.assetsAdded?.[0]).toMatch(/^data-asset:/)
+    expect(normalized?.assetsAdded?.[0]?.length).toBeLessThanOrEqual(2048)
+    expect(normalized?.addedSlides?.[0]?.title.length).toBeLessThanOrEqual(200)
+    expect(JSON.stringify(normalized)).not.toContain('AAAA')
+  })
+
+  it('strips client-writable diff and model fields from create requests', () => {
+    const parsed = parseRequestBody(createDeckRequestSchema, {
+      html: '<!DOCTYPE html><html><body><section class="slide"></section></body></html>',
+      source: 'agent',
+      modelProvider: 'openai',
+      modelName: 'gpt-forged',
+      diff: { kind: 'coarse', htmlBytesBefore: 1, htmlBytesAfter: 2 },
+      provenance: { operations: ['undo'], jobId: 'forged' },
+    })
+
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.data).toEqual({
+        html: '<!DOCTYPE html><html><body><section class="slide"></section></body></html>',
+        source: 'agent',
+        provenance: { operations: ['undo'] },
+      })
+      expect('diff' in parsed.data).toBe(false)
+      expect('modelProvider' in parsed.data).toBe(false)
+      expect('modelName' in parsed.data).toBe(false)
+    }
+  })
 })
