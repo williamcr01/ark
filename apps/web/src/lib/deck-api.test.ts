@@ -8,6 +8,7 @@ import {
   listDecks,
   renameDeck,
   rollbackDeck,
+  updateDeck,
 } from './deck-api'
 
 const deck = {
@@ -65,6 +66,40 @@ describe('deck-api', () => {
       expect.objectContaining({
         body: JSON.stringify({ html: deck.html, source: 'upload' }),
         method: 'POST',
+      }),
+    )
+  })
+
+  it('updates decks with optional manual provenance', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deck }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      updateDeck(deck.id, deck.html, {
+        source: 'manual',
+        summary: 'Undo: Edited text',
+        provenance: {
+          operations: ['undo'],
+          slideIndexes: [0],
+          elementIds: ['el-1'],
+        },
+      }),
+    ).resolves.toEqual(deck)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/decks/${deck.id}`,
+      expect.objectContaining({
+        body: JSON.stringify({
+          html: deck.html,
+          source: 'manual',
+          summary: 'Undo: Edited text',
+          provenance: {
+            operations: ['undo'],
+            slideIndexes: [0],
+            elementIds: ['el-1'],
+          },
+        }),
+        method: 'PUT',
       }),
     )
   })

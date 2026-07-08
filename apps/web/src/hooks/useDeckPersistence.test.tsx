@@ -503,4 +503,61 @@ describe('useDeckPersistence', () => {
     expect(result.current.isPatching).toBe(false)
     expect(result.current.isSaving).toBe(false)
   })
+
+  it('forwards provenance on restoreHtmlSnapshot PUT requests', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    const restoredHtml = sampleHtml.replace('One', 'Restored')
+    const restoredDeck = {
+      ...deck,
+      html: restoredHtml,
+      updatedAt: '2026-01-03T00:00:00.000Z',
+      versionNumber: 3,
+    }
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
+      .mockResolvedValueOnce(jsonResponse({ deck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+      .mockResolvedValueOnce(jsonResponse({ deck: restoredDeck }))
+      .mockResolvedValueOnce(versionsResponse(deck.id))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.restoreHtmlSnapshot(restoredHtml, {
+        summary: 'Undo: Edited text in preview',
+        provenance: {
+          operations: ['undo'],
+          slideIndexes: [0],
+          elementIds: ['el-1'],
+        },
+      })
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/decks/${deck.id}`,
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          html: restoredHtml,
+          source: 'manual',
+          summary: 'Undo: Edited text in preview',
+          provenance: {
+            operations: ['undo'],
+            slideIndexes: [0],
+            elementIds: ['el-1'],
+          },
+        }),
+      }),
+    )
+    expect(result.current.html).toBe(restoredHtml)
+  })
 })
