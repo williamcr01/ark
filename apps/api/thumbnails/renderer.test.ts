@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createApp } from '../app.ts'
 import { createDeckStore } from '../deck-store.ts'
@@ -135,14 +135,18 @@ describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
     expect(second.ok).toBe(true)
 
     const browser = await chromiumPool.ensureBrowser()
-    const targets = await listPageTargets(browser.debugPort)
-    const pageTargets = targets.filter((target) => target.type === 'page')
 
-    // Only the initial about:blank tab from browser startup should remain.
-    expect(pageTargets.length).toBeLessThanOrEqual(1)
-    for (const target of pageTargets) {
-      expect(target.url).not.toContain('/api/thumbnail-render/')
-    }
+    // Target disposal via /json/close is asynchronous; poll until the render
+    // tabs are gone. Only the initial about:blank startup tab should remain.
+    await vi.waitFor(async () => {
+      const targets = await listPageTargets(browser.debugPort)
+      const pageTargets = targets.filter((target) => target.type === 'page')
+
+      expect(pageTargets.length).toBeLessThanOrEqual(1)
+      for (const target of pageTargets) {
+        expect(target.url).not.toContain('/api/thumbnail-render/')
+      }
+    })
   }, 120_000)
 
   it('renders approved reveal decks', async () => {
