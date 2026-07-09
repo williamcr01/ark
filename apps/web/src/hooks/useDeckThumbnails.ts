@@ -61,6 +61,10 @@ export function useDeckThumbnails(
   // fetches for that deck. Rapid undo/redo otherwise hammers /thumbnails during
   // preview reloads (manual-edit smoke). Accessed only from effects.
   const disabledDeckIdsRef = useRef(new Set<string>())
+  // Tracks the deck+version the current state belongs to so a version change
+  // clears stale thumbnails immediately instead of showing the previous
+  // version's images until the next fetch resolves. Accessed only from effects.
+  const stateKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!enabled || !deckId || !versionId) {
@@ -69,6 +73,15 @@ export function useDeckThumbnails(
 
     if (disabledDeckIdsRef.current.has(deckId)) {
       return
+    }
+
+    const stateKey = `${deckId}:${versionId}`
+
+    if (stateKeyRef.current !== stateKey) {
+      stateKeyRef.current = stateKey
+      setStatus(null)
+      setThumbnailUrls(null)
+      setError(null)
     }
 
     let cancelled = false

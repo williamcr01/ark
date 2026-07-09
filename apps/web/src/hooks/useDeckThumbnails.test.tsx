@@ -75,6 +75,67 @@ describe('useDeckThumbnails', () => {
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('clears stale thumbnails immediately when the version changes', async () => {
+    let resolveSecondFetch: ((response: Response) => void) | null = null
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'ready',
+            slides: [{ index: 0, url: '/api/decks/d/thumbnails/v1/0.png?hash=abc' }],
+            width: 480,
+            height: 270,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSecondFetch = resolve
+          }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, rerender } = renderHook(
+      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 1),
+      { initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' } },
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBe('ready')
+    expect(result.current.thumbnailUrls).toEqual(['/api/decks/d/thumbnails/v1/0.png?hash=abc'])
+
+    // Switch versions while the second fetch is still in flight: the previous
+    // version's thumbnails must not linger.
+    rerender({ versionId: 'a0000000-0000-4000-8000-000000000002' })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBeNull()
+    expect(result.current.thumbnailUrls).toBeNull()
+
+    resolveSecondFetch?.(
+      new Response(JSON.stringify({ status: 'pending', slides: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBe('pending')
+    expect(result.current.thumbnailUrls).toBeNull()
+  })
+
   it('keeps fallback behavior for disabled status', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: 'disabled', slides: [] }), {
