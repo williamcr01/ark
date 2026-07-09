@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createDeckStore } from '../deck-store.ts'
 import { createThumbnailCache } from './cache.ts'
-import { THUMBNAIL_STATUS } from './constants.ts'
+import { THUMBNAIL_QUEUE_MAX_PENDING, THUMBNAIL_STATUS } from './constants.ts'
 import { createThumbnailService } from './service.ts'
 import type { ThumbnailRenderer, ThumbnailRenderResult } from './renderer.ts'
 
@@ -209,33 +209,105 @@ describe('thumbnail service', () => {
     }
     const key = { versionId: statusInput.versionId, manifestHash: statusInput.manifestHash }
 
-    await service.enqueue({ ...statusInput, html: sampleHtml })
-
-    // Poll with an aged failure until the attempt budget (3) is exhausted.
-    for (let round = 0; round < 5; round += 1) {
-      await vi.waitFor(async () => {
+    const waitForFailedAttempt = (attempt: number) =>
+      vi.waitFor(async () => {
         const meta = await cache.readMeta(key)
         expect(meta?.status).toBe(THUMBNAIL_STATUS.failed)
+        expect(meta?.attempts).toBe(attempt)
+        expect(renderCount).toBe(attempt)
       })
 
+    const ageFailureAndPoll = async () => {
       const failedMeta = await cache.readMeta(key)
       await cache.writeMeta(key, {
         ...failedMeta!,
         updatedAt: new Date(Date.now() - 60_000).toISOString(),
       })
 
-      await service.getStatus({
+      return service.getStatus({
         ...statusInput,
         enqueueIfMissing: true,
         html: sampleHtml,
       })
     }
 
-    await vi.waitFor(async () => {
-      const status = await service.getStatus(statusInput)
-      expect(status.status).toBe(THUMBNAIL_STATUS.failed)
-    })
+    await service.enqueue({ ...statusInput, html: sampleHtml })
+    await waitForFailedAttempt(1)
+
+    await ageFailureAndPoll()
+    await waitForFailedAttempt(2)
+
+    await ageFailureAndPoll()
+    await waitForFailedAttempt(3)
+
+    // The attempt budget (3) is exhausted: aged or not, no further renders run.
+    const exhausted = await ageFailureAndPoll()
+    expect(exhausted.status).toBe(THUMBNAIL_STATUS.failed)
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect(renderCount).toBe(3)
+  })
+
+  it('skips new jobs while the queue is saturated and accepts them after it drains', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    let releaseGate: (() => void) | null = null
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve
+    })
+    const renderedVersions: string[] = []
+    const service = createThumbnailService({
+      cache: createThumbnailCache(cacheDir),
+      deckStore: createDeckStore(dataDir),
+      renderer: {
+        isAvailable: () => true,
+        close: async () => undefined,
+        render: async (request) => {
+          await gate
+          renderedVersions.push(request.versionId ?? 'unknown')
+          return {
+            ok: true,
+            slides: [Buffer.from('png')],
+            slideCount: 1,
+            width: 480,
+            height: 270,
+            durationMs: 1,
+          }
+        },
+      },
+    })
+
+    const versionId = (index: number) =>
+      `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    const enqueueVersion = (index: number) =>
+      service.enqueue({
+        deckId: 'b0000000-0000-4000-8000-000000000001',
+        versionId: versionId(index),
+        html: sampleHtml,
+        manifestHash: 'abc123',
+      })
+
+    // Fill the queue to its bound (THUMBNAIL_QUEUE_MAX_PENDING = 20).
+    for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
+      await enqueueVersion(index)
+    }
+
+    // One more while saturated: skipped, reported as pending.
+    const overflow = await enqueueVersion(THUMBNAIL_QUEUE_MAX_PENDING)
+    expect(overflow.status).toBe(THUMBNAIL_STATUS.pending)
+
+    releaseGate?.()
+
+    await vi.waitFor(() => {
+      expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+    })
+    expect(renderedVersions).not.toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
+
+    // Once drained, re-enqueueing the skipped version renders it.
+    await enqueueVersion(THUMBNAIL_QUEUE_MAX_PENDING)
+    await vi.waitFor(() => {
+      expect(renderedVersions).toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
+    })
   })
 
   it('returns disabled when the renderer is unavailable', async () => {
