@@ -114,8 +114,9 @@ export function createThumbnailsRouter(deps: {
         const manifestHash = resolveManifestHash(version)
 
         // A supplied hash must match the version's short manifest hash exactly
-        // (which is itself 'none' when no manifest hash is recorded).
-        if (queryHash && queryHash !== manifestHash.slice(0, 8)) {
+        // (which is itself 'none' when no manifest hash is recorded). Omitting
+        // the hash is rejected so clients cannot bypass the cache key check.
+        if (!queryHash || queryHash !== manifestHash.slice(0, 8)) {
           response.status(404).json({ error: 'Thumbnail not found.' })
           return
         }

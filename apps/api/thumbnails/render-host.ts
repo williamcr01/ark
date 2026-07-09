@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import type { NextFunction, Request, Response, Router } from 'express'
 import { Router as createRouter } from 'express'
@@ -11,6 +12,24 @@ import {
 } from '@ark/deck-core/deck-bridge.ts'
 import { buildSandboxResponseCsp } from '@ark/runtime-registry/sandbox-origin.ts'
 import { type PreviewSessionStore } from '../preview-sessions.ts'
+
+/** Header the headless Chromium renderer must send on every render-host request. */
+export const THUMBNAIL_RENDER_SECRET_HEADER = 'x-ark-thumbnail-render-secret'
+
+export function createThumbnailRenderSecret() {
+  return randomBytes(32).toString('hex')
+}
+
+function secretsMatch(expected: string, provided: string | null | undefined) {
+  if (!provided) {
+    return false
+  }
+
+  // Hash both sides so length differences cannot short-circuit the compare.
+  const expectedDigest = createHash('sha256').update(expected).digest()
+  const providedDigest = createHash('sha256').update(provided).digest()
+  return timingSafeEqual(expectedDigest, providedDigest)
+}
 
 type DomGlobals = {
   document?: Document
@@ -204,8 +223,36 @@ export function isLoopbackAddress(address: string | null | undefined) {
  * Only the local headless Chromium ever needs the thumbnail render routes.
  * Untrusted deck HTML would otherwise be served (and executed) on the API
  * origin for any remote client holding a preview token, weakening the
- * separate-origin isolation model — so reject anything that is not loopback.
+ * separate-origin isolation model.
+ *
+ * Loopback alone is not enough: the Vite (and any same-host) reverse proxy
+ * makes remote browsers appear as 127.0.0.1 to the API. Require a
+ * process-local secret header that only the renderer knows, in addition to
+ * the loopback check.
  */
+export function createThumbnailRenderAccessGuard(renderSecret: string) {
+  return function thumbnailRenderAccessGuard(
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) {
+    if (!isLoopbackAddress(request.socket.remoteAddress)) {
+      response.status(403).send('Thumbnail render routes are only available on loopback.')
+      return
+    }
+
+    const provided = request.get(THUMBNAIL_RENDER_SECRET_HEADER)
+
+    if (!secretsMatch(renderSecret, provided)) {
+      response.status(403).send('Thumbnail render routes require the renderer secret.')
+      return
+    }
+
+    next()
+  }
+}
+
+/** @deprecated Prefer createThumbnailRenderAccessGuard — kept for older call sites/tests. */
 export function thumbnailRenderLoopbackGuard(
   request: Request,
   response: Response,
@@ -224,15 +271,17 @@ export function thumbnailRenderLoopbackGuard(
  * sandbox host, but on the API origin so headless Chromium can load approved
  * runtime assets same-origin. A thin host page iframes the deck so the Ark
  * bridge sees a real parent window (matching production preview). Access is
- * restricted to loopback clients (see thumbnailRenderLoopbackGuard).
+ * restricted to loopback clients that present the process-local render secret
+ * (see createThumbnailRenderAccessGuard).
  */
 export function createThumbnailRenderRouter(deps: {
   previewSessionStore: PreviewSessionStore
+  renderSecret: string
 }): Router {
-  const { previewSessionStore } = deps
+  const { previewSessionStore, renderSecret } = deps
   const router = createRouter()
 
-  router.use('/api/thumbnail-render', thumbnailRenderLoopbackGuard)
+  router.use('/api/thumbnail-render', createThumbnailRenderAccessGuard(renderSecret))
 
   router.get(
     '/api/thumbnail-render/:token/host',

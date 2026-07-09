@@ -1103,17 +1103,6 @@ export function buildDeckEditorBridgeRuntimeScript(
     };
   }
 
-  function rectChanged(before, after) {
-    var epsilon = 0.0005;
-
-    return (
-      Math.abs(before.x - after.x) > epsilon ||
-      Math.abs(before.y - after.y) > epsilon ||
-      Math.abs(before.width - after.width) > epsilon ||
-      Math.abs(before.height - after.height) > epsilon
-    );
-  }
-
   function pointerToNormalized(clientX, clientY, slide) {
     var slideRect = slide.getBoundingClientRect();
 
@@ -1779,11 +1768,8 @@ export function buildDeckEditorBridgeRuntimeScript(
     ) {
       var finalGeometry = normalizeRect(transformState.element, slide);
 
-      if (!rectChanged(transformState.startGeometry, finalGeometry)) {
-        transformState = null;
-        return;
-      }
-
+      // Always emit a commit (even for a no-op drag) so the shell clears
+      // transformPreview / isTransformingRef; empty patch ops are a no-op.
       applyTransform(transformState.element, slide, finalGeometry, false, transformState.kind);
       transformState = null;
       return;

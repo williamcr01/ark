@@ -22,7 +22,7 @@ import {
   THUMBNAIL_VIEWPORT_HEIGHT,
   THUMBNAIL_VIEWPORT_WIDTH,
 } from './constants.ts'
-import { buildThumbnailRenderUrl } from './render-host.ts'
+import { buildThumbnailRenderUrl, THUMBNAIL_RENDER_SECRET_HEADER } from './render-host.ts'
 
 export type ThumbnailRenderRequest = {
   html: string
@@ -185,11 +185,14 @@ export function createThumbnailRenderer(options: {
   apiOrigin?: string
   logger?: Logger
   enabled?: boolean
+  /** Process-local secret required by /api/thumbnail-render/* (blocks Vite-proxy bypass). */
+  renderSecret: string
 }): ThumbnailRenderer {
   const logger = options.logger ?? createLogger({ service: 'ark-api' })
   const enabled = options.enabled ?? isThumbnailRendererAvailable()
   const chromiumPool = options.chromiumPool ?? createChromiumPool({ enabled })
   const apiOrigin = options.apiOrigin ?? resolveApiOrigin()
+  const { renderSecret } = options
 
   return {
     isAvailable: () => enabled && chromiumPool.isAvailable(),
@@ -241,6 +244,15 @@ export function createThumbnailRenderer(options: {
             await cdp.send('Page.enable')
             await cdp.send('Runtime.enable')
             await cdp.send('Network.enable')
+
+            // Attach the process-local secret to every request from this page
+            // (host document + sandboxed iframe) so the Vite reverse proxy
+            // cannot be used to reach the render routes without it.
+            await cdp.send('Network.setExtraHTTPHeaders', {
+              headers: {
+                [THUMBNAIL_RENDER_SECRET_HEADER]: renderSecret,
+              },
+            })
 
             cdp.on('Network.requestWillBeSent', (params) => {
               const url = (params as { request?: { url?: string } })?.request?.url

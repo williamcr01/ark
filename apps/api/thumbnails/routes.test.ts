@@ -130,10 +130,12 @@ describe('thumbnail API routes', () => {
       expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
 
       // A hash param that does not match the version's short manifest hash
-      // exactly is rejected.
+      // exactly is rejected — and so is a missing hash.
       const slidePath = ready.slides[0]!.url.split('?')[0]
       const mismatchResponse = await fetch(`${baseUrl}${slidePath}?hash=deadbeef`)
       expect(mismatchResponse.status).toBe(404)
+      const missingHashResponse = await fetch(`${baseUrl}${slidePath}`)
+      expect(missingHashResponse.status).toBe(404)
     })
   })
 

@@ -99,11 +99,15 @@ describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
 
     const address = server.address() as AddressInfo
     const apiOrigin = `http://127.0.0.1:${address.port}`
+    // createApp generates a process-local render secret; read it back so the
+    // live Chromium page can authenticate against /api/thumbnail-render/*.
+    const renderSecret = (app.locals.thumbnailRenderSecret as string | undefined) ?? ''
     const renderer = createThumbnailRenderer({
       previewSessionStore,
       apiOrigin,
       enabled: true,
       chromiumPool: options.chromiumPool,
+      renderSecret,
     })
     serviceClose = () => renderer.close()
     return renderer
