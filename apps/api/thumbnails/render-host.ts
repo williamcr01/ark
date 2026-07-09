@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom'
-import type { Request, Response, Router } from 'express'
+import type { NextFunction, Request, Response, Router } from 'express'
 import { Router as createRouter } from 'express'
 
 import { buildPreviewHtml } from '@ark/deck-core/deck-preview-html.ts'
@@ -160,17 +160,52 @@ function buildThumbnailHostHtml(token: string, parentOrigin: string) {
 </html>`
 }
 
+export function isLoopbackAddress(address: string | null | undefined) {
+  if (!address) {
+    return false
+  }
+
+  if (address === '::1') {
+    return true
+  }
+
+  // Accept the whole 127/8 loopback block, plus IPv4-mapped IPv6 forms.
+  return /^(::ffff:)?127\./i.test(address)
+}
+
+/**
+ * Only the local headless Chromium ever needs the thumbnail render routes.
+ * Untrusted deck HTML would otherwise be served (and executed) on the API
+ * origin for any remote client holding a preview token, weakening the
+ * separate-origin isolation model — so reject anything that is not loopback.
+ */
+export function thumbnailRenderLoopbackGuard(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+) {
+  if (!isLoopbackAddress(request.socket.remoteAddress)) {
+    response.status(403).send('Thumbnail render routes are only available on loopback.')
+    return
+  }
+
+  next()
+}
+
 /**
  * Serves deck HTML through the same preview pipeline and sandbox CSP as the
  * sandbox host, but on the API origin so headless Chromium can load approved
  * runtime assets same-origin. A thin host page iframes the deck so the Ark
- * bridge sees a real parent window (matching production preview).
+ * bridge sees a real parent window (matching production preview). Access is
+ * restricted to loopback clients (see thumbnailRenderLoopbackGuard).
  */
 export function createThumbnailRenderRouter(deps: {
   previewSessionStore: PreviewSessionStore
 }): Router {
   const { previewSessionStore } = deps
   const router = createRouter()
+
+  router.use('/api/thumbnail-render', thumbnailRenderLoopbackGuard)
 
   router.get(
     '/api/thumbnail-render/:token/host',
