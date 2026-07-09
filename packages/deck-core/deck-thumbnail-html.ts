@@ -3,7 +3,7 @@ import {
   parseRuntimeAssetUrl,
   resolveDeckApprovedRuntime,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
-import { findSlideElements } from './deck-preview-slides.ts'
+import { findSlideElements, stripHostileNavigationVectors } from './deck-preview-slides.ts'
 import {
   findRevealSlidesContainer,
   hasRevealSlideStructure,
@@ -18,62 +18,6 @@ import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
 import { getApprovedRuntimeStylesheetContent } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
-const JAVASCRIPT_URL_ATTRS = new Set(['href', 'src', 'xlink:href', 'action', 'formaction'])
-
-function isMetaRefresh(element: Element) {
-  return (
-    element.tagName.toLowerCase() === 'meta' &&
-    element.getAttribute('http-equiv')?.trim().toLowerCase() === 'refresh'
-  )
-}
-
-function isJavascriptUrl(value: string | null) {
-  if (!value) {
-    return false
-  }
-
-  const withoutControls = [...value]
-    .filter((char) => {
-      const code = char.charCodeAt(0)
-      return code > 0x20
-    })
-    .join('')
-  const normalized = withoutControls
-    .replace(/&#0*58;?/gi, ':')
-    .replace(/&colon;/gi, ':')
-    .trim()
-    .toLowerCase()
-
-  return normalized.startsWith('javascript:')
-}
-
-function stripHostileNavigationVectors(root: ParentNode) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
-
-  let node = walker.currentNode as Element | null
-  const toRemove: Element[] = []
-
-  while (node) {
-    if (isMetaRefresh(node)) {
-      toRemove.push(node)
-    } else {
-      for (const attribute of [...node.attributes]) {
-        if (
-          JAVASCRIPT_URL_ATTRS.has(attribute.name.toLowerCase()) &&
-          isJavascriptUrl(attribute.value)
-        ) {
-          node.removeAttribute(attribute.name)
-        }
-      }
-    }
-
-    node = walker.nextNode() as Element | null
-  }
-
-  for (const element of toRemove) {
-    element.remove()
-  }
-}
 
 export const revealThumbnailLayoutShim = `
 <style data-ark-reveal-thumb-shim>
