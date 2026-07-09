@@ -4445,6 +4445,190 @@
         }
       }
     },
+    "/api/decks/{id}/thumbnails": {
+      "get": {
+        "summary": "Get sandbox-rendered slide thumbnails for a deck version",
+        "description": "Returns cached per-slide PNG URLs when ready. Missing thumbnails enqueue an async render and return `pending`. When the renderer is unavailable, returns `disabled` and clients fall back to script-stripped srcDoc thumbnails.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thumbnail status and slide URLs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["ready", "pending", "failed", "disabled"]
+                    },
+                    "slides": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "index": { "type": "integer", "minimum": 0 },
+                          "url": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["index", "url"]
+                      }
+                    },
+                    "error": { "type": "string" },
+                    "width": { "type": "integer", "minimum": 0, "exclusiveMinimum": true },
+                    "height": { "type": "integer", "minimum": 0, "exclusiveMinimum": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["status", "slides"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/thumbnails/{versionId}/{slideFile}": {
+      "get": {
+        "summary": "Serve a cached slide thumbnail PNG",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "string", "pattern": "^\\d+\\.png$/i" },
+            "required": true,
+            "name": "slideFile",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": { "description": "PNG image bytes with long-lived immutable cache headers" },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runtime-errors": {
       "post": {
         "summary": "Report a deck runtime error",
