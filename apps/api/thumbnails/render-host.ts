@@ -67,6 +67,26 @@ export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin
   }
 }
 
+/**
+ * The parent origin is derived from the Host header (so ephemeral-port test
+ * servers work); parse and re-serialize it through URL so malformed values
+ * cannot reach CSP headers or the inline host script.
+ */
+function resolveRequestOrigin(request: Request): string | null {
+  const host = request.get('host')?.trim()
+
+  if (!host) {
+    return null
+  }
+
+  try {
+    const origin = new URL(`${request.protocol}://${host}`).origin
+    return origin === 'null' ? null : origin
+  } catch {
+    return null
+  }
+}
+
 function applyThumbnailRenderSecurityHeaders(response: Response, parentOrigin: string) {
   response.setHeader('Content-Security-Policy', buildSandboxResponseCsp(parentOrigin))
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
@@ -224,7 +244,13 @@ export function createThumbnailRenderRouter(deps: {
         return
       }
 
-      const parentOrigin = `${request.protocol}://${request.get('host')}`
+      const parentOrigin = resolveRequestOrigin(request)
+
+      if (!parentOrigin) {
+        response.status(400).send('Could not resolve the request origin.')
+        return
+      }
+
       response.setHeader(
         'Content-Security-Policy',
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'self'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'",
@@ -251,7 +277,13 @@ export function createThumbnailRenderRouter(deps: {
         return
       }
 
-      const parentOrigin = `${request.protocol}://${request.get('host')}`
+      const parentOrigin = resolveRequestOrigin(request)
+
+      if (!parentOrigin) {
+        response.status(400).send('Could not resolve the request origin.')
+        return
+      }
+
       const previewHtml = renderThumbnailPreviewHtml(session.html, { parentOrigin })
 
       applyThumbnailRenderSecurityHeaders(response, parentOrigin)
