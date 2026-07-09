@@ -23,6 +23,7 @@ import hostileRunawayScriptsDeck from '@fixtures/hostile-runaway-scripts-deck.ht
 import hostileSandboxNetworkDeck from '@fixtures/hostile-sandbox-network-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import hostileSelfNavigationDeck from '@fixtures/hostile-self-navigation-deck.html?raw'
+import hostileSyncSelfNavigationDeck from '@fixtures/hostile-sync-self-navigation-deck.html?raw'
 import malformedDeck from '@fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealDeck from '@fixtures/reveal-deck.html?raw'
@@ -96,6 +97,12 @@ const securityFixtures: SecurityFixture[] = [
   {
     name: 'hostile-self-navigation',
     html: hostileSelfNavigationDeck,
+    runtimeMode: 'custom-js',
+    category: 'frame-self-navigation',
+  },
+  {
+    name: 'hostile-sync-self-navigation',
+    html: hostileSyncSelfNavigationDeck,
     runtimeMode: 'custom-js',
     category: 'frame-self-navigation',
   },
@@ -412,6 +419,26 @@ describe('sandbox security fixtures', () => {
       expect(previewHtml).toContain('evil.example')
       // Parent shell must detect unexpected loads; CSP alone cannot stop navigation.
       expect(previewHtml).toContain("connect-src 'none'")
+    })
+
+    it('keeps sync head-script self-navigation (handshake timeout is the mitigation)', () => {
+      expect(detectRuntimeMode(hostileSyncSelfNavigationDeck)).toBe('custom-js')
+      expect(runtimeModeAllowsDeckScripts('custom-js')).toBe(true)
+
+      const previewHtml = getPreviewHtml(hostileSyncSelfNavigationDeck, {
+        handshake: 'hs-sync-fixture',
+      })
+
+      expect(previewHtml).toContain('data-ark-preview-handshake')
+      expect(previewHtml).toContain('location.replace')
+      expect(previewHtml).toContain('evil.example')
+      expect(previewHtml).toContain("connect-src 'none'")
+      // Sentinel must precede the hostile head script so the shell can time out
+      // when the original document never completes its trusted load.
+      const sentinelAt = previewHtml.indexOf('data-ark-preview-handshake')
+      const hostileAt = previewHtml.indexOf('location.replace')
+      expect(sentinelAt).toBeGreaterThan(-1)
+      expect(hostileAt).toBeGreaterThan(sentinelAt)
     })
   })
 

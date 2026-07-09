@@ -175,7 +175,7 @@ describe('PresentMode', () => {
       />,
     )
 
-    const iframe = screen.getByTitle('Ark presentation mode')
+    const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
     const postMessage = vi.spyOn(iframe.contentWindow!, 'postMessage')
 
     fireEvent.load(iframe)
