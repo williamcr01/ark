@@ -400,12 +400,12 @@ export function DeckPreview({
   // and the commit diff would come back empty (element visibly moves but nothing
   // persists).
   useEffect(() => {
-    if (isTransformingRef.current) {
+    if (isTransformingRef.current || transformPreview) {
       return
     }
 
     committedGeometryRef.current = geometry
-  }, [geometry])
+  }, [geometry, transformPreview])
 
   // A transform preview marks the start of a drag/resize. Snapshot the pre-drag
   // geometry on the first preview frame and freeze the baseline until commit.
