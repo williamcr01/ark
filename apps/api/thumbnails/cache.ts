@@ -14,6 +14,8 @@ export type ThumbnailCacheMeta = {
   slideCount: number
   width: number
   height: number
+  /** Number of render attempts performed for this key (bounds failure retries). */
+  attempts?: number
   error?: string
   createdAt: string
   updatedAt: string
@@ -114,6 +116,7 @@ export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCac
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.pending,
+      attempts: (existing?.attempts ?? 0) + 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
@@ -127,6 +130,7 @@ export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCac
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.ready,
+      attempts: existing?.attempts ?? 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
@@ -140,6 +144,7 @@ export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCac
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.failed,
+      attempts: existing?.attempts ?? 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }

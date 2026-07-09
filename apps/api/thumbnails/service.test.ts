@@ -130,6 +130,114 @@ describe('thumbnail service', () => {
     })
   })
 
+  it('retries a failed render after the retry delay and bounds total attempts', async () => {
+    let renderCount = 0
+    const { service, cache } = await setup(async () => {
+      renderCount += 1
+
+      if (renderCount === 1) {
+        return { ok: false, error: 'cold start', durationMs: 1 }
+      }
+
+      return {
+        ok: true,
+        slides: [Buffer.from('one'), Buffer.from('two')],
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 5,
+      }
+    })
+
+    const statusInput = {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'abc123',
+    }
+
+    await service.enqueue({ ...statusInput, html: sampleHtml })
+
+    await vi.waitFor(async () => {
+      const status = await service.getStatus(statusInput)
+      expect(status.status).toBe(THUMBNAIL_STATUS.failed)
+    })
+
+    // Within the retry delay the failure is returned as-is (no re-render).
+    const beforeDelay = await service.getStatus({
+      ...statusInput,
+      enqueueIfMissing: true,
+      html: sampleHtml,
+    })
+    expect(beforeDelay.status).toBe(THUMBNAIL_STATUS.failed)
+    expect(renderCount).toBe(1)
+
+    // Age the failure past the retry delay, then poll again.
+    const key = { versionId: statusInput.versionId, manifestHash: statusInput.manifestHash }
+    const failedMeta = await cache.readMeta(key)
+    expect(failedMeta).not.toBeNull()
+    await cache.writeMeta(key, {
+      ...failedMeta!,
+      updatedAt: new Date(Date.now() - 60_000).toISOString(),
+    })
+
+    const retrying = await service.getStatus({
+      ...statusInput,
+      enqueueIfMissing: true,
+      html: sampleHtml,
+    })
+    expect(retrying.status).toBe(THUMBNAIL_STATUS.pending)
+
+    await vi.waitFor(async () => {
+      const status = await service.getStatus(statusInput)
+      expect(status.status).toBe(THUMBNAIL_STATUS.ready)
+      expect(status.slides).toHaveLength(2)
+    })
+    expect(renderCount).toBe(2)
+  })
+
+  it('stops retrying once the attempt budget is exhausted', async () => {
+    let renderCount = 0
+    const { service, cache } = await setup(async () => {
+      renderCount += 1
+      return { ok: false, error: `boom ${renderCount}`, durationMs: 1 }
+    })
+
+    const statusInput = {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000002',
+      manifestHash: 'abc123',
+    }
+    const key = { versionId: statusInput.versionId, manifestHash: statusInput.manifestHash }
+
+    await service.enqueue({ ...statusInput, html: sampleHtml })
+
+    // Poll with an aged failure until the attempt budget (3) is exhausted.
+    for (let round = 0; round < 5; round += 1) {
+      await vi.waitFor(async () => {
+        const meta = await cache.readMeta(key)
+        expect(meta?.status).toBe(THUMBNAIL_STATUS.failed)
+      })
+
+      const failedMeta = await cache.readMeta(key)
+      await cache.writeMeta(key, {
+        ...failedMeta!,
+        updatedAt: new Date(Date.now() - 60_000).toISOString(),
+      })
+
+      await service.getStatus({
+        ...statusInput,
+        enqueueIfMissing: true,
+        html: sampleHtml,
+      })
+    }
+
+    await vi.waitFor(async () => {
+      const status = await service.getStatus(statusInput)
+      expect(status.status).toBe(THUMBNAIL_STATUS.failed)
+    })
+    expect(renderCount).toBe(3)
+  })
+
   it('returns disabled when the renderer is unavailable', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
     cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
