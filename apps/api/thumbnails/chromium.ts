@@ -372,9 +372,9 @@ export type BrowserPage = {
 }
 
 export async function closePageTarget(debugPort: number, targetId: string) {
-  await fetch(
-    `http://127.0.0.1:${debugPort}/json/close/${encodeURIComponent(targetId)}`,
-  ).catch(() => undefined)
+  await fetch(`http://127.0.0.1:${debugPort}/json/close/${encodeURIComponent(targetId)}`).catch(
+    () => undefined,
+  )
 }
 
 export async function listPageTargets(debugPort: number) {
