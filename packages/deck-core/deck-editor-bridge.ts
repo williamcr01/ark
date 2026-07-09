@@ -1767,6 +1767,9 @@ export function buildDeckEditorBridgeRuntimeScript(
       transformState.element
     ) {
       var finalGeometry = normalizeRect(transformState.element, slide);
+
+      // Always emit a commit (even for a no-op drag) so the shell clears
+      // transformPreview / isTransformingRef; empty patch ops are a no-op.
       applyTransform(transformState.element, slide, finalGeometry, false, transformState.kind);
       transformState = null;
       return;

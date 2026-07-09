@@ -43,6 +43,7 @@ export type GenerationJobRunnerOptions = {
   createModel?: typeof createLanguageModel
   runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
   now?: () => Date
+  onDeckVersionPersisted?: (deckId: string, versionId: string) => void
 }
 
 export type StartGenerationJobOptions = {
@@ -121,7 +122,15 @@ export function createGenerationJobRunner({
   createModel = createLanguageModel,
   runAgent = runDeckAgent,
   now = () => new Date(),
+  onDeckVersionPersisted,
 }: GenerationJobRunnerOptions): GenerationJobRunner {
+  const notifyVersionPersisted = (deckId: string, versionId: string | null | undefined) => {
+    if (!versionId || !onDeckVersionPersisted) {
+      return
+    }
+
+    onDeckVersionPersisted(deckId, versionId)
+  }
   const persistTerminalAssistantMessage = async (
     job: GenerationJob,
     options: {
@@ -493,6 +502,8 @@ export function createGenerationJobRunner({
           })
         }
 
+        notifyVersionPersisted(updatedDeck.id, updatedDeck.activeVersionId)
+
         return
       }
 
@@ -553,6 +564,8 @@ export function createGenerationJobRunner({
           deckVersionId: createdDeck.activeVersionId ?? null,
         })
       }
+
+      notifyVersionPersisted(createdDeck.id, createdDeck.activeVersionId)
     } catch (error) {
       const latest = await jobStore.getJob(jobId)
       const durationMs = Math.round(performance.now() - jobStartedAt)

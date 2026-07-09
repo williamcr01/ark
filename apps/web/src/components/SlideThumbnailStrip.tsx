@@ -23,16 +23,19 @@ type SlideThumbnailStripProps = {
   onSelect: (index: number) => void
   orientation: 'horizontal' | 'vertical'
   parsedDeck: ParsedDeck
+  /** Sandbox-rendered PNG URLs when available; null entries fall back to srcDoc. */
+  thumbnailUrls?: (string | null)[] | null
 }
 
 type LazyThumbnailProps = {
   active: boolean
   index: number
-  mountIframe: boolean
+  mountContent: boolean
   onSelect: (index: number) => void
   onVisibilityChange: (index: number, isVisible: boolean) => void
   orientation: 'horizontal' | 'vertical'
   srcDoc: string
+  thumbnailUrl: string | null
   trackVisibility: boolean
 }
 
@@ -80,14 +83,18 @@ function computeMountedIndices(
 function LazyThumbnail({
   active,
   index,
-  mountIframe,
+  mountContent,
   onSelect,
   onVisibilityChange,
   orientation,
   srcDoc,
+  thumbnailUrl,
   trackVisibility,
 }: LazyThumbnailProps) {
   const containerRef = useRef<HTMLButtonElement>(null)
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
+  const imageFailed = Boolean(thumbnailUrl) && failedThumbnailUrl === thumbnailUrl
+  const useImage = Boolean(thumbnailUrl) && !imageFailed
 
   useEffect(() => {
     if (!trackVisibility) {
@@ -132,20 +139,32 @@ function LazyThumbnail({
         className="relative w-full overflow-hidden bg-white"
         style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
       >
-        {mountIframe ? (
-          <iframe
-            className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
-            sandbox={getThumbnailSandbox()}
-            srcDoc={srcDoc}
-            style={{
-              width: PREVIEW_FRAME_WIDTH,
-              height: PREVIEW_FRAME_HEIGHT,
-              transform: 'scale(var(--ark-thumb-scale))',
-              transformOrigin: 'top left',
-            }}
-            tabIndex={-1}
-            title={`Slide ${index + 1} thumbnail`}
-          />
+        {mountContent ? (
+          useImage && thumbnailUrl ? (
+            <img
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              decoding="async"
+              loading="lazy"
+              onError={() => setFailedThumbnailUrl(thumbnailUrl)}
+              src={thumbnailUrl}
+              title={`Slide ${index + 1} thumbnail`}
+            />
+          ) : (
+            <iframe
+              className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
+              sandbox={getThumbnailSandbox()}
+              srcDoc={srcDoc}
+              style={{
+                width: PREVIEW_FRAME_WIDTH,
+                height: PREVIEW_FRAME_HEIGHT,
+                transform: 'scale(var(--ark-thumb-scale))',
+                transformOrigin: 'top left',
+              }}
+              tabIndex={-1}
+              title={`Slide ${index + 1} thumbnail`}
+            />
+          )
         ) : (
           <Skeleton className="absolute inset-0 rounded-none" />
         )}
@@ -169,6 +188,7 @@ export function SlideThumbnailStrip({
   onSelect,
   orientation,
   parsedDeck,
+  thumbnailUrls = null,
 }: SlideThumbnailStripProps) {
   const activeItemRef = useRef<HTMLDivElement>(null)
   const { slideCount, thumbnailSrcDocs } = parsedDeck
@@ -260,11 +280,12 @@ export function SlideThumbnailStrip({
               <LazyThumbnail
                 active={index === activeIndex}
                 index={index}
-                mountIframe={mountedIndices.has(index)}
+                mountContent={mountedIndices.has(index)}
                 onSelect={onSelect}
                 onVisibilityChange={handleVisibilityChange}
                 orientation={orientation}
                 srcDoc={srcDoc}
+                thumbnailUrl={thumbnailUrls?.[index] ?? null}
                 trackVisibility={isOpen}
               />
             </div>

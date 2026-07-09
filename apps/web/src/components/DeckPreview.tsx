@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react'
 import {
   FileCode2Icon,
   Loader2Icon,
@@ -20,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
+import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
   getPreviewFrameScale,
@@ -66,6 +75,7 @@ export type DeckPreviewProps = {
   layout: 'desktop' | 'mobile'
   parsedDeck: ReturnType<typeof parseDeckSlides>
   editorBridgeEnabled?: boolean
+  editModeActive?: boolean
   isTextEditSaving?: boolean
   canUndo?: boolean
   canRedo?: boolean
@@ -73,6 +83,7 @@ export type DeckPreviewProps = {
   redoSlideIndex?: number | null
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
+  onEditModeActiveChange?: (active: boolean) => void
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
   /** Reports the current editor selection to the shell (issue #83); null when edit mode is inactive. */
   onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
@@ -92,6 +103,7 @@ export function DeckPreview({
   layout,
   parsedDeck,
   editorBridgeEnabled = false,
+  editModeActive: controlledEditModeActive,
   isTextEditSaving = false,
   canUndo = false,
   canRedo = false,
@@ -99,6 +111,7 @@ export function DeckPreview({
   redoSlideIndex = null,
   onUndo,
   onRedo,
+  onEditModeActiveChange,
   onCommitTextEdit,
   onEditorSelectionChange,
   onPatchEditorOperations,
@@ -108,7 +121,7 @@ export function DeckPreview({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
-  const [editModeActive, setEditModeActive] = useState(false)
+  const [uncontrolledEditModeActive, setUncontrolledEditModeActive] = useState(false)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [imageFitOverride, setImageFitOverride] = useState<{
     elementId: string
@@ -142,6 +155,18 @@ export function DeckPreview({
   const manifestWarnings = runtimeManifest.warnings
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
+  )
+  const editModeActive = controlledEditModeActive ?? uncontrolledEditModeActive
+  const setEditModeActive = useCallback(
+    (nextActive: boolean) => {
+      if (onEditModeActiveChange) {
+        onEditModeActiveChange(nextActive)
+        return
+      }
+
+      setUncontrolledEditModeActive(nextActive)
+    },
+    [onEditModeActiveChange],
   )
   const hasSlides = parsedDeck.slideCount > 0
   const editChromeActive = editModeActive && !isGenerating
@@ -185,6 +210,13 @@ export function DeckPreview({
       },
     },
   )
+  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
+    enabled: !editChromeActive,
+  })
+  // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
+  // while the main preview is still settling (manual-edit smoke / CDP context lookup).
+  const deferredParsedDeck = useDeferredValue(parsedDeck)
+  const deferredThumbnailUrls = useDeferredValue(thumbnailUrls)
 
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex
@@ -368,12 +400,12 @@ export function DeckPreview({
   // and the commit diff would come back empty (element visibly moves but nothing
   // persists).
   useEffect(() => {
-    if (isTransformingRef.current) {
+    if (isTransformingRef.current || transformPreview) {
       return
     }
 
     committedGeometryRef.current = geometry
-  }, [geometry])
+  }, [geometry, transformPreview])
 
   // A transform preview marks the start of a drag/resize. Snapshot the pre-drag
   // geometry on the first preview frame and freeze the baseline until commit.
@@ -409,7 +441,7 @@ export function DeckPreview({
     setImageFitOverride(null)
     pendingReselectRef.current = null
     setEditModeActive(false)
-  }, [disableEditor, endTextEditing])
+  }, [disableEditor, endTextEditing, setEditModeActive])
 
   const handleEditModeChange = useCallback(
     (nextActive: boolean) => {
@@ -424,7 +456,7 @@ export function DeckPreview({
 
       setEditModeActive(true)
     },
-    [exitEditMode, hasSlides, html.length, isGenerating],
+    [exitEditMode, hasSlides, html.length, isGenerating, setEditModeActive],
   )
 
   const handleToolChange = useCallback(
@@ -1074,10 +1106,10 @@ export function DeckPreview({
             activeIndex={activeSlideIndex}
             id="ark-slide-strip"
             isOpen={isStripOpen}
-            key={html}
             onSelect={goToSlide}
             orientation={stripOrientation}
-            parsedDeck={parsedDeck}
+            parsedDeck={deferredParsedDeck}
+            thumbnailUrls={deferredThumbnailUrls}
           />
         ) : null}
 

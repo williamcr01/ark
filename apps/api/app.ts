@@ -25,6 +25,14 @@ import { createGenerationJobsRouter } from './routes/generation-jobs.ts'
 import { createMiscRouter } from './routes/misc.ts'
 import { createPreviewSessionsRouter } from './routes/preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './routes/runtimes-and-assets.ts'
+import { createThumbnailsRouter } from './routes/thumbnails.ts'
+import { createDefaultThumbnailCache } from './thumbnails/cache.ts'
+import {
+  createThumbnailRenderRouter,
+  createThumbnailRenderSecret,
+} from './thumbnails/render-host.ts'
+import { createThumbnailRenderer } from './thumbnails/renderer.ts'
+import { createThumbnailService, type ThumbnailService } from './thumbnails/service.ts'
 
 type CreateAppOptions = {
   deckStore?: DeckStore
@@ -35,6 +43,21 @@ type CreateAppOptions = {
   generationJobRunner?: GenerationJobRunner
   previewSessionStore?: PreviewSessionStore
   runtimeErrorStore?: RuntimeErrorStore
+  thumbnailService?: ThumbnailService
+  /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
+  thumbnailRenderSecret?: string
+}
+
+function scheduleThumbnailWarm(
+  thumbnailService: ThumbnailService | null | undefined,
+  deckId: string | null | undefined,
+  versionId: string | null | undefined,
+) {
+  if (!thumbnailService || !deckId || !versionId) {
+    return
+  }
+
+  void thumbnailService.enqueueForDeckVersion(deckId, versionId).catch(() => undefined)
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -44,12 +67,34 @@ export function createApp(options: CreateAppOptions = {}) {
   const assetStore = options.assetStore ?? createDefaultAssetStore()
   const assetStorage = options.assetStorage ?? createDefaultAssetStorage()
   const jobStore = options.generationJobStore ?? createDefaultGenerationJobStore()
-  const generationJobs =
-    options.generationJobRunner ??
-    createGenerationJobRunner({ deckStore, jobStore, chatStore, assetStore, assetStorage })
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
+  const thumbnailRenderSecret = options.thumbnailRenderSecret ?? createThumbnailRenderSecret()
+
+  const thumbnailService =
+    options.thumbnailService ??
+    createThumbnailService({
+      cache: createDefaultThumbnailCache(),
+      renderer: createThumbnailRenderer({
+        previewSessionStore,
+        renderSecret: thumbnailRenderSecret,
+      }),
+      deckStore,
+    })
+
+  const generationJobs =
+    options.generationJobRunner ??
+    createGenerationJobRunner({
+      deckStore,
+      jobStore,
+      chatStore,
+      assetStore,
+      assetStorage,
+      onDeckVersionPersisted: (deckId, versionId) => {
+        scheduleThumbnailWarm(thumbnailService, deckId, versionId)
+      },
+    })
 
   app.use(createObservabilityMiddleware())
 
@@ -62,8 +107,31 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(createRuntimesAndAssetsRouter())
   app.use(createMiscRouter({ defaultModel, runtimeErrorStore }))
   app.use(createPreviewSessionsRouter({ previewSessionStore }))
-  app.use(createDecksRouter({ deckStore, assetStore, assetStorage }))
-  app.use(createDeckVersionsRouter({ deckStore }))
+  app.use(
+    createThumbnailRenderRouter({
+      previewSessionStore,
+      renderSecret: thumbnailRenderSecret,
+    }),
+  )
+  app.use(
+    createDecksRouter({
+      deckStore,
+      assetStore,
+      assetStorage,
+      onDeckVersionPersisted: (deckId, versionId) => {
+        scheduleThumbnailWarm(thumbnailService, deckId, versionId)
+      },
+    }),
+  )
+  app.use(
+    createDeckVersionsRouter({
+      deckStore,
+      onDeckVersionPersisted: (deckId, versionId) => {
+        scheduleThumbnailWarm(thumbnailService, deckId, versionId)
+      },
+    }),
+  )
+  app.use(createThumbnailsRouter({ deckStore, thumbnailService }))
   app.use(createDeckChatRouter({ deckStore, chatStore }))
   app.use(
     createGenerationJobsRouter({
@@ -71,6 +139,11 @@ export function createApp(options: CreateAppOptions = {}) {
       defaultModel,
     }),
   )
+
+  // Exposed for the server entrypoint's shutdown hook (closing the Chromium pool)
+  // and for live renderer tests that need to authenticate against the render host.
+  app.locals.thumbnailService = thumbnailService
+  app.locals.thumbnailRenderSecret = thumbnailRenderSecret
 
   return app
 }
