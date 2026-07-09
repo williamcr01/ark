@@ -11,7 +11,13 @@ import { createApp } from '../app.ts'
 import { createDeckStore } from '../deck-store.ts'
 import { createPreviewSessionStore } from '../preview-sessions.ts'
 import { createThumbnailCache } from './cache.ts'
-import { findChromium, isThumbnailRendererAvailable } from './chromium.ts'
+import {
+  createChromiumPool,
+  findChromium,
+  isThumbnailRendererAvailable,
+  listPageTargets,
+  type ChromiumPool,
+} from './chromium.ts'
 import { createThumbnailRenderer } from './renderer.ts'
 import { createThumbnailService } from './service.ts'
 
@@ -66,7 +72,7 @@ describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
     cacheDir = ''
   })
 
-  async function startRenderer() {
+  async function startRenderer(options: { chromiumPool?: ChromiumPool } = {}) {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-live-decks-'))
     cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-live-cache-'))
     const deckStore = createDeckStore(dataDir)
@@ -97,6 +103,7 @@ describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
       previewSessionStore,
       apiOrigin,
       enabled: true,
+      chromiumPool: options.chromiumPool,
     })
     serviceClose = () => renderer.close()
     return renderer
@@ -117,6 +124,26 @@ describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
       expect(slide.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
     }
   }, 60_000)
+
+  it('closes page targets after each render (no tab leak)', async () => {
+    const chromiumPool = createChromiumPool({ enabled: true })
+    const renderer = await startRenderer({ chromiumPool })
+
+    const first = await renderer.render({ html: plainCssDeck })
+    expect(first.ok).toBe(true)
+    const second = await renderer.render({ html: plainCssDeck })
+    expect(second.ok).toBe(true)
+
+    const browser = await chromiumPool.ensureBrowser()
+    const targets = await listPageTargets(browser.debugPort)
+    const pageTargets = targets.filter((target) => target.type === 'page')
+
+    // Only the initial about:blank tab from browser startup should remain.
+    expect(pageTargets.length).toBeLessThanOrEqual(1)
+    for (const target of pageTargets) {
+      expect(target.url).not.toContain('/api/thumbnail-render/')
+    }
+  }, 120_000)
 
   it('renders approved reveal decks', async () => {
     const renderer = await startRenderer()

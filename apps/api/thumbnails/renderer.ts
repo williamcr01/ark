@@ -6,6 +6,7 @@ import {
   createChromiumPool,
   evaluate,
   isThumbnailRendererAvailable,
+  type BrowserPage,
   type ChromiumPool,
   type CdpClient,
 } from './chromium.ts'
@@ -227,14 +228,14 @@ export function createThumbnailRenderer(options: {
 
       const session = options.previewSessionStore.createSession(request.html)
       const renderUrl = buildThumbnailRenderUrl(apiOrigin, session.token)
-      const pageRef: { current: CdpClient | null } = { current: null }
+      const pageRef: { current: BrowserPage | null } = { current: null }
       const networkRequests: Array<{ url: string }> = []
 
       try {
         const result = await withTimeout(
           (async (): Promise<ThumbnailRenderSuccess> => {
             const page = await chromiumPool.createPage()
-            pageRef.current = page.cdp
+            pageRef.current = page
             const { cdp } = page
 
             await cdp.send('Page.enable')
@@ -321,7 +322,9 @@ export function createThumbnailRenderer(options: {
         }
       } finally {
         options.previewSessionStore.deleteSession(session.token)
-        pageRef.current?.close()
+        // Dispose the tab (not just the CDP socket) so the shared browser does
+        // not accumulate one open page per render.
+        await pageRef.current?.close().catch(() => undefined)
       }
     },
   }
