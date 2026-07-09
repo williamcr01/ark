@@ -4339,12 +4339,13 @@
                   "type": "object",
                   "properties": {
                     "token": { "type": "string", "minLength": 1 },
+                    "handshake": { "type": "string", "minLength": 1 },
                     "expiresAt": { "type": "number" },
                     "sandboxOrigin": { "type": "string" },
                     "renderUrl": { "type": "string" },
                     "requestId": { "type": "string", "format": "uuid" }
                   },
-                  "required": ["token", "expiresAt", "sandboxOrigin", "renderUrl"]
+                  "required": ["token", "handshake", "expiresAt", "sandboxOrigin", "renderUrl"]
                 }
               }
             }
@@ -4402,12 +4403,13 @@
                   "type": "object",
                   "properties": {
                     "token": { "type": "string", "minLength": 1 },
+                    "handshake": { "type": "string", "minLength": 1 },
                     "html": { "type": "string" },
                     "editorBridge": { "type": "boolean" },
                     "expiresAt": { "type": "number" },
                     "requestId": { "type": "string", "format": "uuid" }
                   },
-                  "required": ["token", "html", "editorBridge", "expiresAt"]
+                  "required": ["token", "handshake", "html", "editorBridge", "expiresAt"]
                 }
               }
             }
