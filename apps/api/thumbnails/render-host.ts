@@ -46,6 +46,13 @@ function restoreDomGlobals(previous: DomGlobals) {
   }
 }
 
+/**
+ * Temporarily swaps `globalThis.document`/`DOMParser`/`NodeFilter` for a JSDOM
+ * instance so the shared preview builder can run server-side. This is safe for
+ * concurrent requests only while `buildPreviewHtml` stays fully synchronous —
+ * an `await` between the swap and restore would corrupt the globals for other
+ * in-flight requests.
+ */
 export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin?: string } = {}) {
   const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
     url: 'http://thumbnail.ark.local/',

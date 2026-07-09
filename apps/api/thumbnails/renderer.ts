@@ -272,6 +272,11 @@ export function createThumbnailRenderer(options: {
               slides.push(png)
             }
 
+            // Post-hoc defense-in-depth only: the injected sandbox CSP is what
+            // actually blocks external requests. This check runs after capture
+            // (so a request would already have been attempted) and may miss
+            // subframe traffic if the sandboxed iframe ever becomes an
+            // out-of-process frame; it exists to surface CSP regressions.
             const external = collectExternalNetworkRequests(networkRequests, apiOrigin)
 
             if (external.length > 0) {

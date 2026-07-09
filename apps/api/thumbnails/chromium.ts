@@ -293,6 +293,10 @@ export async function spawnChromium(
       '--disable-gpu',
       '--no-default-browser-check',
       '--no-first-run',
+      // Required in containers/CI without user namespaces. Trade-off: a
+      // Chromium renderer exploit in hostile deck HTML would escape to the API
+      // process user; mitigated by the strict no-network CSP, the loopback-only
+      // render routes, and per-render page disposal.
       '--no-sandbox',
       '--disable-popup-blocking',
       '--block-new-web-contents',
