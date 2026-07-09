@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
+import { useFrameNavigationGuard } from '@/hooks/useFrameNavigationGuard'
 import {
   getPreviewFrameScale,
   getPreviewFrameStyle,
@@ -14,6 +15,7 @@ import {
   type ElementSize,
   type DeckRuntimeMode,
 } from '@/lib/deck-preview'
+import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 
 const CONTROLS_IDLE_MS = 2500
@@ -112,16 +114,45 @@ export function PresentMode({
   }, [clearIdleTimer, onExit])
 
   const previewFrame = useDeckPreviewFrame(html, slideCount > 0)
+  const { compromised: previewCompromised } = useFrameNavigationGuard(
+    iframeRef,
+    previewFrame.iframeKey,
+    { enabled: slideCount > 0 },
+  )
+  const reportedNavigationErrorRef = useRef(false)
+
+  useEffect(() => {
+    reportedNavigationErrorRef.current = false
+  }, [previewFrame.iframeKey])
+
+  useEffect(() => {
+    if (!previewCompromised || reportedNavigationErrorRef.current) {
+      return
+    }
+
+    reportedNavigationErrorRef.current = true
+
+    void reportRuntimeError({
+      slideIndex: currentSlideIndexRef.current,
+      runtimeMode,
+      severity: 'error',
+      message:
+        'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
+      source: 'preview-navigation-guard',
+    }).catch(() => {
+      reportedNavigationErrorRef.current = false
+    })
+  }, [previewCompromised, runtimeMode])
 
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     slideCount,
     html,
-    slideCount > 0,
+    slideCount > 0 && !previewCompromised,
     {
       runtimeMode,
       initialSlideIndex,
-      keyboardMode: 'present',
+      keyboardMode: previewCompromised ? 'off' : 'present',
       sandboxOrigin: previewFrame.sandboxOrigin,
       syncOnLoad: true,
       onSlideChange: (index) => {
@@ -255,18 +286,34 @@ export function PresentMode({
           className="relative max-h-full max-w-full overflow-hidden bg-white shadow-[0_40px_120px_rgba(0,0,0,0.65)] ring-1 ring-white/10"
           style={previewStageStyle}
         >
-          <iframe
-            className="absolute left-0 top-0 block border-0 bg-white"
-            key={previewFrame.iframeKey}
-            ref={iframeRef}
-            referrerPolicy="no-referrer"
-            sandbox={getPreviewSandbox(runtimeMode)}
-            src={previewFrame.iframeSrc}
-            srcDoc={previewFrame.iframeSrcDoc}
-            style={previewFrameStyle}
-            tabIndex={-1}
-            title="Ark presentation mode"
-          />
+          {previewCompromised ? null : (
+            <iframe
+              className="absolute left-0 top-0 block border-0 bg-white"
+              key={previewFrame.iframeKey}
+              ref={iframeRef}
+              referrerPolicy="no-referrer"
+              sandbox={getPreviewSandbox(runtimeMode)}
+              src={previewFrame.iframeSrc}
+              srcDoc={previewFrame.iframeSrcDoc}
+              style={previewFrameStyle}
+              tabIndex={-1}
+              title="Ark presentation mode"
+            />
+          )}
+          {previewCompromised ? (
+            <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur">
+              <div className="flex items-start gap-2">
+                <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium">Preview stopped</p>
+                  <p>
+                    The deck attempted an unexpected navigation. Presentation preview was torn down
+                    to stop further bridge messages from reaching an untrusted page.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 

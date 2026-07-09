@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
+import { useFrameNavigationGuard } from '@/hooks/useFrameNavigationGuard'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
@@ -171,20 +172,27 @@ export function DeckPreview({
   const hasSlides = parsedDeck.slideCount > 0
   const editChromeActive = editModeActive && !isGenerating
   const editorBridgeInjected = editorBridgeEnabled && editChromeActive
-  const previewFrame = useDeckPreviewFrame(html, html.length > 0 && hasSlides && !isPresentOpen, {
+  const previewEnabled = html.length > 0 && hasSlides && !isPresentOpen
+  const previewFrame = useDeckPreviewFrame(html, previewEnabled, {
     editorBridge: editorBridgeInjected,
   })
+  const { compromised: previewCompromised } = useFrameNavigationGuard(
+    iframeRef,
+    previewFrame.iframeKey,
+    { enabled: previewEnabled },
+  )
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
   const textEditActiveRef = useRef(false)
+  const bridgeEnabled = previewEnabled && !previewCompromised
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
     html,
-    html.length > 0 && hasSlides && !isPresentOpen,
+    bridgeEnabled,
     {
       runtimeMode,
-      keyboardMode: isPresentOpen ? 'off' : 'preview',
+      keyboardMode: isPresentOpen || previewCompromised ? 'off' : 'preview',
       shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,
       onRuntimeError: (message, source) => {
@@ -244,11 +252,43 @@ export function DeckPreview({
     cancelTextEdit,
     setTool,
   } = useDeckEditorBridge(iframeRef, {
-    enabled: editorBridgeInjected && html.length > 0 && hasSlides && !isPresentOpen,
+    enabled: editorBridgeInjected && bridgeEnabled,
     activeSlideIndex,
     sandboxOrigin: previewFrame.sandboxOrigin,
     iframeGenerationKey: previewFrame.iframeKey,
   })
+
+  useEffect(() => {
+    if (!previewCompromised) {
+      return
+    }
+
+    const fingerprint = 'unexpected-frame-navigation:preview-navigation-guard'
+
+    if (reportedRuntimeErrorsRef.current.has(fingerprint)) {
+      return
+    }
+
+    reportedRuntimeErrorsRef.current.add(fingerprint)
+
+    void reportRuntimeError({
+      deckId,
+      versionId,
+      slideIndex: activeSlideIndexRef.current,
+      runtimeMode,
+      severity: 'error',
+      message:
+        'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
+      source: 'preview-navigation-guard',
+    }).catch(() => {
+      reportedRuntimeErrorsRef.current.delete(fingerprint)
+    })
+  }, [deckId, previewCompromised, runtimeMode, versionId])
+
+  useEffect(() => {
+    // Allow re-reporting if the shell remounts the preview after a prior compromise.
+    reportedRuntimeErrorsRef.current.delete('unexpected-frame-navigation:preview-navigation-guard')
+  }, [previewFrame.iframeKey])
 
   useEffect(() => {
     textEditActiveRef.current = textEditActive
@@ -1152,22 +1192,39 @@ export function DeckPreview({
                 ref={previewStageRef}
                 style={previewStageStyle}
               >
-                <iframe
-                  className="absolute left-0 top-0 block border-0 bg-white"
-                  key={previewFrame.iframeKey}
-                  onLoad={() => {
-                    if (editorBridgeInjected) {
-                      enableEditor(activeSlideIndex, activeTool)
-                    }
-                  }}
-                  ref={iframeRef}
-                  referrerPolicy="no-referrer"
-                  sandbox={getPreviewSandbox(runtimeMode)}
-                  src={previewFrame.iframeSrc}
-                  srcDoc={previewFrame.iframeSrcDoc}
-                  style={previewFrameStyle}
-                  title="Generated Ark presentation preview"
-                />
+                {previewCompromised ? null : (
+                  <iframe
+                    className="absolute left-0 top-0 block border-0 bg-white"
+                    key={previewFrame.iframeKey}
+                    onLoad={() => {
+                      if (editorBridgeInjected) {
+                        enableEditor(activeSlideIndex, activeTool)
+                      }
+                    }}
+                    ref={iframeRef}
+                    referrerPolicy="no-referrer"
+                    sandbox={getPreviewSandbox(runtimeMode)}
+                    src={previewFrame.iframeSrc}
+                    srcDoc={previewFrame.iframeSrcDoc}
+                    style={previewFrameStyle}
+                    title="Generated Ark presentation preview"
+                  />
+                )}
+                {previewCompromised ? (
+                  <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
+                    <div className="flex items-start gap-2">
+                      <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="font-medium">Preview stopped</p>
+                        <p>
+                          The deck attempted an unexpected navigation. Preview was torn down to stop
+                          further bridge messages from reaching an untrusted page. Edit or reload
+                          the deck to restore the preview.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {previewFrame.error ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
                     <p className="font-medium">Sandbox preview unavailable</p>

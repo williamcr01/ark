@@ -69,6 +69,8 @@ const previewFrameMock = vi.hoisted(() => ({
   iframeKey: 'test-preview',
 }))
 
+const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
+
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
   useDeckEditorBridge: () => editorBridgeMock,
 }))
@@ -89,6 +91,10 @@ vi.mock('@/hooks/useDeckPreviewFrame', () => ({
     error: null,
     usesSandboxHost: false,
   }),
+}))
+
+vi.mock('@/lib/runtime-error-api', () => ({
+  reportRuntimeError: reportRuntimeErrorMock,
 }))
 
 vi.mock('@/hooks/useElementSize', () => ({
@@ -127,6 +133,48 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.cancelTextEdit.mockClear()
     editorBridgeMock.setTool.mockClear()
     previewFrameMock.iframeKey = 'test-preview'
+    reportRuntimeErrorMock.mockClear()
+  })
+
+  it('tears down the preview and reports when the iframe self-navigates', async () => {
+    renderDeckPreview(plainDeckProps)
+
+    const iframe = screen.getByTitle('Generated Ark presentation preview')
+
+    fireEvent.load(iframe)
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+
+    fireEvent.load(iframe)
+
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+    expect(screen.getByText(/The deck attempted an unexpected navigation/i)).toBeVisible()
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+    expect(reportRuntimeErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'preview-navigation-guard',
+        severity: 'error',
+      }),
+    )
+  })
+
+  it('does not treat a shell remount (new iframe key) as hostile navigation', async () => {
+    const { rerender } = renderDeckPreview(plainDeckProps)
+
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+
+    previewFrameMock.iframeKey = 'test-preview-reloaded'
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Generated Ark presentation preview')).toBeInTheDocument()
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
   })
 
   it('shows static preview messaging for uploaded scripted decks', () => {
