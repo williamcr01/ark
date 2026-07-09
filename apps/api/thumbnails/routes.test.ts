@@ -128,6 +128,12 @@ describe('thumbnail API routes', () => {
       expect(imageResponse.headers.get('content-type')).toContain('image/png')
       expect(imageResponse.headers.get('cache-control')).toContain('immutable')
       expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
+
+      // A hash param that does not match the version's short manifest hash
+      // exactly is rejected.
+      const slidePath = ready.slides[0]!.url.split('?')[0]
+      const mismatchResponse = await fetch(`${baseUrl}${slidePath}?hash=deadbeef`)
+      expect(mismatchResponse.status).toBe(404)
     })
   })
 
