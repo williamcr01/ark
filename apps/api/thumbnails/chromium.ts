@@ -360,7 +360,30 @@ export async function stopChromium(browser: BrowserProcess | null) {
   await rm(browser.userDataDir, { recursive: true, force: true }).catch(() => undefined)
 }
 
-export async function createPage(debugPort: number) {
+export type BrowserPage = {
+  cdp: CdpClient
+  targetId: string | null
+  /** Closes the CDP socket and disposes the page target so tabs never accumulate. */
+  close: () => Promise<void>
+}
+
+export async function closePageTarget(debugPort: number, targetId: string) {
+  await fetch(
+    `http://127.0.0.1:${debugPort}/json/close/${encodeURIComponent(targetId)}`,
+  ).catch(() => undefined)
+}
+
+export async function listPageTargets(debugPort: number) {
+  const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`)
+
+  if (!response.ok) {
+    throw new Error(`Could not list Chromium page targets: ${response.status}`)
+  }
+
+  return (await response.json()) as Array<{ id?: string; type?: string; url?: string }>
+}
+
+export async function createPage(debugPort: number): Promise<BrowserPage> {
   const url = `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent('about:blank')}`
   let response = await fetch(url, { method: 'PUT' })
 
@@ -378,9 +401,19 @@ export async function createPage(debugPort: number) {
     throw new Error('Chromium page target did not expose a CDP socket URL.')
   }
 
+  const cdp = await CdpClient.connect(target.webSocketDebuggerUrl)
+  const targetId = target.id ?? null
+
   return {
-    cdp: await CdpClient.connect(target.webSocketDebuggerUrl),
-    targetId: target.id ?? null,
+    cdp,
+    targetId,
+    async close() {
+      cdp.close()
+
+      if (targetId) {
+        await closePageTarget(debugPort, targetId)
+      }
+    },
   }
 }
 
@@ -407,7 +440,7 @@ export async function evaluate<T>(cdp: CdpClient, expression: string) {
 
 export type ChromiumPool = {
   ensureBrowser: () => Promise<BrowserProcess>
-  createPage: () => Promise<{ cdp: CdpClient; targetId: string | null }>
+  createPage: () => Promise<BrowserPage>
   close: () => Promise<void>
   isAvailable: () => boolean
 }
