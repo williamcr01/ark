@@ -287,6 +287,7 @@ export async function spawnChromium(
     [
       '--headless=new',
       `--remote-debugging-port=${debugPort}`,
+      '--remote-debugging-address=127.0.0.1',
       `--user-data-dir=${userDataDir}`,
       '--disable-dev-shm-usage',
       '--disable-gpu',
@@ -304,17 +305,31 @@ export async function spawnChromium(
     stderr += chunk.toString('utf8')
   })
 
-  // Do not keep the parent Node process alive solely for the shared Chromium pool.
-  child.unref()
+  try {
+    // Cold starts on CI runners can exceed the default 15s wait.
+    await waitFor(
+      'Chromium DevTools endpoint',
+      async () => {
+        if (child.exitCode !== null) {
+          throw new Error(`Chromium exited early.\n${stderr}`)
+        }
 
-  await waitFor('Chromium DevTools endpoint', async () => {
-    if (child.exitCode !== null) {
-      throw new Error(`Chromium exited early.\n${stderr}`)
+        const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
+        return Boolean(response?.ok)
+      },
+      { timeoutMs: 45_000 },
+    )
+  } catch (error) {
+    if (child.exitCode === null) {
+      child.kill('SIGKILL')
     }
 
-    const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
-    return Boolean(response?.ok)
-  })
+    throw error
+  }
+
+  // Do not keep the parent Node process alive solely for the shared Chromium pool.
+  // Unref only after DevTools is ready so startup polling stays reliable on CI.
+  child.unref()
 
   return {
     process: child,
