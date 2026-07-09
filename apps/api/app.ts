@@ -126,5 +126,8 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   )
 
+  // Exposed for the server entrypoint's shutdown hook (closing the Chromium pool).
+  app.locals.thumbnailService = thumbnailService
+
   return app
 }
