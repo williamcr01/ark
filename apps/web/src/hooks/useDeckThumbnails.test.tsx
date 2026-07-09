@@ -76,7 +76,7 @@ describe('useDeckThumbnails', () => {
   })
 
   it('clears stale thumbnails immediately when the version changes', async () => {
-    let resolveSecondFetch: ((response: Response) => void) | null = null
+    let resolveSecondFetch: (response: Response) => void = () => undefined
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -121,7 +121,7 @@ describe('useDeckThumbnails', () => {
     expect(result.current.status).toBeNull()
     expect(result.current.thumbnailUrls).toBeNull()
 
-    resolveSecondFetch?.(
+    resolveSecondFetch(
       new Response(JSON.stringify({ status: 'pending', slides: [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
