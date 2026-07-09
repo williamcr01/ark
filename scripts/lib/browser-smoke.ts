@@ -446,6 +446,49 @@ export async function findContextByUrl(
     }
   }
 
+  try {
+    const targets = await cdp.send<{
+      targetInfos: Array<{ targetId?: string; type?: string; url?: string }>
+    }>('Target.getTargets')
+    const target = targets.targetInfos.find(
+      (entry) =>
+        entry.url === url &&
+        typeof entry.targetId === 'string' &&
+        (entry.type === 'iframe' || entry.type === 'page'),
+    )
+
+    if (!target?.targetId) {
+      return null
+    }
+
+    const attached = await cdp.send<{ sessionId?: string }>('Target.attachToTarget', {
+      targetId: target.targetId,
+      flatten: true,
+    })
+
+    if (!attached.sessionId) {
+      return null
+    }
+
+    await cdp.send('Runtime.enable', {}, attached.sessionId)
+    await cdp.send('Page.enable', {}, attached.sessionId).catch(() => undefined)
+    await cdp.send('Runtime.runIfWaitingForDebugger', {}, attached.sessionId).catch(() => undefined)
+
+    const href = await evaluate<string>(cdp, 'location.href', {
+      sessionId: attached.sessionId,
+    })
+
+    if (href === url) {
+      return {
+        id: 0,
+        isDefault: true,
+        sessionId: attached.sessionId,
+      }
+    }
+  } catch {
+    // Target lookup is a best-effort fallback for iframe reload races.
+  }
+
   return null
 }
 

@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -252,7 +252,9 @@ async function readDeckFile(filePath: string): Promise<StoredDeckFile | null> {
 }
 
 async function writeDeckFile(filePath: string, file: StoredDeckFile) {
-  await writeFile(filePath, JSON.stringify(file), 'utf8')
+  const tempPath = `${filePath}.${randomUUID()}.tmp`
+  await writeFile(tempPath, JSON.stringify(file), 'utf8')
+  await rename(tempPath, filePath)
 }
 
 function resolveVersionManifest(html: string, options: DeckVersionOptions = {}) {

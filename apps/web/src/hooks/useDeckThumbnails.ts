@@ -50,8 +50,9 @@ export function useDeckThumbnails(
   deckId: string | null | undefined,
   versionId: string | null | undefined,
   slideCount: number,
+  options: { enabled?: boolean } = {},
 ): DeckThumbnailsState {
-  const enabled = Boolean(deckId && versionId && slideCount > 0)
+  const enabled = options.enabled !== false && Boolean(deckId && versionId && slideCount > 0)
   const [status, setStatus] = useState<ThumbnailStatus | null>(null)
   const [thumbnailUrls, setThumbnailUrls] = useState<(string | null)[] | null>(null)
   const [error, setError] = useState<string | null>(null)
