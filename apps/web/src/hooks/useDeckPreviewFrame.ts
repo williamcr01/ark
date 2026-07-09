@@ -1,6 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
-import { useSandboxPreview } from '@/hooks/useSandboxPreview'
+import {
+  fingerprintPreviewHtml,
+  useMemoizedClientHandshake,
+  useSandboxPreview,
+} from '@/hooks/useSandboxPreview'
 import { getPreviewHtml, useSrcDocPreviewFallback } from '@/lib/deck-preview'
 
 export type DeckPreviewFrameOptions = {
@@ -15,6 +19,8 @@ export type DeckPreviewFrameModel = {
   isLoading: boolean
   error: string | null
   usesSandboxHost: boolean
+  /** Generation-correlation handshake for the bridge session (not a secret). */
+  handshake: string | null
 }
 
 export function useDeckPreviewFrame(
@@ -23,46 +29,87 @@ export function useDeckPreviewFrame(
   options: DeckPreviewFrameOptions = {},
 ): DeckPreviewFrameModel {
   const usesSrcDocFallback = useSrcDocPreviewFallback()
+  const editorBridge = options.editorBridge === true
   const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback, {
-    editorBridge: options.editorBridge,
+    editorBridge,
   })
 
-  return useMemo(() => {
-    const previewOptions = { editorBridge: options.editorBridge }
+  const srcDocHtml =
+    usesSrcDocFallback && enabled && html.trim() ? getPreviewHtml(html, { editorBridge }) : ''
+  const contentFingerprint = fingerprintPreviewHtml(usesSrcDocFallback ? srcDocHtml || html : html)
+  const editorSuffix = editorBridge ? 'edit' : 'view'
+  const contentIdentity = usesSrcDocFallback
+    ? `srcdoc:${editorSuffix}:${contentFingerprint}`
+    : `sandbox:${editorSuffix}:${sandboxPreview.sessionToken ?? sandboxPreview.previewUrl ?? `pending:${contentFingerprint}`}`
 
+  const [generationState, setGenerationState] = useState({
+    identity: contentIdentity,
+    generation: 1,
+  })
+
+  if (generationState.identity !== contentIdentity) {
+    setGenerationState({
+      identity: contentIdentity,
+      generation: generationState.generation + 1,
+    })
+  }
+
+  const generation =
+    generationState.identity === contentIdentity
+      ? generationState.generation
+      : generationState.generation + 1
+
+  const srcDocHandshake = useMemoizedClientHandshake(
+    usesSrcDocFallback ? `${contentIdentity}:${generation}` : '',
+  )
+
+  return useMemo(() => {
     if (usesSrcDocFallback || !enabled || !html.trim()) {
+      const handshake = usesSrcDocFallback && enabled && html.trim() ? srcDocHandshake : null
+      const iframeSrcDoc =
+        enabled && html.trim()
+          ? getPreviewHtml(html, {
+              editorBridge,
+              handshake: handshake ?? undefined,
+            })
+          : undefined
+
       return {
         iframeKey: usesSrcDocFallback
-          ? `srcdoc:${options.editorBridge ? 'edit:' : ''}${html.length}`
+          ? `srcdoc:${generation}:${editorSuffix}:${contentFingerprint}`
           : 'empty',
-        iframeSrcDoc: enabled && html.trim() ? getPreviewHtml(html, previewOptions) : undefined,
+        iframeSrcDoc,
         sandboxOrigin: null,
         isLoading: false,
         error: null,
         usesSandboxHost: false,
+        handshake,
       }
     }
 
     return {
-      iframeKey:
-        sandboxPreview.sessionToken ??
-        sandboxPreview.previewUrl ??
-        `pending:${options.editorBridge ? 'edit:' : ''}${html.length}`,
+      iframeKey: `${contentIdentity}:g${generation}`,
       iframeSrc: sandboxPreview.previewUrl ?? undefined,
       sandboxOrigin: sandboxPreview.sandboxOrigin,
       isLoading: sandboxPreview.isLoading,
       error: sandboxPreview.error,
       usesSandboxHost: true,
+      handshake: sandboxPreview.handshake,
     }
   }, [
+    contentFingerprint,
+    contentIdentity,
+    editorBridge,
+    editorSuffix,
     enabled,
+    generation,
     html,
-    options.editorBridge,
     sandboxPreview.error,
+    sandboxPreview.handshake,
     sandboxPreview.isLoading,
     sandboxPreview.previewUrl,
     sandboxPreview.sandboxOrigin,
-    sandboxPreview.sessionToken,
+    srcDocHandshake,
     usesSrcDocFallback,
   ])
 }

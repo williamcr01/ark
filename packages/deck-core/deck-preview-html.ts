@@ -2,6 +2,7 @@ import { injectPreviewCsp } from './deck-network.ts'
 import {
   buildDeckBridgeRuntimeScript,
   buildDeckCssNavRuntimeScript,
+  buildDeckHandshakeSentinelScript,
   buildRevealNavRuntimeScript,
 } from './deck-bridge.ts'
 import { buildDeckEditorBridgeRuntimeScript } from './deck-editor-bridge.ts'
@@ -32,6 +33,11 @@ export type PreviewHtmlOptions = {
    * for static/reveal modes. Ignored for custom-js (keeps `'unsafe-inline'`).
    */
   nonce?: string | null
+  /**
+   * Generation-correlation handshake for the head sentinel.
+   * Not a secret — full-JS decks can inspect the document.
+   */
+  handshake?: string
 }
 
 export type PreviewDocumentResult = {
@@ -88,6 +94,18 @@ function wrapRuntimeScript(source: string, marker: string, nonce: string | null)
   return `<script ${marker}${nonceAttr}>\n${source}\n</script>`
 }
 
+function injectAtStartOfHead(html: string, injection: string) {
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (match) => `${match}\n${injection}`)
+  }
+
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n${injection}\n</head>`)
+  }
+
+  return `<head>\n${injection}\n</head>\n${html}`
+}
+
 function injectPreviewFill(
   html: string,
   options: { historyShim?: boolean; nonce?: string | null } = {},
@@ -141,6 +159,23 @@ function injectRuntimeScripts(html: string, scripts: string[]) {
   return injectBeforeBodyClose(html, scripts.join('\n'))
 }
 
+function injectHandshakeSentinel(html: string, options: PreviewHtmlOptions, nonce: string | null) {
+  const handshake = options.handshake?.trim()
+
+  if (!handshake) {
+    return html
+  }
+
+  return injectAtStartOfHead(
+    html,
+    wrapRuntimeScript(
+      buildDeckHandshakeSentinelScript(handshake, options.parentOrigin),
+      'data-ark-preview-handshake',
+      nonce,
+    ),
+  )
+}
+
 function buildEditorBridgeInjection(
   options: PreviewHtmlOptions,
   runtimeOptions: { slideSelectors: readonly string[]; parentOrigin?: string },
@@ -191,19 +226,23 @@ export function buildPreviewDocument(
 
   if (runtimeModeAllowsDeckScripts(mode)) {
     return {
-      html: injectRuntimeScripts(
-        injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(sanitized, assetOrigin), {
-          historyShim: true,
-          nonce,
-        }),
-        [
-          wrapRuntimeScript(
-            buildDeckBridgeRuntimeScript(runtimeOptions),
-            'data-ark-preview-bridge',
+      html: injectHandshakeSentinel(
+        injectRuntimeScripts(
+          injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(sanitized, assetOrigin), {
+            historyShim: true,
             nonce,
-          ),
-          buildEditorBridgeInjection(options, runtimeOptions, nonce),
-        ].filter(Boolean),
+          }),
+          [
+            wrapRuntimeScript(
+              buildDeckBridgeRuntimeScript(runtimeOptions),
+              'data-ark-preview-bridge',
+              nonce,
+            ),
+            buildEditorBridgeInjection(options, runtimeOptions, nonce),
+          ].filter(Boolean),
+        ),
+        options,
+        nonce,
       ),
       runtimeMode: mode,
       nonce,
@@ -217,16 +256,20 @@ export function buildPreviewDocument(
     const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
     return {
-      html: injectRuntimeScripts(
-        injectPreviewFill(previewHtml, { historyShim: true, nonce }),
-        [
-          wrapRuntimeScript(
-            buildRevealNavRuntimeScript(runtimeOptions),
-            'data-ark-preview-reveal',
-            nonce,
-          ),
-          buildEditorBridgeInjection(options, runtimeOptions, nonce),
-        ].filter(Boolean),
+      html: injectHandshakeSentinel(
+        injectRuntimeScripts(
+          injectPreviewFill(previewHtml, { historyShim: true, nonce }),
+          [
+            wrapRuntimeScript(
+              buildRevealNavRuntimeScript(runtimeOptions),
+              'data-ark-preview-reveal',
+              nonce,
+            ),
+            buildEditorBridgeInjection(options, runtimeOptions, nonce),
+          ].filter(Boolean),
+        ),
+        options,
+        nonce,
       ),
       runtimeMode: mode,
       nonce,
@@ -239,16 +282,20 @@ export function buildPreviewDocument(
   const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
   return {
-    html: injectRuntimeScripts(
-      injectPreviewFill(previewHtml, { nonce }),
-      [
-        wrapRuntimeScript(
-          buildDeckCssNavRuntimeScript(runtimeOptions),
-          'data-ark-preview-nav',
-          nonce,
-        ),
-        buildEditorBridgeInjection(options, runtimeOptions, nonce),
-      ].filter(Boolean),
+    html: injectHandshakeSentinel(
+      injectRuntimeScripts(
+        injectPreviewFill(previewHtml, { nonce }),
+        [
+          wrapRuntimeScript(
+            buildDeckCssNavRuntimeScript(runtimeOptions),
+            'data-ark-preview-nav',
+            nonce,
+          ),
+          buildEditorBridgeInjection(options, runtimeOptions, nonce),
+        ].filter(Boolean),
+      ),
+      options,
+      nonce,
     ),
     runtimeMode: mode,
     nonce,

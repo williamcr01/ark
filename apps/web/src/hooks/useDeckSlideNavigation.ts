@@ -29,7 +29,15 @@ export type DeckNavOptions = {
   onSlideChange?: (index: number) => void
   onDeckReady?: (payload: { index: number; slideCount: number; metadata: DeckMetadata }) => void
   onRuntimeError?: (message: string, source?: string) => void
+  /**
+   * @deprecated Independent load sync races the bridge session. Prefer
+   * calling goToSlide from the session-gated onFrameLoad path when armed.
+   */
   syncOnLoad?: boolean
+  /** Synchronous send gate from usePreviewBridgeSession.canPostToFrame. */
+  canPostToFrame?: () => boolean
+  /** When false, ignore inbound bridge messages (session not armed). */
+  shouldAcceptInbound?: () => boolean
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -111,7 +119,9 @@ export function useDeckSlideNavigation(
     onSlideChange,
     onDeckReady,
     onRuntimeError,
-    syncOnLoad = true,
+    syncOnLoad = false,
+    canPostToFrame,
+    shouldAcceptInbound,
   } = options
   const [activeSlideIndex, setActiveSlideIndex] = useState(() =>
     clampSlideIndex(initialSlideIndex, slideCount),
@@ -119,9 +129,16 @@ export function useDeckSlideNavigation(
   const prevHtmlRef = useRef(html)
   const activeSlideIndexRef = useRef(activeSlideIndex)
   const iframeGenerationRef = useRef(0)
+  const canPostToFrameRef = useRef(canPostToFrame)
+  const shouldAcceptInboundRef = useRef(shouldAcceptInbound)
   const pendingFrameSyncIndexRef = useRef<number | null>(
     syncOnLoad ? clampSlideIndex(initialSlideIndex, slideCount) : null,
   )
+
+  useEffect(() => {
+    canPostToFrameRef.current = canPostToFrame
+    shouldAcceptInboundRef.current = shouldAcceptInbound
+  }, [canPostToFrame, shouldAcceptInbound])
 
   const commitSlideIndex = useCallback(
     (index: number) => {
@@ -173,6 +190,10 @@ export function useDeckSlideNavigation(
         pendingFrameSyncIndexRef.current = clampedIndex
       }
 
+      if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
+        return
+      }
+
       const iframeWindow = iframeRef.current?.contentWindow
 
       if (!iframeWindow) {
@@ -193,6 +214,10 @@ export function useDeckSlideNavigation(
 
     const handleMessage = (event: MessageEvent) => {
       if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
+      if (shouldAcceptInboundRef.current && !shouldAcceptInboundRef.current()) {
         return
       }
 
@@ -228,6 +253,11 @@ export function useDeckSlideNavigation(
         }
 
         commitSlideIndex(targetIndex)
+
+        if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
+          return true
+        }
+
         iframeWindow.postMessage(
           createDeckGotoMessage(targetIndex),
           DECK_BRIDGE_POST_MESSAGE_TARGET,
@@ -322,27 +352,9 @@ export function useDeckSlideNavigation(
     }
   }, [enabled, goToSlide, keyboardMode, shouldSuspendKeyboard, slideCount])
 
-  useEffect(() => {
-    if (!enabled || slideCount === 0 || !syncOnLoad) {
-      return
-    }
-
-    const iframe = iframeRef.current
-
-    if (!iframe) {
-      return
-    }
-
-    const handleLoad = () => {
-      goToSlide(activeSlideIndexRef.current)
-    }
-
-    iframe.addEventListener('load', handleLoad)
-
-    return () => {
-      iframe.removeEventListener('load', handleLoad)
-    }
-  }, [enabled, goToSlide, html, iframeRef, slideCount, syncOnLoad])
+  // Intentionally no independent iframe `load` → postMessage path. Load-driven
+  // sync must go through usePreviewBridgeSession.onFrameLoad so compromise
+  // flips the send gate before any outbound command.
 
   return { activeSlideIndex, goToSlide }
 }

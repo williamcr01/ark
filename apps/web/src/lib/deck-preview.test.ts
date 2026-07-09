@@ -224,6 +224,17 @@ describe('getPreviewHtml', () => {
     expect(previewHtml).toContain('data-ark-preview-bridge')
   })
 
+  it('injects the handshake sentinel as the first head script when provided', () => {
+    const previewHtml = getPreviewHtml(fullJsDeck, { handshake: 'hs-preview-1' })
+    const headMatch = previewHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)
+    expect(headMatch?.[1]).toBeTruthy()
+    const head = headMatch![1]
+    const firstScriptMatch = head.match(/<script\b[^>]*>/i)
+    expect(firstScriptMatch?.[0]).toContain('data-ark-preview-handshake')
+    expect(previewHtml).toContain('ark:deck-handshake')
+    expect(previewHtml).toContain('hs-preview-1')
+  })
+
   it('injects the editor bridge only when preview opts in', () => {
     const withoutEditor = getPreviewHtml(plainCssDeck)
     const withEditor = getPreviewHtml(plainCssDeck, { editorBridge: true })

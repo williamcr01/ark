@@ -14,6 +14,8 @@ export const DECK_SLIDE_COUNT_MESSAGE_TYPE = 'ark:deck-slide-count' as const
 export const DECK_SLIDE_CHANGE_MESSAGE_TYPE = 'ark:deck-slide-change' as const
 export const DECK_METADATA_MESSAGE_TYPE = 'ark:deck-metadata' as const
 export const DECK_RUNTIME_ERROR_MESSAGE_TYPE = 'ark:deck-runtime-error' as const
+/** Additive handshake from the Ark head sentinel before deck-authored scripts. */
+export const DECK_HANDSHAKE_MESSAGE_TYPE = 'ark:deck-handshake' as const
 
 export const DECK_GOTO_EVENT = DECK_GOTO_MESSAGE_TYPE
 export const DECK_SLIDE_CHANGE_EVENT = DECK_SLIDE_CHANGE_MESSAGE_TYPE
@@ -74,6 +76,17 @@ export type DeckRuntimeErrorMessage = {
   type: typeof DECK_RUNTIME_ERROR_MESSAGE_TYPE
   message: string
   source?: string
+}
+
+/**
+ * Generation-correlation handshake posted by the Ark-injected head sentinel.
+ * Not a secret: full-JS deck code can read the document. Used only to confirm
+ * the expected preview document started executing before ordinary bridge traffic.
+ */
+export type DeckHandshakeMessage = {
+  type: typeof DECK_HANDSHAKE_MESSAGE_TYPE
+  handshake: string
+  protocolVersion: typeof DECK_BRIDGE_PROTOCOL_VERSION
 }
 
 export type DeckBridgeMessage =
@@ -164,6 +177,16 @@ export function isDeckRuntimeErrorMessage(value: unknown): value is DeckRuntimeE
   )
 }
 
+export function isDeckHandshakeMessage(value: unknown): value is DeckHandshakeMessage {
+  return (
+    isRecord(value) &&
+    value.type === DECK_HANDSHAKE_MESSAGE_TYPE &&
+    typeof value.handshake === 'string' &&
+    value.handshake.length > 0 &&
+    value.protocolVersion === DECK_BRIDGE_PROTOCOL_VERSION
+  )
+}
+
 export function isDeckBridgeMessage(value: unknown): value is DeckBridgeMessage {
   return (
     isDeckGotoMessage(value) ||
@@ -244,6 +267,14 @@ export function createDeckRuntimeErrorMessage(
   }
 }
 
+export function createDeckHandshakeMessage(handshake: string): DeckHandshakeMessage {
+  return {
+    type: DECK_HANDSHAKE_MESSAGE_TYPE,
+    handshake,
+    protocolVersion: DECK_BRIDGE_PROTOCOL_VERSION,
+  }
+}
+
 export const DECK_BRIDGE_TARGET_ORIGIN = '*' as const
 
 export function getDeckBridgeTargetOrigin(parentOrigin?: string | null) {
@@ -258,6 +289,32 @@ export function getDeckBridgeTargetOrigin(parentOrigin?: string | null) {
   }
 
   return DECK_BRIDGE_TARGET_ORIGIN
+}
+
+/**
+ * Inline head sentinel that posts the generation handshake before deck scripts.
+ * Must be injected as the first script in `<head>`.
+ */
+export function buildDeckHandshakeSentinelScript(
+  handshake: string,
+  parentOrigin?: string | null,
+): string {
+  const targetOrigin = JSON.stringify(getDeckBridgeTargetOrigin(parentOrigin))
+  const handshakeLiteral = JSON.stringify(handshake)
+
+  return `(function () {
+  var handshake = ${handshakeLiteral};
+  var targetOrigin = ${targetOrigin};
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: ${JSON.stringify(DECK_HANDSHAKE_MESSAGE_TYPE)},
+        handshake: handshake,
+        protocolVersion: ${DECK_BRIDGE_PROTOCOL_VERSION}
+      }, targetOrigin);
+    }
+  } catch (error) {}
+})();`
 }
 
 export function postDeckGoto(
