@@ -14,6 +14,7 @@ import {
   readContext,
   repoRoot,
   setUploadFile,
+  sleep,
   SMOKE_SLOW_TIMEOUT_MS,
   spawnChromium,
   startServers,
@@ -164,8 +165,8 @@ async function refreshEditPreviewContext(
   previousSrc: string,
   expectedSlideText = 'Quarterly planning',
 ) {
-  const editPreviewSrc = await waitFor(
-    'refreshed editor sandbox preview iframe src',
+  return waitFor(
+    'refreshed editor sandbox preview',
     async () => {
       const src = await evaluate<string>(
         cdp!,
@@ -173,52 +174,41 @@ async function refreshEditPreviewContext(
       )
 
       if (!src.startsWith(`${servers.sandboxOrigin}/render/`)) {
-        return ''
+        return null
       }
 
       if (previousSrc && src === previousSrc) {
-        return ''
+        return null
       }
 
-      return src
+      const context = await findContextByUrl(cdp!, contexts, src)
+      if (!context) {
+        return null
+      }
+
+      const loading = await evaluate<boolean>(
+        cdp!,
+        `document.body.innerText.includes('Loading sandbox preview')`,
+      )
+
+      if (loading) {
+        return null
+      }
+
+      const ready = await evaluate<boolean>(
+        cdp!,
+        `(() => {
+          if (!document.querySelector('script[data-ark-preview-editor]')) return false;
+          const active = document.querySelector('section.slide.active, section.slide.is-active');
+          return Boolean(active && (active.textContent || '').includes(${JSON.stringify(expectedSlideText)}));
+        })()`,
+        { contextId: context.id, sessionId: context.sessionId },
+      )
+
+      return ready ? { editPreviewSrc: src, editPreview: context } : null
     },
     { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
   )
-
-  const editPreview = await waitFor(
-    'refreshed editor sandbox preview frame context',
-    () => findContextByUrl(cdp!, contexts, editPreviewSrc),
-    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-  )
-
-  await waitFor('editor bridge script after reload', async () =>
-    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
-      contextId: editPreview.id,
-      sessionId: editPreview.sessionId,
-    }),
-  )
-
-  await waitFor('sandbox preview loading overlay to clear after reload', async () => {
-    const loading = await evaluate<boolean>(
-      cdp!,
-      `document.body.innerText.includes('Loading sandbox preview')`,
-    )
-
-    return !loading
-  })
-
-  await waitFor('edit preview content after reload', async () =>
-    evaluate<boolean>(
-      cdp!,
-      `(() => {
-        const active = document.querySelector('section.slide.active, section.slide.is-active');
-        return Boolean(active && (active.textContent || '').includes(${JSON.stringify(expectedSlideText)}));
-      })()`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    ),
-  )
-
-  return { editPreviewSrc, editPreview }
 }
 
 async function getCurrentEditPreview(
@@ -266,11 +256,11 @@ async function dispatchPointerSequence(
     pointerId?: number
   }>,
 ) {
-  const dispatched = await evaluate<boolean>(
-    cdp,
-    `(() => {
-      const steps = ${JSON.stringify(steps)};
-      for (const step of steps) {
+  for (const step of steps) {
+    const dispatched = await evaluate<boolean>(
+      cdp,
+      `(() => {
+        const step = ${JSON.stringify(step)};
         const target = document.querySelector(step.selector);
         if (!target) return false;
         const rect = target.getBoundingClientRect();
@@ -294,13 +284,14 @@ async function dispatchPointerSequence(
             buttons: step.type === 'pointerup' ? 0 : 1,
           }),
         );
-      }
-      return true;
-    })()`,
-    { contextId: editPreview.id, sessionId: editPreview.sessionId },
-  )
+        return true;
+      })()`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
 
-  assert(dispatched, 'Could not dispatch pointer sequence in edit preview')
+    assert(dispatched, `Could not dispatch ${step.type} in edit preview`)
+    await sleep(30)
+  }
 }
 
 async function moveTextBoxViaPointer(
@@ -374,23 +365,7 @@ async function deleteTextBoxViaKeyboard(
     ),
   )
 
-  await evaluate<boolean>(
-    cdp,
-    `(() => {
-      const target = document.querySelector(${JSON.stringify(boxSelector)}) || document.body;
-      target.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'Delete',
-          code: 'Delete',
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-        }),
-      );
-      return true;
-    })()`,
-    { contextId: editPreview.id, sessionId: editPreview.sessionId },
-  )
+  await clickToolbarButton(cdp, 'Delete selected element')
 
   return waitFor(
     'deleted text box from deck HTML',
@@ -468,7 +443,7 @@ async function insertTextBoxViaTool(
 
 async function clickToolbarButton(
   cdp: Awaited<ReturnType<typeof createPage>>,
-  label: 'Undo' | 'Redo',
+  label: 'Undo' | 'Redo' | 'Delete selected element',
 ) {
   await waitFor(`click ${label} toolbar button`, async () =>
     evaluate<boolean>(

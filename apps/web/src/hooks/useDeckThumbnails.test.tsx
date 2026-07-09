@@ -20,6 +20,28 @@ describe('useDeckThumbnails', () => {
     expect(result.current.status).toBeNull()
   })
 
+  it('does not fetch thumbnails when disabled by the caller', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() =>
+      useDeckThumbnails(
+        'b0000000-0000-4000-8000-000000000001',
+        'a0000000-0000-4000-8000-000000000001',
+        2,
+        { enabled: false },
+      ),
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBeNull()
+    expect(result.current.thumbnailUrls).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('polls while pending and then exposes ready urls', async () => {
     const fetchMock = vi
       .fn()

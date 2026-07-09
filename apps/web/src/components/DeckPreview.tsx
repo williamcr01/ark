@@ -75,6 +75,7 @@ export type DeckPreviewProps = {
   layout: 'desktop' | 'mobile'
   parsedDeck: ReturnType<typeof parseDeckSlides>
   editorBridgeEnabled?: boolean
+  editModeActive?: boolean
   isTextEditSaving?: boolean
   canUndo?: boolean
   canRedo?: boolean
@@ -82,6 +83,7 @@ export type DeckPreviewProps = {
   redoSlideIndex?: number | null
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
+  onEditModeActiveChange?: (active: boolean) => void
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
   /** Reports the current editor selection to the shell (issue #83); null when edit mode is inactive. */
   onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
@@ -101,6 +103,7 @@ export function DeckPreview({
   layout,
   parsedDeck,
   editorBridgeEnabled = false,
+  editModeActive: controlledEditModeActive,
   isTextEditSaving = false,
   canUndo = false,
   canRedo = false,
@@ -108,6 +111,7 @@ export function DeckPreview({
   redoSlideIndex = null,
   onUndo,
   onRedo,
+  onEditModeActiveChange,
   onCommitTextEdit,
   onEditorSelectionChange,
   onPatchEditorOperations,
@@ -117,7 +121,7 @@ export function DeckPreview({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
-  const [editModeActive, setEditModeActive] = useState(false)
+  const [uncontrolledEditModeActive, setUncontrolledEditModeActive] = useState(false)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [imageFitOverride, setImageFitOverride] = useState<{
     elementId: string
@@ -151,6 +155,18 @@ export function DeckPreview({
   const manifestWarnings = runtimeManifest.warnings
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
+  )
+  const editModeActive = controlledEditModeActive ?? uncontrolledEditModeActive
+  const setEditModeActive = useCallback(
+    (nextActive: boolean) => {
+      if (onEditModeActiveChange) {
+        onEditModeActiveChange(nextActive)
+        return
+      }
+
+      setUncontrolledEditModeActive(nextActive)
+    },
+    [onEditModeActiveChange],
   )
   const hasSlides = parsedDeck.slideCount > 0
   const editChromeActive = editModeActive && !isGenerating
@@ -194,7 +210,9 @@ export function DeckPreview({
       },
     },
   )
-  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount)
+  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
+    enabled: !editChromeActive,
+  })
   // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
   // while the main preview is still settling (manual-edit smoke / CDP context lookup).
   const deferredParsedDeck = useDeferredValue(parsedDeck)
@@ -423,7 +441,7 @@ export function DeckPreview({
     setImageFitOverride(null)
     pendingReselectRef.current = null
     setEditModeActive(false)
-  }, [disableEditor, endTextEditing])
+  }, [disableEditor, endTextEditing, setEditModeActive])
 
   const handleEditModeChange = useCallback(
     (nextActive: boolean) => {
@@ -438,7 +456,7 @@ export function DeckPreview({
 
       setEditModeActive(true)
     },
-    [exitEditMode, hasSlides, html.length, isGenerating],
+    [exitEditMode, hasSlides, html.length, isGenerating, setEditModeActive],
   )
 
   const handleToolChange = useCallback(
