@@ -364,17 +364,23 @@ describe('sandbox security fixtures', () => {
   })
 
   describe('top navigation', () => {
-    it('strips navigation scripts and inline handlers from static previews', () => {
+    it('strips navigation scripts, meta refresh, and javascript: URLs from static previews', () => {
       const stripped = stripDeckScriptsForPreview(hostileNavigationDeck)
       const previewHtml = getPreviewHtml(hostileNavigationDeck)
 
       expect(stripped).not.toContain('window.top.location')
       expect(stripped).not.toContain('location.assign')
       expect(stripped).not.toContain('<script')
+      expect(stripped.toLowerCase()).not.toContain('http-equiv="refresh"')
+      expect(stripped).not.toContain('javascript:')
       expect(previewHtml).not.toContain('window.top.location')
       expect(previewHtml).not.toContain('location.assign')
+      expect(previewHtml.toLowerCase()).not.toContain('http-equiv="refresh"')
+      expect(previewHtml).not.toContain('javascript:')
       expect(previewHtml).toContain('data-ark-preview-nav')
       expect(previewHtml).toContain("base-uri 'none'")
+      expect(previewHtml).toMatch(/script-src[^;]*'nonce-/)
+      expect(previewHtml).not.toMatch(/script-src[^;]*'unsafe-inline'/)
     })
 
     it('flags external navigation targets during validation', () => {

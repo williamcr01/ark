@@ -208,9 +208,27 @@ function getSandboxRuntimeAssetSources(
     .filter((source): source is string => Boolean(source))
 }
 
-export function buildSandboxResponseCsp(appOrigin: string) {
+export type SandboxResponseCspOptions = {
+  /**
+   * Preview runtime mode. When `static` or `reveal` and a `nonce` is provided,
+   * `script-src` drops `'unsafe-inline'` in favor of `'nonce-...'`. `custom-js`
+   * (and the zero-options fallback) keep `'unsafe-inline'` for deck-authored
+   * inline scripts.
+   */
+  runtimeMode?: 'static' | 'reveal' | 'custom-js'
+  nonce?: string | null
+}
+
+export function buildSandboxResponseCsp(
+  appOrigin: string,
+  options: SandboxResponseCspOptions = {},
+) {
+  const useNonce =
+    Boolean(options.nonce) &&
+    options.runtimeMode !== undefined &&
+    options.runtimeMode !== 'custom-js'
   const scriptSources = [
-    "'unsafe-inline'",
+    ...(useNonce && options.nonce ? [`'nonce-${options.nonce}'`] : ["'unsafe-inline'"]),
     ...getSandboxRuntimeAssetSources(appOrigin, { kind: 'script' }),
   ]
   const styleSources = [

@@ -1,6 +1,11 @@
 import { JSDOM } from 'jsdom'
 
-import { buildPreviewHtml } from '@ark/deck-core/deck-preview-html.ts'
+import {
+  buildPreviewDocument,
+  buildPreviewHtml,
+  type PreviewDocumentResult,
+  type PreviewHtmlOptions,
+} from '@ark/deck-core/deck-preview-html.ts'
 
 type DomGlobals = {
   document?: Document
@@ -54,9 +59,13 @@ export function withDomEnvironment<T>(callback: () => T): T {
   }
 }
 
-export function renderPreviewHtml(
+export function renderPreviewDocument(
   html: string,
-  options: { parentOrigin?: string; editorBridge?: boolean } = {},
-) {
+  options: PreviewHtmlOptions = {},
+): PreviewDocumentResult {
+  return withDomEnvironment(() => buildPreviewDocument(html, options))
+}
+
+export function renderPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   return withDomEnvironment(() => buildPreviewHtml(html, options))
 }

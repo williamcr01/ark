@@ -19,7 +19,6 @@ import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import revealVerticalDeck from '@fixtures/reveal-vertical-deck.html?raw'
 
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
-import { STRICT_DECK_CSP } from './deck-runtime'
 import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from './deck-preview'
 
 function loadExecutablePreview(html: string) {
@@ -141,12 +140,14 @@ describe('detectRuntimeMode', () => {
 })
 
 describe('getPreviewHtml', () => {
-  it('injects strict CSP for every preview document', () => {
+  it('injects nonce-based CSP for CSS-only preview documents', () => {
     const previewHtml = getPreviewHtml(plainCssDeck)
 
     expect(previewHtml).toContain('http-equiv="Content-Security-Policy"')
-    expect(previewHtml).toContain(STRICT_DECK_CSP)
     expect(previewHtml).toContain("connect-src 'none'")
+    expect(previewHtml).toMatch(/script-src[^;]*'nonce-/)
+    expect(previewHtml).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(previewHtml).toMatch(/<script[^>]*data-ark-preview-nav[^>]*nonce="/)
   })
 
   it('strips deck scripts and injects the static navigation shim by default', () => {
@@ -165,6 +166,45 @@ describe('getPreviewHtml', () => {
     expect(previewHtml).not.toContain('onerror=')
   })
 
+  it('strips meta refresh and javascript: URLs from CSS-only previews', () => {
+    const hostile = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="refresh" content="0;url=https://evil.example/?beacon" />
+  <title>Hostile</title>
+</head>
+<body>
+  <section class="slide">
+    <a href="javascript:alert('xss')">Click</a>
+  </section>
+</body>
+</html>`
+    const previewHtml = getPreviewHtml(hostile)
+
+    expect(previewHtml.toLowerCase()).not.toContain('http-equiv="refresh"')
+    expect(previewHtml).not.toContain('javascript:')
+    expect(previewHtml).toContain('data-ark-preview-nav')
+    expect(previewHtml).toMatch(/script-src[^;]*'nonce-/)
+    expect(previewHtml).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+  })
+
+  it('keeps unsafe-inline script-src for custom-js decks (no nonce)', () => {
+    const previewHtml = getPreviewHtml(fullJsDeck)
+
+    expect(previewHtml).toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(previewHtml).not.toMatch(/script-src[^;]*'nonce-/)
+    expect(previewHtml).toContain('data-ark-preview-bridge')
+    // Meta refresh is still stripped even in full-JS mode.
+    const withRefresh = getPreviewHtml(
+      fullJsDeck.replace(
+        '</head>',
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/" /></head>',
+      ),
+    )
+    expect(withRefresh.toLowerCase()).not.toContain('http-equiv="refresh"')
+  })
+
   it('injects the editor bridge only when preview opts in', () => {
     const withoutEditor = getPreviewHtml(plainCssDeck)
     const withEditor = getPreviewHtml(plainCssDeck, { editorBridge: true })
@@ -173,6 +213,7 @@ describe('getPreviewHtml', () => {
     expect(withEditor).toContain('data-ark-preview-editor')
     expect(withEditor).toContain('data-ark-preview-nav')
     expect(withEditor).toContain("connect-src 'none'")
+    expect(withEditor).toMatch(/<script[^>]*data-ark-preview-editor[^>]*nonce="/)
   })
 
   it('keeps deck scripts and injects only the bridge for explicit custom-js decks', () => {

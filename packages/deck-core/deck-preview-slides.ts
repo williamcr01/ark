@@ -14,6 +14,7 @@ export const SLIDE_SELECTOR_CHAIN = [
 ] as const
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
+const JAVASCRIPT_URL_ATTRS = new Set(['href', 'src', 'xlink:href', 'action', 'formaction'])
 
 export type StripDeckScriptsForPreviewOptions = {
   preserveApprovedRuntimeScripts?: boolean
@@ -24,6 +25,105 @@ function serializeElementAttrs(element: Element) {
     .filter((attribute) => !INLINE_HANDLER_PATTERN.test(attribute.name))
     .map((attribute) => `${attribute.name}="${attribute.value.replace(/"/g, '&quot;')}"`)
     .join(' ')
+}
+
+function isMetaRefresh(element: Element) {
+  return (
+    element.tagName.toLowerCase() === 'meta' &&
+    element.getAttribute('http-equiv')?.trim().toLowerCase() === 'refresh'
+  )
+}
+
+function isJavascriptUrl(value: string | null) {
+  if (!value) {
+    return false
+  }
+
+  // Decode common HTML entities / whitespace that can hide `javascript:` schemes.
+  // Strip ASCII control chars and whitespace without a control-character regex
+  // (eslint no-control-regex).
+  const withoutControls = [...value]
+    .filter((char) => {
+      const code = char.charCodeAt(0)
+      return code > 0x20
+    })
+    .join('')
+  const normalized = withoutControls
+    .replace(/&#0*58;?/gi, ':')
+    .replace(/&colon;/gi, ':')
+    .trim()
+    .toLowerCase()
+
+  return normalized.startsWith('javascript:')
+}
+
+/**
+ * Strip `<meta http-equiv="refresh">` and `javascript:` URL attributes.
+ * Safe to call for every preview mode (including full-JS).
+ */
+export function stripHostileNavigationVectors(root: ParentNode) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+
+  let node = walker.currentNode as Element | null
+  const toRemove: Element[] = []
+
+  while (node) {
+    if (isMetaRefresh(node)) {
+      toRemove.push(node)
+    } else {
+      for (const attribute of [...node.attributes]) {
+        if (
+          JAVASCRIPT_URL_ATTRS.has(attribute.name.toLowerCase()) &&
+          isJavascriptUrl(attribute.value)
+        ) {
+          node.removeAttribute(attribute.name)
+        }
+      }
+    }
+
+    node = walker.nextNode() as Element | null
+  }
+
+  for (const element of toRemove) {
+    element.remove()
+  }
+}
+
+/**
+ * Strip meta refresh / javascript: URLs from a full HTML document string.
+ * Used for full-JS preview (which keeps deck scripts) and as a shared helper.
+ */
+export function stripHostileNavigationFromHtml(html: string): string {
+  if (!html.trim()) {
+    return html
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  if (doc.head) {
+    stripHostileNavigationVectors(doc.head)
+  }
+
+  if (doc.body) {
+    stripHostileNavigationVectors(doc.body)
+  }
+
+  const htmlAttrs = doc.documentElement ? serializeElementAttrs(doc.documentElement) : ''
+  const bodyAttrs = doc.body ? serializeElementAttrs(doc.body) : ''
+  const headHtml = doc.head?.innerHTML ?? ''
+  const bodyHtml = doc.body?.innerHTML ?? ''
+  const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
+  const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
+
+  return `<!DOCTYPE html>
+${htmlOpen}
+<head>
+${headHtml}
+</head>
+${bodyOpen}
+${bodyHtml}
+</body>
+</html>`
 }
 
 function stripInlineHandlers(root: ParentNode) {
@@ -75,11 +175,13 @@ export function stripDeckScriptsForPreview(
   if (doc.head) {
     stripScripts(doc.head, options)
     stripInlineHandlers(doc.head)
+    stripHostileNavigationVectors(doc.head)
   }
 
   if (doc.body) {
     stripScripts(doc.body, options)
     stripInlineHandlers(doc.body)
+    stripHostileNavigationVectors(doc.body)
   }
 
   const htmlAttrs = doc.documentElement ? serializeElementAttrs(doc.documentElement) : ''
