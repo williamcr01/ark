@@ -27,7 +27,10 @@ import { createPreviewSessionsRouter } from './routes/preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './routes/runtimes-and-assets.ts'
 import { createThumbnailsRouter } from './routes/thumbnails.ts'
 import { createDefaultThumbnailCache } from './thumbnails/cache.ts'
-import { createThumbnailRenderRouter } from './thumbnails/render-host.ts'
+import {
+  createThumbnailRenderRouter,
+  createThumbnailRenderSecret,
+} from './thumbnails/render-host.ts'
 import { createThumbnailRenderer } from './thumbnails/renderer.ts'
 import { createThumbnailService, type ThumbnailService } from './thumbnails/service.ts'
 
@@ -41,6 +44,8 @@ type CreateAppOptions = {
   previewSessionStore?: PreviewSessionStore
   runtimeErrorStore?: RuntimeErrorStore
   thumbnailService?: ThumbnailService
+  /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
+  thumbnailRenderSecret?: string
 }
 
 function scheduleThumbnailWarm(
@@ -65,12 +70,16 @@ export function createApp(options: CreateAppOptions = {}) {
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
+  const thumbnailRenderSecret = options.thumbnailRenderSecret ?? createThumbnailRenderSecret()
 
   const thumbnailService =
     options.thumbnailService ??
     createThumbnailService({
       cache: createDefaultThumbnailCache(),
-      renderer: createThumbnailRenderer({ previewSessionStore }),
+      renderer: createThumbnailRenderer({
+        previewSessionStore,
+        renderSecret: thumbnailRenderSecret,
+      }),
       deckStore,
     })
 
@@ -98,7 +107,12 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(createRuntimesAndAssetsRouter())
   app.use(createMiscRouter({ defaultModel, runtimeErrorStore }))
   app.use(createPreviewSessionsRouter({ previewSessionStore }))
-  app.use(createThumbnailRenderRouter({ previewSessionStore }))
+  app.use(
+    createThumbnailRenderRouter({
+      previewSessionStore,
+      renderSecret: thumbnailRenderSecret,
+    }),
+  )
   app.use(
     createDecksRouter({
       deckStore,
@@ -126,8 +140,10 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   )
 
-  // Exposed for the server entrypoint's shutdown hook (closing the Chromium pool).
+  // Exposed for the server entrypoint's shutdown hook (closing the Chromium pool)
+  // and for live renderer tests that need to authenticate against the render host.
   app.locals.thumbnailService = thumbnailService
+  app.locals.thumbnailRenderSecret = thumbnailRenderSecret
 
   return app
 }

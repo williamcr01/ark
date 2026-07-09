@@ -253,8 +253,14 @@ async function readDeckFile(filePath: string): Promise<StoredDeckFile | null> {
 
 async function writeDeckFile(filePath: string, file: StoredDeckFile) {
   const tempPath = `${filePath}.${randomUUID()}.tmp`
-  await writeFile(tempPath, JSON.stringify(file), 'utf8')
-  await rename(tempPath, filePath)
+
+  try {
+    await writeFile(tempPath, JSON.stringify(file), 'utf8')
+    await rename(tempPath, filePath)
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined)
+    throw error
+  }
 }
 
 function resolveVersionManifest(html: string, options: DeckVersionOptions = {}) {

@@ -6,12 +6,18 @@ import type { NextFunction, Request, Response } from 'express'
 
 import { createPreviewSessionStore } from '../preview-sessions.ts'
 import {
+  createThumbnailRenderAccessGuard,
   createThumbnailRenderRouter,
+  createThumbnailRenderSecret,
   isLoopbackAddress,
+  THUMBNAIL_RENDER_SECRET_HEADER,
   thumbnailRenderLoopbackGuard,
 } from './render-host.ts'
 
-function createFakeGuardArgs(remoteAddress: string | undefined) {
+function createFakeGuardArgs(
+  remoteAddress: string | undefined,
+  headers: Record<string, string> = {},
+) {
   const response = {
     statusCode: 200,
     body: '',
@@ -25,7 +31,12 @@ function createFakeGuardArgs(remoteAddress: string | undefined) {
     },
   }
   const next = vi.fn()
-  const request = { socket: { remoteAddress } }
+  const request = {
+    socket: { remoteAddress },
+    get(name: string) {
+      return headers[name.toLowerCase()] ?? headers[name]
+    },
+  }
 
   return {
     request: request as unknown as Request,
@@ -74,6 +85,53 @@ describe('thumbnailRenderLoopbackGuard', () => {
   })
 })
 
+describe('createThumbnailRenderAccessGuard', () => {
+  const secret = createThumbnailRenderSecret()
+  const guard = createThumbnailRenderAccessGuard(secret)
+
+  it('passes loopback requests that present the render secret', () => {
+    const { request, response, next, nextMock } = createFakeGuardArgs('127.0.0.1', {
+      [THUMBNAIL_RENDER_SECRET_HEADER]: secret,
+    })
+
+    guard(request, response, next)
+
+    expect(nextMock).toHaveBeenCalledOnce()
+  })
+
+  it('rejects loopback requests missing the render secret (Vite proxy bypass)', () => {
+    const { request, response, rawResponse, next, nextMock } = createFakeGuardArgs('127.0.0.1')
+
+    guard(request, response, next)
+
+    expect(nextMock).not.toHaveBeenCalled()
+    expect(rawResponse.statusCode).toBe(403)
+    expect(rawResponse.body).toContain('renderer secret')
+  })
+
+  it('rejects loopback requests with the wrong render secret', () => {
+    const { request, response, rawResponse, next, nextMock } = createFakeGuardArgs('127.0.0.1', {
+      [THUMBNAIL_RENDER_SECRET_HEADER]: 'not-the-secret',
+    })
+
+    guard(request, response, next)
+
+    expect(nextMock).not.toHaveBeenCalled()
+    expect(rawResponse.statusCode).toBe(403)
+  })
+
+  it('rejects remote requests even with the correct secret', () => {
+    const { request, response, rawResponse, next, nextMock } = createFakeGuardArgs('10.0.0.5', {
+      [THUMBNAIL_RENDER_SECRET_HEADER]: secret,
+    })
+
+    guard(request, response, next)
+
+    expect(nextMock).not.toHaveBeenCalled()
+    expect(rawResponse.statusCode).toBe(403)
+  })
+})
+
 describe('thumbnail render routes over loopback', () => {
   let server: Server | null = null
 
@@ -86,13 +144,14 @@ describe('thumbnail render routes over loopback', () => {
     }
   })
 
-  it('serves preview sessions to loopback clients and 404s unknown tokens', async () => {
+  it('serves preview sessions to authenticated loopback clients and 404s unknown tokens', async () => {
     const previewSessionStore = createPreviewSessionStore()
+    const renderSecret = createThumbnailRenderSecret()
     const session = previewSessionStore.createSession(
       '<!DOCTYPE html><html><body><section class="slide"><h1>One</h1></section></body></html>',
     )
     const app = express()
-    app.use(createThumbnailRenderRouter({ previewSessionStore }))
+    app.use(createThumbnailRenderRouter({ previewSessionStore, renderSecret }))
 
     server = createServer(app)
     await new Promise<void>((resolve, reject) => {
@@ -101,16 +160,27 @@ describe('thumbnail render routes over loopback', () => {
     })
     const address = server.address() as AddressInfo
     const baseUrl = `http://127.0.0.1:${address.port}`
+    const authHeaders = { [THUMBNAIL_RENDER_SECRET_HEADER]: renderSecret }
 
-    const hostResponse = await fetch(`${baseUrl}/api/thumbnail-render/${session.token}/host`)
+    const hostResponse = await fetch(`${baseUrl}/api/thumbnail-render/${session.token}/host`, {
+      headers: authHeaders,
+    })
     expect(hostResponse.status).toBe(200)
     expect(await hostResponse.text()).toContain('ark-thumb-frame')
 
-    const deckResponse = await fetch(`${baseUrl}/api/thumbnail-render/${session.token}`)
+    const deckResponse = await fetch(`${baseUrl}/api/thumbnail-render/${session.token}`, {
+      headers: authHeaders,
+    })
     expect(deckResponse.status).toBe(200)
     expect(deckResponse.headers.get('content-security-policy')).toContain("connect-src 'none'")
 
-    const missingResponse = await fetch(`${baseUrl}/api/thumbnail-render/does-not-exist`)
+    const missingResponse = await fetch(`${baseUrl}/api/thumbnail-render/does-not-exist`, {
+      headers: authHeaders,
+    })
     expect(missingResponse.status).toBe(404)
+
+    // Loopback without the secret must be rejected (Vite proxy would look like this).
+    const unauthResponse = await fetch(`${baseUrl}/api/thumbnail-render/${session.token}/host`)
+    expect(unauthResponse.status).toBe(403)
   })
 })

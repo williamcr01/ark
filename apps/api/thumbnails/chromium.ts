@@ -177,6 +177,12 @@ export class CdpClient {
   }
 
   close() {
+    const closed = new Error('CDP socket closed.')
+
+    for (const callback of this.callbacks.values()) {
+      callback.reject(closed)
+    }
+
     this.callbacks.clear()
     this.socket.close()
   }
@@ -282,6 +288,7 @@ export async function spawnChromium(
   }
 
   let stderr = ''
+  const STDERR_CAP = 64_000
   const child = spawn(
     executable,
     [
@@ -296,17 +303,26 @@ export async function spawnChromium(
       // Required in containers/CI without user namespaces. Trade-off: a
       // Chromium renderer exploit in hostile deck HTML would escape to the API
       // process user; mitigated by the strict no-network CSP, the loopback-only
-      // render routes, and per-render page disposal.
+      // render routes (plus process-local secret), and per-render page disposal.
       '--no-sandbox',
       '--disable-popup-blocking',
       '--block-new-web-contents',
       'about:blank',
     ],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
+    // Ignore stdout so a chatty Chromium cannot fill the pipe buffer and stall.
+    { stdio: ['ignore', 'ignore', 'pipe'] },
   )
 
   child.stderr.on('data', (chunk: Buffer) => {
+    if (stderr.length >= STDERR_CAP) {
+      return
+    }
+
     stderr += chunk.toString('utf8')
+
+    if (stderr.length > STDERR_CAP) {
+      stderr = `${stderr.slice(0, STDERR_CAP)}\n…[stderr truncated]`
+    }
   })
 
   try {
