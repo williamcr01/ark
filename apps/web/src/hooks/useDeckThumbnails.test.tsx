@@ -76,22 +76,19 @@ describe('useDeckThumbnails', () => {
   })
 
   it('keeps fallback behavior for disabled status', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ status: 'disabled', slides: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      ),
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'disabled', slides: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
+    vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() =>
-      useDeckThumbnails(
-        'b0000000-0000-4000-8000-000000000001',
-        'a0000000-0000-4000-8000-000000000001',
-        2,
-      ),
+    const { result, rerender } = renderHook(
+      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 2),
+      {
+        initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' },
+      },
     )
 
     await act(async () => {
@@ -100,6 +97,16 @@ describe('useDeckThumbnails', () => {
 
     expect(result.current.status).toBe('disabled')
     expect(result.current.thumbnailUrls).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    rerender({ versionId: 'a0000000-0000-4000-8000-000000000099' })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBe('disabled')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('keeps fallback behavior for failed status', async () => {

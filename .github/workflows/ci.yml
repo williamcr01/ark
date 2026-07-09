@@ -99,6 +99,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+        env:
+          ARK_CHROMIUM_PATH: /usr/bin/google-chrome
 
   openapi:
     runs-on: ubuntu-latest
