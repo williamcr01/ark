@@ -6,7 +6,7 @@ import {
   normalizeOrigin,
   resolveApiOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
-import { renderPreviewHtml } from './render-preview-html.ts'
+import { renderPreviewDocument } from './render-preview-html.ts'
 import { type PreviewSessionStore } from '@ark/api/preview-sessions.ts'
 
 type CreateSandboxHostOptions = {
@@ -14,8 +14,18 @@ type CreateSandboxHostOptions = {
   apiOrigin?: string
 }
 
-function applySandboxSecurityHeaders(response: Response, appOrigin: string) {
-  response.setHeader('Content-Security-Policy', buildSandboxResponseCsp(appOrigin))
+function applySandboxSecurityHeaders(
+  response: Response,
+  appOrigin: string,
+  options: { runtimeMode?: 'static' | 'reveal' | 'custom-js'; nonce?: string | null } = {},
+) {
+  response.setHeader(
+    'Content-Security-Policy',
+    buildSandboxResponseCsp(appOrigin, {
+      runtimeMode: options.runtimeMode,
+      nonce: options.nonce,
+    }),
+  )
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
   response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
   response.setHeader('X-Content-Type-Options', 'nosniff')
@@ -84,13 +94,16 @@ export function createSandboxHost(options: CreateSandboxHostOptions) {
       return
     }
 
-    const previewHtml = renderPreviewHtml(session.html, {
+    const preview = renderPreviewDocument(session.html, {
       parentOrigin,
       editorBridge: session.editorBridge,
     })
 
-    applySandboxSecurityHeaders(response, parentOrigin)
-    response.type('html').send(previewHtml)
+    applySandboxSecurityHeaders(response, parentOrigin, {
+      runtimeMode: preview.runtimeMode,
+      nonce: preview.nonce,
+    })
+    response.type('html').send(preview.html)
   })
 
   return app

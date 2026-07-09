@@ -110,6 +110,21 @@ describe('runtime policies', () => {
     expect(getRuntimeCsp('static')).not.toContain('/api/runtimes/')
   })
 
+  it('uses a nonce instead of unsafe-inline for static/reveal when provided', () => {
+    const staticCsp = getRuntimeCsp('static', { nonce: 'test-nonce' })
+    const revealCsp = getRuntimeCsp('reveal', { nonce: 'test-nonce' })
+    const customCsp = getRuntimeCsp('custom-js', { nonce: 'test-nonce' })
+
+    expect(staticCsp).toContain("'nonce-test-nonce'")
+    expect(staticCsp).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(staticCsp).toMatch(/style-src[^;]*'unsafe-inline'/)
+    expect(revealCsp).toContain("'nonce-test-nonce'")
+    expect(revealCsp).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+    // custom-js must keep unsafe-inline; a nonce would disable it.
+    expect(customCsp).toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(customCsp).not.toContain("'nonce-")
+  })
+
   it('only allows deck scripts in custom-js mode', () => {
     expect(runtimeModeAllowsDeckScripts('static')).toBe(false)
     expect(runtimeModeAllowsDeckScripts('reveal')).toBe(false)
@@ -125,6 +140,13 @@ describe('injectRuntimeCsp', () => {
     expect(html).toContain('http-equiv="Content-Security-Policy"')
     expect(html).toContain(STRICT_DECK_CSP)
     expect(buildCspMetaTag(STRICT_DECK_CSP)).toContain("connect-src 'none'")
+  })
+
+  it('injects a nonce-based CSP when a nonce is provided', () => {
+    const html = injectRuntimeCsp(plainCssDeck, 'static', { nonce: 'abc123' })
+
+    expect(html).toContain("'nonce-abc123'")
+    expect(html).not.toMatch(/script-src[^;]*'unsafe-inline'/)
   })
 
   it('injects approved runtime asset sources for reveal decks', () => {

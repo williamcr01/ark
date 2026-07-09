@@ -8,13 +8,20 @@ import revealFragmentsDeck from '@fixtures/reveal-fragments-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import revealVerticalDeck from '@fixtures/reveal-vertical-deck.html?raw'
 
-import { STRICT_DECK_CSP } from './deck-runtime'
 import { parseDeckSlides, stripDeckScriptsForPreview } from './deck-slides'
 import { configureVitestRuntimeStylesheets } from '@ark/runtime-registry/runtime-stylesheet-disk.ts'
 import { resetRuntimeStylesheetMap } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 
 function parseHtml(html: string) {
   return new DOMParser().parseFromString(html, 'text/html')
+}
+
+function expectStrictThumbnailCsp(srcDoc: string) {
+  expect(srcDoc).toContain('http-equiv="Content-Security-Policy"')
+  expect(srcDoc).toContain("connect-src 'none'")
+  // Thumbnails use a per-render nonce (no script-src 'unsafe-inline').
+  expect(srcDoc).toMatch(/script-src[^;]*'nonce-/)
+  expect(srcDoc).not.toMatch(/script-src[^;]*'unsafe-inline'/)
 }
 
 function expectThumbnailSecurity(srcDoc: string) {
@@ -25,6 +32,8 @@ function expectThumbnailSecurity(srcDoc: string) {
   expect(srcDoc).not.toContain('onclick=')
   expect(srcDoc).not.toContain('onload=')
   expect(srcDoc).not.toContain('onerror=')
+  expect(srcDoc.toLowerCase()).not.toContain('http-equiv="refresh"')
+  expect(srcDoc).not.toContain('javascript:')
   expect(thumbnailDoc.body.hasAttribute('onload')).toBe(false)
 }
 
@@ -57,6 +66,30 @@ describe('stripDeckScriptsForPreview', () => {
     expect(stripDeckScriptsForPreview('   ')).toBe('')
   })
 
+  it('removes meta refresh and javascript: URLs', () => {
+    const hostile = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="refresh" content="0;url=https://evil.example/" />
+  <meta HTTP-EQUIV="Refresh" content="5;url=https://evil.example/upper" />
+</head>
+<body>
+  <section class="slide">
+    <a href="javascript:alert(1)">js</a>
+    <a href="  JavaScript:void(0)">spaced</a>
+    <a href="https://example.com">safe</a>
+  </section>
+</body>
+</html>`
+    const stripped = stripDeckScriptsForPreview(hostile)
+    const doc = parseHtml(stripped)
+
+    expect(stripped.toLowerCase()).not.toContain('http-equiv="refresh"')
+    expect(stripped).not.toContain('javascript:')
+    expect(doc.querySelectorAll('a[href="https://example.com"]')).toHaveLength(1)
+    expect(doc.querySelector('a[href="javascript:alert(1)"]')).toBeNull()
+  })
+
   it('preserves approved runtime scripts only when requested', () => {
     const stripped = stripDeckScriptsForPreview(revealRegistryDeck)
     const preserved = stripDeckScriptsForPreview(revealRegistryDeck, {
@@ -82,7 +115,7 @@ describe('parseDeckSlides', () => {
       const slides = thumbnailDoc.querySelectorAll('section.slide')
 
       expect(srcDoc).toContain('data-ark-thumb-fill')
-      expect(srcDoc).toContain(STRICT_DECK_CSP)
+      expectStrictThumbnailCsp(srcDoc)
       expectThumbnailSecurity(srcDoc)
       expect(slides).toHaveLength(1)
       expect(slides[0].classList.contains('active')).toBe(true)
@@ -173,7 +206,7 @@ describe('parseDeckSlides', () => {
       expect(srcDoc).toContain('.reveal .slides > section.present')
       expect(srcDoc).not.toContain('href="/api/runtimes/reveal.js/5.1.0/reveal.css"')
       expect(srcDoc).not.toContain('href="/api/runtimes/reveal.js/5.1.0/theme/white.css"')
-      expect(srcDoc).toContain(STRICT_DECK_CSP)
+      expectStrictThumbnailCsp(srcDoc)
       expect(srcDoc).toContain('data-ark-reveal-thumb-shim')
       expectThumbnailSecurity(srcDoc)
     })
@@ -192,7 +225,9 @@ describe('parseDeckSlides', () => {
         'href="/api/runtimes/reveal.js/5.1.0/theme/white.css"',
       )
       expect(parsed.thumbnailSrcDocs[0]).not.toContain('data-ark-runtime-css=')
-      expect(parsed.thumbnailSrcDocs[0]).not.toContain(STRICT_DECK_CSP)
+      // Without inlined CSS the CSP includes approved runtime asset URLs (not the
+      // static STRICT_DECK_CSP baseline), still with a per-render nonce.
+      expect(parsed.thumbnailSrcDocs[0]).toMatch(/script-src[^;]*'nonce-/)
       expect(parsed.thumbnailSrcDocs[0]).toContain(
         'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css',
       )

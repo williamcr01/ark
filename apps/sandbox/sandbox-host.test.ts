@@ -78,11 +78,19 @@ describe('sandbox preview host', () => {
     expect(renderResponse.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
 
     const html = await renderResponse.text()
+    const headerCsp = renderResponse.headers.get('content-security-policy') ?? ''
+    const metaNonce = html.match(/'nonce-([^']+)'/)?.[1]
+    const scriptNonce = html.match(/data-ark-preview-nav[^>]*nonce="([^"]+)"/)?.[1]
 
     expect(html).toContain('data-ark-preview-nav')
     expect(html).toContain('Content-Security-Policy')
     expect(html).not.toContain('data-ark-preview-editor')
     expect(html).not.toContain('<script>window.top.location')
+    expect(headerCsp).toMatch(/script-src[^;]*'nonce-/)
+    expect(headerCsp).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(metaNonce).toBeTruthy()
+    expect(scriptNonce).toBe(metaNonce)
+    expect(headerCsp).toContain(`'nonce-${metaNonce}'`)
   })
 
   it('injects the editor bridge for editor-enabled sandbox sessions', async () => {

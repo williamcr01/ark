@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom'
 import type { NextFunction, Request, Response, Router } from 'express'
 import { Router as createRouter } from 'express'
 
-import { buildPreviewHtml } from '@ark/deck-core/deck-preview-html.ts'
+import { buildPreviewDocument } from '@ark/deck-core/deck-preview-html.ts'
 import {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_READY_MESSAGE_TYPE,
@@ -72,7 +72,10 @@ function restoreDomGlobals(previous: DomGlobals) {
  * an `await` between the swap and restore would corrupt the globals for other
  * in-flight requests.
  */
-export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin?: string } = {}) {
+export function renderThumbnailPreviewDocument(
+  html: string,
+  options: { parentOrigin?: string } = {},
+) {
   const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
     url: 'http://thumbnail.ark.local/',
   })
@@ -83,7 +86,7 @@ export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin
   globalThis.NodeFilter = dom.window.NodeFilter as typeof NodeFilter
 
   try {
-    return buildPreviewHtml(html, {
+    return buildPreviewDocument(html, {
       parentOrigin: options.parentOrigin,
       editorBridge: false,
     })
@@ -91,6 +94,11 @@ export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin
     restoreDomGlobals(previous)
     dom.window.close()
   }
+}
+
+/** @deprecated Prefer {@link renderThumbnailPreviewDocument} when CSP headers need the nonce. */
+export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin?: string } = {}) {
+  return renderThumbnailPreviewDocument(html, options).html
 }
 
 /**
@@ -113,8 +121,18 @@ function resolveRequestOrigin(request: Request): string | null {
   }
 }
 
-function applyThumbnailRenderSecurityHeaders(response: Response, parentOrigin: string) {
-  response.setHeader('Content-Security-Policy', buildSandboxResponseCsp(parentOrigin))
+function applyThumbnailRenderSecurityHeaders(
+  response: Response,
+  parentOrigin: string,
+  options: { runtimeMode?: 'static' | 'reveal' | 'custom-js'; nonce?: string | null } = {},
+) {
+  response.setHeader(
+    'Content-Security-Policy',
+    buildSandboxResponseCsp(parentOrigin, {
+      runtimeMode: options.runtimeMode,
+      nonce: options.nonce,
+    }),
+  )
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
   response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
   response.setHeader('X-Content-Type-Options', 'nosniff')
@@ -340,10 +358,13 @@ export function createThumbnailRenderRouter(deps: {
         return
       }
 
-      const previewHtml = renderThumbnailPreviewHtml(session.html, { parentOrigin })
+      const preview = renderThumbnailPreviewDocument(session.html, { parentOrigin })
 
-      applyThumbnailRenderSecurityHeaders(response, parentOrigin)
-      response.type('html').send(previewHtml)
+      applyThumbnailRenderSecurityHeaders(response, parentOrigin, {
+        runtimeMode: preview.runtimeMode,
+        nonce: preview.nonce,
+      })
+      response.type('html').send(preview.html)
     },
   )
 
