@@ -23,7 +23,7 @@ export type PreviewBridgeCompromiseReason =
   'unexpected-load' | 'missing-handshake' | 'invalid-handshake' | 'handshake-timeout'
 
 export type PreviewBridgeLoadDecision =
-  | { action: 'trusted'; allowDownstream: true }
+  | { action: 'trusted'; allowDownstream: boolean }
   | { action: 'compromised'; allowDownstream: false; reason: PreviewBridgeCompromiseReason }
   | { action: 'ignore'; allowDownstream: false }
 
