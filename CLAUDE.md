@@ -153,7 +153,7 @@ Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml`
 
 ### Agent tool loop (issue #58)
 
-Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools` + `stopWhen: stepCountIs(12)`), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
+Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools`; unbounded until the model stops calling tools or the user aborts), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
 
 | Tool          | Purpose                                                                                                           |
 | ------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -166,7 +166,7 @@ Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` +
 
 Server implementation: `server/deck-parser.ts`, `server/deck-tools.ts`, `server/deck-agent.ts`. The client shows tool calls/results in chat and applies deck updates from tool results (final HTML returned in the API response).
 
-One user message → one agent run → up to 12 tool/model steps → deck update + assistant summary.
+One user message → one agent run → as many tool/model steps as needed → deck update + assistant summary.
 
 ## What to avoid
 
