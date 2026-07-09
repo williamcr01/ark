@@ -294,6 +294,10 @@ export function getDeckBridgeTargetOrigin(parentOrigin?: string | null) {
 /**
  * Inline head sentinel that posts the generation handshake before deck scripts.
  * Must be injected as the first script in `<head>`.
+ *
+ * Retries a few times so a parent that attaches its message listener in
+ * useLayoutEffect/useEffect after the iframe starts loading still receives the
+ * handshake (Present mode remounts are especially race-prone).
  */
 export function buildDeckHandshakeSentinelScript(
   handshake: string,
@@ -305,15 +309,29 @@ export function buildDeckHandshakeSentinelScript(
   return `(function () {
   var handshake = ${handshakeLiteral};
   var targetOrigin = ${targetOrigin};
-  try {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({
-        type: ${JSON.stringify(DECK_HANDSHAKE_MESSAGE_TYPE)},
-        handshake: handshake,
-        protocolVersion: ${DECK_BRIDGE_PROTOCOL_VERSION}
-      }, targetOrigin);
+  var delays = [0, 0, 50, 200];
+  var attempt = 0;
+
+  function postHandshake() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: ${JSON.stringify(DECK_HANDSHAKE_MESSAGE_TYPE)},
+          handshake: handshake,
+          protocolVersion: ${DECK_BRIDGE_PROTOCOL_VERSION}
+        }, targetOrigin);
+      }
+    } catch (error) {}
+
+    if (attempt >= delays.length - 1) {
+      return;
     }
-  } catch (error) {}
+
+    attempt += 1;
+    setTimeout(postHandshake, delays[attempt]);
+  }
+
+  postHandshake();
 })();`
 }
 

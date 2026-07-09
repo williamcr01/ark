@@ -51,6 +51,47 @@ describe('usePreviewBridgeSession', () => {
     expect(result.current.compromisedRef.current).toBe(false)
   })
 
+  it('arms when a late handshake retry arrives after the trusted load', () => {
+    const { result } = renderHook(() =>
+      usePreviewBridgeSession('gen-1', {
+        enabled: true,
+        handshake: 'hs-late',
+        sandboxOrigin: null,
+      }),
+    )
+
+    act(() => {
+      expect(result.current.onFrameLoad().allowDownstream).toBe(false)
+    })
+
+    expect(result.current.canPostToFrame()).toBe(false)
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckHandshakeMessage('hs-late'),
+          origin: window.location.origin,
+        }),
+      )
+    })
+
+    expect(result.current.phase).toBe('armed')
+    expect(result.current.canPostToFrame()).toBe(true)
+
+    act(() => {
+      // Sentinel retries must stay idempotent and must not compromise the session.
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckHandshakeMessage('hs-late'),
+          origin: window.location.origin,
+        }),
+      )
+    })
+
+    expect(result.current.phase).toBe('armed')
+    expect(result.current.compromised).toBe(false)
+  })
+
   it('flips compromisedRef synchronously on unexpected second load', () => {
     const onCompromised = vi.fn()
     const { result } = renderHook(() =>
