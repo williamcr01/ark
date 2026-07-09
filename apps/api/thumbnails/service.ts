@@ -12,6 +12,7 @@ import {
   THUMBNAIL_MAX_RENDER_ATTEMPTS,
   THUMBNAIL_OUTPUT_HEIGHT,
   THUMBNAIL_OUTPUT_WIDTH,
+  THUMBNAIL_QUEUE_MAX_PENDING,
   THUMBNAIL_STATUS,
   type ThumbnailStatus,
 } from './constants.ts'
@@ -189,7 +190,18 @@ export function createThumbnailService(options: {
     const id = keyId(key)
     const existing = inflight.get(id)
 
-    if (!existing) {
+    // Bound the serialized queue: unauthenticated status polls can enqueue
+    // renders, so a saturated queue skips new jobs instead of growing without
+    // limit. Clients keep polling `pending` and re-enqueue once it drains.
+    if (!existing && inflight.size >= THUMBNAIL_QUEUE_MAX_PENDING) {
+      logger.warn('thumbnail.queue.saturated', {
+        deckId: input.deckId,
+        fields: {
+          versionId: input.versionId,
+          queued: inflight.size,
+        },
+      })
+    } else if (!existing) {
       const job = chain
         .catch(() => undefined)
         .then(async () => {
