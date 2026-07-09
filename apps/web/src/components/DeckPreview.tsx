@@ -1214,7 +1214,8 @@ export function DeckPreview({
                 ref={previewStageRef}
                 style={previewStageStyle}
               >
-                {previewCompromised ? null : (
+                {previewCompromised ||
+                (!previewFrame.iframeSrc && !previewFrame.iframeSrcDoc) ? null : (
                   <iframe
                     className="absolute left-0 top-0 block border-0 bg-white"
                     key={previewFrame.iframeKey}

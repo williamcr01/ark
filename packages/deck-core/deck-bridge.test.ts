@@ -85,6 +85,8 @@ describe('deck bridge protocol', () => {
       'ark:deck-handshake',
     )
     expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('hs-abc')
+    // Retries cover parents that attach the handshake listener after first paint.
+    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('setTimeout(postHandshake')
   })
 
   it('validates known bridge messages and rejects malformed payloads', () => {

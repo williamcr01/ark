@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 import { isDeckHandshakeMessage, type DeckHandshakeMessage } from '@ark/deck-core/deck-bridge.ts'
 import { isAllowedBridgeMessageOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
@@ -135,8 +135,9 @@ export function usePreviewBridgeSession(
     onCompromisedRef.current = onCompromised
   }, [onCompromised])
 
-  // Keep the imperative snapshot aligned with the active generation.
-  useEffect(() => {
+  // Keep the imperative snapshot aligned with the active generation before paint
+  // so an early handshake cannot see a stale key from the previous iframe.
+  useLayoutEffect(() => {
     if (handshakeTimeoutRef.current !== null) {
       window.clearTimeout(handshakeTimeoutRef.current)
       handshakeTimeoutRef.current = null
@@ -155,7 +156,7 @@ export function usePreviewBridgeSession(
   }, [enabled, iframeKey]) // eslint-disable-line react-hooks/exhaustive-deps -- handshake updates via mirror effect
 
   // Mirror display phase / handshake into the imperative snapshot without resetting load flags.
-  useEffect(() => {
+  useLayoutEffect(() => {
     sessionRef.current.phase = phase
     sessionRef.current.handshake = handshake
     sessionRef.current.key = iframeKey
@@ -205,7 +206,9 @@ export function usePreviewBridgeSession(
     setPhase('armed')
   }, [clearHandshakeTimeout])
 
-  useEffect(() => {
+  // Attach before paint so a fast iframe handshake is not dropped between
+  // commit and the passive useEffect flush (Present mode remounts hit this).
+  useLayoutEffect(() => {
     if (!enabled || !iframeKey) {
       return
     }
@@ -232,6 +235,7 @@ export function usePreviewBridgeSession(
         return
       }
 
+      // Idempotent: sentinel may retry the same handshake several times.
       session.handshakeSeen = true
       tryArm()
     }
