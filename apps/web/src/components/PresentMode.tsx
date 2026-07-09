@@ -297,7 +297,7 @@ export function PresentMode({
           className="relative max-h-full max-w-full overflow-hidden bg-white shadow-[0_40px_120px_rgba(0,0,0,0.65)] ring-1 ring-white/10"
           style={previewStageStyle}
         >
-          {previewCompromised ? null : (
+          {previewCompromised || (!previewFrame.iframeSrc && !previewFrame.iframeSrcDoc) ? null : (
             <iframe
               className="absolute left-0 top-0 block border-0 bg-white"
               key={previewFrame.iframeKey}
