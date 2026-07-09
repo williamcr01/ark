@@ -12,6 +12,8 @@ export const THUMBNAIL_READY_TIMEOUT_MS = 12_000
 export const THUMBNAIL_SETTLE_MS = 120
 export const THUMBNAIL_MAX_PNG_BYTES = 1_500_000
 export const THUMBNAIL_CACHE_MAX_ENTRIES = 200
+export const THUMBNAIL_MAX_RENDER_ATTEMPTS = 3
+export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
 
 export const THUMBNAIL_STATUS = {
   ready: 'ready',

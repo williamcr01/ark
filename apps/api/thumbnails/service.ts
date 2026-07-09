@@ -8,6 +8,8 @@ import {
   type ThumbnailCacheMeta,
 } from './cache.ts'
 import {
+  THUMBNAIL_FAILED_RETRY_DELAY_MS,
+  THUMBNAIL_MAX_RENDER_ATTEMPTS,
   THUMBNAIL_OUTPUT_HEIGHT,
   THUMBNAIL_OUTPUT_WIDTH,
   THUMBNAIL_STATUS,
@@ -33,6 +35,24 @@ export type ThumbnailEnqueueInput = {
   versionId: string
   html: string
   manifestHash: string
+}
+
+function shouldRetryFailedRender(meta: ThumbnailCacheMeta, now = Date.now()) {
+  if (meta.status !== THUMBNAIL_STATUS.failed) {
+    return false
+  }
+
+  if ((meta.attempts ?? 1) >= THUMBNAIL_MAX_RENDER_ATTEMPTS) {
+    return false
+  }
+
+  const updatedAtMs = Date.parse(meta.updatedAt)
+
+  if (Number.isNaN(updatedAtMs)) {
+    return true
+  }
+
+  return now - updatedAtMs >= THUMBNAIL_FAILED_RETRY_DELAY_MS
 }
 
 function toStatusResult(
@@ -179,6 +199,15 @@ export function createThumbnailService(options: {
             return
           }
 
+          // Permanent failures (attempt budget exhausted) stay terminal so a
+          // broken deck cannot burn render time on every warm/poll.
+          if (
+            meta?.status === THUMBNAIL_STATUS.failed &&
+            (meta.attempts ?? 1) >= THUMBNAIL_MAX_RENDER_ATTEMPTS
+          ) {
+            return
+          }
+
           await runJob(input)
         })
         .catch((error) => {
@@ -230,7 +259,30 @@ export function createThumbnailService(options: {
       const key = buildThumbnailCacheKey(input.versionId, input.manifestHash)
       const meta = await options.cache.readMeta(key)
 
-      if (meta?.status === THUMBNAIL_STATUS.ready || meta?.status === THUMBNAIL_STATUS.failed) {
+      if (meta?.status === THUMBNAIL_STATUS.ready) {
+        return toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
+      }
+
+      if (meta?.status === THUMBNAIL_STATUS.failed) {
+        // Transient failures (e.g. Chromium cold-start timeouts) get a bounded
+        // retry budget; once exhausted the failure is terminal for this key.
+        if (input.enqueueIfMissing && input.html && shouldRetryFailedRender(meta)) {
+          const result = await enqueueInternal({
+            deckId: input.deckId,
+            versionId: input.versionId,
+            html: input.html,
+            manifestHash: input.manifestHash,
+          })
+
+          // The cached meta still says failed until the retry job runs; report
+          // pending so clients keep polling through the retry.
+          if (result.status === THUMBNAIL_STATUS.failed) {
+            return { status: THUMBNAIL_STATUS.pending, slides: [] }
+          }
+
+          return result
+        }
+
         return toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
       }
 
