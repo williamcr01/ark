@@ -13,18 +13,38 @@ import {
   runtimeModeToBridgePreviewMode,
   toAbsoluteRuntimeAssetSource,
   usesRevealRuntimeAdapter,
+  type DeckRuntimeMode,
 } from '@ark/runtime-registry/deck-runtime.ts'
-import { SLIDE_SELECTOR_CHAIN, stripDeckScriptsForPreview } from './deck-preview-slides.ts'
+import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
+import {
+  SLIDE_SELECTOR_CHAIN,
+  stripDeckScriptsForPreview,
+  stripHostileNavigationFromHtml,
+} from './deck-preview-slides.ts'
 import { getApprovedRuntimeAssetUrls } from '@ark/runtime-registry/deck-runtime-registry.ts'
 
 export type PreviewHtmlOptions = {
   parentOrigin?: string
   manifest?: Pick<DeckRuntimeManifest, 'runtimeMode' | 'usesRevealAdapter' | 'previewMode'>
   editorBridge?: boolean
+  /**
+   * Override the per-render CSP nonce. When omitted, a fresh nonce is generated
+   * for static/reveal modes. Ignored for custom-js (keeps `'unsafe-inline'`).
+   */
+  nonce?: string | null
 }
 
-const previewHistoryShim = `
-<script data-ark-preview-history-shim>
+export type PreviewDocumentResult = {
+  html: string
+  runtimeMode: DeckRuntimeMode
+  /** Nonce used for Ark-injected scripts + CSP; null for custom-js. */
+  nonce: string | null
+}
+
+function buildHistoryShim(nonce: string | null) {
+  const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
+  return `
+<script data-ark-preview-history-shim${nonceAttr}>
 (function () {
   function safeHistoryCall(method) {
     var original = history[method];
@@ -44,6 +64,7 @@ const previewHistoryShim = `
   safeHistoryCall('pushState');
 })();
 </script>`
+}
 
 const previewFillStyle = `
 <style data-ark-preview-fill>
@@ -62,12 +83,18 @@ const previewFillStyle = `
 
 </style>`
 
-function wrapRuntimeScript(source: string, marker: string) {
-  return `<script ${marker}>\n${source}\n</script>`
+function wrapRuntimeScript(source: string, marker: string, nonce: string | null) {
+  const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
+  return `<script ${marker}${nonceAttr}>\n${source}\n</script>`
 }
 
-function injectPreviewFill(html: string, options: { historyShim?: boolean } = {}) {
-  const headInjection = `${options.historyShim ? `${previewHistoryShim}\n` : ''}${previewFillStyle}`
+function injectPreviewFill(
+  html: string,
+  options: { historyShim?: boolean; nonce?: string | null } = {},
+) {
+  const headInjection = `${
+    options.historyShim ? `${buildHistoryShim(options.nonce ?? null)}\n` : ''
+  }${previewFillStyle}`
 
   const withHeadInjection = /<\/head>/i.test(html)
     ? html.replace(/<\/head>/i, `${headInjection}\n</head>`)
@@ -117,6 +144,7 @@ function injectRuntimeScripts(html: string, scripts: string[]) {
 function buildEditorBridgeInjection(
   options: PreviewHtmlOptions,
   runtimeOptions: { slideSelectors: readonly string[]; parentOrigin?: string },
+  nonce: string | null,
 ) {
   if (!options.editorBridge) {
     return ''
@@ -128,18 +156,33 @@ function buildEditorBridgeInjection(
       parentOrigin: runtimeOptions.parentOrigin,
     }),
     'data-ark-preview-editor',
+    nonce,
   )
 }
 
-export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
+/**
+ * Build the full preview document, returning HTML plus the CSP nonce used for
+ * Ark-injected scripts (null in custom-js mode). Prefer this over
+ * {@link buildPreviewHtml} when the caller also needs to set a matching HTTP
+ * response CSP header.
+ */
+export function buildPreviewDocument(
+  html: string,
+  options: PreviewHtmlOptions = {},
+): PreviewDocumentResult {
   if (!html) {
-    return ''
+    return { html: '', runtimeMode: 'static', nonce: null }
   }
 
   const mode = options.manifest?.runtimeMode ?? detectRuntimeMode(html)
   const usesRevealAdapter = options.manifest?.usesRevealAdapter ?? usesRevealRuntimeAdapter(html)
   const assetOrigin = options.parentOrigin
-  const withCsp = injectRuntimeCsp(html, mode, { assetOrigin })
+  // Nonces neutralize javascript: URLs and slipped-past inline handlers in
+  // CSS-only / reveal-adapter modes. custom-js must keep 'unsafe-inline'.
+  const nonce = mode === 'custom-js' ? null : options.nonce?.trim() || generateCspNonce()
+  const withCsp = injectRuntimeCsp(html, mode, { assetOrigin, nonce })
+  // Meta refresh / javascript: URLs have no legitimate use in any preview mode.
+  const sanitized = stripHostileNavigationFromHtml(withCsp)
   const runtimeOptions = {
     slideSelectors: SLIDE_SELECTOR_CHAIN,
     previewMode: runtimeModeToBridgePreviewMode(mode, { usesRevealAdapter }),
@@ -147,44 +190,73 @@ export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {})
   }
 
   if (runtimeModeAllowsDeckScripts(mode)) {
-    return injectRuntimeScripts(
-      injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(withCsp, assetOrigin), {
-        historyShim: true,
-      }),
-      [
-        wrapRuntimeScript(buildDeckBridgeRuntimeScript(runtimeOptions), 'data-ark-preview-bridge'),
-        buildEditorBridgeInjection(options, runtimeOptions),
-      ].filter(Boolean),
-    )
+    return {
+      html: injectRuntimeScripts(
+        injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(sanitized, assetOrigin), {
+          historyShim: true,
+          nonce,
+        }),
+        [
+          wrapRuntimeScript(
+            buildDeckBridgeRuntimeScript(runtimeOptions),
+            'data-ark-preview-bridge',
+            nonce,
+          ),
+          buildEditorBridgeInjection(options, runtimeOptions, nonce),
+        ].filter(Boolean),
+      ),
+      runtimeMode: mode,
+      nonce,
+    }
   }
 
   if (usesRevealAdapter) {
-    const strippedHtml = stripDeckScriptsForPreview(withCsp, {
+    const strippedHtml = stripDeckScriptsForPreview(sanitized, {
       preserveApprovedRuntimeScripts: true,
     })
     const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
-    return injectRuntimeScripts(
-      injectPreviewFill(previewHtml, { historyShim: true }),
-      [
-        wrapRuntimeScript(buildRevealNavRuntimeScript(runtimeOptions), 'data-ark-preview-reveal'),
-        buildEditorBridgeInjection(options, runtimeOptions),
-      ].filter(Boolean),
-    )
+    return {
+      html: injectRuntimeScripts(
+        injectPreviewFill(previewHtml, { historyShim: true, nonce }),
+        [
+          wrapRuntimeScript(
+            buildRevealNavRuntimeScript(runtimeOptions),
+            'data-ark-preview-reveal',
+            nonce,
+          ),
+          buildEditorBridgeInjection(options, runtimeOptions, nonce),
+        ].filter(Boolean),
+      ),
+      runtimeMode: mode,
+      nonce,
+    }
   }
 
-  const strippedHtml = stripDeckScriptsForPreview(withCsp, {
+  const strippedHtml = stripDeckScriptsForPreview(sanitized, {
     preserveApprovedRuntimeScripts: mode === 'reveal',
   })
   const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
 
-  return injectRuntimeScripts(
-    injectPreviewFill(previewHtml),
-    [
-      wrapRuntimeScript(buildDeckCssNavRuntimeScript(runtimeOptions), 'data-ark-preview-nav'),
-      buildEditorBridgeInjection(options, runtimeOptions),
-    ].filter(Boolean),
-  )
+  return {
+    html: injectRuntimeScripts(
+      injectPreviewFill(previewHtml, { nonce }),
+      [
+        wrapRuntimeScript(
+          buildDeckCssNavRuntimeScript(runtimeOptions),
+          'data-ark-preview-nav',
+          nonce,
+        ),
+        buildEditorBridgeInjection(options, runtimeOptions, nonce),
+      ].filter(Boolean),
+    ),
+    runtimeMode: mode,
+    nonce,
+  }
+}
+
+export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
+  return buildPreviewDocument(html, options).html
 }
 
 /** @deprecated Use {@link buildPreviewHtml} */

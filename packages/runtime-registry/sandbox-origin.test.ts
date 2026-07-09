@@ -84,4 +84,26 @@ describe('sandbox-origin', () => {
       'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
     )
   })
+
+  it('uses a nonce instead of unsafe-inline for static/reveal response CSP', () => {
+    const staticCsp = buildSandboxResponseCsp('http://localhost:5173', {
+      runtimeMode: 'static',
+      nonce: 'abc',
+    })
+    const revealCsp = buildSandboxResponseCsp('http://localhost:5173', {
+      runtimeMode: 'reveal',
+      nonce: 'abc',
+    })
+    const customCsp = buildSandboxResponseCsp('http://localhost:5173', {
+      runtimeMode: 'custom-js',
+      nonce: 'abc',
+    })
+
+    expect(staticCsp).toContain("'nonce-abc'")
+    expect(staticCsp).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(revealCsp).toContain("'nonce-abc'")
+    expect(revealCsp).not.toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(customCsp).toContain("'unsafe-inline'")
+    expect(customCsp).not.toContain("'nonce-")
+  })
 })

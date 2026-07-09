@@ -35,14 +35,37 @@ const BLOCKED_SANDBOX_FEATURES = [
 
 export type RuntimeCspOptions = {
   assetOrigin?: string | null
+  /**
+   * When set for static/reveal modes, `script-src` uses `'nonce-...'` instead of
+   * `'unsafe-inline'`. Ignored for custom-js (deck-authored inline scripts need
+   * `'unsafe-inline'`; a nonce would disable it).
+   */
+  nonce?: string | null
 }
 
 function buildDeckCsp(
-  options: { scriptSources?: string[]; styleSources?: string[]; fontSources?: string[] } = {},
+  options: {
+    scriptSources?: string[]
+    styleSources?: string[]
+    fontSources?: string[]
+    /**
+     * When true, omit `'unsafe-inline'` from script-src (caller must supply a
+     * nonce or other script allowlist entry). Style-src always keeps
+     * `'unsafe-inline'`.
+     */
+    omitUnsafeInlineScript?: boolean
+  } = {},
 ) {
-  const scriptSources = ["'unsafe-inline'", ...(options.scriptSources ?? [])]
+  const scriptSources = [
+    ...(options.omitUnsafeInlineScript ? [] : ["'unsafe-inline'"]),
+    ...(options.scriptSources ?? []),
+  ]
   const styleSources = ["'unsafe-inline'", ...(options.styleSources ?? [])]
   const fontSources = ['data:', ...(options.fontSources ?? [])]
+
+  if (scriptSources.length === 0) {
+    scriptSources.push("'none'")
+  }
 
   return [
     "default-src 'none'",
@@ -61,6 +84,7 @@ function buildDeckCsp(
   ].join('; ')
 }
 
+/** Baseline CSP for static decks without a per-render nonce (legacy / export). */
 export const STRICT_DECK_CSP = buildDeckCsp()
 
 export function detectRuntimeModeFromDocument(doc: Document): DeckRuntimeMode {
@@ -181,16 +205,32 @@ export function getThumbnailSandbox() {
   return THUMBNAIL_SANDBOX
 }
 
+function shouldUseScriptNonce(mode: DeckRuntimeMode, nonce?: string | null) {
+  return Boolean(nonce) && mode !== 'custom-js'
+}
+
 export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspOptions = {}) {
   const scriptSources = getRuntimeAssetCspSources(mode, 'script', options)
   const styleSources = getRuntimeAssetCspSources(mode, 'stylesheet', options)
   const fontSources = getRuntimeAssetCspSources(mode, 'font', options)
+  const useNonce = shouldUseScriptNonce(mode, options.nonce)
+  const nonceSource = useNonce && options.nonce ? [`'nonce-${options.nonce}'`] : []
 
-  if (scriptSources.length === 0 && styleSources.length === 0 && fontSources.length === 0) {
+  if (
+    scriptSources.length === 0 &&
+    styleSources.length === 0 &&
+    fontSources.length === 0 &&
+    !useNonce
+  ) {
     return STRICT_DECK_CSP
   }
 
-  return buildDeckCsp({ scriptSources, styleSources, fontSources })
+  return buildDeckCsp({
+    scriptSources: [...nonceSource, ...scriptSources],
+    styleSources,
+    fontSources,
+    omitUnsafeInlineScript: useNonce,
+  })
 }
 
 export function getBlockedSandboxFeatures() {
