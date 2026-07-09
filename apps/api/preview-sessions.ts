@@ -2,6 +2,8 @@ import { nanoid } from 'nanoid'
 
 export type PreviewSession = {
   token: string
+  /** Correlates the render generation for the bridge handshake (not a secret). */
+  handshake: string
   html: string
   editorBridge: boolean
   createdAt: number
@@ -40,8 +42,10 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
 
       const now = Date.now()
       const token = nanoid(32)
+      const handshake = nanoid(24)
       const session: PreviewSession = {
         token,
+        handshake,
         html,
         editorBridge: options.editorBridge === true,
         createdAt: now,

@@ -64,6 +64,10 @@ export type UseDeckEditorBridgeOptions = {
   sandboxOrigin?: string | null
   parentOrigin?: string | null
   iframeGenerationKey?: string
+  /** Synchronous send gate from usePreviewBridgeSession.canPostToFrame. */
+  canPostToFrame?: () => boolean
+  /** When false, ignore inbound editor messages (session not armed). */
+  shouldAcceptInbound?: () => boolean
   onSelectionChange?: (selection: EditorSelectionInfo | null) => void
   onEditorError?: (message: string, code?: string) => void
 }
@@ -94,6 +98,8 @@ export function useDeckEditorBridge(
     sandboxOrigin = null,
     parentOrigin: _parentOrigin = null,
     iframeGenerationKey = '',
+    canPostToFrame,
+    shouldAcceptInbound,
     onSelectionChange,
     onEditorError,
   } = options
@@ -101,6 +107,13 @@ export function useDeckEditorBridge(
   const [state, setState] = useState<DeckEditorBridgeState>(initialState)
   const [trackedGenerationKey, setTrackedGenerationKey] = useState(iframeGenerationKey)
   const iframeGenerationRef = useRef(0)
+  const canPostToFrameRef = useRef(canPostToFrame)
+  const shouldAcceptInboundRef = useRef(shouldAcceptInbound)
+
+  useEffect(() => {
+    canPostToFrameRef.current = canPostToFrame
+    shouldAcceptInboundRef.current = shouldAcceptInbound
+  }, [canPostToFrame, shouldAcceptInbound])
 
   // Hard-reset when the preview iframe remounts. Same-iframe enableEditor keeps
   // in-flight commits; a new generation key is a boundary (React "adjust state
@@ -116,6 +129,10 @@ export function useDeckEditorBridge(
 
   const postToFrame = useCallback(
     (message: Parameters<typeof postEditorShellMessage>[1]) => {
+      if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
+        return false
+      }
+
       const iframeWindow = iframeRef.current?.contentWindow
 
       if (!iframeWindow) {
@@ -201,6 +218,10 @@ export function useDeckEditorBridge(
 
     const handleMessage = (event: MessageEvent) => {
       if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
+      if (shouldAcceptInboundRef.current && !shouldAcceptInboundRef.current()) {
         return
       }
 

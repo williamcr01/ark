@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
-import { useFrameNavigationGuard } from '@/hooks/useFrameNavigationGuard'
+import { usePreviewBridgeSession } from '@/hooks/usePreviewBridgeSession'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
 import {
@@ -176,14 +176,38 @@ export function DeckPreview({
   const previewFrame = useDeckPreviewFrame(html, previewEnabled, {
     editorBridge: editorBridgeInjected,
   })
-  const { compromised: previewCompromised } = useFrameNavigationGuard(
-    iframeRef,
-    previewFrame.iframeKey,
-    { enabled: previewEnabled },
-  )
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
   const textEditActiveRef = useRef(false)
+  const reportNavigationCompromise = useCallback(() => {
+    const fingerprint = 'unexpected-frame-navigation:preview-navigation-guard'
+
+    if (reportedRuntimeErrorsRef.current.has(fingerprint)) {
+      return
+    }
+
+    reportedRuntimeErrorsRef.current.add(fingerprint)
+
+    void reportRuntimeError({
+      deckId,
+      versionId,
+      slideIndex: activeSlideIndexRef.current,
+      runtimeMode,
+      severity: 'error',
+      message:
+        'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
+      source: 'preview-navigation-guard',
+    }).catch(() => {
+      reportedRuntimeErrorsRef.current.delete(fingerprint)
+    })
+  }, [deckId, runtimeMode, versionId])
+  const bridgeSession = usePreviewBridgeSession(previewFrame.iframeKey, {
+    enabled: previewEnabled && Boolean(previewFrame.handshake?.trim()),
+    handshake: previewFrame.handshake,
+    sandboxOrigin: previewFrame.sandboxOrigin,
+    onCompromised: reportNavigationCompromise,
+  })
+  const previewCompromised = bridgeSession.compromised
   const bridgeEnabled = previewEnabled && !previewCompromised
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
@@ -195,6 +219,9 @@ export function DeckPreview({
       keyboardMode: isPresentOpen || previewCompromised ? 'off' : 'preview',
       shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,
+      syncOnLoad: false,
+      canPostToFrame: bridgeSession.canPostToFrame,
+      shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
       onRuntimeError: (message, source) => {
         const fingerprint = `${message}:${source ?? ''}`
 
@@ -256,39 +283,34 @@ export function DeckPreview({
     activeSlideIndex,
     sandboxOrigin: previewFrame.sandboxOrigin,
     iframeGenerationKey: previewFrame.iframeKey,
+    canPostToFrame: bridgeSession.canPostToFrame,
+    shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
   })
-
-  useEffect(() => {
-    if (!previewCompromised) {
-      return
-    }
-
-    const fingerprint = 'unexpected-frame-navigation:preview-navigation-guard'
-
-    if (reportedRuntimeErrorsRef.current.has(fingerprint)) {
-      return
-    }
-
-    reportedRuntimeErrorsRef.current.add(fingerprint)
-
-    void reportRuntimeError({
-      deckId,
-      versionId,
-      slideIndex: activeSlideIndexRef.current,
-      runtimeMode,
-      severity: 'error',
-      message:
-        'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
-      source: 'preview-navigation-guard',
-    }).catch(() => {
-      reportedRuntimeErrorsRef.current.delete(fingerprint)
-    })
-  }, [deckId, previewCompromised, runtimeMode, versionId])
 
   useEffect(() => {
     // Allow re-reporting if the shell remounts the preview after a prior compromise.
     reportedRuntimeErrorsRef.current.delete('unexpected-frame-navigation:preview-navigation-guard')
   }, [previewFrame.iframeKey])
+
+  useEffect(() => {
+    if (!bridgeSession.armed || previewCompromised) {
+      return
+    }
+
+    goToSlide(activeSlideIndexRef.current)
+
+    if (editorBridgeInjected) {
+      enableEditor(activeSlideIndexRef.current, activeTool)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTool is initial enable payload only
+  }, [
+    bridgeSession.armed,
+    editorBridgeInjected,
+    enableEditor,
+    goToSlide,
+    previewCompromised,
+    previewFrame.iframeKey,
+  ])
 
   useEffect(() => {
     textEditActiveRef.current = textEditActive
@@ -1197,8 +1219,16 @@ export function DeckPreview({
                     className="absolute left-0 top-0 block border-0 bg-white"
                     key={previewFrame.iframeKey}
                     onLoad={() => {
+                      const decision = bridgeSession.onFrameLoad()
+
+                      if (!decision.allowDownstream) {
+                        return
+                      }
+
+                      goToSlide(activeSlideIndexRef.current)
+
                       if (editorBridgeInjected) {
-                        enableEditor(activeSlideIndex, activeTool)
+                        enableEditor(activeSlideIndexRef.current, activeTool)
                       }
                     }}
                     ref={iframeRef}

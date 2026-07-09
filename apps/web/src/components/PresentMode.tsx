@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
-import { useFrameNavigationGuard } from '@/hooks/useFrameNavigationGuard'
+import { usePreviewBridgeSession } from '@/hooks/usePreviewBridgeSession'
 import {
   getPreviewFrameScale,
   getPreviewFrameStyle,
@@ -114,19 +114,9 @@ export function PresentMode({
   }, [clearIdleTimer, onExit])
 
   const previewFrame = useDeckPreviewFrame(html, slideCount > 0)
-  const { compromised: previewCompromised } = useFrameNavigationGuard(
-    iframeRef,
-    previewFrame.iframeKey,
-    { enabled: slideCount > 0 },
-  )
   const reportedNavigationErrorRef = useRef(false)
-
-  useEffect(() => {
-    reportedNavigationErrorRef.current = false
-  }, [previewFrame.iframeKey])
-
-  useEffect(() => {
-    if (!previewCompromised || reportedNavigationErrorRef.current) {
+  const reportNavigationCompromise = useCallback(() => {
+    if (reportedNavigationErrorRef.current) {
       return
     }
 
@@ -142,7 +132,18 @@ export function PresentMode({
     }).catch(() => {
       reportedNavigationErrorRef.current = false
     })
-  }, [previewCompromised, runtimeMode])
+  }, [runtimeMode])
+  const bridgeSession = usePreviewBridgeSession(previewFrame.iframeKey, {
+    enabled: slideCount > 0 && Boolean(previewFrame.handshake?.trim()),
+    handshake: previewFrame.handshake,
+    sandboxOrigin: previewFrame.sandboxOrigin,
+    onCompromised: reportNavigationCompromise,
+  })
+  const previewCompromised = bridgeSession.compromised
+
+  useEffect(() => {
+    reportedNavigationErrorRef.current = false
+  }, [previewFrame.iframeKey])
 
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
@@ -154,13 +155,23 @@ export function PresentMode({
       initialSlideIndex,
       keyboardMode: previewCompromised ? 'off' : 'present',
       sandboxOrigin: previewFrame.sandboxOrigin,
-      syncOnLoad: true,
+      syncOnLoad: false,
+      canPostToFrame: bridgeSession.canPostToFrame,
+      shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
       onSlideChange: (index) => {
         currentSlideIndexRef.current = index
         showControls()
       },
     },
   )
+
+  useEffect(() => {
+    if (!bridgeSession.armed || previewCompromised) {
+      return
+    }
+
+    goToSlide(currentSlideIndexRef.current)
+  }, [bridgeSession.armed, goToSlide, previewCompromised, previewFrame.iframeKey])
 
   useEffect(() => {
     currentSlideIndexRef.current = activeSlideIndex
@@ -290,6 +301,15 @@ export function PresentMode({
             <iframe
               className="absolute left-0 top-0 block border-0 bg-white"
               key={previewFrame.iframeKey}
+              onLoad={() => {
+                const decision = bridgeSession.onFrameLoad()
+
+                if (!decision.allowDownstream) {
+                  return
+                }
+
+                goToSlide(currentSlideIndexRef.current)
+              }}
               ref={iframeRef}
               referrerPolicy="no-referrer"
               sandbox={getPreviewSandbox(runtimeMode)}

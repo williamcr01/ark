@@ -1,6 +1,6 @@
 import { type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -67,6 +67,7 @@ const editorBridgeMock = vi.hoisted(() => ({
 
 const previewFrameMock = vi.hoisted(() => ({
   iframeKey: 'test-preview',
+  handshake: 'test-handshake-value',
 }))
 
 const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
@@ -90,6 +91,7 @@ vi.mock('@/hooks/useDeckPreviewFrame', () => ({
     isLoading: false,
     error: null,
     usesSandboxHost: false,
+    handshake: previewFrameMock.handshake,
   }),
 }))
 
@@ -133,6 +135,7 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.cancelTextEdit.mockClear()
     editorBridgeMock.setTool.mockClear()
     previewFrameMock.iframeKey = 'test-preview'
+    previewFrameMock.handshake = 'test-handshake-value'
     reportRuntimeErrorMock.mockClear()
   })
 
@@ -155,6 +158,23 @@ describe('DeckPreview script divergence UI', () => {
         severity: 'error',
       }),
     )
+  })
+
+  it('does not post editor enable after compromise even if onLoad races', async () => {
+    const user = userEvent.setup()
+
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    const iframe = screen.getByTitle('Generated Ark presentation preview')
+    fireEvent.load(iframe)
+    fireEvent.load(iframe)
+
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+    editorBridgeMock.enableEditor.mockClear()
+
+    // Hostile load path must not re-enable after teardown.
+    expect(editorBridgeMock.enableEditor).not.toHaveBeenCalled()
   })
 
   it('does not treat a shell remount (new iframe key) as hostile navigation', async () => {
@@ -310,6 +330,20 @@ describe('DeckPreview script divergence UI', () => {
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 
     await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'ark:deck-handshake',
+            handshake: previewFrameMock.handshake,
+            protocolVersion: 1,
+          },
+          origin: window.location.origin,
+        }),
+      )
+    })
+
     fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
 
     expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0, 'select')

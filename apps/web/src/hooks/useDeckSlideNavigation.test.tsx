@@ -33,6 +33,8 @@ type HarnessProps = {
   slideCount?: number
   syncOnLoad?: boolean
   sandboxOrigin?: string | null
+  canPostToFrame?: () => boolean
+  shouldAcceptInbound?: () => boolean
 }
 
 function NavigationHarness({
@@ -47,6 +49,8 @@ function NavigationHarness({
   slideCount = 3,
   syncOnLoad = false,
   sandboxOrigin = null,
+  canPostToFrame,
+  shouldAcceptInbound,
 }: HarnessProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
@@ -63,6 +67,8 @@ function NavigationHarness({
       runtimeMode,
       syncOnLoad,
       sandboxOrigin,
+      canPostToFrame,
+      shouldAcceptInbound,
     },
   )
 
@@ -401,5 +407,42 @@ describe('useDeckSlideNavigation', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
     })
+  })
+
+  it('does not post goto when canPostToFrame returns false', async () => {
+    const user = userEvent.setup()
+    render(<NavigationHarness canPostToFrame={() => false} sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+
+    await user.click(screen.getByRole('button', { name: 'Go to third' }))
+
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  it('ignores inbound messages when shouldAcceptInbound returns false', async () => {
+    const onSlideChange = vi.fn()
+    render(
+      <NavigationHarness
+        onSlideChange={onSlideChange}
+        sandboxOrigin={sandboxOrigin}
+        shouldAcceptInbound={() => false}
+      />,
+    )
+    const iframeWindow = getIframeWindow()
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createDeckSlideChangeMessage(2),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
+    expect(onSlideChange).not.toHaveBeenCalled()
   })
 })

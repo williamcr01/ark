@@ -37,6 +37,7 @@ export function createPreviewSessionsRouter(deps: {
 
     response.status(201).json({
       token: session.token,
+      handshake: session.handshake,
       expiresAt: session.expiresAt,
       sandboxOrigin: resolveSandboxOrigin(),
       renderUrl: buildSandboxRenderUrl(session.token, {
@@ -65,6 +66,7 @@ export function createPreviewSessionsRouter(deps: {
 
       response.json({
         token: session.token,
+        handshake: session.handshake,
         html: session.html,
         editorBridge: session.editorBridge,
         expiresAt: session.expiresAt,
