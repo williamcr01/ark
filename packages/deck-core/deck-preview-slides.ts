@@ -20,11 +20,24 @@ export type StripDeckScriptsForPreviewOptions = {
   preserveApprovedRuntimeScripts?: boolean
 }
 
+function serializeAttribute(attribute: Attr) {
+  return `${attribute.name}="${attribute.value.replace(/"/g, '&quot;')}"`
+}
+
+/** Serialize attrs for static/reveal preview — drops inline `on*` handlers. */
 function serializeElementAttrs(element: Element) {
   return [...element.attributes]
     .filter((attribute) => !INLINE_HANDLER_PATTERN.test(attribute.name))
-    .map((attribute) => `${attribute.name}="${attribute.value.replace(/"/g, '&quot;')}"`)
+    .map(serializeAttribute)
     .join(' ')
+}
+
+/**
+ * Serialize attrs for navigation-only sanitization — preserves `on*` handlers.
+ * Custom-JS decks may legitimately use root handlers like `<body onload="boot()">`.
+ */
+function serializeRootElementAttrs(element: Element) {
+  return [...element.attributes].map(serializeAttribute).join(' ')
 }
 
 function isMetaRefresh(element: Element) {
@@ -34,7 +47,7 @@ function isMetaRefresh(element: Element) {
   )
 }
 
-function isJavascriptUrl(value: string | null) {
+export function isJavascriptUrl(value: string | null) {
   if (!value) {
     return false
   }
@@ -59,7 +72,7 @@ function isJavascriptUrl(value: string | null) {
 
 /**
  * Strip `<meta http-equiv="refresh">` and `javascript:` URL attributes.
- * Safe to call for every preview mode (including full-JS).
+ * Safe to call for every preview mode (including full-JS). Does not remove `on*` handlers.
  */
 export function stripHostileNavigationVectors(root: ParentNode) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
@@ -92,6 +105,7 @@ export function stripHostileNavigationVectors(root: ParentNode) {
 /**
  * Strip meta refresh / javascript: URLs from a full HTML document string.
  * Used for full-JS preview (which keeps deck scripts) and as a shared helper.
+ * Preserves root `<html>` / `<body>` attributes including legitimate `on*` handlers.
  */
 export function stripHostileNavigationFromHtml(html: string): string {
   if (!html.trim()) {
@@ -100,16 +114,12 @@ export function stripHostileNavigationFromHtml(html: string): string {
 
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
-  if (doc.head) {
-    stripHostileNavigationVectors(doc.head)
+  if (doc.documentElement) {
+    stripHostileNavigationVectors(doc.documentElement)
   }
 
-  if (doc.body) {
-    stripHostileNavigationVectors(doc.body)
-  }
-
-  const htmlAttrs = doc.documentElement ? serializeElementAttrs(doc.documentElement) : ''
-  const bodyAttrs = doc.body ? serializeElementAttrs(doc.body) : ''
+  const htmlAttrs = doc.documentElement ? serializeRootElementAttrs(doc.documentElement) : ''
+  const bodyAttrs = doc.body ? serializeRootElementAttrs(doc.body) : ''
   const headHtml = doc.head?.innerHTML ?? ''
   const bodyHtml = doc.body?.innerHTML ?? ''
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
@@ -172,16 +182,18 @@ export function stripDeckScriptsForPreview(
 
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
+  if (doc.documentElement) {
+    stripHostileNavigationVectors(doc.documentElement)
+  }
+
   if (doc.head) {
     stripScripts(doc.head, options)
     stripInlineHandlers(doc.head)
-    stripHostileNavigationVectors(doc.head)
   }
 
   if (doc.body) {
     stripScripts(doc.body, options)
     stripInlineHandlers(doc.body)
-    stripHostileNavigationVectors(doc.body)
   }
 
   const htmlAttrs = doc.documentElement ? serializeElementAttrs(doc.documentElement) : ''
