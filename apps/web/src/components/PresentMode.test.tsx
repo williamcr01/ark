@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createDeckHandshakeMessage } from '@ark/deck-core/deck-bridge.ts'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
@@ -97,6 +98,38 @@ describe('PresentMode', () => {
     expect(onExit).toHaveBeenCalledWith(1)
   })
 
+  it('syncs the initial slide after a trusted frame load arms the bridge', async () => {
+    render(
+      <PresentMode
+        html={plainCssDeck}
+        initialSlideIndex={1}
+        onExit={vi.fn()}
+        runtimeMode="static"
+        slideCount={3}
+      />,
+    )
+
+    const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
+    const postMessage = vi.spyOn(iframe.contentWindow!, 'postMessage')
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: createDeckHandshakeMessage('present-handshake'),
+        origin: window.location.origin,
+      }),
+    )
+    // Bootstrap document → expected preview document.
+    fireEvent.load(iframe)
+    fireEvent.load(iframe)
+
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 1, type: 'ark:deck-goto' }),
+        '*',
+      )
+    })
+  })
+
   it('exits on Escape with the initial slide when no navigation occurred', async () => {
     const user = userEvent.setup()
     const onExit = vi.fn()
@@ -178,9 +211,20 @@ describe('PresentMode', () => {
     const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
     const postMessage = vi.spyOn(iframe.contentWindow!, 'postMessage')
 
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: createDeckHandshakeMessage('present-handshake'),
+        origin: window.location.origin,
+      }),
+    )
+    // Bootstrap document → expected preview document.
     fireEvent.load(iframe)
     expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
     expect(postMessage).not.toHaveBeenCalled()
+
+    fireEvent.load(iframe)
+    expect(postMessage).toHaveBeenCalled()
+    const postsBeforeNavigation = postMessage.mock.calls.length
 
     fireEvent.load(iframe)
 
@@ -192,6 +236,6 @@ describe('PresentMode', () => {
         severity: 'error',
       }),
     )
-    expect(postMessage).not.toHaveBeenCalled()
+    expect(postMessage).toHaveBeenCalledTimes(postsBeforeNavigation)
   })
 })

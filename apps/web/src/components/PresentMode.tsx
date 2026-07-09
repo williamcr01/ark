@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -140,6 +140,7 @@ export function PresentMode({
     onCompromised: reportNavigationCompromise,
   })
   const previewCompromised = bridgeSession.compromised
+  const onBridgeFrameLoad = bridgeSession.onFrameLoad
 
   useEffect(() => {
     reportedNavigationErrorRef.current = false
@@ -164,6 +165,55 @@ export function PresentMode({
       },
     },
   )
+
+  const handlePreviewFrameLoad = useCallback(() => {
+    const decision = onBridgeFrameLoad()
+
+    if (!decision.allowDownstream) {
+      return
+    }
+
+    goToSlide(currentSlideIndexRef.current)
+  }, [goToSlide, onBridgeFrameLoad])
+  const handlePreviewFrameLoadRef = useRef(handlePreviewFrameLoad)
+
+  // The presenter is portalled to document.body. Listen on the iframe itself
+  // rather than relying on React's delegated load event so the trusted initial
+  // load cannot be missed before the handshake-gated slide sync. Start the
+  // expected document only after the explicit bootstrap document loads.
+  useLayoutEffect(() => {
+    handlePreviewFrameLoadRef.current = handlePreviewFrameLoad
+  }, [handlePreviewFrameLoad])
+
+  useLayoutEffect(() => {
+    const iframe = iframeRef.current
+
+    if (!iframe) {
+      return
+    }
+
+    const handleTrustedPreviewLoad = () => {
+      handlePreviewFrameLoadRef.current()
+    }
+    const startPreviewLoad = () => {
+      iframe.removeEventListener('load', startPreviewLoad)
+      iframe.addEventListener('load', handleTrustedPreviewLoad)
+
+      if (previewFrame.iframeSrcDoc) {
+        iframe.srcdoc = previewFrame.iframeSrcDoc
+      } else if (previewFrame.iframeSrc) {
+        iframe.removeAttribute('srcdoc')
+        iframe.src = previewFrame.iframeSrc
+      }
+    }
+
+    iframe.addEventListener('load', startPreviewLoad)
+
+    return () => {
+      iframe.removeEventListener('load', startPreviewLoad)
+      iframe.removeEventListener('load', handleTrustedPreviewLoad)
+    }
+  }, [previewFrame.iframeKey, previewFrame.iframeSrc, previewFrame.iframeSrcDoc])
 
   useEffect(() => {
     if (!bridgeSession.armed || previewCompromised) {
@@ -301,20 +351,10 @@ export function PresentMode({
             <iframe
               className="absolute left-0 top-0 block border-0 bg-white"
               key={previewFrame.iframeKey}
-              onLoad={() => {
-                const decision = bridgeSession.onFrameLoad()
-
-                if (!decision.allowDownstream) {
-                  return
-                }
-
-                goToSlide(currentSlideIndexRef.current)
-              }}
               ref={iframeRef}
               referrerPolicy="no-referrer"
               sandbox={getPreviewSandbox(runtimeMode)}
-              src={previewFrame.iframeSrc}
-              srcDoc={previewFrame.iframeSrcDoc}
+              src="about:blank#ark-present-bootstrap"
               style={previewFrameStyle}
               tabIndex={-1}
               title="Ark presentation mode"
