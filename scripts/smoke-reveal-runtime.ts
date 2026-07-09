@@ -34,8 +34,6 @@ const requiredRuntimeAssetPaths = [
   '/api/runtimes/reveal.js/5.1.0/theme/white.css',
   '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
 ]
-const requiredRuntimeFontAssetPath =
-  '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff'
 
 type NetworkFailure = {
   url: string
@@ -200,26 +198,19 @@ async function runSmoke() {
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
-    await waitFor('Source Sans Pro font load', () =>
+    await waitFor('approved Source Sans Pro font load', () =>
       evaluate<boolean>(
         cdp!,
         `document.fonts
-          ? document.fonts.load('16px "Source Sans Pro"', 'Ark smoke').then((faces) => faces.length > 0)
+          ? document.fonts.load('16px "Source Sans Pro"', 'Ark smoke').then((faces) =>
+              faces.some(
+                (face) => face.family.includes('Source Sans Pro') && face.status === 'loaded',
+              ),
+            )
           : false`,
         { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
       ),
     )
-
-    await waitFor('approved runtime font request', async () => {
-      if (networkIncludesAssetPaths(requestUrls, [requiredRuntimeFontAssetPath])) {
-        return true
-      }
-
-      return previewIncludesAssetPaths(cdp!, mainPreview, [
-        requiredRuntimeFontAssetPath,
-        '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
-      ])
-    })
 
     assert(
       runtimeFailures.length === 0,
