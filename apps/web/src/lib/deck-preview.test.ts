@@ -205,6 +205,25 @@ describe('getPreviewHtml', () => {
     expect(withRefresh.toLowerCase()).not.toContain('http-equiv="refresh"')
   })
 
+  it('preserves custom-js root body onload while stripping hostile navigation', () => {
+    const withRootHandler = fullJsDeck.replace('<body>', '<body onload="window.fullJsBoot = true">')
+    const withHostileNav = withRootHandler
+      .replace(
+        '</head>',
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/" /></head>',
+      )
+      .replace('</section>', '<a href="javascript:alert(1)">js</a></section>')
+    const previewHtml = getPreviewHtml(withHostileNav)
+    const doc = new DOMParser().parseFromString(previewHtml, 'text/html')
+
+    expect(doc.body.getAttribute('onload')).toBe('window.fullJsBoot = true')
+    expect(previewHtml).toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(previewHtml).not.toMatch(/script-src[^;]*'nonce-/)
+    expect(previewHtml.toLowerCase()).not.toContain('http-equiv="refresh"')
+    expect(previewHtml).not.toContain('javascript:')
+    expect(previewHtml).toContain('data-ark-preview-bridge')
+  })
+
   it('injects the editor bridge only when preview opts in', () => {
     const withoutEditor = getPreviewHtml(plainCssDeck)
     const withEditor = getPreviewHtml(plainCssDeck, { editorBridge: true })
