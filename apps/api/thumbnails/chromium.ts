@@ -306,8 +306,6 @@ export async function spawnChromium(
 
   // Do not keep the parent Node process alive solely for the shared Chromium pool.
   child.unref()
-  child.stdout?.unref()
-  child.stderr?.unref()
 
   await waitFor('Chromium DevTools endpoint', async () => {
     if (child.exitCode !== null) {

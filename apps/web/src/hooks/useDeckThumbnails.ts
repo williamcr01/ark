@@ -57,9 +57,23 @@ export function useDeckThumbnails(
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const requestIdRef = useRef(0)
+  // Once the API reports the renderer is disabled, skip further fetches for this
+  // deck. Rapid undo/redo otherwise hammers /thumbnails and remounts strip work
+  // during preview reloads (manual-edit smoke).
+  const rendererDisabledRef = useRef(false)
+  const disabledForDeckIdRef = useRef<string | null>(null)
+
+  if (deckId !== disabledForDeckIdRef.current) {
+    disabledForDeckIdRef.current = deckId ?? null
+    rendererDisabledRef.current = false
+  }
 
   useEffect(() => {
     if (!enabled || !deckId || !versionId) {
+      return
+    }
+
+    if (rendererDisabledRef.current) {
       return
     }
 
@@ -91,6 +105,10 @@ export function useDeckThumbnails(
 
         if (cancelled || requestId !== requestIdRef.current) {
           return
+        }
+
+        if (payload.status === 'disabled') {
+          rendererDisabledRef.current = true
         }
 
         setStatus(payload.status)
@@ -133,6 +151,15 @@ export function useDeckThumbnails(
   if (!enabled) {
     return {
       status: null,
+      thumbnailUrls: null,
+      error: null,
+      isLoading: false,
+    }
+  }
+
+  if (rendererDisabledRef.current) {
+    return {
+      status: 'disabled',
       thumbnailUrls: null,
       error: null,
       isLoading: false,

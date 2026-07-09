@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react'
 import {
   FileCode2Icon,
   Loader2Icon,
@@ -187,6 +195,10 @@ export function DeckPreview({
     },
   )
   const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount)
+  // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
+  // while the main preview is still settling (manual-edit smoke / CDP context lookup).
+  const deferredParsedDeck = useDeferredValue(parsedDeck)
+  const deferredThumbnailUrls = useDeferredValue(thumbnailUrls)
 
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex
@@ -1076,11 +1088,10 @@ export function DeckPreview({
             activeIndex={activeSlideIndex}
             id="ark-slide-strip"
             isOpen={isStripOpen}
-            key={html}
             onSelect={goToSlide}
             orientation={stripOrientation}
-            parsedDeck={parsedDeck}
-            thumbnailUrls={thumbnailUrls}
+            parsedDeck={deferredParsedDeck}
+            thumbnailUrls={deferredThumbnailUrls}
           />
         ) : null}
 
