@@ -1,4 +1,4 @@
-import { generateText, stepCountIs, type LanguageModel } from 'ai'
+import { generateText, type LanguageModel } from 'ai'
 
 import {
   buildAgentModelMessages,
@@ -13,8 +13,6 @@ import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
-
-export const AGENT_MAX_STEPS = 12
 
 export const deckAgentSystemPrompt = `You are Ark, an expert presentation designer and front-end engineer.
 
@@ -297,8 +295,7 @@ export async function runDeckAgent({
       system: deckAgentSystemPrompt,
       messages: buildAgentModelMessages(messages, currentHtml, editorSelection),
       tools,
-      stopWhen: stepCountIs(AGENT_MAX_STEPS),
-      maxOutputTokens: 8_000,
+      stopWhen: () => false,
       temperature: 0.4,
       abortSignal,
       onStepFinish: async (step) => {
