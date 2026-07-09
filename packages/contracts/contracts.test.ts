@@ -197,6 +197,7 @@ describe('shared API contracts', () => {
     expect(
       previewSessionResponseSchema.parse({
         token: 'abc',
+        handshake: 'handshake-abc',
         expiresAt: Date.now(),
         sandboxOrigin: 'http://localhost:5174',
         renderUrl: 'http://localhost:5174/render/abc',

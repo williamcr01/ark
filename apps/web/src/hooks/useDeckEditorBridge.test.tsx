@@ -27,11 +27,15 @@ function EditorHarness({
   enabled = true,
   sandboxOrigin = null,
   iframeGenerationKey = 'test-frame',
+  canPostToFrame,
+  shouldAcceptInbound,
   onSelectionChange,
 }: {
   enabled?: boolean
   sandboxOrigin?: string | null
   iframeGenerationKey?: string
+  canPostToFrame?: () => boolean
+  shouldAcceptInbound?: () => boolean
   onSelectionChange?: (selection: { elementId: string } | null) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -41,6 +45,8 @@ function EditorHarness({
     activeSlideIndex: 0,
     sandboxOrigin,
     iframeGenerationKey,
+    canPostToFrame,
+    shouldAcceptInbound,
     onSelectionChange,
   })
   const { enableEditor } = bridge
@@ -506,5 +512,33 @@ describe('useDeckEditorBridge', () => {
     })
 
     expect(screen.getByLabelText('Text edit active')).toHaveTextContent('no')
+  })
+
+  it('does not post when canPostToFrame returns false', async () => {
+    const user = userEvent.setup()
+    render(<EditorHarness canPostToFrame={() => false} sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+
+    await user.click(screen.getByRole('button', { name: 'Enable editor' }))
+
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  it('ignores inbound editor messages when shouldAcceptInbound returns false', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} shouldAcceptInbound={() => false} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('pending')
   })
 })

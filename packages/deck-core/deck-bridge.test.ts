@@ -3,14 +3,17 @@ import { describe, expect, it } from 'vitest'
 import {
   DECK_BRIDGE_PROTOCOL_VERSION,
   DECK_GOTO_MESSAGE_TYPE,
+  DECK_HANDSHAKE_MESSAGE_TYPE,
   DECK_METADATA_MESSAGE_TYPE,
   DECK_READY_MESSAGE_TYPE,
   DECK_RUNTIME_ERROR_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
   buildDeckCssNavRuntimeScript,
+  buildDeckHandshakeSentinelScript,
   clampDeckSlideIndex,
   createDeckGotoMessage,
+  createDeckHandshakeMessage,
   createDeckMetadata,
   createDeckMetadataMessage,
   createDeckReadyMessage,
@@ -20,6 +23,7 @@ import {
   isDeckBridgeMessage,
   isDeckBridgeMessageFromRuntime,
   isDeckGotoMessage,
+  isDeckHandshakeMessage,
   isDeckMetadata,
   isDeckMetadataMessage,
   isDeckReadyMessage,
@@ -67,6 +71,20 @@ describe('deck bridge protocol', () => {
       message: 'boom',
       source: 'deck.js',
     })
+  })
+
+  it('creates and validates additive handshake messages', () => {
+    expect(createDeckHandshakeMessage('hs-abc')).toEqual({
+      type: DECK_HANDSHAKE_MESSAGE_TYPE,
+      handshake: 'hs-abc',
+      protocolVersion: DECK_BRIDGE_PROTOCOL_VERSION,
+    })
+    expect(isDeckHandshakeMessage(createDeckHandshakeMessage('hs-abc'))).toBe(true)
+    expect(isDeckHandshakeMessage({ type: DECK_HANDSHAKE_MESSAGE_TYPE, handshake: '' })).toBe(false)
+    expect(buildDeckHandshakeSentinelScript('hs-abc', 'http://localhost:5173')).toContain(
+      'ark:deck-handshake',
+    )
+    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('hs-abc')
   })
 
   it('validates known bridge messages and rejects malformed payloads', () => {

@@ -210,15 +210,16 @@ In CSS-only preview (no approved reveal runtime script), Ark still detects `runt
 - Parent → iframe `postMessage` uses target origin `*` so messages reach opaque-origin frames; iframe → parent messages target the configured app origin when available
 - Preview uses `sandbox="allow-scripts"` without `allow-same-origin`
 - Thumbnails always strip scripts (`sandbox=""`) and continue to use `srcDoc`
-- **Residual risk — frame self-navigation:** full-JS decks can navigate the iframe itself (`location.href = ...`) despite `connect-src 'none'` (navigation is not a fetch; `navigate-to` CSP never shipped). The shell watches for unexpected iframe `load` events after the initial sandbox render URL load (`useFrameNavigationGuard`). On detection it tears down the preview, stops further parent→frame bridge/editor `postMessage` (so wildcard `targetOrigin: '*'` cannot deliver goto/editor payloads to an attacker page), shows a security banner, and reports via `POST /api/runtime-errors`. The first outbound navigation request cannot be prevented; containment is the mitigation. Shell-triggered reloads remount the iframe via a new `iframeKey` and do not trip the guard.
+- **Residual risk — frame self-navigation:** full-JS decks can navigate the iframe itself (`location.href = ...`) despite `connect-src 'none'` (navigation is not a fetch; `navigate-to` CSP never shipped). The shell uses a **ref-gated bridge session** (`usePreviewBridgeSession`) with phases `idle` → `awaiting-handshake` → `armed` → `compromised`. An Ark head sentinel posts an additive `ark:deck-handshake` message (generation-correlation value from the preview session — **not a secret**, because full-JS code can read the document). Ordinary parent→frame nav/editor `postMessage` is allowed only while the session is `armed` (`canPostToFrame()`). An unexpected second `load` on the same iframe generation flips `compromisedRef` **synchronously** before any downstream sync, tears down the preview, shows a security banner, and reports via `POST /api/runtime-errors`. Missing/invalid handshake after a bounded timeout also stops the preview. The first outbound navigation request cannot be prevented; containment of subsequent Ark bridge traffic is the mitigation — not a claim of complete isolation. Shell-triggered reloads remount the iframe via a content-sensitive `iframeKey` and start a new session.
 
 ## Sandbox host preview
 
 Main preview and Present mode load decks from a separate sandbox origin (default `http://localhost:5174`) via short-lived render tokens:
 
-1. Shell `POST /api/preview-sessions` with deck HTML → `{ token, renderUrl }`
+1. Shell `POST /api/preview-sessions` with deck HTML → `{ token, handshake, renderUrl }`
 2. Preview iframe loads `GET {sandboxOrigin}/render/{token}?parent={appOrigin}`
-3. Sandbox host applies strict CSP/COOP/CORP response headers and serves processed preview HTML
+3. Sandbox host applies strict CSP/COOP/CORP response headers and serves processed preview HTML (handshake sentinel injected first in `<head>`)
 4. Bridge scripts receive the parent app origin and reject parent messages from other origins
+5. Shell arms the bridge session only after the expected handshake + trusted load lifecycle
 
 Set `VITE_ARK_PREVIEW_SRCDOC=true` to force the legacy inline `srcDoc` preview path during migration.

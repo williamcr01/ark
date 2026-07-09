@@ -8,14 +8,32 @@ import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import { PresentMode } from './PresentMode'
 
 const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
+const previewFrameMock = vi.hoisted(() => ({
+  iframeKey: 'present-preview',
+  handshake: 'present-handshake',
+}))
 
 vi.mock('@/lib/runtime-error-api', () => ({
   reportRuntimeError: reportRuntimeErrorMock,
 }))
 
+vi.mock('@/hooks/useDeckPreviewFrame', () => ({
+  useDeckPreviewFrame: () => ({
+    iframeKey: previewFrameMock.iframeKey,
+    iframeSrcDoc: '<html></html>',
+    sandboxOrigin: null,
+    isLoading: false,
+    error: null,
+    usesSandboxHost: false,
+    handshake: previewFrameMock.handshake,
+  }),
+}))
+
 describe('PresentMode', () => {
   beforeEach(() => {
     reportRuntimeErrorMock.mockClear()
+    previewFrameMock.iframeKey = 'present-preview'
+    previewFrameMock.handshake = 'present-handshake'
   })
 
   it('does not expose edit controls in presentation mode', () => {
@@ -158,9 +176,11 @@ describe('PresentMode', () => {
     )
 
     const iframe = screen.getByTitle('Ark presentation mode')
+    const postMessage = vi.spyOn(iframe.contentWindow!, 'postMessage')
 
     fireEvent.load(iframe)
     expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+    expect(postMessage).not.toHaveBeenCalled()
 
     fireEvent.load(iframe)
 
@@ -172,5 +192,6 @@ describe('PresentMode', () => {
         severity: 'error',
       }),
     )
+    expect(postMessage).not.toHaveBeenCalled()
   })
 })

