@@ -210,6 +210,7 @@ In CSS-only preview (no approved reveal runtime script), Ark still detects `runt
 - Parent → iframe `postMessage` uses target origin `*` so messages reach opaque-origin frames; iframe → parent messages target the configured app origin when available
 - Preview uses `sandbox="allow-scripts"` without `allow-same-origin`
 - Thumbnails always strip scripts (`sandbox=""`) and continue to use `srcDoc`
+- **Residual risk — frame self-navigation:** full-JS decks can navigate the iframe itself (`location.href = ...`) despite `connect-src 'none'` (navigation is not a fetch; `navigate-to` CSP never shipped). The shell watches for unexpected iframe `load` events after the initial sandbox render URL load (`useFrameNavigationGuard`). On detection it tears down the preview, stops further parent→frame bridge/editor `postMessage` (so wildcard `targetOrigin: '*'` cannot deliver goto/editor payloads to an attacker page), shows a security banner, and reports via `POST /api/runtime-errors`. The first outbound navigation request cannot be prevented; containment is the mitigation. Shell-triggered reloads remount the iframe via a new `iframeKey` and do not trip the guard.
 
 ## Sandbox host preview
 

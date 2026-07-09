@@ -1,13 +1,23 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
 import { PresentMode } from './PresentMode'
 
+const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
+
+vi.mock('@/lib/runtime-error-api', () => ({
+  reportRuntimeError: reportRuntimeErrorMock,
+}))
+
 describe('PresentMode', () => {
+  beforeEach(() => {
+    reportRuntimeErrorMock.mockClear()
+  })
+
   it('does not expose edit controls in presentation mode', () => {
     render(
       <PresentMode
@@ -134,5 +144,33 @@ describe('PresentMode', () => {
     await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
 
     expect(onExit).toHaveBeenCalledWith(1)
+  })
+
+  it('tears down the presentation iframe on unexpected self-navigation', async () => {
+    render(
+      <PresentMode
+        html={plainCssDeck}
+        initialSlideIndex={0}
+        onExit={vi.fn()}
+        runtimeMode="static"
+        slideCount={3}
+      />,
+    )
+
+    const iframe = screen.getByTitle('Ark presentation mode')
+
+    fireEvent.load(iframe)
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+
+    fireEvent.load(iframe)
+
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+    expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
+    expect(reportRuntimeErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'preview-navigation-guard',
+        severity: 'error',
+      }),
+    )
   })
 })

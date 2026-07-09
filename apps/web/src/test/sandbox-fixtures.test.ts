@@ -22,6 +22,7 @@ import hostilePostmessageDeck from '@fixtures/hostile-postmessage-deck.html?raw'
 import hostileRunawayScriptsDeck from '@fixtures/hostile-runaway-scripts-deck.html?raw'
 import hostileSandboxNetworkDeck from '@fixtures/hostile-sandbox-network-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
+import hostileSelfNavigationDeck from '@fixtures/hostile-self-navigation-deck.html?raw'
 import malformedDeck from '@fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealDeck from '@fixtures/reveal-deck.html?raw'
@@ -91,6 +92,12 @@ const securityFixtures: SecurityFixture[] = [
     html: hostileNavigationDeck,
     runtimeMode: 'static',
     category: 'top-navigation',
+  },
+  {
+    name: 'hostile-self-navigation',
+    html: hostileSelfNavigationDeck,
+    runtimeMode: 'custom-js',
+    category: 'frame-self-navigation',
   },
   { name: 'hostile-popups', html: hostilePopupsDeck, runtimeMode: 'static', category: 'popups' },
   {
@@ -390,6 +397,21 @@ describe('sandbox security fixtures', () => {
         expect.arrayContaining(['https://evil.example/top', 'https://evil.example/parent']),
       )
       expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
+    })
+  })
+
+  describe('frame self-navigation', () => {
+    it('keeps full-JS scripts that self-navigate (shell containment is the mitigation)', () => {
+      expect(detectRuntimeMode(hostileSelfNavigationDeck)).toBe('custom-js')
+      expect(runtimeModeAllowsDeckScripts('custom-js')).toBe(true)
+
+      const previewHtml = getPreviewHtml(hostileSelfNavigationDeck)
+
+      expect(previewHtml).toContain('data-ark-preview-bridge')
+      expect(previewHtml).toContain('location.href')
+      expect(previewHtml).toContain('evil.example')
+      // Parent shell must detect unexpected loads; CSP alone cannot stop navigation.
+      expect(previewHtml).toContain("connect-src 'none'")
     })
   })
 
