@@ -288,15 +288,17 @@ async function runSmoke() {
 
     await setUploadFile(cdp, hostileExternalFetchFixturePath)
 
-    await waitFor('hostile deck upload rejection toast', async () => {
-      const text = await evaluate<string>(cdp!, 'document.body.innerText')
-      return text.includes('cannot load external resources')
-    })
-
-    const deckAfterHostileUpload = await evaluate<string>(cdp!, 'document.body.innerText')
-    assert(
-      deckAfterHostileUpload.includes('Slide 2 of 3'),
-      'Hostile external-fetch upload should be rejected without replacing the active deck.',
+    await waitFor(
+      'hostile deck upload rejection without replacing the active deck',
+      async () => {
+        const text = await evaluate<string>(cdp!, 'document.body.innerText')
+        return (
+          text.includes('cannot load external resources') &&
+          text.includes('Slide 2 of 3') &&
+          text.includes('Plain CSS Deck')
+        )
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
     const hostileUploadPreviewSrc = await evaluate<string>(
