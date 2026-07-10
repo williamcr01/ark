@@ -253,11 +253,13 @@ async function runSmoke() {
           { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
         )
 
-        if (
-          readiness.hasFontCss &&
-          readiness.hasWoffResource &&
-          (readiness.faceLoaded || readiness.faceCheck)
-        ) {
+        // Prefer Font Loading API readiness. Resource timing can miss CSS/woff
+        // entries after iframe remounts even when the face is already loaded.
+        if (readiness.faceLoaded || readiness.faceCheck) {
+          return true
+        }
+
+        if (!readiness.fontsApi && readiness.hasFontCss && readiness.hasWoffResource) {
           return true
         }
 
