@@ -156,7 +156,10 @@ export function PresentMode({
       initialSlideIndex,
       keyboardMode: previewCompromised ? 'off' : 'present',
       sandboxOrigin: previewFrame.sandboxOrigin,
-      syncOnLoad: false,
+      // Present remounts a fresh iframe that always boots at slide 0. Keep the
+      // requested index pending until ark:deck-ready arrives so a late ready@0
+      // cannot overwrite the presenter's current slide.
+      syncOnLoad: true,
       canPostToFrame: bridgeSession.canPostToFrame,
       shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
       onSlideChange: (index) => {

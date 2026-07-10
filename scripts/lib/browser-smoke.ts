@@ -40,7 +40,7 @@ export type SmokeArtifacts = {
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const SMOKE_WAIT_TIMEOUT_MS = process.env.CI ? 60_000 : 15_000
-export const SMOKE_SLOW_TIMEOUT_MS = 45_000
+export const SMOKE_SLOW_TIMEOUT_MS = process.env.CI ? 60_000 : 45_000
 
 export function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -159,11 +159,13 @@ export async function spawnChromium(
   }
 
   let stderr = ''
+  const STDERR_CAP = 64_000
   const child = spawn(
     executable,
     [
       '--headless=new',
       `--remote-debugging-port=${debugPort}`,
+      '--remote-debugging-address=127.0.0.1',
       `--user-data-dir=${userDataDir}`,
       '--disable-dev-shm-usage',
       '--disable-gpu',
@@ -172,21 +174,42 @@ export async function spawnChromium(
       '--no-sandbox',
       'about:blank',
     ],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
+    // Ignore stdout so a chatty Chromium cannot fill the pipe buffer and stall.
+    { stdio: ['ignore', 'ignore', 'pipe'] },
   )
 
   child.stderr.on('data', (chunk: Buffer) => {
-    stderr += chunk.toString('utf8')
-  })
-
-  await waitFor('Chromium DevTools endpoint', async () => {
-    if (child.exitCode !== null) {
-      throw new Error(`Chromium exited early.\n${stderr}`)
+    if (stderr.length >= STDERR_CAP) {
+      return
     }
 
-    const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
-    return Boolean(response?.ok)
+    stderr += chunk.toString('utf8')
+
+    if (stderr.length > STDERR_CAP) {
+      stderr = `${stderr.slice(0, STDERR_CAP)}\n…[stderr truncated]`
+    }
   })
+
+  try {
+    await waitFor(
+      'Chromium DevTools endpoint',
+      async () => {
+        if (child.exitCode !== null) {
+          throw new Error(`Chromium exited early.\n${stderr}`)
+        }
+
+        const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
+        return Boolean(response?.ok)
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+  } catch (error) {
+    if (child.exitCode === null) {
+      child.kill('SIGKILL')
+    }
+
+    throw error
+  }
 
   return {
     process: child,
@@ -553,6 +576,7 @@ export async function writeBrowserSmokeArtifacts(options: {
   cdp: CdpClient | null
   appOrigin: string | null
   mainPreviewSrc: string | null
+  presentPreviewSrc?: string | null
   error: unknown
 }): Promise<SmokeArtifacts> {
   const wroteFiles: string[] = []
@@ -615,6 +639,15 @@ export async function writeBrowserSmokeArtifacts(options: {
     }
   }
 
+  if (options.presentPreviewSrc) {
+    try {
+      const html = await (await fetch(options.presentPreviewSrc)).text()
+      await tryWriteFile(path.join(dir, 'present-render.html'), html, { wroteFiles, errors })
+    } catch (error) {
+      errors.push(`present render html: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   await tryWriteFile(
     path.join(dir, 'meta.json'),
     JSON.stringify(
@@ -622,6 +655,7 @@ export async function writeBrowserSmokeArtifacts(options: {
         label: options.label,
         appOrigin: options.appOrigin,
         mainPreviewSrc: options.mainPreviewSrc,
+        presentPreviewSrc: options.presentPreviewSrc ?? null,
       },
       null,
       2,
@@ -823,4 +857,137 @@ export async function openApp(cdp: CdpClient, appOrigin: string) {
   await waitFor('Ark upload control', () =>
     evaluate<boolean>(cdp, `Boolean(document.querySelector('input[type="file"]'))`),
   )
+}
+
+export type PresentSlideWaitOptions = {
+  cdp: CdpClient
+  contexts: Map<string, RuntimeContext>
+  sandboxOrigin: string
+  expectedSlideText: string
+  expectedShellCounter?: string
+  activeSlideSelector?: string
+  runtimeMarkerSelector?: string
+  timeoutMs?: number
+}
+
+export type PresentSlideWaitResult = {
+  presentPreviewSrc: string
+  presentPreview: RuntimeContext
+}
+
+/**
+ * Re-resolve the Present dialog iframe on every poll. Present remounts can
+ * invalidate a previously captured CDP context before slide sync completes.
+ */
+export async function waitForPresentSlide(
+  options: PresentSlideWaitOptions,
+): Promise<PresentSlideWaitResult> {
+  const activeSlideSelector =
+    options.activeSlideSelector ?? 'section.slide.active, section.slide.is-active'
+  const runtimeMarkerSelector =
+    options.runtimeMarkerSelector ??
+    'script[data-ark-preview-nav], script[data-ark-preview-bridge], script[data-ark-preview-reveal]'
+  let lastSnapshot: Record<string, unknown> | null = null
+
+  return waitFor(
+    'Present mode preserves the current slide',
+    async () => {
+      const shell = await evaluate<{
+        presentSrc: string
+        shellCounter: string
+        dialogText: string
+        bodyText: string
+        previewStopped: boolean
+      }>(
+        options.cdp,
+        `(() => {
+          const dialog = document.querySelector('[role="dialog"]');
+          const iframe = dialog?.querySelector('iframe');
+          return {
+            presentSrc: iframe?.src || '',
+            shellCounter: (dialog?.innerText || '').match(/\\d+\\s*\\/\\s*\\d+/)?.[0] || '',
+            dialogText: (dialog?.innerText || '').trim().slice(0, 400),
+            bodyText: (document.body?.innerText || '').trim().slice(0, 400),
+            previewStopped: (document.body?.innerText || '').includes('Preview stopped'),
+          };
+        })()`,
+      )
+
+      lastSnapshot = shell
+
+      if (shell.previewStopped) {
+        throw new Error(
+          `Present mode preview was stopped unexpectedly.\n${JSON.stringify(shell, null, 2)}`,
+        )
+      }
+
+      if (!shell.presentSrc.includes(`${options.sandboxOrigin}/render/`)) {
+        return null
+      }
+
+      if (
+        options.expectedShellCounter &&
+        shell.shellCounter &&
+        shell.shellCounter !== options.expectedShellCounter
+      ) {
+        return null
+      }
+
+      const presentPreview = await findContextByUrl(options.cdp, options.contexts, shell.presentSrc)
+
+      if (!presentPreview) {
+        return null
+      }
+
+      const frame = await evaluate<{
+        activeText: string
+        hasRuntimeMarker: boolean
+        hasReveal: boolean
+        hasWindowReveal: boolean
+      }>(
+        options.cdp,
+        `(() => {
+          const active = document.querySelector(${JSON.stringify(activeSlideSelector)});
+          return {
+            activeText: (active?.textContent || '').trim(),
+            hasRuntimeMarker: Boolean(document.querySelector(${JSON.stringify(runtimeMarkerSelector)})),
+            hasReveal: Boolean(document.querySelector('.reveal')),
+            hasWindowReveal: typeof window.Reveal !== 'undefined',
+          };
+        })()`,
+        { contextId: presentPreview.id, sessionId: presentPreview.sessionId },
+      )
+
+      lastSnapshot = { ...shell, ...frame }
+
+      if (!frame.hasRuntimeMarker) {
+        return null
+      }
+
+      if (!frame.activeText.includes(options.expectedSlideText)) {
+        return null
+      }
+
+      if (
+        options.expectedShellCounter &&
+        shell.shellCounter &&
+        shell.shellCounter !== options.expectedShellCounter
+      ) {
+        return null
+      }
+
+      return {
+        presentPreviewSrc: shell.presentSrc,
+        presentPreview,
+      }
+    },
+    {
+      timeoutMs: options.timeoutMs ?? SMOKE_SLOW_TIMEOUT_MS,
+      intervalMs: 150,
+    },
+  ).catch((error: unknown) => {
+    const detail = lastSnapshot ? `\nLast snapshot: ${JSON.stringify(lastSnapshot, null, 2)}` : ''
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`${message}${detail}`)
+  })
 }
