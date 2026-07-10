@@ -20,6 +20,7 @@ import {
   startServers,
   stopChromium,
   stopServers,
+  waitForPresentSlide,
   writeBrowserSmokeArtifacts,
   waitFor,
   type RuntimeContext,
@@ -43,6 +44,7 @@ async function runSmoke() {
   let cdp: Awaited<ReturnType<typeof createPage>> | null = null
   let servers: Awaited<ReturnType<typeof startServers>> | null = null
   let mainPreviewSrc: string | null = null
+  let presentPreviewSrc: string | null = null
 
   try {
     servers = await startServers({ apiPort, sandboxPort, webPort, tempRoot })
@@ -225,31 +227,16 @@ async function runSmoke() {
       `Boolean(document.querySelector('button[aria-label="Present fullscreen"]')?.click())`,
     )
 
-    const presentFrameSrc = await waitFor('Present mode frame', async () => {
-      const src = await evaluate<string>(
-        cdp!,
-        `document.querySelector('[role="dialog"] iframe')?.src || ''`,
-      )
-
-      return src.includes(`${servers!.sandboxOrigin}/render/`) ? src : ''
-    })
-
-    const presentPreview = await waitFor('Present mode sandbox frame context', () =>
-      findContextByUrl(cdp!, contexts, presentFrameSrc),
-    )
-
-    await waitFor('Present mode preserves the current slide', async () => {
-      const snapshot = await evaluate<{ activeText: string }>(
-        cdp!,
-        `(() => {
-          const active = document.querySelector('section.slide.active');
-          return { activeText: (active?.textContent || '').trim() };
-        })()`,
-        { contextId: presentPreview.id, sessionId: presentPreview.sessionId },
-      )
-
-      return snapshot.activeText.includes('Scripted detail')
-    })
+    ;({ presentPreviewSrc } = await waitForPresentSlide({
+      cdp,
+      contexts,
+      sandboxOrigin: servers.sandboxOrigin,
+      expectedSlideText: 'Scripted detail',
+      expectedShellCounter: '2 / 2',
+      activeSlideSelector: 'section.slide.active',
+      runtimeMarkerSelector: 'script[data-ark-preview-bridge]',
+      timeoutMs: SMOKE_SLOW_TIMEOUT_MS,
+    }))
 
     const requestedExternalUrls = collectExternalRequestUrls(requestUrls, [
       servers.appOrigin,
@@ -270,6 +257,7 @@ async function runSmoke() {
       cdp,
       appOrigin: servers?.appOrigin ?? null,
       mainPreviewSrc,
+      presentPreviewSrc,
       error,
     })
     throw error

@@ -98,9 +98,37 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # Live Chromium thumbnail coverage runs in test-live-chromium.
       - run: pnpm test
+
+  test-live-chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Browser diagnostics
+        run: |
+          node --version
+          google-chrome --version || /usr/bin/google-chrome --version
+          test -x /usr/bin/google-chrome
+          df -h / /tmp
+          free -h || true
+
+      - name: Live Chromium thumbnail renderer tests
+        run: pnpm test:live-chromium
         env:
           ARK_CHROMIUM_PATH: /usr/bin/google-chrome
+          ARK_LIVE_CHROMIUM_TESTS: '1'
 
   openapi:
     runs-on: ubuntu-latest
@@ -119,6 +147,9 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ARK_CHROMIUM_PATH: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v4
 
@@ -130,14 +161,35 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm smoke:browser
-        env:
-          ARK_CHROMIUM_PATH: /usr/bin/google-chrome
-          ARK_SMOKE_ARTIFACTS_DIR: ${{ runner.temp }}/ark-smoke-artifacts
+
+      - name: Browser smoke diagnostics
+        run: |
+          # runner.temp is only valid in step contexts, not job-level env.
+          echo "ARK_SMOKE_ARTIFACTS_DIR=${{ runner.temp }}/ark-smoke-artifacts" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/ark-smoke-artifacts"
+          node --version
+          google-chrome --version || /usr/bin/google-chrome --version
+          test -x /usr/bin/google-chrome
+          df -h / /tmp
+          free -h || true
+
+      - name: Smoke - plain CSS
+        run: pnpm smoke:plain-css
+
+      - name: Smoke - Reveal runtime
+        run: pnpm smoke:reveal-runtime
+
+      - name: Smoke - full-JS bridge
+        run: pnpm smoke:full-js-bridge
+
+      - name: Smoke - manual edit
+        run: pnpm smoke:manual-edit
 
       - name: Upload browser smoke artifacts (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-smoke-artifacts
+          name: browser-smoke-artifacts-${{ github.run_id }}
           path: ${{ runner.temp }}/ark-smoke-artifacts
+          if-no-files-found: warn
+          retention-days: 7

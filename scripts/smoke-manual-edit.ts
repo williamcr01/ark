@@ -14,7 +14,6 @@ import {
   readContext,
   repoRoot,
   setUploadFile,
-  sleep,
   SMOKE_SLOW_TIMEOUT_MS,
   spawnChromium,
   startServers,
@@ -290,7 +289,34 @@ async function dispatchPointerSequence(
     )
 
     assert(dispatched, `Could not dispatch ${step.type} in edit preview`)
-    await sleep(30)
+
+    // Let the editor bridge process the pointer event before the next one.
+    // Fixed sleeps are flaky under CI load; wait for two animation frames instead.
+    await evaluate(
+      cdp,
+      `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
+
+    if (step.type === 'pointerdown') {
+      await waitFor(
+        `editor reacted to pointerdown on ${step.selector}`,
+        async () =>
+          evaluate<boolean>(
+            cdp!,
+            `(() => {
+              const target = document.querySelector(${JSON.stringify(step.selector)});
+              if (!target) return false;
+              return (
+                target.hasAttribute('data-ark-editor-selected') ||
+                Boolean(document.querySelector('[data-ark-editor-selected], [data-ark-editor-handle], [data-ark-editor-marquee]'))
+              );
+            })()`,
+            { contextId: editPreview.id, sessionId: editPreview.sessionId },
+          ),
+        { timeoutMs: 2_000, intervalMs: 25 },
+      ).catch(() => undefined)
+    }
   }
 }
 
