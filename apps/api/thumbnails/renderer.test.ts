@@ -43,162 +43,177 @@ const hostileObjectEmbedDeck = readFileSync(
 )
 const malformedDeck = readFileSync(path.join(fixtureDir, 'malformed-deck.html'), 'utf8')
 
+const liveChromiumTestsEnabled =
+  process.env.ARK_LIVE_CHROMIUM_TESTS === '1' ||
+  process.env.ARK_LIVE_CHROMIUM_TESTS === 'true' ||
+  process.env.ARK_LIVE_CHROMIUM_TESTS === 'on'
 const chromiumAvailable = Boolean(findChromium())
 
-describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
-  let dataDir = ''
-  let cacheDir = ''
-  let server: Server | null = null
-  let serviceClose: (() => Promise<void>) | null = null
+describe.runIf(liveChromiumTestsEnabled && chromiumAvailable)(
+  'thumbnail renderer (live chromium)',
+  () => {
+    let dataDir = ''
+    let cacheDir = ''
+    let server: Server | null = null
+    let serviceClose: (() => Promise<void>) | null = null
 
-  afterEach(async () => {
-    if (serviceClose) {
-      await serviceClose()
-      serviceClose = null
-    }
-
-    if (server) {
-      await new Promise<void>((resolve, reject) => {
-        server?.close((error) => (error ? reject(error) : resolve()))
-      })
-      server = null
-    }
-
-    await Promise.all([
-      dataDir ? rm(dataDir, { recursive: true, force: true }) : undefined,
-      cacheDir ? rm(cacheDir, { recursive: true, force: true }) : undefined,
-    ])
-    dataDir = ''
-    cacheDir = ''
-  })
-
-  async function startRenderer(options: { chromiumPool?: ChromiumPool } = {}) {
-    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-live-decks-'))
-    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-live-cache-'))
-    const deckStore = createDeckStore(dataDir)
-    const previewSessionStore = createPreviewSessionStore()
-    const app = createApp({
-      deckStore,
-      previewSessionStore,
-      thumbnailService: createThumbnailService({
-        cache: createThumbnailCache(cacheDir),
-        deckStore,
-        renderer: {
-          isAvailable: () => false,
-          render: async () => ({ ok: false, error: 'unused', durationMs: 0 }),
-          close: async () => undefined,
-        },
-      }),
-    })
-
-    server = createServer(app)
-    await new Promise<void>((resolve, reject) => {
-      server?.once('error', reject)
-      server?.listen(0, '127.0.0.1', () => resolve())
-    })
-
-    const address = server.address() as AddressInfo
-    const apiOrigin = `http://127.0.0.1:${address.port}`
-    // createApp generates a process-local render secret; read it back so the
-    // live Chromium page can authenticate against /api/thumbnail-render/*.
-    const renderSecret = (app.locals.thumbnailRenderSecret as string | undefined) ?? ''
-    const renderer = createThumbnailRenderer({
-      previewSessionStore,
-      apiOrigin,
-      enabled: true,
-      chromiumPool: options.chromiumPool,
-      renderSecret,
-    })
-    serviceClose = () => renderer.close()
-    return renderer
-  }
-
-  it('renders static decks into one png per slide', async () => {
-    const renderer = await startRenderer()
-    const result = await renderer.render({ html: plainCssDeck })
-
-    expect(result.ok).toBe(true)
-    if (!result.ok) {
-      return
-    }
-
-    expect(result.slideCount).toBe(3)
-    expect(result.slides).toHaveLength(3)
-    for (const slide of result.slides) {
-      expect(slide.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-    }
-  }, 60_000)
-
-  it('closes page targets after each render (no tab leak)', async () => {
-    const chromiumPool = createChromiumPool({ enabled: true })
-    const renderer = await startRenderer({ chromiumPool })
-
-    const first = await renderer.render({ html: plainCssDeck })
-    expect(first.ok).toBe(true)
-    const second = await renderer.render({ html: plainCssDeck })
-    expect(second.ok).toBe(true)
-
-    const browser = await chromiumPool.ensureBrowser()
-
-    // Target disposal via /json/close is asynchronous; poll until the render
-    // tabs are gone. Only the initial about:blank startup tab should remain.
-    await vi.waitFor(async () => {
-      const targets = await listPageTargets(browser.debugPort)
-      const pageTargets = targets.filter((target) => target.type === 'page')
-
-      expect(pageTargets.length).toBeLessThanOrEqual(1)
-      for (const target of pageTargets) {
-        expect(target.url).not.toContain('/api/thumbnail-render/')
+    afterEach(async () => {
+      if (serviceClose) {
+        await serviceClose()
+        serviceClose = null
       }
+
+      if (server) {
+        await new Promise<void>((resolve, reject) => {
+          server?.close((error) => (error ? reject(error) : resolve()))
+        })
+        server = null
+      }
+
+      await Promise.all([
+        dataDir ? rm(dataDir, { recursive: true, force: true }) : undefined,
+        cacheDir ? rm(cacheDir, { recursive: true, force: true }) : undefined,
+      ])
+      dataDir = ''
+      cacheDir = ''
     })
-  }, 120_000)
 
-  it('renders approved reveal decks', async () => {
-    const renderer = await startRenderer()
-    const result = await renderer.render({ html: revealRegistryDeck })
+    async function startRenderer(options: { chromiumPool?: ChromiumPool } = {}) {
+      dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-live-decks-'))
+      cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-live-cache-'))
+      const deckStore = createDeckStore(dataDir)
+      const previewSessionStore = createPreviewSessionStore()
+      const app = createApp({
+        deckStore,
+        previewSessionStore,
+        thumbnailService: createThumbnailService({
+          cache: createThumbnailCache(cacheDir),
+          deckStore,
+          renderer: {
+            isAvailable: () => false,
+            render: async () => ({ ok: false, error: 'unused', durationMs: 0 }),
+            close: async () => undefined,
+          },
+        }),
+      })
 
-    expect(result.ok).toBe(true)
-    if (!result.ok) {
-      return
+      server = createServer(app)
+      await new Promise<void>((resolve, reject) => {
+        server?.once('error', reject)
+        server?.listen(0, '127.0.0.1', () => resolve())
+      })
+
+      const address = server.address() as AddressInfo
+      const apiOrigin = `http://127.0.0.1:${address.port}`
+      // createApp generates a process-local render secret; read it back so the
+      // live Chromium page can authenticate against /api/thumbnail-render/*.
+      const renderSecret = (app.locals.thumbnailRenderSecret as string | undefined) ?? ''
+      const renderer = createThumbnailRenderer({
+        previewSessionStore,
+        apiOrigin,
+        enabled: true,
+        chromiumPool: options.chromiumPool,
+        renderSecret,
+      })
+      serviceClose = () => renderer.close()
+      return renderer
     }
 
-    expect(result.slideCount).toBeGreaterThan(0)
-    expect(result.slides).toHaveLength(result.slideCount)
-  }, 60_000)
+    it('renders static decks into one png per slide', async () => {
+      const renderer = await startRenderer()
+      const result = await renderer.render({ html: plainCssDeck })
 
-  it('fails safely on empty or slide-less decks', async () => {
-    const renderer = await startRenderer()
-    const empty = await renderer.render({ html: '<html><body></body></html>' })
-    expect(empty.ok).toBe(false)
+      expect(result.ok).toBe(true)
+      if (!result.ok) {
+        return
+      }
 
-    // Malformed fixture still recovers slides; ensure the renderer stays stable.
-    const recovered = await renderer.render({ html: malformedDeck })
-    expect(typeof recovered.ok).toBe('boolean')
-  }, 60_000)
+      expect(result.slideCount).toBe(3)
+      expect(result.slides).toHaveLength(3)
+      for (const slide of result.slides) {
+        expect(slide.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      }
+    }, 60_000)
 
-  it('contains hostile external fetch / popup / form / navigation / object attempts', async () => {
-    const renderer = await startRenderer()
-    const fixtures = [
-      hostileExternalFetchDeck,
-      hostilePopupsDeck,
-      hostileFormsDeck,
-      hostileNavigationDeck,
-      hostileObjectEmbedDeck,
-    ]
+    it('closes page targets after each render (no tab leak)', async () => {
+      const chromiumPool = createChromiumPool({ enabled: true })
+      const renderer = await startRenderer({ chromiumPool })
 
-    for (const html of fixtures) {
-      const result = await renderer.render({ html })
-      // Either a clean render with no external network, or a failed render —
-      // never an uncaught crash / process exit.
-      expect(typeof result.ok).toBe('boolean')
-      expect(typeof result.durationMs).toBe('number')
-    }
-  }, 120_000)
-})
+      const first = await renderer.render({ html: plainCssDeck })
+      expect(first.ok).toBe(true)
+      const second = await renderer.render({ html: plainCssDeck })
+      expect(second.ok).toBe(true)
+
+      const browser = await chromiumPool.ensureBrowser()
+
+      // Target disposal via /json/close is asynchronous; poll until the render
+      // tabs are gone. Only the initial about:blank startup tab should remain.
+      await vi.waitFor(async () => {
+        const targets = await listPageTargets(browser.debugPort)
+        const pageTargets = targets.filter((target) => target.type === 'page')
+
+        expect(pageTargets.length).toBeLessThanOrEqual(1)
+        for (const target of pageTargets) {
+          expect(target.url).not.toContain('/api/thumbnail-render/')
+        }
+      })
+    }, 120_000)
+
+    it('renders approved reveal decks', async () => {
+      const renderer = await startRenderer()
+      const result = await renderer.render({ html: revealRegistryDeck })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) {
+        return
+      }
+
+      expect(result.slideCount).toBeGreaterThan(0)
+      expect(result.slides).toHaveLength(result.slideCount)
+    }, 60_000)
+
+    it('fails safely on empty or slide-less decks', async () => {
+      const renderer = await startRenderer()
+      const empty = await renderer.render({ html: '<html><body></body></html>' })
+      expect(empty.ok).toBe(false)
+
+      // Malformed fixture still recovers slides; ensure the renderer stays stable.
+      const recovered = await renderer.render({ html: malformedDeck })
+      expect(typeof recovered.ok).toBe('boolean')
+    }, 60_000)
+
+    it('contains hostile external fetch / popup / form / navigation / object attempts', async () => {
+      const renderer = await startRenderer()
+      const fixtures = [
+        hostileExternalFetchDeck,
+        hostilePopupsDeck,
+        hostileFormsDeck,
+        hostileNavigationDeck,
+        hostileObjectEmbedDeck,
+      ]
+
+      for (const html of fixtures) {
+        const result = await renderer.render({ html })
+        // Either a clean render with no external network, or a failed render —
+        // never an uncaught crash / process exit.
+        expect(typeof result.ok).toBe('boolean')
+        expect(typeof result.durationMs).toBe('number')
+      }
+    }, 120_000)
+  },
+)
 
 describe('thumbnail renderer availability', () => {
   it('reports unavailable under vitest by default', () => {
     expect(process.env.VITEST).toBeTruthy()
     expect(isThumbnailRendererAvailable()).toBe(false)
+  })
+
+  it('requires an explicit opt-in flag for live chromium coverage', () => {
+    const requested =
+      process.env.ARK_LIVE_CHROMIUM_TESTS === '1' ||
+      process.env.ARK_LIVE_CHROMIUM_TESTS === 'true' ||
+      process.env.ARK_LIVE_CHROMIUM_TESTS === 'on'
+    expect(liveChromiumTestsEnabled).toBe(requested)
   })
 })

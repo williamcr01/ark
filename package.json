@@ -19,6 +19,7 @@
     "audit": "pnpm audit --audit-level=high",
     "preview": "pnpm --filter @ark/web preview",
     "test": "pnpm -r --workspace-concurrency=1 test",
+    "test:live-chromium": "pnpm --filter @ark/api test:live-chromium",
     "lockfile:check": "pnpm install --frozen-lockfile",
     "smoke:plain-css": "tsx scripts/smoke-plain-css.ts",
     "smoke:reveal-runtime": "tsx scripts/smoke-reveal-runtime.ts",

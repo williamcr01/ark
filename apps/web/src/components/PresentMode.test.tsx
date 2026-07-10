@@ -2,7 +2,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDeckHandshakeMessage } from '@ark/deck-core/deck-bridge.ts'
+import {
+  createDeckHandshakeMessage,
+  createDeckMetadata,
+  createDeckReadyMessage,
+} from '@ark/deck-core/deck-bridge.ts'
+import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
@@ -128,6 +133,63 @@ describe('PresentMode', () => {
         '*',
       )
     })
+  })
+
+  it('re-posts the initial slide when a remounted iframe reports ready at slide 0', async () => {
+    render(
+      <PresentMode
+        html={plainCssDeck}
+        initialSlideIndex={1}
+        onExit={vi.fn()}
+        runtimeMode="static"
+        slideCount={3}
+      />,
+    )
+
+    const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
+    const iframeWindow = iframe.contentWindow!
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: createDeckHandshakeMessage('present-handshake'),
+        origin: window.location.origin,
+      }),
+    )
+    // Bootstrap document → expected preview document.
+    fireEvent.load(iframe)
+    fireEvent.load(iframe)
+
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 1, type: 'ark:deck-goto' }),
+        '*',
+      )
+    })
+
+    postMessage.mockClear()
+
+    const metadata = createDeckMetadata({
+      runtime: 'plain',
+      title: 'Plain CSS Deck',
+      previewMode: 'css-only',
+    })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: createDeckReadyMessage(0, 3, metadata),
+        origin: window.location.origin,
+        source: iframeWindow,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 1, type: 'ark:deck-goto' }),
+        DECK_BRIDGE_POST_MESSAGE_TARGET,
+      )
+    })
+    expect(screen.getByText('2 / 3')).toBeInTheDocument()
   })
 
   it('exits on Escape with the initial slide when no navigation occurred', async () => {

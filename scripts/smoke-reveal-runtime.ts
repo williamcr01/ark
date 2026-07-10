@@ -22,6 +22,7 @@ import {
   startServers,
   stopChromium,
   stopServers,
+  waitForPresentSlide,
   writeBrowserSmokeArtifacts,
   waitFor,
   type RuntimeContext,
@@ -57,6 +58,7 @@ async function runSmoke() {
   let cdp: Awaited<ReturnType<typeof createPage>> | null = null
   let servers: Awaited<ReturnType<typeof startServers>> | null = null
   let mainPreviewSrc: string | null = null
+  let presentPreviewSrc: string | null = null
 
   try {
     servers = await startServers({ apiPort, sandboxPort, webPort, tempRoot })
@@ -198,18 +200,70 @@ async function runSmoke() {
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
-    await waitFor('approved Source Sans Pro font load', () =>
-      evaluate<boolean>(
-        cdp!,
-        `document.fonts
-          ? document.fonts.load('16px "Source Sans Pro"', 'Ark smoke').then((faces) =>
-              faces.some(
-                (face) => face.family.includes('Source Sans Pro') && face.status === 'loaded',
-              ),
+    await waitFor(
+      'approved Source Sans Pro font load',
+      async () => {
+        const readiness = await evaluate<{
+          fontsApi: boolean
+          fontsReady: boolean
+          faceLoaded: boolean
+          faceCheck: boolean
+          hasFontCss: boolean
+          hasWoffResource: boolean
+          resourceSample: string[]
+        }>(
+          cdp!,
+          `(() => {
+            const resources = performance.getEntriesByType('resource').map((entry) => entry.name)
+            const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+            const hasFontCss =
+              styles.some((href) => href.includes('/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css')) ||
+              resources.some((url) => url.includes('/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css'))
+            const hasWoffResource = resources.some((url) =>
+              url.includes('/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/') &&
+              (url.endsWith('.woff') || url.endsWith('.woff2')),
             )
-          : false`,
-        { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
-      ),
+
+            if (!document.fonts) {
+              return {
+                fontsApi: false,
+                fontsReady: false,
+                faceLoaded: false,
+                faceCheck: false,
+                hasFontCss,
+                hasWoffResource,
+                resourceSample: resources.filter((url) => url.includes('source-sans-pro')).slice(0, 8),
+              }
+            }
+
+            return document.fonts.ready.then(() =>
+              document.fonts.load('16px "Source Sans Pro"', 'Ark smoke').then((faces) => ({
+                fontsApi: true,
+                fontsReady: true,
+                faceLoaded: faces.some(
+                  (face) => face.family.includes('Source Sans Pro') && face.status === 'loaded',
+                ),
+                faceCheck: document.fonts.check('16px "Source Sans Pro"'),
+                hasFontCss,
+                hasWoffResource,
+                resourceSample: resources.filter((url) => url.includes('source-sans-pro')).slice(0, 8),
+              })),
+            )
+          })()`,
+          { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
+        )
+
+        if (
+          readiness.hasFontCss &&
+          readiness.hasWoffResource &&
+          (readiness.faceLoaded || readiness.faceCheck)
+        ) {
+          return true
+        }
+
+        throw new Error(`Font readiness snapshot: ${JSON.stringify(readiness, null, 2)}`)
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
     assert(
@@ -307,56 +361,16 @@ async function runSmoke() {
       `Boolean(document.querySelector('button[aria-label="Present fullscreen"]')?.click())`,
     )
 
-    const presentFrameSrc = await waitFor('Present mode frame', async () => {
-      const src = await evaluate<string>(
-        cdp!,
-        `document.querySelector('[role="dialog"] iframe')?.src || ''`,
-      )
-
-      return src.includes(`${servers!.sandboxOrigin}/render/`) ? src : ''
-    })
-
-    const presentPreview = await waitFor('Present mode sandbox frame context', () =>
-      findContextByUrl(cdp!, contexts, presentFrameSrc),
-    )
-
-    await waitFor('Present mode preserves current Reveal slide', async () => {
-      const snapshot = await evaluate<{
-        presentText: string
-        hasReveal: boolean
-        hasWindowReveal: boolean
-      }>(
-        cdp!,
-        `(() => {
-          const present = document.querySelector('.reveal .slides section.present');
-          return {
-            presentText: (present?.textContent || '').trim(),
-            hasReveal: Boolean(document.querySelector('.reveal')),
-            hasWindowReveal: typeof window.Reveal !== 'undefined',
-          };
-        })()`,
-        { contextId: presentPreview.id, sessionId: presentPreview.sessionId },
-      )
-
-      const isOnSecondSlide = Boolean(
-        snapshot.hasReveal &&
-        snapshot.hasWindowReveal &&
-        snapshot.presentText.includes('Registry-served libraries only'),
-      )
-
-      if (!isOnSecondSlide) {
-        const dialogText = await evaluate<string>(
-          cdp!,
-          `document.querySelector('[role="dialog"]')?.innerText || ''`,
-        )
-
-        throw new Error(
-          `Present frame snapshot: ${JSON.stringify({ ...snapshot, dialogText }, null, 2)}`,
-        )
-      }
-
-      return true
-    })
+    ;({ presentPreviewSrc } = await waitForPresentSlide({
+      cdp,
+      contexts,
+      sandboxOrigin: servers.sandboxOrigin,
+      expectedSlideText: 'Registry-served libraries only',
+      expectedShellCounter: '2 / 2',
+      activeSlideSelector: '.reveal .slides section.present',
+      runtimeMarkerSelector: 'script[data-ark-preview-reveal], .reveal',
+      timeoutMs: SMOKE_SLOW_TIMEOUT_MS,
+    }))
 
     const requestedExternalUrls = collectExternalRequestUrls(requestUrls, [
       servers.appOrigin,
@@ -377,6 +391,7 @@ async function runSmoke() {
       cdp,
       appOrigin: servers?.appOrigin ?? null,
       mainPreviewSrc,
+      presentPreviewSrc,
       error,
     })
     throw error
