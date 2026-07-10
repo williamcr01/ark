@@ -47,6 +47,15 @@ export type ThumbnailRenderFailure = {
 
 export type ThumbnailRenderResult = ThumbnailRenderSuccess | ThumbnailRenderFailure
 
+export type ThumbnailRendererLimits = {
+  maxSlides?: number
+  maxPngBytes?: number
+  deckTimeoutMs?: number
+  readyTimeoutMs?: number
+  slideTimeoutMs?: number
+  settleMs?: number
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -103,7 +112,7 @@ async function waitForDeckReady(cdp: CdpClient, timeoutMs: number) {
   throw new Error('Timed out waiting for deck ready during thumbnail render.')
 }
 
-async function gotoSlide(cdp: CdpClient, index: number) {
+async function gotoSlide(cdp: CdpClient, index: number, slideTimeoutMs: number, settleMs: number) {
   const sent = await evaluate<boolean>(
     cdp,
     `typeof window.__arkThumbGoto === 'function' ? window.__arkThumbGoto(${index}) : false`,
@@ -115,11 +124,11 @@ async function gotoSlide(cdp: CdpClient, index: number) {
 
   const startedAt = Date.now()
 
-  while (Date.now() - startedAt < THUMBNAIL_SLIDE_TIMEOUT_MS) {
+  while (Date.now() - startedAt < slideTimeoutMs) {
     const current = await evaluate<number>(cdp, `Number(window.__arkThumbIndex || 0)`)
 
     if (current === index) {
-      await sleep(THUMBNAIL_SETTLE_MS)
+      await sleep(settleMs)
       return
     }
 
@@ -129,7 +138,7 @@ async function gotoSlide(cdp: CdpClient, index: number) {
   throw new Error(`Timed out waiting for slide ${index} during thumbnail render.`)
 }
 
-async function captureSlidePng(cdp: CdpClient) {
+async function captureSlidePng(cdp: CdpClient, maxPngBytes: number) {
   const result = await cdp.send<{ data: string }>('Page.captureScreenshot', {
     format: 'png',
     fromSurface: true,
@@ -142,16 +151,20 @@ async function captureSlidePng(cdp: CdpClient) {
     throw new Error('Thumbnail screenshot was empty.')
   }
 
-  if (png.byteLength > THUMBNAIL_MAX_PNG_BYTES) {
+  if (png.byteLength > maxPngBytes) {
     throw new Error(
-      `Thumbnail screenshot exceeded size limit (${png.byteLength} > ${THUMBNAIL_MAX_PNG_BYTES}).`,
+      `Thumbnail screenshot exceeded size limit (${png.byteLength} > ${maxPngBytes}).`,
     )
   }
 
   return png
 }
 
-function collectExternalNetworkRequests(requests: Array<{ url: string }>, apiOrigin: string) {
+/** Exported for unit tests of the post-hoc network allowlist. */
+export function collectExternalNetworkRequests(
+  requests: Array<{ url: string }>,
+  apiOrigin: string,
+) {
   const allowedOrigin = apiOrigin.replace(/\/+$/, '')
 
   return requests.filter((request) => {
@@ -187,12 +200,20 @@ export function createThumbnailRenderer(options: {
   enabled?: boolean
   /** Process-local secret required by /api/thumbnail-render/* (blocks Vite-proxy bypass). */
   renderSecret: string
+  /** Internal test seam; production uses the configured defaults. */
+  limits?: ThumbnailRendererLimits
 }): ThumbnailRenderer {
   const logger = options.logger ?? createLogger({ service: 'ark-api' })
   const enabled = options.enabled ?? isThumbnailRendererAvailable()
   const chromiumPool = options.chromiumPool ?? createChromiumPool({ enabled })
   const apiOrigin = options.apiOrigin ?? resolveApiOrigin()
   const { renderSecret } = options
+  const maxSlides = options.limits?.maxSlides ?? THUMBNAIL_MAX_SLIDES
+  const maxPngBytes = options.limits?.maxPngBytes ?? THUMBNAIL_MAX_PNG_BYTES
+  const deckTimeoutMs = options.limits?.deckTimeoutMs ?? THUMBNAIL_DECK_TIMEOUT_MS
+  const readyTimeoutMs = options.limits?.readyTimeoutMs ?? THUMBNAIL_READY_TIMEOUT_MS
+  const slideTimeoutMs = options.limits?.slideTimeoutMs ?? THUMBNAIL_SLIDE_TIMEOUT_MS
+  const settleMs = options.limits?.settleMs ?? THUMBNAIL_SETTLE_MS
 
   return {
     isAvailable: () => enabled && chromiumPool.isAvailable(),
@@ -221,10 +242,10 @@ export function createThumbnailRenderer(options: {
         }
       }
 
-      if (slideCount > THUMBNAIL_MAX_SLIDES) {
+      if (slideCount > maxSlides) {
         return {
           ok: false,
-          error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${THUMBNAIL_MAX_SLIDES}.`,
+          error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${maxSlides}.`,
           durationMs: Date.now() - startedAt,
         }
       }
@@ -269,16 +290,20 @@ export function createThumbnailRenderer(options: {
             })
 
             await cdp.send('Page.navigate', { url: renderUrl })
-            await cdp.waitForEvent('Page.loadEventFired', () => true, THUMBNAIL_READY_TIMEOUT_MS)
-            await waitForDeckReady(cdp, THUMBNAIL_READY_TIMEOUT_MS)
+            await cdp.waitForEvent('Page.loadEventFired', () => true, readyTimeoutMs)
+            await waitForDeckReady(cdp, readyTimeoutMs)
 
             const slides: Buffer[] = []
 
             for (let index = 0; index < slideCount; index += 1) {
-              await withTimeout(gotoSlide(cdp, index), THUMBNAIL_SLIDE_TIMEOUT_MS, `slide ${index}`)
+              await withTimeout(
+                gotoSlide(cdp, index, slideTimeoutMs, settleMs),
+                slideTimeoutMs,
+                `slide ${index}`,
+              )
               const png = await withTimeout(
-                captureSlidePng(cdp),
-                THUMBNAIL_SLIDE_TIMEOUT_MS,
+                captureSlidePng(cdp, maxPngBytes),
+                slideTimeoutMs,
                 `screenshot ${index}`,
               )
               slides.push(png)
@@ -306,7 +331,7 @@ export function createThumbnailRenderer(options: {
               durationMs: Date.now() - startedAt,
             }
           })(),
-          THUMBNAIL_DECK_TIMEOUT_MS,
+          deckTimeoutMs,
           'deck thumbnail render',
         )
 

@@ -135,7 +135,12 @@ Preview processing lives in `packages/deck-core/deck-preview-html.ts` and `apps/
 
 For approved reveal decks, preview **absolutizes** `/api/runtimes/...` URLs to the app origin (e.g. `http://localhost:5173/api/runtimes/...`) so the sandbox iframe can fetch assets from the API while the deck document stays on the sandbox origin. Deck source on disk still uses root-relative `/api/runtimes/...` paths.
 
-Thumbnails always strip scripts (`sandbox=""`). Approved reveal CSS is inlined into thumbnail `srcDoc` when available. See [reveal-runtime.md](./reveal-runtime.md) for thumbnail limitations.
+Thumbnails prefer sandbox-rendered PNGs from `GET /api/decks/:id/thumbnails`
+(see [thumbnails.md](./thumbnails.md)). When the renderer is disabled, pending,
+or failed, the strip falls back to script-stripped `srcDoc` iframes
+(`sandbox=""`). Approved reveal CSS is inlined into that fallback `srcDoc` when
+available. See [reveal-runtime.md](./reveal-runtime.md) for thumbnail
+limitations.
 
 Main preview and Present mode load processed HTML from the sandbox host (default `http://localhost:5174`) via short-lived render tokens. Set `VITE_ARK_PREVIEW_SRCDOC=true` to use legacy inline `srcDoc` preview.
 
@@ -143,8 +148,8 @@ Main preview and Present mode load processed HTML from the sandbox host (default
 
 - **No external URLs** in deck HTML for scripts, stylesheets, fonts, or images (`external_url` validation error).
 - **Sandboxed preview**: `sandbox="allow-scripts"` without `allow-same-origin`.
-- **Strict CSP** injected into preview and thumbnails: `connect-src 'none'`, no external `default-src`.
-- **Thumbnails**: scriptless (`sandbox=""`); inline handlers stripped.
+- **Strict CSP** injected into preview and thumbnail fallbacks: `connect-src 'none'`, no external `default-src`.
+- **Thumbnail fallback**: scriptless (`sandbox=""`); inline handlers stripped. Preferred path is server-rendered PNGs ([thumbnails.md](./thumbnails.md)).
 - **Approved runtime scripts** load only from `/api/runtimes/...`; the registry is the allowlist.
 - **User deck scripts** run only with explicit full-JS markers; reveal runtime decks do not allow additional deck scripts (`allowsDeckScripts: false` in manifest).
 
@@ -170,8 +175,8 @@ Minimum checklist for contributors:
 4. **Validation tests** — Cover marker checks, required assets, version mismatch, and CDN rejection (`packages/deck-core/deck-validate.test.ts`, `packages/runtime-registry/deck-runtime-registry.test.ts`).
 5. **Server route tests** — List and serve assets (`apps/api/deck-runtimes.test.ts`).
 6. **Preview tests** — Asset preservation, CSP, adapter injection (`apps/sandbox/render-preview-html.test.ts`, `apps/web/src/lib/deck-preview.test.ts`).
-7. **Thumbnail tests** — CSS inlining and slide selection if the runtime affects sidebar previews (`apps/web/src/lib/deck-slides.test.ts`).
-8. **Smoke test** — Add or extend `scripts/smoke-reveal-runtime.ts` pattern for end-to-end preview if the runtime runs scripts.
+7. **Thumbnail tests** — server renderer coverage under `apps/api/thumbnails/*.test.ts`, plus CSS inlining / slide selection for the `srcDoc` fallback (`apps/web/src/lib/deck-slides.test.ts`).
+8. **Smoke test** — Add or extend `scripts/smoke-reveal-runtime.ts` / `scripts/smoke-thumbnails.ts` for end-to-end preview and rendered thumbnails when the runtime runs scripts.
 9. **Agent prompt** — Registry section updates automatically from manifest; add runtime-specific guidance if needed.
 10. **Documentation** — Add or update a runtime guide under `docs/` and link from this file.
 
@@ -182,7 +187,8 @@ Staged reveal.js support:
 - [#88](https://github.com/williamcr01/ark/issues/88) — Runtime registry foundation
 - [#93](https://github.com/williamcr01/ark/issues/93) — Approved runtime asset rendering in preview
 - [#94](https://github.com/williamcr01/ark/issues/94) — First-class reveal.js navigation
-- [#95](https://github.com/williamcr01/ark/issues/95) — Reveal.js thumbnail rendering
+- [#95](https://github.com/williamcr01/ark/issues/95) — Reveal.js thumbnail rendering (srcDoc CSS fidelity; superseded for runtime accuracy by [#33](https://github.com/williamcr01/ark/issues/33) / [thumbnails.md](./thumbnails.md))
+- [#33](https://github.com/williamcr01/ark/issues/33) — Sandbox-backed thumbnail renderer
 
 Implementation references:
 

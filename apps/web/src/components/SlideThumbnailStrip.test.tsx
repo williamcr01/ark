@@ -73,6 +73,27 @@ describe('SlideThumbnailStrip', () => {
     expect(onSelect).toHaveBeenCalledWith(0)
   })
 
+  it('keeps srcDoc iframes while rendered thumbnail urls are still pending', () => {
+    const parsedDeck = parseDeckSlides(plainCssDeck)
+    render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={parsedDeck}
+        thumbnailUrls={null}
+      />,
+    )
+
+    const iframes = screen.getAllByTitle(/Slide \d+ thumbnail/)
+    expect(iframes).toHaveLength(3)
+    iframes.forEach((iframe) => {
+      expect(iframe.tagName).toBe('IFRAME')
+      expect(iframe).toHaveAttribute('sandbox', '')
+    })
+  })
+
   it('falls back to srcDoc iframes when a rendered image fails to load', async () => {
     const parsedDeck = parseDeckSlides(plainCssDeck)
     render(

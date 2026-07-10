@@ -334,4 +334,82 @@ describe('thumbnail service', () => {
     expect(status.status).toBe(THUMBNAIL_STATUS.disabled)
     expect(status.slides).toEqual([])
   })
+
+  it('keeps distinct manifest hashes in separate cache entries and skips re-render when ready', async () => {
+    let renderCount = 0
+    const { service } = await setup(async () => {
+      renderCount += 1
+      return {
+        ok: true,
+        slides: [Buffer.from('one'), Buffer.from('two')],
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 5,
+      }
+    })
+
+    const deckId = 'b0000000-0000-4000-8000-000000000001'
+    const versionId = 'a0000000-0000-4000-8000-000000000001'
+    const firstHash = 'abcdef0100000000000000000000000000000000000000000000000000000000'
+    const secondHash = 'abcdef01ffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+
+    await service.enqueue({ deckId, versionId, html: sampleHtml, manifestHash: firstHash })
+    await vi.waitFor(async () => {
+      const ready = await service.getStatus({ deckId, versionId, manifestHash: firstHash })
+      expect(ready.status).toBe(THUMBNAIL_STATUS.ready)
+    })
+    expect(renderCount).toBe(1)
+
+    const stillReady = await service.getStatus({
+      deckId,
+      versionId,
+      manifestHash: firstHash,
+      enqueueIfMissing: true,
+      html: sampleHtml,
+    })
+    expect(stillReady.status).toBe(THUMBNAIL_STATUS.ready)
+    expect(renderCount).toBe(1)
+
+    await service.enqueue({ deckId, versionId, html: sampleHtml, manifestHash: secondHash })
+    await vi.waitFor(async () => {
+      const ready = await service.getStatus({ deckId, versionId, manifestHash: secondHash })
+      expect(ready.status).toBe(THUMBNAIL_STATUS.ready)
+      expect(ready.slides[0]?.url).toContain('hash=')
+      expect(ready.slides[0]?.url).not.toBe(stillReady.slides[0]?.url)
+    })
+    expect(renderCount).toBe(2)
+  })
+
+  it('warms thumbnails for a persisted deck version', async () => {
+    let renderCount = 0
+    const { service, deckStore } = await setup(async () => {
+      renderCount += 1
+      return {
+        ok: true,
+        slides: [Buffer.from('one'), Buffer.from('two')],
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 5,
+      }
+    })
+
+    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const versionId = created.activeVersionId!
+    await service.enqueueForDeckVersion(created.id, versionId)
+
+    await vi.waitFor(async () => {
+      const version = await deckStore.getVersion(created.id, versionId)
+      const manifestHash = version?.provenance?.runtimeManifestHash ?? 'none'
+      const status = await service.getStatus({
+        deckId: created.id,
+        versionId,
+        manifestHash,
+      })
+      expect(status.status).toBe(THUMBNAIL_STATUS.ready)
+      expect(status.slides).toHaveLength(2)
+    })
+    expect(renderCount).toBe(1)
+  })
 })
