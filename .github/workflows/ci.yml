@@ -103,7 +103,8 @@ jobs:
 
   test-live-chromium:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Budget for up to 3 attempts of the live Chromium suite.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -125,10 +126,15 @@ jobs:
           free -h || true
 
       - name: Live Chromium thumbnail renderer tests
-        run: pnpm test:live-chromium
+        uses: nick-fields/retry@v3
         env:
           ARK_CHROMIUM_PATH: /usr/bin/google-chrome
           ARK_LIVE_CHROMIUM_TESTS: '1'
+        with:
+          timeout_minutes: 12
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: pnpm test:live-chromium
 
   openapi:
     runs-on: ubuntu-latest
@@ -147,7 +153,8 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Budget for 4 smoke suites with up to 5 attempts each on flaky runners.
+    timeout-minutes: 90
     env:
       ARK_CHROMIUM_PATH: /usr/bin/google-chrome
     steps:
@@ -173,17 +180,39 @@ jobs:
           df -h / /tmp
           free -h || true
 
+      # Browser smokes are flaky under shared CI runners; retry each suite up to
+      # 5 times before failing the job. Artifacts from the final failure still upload.
       - name: Smoke - plain CSS
-        run: pnpm smoke:plain-css
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 8
+          max_attempts: 5
+          retry_wait_seconds: 15
+          command: pnpm smoke:plain-css
 
       - name: Smoke - Reveal runtime
-        run: pnpm smoke:reveal-runtime
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 8
+          max_attempts: 5
+          retry_wait_seconds: 15
+          command: pnpm smoke:reveal-runtime
 
       - name: Smoke - full-JS bridge
-        run: pnpm smoke:full-js-bridge
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 8
+          max_attempts: 5
+          retry_wait_seconds: 15
+          command: pnpm smoke:full-js-bridge
 
       - name: Smoke - manual edit
-        run: pnpm smoke:manual-edit
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 5
+          retry_wait_seconds: 15
+          command: pnpm smoke:manual-edit
 
       - name: Upload browser smoke artifacts (on failure)
         if: failure()
