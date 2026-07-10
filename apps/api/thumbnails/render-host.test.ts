@@ -173,6 +173,32 @@ describe('thumbnail render routes over loopback', () => {
     })
     expect(deckResponse.status).toBe(200)
     expect(deckResponse.headers.get('content-security-policy')).toContain("connect-src 'none'")
+    expect(deckResponse.headers.get('content-security-policy')).toContain("form-action 'none'")
+    expect(deckResponse.headers.get('content-security-policy')).toContain("object-src 'none'")
+    expect(deckResponse.headers.get('cross-origin-opener-policy')).toBe('same-origin')
+
+    const hostHtml = await (
+      await fetch(`${baseUrl}/api/thumbnail-render/${session.token}/host`, {
+        headers: authHeaders,
+      })
+    ).text()
+    expect(hostHtml).toContain('sandbox="allow-scripts"')
+    expect(hostHtml).not.toContain('allow-popups')
+    expect(hostHtml).not.toContain('allow-top-navigation')
+    expect(hostResponse.headers.get('content-security-policy')).toContain("connect-src 'none'")
+    expect(hostResponse.headers.get('content-security-policy')).toContain("form-action 'none'")
+    expect(hostResponse.headers.get('content-security-policy')).toContain("object-src 'none'")
+
+    const fullJsSession = previewSessionStore.createSession(
+      `<!DOCTYPE html><html lang="en" data-ark-preview="full-js"><body><section class="slide"><h1>JS</h1></section><script>fetch('https://evil.example')</script></body></html>`,
+    )
+    const fullJsResponse = await fetch(`${baseUrl}/api/thumbnail-render/${fullJsSession.token}`, {
+      headers: authHeaders,
+    })
+    expect(fullJsResponse.status).toBe(200)
+    expect(fullJsResponse.headers.get('content-security-policy')).toContain("connect-src 'none'")
+    expect(fullJsResponse.headers.get('content-security-policy')).toContain("form-action 'none'")
+    expect(fullJsResponse.headers.get('content-security-policy')).toContain("object-src 'none'")
 
     const missingResponse = await fetch(`${baseUrl}/api/thumbnail-render/does-not-exist`, {
       headers: authHeaders,

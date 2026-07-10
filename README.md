@@ -85,6 +85,9 @@ Optional env vars (see `.env.example`):
 - `ARK_SANDBOX_ORIGIN` / `SANDBOX_PORT` — sandbox host origin (default `http://localhost:5174`)
 - `ARK_APP_ORIGIN` — app shell origin used for parent/deck `postMessage` scoping (default `http://localhost:5173`)
 - `VITE_ARK_PREVIEW_SRCDOC=true` — force legacy inline `srcDoc` preview instead of the sandbox host
+- `ARK_THUMBNAIL_RENDERER=off` — disable sandbox-backed PNG thumbnails (clients keep `srcDoc` fallback)
+- `ARK_CHROMIUM_PATH` — Chromium/Chrome binary for thumbnail rendering and browser smoke
+- `ARK_THUMBNAIL_CACHE_DIR` — thumbnail PNG cache directory (default `data/thumbnails`)
 
 To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then open the app on port `5173` — not the API port directly.
 
@@ -96,7 +99,7 @@ After building the client (`pnpm build`), serve the static app however you prefe
 pnpm start
 ```
 
-This starts the API server and sandbox preview host together. Set `PORT`, `SANDBOX_PORT`, `ARK_APP_ORIGIN`, and `ARK_SANDBOX_ORIGIN` to match your deployed origins before starting.
+This starts the API server and sandbox preview host together. Set `PORT`, `SANDBOX_PORT`, `ARK_APP_ORIGIN`, and `ARK_SANDBOX_ORIGIN` to match your deployed origins before starting. For sandbox-rendered thumbnails, install Chromium/Chrome on the API host (or set `ARK_CHROMIUM_PATH`); without it the shell falls back to script-stripped `srcDoc` thumbnails. See [docs/thumbnails.md](docs/thumbnails.md).
 
 ## Checks
 
@@ -114,7 +117,7 @@ pnpm smoke:browser
 
 Import boundaries between `apps/*` and `packages/*` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
 
-`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. `pnpm smoke:thumbnails` separately exercises sandbox-rendered PNG thumbnails with the renderer enabled. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
 
 Format before pushing substantive changes:
 

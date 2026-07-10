@@ -1,9 +1,14 @@
 import { Router, type Request, type Response } from 'express'
 
-import { deckThumbnailsQuerySchema, parseQueryParams } from '@ark/contracts'
+import {
+  deckThumbnailImageQuerySchema,
+  deckThumbnailsQuerySchema,
+  parseQueryParams,
+} from '@ark/contracts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
+import { buildThumbnailManifestFingerprint } from '../thumbnails/cache.ts'
 import { type ThumbnailService } from '../thumbnails/service.ts'
 
 function resolveManifestHash(version: {
@@ -107,16 +112,18 @@ export function createThumbnailsRouter(deps: {
           return
         }
 
-        const queryHash =
-          typeof request.query.hash === 'string' && request.query.hash.trim()
-            ? request.query.hash.trim()
-            : null
+        const parsedQuery = parseQueryParams(deckThumbnailImageQuerySchema, {
+          hash: typeof request.query.hash === 'string' ? request.query.hash : '',
+        })
         const manifestHash = resolveManifestHash(version)
 
-        // A supplied hash must match the version's short manifest hash exactly
-        // (which is itself 'none' when no manifest hash is recorded). Omitting
-        // the hash is rejected so clients cannot bypass the cache key check.
-        if (!queryHash || queryHash !== manifestHash.slice(0, 8)) {
+        // The full derived fingerprint must match the version manifest.
+        // Missing or malformed values are also a 404 so callers cannot use
+        // image requests to distinguish cache-key validation failures.
+        if (
+          !parsedQuery.ok ||
+          parsedQuery.data.hash !== buildThumbnailManifestFingerprint(manifestHash)
+        ) {
           response.status(404).json({ error: 'Thumbnail not found.' })
           return
         }

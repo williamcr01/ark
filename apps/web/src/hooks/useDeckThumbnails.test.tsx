@@ -84,12 +84,15 @@ describe('useDeckThumbnails', () => {
     })
 
     expect(result.current.status).toBe('pending')
+    expect(result.current.thumbnailUrls).toBeNull()
+    expect(result.current.isLoading).toBe(true)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_300)
     })
 
     expect(result.current.status).toBe('ready')
+    expect(result.current.isLoading).toBe(false)
     expect(result.current.thumbnailUrls).toEqual([
       '/api/decks/d/thumbnails/v/0.png?hash=abc',
       '/api/decks/d/thumbnails/v/1.png?hash=abc',
