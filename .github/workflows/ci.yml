@@ -150,7 +150,6 @@ jobs:
     timeout-minutes: 25
     env:
       ARK_CHROMIUM_PATH: /usr/bin/google-chrome
-      ARK_SMOKE_ARTIFACTS_DIR: ${{ runner.temp }}/ark-smoke-artifacts
     steps:
       - uses: actions/checkout@v4
 
@@ -165,7 +164,9 @@ jobs:
 
       - name: Browser smoke diagnostics
         run: |
-          mkdir -p "$ARK_SMOKE_ARTIFACTS_DIR"
+          # runner.temp is only valid in step contexts, not job-level env.
+          echo "ARK_SMOKE_ARTIFACTS_DIR=${{ runner.temp }}/ark-smoke-artifacts" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/ark-smoke-artifacts"
           node --version
           google-chrome --version || /usr/bin/google-chrome --version
           test -x /usr/bin/google-chrome
