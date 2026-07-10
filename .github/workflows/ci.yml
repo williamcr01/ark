@@ -172,16 +172,16 @@ jobs:
           df -h / /tmp
           free -h || true
 
-      - name: Smoke — plain CSS
+      - name: Smoke - plain CSS
         run: pnpm smoke:plain-css
 
-      - name: Smoke — Reveal runtime
+      - name: Smoke - Reveal runtime
         run: pnpm smoke:reveal-runtime
 
-      - name: Smoke — full-JS bridge
+      - name: Smoke - full-JS bridge
         run: pnpm smoke:full-js-bridge
 
-      - name: Smoke — manual edit
+      - name: Smoke - manual edit
         run: pnpm smoke:manual-edit
 
       - name: Upload browser smoke artifacts (on failure)
