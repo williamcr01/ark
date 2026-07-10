@@ -637,6 +637,8 @@ export async function startServers(options: {
   sandboxPort: number
   webPort: number
   tempRoot: string
+  /** Defaults to off so preview/bridge smoke stays free of the shared Chromium pool. */
+  thumbnailRenderer?: 'on' | 'off'
 }) {
   const appOrigin = `http://127.0.0.1:${options.webPort}`
   const apiOrigin = `http://127.0.0.1:${options.apiPort}`
@@ -650,9 +652,9 @@ export async function startServers(options: {
   process.env.VITE_ARK_APP_ORIGIN = appOrigin
   process.env.VITE_ARK_SANDBOX_ORIGIN = sandboxOrigin
   process.env.VITE_DEV_PORT = String(options.webPort)
-  // Keep browser smoke focused on preview/bridge behavior; thumbnail rendering
-  // has its own Chromium-backed unit tests and would leave a shared browser pool.
-  process.env.ARK_THUMBNAIL_RENDERER = 'off'
+  // Keep default browser smoke focused on preview/bridge behavior; the dedicated
+  // thumbnail smoke opts into the renderer explicitly.
+  process.env.ARK_THUMBNAIL_RENDERER = options.thumbnailRenderer ?? 'off'
 
   const { createPreviewSessionStore } = await import('../../apps/api/preview-sessions.ts')
   const { createDeckStore } = await import('../../apps/api/deck-store.ts')
@@ -699,6 +701,7 @@ export async function startServers(options: {
     vite,
     appOrigin,
     sandboxOrigin,
+    apiApp,
   }
 }
 

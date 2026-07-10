@@ -47,7 +47,7 @@ Pick a generator that supports OpenAPI 3.0 and your target language. Regenerate 
 1. Read path, method, query, and body shapes from the spec.
 2. Send JSON with `Content-Type: application/json` for mutating routes.
 3. Parse JSON responses using the documented status codes and schemas.
-4. For binary routes (`GET /api/decks/{deckId}/assets/{assetId}`, `GET /api/runtimes/{runtimeId}/{version}/{assetPath}`, `GET /api/deck-assets`), read the response body as bytes and honor `Content-Type`.
+4. For binary routes (`GET /api/decks/{deckId}/assets/{assetId}`, `GET /api/decks/{id}/thumbnails/{versionId}/{slideFile}`, `GET /api/runtimes/{runtimeId}/{version}/{assetPath}`, `GET /api/deck-assets`), read the response body as bytes and honor `Content-Type`. Thumbnail PNGs require the `hash` query fingerprint from the status response.
 
 **Generation jobs** are asynchronous: `POST /api/generation-jobs` returns `202` with a job id; poll `GET /api/generation-jobs/{id}` until `status` is terminal (`succeeded`, `failed`, or `canceled`). Optional `assetIds` on the start request require a `deckId`.
 

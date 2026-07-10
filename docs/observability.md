@@ -65,6 +65,18 @@ Emitted when `validateDeckHtmlOnServer` runs with a logger (deck create/update, 
 
 Preview session creation is usually cheap (in-memory token + HTML store). Large `htmlBytes` with high `durationMs` may indicate upstream validation or client payload cost.
 
+## Thumbnails
+
+| Event                        | Level | Key `fields`                            |
+| ---------------------------- | ----- | --------------------------------------- |
+| `thumbnail.status`           | info  | `versionId`, `status`, `slideCount`     |
+| `thumbnail.render.succeeded` | info  | `versionId`, `slideCount`, `durationMs` |
+| `thumbnail.render.failed`    | warn  | `versionId`, `error`, `durationMs`      |
+| `thumbnail.queue.saturated`  | warn  | `versionId`, `queued`                   |
+| `thumbnail.queue.failed`     | warn  | `versionId`, `error`                    |
+
+See [thumbnails.md](./thumbnails.md) for the renderer pipeline and cache identity.
+
 ## Generation jobs
 
 | Event                      | Level | Key `fields`                                                 |

@@ -51,7 +51,12 @@ import {
   getPreviewSessionResponseSchema,
   previewSessionResponseSchema,
 } from './preview.ts'
-import { deckThumbnailsQuerySchema, deckThumbnailsResponseSchema } from './thumbnails.ts'
+import {
+  deckThumbnailImageParamsSchema,
+  deckThumbnailImageQuerySchema,
+  deckThumbnailsQuerySchema,
+  deckThumbnailsResponseSchema,
+} from './thumbnails.ts'
 import {
   deckAssetProxyBlockedResponseSchema,
   deckAssetProxyQuerySchema,
@@ -528,11 +533,8 @@ export function createArkOpenApiRegistry() {
     path: '/api/decks/{id}/thumbnails/{versionId}/{slideFile}',
     summary: 'Serve a cached slide thumbnail PNG',
     request: {
-      params: z.object({
-        id: deckIdSchema,
-        versionId: deckIdSchema,
-        slideFile: z.string().regex(/^\d+\.png$/i, 'Invalid slide image path.'),
-      }),
+      params: deckThumbnailImageParamsSchema,
+      query: deckThumbnailImageQuerySchema,
     },
     responses: {
       200: {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -26,16 +27,28 @@ export type ThumbnailCacheKey = {
   manifestHash: string
 }
 
+function normalizeManifestHash(manifestHash: string) {
+  return manifestHash.trim() || 'none'
+}
+
+/**
+ * A stable, filesystem- and URL-safe identity for the complete runtime
+ * manifest hash. Do not truncate this value: a short prefix can make two
+ * manifests address the same immutable thumbnail cache entry.
+ */
+export function buildThumbnailManifestFingerprint(manifestHash: string) {
+  return createHash('sha256').update(normalizeManifestHash(manifestHash)).digest('hex')
+}
+
 export function buildThumbnailCacheKey(versionId: string, manifestHash: string): ThumbnailCacheKey {
   return {
     versionId,
-    manifestHash: manifestHash || 'none',
+    manifestHash: normalizeManifestHash(manifestHash),
   }
 }
 
 export function thumbnailCacheDirName(key: ThumbnailCacheKey) {
-  const hash8 = key.manifestHash.slice(0, 8) || 'none'
-  return `${key.versionId}-${hash8}`
+  return `${key.versionId}-${buildThumbnailManifestFingerprint(key.manifestHash)}`
 }
 
 export function buildThumbnailSlideUrl(
@@ -44,8 +57,13 @@ export function buildThumbnailSlideUrl(
   slideIndex: number,
   manifestHash: string,
 ) {
-  const params = new URLSearchParams({ hash: manifestHash.slice(0, 8) || 'none' })
+  const params = new URLSearchParams({ hash: buildThumbnailManifestFingerprint(manifestHash) })
   return `/api/decks/${encodeURIComponent(deckId)}/thumbnails/${encodeURIComponent(versionId)}/${slideIndex}.png?${params.toString()}`
+}
+
+export type ThumbnailCacheOptions = {
+  /** Internal test seam; production uses the configured default. */
+  maxEntries?: number
 }
 
 export type ThumbnailCache = {
@@ -78,7 +96,11 @@ function slideFileName(slideIndex: number) {
   return `slide-${slideIndex}.png`
 }
 
-export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCache {
+export function createThumbnailCache(
+  cacheDir = DEFAULT_CACHE_DIR,
+  options: ThumbnailCacheOptions = {},
+): ThumbnailCache {
+  const maxEntries = options.maxEntries ?? THUMBNAIL_CACHE_MAX_ENTRIES
   const resolveDir = (key: ThumbnailCacheKey) => path.join(cacheDir, thumbnailCacheDirName(key))
 
   const readMeta = async (key: ThumbnailCacheKey) => {
@@ -158,7 +180,7 @@ export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCac
     const entries = await readdir(cacheDir, { withFileTypes: true })
     const dirs = entries.filter((entry) => entry.isDirectory())
 
-    if (dirs.length <= THUMBNAIL_CACHE_MAX_ENTRIES) {
+    if (dirs.length <= maxEntries) {
       return
     }
 
@@ -182,7 +204,7 @@ export function createThumbnailCache(cacheDir = DEFAULT_CACHE_DIR): ThumbnailCac
     )
 
     ranked.sort((left, right) => left.mtimeMs - right.mtimeMs)
-    const excess = ranked.length - THUMBNAIL_CACHE_MAX_ENTRIES
+    const excess = ranked.length - maxEntries
 
     await Promise.all(
       ranked.slice(0, excess).map((entry) => rm(entry.dirPath, { recursive: true, force: true })),

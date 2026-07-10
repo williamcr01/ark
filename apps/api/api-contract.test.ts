@@ -22,6 +22,7 @@ import {
   deckChatResponseSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  deckThumbnailsResponseSchema,
   deckValidationErrorResponseSchema,
   deckVersionListResponseSchema,
   generationJobResponseSchema,
@@ -42,6 +43,7 @@ import { createLocalAssetStorage } from './asset-storage.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
+import type { ThumbnailService } from './thumbnails/service.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
 
 const sampleHtml = `<!DOCTYPE html>
@@ -76,6 +78,15 @@ const stubAgentFailure = async (): Promise<RunDeckAgentResult> => ({
   error: 'Stubbed agent failure for contract tests.',
   steps: [],
 })
+
+const disabledThumbnailService: ThumbnailService = {
+  isAvailable: () => false,
+  getStatus: async () => ({ status: 'disabled', slides: [] }),
+  enqueue: async () => ({ status: 'disabled', slides: [] }),
+  readPng: async () => null,
+  enqueueForDeckVersion: async () => undefined,
+  close: async () => undefined,
+}
 
 function unsetDeckAssetAllowlist() {
   const previous = process.env.ARK_DECK_ASSET_ALLOWLIST
@@ -143,6 +154,7 @@ describe('HTTP API contract drift prevention', () => {
       assetStorage,
       generationJobStore: jobStore,
       generationJobRunner,
+      thumbnailService: disabledThumbnailService,
     })
 
     server = app.listen(0)
@@ -238,6 +250,21 @@ describe('HTTP API contract drift prevention', () => {
 
     expect(missingResponse.status).toBe(404)
     assertApiContract(simpleErrorResponseSchema, missingBody)
+  })
+
+  it('matches the disabled thumbnail response contract', async () => {
+    const { baseUrl } = await startContractApi()
+    const deck = await createDeck(baseUrl)
+
+    const response = await fetch(
+      `${baseUrl}/api/decks/${deck.id}/thumbnails?versionId=${deck.activeVersionId}`,
+    )
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    assertApiContract(deckThumbnailsResponseSchema, payload)
+    expect(payload.status).toBe('disabled')
+    expect(payload.slides).toEqual([])
   })
 
   it('matches chat success and validation-error contracts', async () => {
