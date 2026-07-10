@@ -4579,6 +4579,12 @@
             "required": true,
             "name": "slideFile",
             "in": "path"
+          },
+          {
+            "schema": { "type": "string", "pattern": "^[0-9a-f]{64}$/i" },
+            "required": true,
+            "name": "hash",
+            "in": "query"
           }
         ],
         "responses": {

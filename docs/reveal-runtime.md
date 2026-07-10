@@ -143,7 +143,14 @@ Reveal decks **without** approved registry assets fall back to **CSS-only** prev
 
 ## Thumbnails
 
-Sidebar thumbnails are **scriptless** (`sandbox=""`). For approved reveal decks:
+Sidebar thumbnails prefer **sandbox-rendered PNGs** produced by the headless
+Chromium pipeline ([thumbnails.md](./thumbnails.md)). That path loads the same
+preview HTML / reveal adapter as main preview, so approved Reveal decks render
+with runtime layout instead of a static approximation.
+
+When the renderer is disabled, pending, failed, or an image fails to load, the
+strip falls back to scriptless `srcDoc` iframes (`sandbox=""`). For that
+fallback on approved reveal decks:
 
 - Approved runtime CSS (`reveal.css`, linked theme) is **inlined** into each thumbnail `srcDoc`
 - A layout shim (`data-ark-reveal-thumb-shim`) positions the selected slide
@@ -152,7 +159,7 @@ Sidebar thumbnails are **scriptless** (`sandbox=""`). For approved reveal decks:
 - **`@font-face` rules are stripped** from inlined CSS; thumbnails use system font fallbacks
 - Background attributes (e.g. `data-background-color`) are preserved
 
-If runtime CSS cannot be loaded for inlining, thumbnails fall back to linked `/api/runtimes/...` URLs (requires network from thumbnail iframe context).
+If runtime CSS cannot be loaded for inlining, fallback thumbnails use linked `/api/runtimes/...` URLs (requires network from thumbnail iframe context).
 
 ## Feature support matrix
 
@@ -169,7 +176,7 @@ Status as of issues [#93](https://github.com/williamcr01/ark/issues/93), [#94](h
 | Plugins            | **Not supported**       | No reveal plugins in registry; do not reference plugin scripts                                                                                                                         |
 | Main preview       | **Supported**           | Full reveal adapter with approved assets                                                                                                                                               |
 | Present mode       | **Supported**           | Same bridge and adapter as main preview                                                                                                                                                |
-| Sidebar thumbnails | **Partially supported** | Static layout with inlined CSS; no Reveal.js runtime; fragments shown fully visible; fonts approximate                                                                                 |
+| Sidebar thumbnails | **Supported**           | Preferred path: sandbox-rendered PNGs via Chromium ([thumbnails.md](./thumbnails.md)); `srcDoc` fallback remains static CSS with fragments fully visible                               |
 | Export / download  | **Supported**           | **Original** download keeps deck source with `/api/runtimes/...` URLs; **sanitized** download strips non-approved scripts (approved reveal script preserved when using reveal adapter) |
 
 ## Security rules (reveal-specific)
