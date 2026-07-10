@@ -4,7 +4,9 @@ import path from 'node:path'
 import { type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { GenerationJob, GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 
 import { createApp } from './app.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
@@ -15,6 +17,39 @@ import { createDeckStore } from './deck-store.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
+
+const TERMINAL_JOB_STATUSES = [
+  'succeeded',
+  'failed',
+  'canceled',
+] as const satisfies readonly GenerationJobStatus[]
+
+async function waitForTerminalJob(
+  getJob: (id: string) => Promise<GenerationJob | null>,
+  jobId: string,
+  options: {
+    statuses?: readonly GenerationJobStatus[]
+    timeoutMs?: number
+  } = {},
+): Promise<GenerationJob> {
+  const statuses = options.statuses ?? TERMINAL_JOB_STATUSES
+  let latest: GenerationJob | null = null
+
+  await vi.waitFor(
+    async () => {
+      latest = await getJob(jobId)
+      expect(latest).toBeTruthy()
+      expect(statuses).toContain(latest!.status)
+    },
+    {
+      timeout: options.timeoutMs ?? 5_000,
+      interval: 20,
+    },
+  )
+
+  expect(latest).toBeTruthy()
+  return latest as GenerationJob
+}
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -159,13 +194,9 @@ describe('generation job runner', () => {
     await captured
 
     // Let the job settle so temp-dir cleanup does not race with pending writes.
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const latest = await runner.getJob(job.id)
-      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    await waitForTerminalJob((id) => runner.getJob(id), job.id, {
+      statuses: ['failed', 'canceled'],
+    })
 
     expect(capturedSelection).toMatchObject(editorSelection)
 
@@ -202,13 +233,9 @@ describe('generation job runner', () => {
 
     await captured
 
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const latest = await runner.getJob(job.id)
-      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    await waitForTerminalJob((id) => runner.getJob(id), job.id, {
+      statuses: ['failed', 'canceled'],
+    })
 
     expect(capturedInspector).toBeTruthy()
     expect(typeof (capturedInspector as { listVersions?: unknown }).listVersions).toBe('function')
@@ -248,13 +275,7 @@ describe('generation job runner', () => {
       defaultModel: 'openai:gpt-4.1-mini',
     })
 
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const stored = await runner.getJob(job.id)
-      if (stored && ['succeeded', 'failed', 'canceled'].includes(stored.status)) {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    await waitForTerminalJob((id) => runner.getJob(id), job.id)
 
     const versions = await deckStore.listVersions(deck.id)
     const active = versions?.find((version) => version.isActive)
@@ -310,17 +331,10 @@ describe('generation job runner', () => {
       defaultModel: 'openai:gpt-4.1-mini',
     })
 
-    let stored = await runner.getJob(job.id)
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      stored = await runner.getJob(job.id)
-      if (stored && ['succeeded', 'failed', 'canceled'].includes(stored.status)) {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    const stored = await waitForTerminalJob((id) => runner.getJob(id), job.id)
 
-    expect(stored?.status).toBe('succeeded')
-    expect(stored?.result).toMatchObject({
+    expect(stored.status).toBe('succeeded')
+    expect(stored.result).toMatchObject({
       deckId: deck.id,
       versionId: initialVersionId,
       html: sampleHtml,
@@ -409,17 +423,11 @@ describe('generation job runner', () => {
     await captured
 
     // Wait for the job to fully settle so cleanup does not race with writes.
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const latest = await runner.getJob(job.id)
-      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-
-    const stored = await runner.getJob(job.id)
-    expect(stored?.request.messages.at(-1)?.attachments).toBeUndefined()
-    expect(stored?.assetIds).toEqual([asset.id])
+    const stored = await waitForTerminalJob((id) => runner.getJob(id), job.id, {
+      statuses: ['failed', 'canceled'],
+    })
+    expect(stored.request.messages.at(-1)?.attachments).toBeUndefined()
+    expect(stored.assetIds).toEqual([asset.id])
 
     const messages = capturedMessages as Array<{ role: string; attachments?: unknown[] }>
     expect(messages.at(-1)?.attachments).toHaveLength(1)
@@ -515,13 +523,9 @@ describe('generation job runner', () => {
 
     await captured
 
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const latest = await runner.getJob(job.id)
-      if (latest && (latest.status === 'failed' || latest.status === 'canceled')) {
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    await waitForTerminalJob((id) => runner.getJob(id), job.id, {
+      statuses: ['failed', 'canceled'],
+    })
 
     const messages = capturedMessages as Array<{ role: string; attachments?: unknown[] }>
     expect(messages[0]?.attachments?.[0]).toMatchObject({
