@@ -443,8 +443,14 @@ describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
 })
 
 describe('thumbnail renderer availability', () => {
-  it('reports unavailable under vitest by default', () => {
+  it('reports unavailable under vitest unless explicitly forced on', () => {
     expect(process.env.VITEST).toBeTruthy()
+
+    if (process.env.ARK_THUMBNAIL_RENDERER?.trim().toLowerCase() === 'on') {
+      expect(isThumbnailRendererAvailable()).toBe(Boolean(findChromium()))
+      return
+    }
+
     expect(isThumbnailRendererAvailable()).toBe(false)
   })
 })
