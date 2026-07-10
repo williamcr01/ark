@@ -329,33 +329,63 @@ async function moveTextBoxViaPointer(
   elementId: string,
 ) {
   const beforeHtml = (await fetchDeck(apiPort, deckId)).html
-  const { editPreview } = await getCurrentEditPreview(cdp, servers, contexts)
   const boxSelector = `[data-ark-id="${elementId}"]`
-
-  await waitFor('text box present in edit preview', async () =>
-    evaluate<boolean>(cdp!, `Boolean(document.querySelector(${JSON.stringify(boxSelector)}))`, {
-      contextId: editPreview.id,
-      sessionId: editPreview.sessionId,
-    }),
+  // Under CI load a single synthetic drag can miss the editor's move threshold.
+  // Retry with progressively larger deltas against a freshly resolved iframe context.
+  const dragAttempts: Array<Array<{ offsetX: number; offsetY: number }>> = [
+    [
+      { offsetX: 0.35, offsetY: 0.35 },
+      { offsetX: 0.75, offsetY: 0.8 },
+    ],
+    [
+      { offsetX: 0.25, offsetY: 0.25 },
+      { offsetX: 0.85, offsetY: 0.85 },
+    ],
+    [
+      { offsetX: 0.2, offsetY: 0.3 },
+      { offsetX: 0.9, offsetY: 0.7 },
+    ],
+  ]
+  const perAttemptTimeoutMs = Math.max(
+    8_000,
+    Math.floor(SMOKE_SLOW_TIMEOUT_MS / dragAttempts.length),
   )
+  let lastError: unknown
 
-  // Select + drag the managed text box so the iframe posts transform preview/commit.
-  await dispatchPointerSequence(cdp, editPreview, [
-    { type: 'pointerdown', selector: boxSelector, offsetX: 0.4, offsetY: 0.4 },
-    { type: 'pointermove', selector: boxSelector, offsetX: 0.7, offsetY: 0.75 },
-    { type: 'pointerup', selector: boxSelector, offsetX: 0.7, offsetY: 0.75 },
-  ])
+  for (const [start, end] of dragAttempts) {
+    const { editPreview } = await getCurrentEditPreview(cdp, servers, contexts)
+    await waitFor('text box present in edit preview before drag', async () =>
+      evaluate<boolean>(cdp!, `Boolean(document.querySelector(${JSON.stringify(boxSelector)}))`, {
+        contextId: editPreview.id,
+        sessionId: editPreview.sessionId,
+      }),
+    )
 
-  return waitFor(
-    'moved text box persisted to deck HTML',
-    async () => {
-      const deck = await fetchDeck(apiPort, deckId)
-      return deck.html !== beforeHtml && deck.html.includes(`data-ark-id="${elementId}"`)
-        ? deck
-        : null
-    },
-    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-  )
+    await dispatchPointerSequence(cdp, editPreview, [
+      { type: 'pointerdown', selector: boxSelector, ...start },
+      { type: 'pointermove', selector: boxSelector, ...end },
+      { type: 'pointerup', selector: boxSelector, ...end },
+    ])
+
+    try {
+      return await waitFor(
+        'moved text box persisted to deck HTML',
+        async () => {
+          const deck = await fetchDeck(apiPort, deckId)
+          return deck.html !== beforeHtml && deck.html.includes(`data-ark-id="${elementId}"`)
+            ? deck
+            : null
+        },
+        { timeoutMs: perAttemptTimeoutMs },
+      )
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Timed out waiting for moved text box persisted to deck HTML.')
 }
 
 async function deleteTextBoxViaKeyboard(
