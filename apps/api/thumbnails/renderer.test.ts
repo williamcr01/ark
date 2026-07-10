@@ -50,6 +50,10 @@ const hostileSandboxNetworkDeck = readFileSync(
 const hostileIframesDeck = readFileSync(path.join(fixtureDir, 'hostile-iframes-deck.html'), 'utf8')
 const malformedDeck = readFileSync(path.join(fixtureDir, 'malformed-deck.html'), 'utf8')
 
+const liveChromiumTestsEnabled =
+  process.env.ARK_LIVE_CHROMIUM_TESTS === '1' ||
+  process.env.ARK_LIVE_CHROMIUM_TESTS === 'true' ||
+  process.env.ARK_LIVE_CHROMIUM_TESTS === 'on'
 const chromiumAvailable = Boolean(findChromium())
 const tinyPngBase64 = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString('base64')
 
@@ -260,7 +264,7 @@ describe('thumbnail renderer limits (unit)', () => {
   })
 })
 
-describe.runIf(chromiumAvailable)('thumbnail renderer (live chromium)', () => {
+describe.runIf(liveChromiumTestsEnabled && chromiumAvailable)('thumbnail renderer (live chromium)', () => {
   let dataDir = ''
   let cacheDir = ''
   let server: Server | null = null
@@ -452,5 +456,13 @@ describe('thumbnail renderer availability', () => {
     }
 
     expect(isThumbnailRendererAvailable()).toBe(false)
+  })
+
+  it('requires an explicit opt-in flag for live chromium coverage', () => {
+    const requested =
+      process.env.ARK_LIVE_CHROMIUM_TESTS === '1' ||
+      process.env.ARK_LIVE_CHROMIUM_TESTS === 'true' ||
+      process.env.ARK_LIVE_CHROMIUM_TESTS === 'on'
+    expect(liveChromiumTestsEnabled).toBe(requested)
   })
 })
