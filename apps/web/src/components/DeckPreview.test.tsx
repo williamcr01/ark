@@ -70,6 +70,18 @@ const previewFrameMock = vi.hoisted(() => ({
   handshake: 'test-handshake-value',
 }))
 
+const useDeckPreviewFrameMock = vi.hoisted(() =>
+  vi.fn((_html: string, _enabled: boolean) => ({
+    iframeKey: previewFrameMock.iframeKey,
+    iframeSrcDoc: '<html></html>',
+    sandboxOrigin: null,
+    isLoading: false,
+    error: null,
+    usesSandboxHost: false,
+    handshake: previewFrameMock.handshake,
+  })),
+)
+
 const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
@@ -84,15 +96,7 @@ vi.mock('@/hooks/useDeckSlideNavigation', () => ({
 }))
 
 vi.mock('@/hooks/useDeckPreviewFrame', () => ({
-  useDeckPreviewFrame: () => ({
-    iframeKey: previewFrameMock.iframeKey,
-    iframeSrcDoc: '<html></html>',
-    sandboxOrigin: null,
-    isLoading: false,
-    error: null,
-    usesSandboxHost: false,
-    handshake: previewFrameMock.handshake,
-  }),
+  useDeckPreviewFrame: useDeckPreviewFrameMock,
 }))
 
 vi.mock('@/lib/runtime-error-api', () => ({
@@ -136,6 +140,7 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.setTool.mockClear()
     previewFrameMock.iframeKey = 'test-preview'
     previewFrameMock.handshake = 'test-handshake-value'
+    useDeckPreviewFrameMock.mockClear()
     reportRuntimeErrorMock.mockClear()
   })
 
@@ -195,6 +200,69 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.getByTitle('Generated Ark presentation preview')).toBeInTheDocument()
     fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
     expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+  })
+
+  it('reuses the main preview frame when opening present mode', async () => {
+    const user = userEvent.setup()
+    renderDeckPreview(plainDeckProps)
+
+    const previewIframe = screen.getByTitle('Generated Ark presentation preview')
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Generated Ark presentation preview')).toBe(previewIframe)
+    expect(screen.getAllByTitle('Generated Ark presentation preview')).toHaveLength(1)
+    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(plainCssDeck, true)
+    expect(useDeckPreviewFrameMock.mock.calls.every((call) => call[1] === true)).toBe(true)
+  })
+
+  it('hides preview chrome overlays while present mode is open', async () => {
+    const user = userEvent.setup()
+    renderDeckPreview({
+      html: hostileScriptsDeck,
+      isGenerating: false,
+      isStripOpen: false,
+      layout: 'desktop',
+      parsedDeck: parseDeckSlides(hostileScriptsDeck),
+    })
+
+    expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Scripts and inline handlers were removed for preview/i),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Download the original HTML to keep executable code/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('disables then re-enables the editor when presenting from edit mode', async () => {
+    const user = userEvent.setup()
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    editorBridgeMock.editorReady = true
+
+    editorBridgeMock.disableEditor.mockClear()
+    editorBridgeMock.enableEditor.mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Presentation mode' })).not.toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(editorBridgeMock.enableEditor).toHaveBeenCalled()
   })
 
   it('shows static preview messaging for uploaded scripted decks', () => {
