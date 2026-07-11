@@ -29,8 +29,7 @@ import {
   getChatPanelDefaultSize,
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat-panel-layout'
-import { deckHasExecutableContent } from '@/lib/deck-export'
-import { parseDeckSlides } from '@/lib/deck-slides'
+import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
@@ -214,15 +213,12 @@ function App() {
     [deckId],
   )
 
-  const parsedDeck = useMemo(() => {
+  const deckAnalysis = useMemo(() => {
     void thumbnailStylesRevision
-    return parseDeckSlides(generatedHtml)
+    return analyzeDeckInBrowser(generatedHtml)
   }, [generatedHtml, thumbnailStylesRevision])
-  const showSanitizedDownload = useMemo(
-    () => deckHasExecutableContent(generatedHtml),
-    [generatedHtml],
-  )
-  const hasSlides = parsedDeck.slideCount > 0
+  const showSanitizedDownload = deckAnalysis.hasExecutableContent
+  const hasSlides = deckAnalysis.slideCount > 0
   const deckSaveStatus: DeckSaveStatus = isDeckLoading
     ? 'loading'
     : isGenerating
@@ -575,7 +571,7 @@ function App() {
                   onPatchEditorOperations={handlePatchEditorOperations}
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
-                  parsedDeck={parsedDeck}
+                  deckAnalysis={deckAnalysis}
                   redoSlideIndex={redoEntry?.slideIndex ?? null}
                   undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
@@ -620,7 +616,7 @@ function App() {
                   onPatchEditorOperations={handlePatchEditorOperations}
                   onRedo={handleRedoEdit}
                   onUndo={handleUndoEdit}
-                  parsedDeck={parsedDeck}
+                  deckAnalysis={deckAnalysis}
                   redoSlideIndex={redoEntry?.slideIndex ?? null}
                   undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}

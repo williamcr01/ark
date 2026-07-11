@@ -32,6 +32,14 @@ function parentHasInlineHandlers(root: ParentNode | null) {
   return false
 }
 
+export function deckDocumentHasExecutableContent(doc: Document) {
+  if (doc.querySelector('script')) {
+    return true
+  }
+
+  return parentHasInlineHandlers(doc.documentElement)
+}
+
 export function deckHasExecutableContent(html: string) {
   if (!html.trim()) {
     return false
@@ -39,11 +47,7 @@ export function deckHasExecutableContent(html: string) {
 
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
-  if (doc.querySelector('script')) {
-    return true
-  }
-
-  return parentHasInlineHandlers(doc.documentElement)
+  return deckDocumentHasExecutableContent(doc)
 }
 
 export {
