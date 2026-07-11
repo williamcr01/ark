@@ -15,7 +15,11 @@ import {
   type DeckRuntimeMode,
 } from '@ark/runtime-registry/deck-runtime.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
-import { SLIDE_SELECTOR_CHAIN, stripHostileNavigationVectors } from './deck-preview-slides.ts'
+import {
+  SLIDE_SELECTOR_CHAIN,
+  stripHostileNavigationFromHtml,
+  stripHostileNavigationVectors,
+} from './deck-preview-slides.ts'
 import {
   getApprovedRuntimeAssetUrls,
   hasApprovedRevealRuntimeInDocument,
@@ -337,6 +341,10 @@ function serializePreviewDocument(doc: Document) {
   return root ? `<!DOCTYPE html>\n${root}` : ''
 }
 
+function finalizePreviewHtml(doc: Document): string {
+  return stripHostileNavigationFromHtml(serializePreviewDocument(doc))
+}
+
 /**
  * Build the full preview document, returning HTML plus the CSP nonce used for
  * Ark-injected scripts (null in custom-js mode). Prefer this over
@@ -384,7 +392,7 @@ export function buildPreviewDocument(
     injectHandshakeSentinel(doc, options, nonce)
 
     return {
-      html: serializePreviewDocument(doc),
+      html: finalizePreviewHtml(doc),
       runtimeMode: mode,
       nonce,
     }
@@ -406,7 +414,7 @@ export function buildPreviewDocument(
     injectHandshakeSentinel(doc, options, nonce)
 
     return {
-      html: serializePreviewDocument(doc),
+      html: finalizePreviewHtml(doc),
       runtimeMode: mode,
       nonce,
     }
@@ -429,7 +437,7 @@ export function buildPreviewDocument(
   injectHandshakeSentinel(doc, options, nonce)
 
   return {
-    html: serializePreviewDocument(doc),
+    html: finalizePreviewHtml(doc),
     runtimeMode: mode,
     nonce,
   }

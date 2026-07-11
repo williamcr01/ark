@@ -40,11 +40,13 @@ function serializeRootElementAttrs(element: Element) {
   return [...element.attributes].map(serializeAttribute).join(' ')
 }
 
+/**
+ * Treat any element with `http-equiv="refresh"` as hostile.
+ * Tag-name checks alone miss parse-unstable markup (e.g. `met\x00a`) that keeps
+ * the attribute but is not a real `<meta>` until a later serialize/reparse.
+ */
 function isMetaRefresh(element: Element) {
-  return (
-    element.tagName.toLowerCase() === 'meta' &&
-    element.getAttribute('http-equiv')?.trim().toLowerCase() === 'refresh'
-  )
+  return element.getAttribute('http-equiv')?.trim().toLowerCase() === 'refresh'
 }
 
 export function isJavascriptUrl(value: string | null) {
