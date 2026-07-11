@@ -22,9 +22,21 @@ const THUMBNAIL_SETTLE_REQUEST_MESSAGE_TYPE = 'ark:thumbnail-settle'
 const THUMBNAIL_SETTLED_MESSAGE_TYPE = 'ark:thumbnail-settled'
 const THUMBNAIL_DISABLE_MOTION_CSS = `
 *, *::before, *::after {
-  animation: none !important;
-  transition: none !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
   scroll-behavior: auto !important;
+}
+.reveal .slides section.present {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+.reveal .fragment {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
 }
 `
 
@@ -117,6 +129,36 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
   return `(function () {
   var C = ${JSON.stringify(constants)};
 
+  function revealFragments() {
+    try {
+      var fragments = document.querySelectorAll('.reveal .fragment');
+      for (var i = 0; i < fragments.length; i += 1) {
+        fragments[i].classList.add('visible');
+      }
+    } catch (error) {}
+  }
+
+  function waitForImages() {
+    var images = Array.prototype.slice.call(document.images || []);
+    return Promise.all(images.map(function (img) {
+      function decodeIfPossible() {
+        if (typeof img.decode === 'function') {
+          return img.decode().catch(function () {});
+        }
+        return Promise.resolve();
+      }
+
+      if (img.complete) {
+        return decodeIfPossible();
+      }
+
+      return new Promise(function (resolve) {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      }).then(decodeIfPossible);
+    }));
+  }
+
   function waitForFonts() {
     try {
       if (document.fonts && document.fonts.ready) {
@@ -141,7 +183,9 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
   }
 
   function settle() {
-    return waitForFonts()
+    revealFragments();
+    return waitForImages()
+      .then(waitForFonts)
       .then(waitForAnimationFrame)
       .then(waitForAnimationFrame);
   }

@@ -142,7 +142,7 @@ async function waitForSlideSettle(cdp: CdpClient, index: number, settleMs: numbe
       `({
         settled:
           Number(window.__arkThumbSettledRequestId || 0) === ${requestId} &&
-          Number(window.__arkThumbSettledIndex || -1) === ${index},
+          Number(window.__arkThumbSettledIndex ?? -1) === ${index},
         errors: Array.isArray(window.__arkThumbErrors) ? window.__arkThumbErrors.slice() : [],
       })`,
     )
