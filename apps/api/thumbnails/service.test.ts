@@ -573,13 +573,16 @@ describe('thumbnail service', () => {
       },
     })
 
-    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const created = await deckStore.createDeck(
+      sampleHtml.replace('<h1>One</h1>', '<h1>One warm</h1>'),
+      { source: 'upload' },
+    )
     const warmVersionId = created.activeVersionId!
 
     await service.enqueue({
       deckId: 'b0000000-0000-4000-8000-000000000090',
       versionId: blockerVersionId,
-      html: sampleHtml,
+      html: sampleHtml.replace('<h1>One</h1>', '<h1>One blocker</h1>'),
       manifestHash: 'abc123',
     })
     await service.enqueueForDeckVersion(created.id, warmVersionId)
@@ -588,7 +591,7 @@ describe('thumbnail service', () => {
       versionId: foregroundVersionId,
       manifestHash: 'abc123',
       enqueueIfMissing: true,
-      html: sampleHtml,
+      html: sampleHtml.replace('<h1>One</h1>', '<h1>One foreground</h1>'),
     })
 
     releaseBlocker?.()
@@ -806,7 +809,10 @@ describe('thumbnail service', () => {
 
     const warmVersionIds: string[] = []
     for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
-      const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+      const created = await deckStore.createDeck(
+        sampleHtml.replace('<h1>One</h1>', `<h1>One warm ${index}</h1>`),
+        { source: 'upload' },
+      )
       const versionId = created.activeVersionId!
       warmVersionIds.push(versionId)
       await service.enqueueForDeckVersion(created.id, versionId)
@@ -819,7 +825,7 @@ describe('thumbnail service', () => {
       manifestHash: 'abc123',
       enqueueIfMissing: true,
       waitMs: 25,
-      html: sampleHtml,
+      html: sampleHtml.replace('<h1>One</h1>', '<h1>One foreground</h1>'),
     })
 
     expect(status.status).toBe(THUMBNAIL_STATUS.pending)

@@ -597,7 +597,11 @@ export function createThumbnailService(options: {
     await measureCacheWrite(timing, async () => {
       for (let index = 0; index < fingerprints.slideFingerprints.length; index += 1) {
         const fingerprint = fingerprints.slideFingerprints[index]!
-        const materialized = await options.cache.materializeSlidePngFromBlob(key, index, fingerprint)
+        const materialized = await options.cache.materializeSlidePngFromBlob(
+          key,
+          index,
+          fingerprint,
+        )
 
         if (!materialized) {
           missingSlideIndexes.push(index)
