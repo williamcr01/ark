@@ -21,6 +21,9 @@ dist-ssr
 # Local deck persistence
 data/
 
+# Local renderer benchmark outputs (machine-specific)
+artifacts/renderer-benchmarks/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
