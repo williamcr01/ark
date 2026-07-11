@@ -37,7 +37,7 @@ import {
   getPreviewSandbox,
   getPreviewStageStyle,
 } from '@/lib/deck-preview'
-import { parseDeckSlides } from '@/lib/deck-slides'
+import type { DeckBrowserAnalysis } from '@/lib/deck-analysis'
 import {
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
@@ -50,9 +50,6 @@ import {
 } from '@/lib/deck-image-insert'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import { previewStripsDeckScripts } from '@/lib/deck-export'
-import { buildDeckRuntimeManifestInBrowser } from '@/lib/deck-runtime-manifest'
-import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
@@ -74,7 +71,7 @@ export type DeckPreviewProps = {
   isGenerating: boolean
   isStripOpen: boolean
   layout: 'desktop' | 'mobile'
-  parsedDeck: ReturnType<typeof parseDeckSlides>
+  deckAnalysis: DeckBrowserAnalysis
   editorBridgeEnabled?: boolean
   editModeActive?: boolean
   isTextEditSaving?: boolean
@@ -102,7 +99,7 @@ export function DeckPreview({
   isGenerating,
   isStripOpen,
   layout,
-  parsedDeck,
+  deckAnalysis,
   editorBridgeEnabled = false,
   editModeActive: controlledEditModeActive,
   isTextEditSaving = false,
@@ -151,13 +148,11 @@ export function DeckPreview({
   >(null)
   const isTransformingRef = useRef(false)
   const wasEditChromeActiveRef = useRef(false)
-  const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
+  const parsedDeck = deckAnalysis
+  const runtimeManifest = deckAnalysis.runtimeManifest
   const runtimeMode = runtimeManifest.runtimeMode
-  const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
-  const usesStaticPreview = useMemo(
-    () => previewStripsDeckScripts(html, runtimeManifest),
-    [html, runtimeManifest],
-  )
+  const validation = deckAnalysis.validation
+  const usesStaticPreview = deckAnalysis.usesStaticPreview
   const manifestWarnings = runtimeManifest.warnings
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
