@@ -103,4 +103,48 @@ describe('PresentMode', () => {
     expect(screen.getByText('Preview stopped')).toBeVisible()
     expect(screen.getByText(/unexpected navigation/i)).toBeVisible()
   })
+
+  it('portals a viewport-covering backdrop below the shared stage layer', () => {
+    render(<PresentHarness />)
+
+    const dialog = screen.getByRole('dialog', { name: 'Presentation mode' })
+    expect(dialog.className).toContain('z-[70]')
+
+    const portaledBackdrop = [...document.body.children].find(
+      (node) =>
+        node instanceof HTMLElement &&
+        node.getAttribute('aria-hidden') === 'true' &&
+        node.className.includes('z-[40]'),
+    )
+
+    expect(portaledBackdrop).toBeInstanceOf(HTMLElement)
+    expect(portaledBackdrop?.className).toContain('fixed')
+    expect(portaledBackdrop?.className).toContain('inset-0')
+  })
+
+  it('keeps keyboard focus inside present controls', async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <button type="button">Outside control</button>
+        <PresentHarness />
+      </>,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Presentation mode' })
+    dialog.focus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Next slide' })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Exit presentation' })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Outside control' })).not.toHaveFocus()
+  })
 })
