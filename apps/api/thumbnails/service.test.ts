@@ -610,6 +610,173 @@ describe('thumbnail service', () => {
     })
   })
 
+  it('preserves a newer warm when an older warm resolves out of order', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    let releaseBlocker: (() => void) | null = null
+    const blockerGate = new Promise<void>((resolve) => {
+      releaseBlocker = resolve
+    })
+    const renderOrder: string[] = []
+    const logs: CapturedLogEntry[] = []
+    const blockerVersionId = 'a0000000-0000-4000-8000-000000000093'
+    const deckStore = createDeckStore(dataDir)
+    const service = createThumbnailService({
+      cache: createThumbnailCache(cacheDir),
+      deckStore,
+      logger: createTestLogger(logs),
+      renderer: {
+        isAvailable: () => true,
+        close: async () => undefined,
+        render: async (request) => {
+          const versionId = request.versionId ?? 'unknown'
+          renderOrder.push(versionId)
+
+          if (versionId === blockerVersionId) {
+            await blockerGate
+          }
+
+          return {
+            ok: true,
+            slides: [Buffer.from('png')],
+            slideCount: 1,
+            width: 480,
+            height: 270,
+            durationMs: 1,
+          }
+        },
+      },
+    })
+
+    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const oldWarmVersionId = created.activeVersionId!
+    const updated = await deckStore.updateDeck(
+      created.id,
+      sampleHtml.replace('Two', 'Two updated'),
+      {
+        source: 'manual',
+      },
+    )
+    const newWarmVersionId = updated!.activeVersionId!
+
+    let releaseOldVersion: (() => void) | null = null
+    const oldVersionGate = new Promise<void>((resolve) => {
+      releaseOldVersion = resolve
+    })
+    const originalGetVersion = deckStore.getVersion.bind(deckStore)
+    vi.spyOn(deckStore, 'getVersion').mockImplementation(async (deckId, versionId) => {
+      const version = await originalGetVersion(deckId, versionId)
+
+      if (versionId === oldWarmVersionId) {
+        await oldVersionGate
+      }
+
+      return version
+    })
+
+    await service.enqueue({
+      deckId: 'b0000000-0000-4000-8000-000000000093',
+      versionId: blockerVersionId,
+      html: sampleHtml,
+      manifestHash: 'abc123',
+    })
+
+    const olderWarm = service.enqueueForDeckVersion(created.id, oldWarmVersionId)
+    const newerWarm = service.enqueueForDeckVersion(created.id, newWarmVersionId)
+    await newerWarm
+    releaseOldVersion?.()
+    await olderWarm
+
+    releaseBlocker?.()
+
+    await vi.waitFor(() => {
+      expect(renderOrder).toHaveLength(2)
+    })
+    expect(renderOrder).toEqual([blockerVersionId, newWarmVersionId])
+    expect(renderOrder).not.toContain(oldWarmVersionId)
+
+    const discard = logs.find(
+      (entry) =>
+        entry.event === 'thumbnail.queue.discarded' &&
+        entry.fields.fields?.versionId === oldWarmVersionId,
+    )
+    expect(discard?.fields.fields).toMatchObject({
+      versionId: oldWarmVersionId,
+      reason: 'obsolete_warm',
+    })
+  })
+
+  it('evicts a queued background warm so foreground can enqueue when saturated', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    let releaseGate: (() => void) | null = null
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve
+    })
+    const renderedVersions: string[] = []
+    const logs: CapturedLogEntry[] = []
+    const deckStore = createDeckStore(dataDir)
+    const service = createThumbnailService({
+      cache: createThumbnailCache(cacheDir),
+      deckStore,
+      logger: createTestLogger(logs),
+      renderer: {
+        isAvailable: () => true,
+        close: async () => undefined,
+        render: async (request) => {
+          await gate
+          renderedVersions.push(request.versionId ?? 'unknown')
+          return {
+            ok: true,
+            slides: [Buffer.from('png')],
+            slideCount: 1,
+            width: 480,
+            height: 270,
+            durationMs: 1,
+          }
+        },
+      },
+    })
+
+    const warmVersionIds: string[] = []
+    for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
+      const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+      const versionId = created.activeVersionId!
+      warmVersionIds.push(versionId)
+      await service.enqueueForDeckVersion(created.id, versionId)
+    }
+
+    const foregroundVersionId = 'a0000000-0000-4000-8000-000000000099'
+    const status = await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000099',
+      versionId: foregroundVersionId,
+      manifestHash: 'abc123',
+      enqueueIfMissing: true,
+      waitMs: 25,
+      html: sampleHtml,
+    })
+
+    expect(status.status).toBe(THUMBNAIL_STATUS.pending)
+
+    const evicted = logs.find(
+      (entry) =>
+        entry.event === 'thumbnail.queue.discarded' &&
+        entry.fields.fields?.reason === 'foreground_priority',
+    )
+    expect(evicted).toBeDefined()
+    expect(warmVersionIds).toContain(evicted?.fields.fields?.versionId)
+
+    releaseGate?.()
+
+    await vi.waitFor(() => {
+      expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+      expect(renderedVersions).toContain(foregroundVersionId)
+    })
+    expect(renderedVersions).not.toContain(evicted?.fields.fields?.versionId)
+  })
+
   it('logs queue wait, render, and cache write timings for completed jobs', async () => {
     const logs: CapturedLogEntry[] = []
     const { service } = await setup(
