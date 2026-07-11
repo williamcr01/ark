@@ -1,4 +1,3 @@
-import { injectPreviewCsp } from './deck-network.ts'
 import {
   buildDeckBridgeRuntimeScript,
   buildDeckCssNavRuntimeScript,
@@ -8,21 +7,20 @@ import {
 import { buildDeckEditorBridgeRuntimeScript } from './deck-editor-bridge.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import {
-  detectRuntimeMode,
-  injectRuntimeCsp,
+  detectRuntimeModeFromDocument,
+  getRuntimeCsp,
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
   toAbsoluteRuntimeAssetSource,
-  usesRevealRuntimeAdapter,
   type DeckRuntimeMode,
 } from '@ark/runtime-registry/deck-runtime.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
+import { SLIDE_SELECTOR_CHAIN, stripHostileNavigationVectors } from './deck-preview-slides.ts'
 import {
-  SLIDE_SELECTOR_CHAIN,
-  stripDeckScriptsForPreview,
-  stripHostileNavigationFromHtml,
-} from './deck-preview-slides.ts'
-import { getApprovedRuntimeAssetUrls } from '@ark/runtime-registry/deck-runtime-registry.ts'
+  getApprovedRuntimeAssetUrls,
+  hasApprovedRevealRuntimeInDocument,
+  isApprovedRuntimeAssetUrl,
+} from '@ark/runtime-registry/deck-runtime-registry.ts'
 
 export type PreviewHtmlOptions = {
   parentOrigin?: string
@@ -47,11 +45,8 @@ export type PreviewDocumentResult = {
   nonce: string | null
 }
 
-function buildHistoryShim(nonce: string | null) {
-  const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
-  return `
-<script data-ark-preview-history-shim${nonceAttr}>
-(function () {
+function buildHistoryShimSource() {
+  return `(function () {
   function safeHistoryCall(method) {
     var original = history[method];
 
@@ -68,12 +63,10 @@ function buildHistoryShim(nonce: string | null) {
 
   safeHistoryCall('replaceState');
   safeHistoryCall('pushState');
-})();
-</script>`
+})();`
 }
 
-const previewFillStyle = `
-<style data-ark-preview-fill>
+const previewFillStyleContent = `
   html,
   body {
     width: 100% !important;
@@ -86,55 +79,121 @@ const previewFillStyle = `
   [data-ark-hidden] {
     display: none !important;
   }
+`
 
-</style>`
+const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 
-function wrapRuntimeScript(source: string, marker: string, nonce: string | null) {
-  const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
-  return `<script ${marker}${nonceAttr}>\n${source}\n</script>`
-}
-
-function injectAtStartOfHead(html: string, injection: string) {
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head[^>]*>/i, (match) => `${match}\n${injection}`)
+function ensureHead(doc: Document) {
+  if (doc.head) {
+    return doc.head
   }
 
-  if (/<html[^>]*>/i.test(html)) {
-    return html.replace(/<html[^>]*>/i, (match) => `${match}\n<head>\n${injection}\n</head>`)
+  const head = doc.createElement('head')
+  const root = doc.documentElement
+
+  if (doc.body) {
+    root.insertBefore(head, doc.body)
+  } else {
+    root.insertBefore(head, root.firstChild)
   }
 
-  return `<head>\n${injection}\n</head>\n${html}`
+  return head
 }
 
-function injectPreviewFill(
-  html: string,
+function ensureBody(doc: Document) {
+  if (doc.body) {
+    return doc.body
+  }
+
+  const body = doc.createElement('body')
+
+  doc.documentElement.append(body)
+
+  return body
+}
+
+function appendScript(
+  doc: Document,
+  parent: Element,
+  source: string,
+  marker: string,
+  nonce: string | null,
+  position: 'start' | 'end' = 'end',
+) {
+  const script = doc.createElement('script')
+
+  script.setAttribute(marker, '')
+
+  if (nonce) {
+    script.setAttribute('nonce', nonce)
+  }
+
+  script.textContent = `\n${source}\n`
+
+  if (position === 'start') {
+    parent.insertBefore(script, parent.firstChild)
+    return
+  }
+
+  parent.append(script)
+}
+
+function appendPreviewFill(
+  doc: Document,
   options: { historyShim?: boolean; nonce?: string | null } = {},
 ) {
-  const headInjection = `${
-    options.historyShim ? `${buildHistoryShim(options.nonce ?? null)}\n` : ''
-  }${previewFillStyle}`
+  const head = ensureHead(doc)
 
-  const withHeadInjection = /<\/head>/i.test(html)
-    ? html.replace(/<\/head>/i, `${headInjection}\n</head>`)
-    : `${headInjection}\n${html}`
-
-  return injectPreviewCsp(withHeadInjection)
-}
-
-function injectBeforeBodyClose(html: string, injection: string) {
-  if (/<\/body>/i.test(html)) {
-    return html.replace(/<\/body>/i, `${injection}\n</body>`)
+  if (options.historyShim) {
+    appendScript(
+      doc,
+      head,
+      buildHistoryShimSource(),
+      'data-ark-preview-history-shim',
+      options.nonce ?? null,
+    )
   }
 
-  return `${html}\n${injection}`
+  const style = doc.createElement('style')
+
+  style.setAttribute('data-ark-preview-fill', '')
+  style.textContent = previewFillStyleContent
+  head.append(style)
 }
 
-function absolutizeApprovedRuntimeAssetReferences(html: string, assetOrigin?: string | null) {
+function injectRuntimeCspMeta(
+  doc: Document,
+  mode: DeckRuntimeMode,
+  options: { assetOrigin?: string | null; nonce?: string | null },
+) {
+  const head = ensureHead(doc)
+  const meta = doc.createElement('meta')
+
+  meta.setAttribute('http-equiv', 'Content-Security-Policy')
+  meta.setAttribute('content', getRuntimeCsp(mode, options))
+  head.insertBefore(meta, head.firstChild)
+}
+
+function absolutizeApprovedRuntimeAssetAttribute(value: string, assetOrigin?: string | null) {
   if (!assetOrigin?.trim()) {
-    return html
+    return value
   }
 
-  let output = html
+  for (const assetUrl of getApprovedRuntimeAssetUrls()) {
+    if (value === assetUrl) {
+      return toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin }) ?? value
+    }
+  }
+
+  return value
+}
+
+function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string | null) {
+  if (!assetOrigin?.trim()) {
+    return value
+  }
+
+  let output = value
 
   for (const assetUrl of getApprovedRuntimeAssetUrls()) {
     const absoluteUrl = toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin })
@@ -151,41 +210,71 @@ function absolutizeApprovedRuntimeAssetReferences(html: string, assetOrigin?: st
   return output
 }
 
-function injectRuntimeScripts(html: string, scripts: string[]) {
-  if (scripts.length === 0) {
-    return html
+function absolutizeApprovedRuntimeAssetReferences(doc: Document, assetOrigin?: string | null) {
+  if (!assetOrigin?.trim()) {
+    return
   }
 
-  return injectBeforeBodyClose(html, scripts.join('\n'))
+  const walker = doc.createTreeWalker(
+    doc.documentElement,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
+  )
+  let node: Node | null = walker.currentNode
+
+  while (node) {
+    if (node.nodeType === 1) {
+      const element = node as Element
+
+      for (const attribute of [...element.attributes]) {
+        const rewritten = absolutizeApprovedRuntimeAssetAttribute(attribute.value, assetOrigin)
+
+        if (rewritten !== attribute.value) {
+          element.setAttribute(attribute.name, rewritten)
+        }
+      }
+    } else if (node.nodeValue) {
+      const rewritten = absolutizeApprovedRuntimeAssetText(node.nodeValue, assetOrigin)
+
+      if (rewritten !== node.nodeValue) {
+        node.nodeValue = rewritten
+      }
+    }
+
+    node = walker.nextNode()
+  }
 }
 
-function injectHandshakeSentinel(html: string, options: PreviewHtmlOptions, nonce: string | null) {
+function injectHandshakeSentinel(doc: Document, options: PreviewHtmlOptions, nonce: string | null) {
   const handshake = options.handshake?.trim()
 
   if (!handshake) {
-    return html
+    return
   }
 
-  return injectAtStartOfHead(
-    html,
-    wrapRuntimeScript(
-      buildDeckHandshakeSentinelScript(handshake, options.parentOrigin),
-      'data-ark-preview-handshake',
-      nonce,
-    ),
+  appendScript(
+    doc,
+    ensureHead(doc),
+    buildDeckHandshakeSentinelScript(handshake, options.parentOrigin),
+    'data-ark-preview-handshake',
+    nonce,
+    'start',
   )
 }
 
-function buildEditorBridgeInjection(
+function appendEditorBridgeInjection(
+  doc: Document,
+  parent: Element,
   options: PreviewHtmlOptions,
   runtimeOptions: { slideSelectors: readonly string[]; parentOrigin?: string },
   nonce: string | null,
 ) {
   if (!options.editorBridge) {
-    return ''
+    return
   }
 
-  return wrapRuntimeScript(
+  appendScript(
+    doc,
+    parent,
     buildDeckEditorBridgeRuntimeScript({
       slideSelectors: runtimeOptions.slideSelectors,
       parentOrigin: runtimeOptions.parentOrigin,
@@ -193,6 +282,59 @@ function buildEditorBridgeInjection(
     'data-ark-preview-editor',
     nonce,
   )
+}
+
+function stripInlineHandlers(root: ParentNode) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+  let node = walker.currentNode as Element | null
+
+  while (node) {
+    for (const attribute of [...node.attributes]) {
+      if (INLINE_HANDLER_PATTERN.test(attribute.name)) {
+        node.removeAttribute(attribute.name)
+      }
+    }
+
+    node = walker.nextNode() as Element | null
+  }
+}
+
+function shouldPreserveScript(script: HTMLScriptElement, preserveApprovedRuntimeScripts: boolean) {
+  return (
+    preserveApprovedRuntimeScripts &&
+    isApprovedRuntimeAssetUrl(script.getAttribute('src'), 'script')
+  )
+}
+
+function stripScripts(
+  root: ParentNode,
+  options: { preserveApprovedRuntimeScripts?: boolean } = {},
+) {
+  root.querySelectorAll('script').forEach((script) => {
+    if (shouldPreserveScript(script, Boolean(options.preserveApprovedRuntimeScripts))) {
+      return
+    }
+
+    script.remove()
+  })
+}
+
+function stripDeckScriptsAndHandlers(
+  doc: Document,
+  options: { preserveApprovedRuntimeScripts?: boolean } = {},
+) {
+  if (!doc.documentElement) {
+    return
+  }
+
+  stripScripts(doc.documentElement, options)
+  stripInlineHandlers(doc.documentElement)
+}
+
+function serializePreviewDocument(doc: Document) {
+  const root = doc.documentElement?.outerHTML ?? ''
+
+  return root ? `<!DOCTYPE html>\n${root}` : ''
 }
 
 /**
@@ -209,94 +351,85 @@ export function buildPreviewDocument(
     return { html: '', runtimeMode: 'static', nonce: null }
   }
 
-  const mode = options.manifest?.runtimeMode ?? detectRuntimeMode(html)
-  const usesRevealAdapter = options.manifest?.usesRevealAdapter ?? usesRevealRuntimeAdapter(html)
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const mode = options.manifest?.runtimeMode ?? detectRuntimeModeFromDocument(doc)
+  const usesRevealAdapter =
+    options.manifest?.usesRevealAdapter ??
+    (mode === 'reveal' && hasApprovedRevealRuntimeInDocument(doc))
   const assetOrigin = options.parentOrigin
   // Nonces neutralize javascript: URLs and slipped-past inline handlers in
   // CSS-only / reveal-adapter modes. custom-js must keep 'unsafe-inline'.
   const nonce = mode === 'custom-js' ? null : options.nonce?.trim() || generateCspNonce()
-  const withCsp = injectRuntimeCsp(html, mode, { assetOrigin, nonce })
   // Meta refresh / javascript: URLs have no legitimate use in any preview mode.
-  const sanitized = stripHostileNavigationFromHtml(withCsp)
+  stripHostileNavigationVectors(doc.documentElement)
   const runtimeOptions = {
     slideSelectors: SLIDE_SELECTOR_CHAIN,
     previewMode: runtimeModeToBridgePreviewMode(mode, { usesRevealAdapter }),
     parentOrigin: options.parentOrigin,
   }
+  const body = ensureBody(doc)
 
   if (runtimeModeAllowsDeckScripts(mode)) {
+    absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
+    injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
+    appendPreviewFill(doc, { historyShim: true, nonce })
+    appendScript(
+      doc,
+      body,
+      buildDeckBridgeRuntimeScript(runtimeOptions),
+      'data-ark-preview-bridge',
+      nonce,
+    )
+    appendEditorBridgeInjection(doc, body, options, runtimeOptions, nonce)
+    injectHandshakeSentinel(doc, options, nonce)
+
     return {
-      html: injectHandshakeSentinel(
-        injectRuntimeScripts(
-          injectPreviewFill(absolutizeApprovedRuntimeAssetReferences(sanitized, assetOrigin), {
-            historyShim: true,
-            nonce,
-          }),
-          [
-            wrapRuntimeScript(
-              buildDeckBridgeRuntimeScript(runtimeOptions),
-              'data-ark-preview-bridge',
-              nonce,
-            ),
-            buildEditorBridgeInjection(options, runtimeOptions, nonce),
-          ].filter(Boolean),
-        ),
-        options,
-        nonce,
-      ),
+      html: serializePreviewDocument(doc),
       runtimeMode: mode,
       nonce,
     }
   }
 
   if (usesRevealAdapter) {
-    const strippedHtml = stripDeckScriptsForPreview(sanitized, {
-      preserveApprovedRuntimeScripts: true,
-    })
-    const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
+    stripDeckScriptsAndHandlers(doc, { preserveApprovedRuntimeScripts: true })
+    absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
+    injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
+    appendPreviewFill(doc, { historyShim: true, nonce })
+    appendScript(
+      doc,
+      body,
+      buildRevealNavRuntimeScript(runtimeOptions),
+      'data-ark-preview-reveal',
+      nonce,
+    )
+    appendEditorBridgeInjection(doc, body, options, runtimeOptions, nonce)
+    injectHandshakeSentinel(doc, options, nonce)
 
     return {
-      html: injectHandshakeSentinel(
-        injectRuntimeScripts(
-          injectPreviewFill(previewHtml, { historyShim: true, nonce }),
-          [
-            wrapRuntimeScript(
-              buildRevealNavRuntimeScript(runtimeOptions),
-              'data-ark-preview-reveal',
-              nonce,
-            ),
-            buildEditorBridgeInjection(options, runtimeOptions, nonce),
-          ].filter(Boolean),
-        ),
-        options,
-        nonce,
-      ),
+      html: serializePreviewDocument(doc),
       runtimeMode: mode,
       nonce,
     }
   }
 
-  const strippedHtml = stripDeckScriptsForPreview(sanitized, {
+  stripDeckScriptsAndHandlers(doc, {
     preserveApprovedRuntimeScripts: mode === 'reveal',
   })
-  const previewHtml = absolutizeApprovedRuntimeAssetReferences(strippedHtml, assetOrigin)
+  absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
+  injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
+  appendPreviewFill(doc, { nonce })
+  appendScript(
+    doc,
+    body,
+    buildDeckCssNavRuntimeScript(runtimeOptions),
+    'data-ark-preview-nav',
+    nonce,
+  )
+  appendEditorBridgeInjection(doc, body, options, runtimeOptions, nonce)
+  injectHandshakeSentinel(doc, options, nonce)
 
   return {
-    html: injectHandshakeSentinel(
-      injectRuntimeScripts(
-        injectPreviewFill(previewHtml, { nonce }),
-        [
-          wrapRuntimeScript(
-            buildDeckCssNavRuntimeScript(runtimeOptions),
-            'data-ark-preview-nav',
-            nonce,
-          ),
-          buildEditorBridgeInjection(options, runtimeOptions, nonce),
-        ].filter(Boolean),
-      ),
-      options,
-      nonce,
-    ),
+    html: serializePreviewDocument(doc),
     runtimeMode: mode,
     nonce,
   }
