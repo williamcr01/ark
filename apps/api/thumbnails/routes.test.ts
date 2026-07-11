@@ -83,11 +83,17 @@ describe('thumbnail API routes', () => {
     const { baseUrl } = await startApi({
       isAvailable: () => true,
       close: async () => undefined,
-      render: async () => {
+      render: async (request) => {
         await renderGate
+        const slideIndexes = request.slideIndexes ?? [0, 1]
+        const values = new Map([
+          [0, 'png-one'],
+          [1, 'png-two'],
+        ])
+
         return {
           ok: true,
-          slides: [Buffer.from('png-one'), Buffer.from('png-two')],
+          slides: slideIndexes.map((index) => Buffer.from(values.get(index) ?? `png-${index}`)),
           slideCount: 2,
           width: 480,
           height: 270,
@@ -129,10 +135,12 @@ describe('thumbnail API routes', () => {
       expect(imageResponse.headers.get('cache-control')).toContain('immutable')
       expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
 
-      // A hash param that does not match the version's full manifest fingerprint
-      // exactly is rejected — and so is a missing or truncated hash.
+      // A hash param that does not match the cached slide fingerprint exactly is
+      // rejected — and so is a missing or truncated hash.
       const slidePath = ready.slides[0]!.url.split('?')[0]
-      const mismatchResponse = await fetch(`${baseUrl}${slidePath}?hash=${'a'.repeat(64)}`)
+      const currentHash = new URL(`${baseUrl}${ready.slides[0]!.url}`).searchParams.get('hash')!
+      const mismatchHash = `${currentHash.slice(0, -1)}${currentHash.endsWith('0') ? '1' : '0'}`
+      const mismatchResponse = await fetch(`${baseUrl}${slidePath}?hash=${mismatchHash}`)
       expect(mismatchResponse.status).toBe(404)
       const shortHashResponse = await fetch(`${baseUrl}${slidePath}?hash=abcdef01`)
       expect(shortHashResponse.status).toBe(404)
@@ -145,12 +153,18 @@ describe('thumbnail API routes', () => {
     const { baseUrl, deckStore } = await startApi({
       isAvailable: () => true,
       close: async () => undefined,
-      render: async () => {
+      render: async (request) => {
         await new Promise((resolve) => setTimeout(resolve, 20))
+        const slideIndexes = request.slideIndexes ?? [0, 1]
+        const values = new Map([
+          [0, 'png-one'],
+          [1, 'png-two'],
+        ])
+
         return {
           ok: true,
-          slides: [Buffer.from('png-one')],
-          slideCount: 1,
+          slides: slideIndexes.map((index) => Buffer.from(values.get(index) ?? `png-${index}`)),
+          slideCount: 2,
           width: 480,
           height: 270,
           durationMs: 20,
@@ -168,7 +182,7 @@ describe('thumbnail API routes', () => {
     const status = await statusResponse.json()
     assertApiContract(deckThumbnailsResponseSchema, status)
     expect(status.status).toBe('ready')
-    expect(status.slides).toHaveLength(1)
+    expect(status.slides).toHaveLength(2)
     expect(getVersionSpy).toHaveBeenCalledTimes(1)
 
     const imageResponse = await fetch(`${baseUrl}${status.slides[0]!.url}`)

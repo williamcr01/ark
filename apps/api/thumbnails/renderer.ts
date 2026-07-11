@@ -28,6 +28,7 @@ export type ThumbnailRenderRequest = {
   html: string
   deckId?: string
   versionId?: string
+  slideIndexes?: number[]
 }
 
 export type ThumbnailRenderSuccess = {
@@ -293,6 +294,9 @@ export function createThumbnailRenderer(options: {
 
       const parsed = parseDeckHtml(request.html)
       const slideCount = parsed.slideCount
+      const requestedSlideIndexes = request.slideIndexes
+        ? [...new Set(request.slideIndexes)].sort((left, right) => left - right)
+        : null
 
       if (slideCount <= 0) {
         return {
@@ -306,6 +310,18 @@ export function createThumbnailRenderer(options: {
         return {
           ok: false,
           error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${maxSlides}.`,
+          durationMs: Date.now() - startedAt,
+        }
+      }
+
+      if (
+        requestedSlideIndexes?.some(
+          (index) => !Number.isInteger(index) || index < 0 || index >= slideCount,
+        )
+      ) {
+        return {
+          ok: false,
+          error: 'Thumbnail renderer received an invalid slide index.',
           durationMs: Date.now() - startedAt,
         }
       }
@@ -354,8 +370,10 @@ export function createThumbnailRenderer(options: {
             await waitForDeckReady(cdp, readyTimeoutMs)
 
             const slides: Buffer[] = []
+            const captureIndexes =
+              requestedSlideIndexes ?? Array.from({ length: slideCount }, (_value, index) => index)
 
-            for (let index = 0; index < slideCount; index += 1) {
+            for (const index of captureIndexes) {
               await withTimeout(
                 gotoSlide(cdp, index, slideTimeoutMs, settleMs),
                 slideTimeoutMs,
@@ -400,6 +418,7 @@ export function createThumbnailRenderer(options: {
           fields: {
             versionId: request.versionId ?? null,
             slideCount: result.slideCount,
+            capturedSlideCount: result.slides.length,
             durationMs: result.durationMs,
           },
         })
