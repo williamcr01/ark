@@ -553,11 +553,7 @@ function App() {
 
         <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
           {isDesktop ? (
-            <ResizablePanelGroup
-              className="min-h-0 overflow-hidden"
-              key={isChatOpen ? 'deck-with-chat' : 'deck-only'}
-              orientation="horizontal"
-            >
+            <ResizablePanelGroup className="min-h-0 overflow-hidden" orientation="horizontal">
               <ResizablePanel
                 defaultSize={isChatOpen ? deckDefaultSizeWithChat : '100%'}
                 minSize={isChatOpen ? '45%' : '100%'}
