@@ -76,6 +76,7 @@ describe('sandbox preview host', () => {
     expect(renderResponse.headers.get('content-security-policy')).toContain('127.0.0.1:5173')
     expect(renderResponse.headers.get('cross-origin-opener-policy')).toBe('same-origin')
     expect(renderResponse.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+    expect(renderResponse.headers.get('cache-control')).toBe('no-store')
 
     const html = await renderResponse.text()
     const headerCsp = renderResponse.headers.get('content-security-policy') ?? ''
