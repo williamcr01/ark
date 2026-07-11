@@ -17,12 +17,12 @@ All message types use the `ark:editor-*` prefix. TypeScript types, validators (`
 
 ## Relationship to the navigation bridge
 
-Preview HTML is built by `buildPreviewHtml` in `packages/deck-core/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). The **editor** runtime is injected only when `editorBridge: true` is passed — in the shell this happens when Edit mode is active (`DeckPreview` sets `editorBridgeInjected = editorBridgeEnabled && editModeActive`).
+Preview HTML is built by `buildPreviewHtml` in `packages/deck-core/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). Interactive shell previews also inject the **editor** runtime up front (`editorBridge: true`); Edit mode activates or deactivates that dormant runtime with `ark:editor-enable` / `ark:editor-disable` messages instead of remounting the iframe.
 
 Load order (before `</body>`):
 
 1. Navigation runtime (`data-ark-preview-nav`, `data-ark-preview-reveal`, or `data-ark-preview-bridge`)
-2. Editor runtime (`data-ark-preview-editor`) — omitted when not in Edit mode
+2. Editor runtime (`data-ark-preview-editor`) — present in interactive previews, omitted from thumbnail renders
 
 Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*` messages; the editor runtime handles `ark:editor-*` messages. They share slide selectors (`SLIDE_SELECTOR_CHAIN`) and the configured parent app origin.
 
@@ -30,14 +30,14 @@ Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*`
 
 ### Enable / disable
 
-| Step | Actor | Action                                                                                                         |
-| ---- | ----- | -------------------------------------------------------------------------------------------------------------- |
-| 1    | User  | Clicks **Edit** in the preview chrome (`DeckPreview`)                                                          |
-| 2    | Shell | Sets `editModeActive`; preview reloads with `editorBridge: true` so the editor script is injected              |
-| 3    | Shell | `useDeckEditorBridge` attaches a `message` listener and calls `enableEditor(slideIndex, tool?)` on iframe load |
-| 4    | Shell | Posts `ark:editor-enable` with the active slide index and optional tool (default `select`)                     |
-| 5    | Deck  | Binds pointer/keyboard listeners, sets `enabled = true`, posts `ark:editor-ready`                              |
-| 6    | Shell | Marks `editorReady: true`; re-sends `ark:editor-enable` when the active slide changes                          |
+| Step | Actor | Action                                                                                          |
+| ---- | ----- | ----------------------------------------------------------------------------------------------- |
+| 1    | User  | Clicks **Edit** in the preview chrome (`DeckPreview`)                                           |
+| 2    | Shell | Sets `editModeActive`; the existing editor-capable preview frame stays mounted                  |
+| 3    | Shell | `useDeckEditorBridge` attaches a `message` listener and calls `enableEditor(slideIndex, tool?)` |
+| 4    | Shell | Posts `ark:editor-enable` with the active slide index and optional tool (default `select`)      |
+| 5    | Deck  | Binds pointer/keyboard listeners, sets `enabled = true`, posts `ark:editor-ready`               |
+| 6    | Shell | Marks `editorReady: true`; re-sends `ark:editor-enable` when the active slide changes           |
 
 `ark:editor-ready` guarantees:
 

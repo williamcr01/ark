@@ -30,7 +30,6 @@ type PreviewSessionSnapshot = {
   sessionToken: string | null
   handshake: string | null
   html: string
-  editorBridge: boolean
 }
 
 const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
@@ -38,17 +37,16 @@ const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
   sessionToken: null,
   handshake: null,
   html: '',
-  editorBridge: false,
 }
 
 export function useSandboxPreview(
   html: string,
   enabled: boolean,
-  options: SandboxPreviewOptions = {},
+  _options: SandboxPreviewOptions = {},
 ): SandboxPreviewState {
   const sandboxOrigin = resolveSandboxOrigin()
   const appOrigin = resolveAppOrigin()
-  const editorBridge = options.editorBridge === true
+  const editorBridge = true
   const shouldLoad = enabled && html.trim().length > 0
   const [previewSession, setPreviewSession] =
     useState<PreviewSessionSnapshot>(EMPTY_PREVIEW_SESSION)
@@ -104,11 +102,7 @@ export function useSandboxPreview(
     function latestSessionMatches() {
       const session = previewSessionRef.current
 
-      return (
-        session.previewUrl !== null &&
-        session.html === html &&
-        session.editorBridge === editorBridge
-      )
+      return session.previewUrl !== null && session.html === html
     }
 
     async function createPreviewSession(requestHtml: string, requestEditorBridge: boolean) {
@@ -148,7 +142,6 @@ export function useSandboxPreview(
           sessionToken: payload.token,
           handshake: payload.handshake,
           html: requestHtml,
-          editorBridge: requestEditorBridge,
         })
       } catch (caught) {
         if (controller.signal.aborted || requestIdRef.current !== requestId) {
@@ -180,18 +173,6 @@ export function useSandboxPreview(
       return () => {
         effectActive = false
       }
-    }
-
-    // Identity mismatch: drop the stored view/edit session before aborting so a
-    // previous identity cannot stay exposed, and so an aborted in-flight request
-    // cannot repopulate after entering the opposite mode.
-    if (previewSessionRef.current.editorBridge !== editorBridge) {
-      const clearedSession: PreviewSessionSnapshot = {
-        ...EMPTY_PREVIEW_SESSION,
-        editorBridge,
-      }
-      previewSessionRef.current = clearedSession
-      setPreviewSession(clearedSession)
     }
 
     if (latestSessionMatches()) {
@@ -242,21 +223,6 @@ export function useSandboxPreview(
       sandboxOrigin,
       appOrigin,
       isLoading: false,
-      isStale: false,
-      error: null,
-      sessionToken: null,
-      handshake: null,
-    }
-  }
-
-  // Render-time identity guard: never expose a view session under edit identity
-  // (or vice versa) on the first paint after editorBridge flips.
-  if (previewSession.editorBridge !== editorBridge) {
-    return {
-      previewUrl: null,
-      sandboxOrigin,
-      appOrigin,
-      isLoading,
       isStale: false,
       error: null,
       sessionToken: null,
