@@ -225,16 +225,13 @@ describe('useSandboxPreview', () => {
     expect(result.current.previewUrl).toContain('/render/first-token?')
   })
 
-  it('keeps the current interactive session when editorBridge toggles', async () => {
+  it('keeps the current interactive session across same-HTML rerenders', async () => {
     const previewSession = createDeferred<Response>()
     fetchMock.mockReturnValueOnce(previewSession.promise)
 
-    const { result, rerender } = renderHook(
-      ({ html, editorBridge }) => useSandboxPreview(html, true, { editorBridge }),
-      {
-        initialProps: { html: deckHtml('Deck'), editorBridge: false },
-      },
-    )
+    const { result, rerender } = renderHook(({ html }) => useSandboxPreview(html, true), {
+      initialProps: { html: deckHtml('Deck') },
+    })
     await resolvePreviewSession(previewSession, 'preview-token')
 
     expect(requestBody(fetchMock, 0)).toMatchObject({
@@ -246,7 +243,7 @@ describe('useSandboxPreview', () => {
     expect(result.current.handshake).toBe('handshake-preview-token')
     expect(result.current.isStale).toBe(false)
 
-    rerender({ html: deckHtml('Deck'), editorBridge: true })
+    rerender({ html: deckHtml('Deck') })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(result.current.isLoading).toBe(false)
@@ -257,21 +254,18 @@ describe('useSandboxPreview', () => {
     expect(result.current.error).toBeNull()
   })
 
-  it('does not abort an in-flight session when editorBridge toggles', async () => {
+  it('does not abort an in-flight session when the hook rerenders with the same HTML', async () => {
     const previewSession = createDeferred<Response>()
     fetchMock.mockReturnValueOnce(previewSession.promise)
 
-    const { result, rerender } = renderHook(
-      ({ html, editorBridge }) => useSandboxPreview(html, true, { editorBridge }),
-      {
-        initialProps: { html: deckHtml('Deck'), editorBridge: false },
-      },
-    )
+    const { result, rerender } = renderHook(({ html }) => useSandboxPreview(html, true), {
+      initialProps: { html: deckHtml('Deck') },
+    })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const previewSignal = requestSignal(fetchMock, 0)
 
-    rerender({ html: deckHtml('Deck'), editorBridge: true })
+    rerender({ html: deckHtml('Deck') })
 
     expect(previewSignal?.aborted).toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(1)

@@ -7,10 +7,6 @@ import {
   resolveSandboxOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
 
-export type SandboxPreviewOptions = {
-  editorBridge?: boolean
-}
-
 export type SandboxPreviewState = {
   previewUrl: string | null
   sandboxOrigin: string
@@ -24,6 +20,8 @@ export type SandboxPreviewState = {
 }
 
 const PREVIEW_SESSION_COALESCE_MS = 300
+/** Interactive shell previews always inject a dormant editor runtime. */
+const INTERACTIVE_EDITOR_BRIDGE = true
 
 type PreviewSessionSnapshot = {
   previewUrl: string | null
@@ -39,14 +37,9 @@ const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
   html: '',
 }
 
-export function useSandboxPreview(
-  html: string,
-  enabled: boolean,
-  _options: SandboxPreviewOptions = {},
-): SandboxPreviewState {
+export function useSandboxPreview(html: string, enabled: boolean): SandboxPreviewState {
   const sandboxOrigin = resolveSandboxOrigin()
   const appOrigin = resolveAppOrigin()
-  const editorBridge = true
   const shouldLoad = enabled && html.trim().length > 0
   const [previewSession, setPreviewSession] =
     useState<PreviewSessionSnapshot>(EMPTY_PREVIEW_SESSION)
@@ -105,7 +98,7 @@ export function useSandboxPreview(
       return session.previewUrl !== null && session.html === html
     }
 
-    async function createPreviewSession(requestHtml: string, requestEditorBridge: boolean) {
+    async function createPreviewSession(requestHtml: string) {
       const requestId = requestIdRef.current + 1
       requestIdRef.current = requestId
       const controller = new AbortController()
@@ -121,7 +114,7 @@ export function useSandboxPreview(
           },
           body: JSON.stringify({
             html: requestHtml,
-            editorBridge: requestEditorBridge,
+            editorBridge: INTERACTIVE_EDITOR_BRIDGE,
           }),
           signal: controller.signal,
         })
@@ -204,10 +197,10 @@ export function useSandboxPreview(
     if (isRapidHtmlChange) {
       pendingTimerRef.current = window.setTimeout(() => {
         pendingTimerRef.current = null
-        void createPreviewSession(html, editorBridge)
+        void createPreviewSession(html)
       }, PREVIEW_SESSION_COALESCE_MS)
     } else {
-      void createPreviewSession(html, editorBridge)
+      void createPreviewSession(html)
     }
 
     return () => {
@@ -215,7 +208,7 @@ export function useSandboxPreview(
       clearPendingTimer()
       abortActiveRequest()
     }
-  }, [appOrigin, editorBridge, html, sandboxOrigin, shouldLoad])
+  }, [appOrigin, html, sandboxOrigin, shouldLoad])
 
   if (!shouldLoad) {
     return {

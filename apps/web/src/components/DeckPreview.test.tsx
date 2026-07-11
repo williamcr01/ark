@@ -218,6 +218,51 @@ describe('DeckPreview script divergence UI', () => {
     expect(useDeckPreviewFrameMock.mock.calls.every((call) => call[1] === true)).toBe(true)
   })
 
+  it('hides preview chrome overlays while present mode is open', async () => {
+    const user = userEvent.setup()
+    renderDeckPreview({
+      html: hostileScriptsDeck,
+      isGenerating: false,
+      isStripOpen: false,
+      layout: 'desktop',
+      parsedDeck: parseDeckSlides(hostileScriptsDeck),
+    })
+
+    expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Scripts and inline handlers were removed for preview/i),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+  })
+
+  it('disables then re-enables the editor when presenting from edit mode', async () => {
+    const user = userEvent.setup()
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+
+    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    editorBridgeMock.editorReady = true
+
+    editorBridgeMock.disableEditor.mockClear()
+    editorBridgeMock.enableEditor.mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Presentation mode' })).not.toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(editorBridgeMock.enableEditor).toHaveBeenCalled()
+  })
+
   it('shows static preview messaging for uploaded scripted decks', () => {
     renderDeckPreview({
       html: hostileScriptsDeck,

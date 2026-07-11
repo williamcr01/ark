@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,6 +8,8 @@ import { type ElementSize } from '@/lib/deck-preview'
 import { cn } from '@/lib/utils'
 
 const CONTROLS_IDLE_MS = 2500
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 type PresentModeProps = {
   activeSlideIndex: number
@@ -18,11 +20,20 @@ type PresentModeProps = {
   onViewportSizeChange?: (size: ElementSize) => void
 }
 
+function readElementSize(element: HTMLElement | null): ElementSize {
+  if (!element) {
+    return { width: 0, height: 0 }
+  }
+
+  const { width, height } = element.getBoundingClientRect()
+  return { width, height }
+}
+
 function useElementSize<T extends HTMLElement>() {
   const elementRef = useRef<T>(null)
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = elementRef.current
 
     if (!element) {
@@ -30,14 +41,17 @@ function useElementSize<T extends HTMLElement>() {
     }
 
     const updateSize = () => {
-      const { width, height } = element.getBoundingClientRect()
+      const next = readElementSize(element)
 
       setSize((current) => {
-        if (Math.abs(current.width - width) < 0.5 && Math.abs(current.height - height) < 0.5) {
+        if (
+          Math.abs(current.width - next.width) < 0.5 &&
+          Math.abs(current.height - next.height) < 0.5
+        ) {
           return current
         }
 
-        return { width, height }
+        return next
       })
     }
 
@@ -107,7 +121,7 @@ export function PresentMode({
     currentSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onViewportSizeChange?.(viewportSize)
   }, [onViewportSizeChange, viewportSize])
 
@@ -177,6 +191,54 @@ export function PresentMode({
     }
   }, [finishExit])
 
+  useEffect(() => {
+    const root = rootRef.current
+
+    if (!root) {
+      return
+    }
+
+    const handleTabTrap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') {
+        return
+      }
+
+      const focusable = [...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter(
+        (element) => !element.hasAttribute('disabled'),
+      )
+
+      if (focusable.length === 0) {
+        event.preventDefault()
+        root.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      const focusInside = active instanceof Node && root.contains(active)
+
+      if (event.shiftKey) {
+        if (!focusInside || active === first || active === root) {
+          event.preventDefault()
+          last.focus()
+        }
+        return
+      }
+
+      if (!focusInside || active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handleTabTrap, true)
+
+    return () => {
+      window.removeEventListener('keydown', handleTabTrap, true)
+    }
+  }, [])
+
   const exitPresentMode = useCallback(() => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {
@@ -221,6 +283,14 @@ export function PresentMode({
 
   const canGoPrevious = activeSlideIndex > 0
   const canGoNext = activeSlideIndex < slideCount - 1
+
+  // Backdrop sits below the shared preview stage (z-60); controls sit above it.
+  const backdrop = (
+    <div
+      aria-hidden
+      className="pointer-events-auto fixed inset-0 z-[40] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04)),linear-gradient(#000,#000)]"
+    />
+  )
 
   const presenter = (
     <div
@@ -320,7 +390,12 @@ export function PresentMode({
     </div>
   )
 
-  return createPortal(presenter, document.body)
+  return (
+    <>
+      {createPortal(backdrop, document.body)}
+      {createPortal(presenter, document.body)}
+    </>
+  )
 }
 
 export type { PresentModeProps }

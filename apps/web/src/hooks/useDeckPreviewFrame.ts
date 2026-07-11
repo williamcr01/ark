@@ -7,10 +7,6 @@ import {
 } from '@/hooks/useSandboxPreview'
 import { getPreviewHtml, useSrcDocPreviewFallback } from '@/lib/deck-preview'
 
-export type DeckPreviewFrameOptions = {
-  editorBridge?: boolean
-}
-
 export type DeckPreviewFrameModel = {
   iframeKey: string
   iframeSrc?: string
@@ -23,11 +19,7 @@ export type DeckPreviewFrameModel = {
   handshake: string | null
 }
 
-export function useDeckPreviewFrame(
-  html: string,
-  enabled: boolean,
-  _options: DeckPreviewFrameOptions = {},
-): DeckPreviewFrameModel {
+export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreviewFrameModel {
   const usesSrcDocFallback = useSrcDocPreviewFallback()
   const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback)
 

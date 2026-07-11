@@ -122,7 +122,10 @@ export function DeckPreview({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
-  const [presentViewportSize, setPresentViewportSize] = useState({ width: 0, height: 0 })
+  const [presentViewportSize, setPresentViewportSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 0 : window.innerWidth,
+    height: typeof window === 'undefined' ? 0 : window.innerHeight,
+  }))
   const [uncontrolledEditModeActive, setUncontrolledEditModeActive] = useState(false)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [imageFitOverride, setImageFitOverride] = useState<{
@@ -1064,6 +1067,13 @@ export function DeckPreview({
       return size
     })
   }, [])
+  const openPresentMode = useCallback(() => {
+    setPresentViewportSize({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
+    setIsPresentOpen(true)
+  }, [])
   const effectivePreviewViewportSize =
     isPresentOpen && presentViewportSize.width > 0 && presentViewportSize.height > 0
       ? presentViewportSize
@@ -1106,7 +1116,7 @@ export function DeckPreview({
             aria-label="Present fullscreen"
             className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
             disabled={!canPresent || isPresentOpen}
-            onClick={() => setIsPresentOpen(true)}
+            onClick={openPresentMode}
             type="button"
           >
             <Maximize2Icon className="size-3" />
@@ -1175,13 +1185,6 @@ export function DeckPreview({
         ref={imageInputRef}
         type="file"
       />
-
-      {isPresentOpen ? (
-        <div
-          aria-hidden
-          className="fixed inset-0 z-[40] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04)),linear-gradient(#000,#000)]"
-        />
-      ) : null}
 
       <div
         className={cn(
@@ -1271,7 +1274,7 @@ export function DeckPreview({
                     title="Generated Ark presentation preview"
                   />
                 )}
-                {previewCompromised ? (
+                {previewCompromised && !isPresentOpen ? (
                   <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
                     <div className="flex items-start gap-2">
                       <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1286,13 +1289,13 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {previewFrame.error ? (
+                {!isPresentOpen && previewFrame.error ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
                     <p className="font-medium">Sandbox preview unavailable</p>
                     <p>{previewFrame.error}</p>
                   </div>
                 ) : null}
-                {previewFrame.isLoading ? (
+                {!isPresentOpen && previewFrame.isLoading ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-medium text-muted-foreground backdrop-blur-sm">
                     Loading sandbox preview…
                   </div>
@@ -1306,7 +1309,7 @@ export function DeckPreview({
                     scale={previewFrameScale}
                   />
                 ) : null}
-                {usesStaticPreview ? (
+                {!isPresentOpen && usesStaticPreview ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
                     <div className="flex items-start gap-2">
                       <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1321,7 +1324,7 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {editorError ? (
+                {!isPresentOpen && editorError ? (
                   <div
                     className={cn(
                       'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
@@ -1332,7 +1335,7 @@ export function DeckPreview({
                     <p>{editorError}</p>
                   </div>
                 ) : null}
-                {networkIssues.length > 0 ? (
+                {!isPresentOpen && networkIssues.length > 0 ? (
                   <div
                     className={cn(
                       'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
@@ -1348,7 +1351,10 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {manifestWarnings.length > 0 && !usesStaticPreview && networkIssues.length === 0 ? (
+                {!isPresentOpen &&
+                manifestWarnings.length > 0 &&
+                !usesStaticPreview &&
+                networkIssues.length === 0 ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-amber-500/30 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur dark:bg-amber-950/90 dark:text-amber-100">
                     <div className="flex items-start gap-2">
                       <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1359,7 +1365,7 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {isGenerating ? (
+                {!isPresentOpen && isGenerating ? (
                   <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
                     <Loader2Icon className="size-3.5 animate-spin" />
                     Updating preview

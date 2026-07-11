@@ -26,10 +26,9 @@ describe('fingerprintPreviewHtml', () => {
 
 describe('useDeckPreviewFrame srcDoc keying', () => {
   it('changes iframeKey for equal-length HTML edits', () => {
-    const first = renderHook(
-      ({ html }) => useDeckPreviewFrame(html, true, { editorBridge: false }),
-      { initialProps: { html: '<section class="slide">AAAA</section>' } },
-    )
+    const first = renderHook(({ html }) => useDeckPreviewFrame(html, true), {
+      initialProps: { html: '<section class="slide">AAAA</section>' },
+    })
 
     const firstKey = first.result.current.iframeKey
     expect(firstKey).toContain('srcdoc:')
@@ -41,17 +40,19 @@ describe('useDeckPreviewFrame srcDoc keying', () => {
     expect(first.result.current.iframeKey).toContain('srcdoc:')
   })
 
-  it('keeps iframeKey stable when editorBridge toggles', () => {
-    const view = renderHook(
-      ({ editorBridge }) =>
-        useDeckPreviewFrame('<section class="slide">Hi</section>', true, { editorBridge }),
-      { initialProps: { editorBridge: false } },
-    )
+  it('keeps iframeKey stable across same-HTML rerenders', () => {
+    const view = renderHook(() => useDeckPreviewFrame('<section class="slide">Hi</section>', true))
 
     const viewKey = view.result.current.iframeKey
     const viewHandshake = view.result.current.handshake
-    view.rerender({ editorBridge: true })
+    view.rerender()
     expect(view.result.current.iframeKey).toBe(viewKey)
     expect(view.result.current.handshake).toBe(viewHandshake)
+  })
+
+  it('always injects the dormant editor runtime for interactive previews', () => {
+    const view = renderHook(() => useDeckPreviewFrame('<section class="slide">Hi</section>', true))
+
+    expect(view.result.current.iframeSrcDoc).toContain(':edit:')
   })
 })
