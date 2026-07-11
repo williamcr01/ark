@@ -7,7 +7,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
-import { parseDeckSlides } from '@/lib/deck-slides'
+import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import {
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
@@ -112,7 +112,7 @@ const plainDeckProps = {
   isGenerating: false,
   isStripOpen: false,
   layout: 'desktop' as const,
-  parsedDeck: parseDeckSlides(plainCssDeck),
+  deckAnalysis: analyzeDeckInBrowser(plainCssDeck),
 }
 
 describe('DeckPreview script divergence UI', () => {
@@ -225,7 +225,7 @@ describe('DeckPreview script divergence UI', () => {
       isGenerating: false,
       isStripOpen: false,
       layout: 'desktop',
-      parsedDeck: parseDeckSlides(hostileScriptsDeck),
+      deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
     })
 
     expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
@@ -271,7 +271,7 @@ describe('DeckPreview script divergence UI', () => {
       isGenerating: false,
       isStripOpen: false,
       layout: 'desktop',
-      parsedDeck: parseDeckSlides(hostileScriptsDeck),
+      deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
     })
 
     expect(screen.getAllByText('Static preview').length).toBeGreaterThan(0)
@@ -290,7 +290,7 @@ describe('DeckPreview script divergence UI', () => {
       isGenerating: false,
       isStripOpen: false,
       layout: 'desktop',
-      parsedDeck: parseDeckSlides(revealRegistryDeck),
+      deckAnalysis: analyzeDeckInBrowser(revealRegistryDeck),
     })
 
     expect(screen.getAllByText('Reveal runtime').length).toBeGreaterThan(0)
