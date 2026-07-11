@@ -10,6 +10,7 @@ import {
   createThumbnailRenderRouter,
   createThumbnailRenderSecret,
   isLoopbackAddress,
+  renderThumbnailPreviewDocument,
   THUMBNAIL_RENDER_SECRET_HEADER,
   thumbnailRenderLoopbackGuard,
 } from './render-host.ts'
@@ -129,6 +130,37 @@ describe('createThumbnailRenderAccessGuard', () => {
 
     expect(nextMock).not.toHaveBeenCalled()
     expect(rawResponse.statusCode).toBe(403)
+  })
+})
+
+describe('renderThumbnailPreviewDocument', () => {
+  it('injects thumbnail-only motion disabling and settle acknowledgement hooks', () => {
+    const preview = renderThumbnailPreviewDocument(
+      '<!DOCTYPE html><html><body><section class="slide"><h1>One</h1></section></body></html>',
+      { parentOrigin: 'http://127.0.0.1:8787' },
+    )
+
+    expect(preview.html).toContain('data-ark-thumbnail-disable-motion')
+    expect(preview.html).not.toContain('animation: none !important')
+    expect(preview.html).not.toContain('transition: none !important')
+    expect(preview.html).toContain('animation-duration: 0s !important')
+    expect(preview.html).toContain('animation-delay: 0s !important')
+    expect(preview.html).toContain('transition-duration: 0s !important')
+    expect(preview.html).toContain('transition-delay: 0s !important')
+    expect(preview.html).toContain('.reveal .slides section.present')
+    expect(preview.html).toContain('.reveal .fragment')
+    expect(preview.html).toContain('data-ark-thumbnail-settle')
+    expect(preview.html).toContain('ark:thumbnail-settle')
+    expect(preview.html).toContain('ark:thumbnail-settled')
+    expect(preview.html).toContain('waitForImages')
+    expect(preview.html).toContain('document.images')
+    expect(preview.html).toContain('img.decode')
+    expect(preview.html).toContain("classList.add('visible')")
+    expect(preview.html).toContain('document.fonts.ready')
+    expect(preview.html).toContain('requestAnimationFrame')
+
+    const settleScript = preview.html.match(/<script data-ark-thumbnail-settle="" nonce="([^"]+)">/)
+    expect(settleScript?.[1]).toBeTruthy()
   })
 })
 
