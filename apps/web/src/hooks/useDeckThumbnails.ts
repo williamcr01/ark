@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import {
+  THUMBNAIL_LONG_POLL_MAX_WAIT_MS,
   deckThumbnailsResponseSchema,
   fetchApiJsonOrThrow,
   type DeckThumbnailsResponse,
@@ -14,13 +15,16 @@ export type DeckThumbnailsState = {
   isLoading: boolean
 }
 
-const PENDING_POLL_MS = 1_200
-const PENDING_POLL_MAX_MS = 4_000
+const PENDING_REPOLL_MS = 250
 
-async function fetchDeckThumbnails(deckId: string, versionId: string) {
-  const params = new URLSearchParams({ versionId })
+async function fetchDeckThumbnails(deckId: string, versionId: string, signal: AbortSignal) {
+  const params = new URLSearchParams({
+    versionId,
+    waitMs: String(THUMBNAIL_LONG_POLL_MAX_WAIT_MS),
+  })
   const response = await fetch(
     `/api/decks/${encodeURIComponent(deckId)}/thumbnails?${params.toString()}`,
+    { signal },
   )
   return fetchApiJsonOrThrow(response, deckThumbnailsResponseSchema, {
     fallbackMessage: 'Could not load deck thumbnails.',
@@ -87,8 +91,8 @@ export function useDeckThumbnails(
 
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let activeController: AbortController | null = null
     const requestId = ++requestIdRef.current
-    let attempt = 0
 
     const clearTimer = () => {
       if (timeoutId) {
@@ -98,18 +102,19 @@ export function useDeckThumbnails(
     }
 
     const schedulePoll = () => {
-      const delay = Math.min(PENDING_POLL_MS * 2 ** attempt, PENDING_POLL_MAX_MS)
-      attempt += 1
       timeoutId = setTimeout(() => {
         void load()
-      }, delay)
+      }, PENDING_REPOLL_MS)
     }
 
     const load = async () => {
+      activeController?.abort()
+      const controller = new AbortController()
+      activeController = controller
       setIsLoading(true)
 
       try {
-        const payload = await fetchDeckThumbnails(deckId, versionId)
+        const payload = await fetchDeckThumbnails(deckId, versionId, controller.signal)
 
         if (cancelled || requestId !== requestIdRef.current) {
           return
@@ -124,6 +129,9 @@ export function useDeckThumbnails(
 
         if (payload.status === 'ready') {
           setThumbnailUrls(toThumbnailUrls(payload, slideCount))
+          if (activeController === controller) {
+            activeController = null
+          }
           setIsLoading(false)
           return
         }
@@ -131,13 +139,23 @@ export function useDeckThumbnails(
         setThumbnailUrls(null)
 
         if (payload.status === 'pending') {
+          if (activeController === controller) {
+            activeController = null
+          }
           schedulePoll()
           return
         }
 
+        if (activeController === controller) {
+          activeController = null
+        }
         setIsLoading(false)
       } catch (loadError) {
         if (cancelled || requestId !== requestIdRef.current) {
+          return
+        }
+
+        if (loadError instanceof Error && loadError.name === 'AbortError') {
           return
         }
 
@@ -153,6 +171,7 @@ export function useDeckThumbnails(
     return () => {
       cancelled = true
       clearTimer()
+      activeController?.abort()
     }
   }, [deckId, enabled, slideCount, versionId])
 

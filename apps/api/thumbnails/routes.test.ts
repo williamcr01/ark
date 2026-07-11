@@ -141,6 +141,42 @@ describe('thumbnail API routes', () => {
     })
   })
 
+  it('long-polls local renders and avoids full version reads for cached pngs', async () => {
+    const { baseUrl, deckStore } = await startApi({
+      isAvailable: () => true,
+      close: async () => undefined,
+      render: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return {
+          ok: true,
+          slides: [Buffer.from('png-one')],
+          slideCount: 1,
+          width: 480,
+          height: 270,
+          durationMs: 20,
+        }
+      },
+    })
+
+    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const versionId = created.activeVersionId!
+    const getVersionSpy = vi.spyOn(deckStore, 'getVersion')
+
+    const statusResponse = await fetch(
+      `${baseUrl}/api/decks/${created.id}/thumbnails?versionId=${versionId}&waitMs=500`,
+    )
+    const status = await statusResponse.json()
+    assertApiContract(deckThumbnailsResponseSchema, status)
+    expect(status.status).toBe('ready')
+    expect(status.slides).toHaveLength(1)
+    expect(getVersionSpy).toHaveBeenCalledTimes(1)
+
+    const imageResponse = await fetch(`${baseUrl}${status.slides[0]!.url}`)
+    expect(imageResponse.status).toBe(200)
+    expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
+    expect(getVersionSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('returns disabled when the renderer is unavailable', async () => {
     const { baseUrl } = await startApi({
       isAvailable: () => false,

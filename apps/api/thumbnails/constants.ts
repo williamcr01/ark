@@ -14,6 +14,8 @@ export const THUMBNAIL_MAX_PNG_BYTES = 1_500_000
 export const THUMBNAIL_CACHE_MAX_ENTRIES = 200
 export const THUMBNAIL_MAX_RENDER_ATTEMPTS = 3
 export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
+/** Must exceed deck timeout so a live render is not stolen by another process. */
+export const THUMBNAIL_PENDING_LEASE_MS = THUMBNAIL_DECK_TIMEOUT_MS + 30_000
 export const THUMBNAIL_QUEUE_MAX_PENDING = 20
 
 export const THUMBNAIL_STATUS = {
