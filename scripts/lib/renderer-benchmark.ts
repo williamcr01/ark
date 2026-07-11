@@ -547,6 +547,13 @@ export async function measureUploadScenario(options: {
       metrics.shell_ready_ms = Number(elapsed.toFixed(1))
     }
 
+    // Strip toggle only exists after a deck with slides is loaded; default is open,
+    // but reopen if a prior interaction left it collapsed.
+    if (metrics.shell_ready_ms && probe.stripHidden) {
+      await ensureStripOpen(options.cdp)
+      continue
+    }
+
     if (
       !metrics.preview_iframe_src_ms &&
       probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)

@@ -33,7 +33,6 @@ import {
   buildPlainFixtureHtml,
   buildRevealFixtureHtml,
   compareBenchmarkRuns,
-  ensureStripOpen,
   formatMetricTable,
   installBenchmarkInstrumentation,
   measureUploadScenario,
@@ -95,6 +94,10 @@ function parseArgs(argv: string[]): CliOptions {
     if (arg === '--help' || arg === '-h') {
       printUsage()
       process.exit(0)
+    }
+
+    if (arg === '--') {
+      continue
     }
 
     if (arg === '--extended') {
@@ -422,7 +425,6 @@ async function runUploadIterations(options: {
       await attachCdpTargets(sharedCdp)
       await openApp(sharedCdp, sharedServers.appOrigin)
       await installBenchmarkInstrumentation(sharedCdp)
-      await ensureStripOpen(sharedCdp)
     }
 
     for (let index = 0; index < total; index += 1) {
@@ -474,7 +476,6 @@ async function runUploadIterations(options: {
           await attachCdpTargets(cdp)
           await openApp(cdp, servers.appOrigin)
           await installBenchmarkInstrumentation(cdp)
-          await ensureStripOpen(cdp)
         }
 
         assert(
@@ -488,7 +489,6 @@ async function runUploadIterations(options: {
         if (!cold) {
           await openApp(cdp, servers.appOrigin)
           await installBenchmarkInstrumentation(cdp)
-          await ensureStripOpen(cdp)
           observability.clear()
         }
 
