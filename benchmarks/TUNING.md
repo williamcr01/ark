@@ -23,11 +23,24 @@ a single decoded thumbnail.
 
 ### Current (API-ready metric)
 
-| Queue concurrency | `final_version_thumb_ready_ms` median | p90 | MAD | Notes                           |
-| ----------------- | ------------------------------------- | --- | --- | ------------------------------- |
-| _pending redo_    |                                       |     |     | Fill after proper 1/2/3/4 sweep |
+Same host, production web bundle, `plain-css` / `rapid_version_burst`,
+5 iterations + 1 warmup each. Artifacts (gitignored):
+`artifacts/renderer-benchmarks/concurrency-{1,2,3,4}.json`.
 
-Decision: _pending redo_.
+| Queue concurrency | median | p90   | MAD  | `burst_submit_ms` median | `thumbnail_render_count` median | Notes                                         |
+| ----------------- | ------ | ----- | ---- | ------------------------ | ------------------------------- | --------------------------------------------- |
+| 1                 | 284.4  | 324.3 | 20.4 | 262.8                    | 2                               | Fewest renders; best median and p90           |
+| 2                 | 339.0  | 398.2 | 27.0 | 233.7                    | 3                               | ~19% slower median vs 1 (beyond MAD)          |
+| 3                 | 377.9  | 447.2 | 18.8 | 253.6                    | 4                               | Worse than 2; more superseded work runs       |
+| 4                 | 415.6  | 454.4 | 18.5 | 256.6                    | 5                               | Slowest; render count scales with concurrency |
+
+Decision: keep default concurrency **1**. Both median and p90 of
+`final_version_thumb_ready_ms` are best at 1, and the gap vs 2 (~55ms median,
+~74ms p90) is larger than concurrency-1 MAD (~20ms) and well above 5%. Higher
+concurrency increases `thumbnail_render_count` (2→3→4→5): more mid-burst
+versions start rendering before supersede/cancel can win, so the final version
+waits behind parallel Chromium work. On ties we would prefer lower concurrency
+anyway; here 1 is strictly best, so `THUMBNAIL_QUEUE_CONCURRENCY` stays at 1.
 
 ## Settle delay
 
