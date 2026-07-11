@@ -42,7 +42,7 @@ describe('useDeckThumbnails', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('polls while pending and then exposes ready urls', async () => {
+  it('long-polls while pending and then exposes ready urls', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -88,7 +88,7 @@ describe('useDeckThumbnails', () => {
     expect(result.current.isLoading).toBe(true)
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_300)
+      await vi.advanceTimersByTimeAsync(300)
     })
 
     expect(result.current.status).toBe('ready')
@@ -98,6 +98,41 @@ describe('useDeckThumbnails', () => {
       '/api/decks/d/thumbnails/v/1.png?hash=abc',
     ])
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('waitMs=5000')
+  })
+
+  it('aborts an in-flight long-poll when the version changes', async () => {
+    const signals: AbortSignal[] = []
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.signal) {
+        signals.push(init.signal as AbortSignal)
+      }
+
+      return new Promise<Response>(() => undefined)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { rerender, unmount } = renderHook(
+      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 1),
+      { initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' } },
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(signals[0]?.aborted).toBe(false)
+
+    rerender({ versionId: 'a0000000-0000-4000-8000-000000000002' })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[1]?.aborted).toBe(false)
+
+    unmount()
   })
 
   it('clears stale thumbnails immediately when the version changes', async () => {

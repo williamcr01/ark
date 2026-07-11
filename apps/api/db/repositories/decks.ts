@@ -43,7 +43,6 @@ type DeckVersionRow = {
   id: string
   deck_id: string
   version_number: number | string
-  html: string
   title: string
   source: string
   model_provider: string | null
@@ -52,6 +51,10 @@ type DeckVersionRow = {
   runtime_metadata: Record<string, unknown> | null
   created_at: Date | string
   active_version_id: string | null
+}
+
+type DeckVersionDetailRow = DeckVersionRow & {
+  html: string
 }
 
 type PostgresDeckStoreOptions = {
@@ -490,7 +493,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
           v.id,
           v.deck_id,
           v.version_number,
-          v.html,
           v.title,
           v.source,
           v.model_provider,
@@ -516,7 +518,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
 
     await ensureReady()
 
-    const result = await pool.query<DeckVersionRow>(
+    const result = await pool.query<DeckVersionDetailRow>(
       `
         SELECT
           v.id,
@@ -554,6 +556,41 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     } satisfies DeckVersionDetail
   }
 
+  const getVersionMetadata = async (deckId: string, versionId: string) => {
+    if (!isValidDeckId(deckId) || !isValidDeckId(versionId)) {
+      return null
+    }
+
+    await ensureReady()
+
+    const result = await pool.query<DeckVersionRow>(
+      `
+        SELECT
+          v.id,
+          v.deck_id,
+          v.version_number,
+          v.title,
+          v.source,
+          v.model_provider,
+          v.model_name,
+          v.validation_status,
+          v.runtime_metadata,
+          v.created_at,
+          d.active_version_id
+        FROM deck_versions v
+        JOIN decks d ON d.id = v.deck_id
+        WHERE v.deck_id = $1
+          AND v.id = $2
+          AND d.deleted_at IS NULL
+      `,
+      [deckId, versionId],
+    )
+
+    const row = result.rows[0]
+
+    return row ? readVersionSummary(row) : null
+  }
+
   const rollbackToVersion = async (
     deckId: string,
     versionId: string,
@@ -582,6 +619,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     updateDeckMetadata,
     deleteDeck,
     listVersions,
+    getVersionMetadata,
     getVersion,
     rollbackToVersion,
   }

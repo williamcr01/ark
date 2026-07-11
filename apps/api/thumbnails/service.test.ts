@@ -105,6 +105,74 @@ describe('thumbnail service', () => {
     expect(png?.toString()).toBe('two')
   })
 
+  it('long-polls a local in-flight render and loads html lazily', async () => {
+    let renderCount = 0
+    let loadHtmlCount = 0
+    const { service } = await setup(async () => {
+      renderCount += 1
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      return {
+        ok: true,
+        slides: [Buffer.from('one'), Buffer.from('two')],
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 20,
+      }
+    })
+
+    const status = await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'abc123',
+      enqueueIfMissing: true,
+      waitMs: 500,
+      loadHtml: async () => {
+        loadHtmlCount += 1
+        return sampleHtml
+      },
+    })
+
+    expect(status.status).toBe(THUMBNAIL_STATUS.ready)
+    expect(status.slides).toHaveLength(2)
+    expect(renderCount).toBe(1)
+    expect(loadHtmlCount).toBe(1)
+  })
+
+  it('returns pending without loading html when another process owns pending work', async () => {
+    let loadHtmlCount = 0
+    const { service, cache } = await setup(async () => {
+      throw new Error('render should not run')
+    })
+    const key = {
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'abc123',
+    }
+    await cache.markPending(key, {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+      slideCount: 0,
+      width: 480,
+      height: 270,
+    })
+
+    const status = await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+      enqueueIfMissing: true,
+      waitMs: 25,
+      loadHtml: async () => {
+        loadHtmlCount += 1
+        return sampleHtml
+      },
+    })
+
+    expect(status.status).toBe(THUMBNAIL_STATUS.pending)
+    expect(loadHtmlCount).toBe(0)
+  })
+
   it('records failed renders without crashing the queue', async () => {
     const { service } = await setup(async () => ({
       ok: false,
@@ -307,6 +375,69 @@ describe('thumbnail service', () => {
     await enqueueVersion(THUMBNAIL_QUEUE_MAX_PENDING)
     await vi.waitFor(() => {
       expect(renderedVersions).toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
+    })
+  })
+
+  it('does not load html for a missing render while the queue is saturated', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    let releaseGate: (() => void) | null = null
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve
+    })
+    const renderedVersions: string[] = []
+    const service = createThumbnailService({
+      cache: createThumbnailCache(cacheDir),
+      deckStore: createDeckStore(dataDir),
+      renderer: {
+        isAvailable: () => true,
+        close: async () => undefined,
+        render: async (request) => {
+          await gate
+          renderedVersions.push(request.versionId ?? 'unknown')
+          return {
+            ok: true,
+            slides: [Buffer.from('png')],
+            slideCount: 1,
+            width: 480,
+            height: 270,
+            durationMs: 1,
+          }
+        },
+      },
+    })
+
+    const versionId = (index: number) =>
+      `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
+      await service.enqueue({
+        deckId: 'b0000000-0000-4000-8000-000000000001',
+        versionId: versionId(index),
+        html: sampleHtml,
+        manifestHash: 'abc123',
+      })
+    }
+
+    let loadHtmlCount = 0
+    const overflow = await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: versionId(THUMBNAIL_QUEUE_MAX_PENDING),
+      manifestHash: 'abc123',
+      enqueueIfMissing: true,
+      waitMs: 25,
+      loadHtml: async () => {
+        loadHtmlCount += 1
+        return sampleHtml
+      },
+    })
+
+    expect(overflow.status).toBe(THUMBNAIL_STATUS.pending)
+    expect(loadHtmlCount).toBe(0)
+
+    releaseGate?.()
+    await vi.waitFor(() => {
+      expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
     })
   })
 

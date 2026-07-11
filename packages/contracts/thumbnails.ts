@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 import { deckIdSchema, withRequestId } from './common.ts'
 
+export const THUMBNAIL_LONG_POLL_MAX_WAIT_MS = 5_000
+
 export const thumbnailStatusSchema = z.enum(['ready', 'pending', 'failed', 'disabled'])
 
 export type ThumbnailStatus = z.infer<typeof thumbnailStatusSchema>
@@ -15,6 +17,7 @@ export type ThumbnailSlide = z.infer<typeof thumbnailSlideSchema>
 
 export const deckThumbnailsQuerySchema = z.object({
   versionId: deckIdSchema,
+  waitMs: z.coerce.number().int().min(0).max(THUMBNAIL_LONG_POLL_MAX_WAIT_MS).optional().default(0),
 })
 
 export type DeckThumbnailsQuery = z.infer<typeof deckThumbnailsQuerySchema>

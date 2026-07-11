@@ -38,6 +38,7 @@ export type DeckStore = {
   updateDeckMetadata: (id: string, metadata: { title?: string }) => Promise<StoredDeck | null>
   deleteDeck: (id: string) => Promise<boolean>
   listVersions: (deckId: string) => Promise<DeckVersionSummary[] | null>
+  getVersionMetadata: (deckId: string, versionId: string) => Promise<DeckVersionSummary | null>
   getVersion: (deckId: string, versionId: string) => Promise<DeckVersionDetail | null>
   rollbackToVersion: (
     deckId: string,
