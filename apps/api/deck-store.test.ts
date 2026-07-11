@@ -123,6 +123,10 @@ describe('createDeckStore', () => {
     expect(firstVersion?.html).toBe(sampleHtml)
     expect(firstVersion?.versionNumber).toBe(1)
 
+    const firstVersionMetadata = await store.getVersionMetadata(created.id, versions![1].id)
+    expect(firstVersionMetadata?.versionNumber).toBe(1)
+    expect('html' in firstVersionMetadata!).toBe(false)
+
     const rolledBack = await store.rollbackToVersion(created.id, versions![1].id)
     expect(rolledBack?.html).toBe(sampleHtml)
     expect(rolledBack?.versionNumber).toBe(3)
@@ -132,6 +136,10 @@ describe('createDeckStore', () => {
     expect(afterRollback?.[0]).toMatchObject({
       versionNumber: 3,
       source: 'rollback',
+      isActive: true,
+    })
+    expect(await store.getVersionMetadata(created.id, afterRollback![0].id)).toMatchObject({
+      versionNumber: 3,
       isActive: true,
     })
     expect(updated?.html).toContain('Agent edit')
@@ -161,6 +169,9 @@ describe('createDeckStore', () => {
     expect(await store.deleteDeck('../../etc/passwd')).toBe(false)
     expect(await store.listDecks()).toEqual([])
     expect(await store.listVersions('missing-id')).toBeNull()
+    expect(
+      await store.getVersionMetadata('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'),
+    ).toBeNull()
     expect(await store.getVersion('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54')).toBeNull()
     expect(
       await store.rollbackToVersion('missing-id', 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'),

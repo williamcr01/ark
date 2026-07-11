@@ -211,7 +211,17 @@ describe('shared API contracts', () => {
   })
 
   it('parses thumbnail contracts', () => {
-    expect(deckThumbnailsQuerySchema.parse({ versionId: deckId })).toEqual({ versionId: deckId })
+    expect(deckThumbnailsQuerySchema.parse({ versionId: deckId })).toEqual({
+      versionId: deckId,
+      waitMs: 0,
+    })
+    expect(deckThumbnailsQuerySchema.parse({ versionId: deckId, waitMs: '2500' })).toEqual({
+      versionId: deckId,
+      waitMs: 2500,
+    })
+    expect(deckThumbnailsQuerySchema.safeParse({ versionId: deckId, waitMs: '6000' }).success).toBe(
+      false,
+    )
     expect(deckThumbnailsQuerySchema.safeParse({ versionId: 'bad' }).success).toBe(false)
     expect(
       deckThumbnailImageParamsSchema.parse({

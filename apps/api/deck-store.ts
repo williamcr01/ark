@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -73,6 +73,12 @@ type StoredDeckFile = {
   updatedAt: string
   activeVersionId: string
   versions: StoredDeckVersion[]
+}
+
+type DeckMetadataIndex = {
+  mtimeMs: number
+  size: number
+  versions: Map<string, DeckVersionSummary>
 }
 
 function resolveDeckPath(dataDir: string, id: string) {
@@ -293,6 +299,59 @@ function createVersion(
 }
 
 export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
+  const metadataIndex = new Map<string, DeckMetadataIndex>()
+
+  const invalidateMetadataIndex = (filePath: string | null) => {
+    if (filePath) {
+      metadataIndex.delete(filePath)
+    }
+  }
+
+  const readVersionMetadataIndex = async (
+    deckId: string,
+    filePath: string,
+  ): Promise<DeckMetadataIndex | null> => {
+    let fileStat: Awaited<ReturnType<typeof stat>>
+
+    try {
+      fileStat = await stat(filePath)
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        metadataIndex.delete(filePath)
+        return null
+      }
+
+      throw error
+    }
+
+    const cached = metadataIndex.get(filePath)
+
+    if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+      return cached
+    }
+
+    const file = await readDeckFile(filePath)
+
+    if (!file) {
+      metadataIndex.delete(filePath)
+      return null
+    }
+
+    const nextIndex: DeckMetadataIndex = {
+      mtimeMs: fileStat.mtimeMs,
+      size: fileStat.size,
+      versions: new Map(
+        file.versions.map((version) => [
+          version.id,
+          toVersionSummary(deckId, version, file.activeVersionId),
+        ]),
+      ),
+    }
+
+    metadataIndex.set(filePath, nextIndex)
+    return nextIndex
+  }
+
   const createDeck = async (html: string, options: DeckVersionOptions = {}) => {
     await ensureDataDir(dataDir)
 
@@ -316,6 +375,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     }
 
     await writeDeckFile(filePath, file)
+    invalidateMetadataIndex(filePath)
 
     const deck = toStoredDeck(file)
 
@@ -422,6 +482,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     }
 
     await writeDeckFile(filePath, updated)
+    invalidateMetadataIndex(filePath)
 
     return toStoredDeck(updated)
   }
@@ -446,6 +507,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     }
 
     await writeDeckFile(filePath, updated)
+    invalidateMetadataIndex(filePath)
 
     return toStoredDeck(updated)
   }
@@ -459,9 +521,11 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
 
     try {
       await unlink(filePath)
+      invalidateMetadataIndex(filePath)
       return true
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        invalidateMetadataIndex(filePath)
         return false
       }
 
@@ -509,6 +573,22 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     return version ? toVersionDetail(deckId, version, file.activeVersionId) : null
   }
 
+  const getVersionMetadata = async (deckId: string, versionId: string) => {
+    if (!isValidDeckId(versionId)) {
+      return null
+    }
+
+    const filePath = resolveDeckPath(dataDir, deckId)
+
+    if (!filePath) {
+      return null
+    }
+
+    const index = await readVersionMetadataIndex(deckId, filePath)
+
+    return index?.versions.get(versionId) ?? null
+  }
+
   const rollbackToVersion = async (
     deckId: string,
     versionId: string,
@@ -553,6 +633,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     updateDeckMetadata,
     deleteDeck,
     listVersions,
+    getVersionMetadata,
     getVersion,
     rollbackToVersion,
   }
