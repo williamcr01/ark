@@ -58,6 +58,27 @@ describe('thumbnail cache', () => {
     expect(await readFile(path.join(cache.resolveDir(key), 'slide-0.png'))).toEqual(png)
   })
 
+  it('writes fingerprinted pngs to immutable blobs and materializes version slides', async () => {
+    const cache = await createCache()
+    const key = buildThumbnailCacheKey('a0000000-0000-4000-8000-000000000001', 'abcdef0123456789')
+    const fingerprint = 'a'.repeat(64)
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+    await cache.writeSlidePng(key, 0, png, fingerprint)
+
+    expect(await cache.hasBlob(fingerprint)).toBe(true)
+    expect(await cache.readBlobPng(fingerprint)).toEqual(png)
+    expect(await cache.readSlidePng(key, 0)).toEqual(png)
+    expect(await readFile(cache.resolveBlobPath(fingerprint))).toEqual(png)
+
+    const second = buildThumbnailCacheKey(
+      'a0000000-0000-4000-8000-000000000002',
+      'abcdef0123456789',
+    )
+    expect(await cache.materializeSlidePngFromBlob(second, 0, fingerprint)).toBe(true)
+    expect(await cache.readSlidePng(second, 0)).toEqual(png)
+  })
+
   it('treats a new version id as a cache miss', async () => {
     const cache = await createCache()
     const first = buildThumbnailCacheKey('a0000000-0000-4000-8000-000000000001', 'abcdef0123456789')
@@ -114,6 +135,22 @@ describe('thumbnail cache', () => {
       ),
     ).toBe(
       `/api/decks/b0000000-0000-4000-8000-000000000001/thumbnails/a0000000-0000-4000-8000-000000000001/2.png?hash=${buildThumbnailManifestFingerprint(manifestHash)}`,
+    )
+  })
+
+  it('builds slide urls with per-slide fingerprints when available', () => {
+    const fingerprint = 'f'.repeat(64)
+
+    expect(
+      buildThumbnailSlideUrl(
+        'b0000000-0000-4000-8000-000000000001',
+        'a0000000-0000-4000-8000-000000000001',
+        2,
+        'abcdef0123456789',
+        fingerprint,
+      ),
+    ).toBe(
+      `/api/decks/b0000000-0000-4000-8000-000000000001/thumbnails/a0000000-0000-4000-8000-000000000001/2.png?hash=${fingerprint}`,
     )
   })
 
