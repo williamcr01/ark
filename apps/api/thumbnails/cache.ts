@@ -1,11 +1,23 @@
-import { createHash } from 'node:crypto'
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { createHash, randomBytes } from 'node:crypto'
+import {
+  copyFile,
+  link,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 
 import { REPO_ROOT } from '../repo-root.ts'
 import { THUMBNAIL_CACHE_MAX_ENTRIES, THUMBNAIL_STATUS, type ThumbnailStatus } from './constants.ts'
 
 const DEFAULT_CACHE_DIR = path.resolve(REPO_ROOT, 'data', 'thumbnails')
+const THUMBNAIL_BLOB_DIR_NAME = 'blobs'
+const FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/i
 
 export type ThumbnailCacheMeta = {
   status: ThumbnailStatus
@@ -13,6 +25,9 @@ export type ThumbnailCacheMeta = {
   versionId: string
   manifestHash: string
   slideCount: number
+  slideFingerprints?: string[]
+  /** Bumps when the Chromium capture pipeline changes; stale ready entries re-render. */
+  rendererVersion?: string
   width: number
   height: number
   /** Number of render attempts performed for this key (bounds failure retries). */
@@ -29,6 +44,12 @@ export type ThumbnailCacheKey = {
 
 function normalizeManifestHash(manifestHash: string) {
   return manifestHash.trim() || 'none'
+}
+
+function assertSafeFingerprint(fingerprint: string) {
+  if (!FINGERPRINT_PATTERN.test(fingerprint)) {
+    throw new Error('Invalid thumbnail blob fingerprint.')
+  }
 }
 
 /**
@@ -56,22 +77,38 @@ export function buildThumbnailSlideUrl(
   versionId: string,
   slideIndex: number,
   manifestHash: string,
+  slideFingerprint?: string,
 ) {
-  const params = new URLSearchParams({ hash: buildThumbnailManifestFingerprint(manifestHash) })
+  const params = new URLSearchParams({
+    hash: slideFingerprint ?? buildThumbnailManifestFingerprint(manifestHash),
+  })
   return `/api/decks/${encodeURIComponent(deckId)}/thumbnails/${encodeURIComponent(versionId)}/${slideIndex}.png?${params.toString()}`
 }
 
 export type ThumbnailCacheOptions = {
-  /** Internal test seam; production uses the configured default. */
+  /** Internal test knob; production uses the configured default. */
   maxEntries?: number
 }
 
 export type ThumbnailCache = {
   rootDir: string
   resolveDir: (key: ThumbnailCacheKey) => string
+  resolveBlobPath: (fingerprint: string) => string
   readMeta: (key: ThumbnailCacheKey) => Promise<ThumbnailCacheMeta | null>
   writeMeta: (key: ThumbnailCacheKey, meta: ThumbnailCacheMeta) => Promise<void>
-  writeSlidePng: (key: ThumbnailCacheKey, slideIndex: number, png: Buffer) => Promise<void>
+  hasBlob: (fingerprint: string) => Promise<boolean>
+  readBlobPng: (fingerprint: string) => Promise<Buffer | null>
+  writeSlidePng: (
+    key: ThumbnailCacheKey,
+    slideIndex: number,
+    png: Buffer,
+    fingerprint?: string,
+  ) => Promise<void>
+  materializeSlidePngFromBlob: (
+    key: ThumbnailCacheKey,
+    slideIndex: number,
+    fingerprint: string,
+  ) => Promise<boolean>
   readSlidePng: (key: ThumbnailCacheKey, slideIndex: number) => Promise<Buffer | null>
   markPending: (
     key: ThumbnailCacheKey,
@@ -102,6 +139,10 @@ export function createThumbnailCache(
 ): ThumbnailCache {
   const maxEntries = options.maxEntries ?? THUMBNAIL_CACHE_MAX_ENTRIES
   const resolveDir = (key: ThumbnailCacheKey) => path.join(cacheDir, thumbnailCacheDirName(key))
+  const resolveBlobPath = (fingerprint: string) => {
+    assertSafeFingerprint(fingerprint)
+    return path.join(cacheDir, THUMBNAIL_BLOB_DIR_NAME, `${fingerprint.toLowerCase()}.png`)
+  }
 
   const readMeta = async (key: ThumbnailCacheKey) => {
     try {
@@ -118,9 +159,121 @@ export function createThumbnailCache(
     await writeFile(path.join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8')
   }
 
-  const writeSlidePng = async (key: ThumbnailCacheKey, slideIndex: number, png: Buffer) => {
+  const hasBlob = async (fingerprint: string) => {
+    try {
+      const blobStat = await stat(resolveBlobPath(fingerprint))
+      return blobStat.isFile()
+    } catch {
+      return false
+    }
+  }
+
+  const readBlobPng = async (fingerprint: string) => {
+    try {
+      return await readFile(resolveBlobPath(fingerprint))
+    } catch {
+      return null
+    }
+  }
+
+  const materializeSlidePngFromBlob: ThumbnailCache['materializeSlidePngFromBlob'] = async (
+    key,
+    slideIndex,
+    fingerprint,
+  ) => {
+    const blobPath = resolveBlobPath(fingerprint)
+    const dir = resolveDir(key)
+    const slidePath = path.join(dir, slideFileName(slideIndex))
+
+    try {
+      await stat(blobPath)
+    } catch {
+      return false
+    }
+
+    await ensureDir(dir)
+    await rm(slidePath, { force: true })
+
+    try {
+      await link(blobPath, slidePath)
+    } catch {
+      await copyFile(blobPath, slidePath)
+    }
+
+    return true
+  }
+
+  const writeBlobPng = async (fingerprint: string, png: Buffer) => {
+    const blobDir = path.join(cacheDir, THUMBNAIL_BLOB_DIR_NAME)
+    await ensureDir(blobDir)
+    const blobPath = resolveBlobPath(fingerprint)
+
+    if (await hasBlob(fingerprint)) {
+      return
+    }
+
+    // Write the full payload to a temp file first, then publish exclusively so a
+    // crash cannot leave a truncated content-addressed blob that `wx` would keep.
+    const tempPath = path.join(
+      blobDir,
+      `.${fingerprint.toLowerCase()}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`,
+    )
+    await writeFile(tempPath, png)
+
+    try {
+      try {
+        await link(tempPath, blobPath)
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+
+        if (code === 'EEXIST') {
+          return
+        }
+
+        // Filesystems that reject hardlinks: fall back to exclusive create from
+        // the already-complete temp file via rename when possible.
+        if (code === 'EPERM' || code === 'ENOTSUP' || code === 'EXDEV') {
+          try {
+            await rename(tempPath, blobPath)
+            return
+          } catch (renameError) {
+            if ((renameError as NodeJS.ErrnoException).code === 'EEXIST') {
+              return
+            }
+
+            try {
+              await writeFile(blobPath, png, { flag: 'wx' })
+            } catch (writeError) {
+              if ((writeError as NodeJS.ErrnoException).code !== 'EEXIST') {
+                throw writeError
+              }
+            }
+            return
+          }
+        }
+
+        throw error
+      }
+    } finally {
+      await rm(tempPath, { force: true })
+    }
+  }
+
+  const writeSlidePng: ThumbnailCache['writeSlidePng'] = async (
+    key,
+    slideIndex,
+    png,
+    fingerprint,
+  ) => {
     const dir = resolveDir(key)
     await ensureDir(dir)
+
+    if (fingerprint) {
+      await writeBlobPng(fingerprint, png)
+      await materializeSlidePngFromBlob(key, slideIndex, fingerprint)
+      return
+    }
+
     await writeFile(path.join(dir, slideFileName(slideIndex)), png)
   }
 
@@ -174,49 +327,118 @@ export function createThumbnailCache(
     return meta
   }
 
-  const cleanup = async () => {
-    await ensureDir(cacheDir)
+  const collectReferencedFingerprints = async (versionDirs: { name: string }[]) => {
+    const referenced = new Set<string>()
 
-    const entries = await readdir(cacheDir, { withFileTypes: true })
-    const dirs = entries.filter((entry) => entry.isDirectory())
-
-    if (dirs.length <= maxEntries) {
-      return
-    }
-
-    const ranked = await Promise.all(
-      dirs.map(async (entry) => {
-        const dirPath = path.join(cacheDir, entry.name)
-        const metaPath = path.join(dirPath, 'meta.json')
-
+    await Promise.all(
+      versionDirs.map(async (entry) => {
         try {
-          const metaStat = await stat(metaPath)
-          return { dirPath, mtimeMs: metaStat.mtimeMs }
-        } catch {
-          try {
-            const dirStat = await stat(dirPath)
-            return { dirPath, mtimeMs: dirStat.mtimeMs }
-          } catch {
-            return { dirPath, mtimeMs: 0 }
+          const raw = await readFile(path.join(cacheDir, entry.name, 'meta.json'), 'utf8')
+          const meta = JSON.parse(raw) as ThumbnailCacheMeta
+
+          for (const fingerprint of meta.slideFingerprints ?? []) {
+            if (FINGERPRINT_PATTERN.test(fingerprint)) {
+              referenced.add(fingerprint.toLowerCase())
+            }
           }
+        } catch {
+          // Ignore unreadable/missing meta while sweeping orphans.
         }
       }),
     )
 
-    ranked.sort((left, right) => left.mtimeMs - right.mtimeMs)
-    const excess = ranked.length - maxEntries
+    return referenced
+  }
+
+  const cleanupOrphanBlobs = async (versionDirs: { name: string }[]) => {
+    const blobDir = path.join(cacheDir, THUMBNAIL_BLOB_DIR_NAME)
+
+    let blobEntries: string[]
+    try {
+      blobEntries = await readdir(blobDir)
+    } catch {
+      return
+    }
+
+    const referenced = await collectReferencedFingerprints(versionDirs)
 
     await Promise.all(
-      ranked.slice(0, excess).map((entry) => rm(entry.dirPath, { recursive: true, force: true })),
+      blobEntries.map(async (name) => {
+        const blobPath = path.join(blobDir, name)
+
+        if (name.endsWith('.tmp') || name.startsWith('.')) {
+          await rm(blobPath, { force: true })
+          return
+        }
+
+        if (!name.endsWith('.png')) {
+          return
+        }
+
+        const fingerprint = name.slice(0, -'.png'.length)
+
+        if (!FINGERPRINT_PATTERN.test(fingerprint) || referenced.has(fingerprint.toLowerCase())) {
+          return
+        }
+
+        await rm(blobPath, { force: true })
+      }),
     )
+  }
+
+  const cleanup = async () => {
+    await ensureDir(cacheDir)
+
+    const entries = await readdir(cacheDir, { withFileTypes: true })
+    const dirs = entries.filter(
+      (entry) => entry.isDirectory() && entry.name !== THUMBNAIL_BLOB_DIR_NAME,
+    )
+
+    if (dirs.length > maxEntries) {
+      const ranked = await Promise.all(
+        dirs.map(async (entry) => {
+          const dirPath = path.join(cacheDir, entry.name)
+          const metaPath = path.join(dirPath, 'meta.json')
+
+          try {
+            const metaStat = await stat(metaPath)
+            return { dirPath, name: entry.name, mtimeMs: metaStat.mtimeMs }
+          } catch {
+            try {
+              const dirStat = await stat(dirPath)
+              return { dirPath, name: entry.name, mtimeMs: dirStat.mtimeMs }
+            } catch {
+              return { dirPath, name: entry.name, mtimeMs: 0 }
+            }
+          }
+        }),
+      )
+
+      ranked.sort((left, right) => left.mtimeMs - right.mtimeMs)
+      const excess = ranked.length - maxEntries
+
+      await Promise.all(
+        ranked.slice(0, excess).map((entry) => rm(entry.dirPath, { recursive: true, force: true })),
+      )
+    }
+
+    const remaining = await readdir(cacheDir, { withFileTypes: true })
+    const remainingDirs = remaining.filter(
+      (entry) => entry.isDirectory() && entry.name !== THUMBNAIL_BLOB_DIR_NAME,
+    )
+    await cleanupOrphanBlobs(remainingDirs)
   }
 
   return {
     rootDir: cacheDir,
     resolveDir,
+    resolveBlobPath,
     readMeta,
     writeMeta,
+    hasBlob,
+    readBlobPng,
     writeSlidePng,
+    materializeSlidePngFromBlob,
     readSlidePng,
     markPending,
     markReady,

@@ -41,11 +41,11 @@ export const deckThumbnailImageParamsSchema = z.object({
 export type DeckThumbnailImageParams = z.infer<typeof deckThumbnailImageParamsSchema>
 
 /**
- * The route receives an opaque, full-length manifest fingerprint rather than
- * a shortened manifest prefix so image URLs cannot collide across manifests.
+ * The route receives an opaque, full-length slide thumbnail fingerprint so
+ * immutable image URLs cannot collide across deck versions or slide content.
  */
 export const deckThumbnailImageQuerySchema = z.object({
-  hash: z.string().regex(/^[0-9a-f]{64}$/i, 'Invalid thumbnail manifest fingerprint.'),
+  hash: z.string().regex(/^[0-9a-f]{64}$/i, 'Invalid thumbnail fingerprint.'),
 })
 
 export type DeckThumbnailImageQuery = z.infer<typeof deckThumbnailImageQuerySchema>
