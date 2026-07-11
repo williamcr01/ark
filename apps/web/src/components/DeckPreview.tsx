@@ -1122,29 +1122,31 @@ export function DeckPreview({
             <Maximize2Icon className="size-3" />
             Present
           </button>
-          {isTextEditSaving ? (
+          {isTextEditSaving && !isPresentOpen ? (
             <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
               <Loader2Icon className="size-3 animate-spin" />
               Saving edit
             </span>
           ) : null}
-          {runtimeMode === 'custom-js' ? (
+          {!isPresentOpen && runtimeMode === 'custom-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
-          ) : runtimeMode === 'reveal' && !usesStaticPreview ? (
+          ) : !isPresentOpen && runtimeMode === 'reveal' && !usesStaticPreview ? (
             <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
               Reveal runtime
             </span>
-          ) : usesStaticPreview ? (
+          ) : !isPresentOpen && usesStaticPreview ? (
             <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
               Static preview
             </span>
           ) : null}
-          <span className="flex items-center gap-1">
-            <FileCode2Icon className="size-3" />
-            {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
-          </span>
+          {!isPresentOpen ? (
+            <span className="flex items-center gap-1">
+              <FileCode2Icon className="size-3" />
+              {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
+            </span>
+          ) : null}
         </span>
       </div>
 

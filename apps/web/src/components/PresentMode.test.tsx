@@ -127,7 +127,7 @@ describe('PresentMode', () => {
     render(
       <>
         <button type="button">Outside control</button>
-        <PresentHarness />
+        <PresentHarness initialSlideIndex={1} />
       </>,
     )
 
