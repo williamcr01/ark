@@ -1,8 +1,9 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const chatPanelProps = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }))
+const deckPreviewLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 
 vi.mock('@/hooks/useMediaQuery', () => ({
   useMediaQuery: () => mediaState.isDesktop,
@@ -83,12 +84,30 @@ vi.mock('@/hooks/useDeckGenerationFlow', () => ({
 }))
 
 vi.mock('@/components/AppTitleBar', () => ({
-  AppTitleBar: () => <div data-testid="title-bar" />,
+  AppTitleBar: ({ onToggleChat }: { onToggleChat: () => void }) => (
+    <button data-testid="toggle-chat" type="button" onClick={onToggleChat}>
+      Toggle chat
+    </button>
+  ),
 }))
 
-vi.mock('@/components/DeckPreview', () => ({
-  DeckPreview: () => <div data-testid="deck-preview" />,
-}))
+vi.mock('@/components/DeckPreview', async () => {
+  const React = await vi.importActual<typeof import('react')>('react')
+
+  return {
+    DeckPreview: () => {
+      React.useEffect(() => {
+        deckPreviewLifecycle.mounts += 1
+
+        return () => {
+          deckPreviewLifecycle.unmounts += 1
+        }
+      }, [])
+
+      return <div data-testid="deck-preview" />
+    },
+  }
+})
 
 vi.mock('@/components/ChatPanel', () => ({
   ChatPanel: (props: Record<string, unknown>) => {
@@ -102,6 +121,8 @@ const { default: App } = await import('./App')
 describe('App chat panel layout', () => {
   beforeEach(() => {
     chatPanelProps.calls = []
+    deckPreviewLifecycle.mounts = 0
+    deckPreviewLifecycle.unmounts = 0
   })
 
   afterEach(() => {
@@ -136,5 +157,26 @@ describe('App chat panel layout', () => {
     expect(desktopProps).toBeDefined()
     expect(mobileProps).toBeDefined()
     expect(Object.keys(desktopProps ?? {}).sort()).toEqual(Object.keys(mobileProps ?? {}).sort())
+  })
+
+  it('keeps the desktop preview mounted when chat opens and closes', () => {
+    mediaState.isDesktop = true
+    const { getByTestId, queryByTestId } = render(<App />)
+
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
+
+    fireEvent.click(getByTestId('toggle-chat'))
+
+    expect(queryByTestId('chat-panel')).not.toBeInTheDocument()
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+    expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
+
+    fireEvent.click(getByTestId('toggle-chat'))
+
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+    expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
   })
 })
