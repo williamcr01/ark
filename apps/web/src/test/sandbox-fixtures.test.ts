@@ -252,7 +252,9 @@ describe('sandbox security fixtures', () => {
     it('sanitizes thumbnail documents for hostile script fixtures', () => {
       const parsed = parseDeckSlides(hostileScriptsDeck)
 
-      parsed.thumbnailSrcDocs.forEach((srcDoc) => {
+      Array.from({ length: parsed.slideCount }, (_, index) =>
+        parsed.getThumbnailSrcDoc(index),
+      ).forEach((srcDoc) => {
         expect(srcDoc).not.toContain('<script')
         expect(srcDoc).not.toContain('onclick=')
         expect(srcDoc).not.toContain('onload=')
@@ -535,7 +537,7 @@ describe('sandbox security fixtures', () => {
 
       expect(parsed.slideCount).toBe(0)
       expect(parsed.slides).toEqual([])
-      expect(parsed.thumbnailSrcDocs).toEqual([])
+      expect(parsed.getThumbnailSrcDoc(0)).toBe('')
     })
   })
 
