@@ -16,6 +16,9 @@ const THUMBNAIL_MOUNT_BUFFER = 5
 const ACTIVE_MOUNT_RADIUS = 3
 const MAX_MOUNTED_THUMBNAILS = 24
 
+type ScheduledThumbnailFrame =
+  { id: number; type: 'animation-frame' } | { id: ReturnType<typeof setTimeout>; type: 'timeout' }
+
 type SlideThumbnailStripProps = {
   activeIndex: number
   id?: string
@@ -32,11 +35,40 @@ type LazyThumbnailProps = {
   index: number
   mountContent: boolean
   onSelect: (index: number) => void
+  onThumbnailImageError: (index: number, url: string) => void
   onVisibilityChange: (index: number, isVisible: boolean) => void
   orientation: 'horizontal' | 'vertical'
-  srcDoc: string
+  srcDoc: string | null
   thumbnailUrl: string | null
   trackVisibility: boolean
+}
+
+function requestThumbnailFrame(callback: FrameRequestCallback): ScheduledThumbnailFrame {
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    return {
+      id: globalThis.requestAnimationFrame(callback),
+      type: 'animation-frame',
+    }
+  }
+
+  return {
+    id: setTimeout(() => {
+      const now =
+        typeof globalThis.performance === 'object' ? globalThis.performance.now() : Date.now()
+
+      callback(now)
+    }, 16),
+    type: 'timeout',
+  }
+}
+
+function cancelThumbnailFrame(frame: ScheduledThumbnailFrame) {
+  if (frame.type === 'animation-frame') {
+    globalThis.cancelAnimationFrame?.(frame.id)
+    return
+  }
+
+  clearTimeout(frame.id)
 }
 
 function computeMountedIndices(
@@ -85,6 +117,7 @@ function LazyThumbnail({
   index,
   mountContent,
   onSelect,
+  onThumbnailImageError,
   onVisibilityChange,
   orientation,
   srcDoc,
@@ -92,9 +125,6 @@ function LazyThumbnail({
   trackVisibility,
 }: LazyThumbnailProps) {
   const containerRef = useRef<HTMLButtonElement>(null)
-  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
-  const imageFailed = Boolean(thumbnailUrl) && failedThumbnailUrl === thumbnailUrl
-  const useImage = Boolean(thumbnailUrl) && !imageFailed
 
   useEffect(() => {
     if (!trackVisibility) {
@@ -140,17 +170,17 @@ function LazyThumbnail({
         style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
       >
         {mountContent ? (
-          useImage && thumbnailUrl ? (
+          thumbnailUrl ? (
             <img
               alt=""
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
               decoding="async"
               loading="lazy"
-              onError={() => setFailedThumbnailUrl(thumbnailUrl)}
+              onError={() => onThumbnailImageError(index, thumbnailUrl)}
               src={thumbnailUrl}
               title={`Slide ${index + 1} thumbnail`}
             />
-          ) : (
+          ) : srcDoc ? (
             <iframe
               className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
               sandbox={getThumbnailSandbox()}
@@ -164,6 +194,8 @@ function LazyThumbnail({
               tabIndex={-1}
               title={`Slide ${index + 1} thumbnail`}
             />
+          ) : (
+            <Skeleton className="absolute inset-0 rounded-none" />
           )
         ) : (
           <Skeleton className="absolute inset-0 rounded-none" />
@@ -191,10 +223,21 @@ export function SlideThumbnailStrip({
   thumbnailUrls = null,
 }: SlideThumbnailStripProps) {
   const activeItemRef = useRef<HTMLDivElement>(null)
-  const { slideCount, thumbnailSrcDocs } = parsedDeck
+  const { slideCount } = parsedDeck
   const [visibleIndices, setVisibleIndices] = useState<Set<number>>(() => new Set([0]))
   const [collapsedMountedIndices, setCollapsedMountedIndices] = useState<Set<number> | null>(null)
+  const [failedThumbnailUrls, setFailedThumbnailUrls] = useState<ReadonlyMap<number, string>>(
+    () => new Map(),
+  )
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  const [, setThumbnailSrcDocVersion] = useState(0)
+  const thumbnailSrcDocCache = useMemo(
+    () => ({
+      parsedDeck,
+      srcDocs: new Map<number, string>(),
+    }),
+    [parsedDeck],
+  )
 
   const computedMountedIndices = useMemo(
     () => computeMountedIndices(slideCount, activeIndex, visibleIndices),
@@ -213,6 +256,55 @@ export function SlideThumbnailStrip({
 
   const mountedIndices =
     isOpen || !collapsedMountedIndices ? computedMountedIndices : collapsedMountedIndices
+
+  const getUsableThumbnailUrl = useCallback(
+    (index: number) => {
+      const thumbnailUrl = thumbnailUrls?.[index] ?? null
+
+      if (!thumbnailUrl || failedThumbnailUrls.get(index) === thumbnailUrl) {
+        return null
+      }
+
+      return thumbnailUrl
+    },
+    [failedThumbnailUrls, thumbnailUrls],
+  )
+
+  const getCachedThumbnailSrcDoc = useCallback(
+    (index: number) => {
+      const cached = thumbnailSrcDocCache.srcDocs.get(index)
+
+      if (cached !== undefined) {
+        return cached
+      }
+
+      const srcDoc = thumbnailSrcDocCache.parsedDeck.getThumbnailSrcDoc(index)
+      thumbnailSrcDocCache.srcDocs.set(index, srcDoc)
+
+      return srcDoc
+    },
+    [thumbnailSrcDocCache],
+  )
+
+  const getExistingThumbnailSrcDoc = useCallback(
+    (index: number) => thumbnailSrcDocCache.srcDocs.get(index) ?? null,
+    [thumbnailSrcDocCache],
+  )
+
+  const fallbackCandidateIndices = useMemo(() => {
+    if (!isOpen) {
+      return []
+    }
+
+    return [...mountedIndices]
+      .filter((index) => !getUsableThumbnailUrl(index))
+      .sort(
+        (left, right) =>
+          Number(right === activeIndex) - Number(left === activeIndex) ||
+          Math.abs(left - activeIndex) - Math.abs(right - activeIndex) ||
+          left - right,
+      )
+  }, [activeIndex, getUsableThumbnailUrl, isOpen, mountedIndices])
 
   const handleVisibilityChange = useCallback((index: number, isVisible: boolean) => {
     setVisibleIndices((current) => {
@@ -234,6 +326,27 @@ export function SlideThumbnailStrip({
     })
   }, [])
 
+  const handleThumbnailImageError = useCallback(
+    (index: number, url: string) => {
+      if (isOpen && mountedIndices.has(index)) {
+        getCachedThumbnailSrcDoc(index)
+      }
+
+      setFailedThumbnailUrls((current) => {
+        if (current.get(index) === url) {
+          return current
+        }
+
+        const next = new Map(current)
+        next.set(index, url)
+
+        return next
+      })
+      setThumbnailSrcDocVersion((version) => version + 1)
+    },
+    [getCachedThumbnailSrcDoc, isOpen, mountedIndices],
+  )
+
   useEffect(() => {
     if (!isOpen) {
       return
@@ -245,6 +358,55 @@ export function SlideThumbnailStrip({
       inline: orientation === 'horizontal' ? 'center' : 'nearest',
     })
   }, [activeIndex, isOpen, orientation])
+
+  useEffect(() => {
+    if (!isOpen || fallbackCandidateIndices.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    let scheduledFrame: ScheduledThumbnailFrame | null = null
+    const pendingIndices = fallbackCandidateIndices.filter(
+      (index) => index !== activeIndex && !thumbnailSrcDocCache.srcDocs.has(index),
+    )
+
+    const buildNext = () => {
+      if (cancelled) {
+        return
+      }
+
+      const index = pendingIndices.shift()
+
+      if (index === undefined) {
+        return
+      }
+
+      getCachedThumbnailSrcDoc(index)
+      setThumbnailSrcDocVersion((version) => version + 1)
+
+      if (pendingIndices.length > 0) {
+        scheduledFrame = requestThumbnailFrame(buildNext)
+      }
+    }
+
+    if (pendingIndices.length > 0) {
+      scheduledFrame = requestThumbnailFrame(buildNext)
+    }
+
+    return () => {
+      cancelled = true
+
+      if (scheduledFrame) {
+        cancelThumbnailFrame(scheduledFrame)
+      }
+    }
+  }, [
+    activeIndex,
+    fallbackCandidateIndices,
+    getCachedThumbnailSrcDoc,
+    isOpen,
+    thumbnailSrcDocCache,
+  ])
 
   if (slideCount === 0) {
     return null
@@ -275,21 +437,33 @@ export function SlideThumbnailStrip({
         <div
           className={cn('p-2', orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2')}
         >
-          {thumbnailSrcDocs.map((srcDoc, index) => (
-            <div key={index} ref={index === activeIndex ? activeItemRef : undefined}>
-              <LazyThumbnail
-                active={index === activeIndex}
-                index={index}
-                mountContent={mountedIndices.has(index)}
-                onSelect={onSelect}
-                onVisibilityChange={handleVisibilityChange}
-                orientation={orientation}
-                srcDoc={srcDoc}
-                thumbnailUrl={thumbnailUrls?.[index] ?? null}
-                trackVisibility={isOpen}
-              />
-            </div>
-          ))}
+          {Array.from({ length: slideCount }, (_, index) => {
+            const mountContent = mountedIndices.has(index)
+            const thumbnailUrl = getUsableThumbnailUrl(index)
+            const needsFallback = isOpen && mountContent && !thumbnailUrl
+            const srcDoc = needsFallback
+              ? index === activeIndex
+                ? getCachedThumbnailSrcDoc(index)
+                : getExistingThumbnailSrcDoc(index)
+              : null
+
+            return (
+              <div key={index} ref={index === activeIndex ? activeItemRef : undefined}>
+                <LazyThumbnail
+                  active={index === activeIndex}
+                  index={index}
+                  mountContent={mountContent}
+                  onSelect={onSelect}
+                  onThumbnailImageError={handleThumbnailImageError}
+                  onVisibilityChange={handleVisibilityChange}
+                  orientation={orientation}
+                  srcDoc={srcDoc}
+                  thumbnailUrl={thumbnailUrl}
+                  trackVisibility={isOpen}
+                />
+              </div>
+            )
+          })}
         </div>
       </ScrollArea>
     </aside>
