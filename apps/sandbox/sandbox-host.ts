@@ -6,12 +6,14 @@ import {
   normalizeOrigin,
   resolveApiOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
-import { renderPreviewDocument } from './render-preview-html.ts'
+import { renderCachedPreviewDocument } from './render-preview-html.ts'
+import { defaultPreviewHtmlCache, type PreviewHtmlCache } from './preview-html-cache.ts'
 import { type PreviewSessionStore } from '@ark/api/preview-sessions.ts'
 
 type CreateSandboxHostOptions = {
   previewSessionStore: PreviewSessionStore
   apiOrigin?: string
+  previewHtmlCache?: PreviewHtmlCache
 }
 
 function applySandboxSecurityHeaders(
@@ -37,6 +39,7 @@ function applySandboxSecurityHeaders(
 export function createSandboxHost(options: CreateSandboxHostOptions) {
   const app = express()
   const apiOrigin = options.apiOrigin ?? resolveApiOrigin()
+  const previewHtmlCache = options.previewHtmlCache ?? defaultPreviewHtmlCache
 
   app.disable('x-powered-by')
 
@@ -96,11 +99,15 @@ export function createSandboxHost(options: CreateSandboxHostOptions) {
       return
     }
 
-    const preview = renderPreviewDocument(session.html, {
-      parentOrigin,
-      editorBridge: session.editorBridge,
-      handshake: session.handshake,
-    })
+    const preview = renderCachedPreviewDocument(
+      session.html,
+      {
+        parentOrigin,
+        editorBridge: session.editorBridge,
+        handshake: session.handshake,
+      },
+      previewHtmlCache,
+    )
 
     applySandboxSecurityHeaders(response, parentOrigin, {
       runtimeMode: preview.runtimeMode,

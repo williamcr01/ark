@@ -3,9 +3,19 @@ import { JSDOM } from 'jsdom'
 import {
   buildPreviewDocument,
   buildPreviewHtml,
+  injectPreviewHandshake,
   type PreviewDocumentResult,
   type PreviewHtmlOptions,
 } from '@ark/deck-core/deck-preview-html.ts'
+import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
+import { detectRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
+import { hasApprovedRevealRuntimeInHtml } from '@ark/runtime-registry/deck-runtime-registry.ts'
+import {
+  createPreviewHtmlCacheKey,
+  defaultPreviewHtmlCache,
+  PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER,
+  type PreviewHtmlCache,
+} from './preview-html-cache.ts'
 
 type DomGlobals = {
   document?: Document
@@ -64,6 +74,90 @@ export function renderPreviewDocument(
   options: PreviewHtmlOptions = {},
 ): PreviewDocumentResult {
   return withDomEnvironment(() => buildPreviewDocument(html, options))
+}
+
+export type CachedPreviewDocumentResult = PreviewDocumentResult & {
+  cacheKey: string | null
+  cacheStatus: 'hit' | 'miss' | 'bypass'
+}
+
+function createFreshPreviewNonce(runtimeMode: PreviewDocumentResult['runtimeMode']) {
+  return runtimeMode === 'custom-js' ? null : generateCspNonce()
+}
+
+export function renderCachedPreviewDocument(
+  html: string,
+  options: PreviewHtmlOptions = {},
+  cache: PreviewHtmlCache = defaultPreviewHtmlCache,
+): CachedPreviewDocumentResult {
+  return withDomEnvironment(() => {
+    if (!html) {
+      return {
+        ...buildPreviewDocument(html, options),
+        cacheKey: null,
+        cacheStatus: 'bypass',
+      }
+    }
+
+    const runtimeMode = options.manifest?.runtimeMode ?? detectRuntimeMode(html)
+    const usesRevealAdapter =
+      options.manifest?.usesRevealAdapter ??
+      (runtimeMode === 'reveal' && hasApprovedRevealRuntimeInHtml(html))
+    const cacheKey = createPreviewHtmlCacheKey({
+      html,
+      parentOrigin: options.parentOrigin ?? '',
+      runtimeMode,
+      usesRevealAdapter,
+      editorBridge: options.editorBridge === true,
+    })
+    const cached = cache.get(cacheKey)
+
+    if (cached) {
+      const nonce = createFreshPreviewNonce(cached.runtimeMode)
+
+      return {
+        html: injectPreviewHandshake(cached.html, {
+          parentOrigin: options.parentOrigin,
+          handshake: options.handshake,
+          nonce,
+          noncePlaceholder: cached.noncePlaceholder,
+        }),
+        runtimeMode: cached.runtimeMode,
+        nonce,
+        cacheKey,
+        cacheStatus: 'hit',
+      }
+    }
+
+    const baseNonce = runtimeMode === 'custom-js' ? null : PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER
+    const base = buildPreviewDocument(html, {
+      parentOrigin: options.parentOrigin,
+      manifest: options.manifest,
+      editorBridge: options.editorBridge,
+      nonce: baseNonce,
+    })
+    const entry = cache.set(cacheKey, {
+      html: base.html,
+      runtimeMode: base.runtimeMode,
+      noncePlaceholder: base.nonce ? PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER : null,
+    })
+    const nonce = createFreshPreviewNonce(base.runtimeMode)
+    const handshakeHtml = injectPreviewHandshake(entry?.html ?? base.html, {
+      parentOrigin: options.parentOrigin,
+      handshake: options.handshake,
+      nonce,
+      noncePlaceholder:
+        entry?.noncePlaceholder ?? (base.nonce ? PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER : null),
+    })
+
+    return {
+      html: handshakeHtml,
+      runtimeMode: base.runtimeMode,
+      nonce,
+      cacheKey: entry ? cacheKey : null,
+      cacheStatus: entry ? 'miss' : 'bypass',
+    }
+  })
 }
 
 export function renderPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {

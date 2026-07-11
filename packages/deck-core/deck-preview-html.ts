@@ -49,6 +49,23 @@ export type PreviewDocumentResult = {
   nonce: string | null
 }
 
+export type PreviewHandshakeInjectionOptions = {
+  /**
+   * Per-session generation-correlation handshake for the head sentinel.
+   * Not a secret — full-JS decks can inspect the document.
+   */
+  handshake?: string
+  parentOrigin?: string
+  /** Nonce to apply to the injected handshake and any cached Ark scripts. */
+  nonce?: string | null
+  /**
+   * Optional placeholder nonce used in cacheable pre-handshake preview HTML.
+   * When provided with `nonce`, matching CSP nonce sources and nonce attributes
+   * are rewritten after the cache boundary.
+   */
+  noncePlaceholder?: string | null
+}
+
 function buildHistoryShimSource() {
   return `(function () {
   function safeHistoryCall(method) {
@@ -265,6 +282,39 @@ function injectHandshakeSentinel(doc: Document, options: PreviewHtmlOptions, non
   )
 }
 
+function applyPreviewNonce(
+  doc: Document,
+  options: { noncePlaceholder?: string | null; nonce?: string | null },
+) {
+  const nonce = options.nonce?.trim()
+  const placeholder = options.noncePlaceholder?.trim()
+
+  if (!nonce || !placeholder || nonce === placeholder) {
+    return
+  }
+
+  doc.querySelectorAll('[nonce]').forEach((element) => {
+    if (element.getAttribute('nonce') === placeholder) {
+      element.setAttribute('nonce', nonce)
+    }
+  })
+
+  const placeholderSource = `'nonce-${placeholder}'`
+  const nonceSource = `'nonce-${nonce}'`
+
+  doc.querySelectorAll('meta[http-equiv]').forEach((meta) => {
+    if (meta.getAttribute('http-equiv')?.trim().toLowerCase() !== 'content-security-policy') {
+      return
+    }
+
+    const content = meta.getAttribute('content')
+
+    if (content?.includes(placeholderSource)) {
+      meta.setAttribute('content', content.replaceAll(placeholderSource, nonceSource))
+    }
+  })
+}
+
 function appendEditorBridgeInjection(
   doc: Document,
   parent: Element,
@@ -445,6 +495,41 @@ export function buildPreviewDocument(
 
 export function buildPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   return buildPreviewDocument(html, options).html
+}
+
+/**
+ * Inject the per-session handshake into an already-sanitized preview document.
+ * This is intentionally separate from {@link buildPreviewDocument} so callers
+ * can cache the hostile-stripped pre-handshake base and add session material
+ * after the cache boundary.
+ */
+export function injectPreviewHandshake(
+  html: string,
+  options: PreviewHandshakeInjectionOptions = {},
+): string {
+  if (!html) {
+    return html
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const nonce = options.nonce?.trim() || null
+
+  applyPreviewNonce(doc, {
+    nonce,
+    noncePlaceholder: options.noncePlaceholder,
+  })
+  injectHandshakeSentinel(
+    doc,
+    {
+      parentOrigin: options.parentOrigin,
+      handshake: options.handshake,
+    },
+    nonce,
+  )
+
+  // Same post-serialize hostile strip as buildPreviewDocument so a second
+  // parse/serialize cannot resurrect NUL-byte meta refresh (or similar).
+  return finalizePreviewHtml(doc)
 }
 
 /** @deprecated Use {@link buildPreviewHtml} */
