@@ -855,7 +855,7 @@ async function runRapidVersionBurstIterations(options: {
 
         const label = warmup ? 'warmup' : 'iter'
         console.log(
-          `[rapid_version_burst/${options.fixture.id}] ${label} ${index + 1}/${total}: burst=${measured.metrics.burst_submit_ms?.toFixed(0)}ms finalThumbs=${measured.metrics.final_version_thumb_ready_ms?.toFixed(0)}ms renders=${measured.metrics.thumbnail_render_count ?? 0}`,
+          `[rapid_version_burst/${options.fixture.id}] ${label} ${index + 1}/${total}: burst=${measured.metrics.burst_submit_ms?.toFixed(0)}ms apiReady=${measured.metrics.final_version_thumb_ready_ms?.toFixed(0)}ms shellThumbs=${measured.metrics.thumb_png_visible_decoded_ms?.toFixed(0)}ms renders=${measured.metrics.thumbnail_render_count ?? 0}`,
         )
       } catch (error) {
         await writeBrowserSmokeArtifacts({

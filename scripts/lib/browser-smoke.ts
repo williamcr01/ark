@@ -742,16 +742,14 @@ export async function startServers(options: StartServersOptions): Promise<Starte
   // thumbnail smoke opts into the renderer explicitly.
   process.env.ARK_THUMBNAIL_RENDERER = options.thumbnailRenderer ?? 'off'
 
+  // Only set when provided. Do not delete process env — clearing would clobber a
+  // user-exported override for later smoke/benchmark steps in the same process.
   if (typeof options.thumbnailQueueConcurrency === 'number') {
     process.env.ARK_THUMBNAIL_QUEUE_CONCURRENCY = String(options.thumbnailQueueConcurrency)
-  } else {
-    delete process.env.ARK_THUMBNAIL_QUEUE_CONCURRENCY
   }
 
   if (typeof options.thumbnailSettleMs === 'number') {
     process.env.ARK_THUMBNAIL_SETTLE_MS = String(options.thumbnailSettleMs)
-  } else {
-    delete process.env.ARK_THUMBNAIL_SETTLE_MS
   }
 
   if (options.thumbnailCacheDir) {
