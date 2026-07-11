@@ -16,6 +16,7 @@ export type ThumbnailFingerprintResult = {
   slideFingerprints: string[]
   fullDeckHash: string
   sharedStateHash: string
+  crossSlideInfluenceHash: string
 }
 
 function sha256(value: string) {
@@ -26,16 +27,39 @@ function stableJson(value: unknown) {
   return JSON.stringify(value)
 }
 
+const SLIDE_INFLUENCE_ATTRS = ['class', 'id', 'style'] as const
+
+/**
+ * Shared chrome with slides removed, plus a separate hash of per-slide material
+ * that can affect other slides' screenshots (classes for `:has()`, embedded
+ * `<style>`/`<link>`, etc.). Full slide body text stays out of the influence
+ * hash so a one-slide copy edit still reuses unchanged slide blobs.
+ */
 function buildSharedDeckState(html: string) {
   const dom = new JSDOM(html)
   const { document } = dom.window
 
   try {
+    const influences: string[] = []
+
     findSlideElements(document).forEach((slide, index) => {
+      const attrs = SLIDE_INFLUENCE_ATTRS.map((name) => {
+        const value = slide.getAttribute(name)
+        return value ? `${name}=${value}` : ''
+      })
+        .filter(Boolean)
+        .join('\0')
+      const styles = [...slide.querySelectorAll('style, link')]
+        .map((node) => node.outerHTML)
+        .join('')
+      influences.push(`${index}:${attrs}:${styles}`)
       slide.replaceWith(document.createComment(`ark-thumbnail-slide-${index}`))
     })
 
-    return document.documentElement.outerHTML
+    return {
+      sharedState: document.documentElement.outerHTML,
+      crossSlideInfluenceHash: sha256(influences.join('\n')),
+    }
   } finally {
     dom.window.close()
   }
@@ -47,7 +71,8 @@ export function computeThumbnailSlideFingerprints(
 ): ThumbnailFingerprintResult {
   const parsed = parseDeckHtml(html)
   const fullDeckHash = sha256(html)
-  const sharedStateHash = sha256(buildSharedDeckState(html))
+  const { sharedState, crossSlideInfluenceHash } = buildSharedDeckState(html)
+  const sharedStateHash = sha256(sharedState)
   const customJsSalt = parsed.runtime.previewMode === 'full-js' ? fullDeckHash : null
 
   const sharedInput = {
@@ -66,6 +91,7 @@ export function computeThumbnailSlideFingerprints(
     slideCount: parsed.slideCount,
     runtime: parsed.runtime,
     sharedStateHash,
+    crossSlideInfluenceHash,
     customJsFullDeckHash: customJsSalt,
   }
 
@@ -73,6 +99,7 @@ export function computeThumbnailSlideFingerprints(
     parsed,
     fullDeckHash,
     sharedStateHash,
+    crossSlideInfluenceHash,
     slideFingerprints: parsed.slides.map((slide) =>
       sha256(
         stableJson({

@@ -18,6 +18,7 @@ import {
   THUMBNAIL_PENDING_LEASE_MS,
   THUMBNAIL_QUEUE_CONCURRENCY,
   THUMBNAIL_QUEUE_MAX_PENDING,
+  THUMBNAIL_RENDERER_VERSION,
   THUMBNAIL_STATUS,
   type ThumbnailStatus,
 } from './constants.ts'
@@ -113,6 +114,12 @@ function isStalePending(meta: ThumbnailCacheMeta, now = Date.now()) {
   }
 
   return now - updatedAtMs >= THUMBNAIL_PENDING_LEASE_MS
+}
+
+function isCurrentReadyMeta(meta: ThumbnailCacheMeta | null | undefined) {
+  return (
+    meta?.status === THUMBNAIL_STATUS.ready && meta.rendererVersion === THUMBNAIL_RENDERER_VERSION
+  )
 }
 
 function toStatusResult(
@@ -544,6 +551,7 @@ export function createThumbnailService(options: {
       manifestHash: key.manifestHash,
       slideCount: fingerprints.parsed.slideCount,
       slideFingerprints: fingerprints.slideFingerprints,
+      rendererVersion: THUMBNAIL_RENDERER_VERSION,
       width: THUMBNAIL_OUTPUT_WIDTH,
       height: THUMBNAIL_OUTPUT_HEIGHT,
     }
@@ -679,7 +687,7 @@ export function createThumbnailService(options: {
     try {
       const meta = await options.cache.readMeta(job.key)
 
-      if (meta?.status === THUMBNAIL_STATUS.ready) {
+      if (isCurrentReadyMeta(meta)) {
         logSkippedJob(job, queueWaitMs, 'ready')
         return
       }
@@ -796,7 +804,7 @@ export function createThumbnailService(options: {
       const key = buildThumbnailCacheKey(input.versionId, input.manifestHash)
       const meta = await options.cache.readMeta(key)
 
-      if (meta?.status === THUMBNAIL_STATUS.ready) {
+      if (isCurrentReadyMeta(meta)) {
         return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
       }
 

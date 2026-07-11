@@ -39,6 +39,33 @@ describe('thumbnail slide fingerprints', () => {
     expect(restyled.slideFingerprints[1]).not.toBe(first.slideFingerprints[1])
   })
 
+  it('invalidates other slides when a slide embeds a shared style block', () => {
+    const withInSlideStyle = baseHtml.replace(
+      '<section class="slide"><h1>One</h1></section>',
+      '<section class="slide"><style>h1 { color: tomato }</style><h1>One</h1></section>',
+    )
+    const restyledInSlide = withInSlideStyle.replace('color: tomato', 'color: navy')
+
+    const first = computeThumbnailSlideFingerprints(withInSlideStyle, 'manifest-a')
+    const second = computeThumbnailSlideFingerprints(restyledInSlide, 'manifest-a')
+
+    expect(second.slideFingerprints[0]).not.toBe(first.slideFingerprints[0])
+    expect(second.slideFingerprints[1]).not.toBe(first.slideFingerprints[1])
+    expect(second.crossSlideInfluenceHash).not.toBe(first.crossSlideInfluenceHash)
+  })
+
+  it('invalidates other slides when a slide class used by :has() changes', () => {
+    const themed = baseHtml.replace(
+      '<section class="slide"><h1>One</h1></section>',
+      '<section class="slide theme-dark"><h1>One</h1></section>',
+    )
+    const first = computeThumbnailSlideFingerprints(baseHtml, 'manifest-a')
+    const second = computeThumbnailSlideFingerprints(themed, 'manifest-a')
+
+    expect(second.slideFingerprints[0]).not.toBe(first.slideFingerprints[0])
+    expect(second.slideFingerprints[1]).not.toBe(first.slideFingerprints[1])
+  })
+
   it('includes the full deck hash for custom full-js decks', () => {
     const customJsHtml = baseHtml.replace(
       '<html lang="en">',

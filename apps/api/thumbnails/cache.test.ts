@@ -181,4 +181,43 @@ describe('thumbnail cache', () => {
     await expect(cache.readMeta(keys[1]!)).resolves.not.toBeNull()
     await expect(cache.readMeta(keys[2]!)).resolves.not.toBeNull()
   })
+
+  it('removes orphan blobs after version entries are evicted', async () => {
+    const cache = await createCache({ maxEntries: 1 })
+    const first = buildThumbnailCacheKey('a0000000-0000-4000-8000-000000000001', 'hash0')
+    const second = buildThumbnailCacheKey('a0000000-0000-4000-8000-000000000002', 'hash1')
+    const orphanFingerprint = 'b'.repeat(64)
+    const keptFingerprint = 'c'.repeat(64)
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+    await cache.writeSlidePng(first, 0, png, orphanFingerprint)
+    await cache.markReady(first, {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: first.versionId,
+      manifestHash: first.manifestHash,
+      slideCount: 1,
+      slideFingerprints: [orphanFingerprint],
+      width: 480,
+      height: 270,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+
+    await cache.writeSlidePng(second, 0, png, keptFingerprint)
+    await cache.markReady(second, {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: second.versionId,
+      manifestHash: second.manifestHash,
+      slideCount: 1,
+      slideFingerprints: [keptFingerprint],
+      width: 480,
+      height: 270,
+    })
+
+    await cache.cleanup()
+
+    expect(await cache.readMeta(first)).toBeNull()
+    expect(await cache.hasBlob(orphanFingerprint)).toBe(false)
+    expect(await cache.hasBlob(keptFingerprint)).toBe(true)
+    expect(await cache.readSlidePng(second, 0)).toEqual(png)
+  })
 })
