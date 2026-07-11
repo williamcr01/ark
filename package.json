@@ -27,6 +27,8 @@
     "smoke:manual-edit": "tsx scripts/smoke-manual-edit.ts",
     "smoke:thumbnails": "tsx scripts/smoke-thumbnails.ts",
     "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime && pnpm smoke:full-js-bridge && pnpm smoke:manual-edit",
+    "benchmark:renderer": "tsx scripts/benchmark-renderer.ts",
+    "test:benchmark-renderer": "tsx --test scripts/lib/renderer-benchmark.test.ts",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check"

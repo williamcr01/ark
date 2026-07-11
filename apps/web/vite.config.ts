@@ -34,6 +34,13 @@ export default defineConfig(({ mode }) => {
         '/api': `http://localhost:${apiPort}`,
       },
     },
+    // Keep preview (production local) aligned with the Vite dev `/api` proxy so
+    // browser smoke/benchmark harnesses can exercise the built bundle.
+    preview: {
+      proxy: {
+        '/api': `http://localhost:${apiPort}`,
+      },
+    },
     test: {
       environment: 'jsdom',
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
