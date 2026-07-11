@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createDeckStore } from '../deck-store.ts'
+import type { Logger, LogFields, LogLevel } from '../observability/logger.ts'
 import { createThumbnailCache } from './cache.ts'
 import { THUMBNAIL_QUEUE_MAX_PENDING, THUMBNAIL_STATUS } from './constants.ts'
 import { createThumbnailService } from './service.ts'
@@ -28,6 +29,26 @@ function createFakeRenderer(
   }
 }
 
+type CapturedLogEntry = {
+  level: LogLevel
+  event: string
+  fields: LogFields
+}
+
+function createTestLogger(entries: CapturedLogEntry[]): Logger {
+  const log = (level: LogLevel, event: string, fields: LogFields = {}) => {
+    entries.push({ level, event, fields })
+  }
+
+  return {
+    log,
+    debug: (event, fields) => log('debug', event, fields),
+    info: (event, fields) => log('info', event, fields),
+    warn: (event, fields) => log('warn', event, fields),
+    error: (event, fields) => log('error', event, fields),
+  }
+}
+
 describe('thumbnail service', () => {
   let dataDir = ''
   let cacheDir = ''
@@ -41,13 +62,16 @@ describe('thumbnail service', () => {
     cacheDir = ''
   })
 
-  async function setup(renderImpl: (html: string) => Promise<ThumbnailRenderResult>) {
+  async function setup(
+    renderImpl: (html: string) => Promise<ThumbnailRenderResult>,
+    serviceOptions: { logger?: Logger; queueConcurrency?: number } = {},
+  ) {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
     cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
     const deckStore = createDeckStore(dataDir)
     const cache = createThumbnailCache(cacheDir)
     const renderer = createFakeRenderer(renderImpl)
-    const service = createThumbnailService({ cache, renderer, deckStore })
+    const service = createThumbnailService({ cache, renderer, deckStore, ...serviceOptions })
     return { deckStore, cache, service }
   }
 
@@ -445,6 +469,186 @@ describe('thumbnail service', () => {
     expect(exhausted.status).toBe(THUMBNAIL_STATUS.failed)
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(renderCount).toBe(3)
+  })
+
+  it('runs queued foreground jobs before background warms', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    let releaseBlocker: (() => void) | null = null
+    const blockerGate = new Promise<void>((resolve) => {
+      releaseBlocker = resolve
+    })
+    const renderOrder: string[] = []
+    const blockerVersionId = 'a0000000-0000-4000-8000-000000000090'
+    const foregroundVersionId = 'a0000000-0000-4000-8000-000000000091'
+    const deckStore = createDeckStore(dataDir)
+    const service = createThumbnailService({
+      cache: createThumbnailCache(cacheDir),
+      deckStore,
+      renderer: {
+        isAvailable: () => true,
+        close: async () => undefined,
+        render: async (request) => {
+          const versionId = request.versionId ?? 'unknown'
+          renderOrder.push(versionId)
+
+          if (versionId === blockerVersionId) {
+            await blockerGate
+          }
+
+          return {
+            ok: true,
+            slides: [Buffer.from('png')],
+            slideCount: 1,
+            width: 480,
+            height: 270,
+            durationMs: 1,
+          }
+        },
+      },
+    })
+
+    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const warmVersionId = created.activeVersionId!
+
+    await service.enqueue({
+      deckId: 'b0000000-0000-4000-8000-000000000090',
+      versionId: blockerVersionId,
+      html: sampleHtml,
+      manifestHash: 'abc123',
+    })
+    await service.enqueueForDeckVersion(created.id, warmVersionId)
+    await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000091',
+      versionId: foregroundVersionId,
+      manifestHash: 'abc123',
+      enqueueIfMissing: true,
+      html: sampleHtml,
+    })
+
+    releaseBlocker?.()
+
+    await vi.waitFor(() => {
+      expect(renderOrder).toHaveLength(3)
+    })
+    expect(renderOrder).toEqual([blockerVersionId, foregroundVersionId, warmVersionId])
+  })
+
+  it('discards queued obsolete background warms for the same deck', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    let releaseBlocker: (() => void) | null = null
+    const blockerGate = new Promise<void>((resolve) => {
+      releaseBlocker = resolve
+    })
+    const renderOrder: string[] = []
+    const logs: CapturedLogEntry[] = []
+    const blockerVersionId = 'a0000000-0000-4000-8000-000000000092'
+    const deckStore = createDeckStore(dataDir)
+    const service = createThumbnailService({
+      cache: createThumbnailCache(cacheDir),
+      deckStore,
+      logger: createTestLogger(logs),
+      renderer: {
+        isAvailable: () => true,
+        close: async () => undefined,
+        render: async (request) => {
+          const versionId = request.versionId ?? 'unknown'
+          renderOrder.push(versionId)
+
+          if (versionId === blockerVersionId) {
+            await blockerGate
+          }
+
+          return {
+            ok: true,
+            slides: [Buffer.from('png')],
+            slideCount: 1,
+            width: 480,
+            height: 270,
+            durationMs: 1,
+          }
+        },
+      },
+    })
+
+    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const oldWarmVersionId = created.activeVersionId!
+    const updated = await deckStore.updateDeck(
+      created.id,
+      sampleHtml.replace('Two', 'Two updated'),
+      {
+        source: 'manual',
+      },
+    )
+    const newWarmVersionId = updated!.activeVersionId!
+
+    await service.enqueue({
+      deckId: 'b0000000-0000-4000-8000-000000000092',
+      versionId: blockerVersionId,
+      html: sampleHtml,
+      manifestHash: 'abc123',
+    })
+    await service.enqueueForDeckVersion(created.id, oldWarmVersionId)
+    await service.enqueueForDeckVersion(created.id, newWarmVersionId)
+
+    releaseBlocker?.()
+
+    await vi.waitFor(() => {
+      expect(renderOrder).toHaveLength(2)
+    })
+    expect(renderOrder).toEqual([blockerVersionId, newWarmVersionId])
+    expect(renderOrder).not.toContain(oldWarmVersionId)
+
+    const discard = logs.find((entry) => entry.event === 'thumbnail.queue.discarded')
+    expect(discard?.fields.fields).toMatchObject({
+      versionId: oldWarmVersionId,
+      replacementVersionId: newWarmVersionId,
+      reason: 'obsolete_warm',
+    })
+  })
+
+  it('logs queue wait, render, and cache write timings for completed jobs', async () => {
+    const logs: CapturedLogEntry[] = []
+    const { service } = await setup(
+      async () => ({
+        ok: true,
+        slides: [Buffer.from('one'), Buffer.from('two')],
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 7,
+      }),
+      { logger: createTestLogger(logs) },
+    )
+
+    const statusInput = {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'abc123',
+    }
+
+    await service.enqueue({ ...statusInput, html: sampleHtml })
+
+    await vi.waitFor(async () => {
+      const status = await service.getStatus(statusInput)
+      expect(status.status).toBe(THUMBNAIL_STATUS.ready)
+    })
+
+    const completed = logs.find((entry) => entry.event === 'thumbnail.queue.completed')
+    expect(completed?.fields.durationMs).toEqual(expect.any(Number))
+    expect(completed?.fields.fields).toMatchObject({
+      versionId: statusInput.versionId,
+      manifestHash: statusInput.manifestHash,
+      priority: 'foreground',
+      queueWaitMs: expect.any(Number),
+      renderMs: 7,
+      cacheWriteMs: expect.any(Number),
+      status: THUMBNAIL_STATUS.ready,
+      slideCount: 2,
+    })
   })
 
   it('skips new jobs while the queue is saturated and accepts them after it drains', async () => {

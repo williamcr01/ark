@@ -17,6 +17,7 @@ export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
 /** Must exceed deck timeout so a live render is not stolen by another process. */
 export const THUMBNAIL_PENDING_LEASE_MS = THUMBNAIL_DECK_TIMEOUT_MS + 30_000
 export const THUMBNAIL_QUEUE_MAX_PENDING = 20
+export const THUMBNAIL_QUEUE_CONCURRENCY = 1
 
 export const THUMBNAIL_STATUS = {
   ready: 'ready',
