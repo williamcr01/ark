@@ -62,6 +62,8 @@ function createMockCdp(options: {
   slideIndex?: number
   screenshotData?: string
   onNavigate?: () => void
+  onScreenshot?: () => void
+  onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
 }): CdpClient {
   const listeners = new Map<string, Array<(params: unknown, sessionId: string | null) => void>>()
   let slideIndex = options.slideIndex ?? 0
@@ -74,11 +76,17 @@ function createMockCdp(options: {
       }
 
       if (method === 'Page.captureScreenshot') {
+        options.onScreenshot?.()
         return { data: options.screenshotData ?? tinyPngBase64 }
       }
 
       if (method === 'Runtime.evaluate') {
         const expression = String((params as { expression?: string } | undefined)?.expression ?? '')
+        const custom = options.onEvaluate?.(expression)
+
+        if (custom?.handled) {
+          return { result: { value: custom.value } }
+        }
 
         if (expression.includes('__arkThumbReady')) {
           return {
@@ -97,6 +105,10 @@ function createMockCdp(options: {
           const match = /__arkThumbGoto\((\d+)\)/.exec(expression)
           slideIndex = match ? Number(match[1]) : slideIndex
           return { result: { value: true } }
+        }
+
+        if (expression.includes('current: Number(window.__arkThumbIndex')) {
+          return { result: { value: { current: slideIndex, errors: [] } } }
         }
 
         if (expression.includes('__arkThumbIndex')) {
@@ -129,6 +141,8 @@ function createMockPool(options: {
   ready?: boolean
   screenshotData?: string
   createPageImpl?: () => Promise<BrowserPage>
+  onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
+  onScreenshot?: () => void
 }): { pool: ChromiumPool; closedPages: { count: number } } {
   const closedPages = { count: 0 }
 
@@ -143,6 +157,8 @@ function createMockPool(options: {
         const cdp = createMockCdp({
           ready: options.ready,
           screenshotData: options.screenshotData,
+          onEvaluate: options.onEvaluate,
+          onScreenshot: options.onScreenshot,
         })
         return {
           cdp,
@@ -232,6 +248,120 @@ describe('thumbnail renderer limits (unit)', () => {
     }
 
     expect(result.error).toMatch(/exceeded size limit/)
+    expect(mock.closedPages.count).toBe(1)
+  })
+
+  it('waits for adaptive slide settle acknowledgement before capturing', async () => {
+    let settleRequested = false
+    let settlePolls = 0
+    let capturedBeforeSettled = false
+    const mock = createMockPool({
+      ready: true,
+      onEvaluate: (expression) => {
+        if (expression.includes('__arkThumbRequestSettle')) {
+          settleRequested = true
+          return { handled: true, value: 7 }
+        }
+
+        if (expression.includes('__arkThumbSettledRequestId')) {
+          settlePolls += 1
+          return {
+            handled: true,
+            value: {
+              settled: settlePolls >= 2,
+              errors: [],
+            },
+          }
+        }
+
+        return undefined
+      },
+      onScreenshot: () => {
+        capturedBeforeSettled = settlePolls < 2
+      },
+    })
+    const previewSessionStore = createPreviewSessionStore()
+    const renderer = createThumbnailRenderer({
+      previewSessionStore,
+      chromiumPool: mock.pool,
+      apiOrigin: 'http://127.0.0.1:9',
+      enabled: true,
+      renderSecret: 'test-secret',
+      limits: {
+        readyTimeoutMs: 200,
+        slideTimeoutMs: 500,
+        deckTimeoutMs: 1_000,
+        settleMs: 120,
+      },
+    })
+
+    const oneSlide = `<!DOCTYPE html><html><body><section class="slide"><h1>One</h1></section></body></html>`
+    const result = await renderer.render({ html: oneSlide })
+
+    expect(result.ok).toBe(true)
+    expect(settleRequested).toBe(true)
+    expect(settlePolls).toBeGreaterThanOrEqual(2)
+    expect(capturedBeforeSettled).toBe(false)
+    expect(mock.closedPages.count).toBe(1)
+  })
+
+  it('recognizes slide index 0 as settled via nullish coalescing', async () => {
+    let settleExpression = ''
+    let settlePolls = 0
+    const settledRequestId = 1
+    const settledIndex = 0
+    const mock = createMockPool({
+      ready: true,
+      onEvaluate: (expression) => {
+        if (expression.includes('__arkThumbRequestSettle')) {
+          return { handled: true, value: settledRequestId }
+        }
+
+        if (expression.includes('__arkThumbSettledRequestId')) {
+          settleExpression = expression
+          settlePolls += 1
+          // Mimic CDP evaluating the host expression against index 0.
+          // `0 || -1` would incorrectly yield -1; `0 ?? -1` keeps 0.
+          const settled =
+            Number(settledRequestId || 0) === settledRequestId && Number(settledIndex ?? -1) === 0
+          return {
+            handled: true,
+            value: {
+              settled,
+              errors: [],
+            },
+          }
+        }
+
+        return undefined
+      },
+    })
+    const previewSessionStore = createPreviewSessionStore()
+    const renderer = createThumbnailRenderer({
+      previewSessionStore,
+      chromiumPool: mock.pool,
+      apiOrigin: 'http://127.0.0.1:9',
+      enabled: true,
+      renderSecret: 'test-secret',
+      limits: {
+        readyTimeoutMs: 200,
+        slideTimeoutMs: 500,
+        deckTimeoutMs: 1_000,
+        settleMs: 120,
+      },
+    })
+
+    const oneSlide = `<!DOCTYPE html><html><body><section class="slide"><h1>One</h1></section></body></html>`
+    const result = await renderer.render({ html: oneSlide })
+
+    expect(result.ok).toBe(true)
+    expect(settlePolls).toBeGreaterThanOrEqual(1)
+    expect(settleExpression).toMatch(/__arkThumbSettledIndex\s*\?\?\s*-1/)
+    expect(settleExpression).not.toMatch(/__arkThumbSettledIndex\s*\|\|\s*-1/)
+    // Guard the regression: logical OR treats 0 as missing; nullish coalesce does not.
+    const zeroIndex: number | undefined = 0
+    expect(Number(zeroIndex || -1)).toBe(-1)
+    expect(Number(zeroIndex ?? -1)).toBe(0)
     expect(mock.closedPages.count).toBe(1)
   })
 
