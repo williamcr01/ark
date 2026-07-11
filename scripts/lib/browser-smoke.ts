@@ -6,7 +6,7 @@ import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { ViteDevServer } from 'vite'
+import type { PreviewServer, ViteDevServer } from 'vite'
 
 type CdpMessage = {
   id?: number
@@ -666,14 +666,62 @@ export async function writeBrowserSmokeArtifacts(options: {
   return { dir, wroteFiles, errors }
 }
 
-export async function startServers(options: {
+export type BrowserSmokeWebMode = 'development' | 'production'
+
+export type StartServersOptions = {
   apiPort: number
   sandboxPort: number
   webPort: number
   tempRoot: string
   /** Defaults to off so preview/bridge smoke stays free of the shared Chromium pool. */
   thumbnailRenderer?: 'on' | 'off'
+  /** Optional thumbnail PNG cache root for deterministic cold/warm scenarios. */
+  thumbnailCacheDir?: string
+  /** Defaults to development. Production serves the built web bundle via Vite preview. */
+  webMode?: BrowserSmokeWebMode
+}
+
+export type StartedServers = {
+  apiServer: Server
+  sandboxServer: Server
+  vite?: ViteDevServer
+  preview?: PreviewServer
+  appOrigin: string
+  sandboxOrigin: string
+  apiOrigin: string
+  apiApp: Awaited<ReturnType<(typeof import('../../apps/api/app.ts'))['createApp']>>
+  webMode: BrowserSmokeWebMode
+}
+
+export async function buildWebProductionBundle(options: {
+  appOrigin: string
+  sandboxOrigin: string
+  outDir?: string
 }) {
+  const webRoot = path.join(repoRoot, 'apps/web')
+  const outDir = options.outDir ?? path.join(webRoot, 'dist')
+  const { build } = await import('vite')
+
+  // Bake origins into the production bundle so random benchmark ports work.
+  process.env.VITE_ARK_APP_ORIGIN = options.appOrigin
+  process.env.VITE_ARK_SANDBOX_ORIGIN = options.sandboxOrigin
+
+  await build({
+    configFile: path.join(webRoot, 'vite.config.ts'),
+    root: webRoot,
+    mode: 'production',
+    logLevel: 'warn',
+    build: {
+      outDir,
+      emptyOutDir: true,
+    },
+  })
+
+  return outDir
+}
+
+export async function startServers(options: StartServersOptions): Promise<StartedServers> {
+  const webMode = options.webMode ?? 'development'
   const appOrigin = `http://127.0.0.1:${options.webPort}`
   const apiOrigin = `http://127.0.0.1:${options.apiPort}`
   const sandboxOrigin = `http://127.0.0.1:${options.sandboxPort}`
@@ -690,13 +738,19 @@ export async function startServers(options: {
   // thumbnail smoke opts into the renderer explicitly.
   process.env.ARK_THUMBNAIL_RENDERER = options.thumbnailRenderer ?? 'off'
 
+  if (options.thumbnailCacheDir) {
+    process.env.ARK_THUMBNAIL_CACHE_DIR = options.thumbnailCacheDir
+  } else {
+    delete process.env.ARK_THUMBNAIL_CACHE_DIR
+  }
+
   const { createPreviewSessionStore } = await import('../../apps/api/preview-sessions.ts')
   const { createDeckStore } = await import('../../apps/api/deck-store.ts')
   const { createChatStore } = await import('../../apps/api/chat-store.ts')
   const { createGenerationJobStore } = await import('../../apps/api/generation-job-store.ts')
   const { createApp } = await import('../../apps/api/app.ts')
   const { createSandboxHost } = await import('../../apps/sandbox/sandbox-host.ts')
-  const { createServer: createViteServer } = await import('vite')
+  const { createServer: createViteServer, preview: createVitePreview } = await import('vite')
 
   const previewSessionStore = createPreviewSessionStore()
   const apiApp = createApp({
@@ -716,6 +770,34 @@ export async function startServers(options: {
   await listen(sandboxServer, options.sandboxPort)
 
   const webRoot = path.join(repoRoot, 'apps/web')
+
+  if (webMode === 'production') {
+    const preview = await createVitePreview({
+      configFile: path.join(webRoot, 'vite.config.ts'),
+      root: webRoot,
+      mode: 'production',
+      preview: {
+        host: '127.0.0.1',
+        port: options.webPort,
+        strictPort: true,
+        proxy: {
+          '/api': apiOrigin,
+        },
+      },
+    })
+
+    return {
+      apiServer,
+      sandboxServer,
+      preview,
+      appOrigin,
+      sandboxOrigin,
+      apiOrigin,
+      apiApp,
+      webMode,
+    }
+  }
+
   const vite = await createViteServer({
     configFile: path.join(webRoot, 'vite.config.ts'),
     mode: 'development',
@@ -735,7 +817,9 @@ export async function startServers(options: {
     vite,
     appOrigin,
     sandboxOrigin,
+    apiOrigin,
     apiApp,
+    webMode,
   }
 }
 
@@ -743,9 +827,11 @@ export async function stopServers(servers: {
   apiServer?: Server
   sandboxServer?: Server
   vite?: ViteDevServer
+  preview?: PreviewServer
 }) {
   await Promise.all([
     servers.vite?.close(),
+    servers.preview?.close(),
     servers.apiServer ? closeServer(servers.apiServer) : undefined,
     servers.sandboxServer ? closeServer(servers.sandboxServer) : undefined,
   ])
