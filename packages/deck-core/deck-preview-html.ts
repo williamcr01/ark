@@ -527,7 +527,9 @@ export function injectPreviewHandshake(
     nonce,
   )
 
-  return serializePreviewDocument(doc)
+  // Same post-serialize hostile strip as buildPreviewDocument so a second
+  // parse/serialize cannot resurrect NUL-byte meta refresh (or similar).
+  return finalizePreviewHtml(doc)
 }
 
 /** @deprecated Use {@link buildPreviewHtml} */

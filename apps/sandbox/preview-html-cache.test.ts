@@ -15,6 +15,7 @@ describe('preview HTML cache', () => {
       html,
       parentOrigin: 'http://localhost:5173',
       runtimeMode: 'static',
+      usesRevealAdapter: false,
       editorBridge: false,
     })
 
@@ -50,11 +51,12 @@ describe('preview HTML cache', () => {
     expect(cache.get(thirdKey)?.html).toBe('third-html')
   })
 
-  it('discriminates keys by hash, origin, runtime, editor mode, and pipeline version', () => {
+  it('discriminates keys by hash, origin, runtime, reveal adapter, editor mode, and pipeline version', () => {
     const base = {
       html,
       parentOrigin: 'http://localhost:5173',
       runtimeMode: 'static' as const,
+      usesRevealAdapter: false,
       editorBridge: false,
     }
     const baseKey = createPreviewHtmlCacheKey(base)
@@ -66,9 +68,25 @@ describe('preview HTML cache', () => {
       baseKey,
     )
     expect(createPreviewHtmlCacheKey({ ...base, runtimeMode: 'custom-js' })).not.toBe(baseKey)
+    expect(createPreviewHtmlCacheKey({ ...base, usesRevealAdapter: true })).not.toBe(baseKey)
     expect(createPreviewHtmlCacheKey({ ...base, editorBridge: true })).not.toBe(baseKey)
     expect(createPreviewHtmlCacheKey({ ...base, pipelineVersion: 'next-version' })).not.toBe(
       baseKey,
     )
+  })
+
+  it('skips caching entries over the max byte budget', () => {
+    const cache = createPreviewHtmlCache({ maxEntryBytes: 32 })
+    const key = 'oversized'
+
+    expect(
+      cache.set(key, {
+        html: 'x'.repeat(64),
+        runtimeMode: 'static',
+        noncePlaceholder: null,
+      }),
+    ).toBeNull()
+    expect(cache.get(key)).toBeNull()
+    expect(cache.stats().size).toBe(0)
   })
 })

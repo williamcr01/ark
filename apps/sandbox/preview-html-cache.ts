@@ -9,6 +9,8 @@ export type PreviewHtmlCacheKeyParts = {
   html: string
   parentOrigin: string
   runtimeMode: DeckRuntimeMode
+  /** Discriminate reveal-adapter vs css-nav reveal transforms for the same HTML. */
+  usesRevealAdapter: boolean
   editorBridge: boolean
   pipelineVersion?: string
 }
@@ -25,17 +27,21 @@ export type CachedPreviewHtmlBase = {
 export type PreviewHtmlCacheStats = {
   size: number
   maxEntries: number
+  maxEntryBytes: number
   ttlMs: number
 }
 
 export type PreviewHtmlCacheOptions = {
   ttlMs?: number
   maxEntries?: number
+  /** Skip caching entries whose sanitized HTML exceeds this byte length. */
+  maxEntryBytes?: number
   now?: () => number
 }
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000
 const DEFAULT_MAX_ENTRIES = 128
+const DEFAULT_MAX_ENTRY_BYTES = 2 * 1024 * 1024
 
 export function hashPreviewHtml(html: string) {
   return createHash('sha256').update(html).digest('hex')
@@ -50,6 +56,7 @@ export function createPreviewHtmlCacheKey(parts: PreviewHtmlCacheKeyParts) {
     `sha256=${contentHash}`,
     `origin=${parts.parentOrigin}`,
     `runtime=${parts.runtimeMode}`,
+    `revealAdapter=${parts.usesRevealAdapter ? '1' : '0'}`,
     `editor=${parts.editorBridge ? '1' : '0'}`,
   ].join('|')
 }
@@ -57,6 +64,7 @@ export function createPreviewHtmlCacheKey(parts: PreviewHtmlCacheKeyParts) {
 export class PreviewHtmlCache {
   readonly ttlMs: number
   readonly maxEntries: number
+  readonly maxEntryBytes: number
 
   private readonly entries = new Map<string, CachedPreviewHtmlBase>()
   private readonly now: () => number
@@ -64,6 +72,7 @@ export class PreviewHtmlCache {
   constructor(options: PreviewHtmlCacheOptions = {}) {
     this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
     this.maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES
+    this.maxEntryBytes = options.maxEntryBytes ?? DEFAULT_MAX_ENTRY_BYTES
     this.now = options.now ?? Date.now
   }
 
@@ -92,6 +101,12 @@ export class PreviewHtmlCache {
     key: string,
     value: Pick<CachedPreviewHtmlBase, 'html' | 'runtimeMode' | 'noncePlaceholder'>,
   ) {
+    const htmlBytes = Buffer.byteLength(value.html, 'utf8')
+
+    if (htmlBytes > this.maxEntryBytes) {
+      return null
+    }
+
     const now = this.now()
     const entry: CachedPreviewHtmlBase = {
       ...value,
@@ -117,6 +132,7 @@ export class PreviewHtmlCache {
     return {
       size: this.entries.size,
       maxEntries: this.maxEntries,
+      maxEntryBytes: this.maxEntryBytes,
       ttlMs: this.ttlMs,
     }
   }

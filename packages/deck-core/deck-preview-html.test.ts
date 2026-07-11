@@ -64,6 +64,27 @@ describe('buildPreviewDocument', () => {
     )
   })
 
+  it('keeps post-serialize hostile stripping on the handshake injection path', () => {
+    const noncePlaceholder = 'CachedNoncePlaceholder'
+    const { html } = buildPreviewDocument(hostileNulMetaRefreshDeck(), {
+      parentOrigin: 'http://localhost:5173',
+      nonce: noncePlaceholder,
+    })
+
+    const previewHtml = injectPreviewHandshake(html, {
+      parentOrigin: 'http://localhost:5173',
+      handshake: 'session-handshake-b',
+      nonce: 'FreshSessionNonce',
+      noncePlaceholder,
+    })
+    const previewDoc = new DOMParser().parseFromString(previewHtml, 'text/html')
+
+    expect(countMetaRefresh(previewDoc)).toBe(0)
+    expect(previewHtml.toLowerCase()).not.toContain('http-equiv="refresh"')
+    expect(previewHtml).toContain('data-ark-preview-handshake')
+    expect(previewHtml).toContain('session-handshake-b')
+  })
+
   it('strips NUL-byte meta refresh that only materializes after serialization', () => {
     const hostile = hostileNulMetaRefreshDeck()
     const firstParse = new DOMParser().parseFromString(hostile, 'text/html')

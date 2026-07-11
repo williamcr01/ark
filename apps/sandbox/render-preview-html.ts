@@ -9,6 +9,7 @@ import {
 } from '@ark/deck-core/deck-preview-html.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
 import { detectRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
+import { hasApprovedRevealRuntimeInHtml } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import {
   createPreviewHtmlCacheKey,
   defaultPreviewHtmlCache,
@@ -99,10 +100,14 @@ export function renderCachedPreviewDocument(
     }
 
     const runtimeMode = options.manifest?.runtimeMode ?? detectRuntimeMode(html)
+    const usesRevealAdapter =
+      options.manifest?.usesRevealAdapter ??
+      (runtimeMode === 'reveal' && hasApprovedRevealRuntimeInHtml(html))
     const cacheKey = createPreviewHtmlCacheKey({
       html,
       parentOrigin: options.parentOrigin ?? '',
       runtimeMode,
+      usesRevealAdapter,
       editorBridge: options.editorBridge === true,
     })
     const cached = cache.get(cacheKey)
@@ -137,18 +142,20 @@ export function renderCachedPreviewDocument(
       noncePlaceholder: base.nonce ? PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER : null,
     })
     const nonce = createFreshPreviewNonce(base.runtimeMode)
+    const handshakeHtml = injectPreviewHandshake(entry?.html ?? base.html, {
+      parentOrigin: options.parentOrigin,
+      handshake: options.handshake,
+      nonce,
+      noncePlaceholder:
+        entry?.noncePlaceholder ?? (base.nonce ? PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER : null),
+    })
 
     return {
-      html: injectPreviewHandshake(entry.html, {
-        parentOrigin: options.parentOrigin,
-        handshake: options.handshake,
-        nonce,
-        noncePlaceholder: entry.noncePlaceholder,
-      }),
+      html: handshakeHtml,
       runtimeMode: base.runtimeMode,
       nonce,
-      cacheKey,
-      cacheStatus: 'miss',
+      cacheKey: entry ? cacheKey : null,
+      cacheStatus: entry ? 'miss' : 'bypass',
     }
   })
 }
