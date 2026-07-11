@@ -46,12 +46,12 @@ API events such as `thumbnail.render.succeeded`.
 
 ## Scenarios
 
-| Scenario              | Behavior                                                                                                                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `upload_cold`         | Fresh API/sandbox/web stack, empty thumbnail cache, new Chromium profile                                                                                                                                          |
-| `upload_warm`         | Reuses servers (warm Chromium pool) and reloads the shell between uploads                                                                                                                                         |
-| `deck_reload_warm`    | Uploads once, verifies warm-cache reloads decode PNGs with zero thumbnail renders                                                                                                                                 |
-| `rapid_version_burst` | Uploads once, submits a sequential PUT burst, measures API thumbnail readiness for the final version, then best-effort reloads the shell (PNG decode is secondary; incomplete shell decode does not fail the run) |
+| Scenario              | Behavior                                                                                                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upload_cold`         | Fresh API/sandbox/web stack, empty thumbnail cache, new Chromium profile                                                                                                                                        |
+| `upload_warm`         | Reuses servers (warm Chromium pool) and reloads the shell between uploads                                                                                                                                       |
+| `deck_reload_warm`    | Uploads once, verifies warm-cache reloads decode PNGs with zero thumbnail renders                                                                                                                               |
+| `rapid_version_burst` | Uploads once, submits a sequential PUT burst, measures API thumbnail readiness for the final version, then reloads the shell to verify the final mutation (PNG decode is best-effort and does not fail the run) |
 
 `--extended` adds generated 20-slide plain/Reveal fixtures and a large-inline-style deck.
 
