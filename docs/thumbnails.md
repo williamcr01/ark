@@ -44,6 +44,8 @@ id or the runtime manifest produces a new cache key.
 | Deck timeout      | 45s      | Page + session disposed on failure    |
 | Per-slide timeout | 3s       | Goto + screenshot                     |
 | Max PNG bytes     | 1.5 MB   | Per slide                             |
+| Settle delay      | 80ms     | Per-slide wait after runtime settles  |
+| Queue concurrency | 1        | Serialized by default                 |
 | Queue pending     | 20       | Extra jobs stay `pending` until drain |
 | Cache entries     | 200      | Oldest directories evicted            |
 
@@ -57,11 +59,13 @@ scale. Timeouts always dispose the Chromium page target.
 
 ## Configuration
 
-| Variable                     | Purpose                                                |
-| ---------------------------- | ------------------------------------------------------ |
-| `ARK_THUMBNAIL_RENDERER=off` | Disable the renderer; clients keep `srcDoc` fallback   |
-| `ARK_CHROMIUM_PATH`          | Chromium/Chrome binary for rendering and browser smoke |
-| `ARK_THUMBNAIL_CACHE_DIR`    | PNG cache root (default `data/thumbnails`)             |
+| Variable                          | Purpose                                                     |
+| --------------------------------- | ----------------------------------------------------------- |
+| `ARK_THUMBNAIL_RENDERER=off`      | Disable the renderer; clients keep `srcDoc` fallback        |
+| `ARK_CHROMIUM_PATH`               | Chromium/Chrome binary for rendering and browser smoke      |
+| `ARK_THUMBNAIL_CACHE_DIR`         | PNG cache root (default `data/thumbnails`)                  |
+| `ARK_THUMBNAIL_QUEUE_CONCURRENCY` | Renderer queue concurrency (positive integer, default `1`)  |
+| `ARK_THUMBNAIL_SETTLE_MS`         | Per-slide settle delay (non-negative integer, default `80`) |
 
 ## Observability
 
