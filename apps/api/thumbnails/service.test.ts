@@ -173,8 +173,125 @@ describe('thumbnail service', () => {
     expect(loadHtmlCount).toBe(0)
   })
 
+  it('re-enqueues stale pending work left behind after a restart', async () => {
+    let renderCount = 0
+    let loadHtmlCount = 0
+    const { service, cache } = await setup(async () => {
+      renderCount += 1
+      return {
+        ok: true,
+        slides: [Buffer.from('one'), Buffer.from('two')],
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 5,
+      }
+    })
+    const key = {
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'abc123',
+    }
+    await cache.markPending(key, {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+      slideCount: 0,
+      width: 480,
+      height: 270,
+    })
+    const pendingMeta = await cache.readMeta(key)
+    expect(pendingMeta).not.toBeNull()
+    await cache.writeMeta(key, {
+      ...pendingMeta!,
+      // Past THUMBNAIL_PENDING_LEASE_MS (deck timeout + 30s).
+      updatedAt: new Date(Date.now() - 80_000).toISOString(),
+    })
+
+    const status = await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+      enqueueIfMissing: true,
+      waitMs: 500,
+      loadHtml: async () => {
+        loadHtmlCount += 1
+        return sampleHtml
+      },
+    })
+
+    expect(status.status).toBe(THUMBNAIL_STATUS.ready)
+    expect(status.slides).toHaveLength(2)
+    expect(renderCount).toBe(1)
+    expect(loadHtmlCount).toBe(1)
+  })
+
+  it('recovers orphaned pending across service instances sharing a cache dir', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+    const deckStore = createDeckStore(dataDir)
+    const cache = createThumbnailCache(cacheDir)
+    const key = {
+      versionId: 'a0000000-0000-4000-8000-000000000003',
+      manifestHash: 'abc123',
+    }
+
+    // Simulate a previous API process that marked pending then died.
+    const previous = createThumbnailService({
+      cache,
+      deckStore,
+      renderer: createFakeRenderer(async () => {
+        throw new Error('previous process should not render')
+      }),
+    })
+    await cache.markPending(key, {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+      slideCount: 0,
+      width: 480,
+      height: 270,
+    })
+    await previous.close()
+
+    const pendingMeta = await cache.readMeta(key)
+    await cache.writeMeta(key, {
+      ...pendingMeta!,
+      updatedAt: new Date(Date.now() - 80_000).toISOString(),
+    })
+
+    let renderCount = 0
+    const restarted = createThumbnailService({
+      cache,
+      deckStore,
+      renderer: createFakeRenderer(async () => {
+        renderCount += 1
+        return {
+          ok: true,
+          slides: [Buffer.from('one')],
+          slideCount: 1,
+          width: 480,
+          height: 270,
+          durationMs: 5,
+        }
+      }),
+    })
+
+    const status = await restarted.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+      enqueueIfMissing: true,
+      waitMs: 500,
+      html: sampleHtml,
+    })
+
+    expect(status.status).toBe(THUMBNAIL_STATUS.ready)
+    expect(renderCount).toBe(1)
+    await restarted.close()
+  })
+
   it('records failed renders without crashing the queue', async () => {
-    const { service } = await setup(async () => ({
+    const { service, cache } = await setup(async () => ({
       ok: false,
       error: 'boom',
       durationMs: 1,
@@ -187,15 +304,25 @@ describe('thumbnail service', () => {
       manifestHash: 'abc123',
     })
 
+    const key = {
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'abc123',
+    }
+
     await vi.waitFor(async () => {
-      const status = await service.getStatus({
-        deckId: 'b0000000-0000-4000-8000-000000000001',
-        versionId: 'a0000000-0000-4000-8000-000000000001',
-        manifestHash: 'abc123',
-      })
-      expect(status.status).toBe(THUMBNAIL_STATUS.failed)
-      expect(status.error).toBe('boom')
+      const meta = await cache.readMeta(key)
+      expect(meta?.status).toBe(THUMBNAIL_STATUS.failed)
+      expect(meta?.error).toBe('boom')
     })
+
+    // Retriable failures are reported as pending so clients keep long-polling.
+    const status = await service.getStatus({
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: key.versionId,
+      manifestHash: key.manifestHash,
+    })
+    expect(status.status).toBe(THUMBNAIL_STATUS.pending)
+    expect(status.slides).toEqual([])
   })
 
   it('retries a failed render after the retry delay and bounds total attempts', async () => {
@@ -222,25 +349,30 @@ describe('thumbnail service', () => {
       versionId: 'a0000000-0000-4000-8000-000000000001',
       manifestHash: 'abc123',
     }
+    const key = { versionId: statusInput.versionId, manifestHash: statusInput.manifestHash }
 
     await service.enqueue({ ...statusInput, html: sampleHtml })
 
     await vi.waitFor(async () => {
-      const status = await service.getStatus(statusInput)
-      expect(status.status).toBe(THUMBNAIL_STATUS.failed)
+      const meta = await cache.readMeta(key)
+      expect(meta?.status).toBe(THUMBNAIL_STATUS.failed)
+      expect(meta?.attempts).toBe(1)
     })
 
-    // Within the retry delay the failure is returned as-is (no re-render).
+    // Client-facing status stays pending (retriable) so long-poll continues.
+    const afterFailure = await service.getStatus(statusInput)
+    expect(afterFailure.status).toBe(THUMBNAIL_STATUS.pending)
+
+    // Within the retry delay the failure is not re-enqueued yet.
     const beforeDelay = await service.getStatus({
       ...statusInput,
       enqueueIfMissing: true,
       html: sampleHtml,
     })
-    expect(beforeDelay.status).toBe(THUMBNAIL_STATUS.failed)
+    expect(beforeDelay.status).toBe(THUMBNAIL_STATUS.pending)
     expect(renderCount).toBe(1)
 
     // Age the failure past the retry delay, then poll again.
-    const key = { versionId: statusInput.versionId, manifestHash: statusInput.manifestHash }
     const failedMeta = await cache.readMeta(key)
     expect(failedMeta).not.toBeNull()
     await cache.writeMeta(key, {
