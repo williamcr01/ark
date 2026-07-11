@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
-import { buildPreviewDocument } from './deck-preview-html.ts'
+import { buildPreviewDocument, injectPreviewHandshake } from './deck-preview-html.ts'
 
 function countMetaRefresh(doc: Document) {
   return [...doc.querySelectorAll('meta')].filter(
@@ -28,6 +28,63 @@ function hostileNulMetaRefreshDeck(options: { customJs?: boolean } = {}) {
 }
 
 describe('buildPreviewDocument', () => {
+  it('injects the handshake and rewrites cached nonce placeholders after the preview boundary', () => {
+    const noncePlaceholder = 'CachedNoncePlaceholder'
+    const freshNonce = 'FreshSessionNonce'
+    const { html } = buildPreviewDocument(hostileNulMetaRefreshDeck(), {
+      parentOrigin: 'http://localhost:5173',
+      nonce: noncePlaceholder,
+    })
+
+    expect(html).toContain(`'nonce-${noncePlaceholder}'`)
+    expect(html).toContain(`nonce="${noncePlaceholder}"`)
+    expect(html).not.toContain('data-ark-preview-handshake')
+    expect(html).not.toContain('session-handshake-a')
+
+    const previewHtml = injectPreviewHandshake(html, {
+      parentOrigin: 'http://localhost:5173',
+      handshake: 'session-handshake-a',
+      nonce: freshNonce,
+      noncePlaceholder,
+    })
+    const previewDoc = new DOMParser().parseFromString(previewHtml, 'text/html')
+    const csp = previewDoc
+      .querySelector('meta[http-equiv="Content-Security-Policy"]')
+      ?.getAttribute('content')
+
+    expect(previewHtml).toContain('data-ark-preview-handshake')
+    expect(previewHtml).toContain('session-handshake-a')
+    expect(previewHtml).not.toContain(noncePlaceholder)
+    expect(csp).toContain(`'nonce-${freshNonce}'`)
+    expect(previewDoc.querySelector('[data-ark-preview-handshake]')?.getAttribute('nonce')).toBe(
+      freshNonce,
+    )
+    expect(previewDoc.querySelector('[data-ark-preview-nav]')?.getAttribute('nonce')).toBe(
+      freshNonce,
+    )
+  })
+
+  it('keeps post-serialize hostile stripping on the handshake injection path', () => {
+    const noncePlaceholder = 'CachedNoncePlaceholder'
+    const { html } = buildPreviewDocument(hostileNulMetaRefreshDeck(), {
+      parentOrigin: 'http://localhost:5173',
+      nonce: noncePlaceholder,
+    })
+
+    const previewHtml = injectPreviewHandshake(html, {
+      parentOrigin: 'http://localhost:5173',
+      handshake: 'session-handshake-b',
+      nonce: 'FreshSessionNonce',
+      noncePlaceholder,
+    })
+    const previewDoc = new DOMParser().parseFromString(previewHtml, 'text/html')
+
+    expect(countMetaRefresh(previewDoc)).toBe(0)
+    expect(previewHtml.toLowerCase()).not.toContain('http-equiv="refresh"')
+    expect(previewHtml).toContain('data-ark-preview-handshake')
+    expect(previewHtml).toContain('session-handshake-b')
+  })
+
   it('strips NUL-byte meta refresh that only materializes after serialization', () => {
     const hostile = hostileNulMetaRefreshDeck()
     const firstParse = new DOMParser().parseFromString(hostile, 'text/html')
