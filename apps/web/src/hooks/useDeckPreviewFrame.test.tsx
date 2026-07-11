@@ -53,6 +53,7 @@ describe('useDeckPreviewFrame srcDoc keying', () => {
   it('always injects the dormant editor runtime for interactive previews', () => {
     const view = renderHook(() => useDeckPreviewFrame('<section class="slide">Hi</section>', true))
 
-    expect(view.result.current.iframeSrcDoc).toContain(':edit:')
+    expect(view.result.current.iframeSrcDoc).toContain(':edit')
+    expect(view.result.current.iframeSrcDoc).not.toContain(':view')
   })
 })

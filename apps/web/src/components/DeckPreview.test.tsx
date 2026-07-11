@@ -236,7 +236,9 @@ describe('DeckPreview script divergence UI', () => {
     expect(
       screen.queryByText(/Scripts and inline handlers were removed for preview/i),
     ).not.toBeInTheDocument()
-    expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Download the original HTML to keep executable code/i),
+    ).not.toBeInTheDocument()
   })
 
   it('disables then re-enables the editor when presenting from edit mode', async () => {
