@@ -94,6 +94,19 @@ export type ThumbnailHtmlOptions = {
   assetOrigin?: string | null
 }
 
+export type ThumbnailSharedMaterials = {
+  bodyOpen: string
+  cspMode: DeckRuntimeMode
+  cspNonceMode: 'generate' | 'none'
+  headHtml: string
+  htmlOpen: string
+  revealShim: string
+  runtimeMode: DeckRuntimeMode
+  assetOrigin?: string | null
+}
+
+export type ThumbnailSrcDocBuilder = (slideIndex: number) => string
+
 function stripInlineHandlers(root: ParentNode) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
 
@@ -366,6 +379,67 @@ export function prepareThumbnailHeadHtml(
   }
 }
 
+export function prepareThumbnailSharedMaterials(
+  doc: Document,
+  htmlAttrs: string,
+  bodyAttrs: string,
+  runtimeMode: DeckRuntimeMode,
+  options: ThumbnailHtmlOptions = {},
+) {
+  const { headHtml, usesInlinedRuntimeCss } = prepareThumbnailHeadHtml(doc, runtimeMode, options)
+  const revealShim =
+    runtimeMode === 'reveal' && hasRevealSlideStructure(doc) ? revealThumbnailLayoutShim : ''
+  const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
+  const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
+
+  return {
+    assetOrigin: options.assetOrigin,
+    bodyOpen,
+    cspMode: usesInlinedRuntimeCss ? ('static' as const) : runtimeMode,
+    cspNonceMode: !usesInlinedRuntimeCss && runtimeMode === 'custom-js' ? 'none' : 'generate',
+    headHtml,
+    htmlOpen,
+    revealShim,
+    runtimeMode,
+  } satisfies ThumbnailSharedMaterials
+}
+
+function applyThumbnailCsp(srcDoc: string, materials: ThumbnailSharedMaterials) {
+  return injectRuntimeCsp(srcDoc, materials.cspMode, {
+    assetOrigin: materials.assetOrigin,
+    nonce: materials.cspNonceMode === 'generate' ? generateCspNonce() : null,
+  })
+}
+
+export function createThumbnailSrcDocBuilder(
+  doc: Document,
+  htmlAttrs: string,
+  bodyAttrs: string,
+  runtimeMode: DeckRuntimeMode,
+  options: ThumbnailHtmlOptions = {},
+): ThumbnailSrcDocBuilder {
+  const materials = prepareThumbnailSharedMaterials(doc, htmlAttrs, bodyAttrs, runtimeMode, options)
+
+  return (slideIndex: number) => {
+    const bodyHtml = prepareThumbnailBody(doc, slideIndex, materials.runtimeMode)
+
+    return applyThumbnailCsp(
+      `<!DOCTYPE html>
+${materials.htmlOpen}
+<head>
+${materials.headHtml}
+${thumbnailFillStyle}
+${materials.revealShim}
+</head>
+${materials.bodyOpen}
+${bodyHtml}
+</body>
+</html>`,
+      materials,
+    )
+  }
+}
+
 export function buildThumbnailSrcDoc(
   doc: Document,
   slideIndex: number,
@@ -374,32 +448,7 @@ export function buildThumbnailSrcDoc(
   runtimeMode: DeckRuntimeMode,
   options: ThumbnailHtmlOptions = {},
 ) {
-  const { headHtml, usesInlinedRuntimeCss } = prepareThumbnailHeadHtml(doc, runtimeMode, options)
-  const bodyHtml = prepareThumbnailBody(doc, slideIndex, runtimeMode)
-  const revealShim =
-    runtimeMode === 'reveal' && hasRevealSlideStructure(doc) ? revealThumbnailLayoutShim : ''
-  const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : '<html>'
-  const bodyOpen = bodyAttrs ? `<body ${bodyAttrs}>` : '<body>'
-  const srcDoc = `<!DOCTYPE html>
-${htmlOpen}
-<head>
-${headHtml}
-${thumbnailFillStyle}
-${revealShim}
-</head>
-${bodyOpen}
-${bodyHtml}
-</body>
-</html>`
-
-  if (usesInlinedRuntimeCss) {
-    return injectRuntimeCsp(srcDoc, 'static', { nonce: generateCspNonce() })
-  }
-
-  return injectRuntimeCsp(srcDoc, runtimeMode, {
-    assetOrigin: options.assetOrigin,
-    nonce: runtimeMode === 'custom-js' ? null : generateCspNonce(),
-  })
+  return createThumbnailSrcDocBuilder(doc, htmlAttrs, bodyAttrs, runtimeMode, options)(slideIndex)
 }
 
 export function thumbnailUsesStrictCsp(srcDoc: string) {

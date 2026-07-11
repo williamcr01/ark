@@ -16,6 +16,10 @@ function parseHtml(html: string) {
   return new DOMParser().parseFromString(html, 'text/html')
 }
 
+function getThumbnailSrcDocs(parsed: ReturnType<typeof parseDeckSlides>) {
+  return Array.from({ length: parsed.slideCount }, (_, index) => parsed.getThumbnailSrcDoc(index))
+}
+
 function expectStrictThumbnailCsp(srcDoc: string) {
   expect(srcDoc).toContain('http-equiv="Content-Security-Policy"')
   expect(srcDoc).toContain("connect-src 'none'")
@@ -108,9 +112,10 @@ describe('parseDeckSlides', () => {
     expect(parsed.slideCount).toBe(3)
     expect(parsed.slides.map((slide) => slide.index)).toEqual([0, 1, 2])
     expect(parsed.slides[0].outerHTML).toContain('Quarterly planning')
-    expect(parsed.thumbnailSrcDocs).toHaveLength(3)
+    const thumbnailSrcDocs = getThumbnailSrcDocs(parsed)
+    expect(thumbnailSrcDocs).toHaveLength(3)
 
-    parsed.thumbnailSrcDocs.forEach((srcDoc, index) => {
+    thumbnailSrcDocs.forEach((srcDoc, index) => {
       const thumbnailDoc = parseHtml(srcDoc)
       const slides = thumbnailDoc.querySelectorAll('section.slide')
 
@@ -134,7 +139,7 @@ describe('parseDeckSlides', () => {
     expect(parsed.slides[0].outerHTML).toContain('Reveal opening')
     expect(parsed.slides[1].outerHTML).toContain('Reveal detail')
 
-    parsed.thumbnailSrcDocs.forEach((srcDoc) => {
+    getThumbnailSrcDocs(parsed).forEach((srcDoc) => {
       const thumbnailDoc = parseHtml(srcDoc)
 
       expect(thumbnailDoc.querySelector('.reveal .slides')).not.toBeNull()
@@ -143,7 +148,7 @@ describe('parseDeckSlides', () => {
       expectThumbnailSecurity(srcDoc)
     })
 
-    const secondThumbnail = parseHtml(parsed.thumbnailSrcDocs[1])
+    const secondThumbnail = parseHtml(parsed.getThumbnailSrcDoc(1))
     const selectedSlide = secondThumbnail.querySelector('.reveal .slides > section')
 
     expect(selectedSlide?.textContent).toContain('Reveal detail')
@@ -163,14 +168,14 @@ describe('parseDeckSlides', () => {
         expect.stringContaining('Closing'),
       ]),
     )
-    expect(parsed.thumbnailSrcDocs).toHaveLength(4)
+    expect(getThumbnailSrcDocs(parsed)).toHaveLength(4)
   })
 
   it('renders one selected vertical slide per thumbnail without duplicate visible slides', () => {
     const parsed = parseDeckSlides(revealVerticalDeck)
     const expectedTitles = ['Opening', 'Vertical one', 'Vertical two', 'Closing']
 
-    parsed.thumbnailSrcDocs.forEach((srcDoc, index) => {
+    getThumbnailSrcDocs(parsed).forEach((srcDoc, index) => {
       const thumbnailDoc = parseHtml(srcDoc)
       const presentSlides = thumbnailDoc.querySelectorAll(
         '.reveal .slides section.present, .reveal .slides section > section.present',
@@ -198,9 +203,10 @@ describe('parseDeckSlides', () => {
   it('inlines approved reveal runtime CSS into registry deck thumbnails', () => {
     const parsed = parseDeckSlides(revealRegistryDeck)
 
-    expect(parsed.thumbnailSrcDocs).toHaveLength(2)
+    const thumbnailSrcDocs = getThumbnailSrcDocs(parsed)
+    expect(thumbnailSrcDocs).toHaveLength(2)
 
-    parsed.thumbnailSrcDocs.forEach((srcDoc) => {
+    thumbnailSrcDocs.forEach((srcDoc) => {
       expect(srcDoc).toContain('data-ark-runtime-css="reveal.js@5.1.0/reveal.css"')
       expect(srcDoc).toContain('data-ark-runtime-css="reveal.js@5.1.0/theme/white.css"')
       expect(srcDoc).toContain('.reveal .slides > section.present')
@@ -218,17 +224,17 @@ describe('parseDeckSlides', () => {
     try {
       const parsed = parseDeckSlides(revealRegistryDeck)
 
-      expect(parsed.thumbnailSrcDocs[0]).toContain(
+      expect(parsed.getThumbnailSrcDoc(0)).toContain(
         'href="/api/runtimes/reveal.js/5.1.0/reveal.css"',
       )
-      expect(parsed.thumbnailSrcDocs[0]).toContain(
+      expect(parsed.getThumbnailSrcDoc(0)).toContain(
         'href="/api/runtimes/reveal.js/5.1.0/theme/white.css"',
       )
-      expect(parsed.thumbnailSrcDocs[0]).not.toContain('data-ark-runtime-css=')
+      expect(parsed.getThumbnailSrcDoc(0)).not.toContain('data-ark-runtime-css=')
       // Without inlined CSS the CSP includes approved runtime asset URLs (not the
       // static STRICT_DECK_CSP baseline), still with a per-render nonce.
-      expect(parsed.thumbnailSrcDocs[0]).toMatch(/script-src[^;]*'nonce-/)
-      expect(parsed.thumbnailSrcDocs[0]).toContain(
+      expect(parsed.getThumbnailSrcDoc(0)).toMatch(/script-src[^;]*'nonce-/)
+      expect(parsed.getThumbnailSrcDoc(0)).toContain(
         'http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css',
       )
     } finally {
@@ -241,7 +247,7 @@ describe('parseDeckSlides', () => {
 
     expect(parsed.slideCount).toBe(2)
 
-    const fragmentThumbnail = parseHtml(parsed.thumbnailSrcDocs[0])
+    const fragmentThumbnail = parseHtml(parsed.getThumbnailSrcDoc(0))
     const fragments = fragmentThumbnail.querySelectorAll('.fragment')
 
     expect(fragments).toHaveLength(2)
@@ -249,7 +255,7 @@ describe('parseDeckSlides', () => {
       expect(fragment.classList.contains('visible')).toBe(true)
     })
 
-    const backgroundThumbnail = parseHtml(parsed.thumbnailSrcDocs[1])
+    const backgroundThumbnail = parseHtml(parsed.getThumbnailSrcDoc(1))
     const backgroundSlide = backgroundThumbnail.querySelector(
       '.reveal .slides section[data-background-color]',
     )
@@ -264,7 +270,7 @@ describe('parseDeckSlides', () => {
     expect(parsed.slideCount).toBe(2)
     expect(parsed.headHtml).not.toContain('<script')
 
-    parsed.thumbnailSrcDocs.forEach((srcDoc) => {
+    getThumbnailSrcDocs(parsed).forEach((srcDoc) => {
       const thumbnailDoc = parseHtml(srcDoc)
 
       expectThumbnailSecurity(srcDoc)
@@ -279,7 +285,7 @@ describe('parseDeckSlides', () => {
     expect(parsed.slideCount).toBe(2)
     expect(parsed.slides[0].outerHTML).toContain('Recovered opening')
     expect(parsed.slides[1].outerHTML).toContain('Recovered detail')
-    expect(parsed.thumbnailSrcDocs).toHaveLength(2)
+    expect(getThumbnailSrcDocs(parsed)).toHaveLength(2)
   })
 
   it('returns an empty deck when no slide selector matches', () => {
@@ -287,6 +293,7 @@ describe('parseDeckSlides', () => {
 
     expect(parsed.slideCount).toBe(0)
     expect(parsed.slides).toEqual([])
-    expect(parsed.thumbnailSrcDocs).toEqual([])
+    expect(getThumbnailSrcDocs(parsed)).toEqual([])
+    expect(parsed.getThumbnailSrcDoc(0)).toBe('')
   })
 })

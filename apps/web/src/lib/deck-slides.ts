@@ -4,7 +4,7 @@ import {
   stripDeckScriptsForPreview,
 } from '@ark/deck-core/deck-preview-slides.ts'
 import {
-  buildThumbnailSrcDoc,
+  createThumbnailSrcDocBuilder,
   type ThumbnailHtmlOptions,
 } from '@ark/deck-core/deck-thumbnail-html.ts'
 import { startRevealThumbnailStylesPreload } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
@@ -18,7 +18,7 @@ export type ParsedDeck = {
   headHtml: string
   htmlAttrs: string
   bodyAttrs: string
-  thumbnailSrcDocs: string[]
+  getThumbnailSrcDoc: (index: number) => string
 }
 
 export type ParseDeckSlidesOptions = ThumbnailHtmlOptions
@@ -69,7 +69,7 @@ const emptyParsedDeck: ParsedDeck = {
   headHtml: '',
   htmlAttrs: '',
   bodyAttrs: '',
-  thumbnailSrcDocs: [],
+  getThumbnailSrcDoc: () => '',
 }
 
 export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = {}): ParsedDeck {
@@ -97,9 +97,12 @@ export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = 
   }))
 
   const runtimeMode = detectRuntimeModeFromDocument(doc)
-
-  const thumbnailSrcDocs = slides.map((slide) =>
-    buildThumbnailSrcDoc(doc, slide.index, htmlAttrs, bodyAttrs, runtimeMode, options),
+  const buildThumbnailSrcDoc = createThumbnailSrcDocBuilder(
+    doc,
+    htmlAttrs,
+    bodyAttrs,
+    runtimeMode,
+    options,
   )
 
   return {
@@ -108,6 +111,12 @@ export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = 
     headHtml,
     htmlAttrs,
     bodyAttrs,
-    thumbnailSrcDocs,
+    getThumbnailSrcDoc(index) {
+      if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
+        return ''
+      }
+
+      return buildThumbnailSrcDoc(index)
+    },
   }
 }
