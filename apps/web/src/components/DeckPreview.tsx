@@ -122,6 +122,10 @@ export function DeckPreview({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewViewportRef, previewViewportSize] = useElementSize<HTMLDivElement>()
   const [isPresentOpen, setIsPresentOpen] = useState(false)
+  const [presentViewportSize, setPresentViewportSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 0 : window.innerWidth,
+    height: typeof window === 'undefined' ? 0 : window.innerHeight,
+  }))
   const [uncontrolledEditModeActive, setUncontrolledEditModeActive] = useState(false)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [imageFitOverride, setImageFitOverride] = useState<{
@@ -146,6 +150,7 @@ export function DeckPreview({
     import('@ark/deck-core/deck-editor-bridge.ts').EditorNormalizedRect | null
   >(null)
   const isTransformingRef = useRef(false)
+  const wasEditChromeActiveRef = useRef(false)
   const runtimeManifest = useMemo(() => buildDeckRuntimeManifestInBrowser(html), [html])
   const runtimeMode = runtimeManifest.runtimeMode
   const validation = useMemo(() => validateDeckHtmlInBrowser(html), [html])
@@ -170,12 +175,10 @@ export function DeckPreview({
     [onEditModeActiveChange],
   )
   const hasSlides = parsedDeck.slideCount > 0
-  const editChromeActive = editModeActive && !isGenerating
-  const editorBridgeInjected = editorBridgeEnabled && editChromeActive
-  const previewEnabled = html.length > 0 && hasSlides && !isPresentOpen
-  const previewFrame = useDeckPreviewFrame(html, previewEnabled, {
-    editorBridge: editorBridgeInjected,
-  })
+  const editChromeActive = editModeActive && !isGenerating && !isPresentOpen
+  const editorBridgeActive = editorBridgeEnabled && editChromeActive
+  const previewEnabled = html.length > 0 && hasSlides
+  const previewFrame = useDeckPreviewFrame(html, previewEnabled)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
   const textEditActiveRef = useRef(false)
@@ -216,7 +219,7 @@ export function DeckPreview({
     bridgeEnabled,
     {
       runtimeMode,
-      keyboardMode: isPresentOpen || previewCompromised ? 'off' : 'preview',
+      keyboardMode: previewCompromised ? 'off' : isPresentOpen ? 'present' : 'preview',
       shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,
       syncOnLoad: false,
@@ -279,7 +282,7 @@ export function DeckPreview({
     cancelTextEdit,
     setTool,
   } = useDeckEditorBridge(iframeRef, {
-    enabled: editorBridgeInjected && bridgeEnabled,
+    enabled: editorBridgeActive && bridgeEnabled,
     activeSlideIndex,
     sandboxOrigin: previewFrame.sandboxOrigin,
     iframeGenerationKey: previewFrame.iframeKey,
@@ -299,13 +302,13 @@ export function DeckPreview({
 
     goToSlide(activeSlideIndexRef.current)
 
-    if (editorBridgeInjected) {
+    if (editorBridgeActive) {
       enableEditor(activeSlideIndexRef.current, activeTool)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTool is initial enable payload only
   }, [
     bridgeSession.armed,
-    editorBridgeInjected,
+    editorBridgeActive,
     enableEditor,
     goToSlide,
     previewCompromised,
@@ -504,6 +507,18 @@ export function DeckPreview({
     pendingReselectRef.current = null
     setEditModeActive(false)
   }, [disableEditor, endTextEditing, setEditModeActive])
+
+  useEffect(() => {
+    const wasEditChromeActive = wasEditChromeActiveRef.current
+    wasEditChromeActiveRef.current = editChromeActive
+
+    if (!wasEditChromeActive || editChromeActive) {
+      return
+    }
+
+    endTextEditing()
+    disableEditor()
+  }, [disableEditor, editChromeActive, endTextEditing])
 
   const handleEditModeChange = useCallback(
     (nextActive: boolean) => {
@@ -948,16 +963,7 @@ export function DeckPreview({
   ])
 
   useEffect(() => {
-    if (!editModeActive || !isGenerating) {
-      return
-    }
-
-    endTextEditing()
-    disableEditor()
-  }, [disableEditor, editModeActive, endTextEditing, isGenerating])
-
-  useEffect(() => {
-    if (!editorBridgeInjected || !editorReady) {
+    if (!editorBridgeActive || !editorReady) {
       return
     }
 
@@ -966,7 +972,7 @@ export function DeckPreview({
     // requests on every toolbar click.
     enableEditor(activeSlideIndex, activeTool)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTool is initial enable payload only; setTool owns later updates
-  }, [activeSlideIndex, editorBridgeInjected, editorReady, enableEditor, previewFrame.iframeKey])
+  }, [activeSlideIndex, editorBridgeActive, editorReady, enableEditor, previewFrame.iframeKey])
 
   useEffect(() => {
     if (!editChromeActive || !selection?.elementId) {
@@ -1049,7 +1055,30 @@ export function DeckPreview({
     goToSlide(finalIndex)
   }, [goToSlide, isPresentOpen])
 
-  const previewFrameScale = getPreviewFrameScale(previewViewportSize)
+  const handlePresentViewportSizeChange = useCallback((size: { width: number; height: number }) => {
+    setPresentViewportSize((current) => {
+      if (
+        Math.abs(current.width - size.width) < 0.5 &&
+        Math.abs(current.height - size.height) < 0.5
+      ) {
+        return current
+      }
+
+      return size
+    })
+  }, [])
+  const openPresentMode = useCallback(() => {
+    setPresentViewportSize({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
+    setIsPresentOpen(true)
+  }, [])
+  const effectivePreviewViewportSize =
+    isPresentOpen && presentViewportSize.width > 0 && presentViewportSize.height > 0
+      ? presentViewportSize
+      : previewViewportSize
+  const previewFrameScale = getPreviewFrameScale(effectivePreviewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const hasStrip = hasSlides
@@ -1087,35 +1116,37 @@ export function DeckPreview({
             aria-label="Present fullscreen"
             className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
             disabled={!canPresent || isPresentOpen}
-            onClick={() => setIsPresentOpen(true)}
+            onClick={openPresentMode}
             type="button"
           >
             <Maximize2Icon className="size-3" />
             Present
           </button>
-          {isTextEditSaving ? (
+          {isTextEditSaving && !isPresentOpen ? (
             <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
               <Loader2Icon className="size-3 animate-spin" />
               Saving edit
             </span>
           ) : null}
-          {runtimeMode === 'custom-js' ? (
+          {!isPresentOpen && runtimeMode === 'custom-js' ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
               Scripts running
             </span>
-          ) : runtimeMode === 'reveal' && !usesStaticPreview ? (
+          ) : !isPresentOpen && runtimeMode === 'reveal' && !usesStaticPreview ? (
             <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
               Reveal runtime
             </span>
-          ) : usesStaticPreview ? (
+          ) : !isPresentOpen && usesStaticPreview ? (
             <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
               Static preview
             </span>
           ) : null}
-          <span className="flex items-center gap-1">
-            <FileCode2Icon className="size-3" />
-            {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
-          </span>
+          {!isPresentOpen ? (
+            <span className="flex items-center gap-1">
+              <FileCode2Icon className="size-3" />
+              {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
+            </span>
+          ) : null}
         </span>
       </div>
 
@@ -1210,7 +1241,11 @@ export function DeckPreview({
           >
             {html ? (
               <div
-                className="relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
+                className={cn(
+                  'relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]',
+                  isPresentOpen &&
+                    'fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 shadow-[0_40px_120px_rgba(0,0,0,0.65)] ring-white/10',
+                )}
                 ref={previewStageRef}
                 style={previewStageStyle}
               >
@@ -1228,7 +1263,7 @@ export function DeckPreview({
 
                       goToSlide(activeSlideIndexRef.current)
 
-                      if (editorBridgeInjected) {
+                      if (editorBridgeActive) {
                         enableEditor(activeSlideIndexRef.current, activeTool)
                       }
                     }}
@@ -1241,7 +1276,7 @@ export function DeckPreview({
                     title="Generated Ark presentation preview"
                   />
                 )}
-                {previewCompromised ? (
+                {previewCompromised && !isPresentOpen ? (
                   <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
                     <div className="flex items-start gap-2">
                       <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1256,13 +1291,13 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {previewFrame.error ? (
+                {!isPresentOpen && previewFrame.error ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
                     <p className="font-medium">Sandbox preview unavailable</p>
                     <p>{previewFrame.error}</p>
                   </div>
                 ) : null}
-                {previewFrame.isLoading ? (
+                {!isPresentOpen && previewFrame.isLoading ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-medium text-muted-foreground backdrop-blur-sm">
                     Loading sandbox preview…
                   </div>
@@ -1276,7 +1311,7 @@ export function DeckPreview({
                     scale={previewFrameScale}
                   />
                 ) : null}
-                {usesStaticPreview ? (
+                {!isPresentOpen && usesStaticPreview ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
                     <div className="flex items-start gap-2">
                       <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1291,7 +1326,7 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {editorError ? (
+                {!isPresentOpen && editorError ? (
                   <div
                     className={cn(
                       'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
@@ -1302,7 +1337,7 @@ export function DeckPreview({
                     <p>{editorError}</p>
                   </div>
                 ) : null}
-                {networkIssues.length > 0 ? (
+                {!isPresentOpen && networkIssues.length > 0 ? (
                   <div
                     className={cn(
                       'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
@@ -1318,7 +1353,10 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {manifestWarnings.length > 0 && !usesStaticPreview && networkIssues.length === 0 ? (
+                {!isPresentOpen &&
+                manifestWarnings.length > 0 &&
+                !usesStaticPreview &&
+                networkIssues.length === 0 ? (
                   <div className="absolute inset-x-4 top-4 rounded-lg border border-amber-500/30 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur dark:bg-amber-950/90 dark:text-amber-100">
                     <div className="flex items-start gap-2">
                       <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1329,7 +1367,7 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {isGenerating ? (
+                {!isPresentOpen && isGenerating ? (
                   <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
                     <Loader2Icon className="size-3.5 animate-spin" />
                     Updating preview
@@ -1358,13 +1396,14 @@ export function DeckPreview({
 
       {isPresentOpen ? (
         <PresentMode
-          html={html}
-          initialSlideIndex={activeSlideIndex}
+          activeSlideIndex={activeSlideIndex}
           onExit={(finalIndex) => {
             pendingPresentExitIndexRef.current = finalIndex
             setIsPresentOpen(false)
           }}
-          runtimeMode={runtimeMode}
+          onGoToSlide={goToSlide}
+          onViewportSizeChange={handlePresentViewportSizeChange}
+          previewCompromised={previewCompromised}
           slideCount={parsedDeck.slideCount}
         />
       ) : null}

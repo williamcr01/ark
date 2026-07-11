@@ -7,71 +7,104 @@ import {
   resolveSandboxOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
 
-export type SandboxPreviewOptions = {
-  editorBridge?: boolean
-}
-
 export type SandboxPreviewState = {
   previewUrl: string | null
   sandboxOrigin: string
   appOrigin: string
   isLoading: boolean
+  /** True when previewUrl still points at an older successful session for the latest HTML. */
+  isStale: boolean
   error: string | null
   sessionToken: string | null
   handshake: string | null
 }
 
-const PREVIEW_SESSION_DEBOUNCE_MS = 300
+const PREVIEW_SESSION_COALESCE_MS = 300
+/** Interactive shell previews always inject a dormant editor runtime. */
+const INTERACTIVE_EDITOR_BRIDGE = true
 
-export function useSandboxPreview(
-  html: string,
-  enabled: boolean,
-  options: SandboxPreviewOptions = {},
-): SandboxPreviewState {
+type PreviewSessionSnapshot = {
+  previewUrl: string | null
+  sessionToken: string | null
+  handshake: string | null
+  html: string
+}
+
+const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
+  previewUrl: null,
+  sessionToken: null,
+  handshake: null,
+  html: '',
+}
+
+export function useSandboxPreview(html: string, enabled: boolean): SandboxPreviewState {
   const sandboxOrigin = resolveSandboxOrigin()
   const appOrigin = resolveAppOrigin()
   const shouldLoad = enabled && html.trim().length > 0
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [sessionToken, setSessionToken] = useState<string | null>(null)
-  const [handshake, setHandshake] = useState<string | null>(null)
+  const [previewSession, setPreviewSession] =
+    useState<PreviewSessionSnapshot>(EMPTY_PREVIEW_SESSION)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
-  const debouncedHtmlRef = useRef(html)
-  const [debouncedHtml, setDebouncedHtml] = useState(html)
+  const activeRequestRef = useRef<{
+    requestId: number
+    controller: AbortController
+  } | null>(null)
+  const pendingTimerRef = useRef<number | null>(null)
+  const observedHtmlRef = useRef<string | null>(null)
+  const lastHtmlChangeAtRef = useRef<number | null>(null)
+  const previewSessionRef = useRef(previewSession)
 
   useEffect(() => {
-    if (!shouldLoad) {
-      debouncedHtmlRef.current = html
-      return
-    }
-
-    debouncedHtmlRef.current = html
-
-    const timer = window.setTimeout(() => {
-      setDebouncedHtml(debouncedHtmlRef.current)
-    }, PREVIEW_SESSION_DEBOUNCE_MS)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [html, shouldLoad])
+    previewSessionRef.current = previewSession
+  }, [previewSession])
 
   useEffect(() => {
-    if (!shouldLoad || !debouncedHtml.trim()) {
-      return
+    let effectActive = true
+
+    function clearPendingTimer() {
+      if (pendingTimerRef.current !== null) {
+        window.clearTimeout(pendingTimerRef.current)
+        pendingTimerRef.current = null
+      }
     }
 
-    const requestId = requestIdRef.current + 1
-    requestIdRef.current = requestId
-    const controller = new AbortController()
+    function abortActiveRequest() {
+      const activeRequest = activeRequestRef.current
 
-    async function createPreviewSession() {
+      if (!activeRequest) {
+        return
+      }
+
+      requestIdRef.current += 1
+      activeRequest.controller.abort()
+      activeRequestRef.current = null
+    }
+
+    function settleIdleState() {
+      void Promise.resolve().then(() => {
+        if (!effectActive) {
+          return
+        }
+
+        setIsLoading(false)
+        setError(null)
+      })
+    }
+
+    function latestSessionMatches() {
+      const session = previewSessionRef.current
+
+      return session.previewUrl !== null && session.html === html
+    }
+
+    async function createPreviewSession(requestHtml: string) {
+      const requestId = requestIdRef.current + 1
+      requestIdRef.current = requestId
+      const controller = new AbortController()
+      activeRequestRef.current = { requestId, controller }
       setIsLoading(true)
       setError(null)
-      setPreviewUrl(null)
-      setSessionToken(null)
-      setHandshake(null)
 
       try {
         const response = await fetch('/api/preview-sessions', {
@@ -80,8 +113,8 @@ export function useSandboxPreview(
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            html: debouncedHtml,
-            editorBridge: options.editorBridge === true,
+            html: requestHtml,
+            editorBridge: INTERACTIVE_EDITOR_BRIDGE,
           }),
           signal: controller.signal,
         })
@@ -94,14 +127,15 @@ export function useSandboxPreview(
           return
         }
 
-        setSessionToken(payload.token)
-        setHandshake(payload.handshake)
-        setPreviewUrl(
-          buildSandboxRenderUrl(payload.token, {
+        setPreviewSession({
+          previewUrl: buildSandboxRenderUrl(payload.token, {
             sandboxOrigin: payload.sandboxOrigin || sandboxOrigin,
             appOrigin,
           }),
-        )
+          sessionToken: payload.token,
+          handshake: payload.handshake,
+          html: requestHtml,
+        })
       } catch (caught) {
         if (controller.signal.aborted || requestIdRef.current !== requestId) {
           return
@@ -110,23 +144,71 @@ export function useSandboxPreview(
         const message =
           caught instanceof Error ? caught.message : 'Failed to create preview session.'
 
-        setPreviewUrl(null)
-        setSessionToken(null)
-        setHandshake(null)
         setError(message)
       } finally {
+        if (activeRequestRef.current?.requestId === requestId) {
+          activeRequestRef.current = null
+        }
+
         if (requestIdRef.current === requestId) {
           setIsLoading(false)
         }
       }
     }
 
-    void createPreviewSession()
+    clearPendingTimer()
+
+    if (!shouldLoad || !html.trim()) {
+      observedHtmlRef.current = html
+      lastHtmlChangeAtRef.current = null
+      abortActiveRequest()
+      settleIdleState()
+      return () => {
+        effectActive = false
+      }
+    }
+
+    if (latestSessionMatches()) {
+      abortActiveRequest()
+      settleIdleState()
+      return () => {
+        effectActive = false
+      }
+    }
+
+    const previousObservedHtml = observedHtmlRef.current
+    const htmlChanged = previousObservedHtml !== html
+    const now = Date.now()
+    const isRapidHtmlChange =
+      htmlChanged &&
+      lastHtmlChangeAtRef.current !== null &&
+      now - lastHtmlChangeAtRef.current < PREVIEW_SESSION_COALESCE_MS
+
+    observedHtmlRef.current = html
+
+    if (htmlChanged) {
+      lastHtmlChangeAtRef.current = now
+    }
+
+    abortActiveRequest()
+    setIsLoading(true)
+    setError(null)
+
+    if (isRapidHtmlChange) {
+      pendingTimerRef.current = window.setTimeout(() => {
+        pendingTimerRef.current = null
+        void createPreviewSession(html)
+      }, PREVIEW_SESSION_COALESCE_MS)
+    } else {
+      void createPreviewSession(html)
+    }
 
     return () => {
-      controller.abort()
+      effectActive = false
+      clearPendingTimer()
+      abortActiveRequest()
     }
-  }, [appOrigin, debouncedHtml, options.editorBridge, sandboxOrigin, shouldLoad])
+  }, [appOrigin, html, sandboxOrigin, shouldLoad])
 
   if (!shouldLoad) {
     return {
@@ -134,20 +216,26 @@ export function useSandboxPreview(
       sandboxOrigin,
       appOrigin,
       isLoading: false,
+      isStale: false,
       error: null,
       sessionToken: null,
       handshake: null,
     }
   }
 
+  // HTML-only mismatch: keep the last successful URL/token/handshake so the
+  // bridge stays armed for the content still on screen while the refresh runs.
+  const isStale = previewSession.previewUrl !== null && previewSession.html !== html
+
   return {
-    previewUrl,
+    previewUrl: previewSession.previewUrl,
     sandboxOrigin,
     appOrigin,
     isLoading,
+    isStale,
     error,
-    sessionToken,
-    handshake,
+    sessionToken: previewSession.sessionToken,
+    handshake: previewSession.handshake,
   }
 }
 
