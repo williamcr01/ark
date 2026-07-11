@@ -1,31 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
-import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
-import { usePreviewBridgeSession } from '@/hooks/usePreviewBridgeSession'
-import {
-  getPreviewFrameScale,
-  getPreviewFrameStyle,
-  getPreviewSandbox,
-  getPreviewStageStyle,
-  type ElementSize,
-  type DeckRuntimeMode,
-} from '@/lib/deck-preview'
-import { reportRuntimeError } from '@/lib/runtime-error-api'
+import { type ElementSize } from '@/lib/deck-preview'
 import { cn } from '@/lib/utils'
 
 const CONTROLS_IDLE_MS = 2500
 
 type PresentModeProps = {
-  html: string
+  activeSlideIndex: number
+  previewCompromised: boolean
   slideCount: number
-  runtimeMode: DeckRuntimeMode
-  initialSlideIndex: number
+  onGoToSlide: (index: number) => void
   onExit: (finalSlideIndex: number) => void
+  onViewportSizeChange?: (size: ElementSize) => void
 }
 
 function useElementSize<T extends HTMLElement>() {
@@ -65,16 +55,16 @@ function useElementSize<T extends HTMLElement>() {
 }
 
 export function PresentMode({
-  html,
+  activeSlideIndex,
+  previewCompromised,
   slideCount,
-  runtimeMode,
-  initialSlideIndex,
+  onGoToSlide,
   onExit,
+  onViewportSizeChange,
 }: PresentModeProps) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
   const idleTimerRef = useRef<number | null>(null)
-  const currentSlideIndexRef = useRef(initialSlideIndex)
+  const currentSlideIndexRef = useRef(activeSlideIndex)
   const hasExitedRef = useRef(false)
   const hadFullscreenRef = useRef(false)
   const [viewportRef, viewportSize] = useElementSize<HTMLDivElement>()
@@ -113,122 +103,13 @@ export function PresentMode({
     onExit(currentSlideIndexRef.current)
   }, [clearIdleTimer, onExit])
 
-  const previewFrame = useDeckPreviewFrame(html, slideCount > 0)
-  const reportedNavigationErrorRef = useRef(false)
-  const reportNavigationCompromise = useCallback(() => {
-    if (reportedNavigationErrorRef.current) {
-      return
-    }
-
-    reportedNavigationErrorRef.current = true
-
-    void reportRuntimeError({
-      slideIndex: currentSlideIndexRef.current,
-      runtimeMode,
-      severity: 'error',
-      message:
-        'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
-      source: 'preview-navigation-guard',
-    }).catch(() => {
-      reportedNavigationErrorRef.current = false
-    })
-  }, [runtimeMode])
-  const bridgeSession = usePreviewBridgeSession(previewFrame.iframeKey, {
-    enabled: slideCount > 0 && Boolean(previewFrame.handshake?.trim()),
-    handshake: previewFrame.handshake,
-    sandboxOrigin: previewFrame.sandboxOrigin,
-    onCompromised: reportNavigationCompromise,
-  })
-  const previewCompromised = bridgeSession.compromised
-  const onBridgeFrameLoad = bridgeSession.onFrameLoad
-
-  useEffect(() => {
-    reportedNavigationErrorRef.current = false
-  }, [previewFrame.iframeKey])
-
-  const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
-    iframeRef,
-    slideCount,
-    html,
-    slideCount > 0 && !previewCompromised,
-    {
-      runtimeMode,
-      initialSlideIndex,
-      keyboardMode: previewCompromised ? 'off' : 'present',
-      sandboxOrigin: previewFrame.sandboxOrigin,
-      // Present remounts a fresh iframe that always boots at slide 0. Keep the
-      // requested index pending until ark:deck-ready arrives so a late ready@0
-      // cannot overwrite the presenter's current slide.
-      syncOnLoad: true,
-      canPostToFrame: bridgeSession.canPostToFrame,
-      shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
-      onSlideChange: (index) => {
-        currentSlideIndexRef.current = index
-        showControls()
-      },
-    },
-  )
-
-  const handlePreviewFrameLoad = useCallback(() => {
-    const decision = onBridgeFrameLoad()
-
-    if (!decision.allowDownstream) {
-      return
-    }
-
-    goToSlide(currentSlideIndexRef.current)
-  }, [goToSlide, onBridgeFrameLoad])
-  const handlePreviewFrameLoadRef = useRef(handlePreviewFrameLoad)
-
-  // The presenter is portalled to document.body. Listen on the iframe itself
-  // rather than relying on React's delegated load event so the trusted initial
-  // load cannot be missed before the handshake-gated slide sync. Start the
-  // expected document only after the explicit bootstrap document loads.
-  useLayoutEffect(() => {
-    handlePreviewFrameLoadRef.current = handlePreviewFrameLoad
-  }, [handlePreviewFrameLoad])
-
-  useLayoutEffect(() => {
-    const iframe = iframeRef.current
-
-    if (!iframe) {
-      return
-    }
-
-    const handleTrustedPreviewLoad = () => {
-      handlePreviewFrameLoadRef.current()
-    }
-    const startPreviewLoad = () => {
-      iframe.removeEventListener('load', startPreviewLoad)
-      iframe.addEventListener('load', handleTrustedPreviewLoad)
-
-      if (previewFrame.iframeSrcDoc) {
-        iframe.srcdoc = previewFrame.iframeSrcDoc
-      } else if (previewFrame.iframeSrc) {
-        iframe.removeAttribute('srcdoc')
-        iframe.src = previewFrame.iframeSrc
-      }
-    }
-
-    iframe.addEventListener('load', startPreviewLoad)
-
-    return () => {
-      iframe.removeEventListener('load', startPreviewLoad)
-      iframe.removeEventListener('load', handleTrustedPreviewLoad)
-    }
-  }, [previewFrame.iframeKey, previewFrame.iframeSrc, previewFrame.iframeSrcDoc])
-
-  useEffect(() => {
-    if (!bridgeSession.armed || previewCompromised) {
-      return
-    }
-
-    goToSlide(currentSlideIndexRef.current)
-  }, [bridgeSession.armed, goToSlide, previewCompromised, previewFrame.iframeKey])
-
   useEffect(() => {
     currentSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
+
+  useEffect(() => {
+    onViewportSizeChange?.(viewportSize)
+  }, [onViewportSizeChange, viewportSize])
 
   useEffect(() => {
     scheduleControlsHide()
@@ -239,7 +120,20 @@ export function PresentMode({
   }, [clearIdleTimer, scheduleControlsHide])
 
   useEffect(() => {
+    window.addEventListener('keydown', showControls)
+    window.addEventListener('mousemove', showControls)
+    window.addEventListener('touchstart', showControls)
+
+    return () => {
+      window.removeEventListener('keydown', showControls)
+      window.removeEventListener('mousemove', showControls)
+      window.removeEventListener('touchstart', showControls)
+    }
+  }, [showControls])
+
+  useEffect(() => {
     const root = rootRef.current
+    const fullscreenTarget = document.documentElement
 
     if (!root) {
       return
@@ -248,7 +142,7 @@ export function PresentMode({
     root.focus({ preventScroll: true })
 
     const handleFullscreenChange = () => {
-      if (document.fullscreenElement === root) {
+      if (document.fullscreenElement === fullscreenTarget) {
         hadFullscreenRef.current = true
         return
       }
@@ -260,14 +154,14 @@ export function PresentMode({
     }
 
     const requestFullscreen = async () => {
-      if (!root.requestFullscreen) {
+      if (!fullscreenTarget.requestFullscreen) {
         toast.info('Fullscreen unavailable — using window overlay')
         return
       }
 
       try {
-        await root.requestFullscreen()
-        hadFullscreenRef.current = document.fullscreenElement === root
+        await fullscreenTarget.requestFullscreen()
+        hadFullscreenRef.current = document.fullscreenElement === fullscreenTarget
       } catch {
         if (!hasExitedRef.current) {
           toast.info('Fullscreen unavailable — using window overlay')
@@ -284,9 +178,7 @@ export function PresentMode({
   }, [finishExit])
 
   const exitPresentMode = useCallback(() => {
-    const root = rootRef.current
-
-    if (document.fullscreenElement === root) {
+    if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {
         finishExit()
       })
@@ -295,6 +187,19 @@ export function PresentMode({
 
     finishExit()
   }, [finishExit])
+
+  const goToPresentSlide = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= slideCount) {
+        return
+      }
+
+      currentSlideIndexRef.current = index
+      onGoToSlide(index)
+      showControls()
+    },
+    [onGoToSlide, showControls, slideCount],
+  )
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -314,9 +219,6 @@ export function PresentMode({
     }
   }, [exitPresentMode])
 
-  const previewFrameScale = getPreviewFrameScale(viewportSize)
-  const previewStageStyle = getPreviewStageStyle(previewFrameScale)
-  const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const canGoPrevious = activeSlideIndex > 0
   const canGoNext = activeSlideIndex < slideCount - 1
 
@@ -324,7 +226,7 @@ export function PresentMode({
     <div
       aria-labelledby="ark-present-mode-title"
       aria-modal="true"
-      className="fixed inset-0 z-50 overflow-hidden bg-black text-white outline-none"
+      className="pointer-events-none fixed inset-0 z-[70] overflow-hidden text-white outline-none"
       onFocus={showControls}
       onKeyDown={showControls}
       onMouseMove={showControls}
@@ -339,50 +241,28 @@ export function PresentMode({
 
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04))]"
-      />
-
-      <div
         className="absolute inset-0 flex items-center justify-center overflow-hidden"
         ref={viewportRef}
-      >
-        <div
-          className="relative max-h-full max-w-full overflow-hidden bg-white shadow-[0_40px_120px_rgba(0,0,0,0.65)] ring-1 ring-white/10"
-          style={previewStageStyle}
-        >
-          {previewCompromised || (!previewFrame.iframeSrc && !previewFrame.iframeSrcDoc) ? null : (
-            <iframe
-              className="absolute left-0 top-0 block border-0 bg-white"
-              key={previewFrame.iframeKey}
-              ref={iframeRef}
-              referrerPolicy="no-referrer"
-              sandbox={getPreviewSandbox(runtimeMode)}
-              src="about:blank#ark-present-bootstrap"
-              style={previewFrameStyle}
-              tabIndex={-1}
-              title="Ark presentation mode"
-            />
-          )}
-          {previewCompromised ? (
-            <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur">
-              <div className="flex items-start gap-2">
-                <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-                <div className="space-y-1">
-                  <p className="font-medium">Preview stopped</p>
-                  <p>
-                    The deck attempted an unexpected navigation. Presentation preview was torn down
-                    to stop further bridge messages from reaching an untrusted page.
-                  </p>
-                </div>
-              </div>
+      />
+
+      {previewCompromised ? (
+        <div className="pointer-events-auto absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur">
+          <div className="flex items-start gap-2">
+            <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium">Preview stopped</p>
+              <p>
+                The deck attempted an unexpected navigation. Presentation preview was torn down to
+                stop further bridge messages from reaching an untrusted page.
+              </p>
             </div>
-          ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div
         className={cn(
-          'absolute inset-x-0 bottom-0 flex justify-center px-4 pb-5 transition-opacity duration-300 sm:pb-7',
+          'pointer-events-auto absolute inset-x-0 bottom-0 flex justify-center px-4 pb-5 transition-opacity duration-300 sm:pb-7',
           controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       >
@@ -392,8 +272,7 @@ export function PresentMode({
             className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"
             disabled={!canGoPrevious}
             onClick={() => {
-              showControls()
-              goToSlide(activeSlideIndex - 1)
+              goToPresentSlide(activeSlideIndex - 1)
             }}
             size="icon"
             type="button"
@@ -414,8 +293,7 @@ export function PresentMode({
             className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"
             disabled={!canGoNext}
             onClick={() => {
-              showControls()
-              goToSlide(activeSlideIndex + 1)
+              goToPresentSlide(activeSlideIndex + 1)
             }}
             size="icon"
             type="button"

@@ -41,7 +41,7 @@ describe('useDeckPreviewFrame srcDoc keying', () => {
     expect(first.result.current.iframeKey).toContain('srcdoc:')
   })
 
-  it('bumps iframeKey when editorBridge toggles', () => {
+  it('keeps iframeKey stable when editorBridge toggles', () => {
     const view = renderHook(
       ({ editorBridge }) =>
         useDeckPreviewFrame('<section class="slide">Hi</section>', true, { editorBridge }),
@@ -49,8 +49,9 @@ describe('useDeckPreviewFrame srcDoc keying', () => {
     )
 
     const viewKey = view.result.current.iframeKey
+    const viewHandshake = view.result.current.handshake
     view.rerender({ editorBridge: true })
-    expect(view.result.current.iframeKey).not.toBe(viewKey)
-    expect(view.result.current.iframeKey).toContain(':edit:')
+    expect(view.result.current.iframeKey).toBe(viewKey)
+    expect(view.result.current.handshake).toBe(viewHandshake)
   })
 })
