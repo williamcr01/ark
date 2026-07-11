@@ -305,6 +305,66 @@ describe('thumbnail renderer limits (unit)', () => {
     expect(mock.closedPages.count).toBe(1)
   })
 
+  it('recognizes slide index 0 as settled via nullish coalescing', async () => {
+    let settleExpression = ''
+    let settlePolls = 0
+    const settledRequestId = 1
+    const settledIndex = 0
+    const mock = createMockPool({
+      ready: true,
+      onEvaluate: (expression) => {
+        if (expression.includes('__arkThumbRequestSettle')) {
+          return { handled: true, value: settledRequestId }
+        }
+
+        if (expression.includes('__arkThumbSettledRequestId')) {
+          settleExpression = expression
+          settlePolls += 1
+          // Mimic CDP evaluating the host expression against index 0.
+          // `0 || -1` would incorrectly yield -1; `0 ?? -1` keeps 0.
+          const settled =
+            Number(settledRequestId || 0) === settledRequestId && Number(settledIndex ?? -1) === 0
+          return {
+            handled: true,
+            value: {
+              settled,
+              errors: [],
+            },
+          }
+        }
+
+        return undefined
+      },
+    })
+    const previewSessionStore = createPreviewSessionStore()
+    const renderer = createThumbnailRenderer({
+      previewSessionStore,
+      chromiumPool: mock.pool,
+      apiOrigin: 'http://127.0.0.1:9',
+      enabled: true,
+      renderSecret: 'test-secret',
+      limits: {
+        readyTimeoutMs: 200,
+        slideTimeoutMs: 500,
+        deckTimeoutMs: 1_000,
+        settleMs: 120,
+      },
+    })
+
+    const oneSlide = `<!DOCTYPE html><html><body><section class="slide"><h1>One</h1></section></body></html>`
+    const result = await renderer.render({ html: oneSlide })
+
+    expect(result.ok).toBe(true)
+    expect(settlePolls).toBeGreaterThanOrEqual(1)
+    expect(settleExpression).toMatch(/__arkThumbSettledIndex\s*\?\?\s*-1/)
+    expect(settleExpression).not.toMatch(/__arkThumbSettledIndex\s*\|\|\s*-1/)
+    // Guard the regression: logical OR treats 0 as missing; nullish coalesce does not.
+    const zeroIndex: number | undefined = 0
+    expect(Number(zeroIndex || -1)).toBe(-1)
+    expect(Number(zeroIndex ?? -1)).toBe(0)
+    expect(mock.closedPages.count).toBe(1)
+  })
+
   it('times out when the deck never becomes ready and disposes the page', async () => {
     const mock = createMockPool({ ready: false })
     const previewSessionStore = createPreviewSessionStore()
