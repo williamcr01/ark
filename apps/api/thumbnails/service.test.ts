@@ -23,6 +23,9 @@ const sampleHtml = `<!DOCTYPE html>
 </body>
 </html>`
 
+/** Drain waits for a full saturated queue (20 serial jobs + cache I/O) under CI load. */
+const QUEUE_DRAIN_WAIT_MS = 10_000
+
 function renderRequestedSlides(
   request: ThumbnailRenderRequest,
   values: Record<number, string> = { 0: 'one', 1: 'two' },
@@ -840,10 +843,13 @@ describe('thumbnail service', () => {
 
     releaseGate?.()
 
-    await vi.waitFor(() => {
-      expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
-      expect(renderedVersions).toContain(foregroundVersionId)
-    })
+    await vi.waitFor(
+      () => {
+        expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+        expect(renderedVersions).toContain(foregroundVersionId)
+      },
+      { timeout: QUEUE_DRAIN_WAIT_MS },
+    )
     expect(renderedVersions).not.toContain(evicted?.fields.fields?.versionId)
   })
 
@@ -941,16 +947,22 @@ describe('thumbnail service', () => {
 
     releaseGate?.()
 
-    await vi.waitFor(() => {
-      expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
-    })
+    await vi.waitFor(
+      () => {
+        expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+      },
+      { timeout: QUEUE_DRAIN_WAIT_MS },
+    )
     expect(renderedVersions).not.toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
 
     // Once drained, re-enqueueing the skipped version renders it.
     await enqueueVersion(THUMBNAIL_QUEUE_MAX_PENDING)
-    await vi.waitFor(() => {
-      expect(renderedVersions).toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
-    })
+    await vi.waitFor(
+      () => {
+        expect(renderedVersions).toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
+      },
+      { timeout: QUEUE_DRAIN_WAIT_MS },
+    )
   })
 
   it('does not load html for a missing render while the queue is saturated', async () => {
@@ -1013,9 +1025,12 @@ describe('thumbnail service', () => {
     expect(loadHtmlCount).toBe(0)
 
     releaseGate?.()
-    await vi.waitFor(() => {
-      expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
-    })
+    await vi.waitFor(
+      () => {
+        expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+      },
+      { timeout: QUEUE_DRAIN_WAIT_MS },
+    )
   })
 
   it('returns disabled when the renderer is unavailable', async () => {
