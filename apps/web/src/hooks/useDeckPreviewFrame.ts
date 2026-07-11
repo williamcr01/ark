@@ -7,10 +7,6 @@ import {
 } from '@/hooks/useSandboxPreview'
 import { getPreviewHtml, useSrcDocPreviewFallback } from '@/lib/deck-preview'
 
-export type DeckPreviewFrameOptions = {
-  editorBridge?: boolean
-}
-
 export type DeckPreviewFrameModel = {
   iframeKey: string
   iframeSrc?: string
@@ -23,24 +19,16 @@ export type DeckPreviewFrameModel = {
   handshake: string | null
 }
 
-export function useDeckPreviewFrame(
-  html: string,
-  enabled: boolean,
-  options: DeckPreviewFrameOptions = {},
-): DeckPreviewFrameModel {
+export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreviewFrameModel {
   const usesSrcDocFallback = useSrcDocPreviewFallback()
-  const editorBridge = options.editorBridge === true
-  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback, {
-    editorBridge,
-  })
+  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback)
 
   const srcDocHtml =
-    usesSrcDocFallback && enabled && html.trim() ? getPreviewHtml(html, { editorBridge }) : ''
+    usesSrcDocFallback && enabled && html.trim() ? getPreviewHtml(html, { editorBridge: true }) : ''
   const contentFingerprint = fingerprintPreviewHtml(usesSrcDocFallback ? srcDocHtml || html : html)
-  const editorSuffix = editorBridge ? 'edit' : 'view'
   const contentIdentity = usesSrcDocFallback
-    ? `srcdoc:${editorSuffix}:${contentFingerprint}`
-    : `sandbox:${editorSuffix}:${sandboxPreview.sessionToken ?? sandboxPreview.previewUrl ?? `pending:${contentFingerprint}`}`
+    ? `srcdoc:${contentFingerprint}`
+    : `sandbox:${sandboxPreview.sessionToken ?? sandboxPreview.previewUrl ?? `pending:${contentFingerprint}`}`
 
   const [generationState, setGenerationState] = useState({
     identity: contentIdentity,
@@ -69,15 +57,13 @@ export function useDeckPreviewFrame(
       const iframeSrcDoc =
         enabled && html.trim()
           ? getPreviewHtml(html, {
-              editorBridge,
+              editorBridge: true,
               handshake: handshake ?? undefined,
             })
           : undefined
 
       return {
-        iframeKey: usesSrcDocFallback
-          ? `srcdoc:${generation}:${editorSuffix}:${contentFingerprint}`
-          : 'empty',
+        iframeKey: usesSrcDocFallback ? `srcdoc:${generation}:${contentFingerprint}` : 'empty',
         iframeSrcDoc,
         sandboxOrigin: null,
         isLoading: false,
@@ -99,8 +85,6 @@ export function useDeckPreviewFrame(
   }, [
     contentFingerprint,
     contentIdentity,
-    editorBridge,
-    editorSuffix,
     enabled,
     generation,
     html,
