@@ -1131,11 +1131,13 @@ export async function measureRapidVersionBurstScenario(options: {
   })
   metrics.final_version_thumb_ready_ms = apiReady.readyMs
 
-  // Secondary shell path: reload once thumbs are already ready. Best-effort only —
-  // concurrency decisions use final_version_thumb_ready_ms (API). Headless PNG
-  // decode can flake (img onError → srcDoc iframe fallback) even when the API
-  // already reported ready; do not fail the iteration when that happens.
-  const shellTimeoutMs = Math.min(timeoutMs, 5_000)
+  // Secondary shell path: reload once thumbs are already ready.
+  // Require shell + active preview for the final mutation (integration check).
+  // Visible PNG decode is best-effort: headless can flake to srcDoc iframe
+  // fallback even when the API already reported ready; concurrency decisions
+  // use final_version_thumb_ready_ms only.
+  const shellTimeoutMs = Math.min(timeoutMs, 30_000)
+  const decodeSoftDeadline = Date.now() + Math.min(timeoutMs, 5_000)
   const startedAt = performance.now()
   await openApp(options.cdp, options.appOrigin)
   await installBenchmarkInstrumentation(options.cdp)
@@ -1232,27 +1234,30 @@ export async function measureRapidVersionBurstScenario(options: {
       }
     }
 
-    const complete =
-      metrics.shell_ready_ms &&
-      metrics.preview_active_slide_ms &&
-      metrics.thumb_png_visible_decoded_ms &&
-      metrics.preview_loading_clear_ms
+    const coreReady =
+      metrics.shell_ready_ms && metrics.preview_active_slide_ms && metrics.preview_loading_clear_ms
 
-    if (complete) {
+    if (coreReady && metrics.thumb_png_visible_decoded_ms) {
+      break
+    }
+
+    // Stop waiting on decode once the soft deadline passes, if core shell checks passed.
+    if (coreReady && Date.now() >= decodeSoftDeadline) {
       break
     }
 
     await sleep(BENCHMARK_POLL_MS)
   }
 
-  if (
-    !metrics.shell_ready_ms ||
-    !metrics.preview_active_slide_ms ||
-    !metrics.thumb_png_visible_decoded_ms
-  ) {
-    // API readiness is the primary signal; incomplete shell decode is soft.
+  if (!metrics.shell_ready_ms || !metrics.preview_active_slide_ms) {
+    throw new Error(
+      `Timed out measuring rapid version burst shell path for ${options.fixture.id}. Collected metrics: ${JSON.stringify(metrics)}`,
+    )
+  }
+
+  if (!metrics.thumb_png_visible_decoded_ms) {
     console.warn(
-      `[rapid_version_burst/${options.fixture.id}] shell path incomplete after ${shellTimeoutMs}ms; continuing with API metric. Collected: ${JSON.stringify(metrics)}`,
+      `[rapid_version_burst/${options.fixture.id}] shell PNG decode incomplete (best-effort); continuing with API metric.`,
     )
   }
 
