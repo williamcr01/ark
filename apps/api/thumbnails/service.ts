@@ -39,6 +39,8 @@ export type ThumbnailEnqueueInput = {
   versionId: string
   html: string
   manifestHash: string
+  /** Deck version number; used to discard obsolete background warms safely. */
+  versionNumber?: number
 }
 
 type ThumbnailStatusInput = {
@@ -303,18 +305,67 @@ export function createThumbnailService(options: {
   }
 
   const discardObsoleteWarmJobs = (input: ThumbnailInternalEnqueueInput, replacementId: string) => {
+    const incomingVersion = input.versionNumber
+
     for (let index = queuedJobs.length - 1; index >= 0; index -= 1) {
       const job = queuedJobs[index]
 
       if (
-        job &&
-        job.id !== replacementId &&
-        job.priority === 'background' &&
-        job.input.deckId === input.deckId
+        !job ||
+        job.id === replacementId ||
+        job.priority !== 'background' ||
+        job.input.deckId !== input.deckId
+      ) {
+        continue
+      }
+
+      // Only discard strictly older warms. An out-of-order older warm must not
+      // discard a newer (or equal) warm that already landed in the queue.
+      const jobVersion = job.input.versionNumber
+
+      if (
+        typeof incomingVersion === 'number' &&
+        typeof jobVersion === 'number' &&
+        jobVersion < incomingVersion
       ) {
         discardQueuedJob(job, 'obsolete_warm', input)
       }
     }
+  }
+
+  const isObsoleteIncomingWarm = (input: ThumbnailInternalEnqueueInput) => {
+    const incomingVersion = input.versionNumber
+
+    if (typeof incomingVersion !== 'number') {
+      return false
+    }
+
+    for (const job of jobsById.values()) {
+      if (job.priority !== 'background' || job.input.deckId !== input.deckId) {
+        continue
+      }
+
+      const jobVersion = job.input.versionNumber
+
+      if (typeof jobVersion === 'number' && jobVersion >= incomingVersion) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  const evictQueuedBackgroundJob = (replacement: ThumbnailInternalEnqueueInput) => {
+    for (let index = queuedJobs.length - 1; index >= 0; index -= 1) {
+      const job = queuedJobs[index]
+
+      if (job?.priority === 'background' && job.state === 'queued') {
+        discardQueuedJob(job, 'foreground_priority', replacement)
+        return true
+      }
+    }
+
+    return false
   }
 
   const mergeJobInput = (
@@ -362,20 +413,42 @@ export function createThumbnailService(options: {
 
     if (priority === 'background') {
       discardObsoleteWarmJobs(input, id)
+
+      // A late older warm must not join the queue when a newer warm is already
+      // present (queued or running) for the same deck.
+      if (isObsoleteIncomingWarm(input)) {
+        logger.info('thumbnail.queue.discarded', {
+          deckId: input.deckId,
+          fields: {
+            versionId: input.versionId,
+            manifestHash: input.manifestHash,
+            priority,
+            versionNumber: input.versionNumber,
+            reason: 'obsolete_warm',
+          },
+        })
+        return null
+      }
     }
 
     // Bound the queue: unauthenticated status polls can enqueue renders, so a
     // saturated queue skips new jobs instead of growing without limit. Clients
-    // keep polling `pending` and re-enqueue once it drains.
+    // keep polling `pending` and re-enqueue once it drains. Foreground polls
+    // may evict one queued background warm to stay responsive.
     if (jobsById.size >= THUMBNAIL_QUEUE_MAX_PENDING) {
-      logger.warn('thumbnail.queue.saturated', {
-        deckId: input.deckId,
-        fields: {
-          versionId: input.versionId,
-          queued: jobsById.size,
-        },
-      })
-      return null
+      if (priority === 'foreground' && evictQueuedBackgroundJob(input)) {
+        // Room freed for the foreground job below.
+      } else {
+        logger.warn('thumbnail.queue.saturated', {
+          deckId: input.deckId,
+          fields: {
+            versionId: input.versionId,
+            queued: jobsById.size,
+            priority,
+          },
+        })
+        return null
+      }
     }
 
     let resolveJob!: () => void
@@ -768,6 +841,7 @@ export function createThumbnailService(options: {
           versionId,
           html: version.html,
           manifestHash,
+          versionNumber: version.versionNumber,
         },
         'background',
       )
