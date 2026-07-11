@@ -72,14 +72,12 @@ const emptyParsedDeck: ParsedDeck = {
   getThumbnailSrcDoc: () => '',
 }
 
-export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = {}): ParsedDeck {
+export function parseDeckSlideDocument(
+  doc: Document,
+  options: ParseDeckSlidesOptions = {},
+): ParsedDeck {
   startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
 
-  if (!html.trim()) {
-    return emptyParsedDeck
-  }
-
-  const doc = new DOMParser().parseFromString(html, 'text/html')
   const slideElements = findSlideElements(doc)
 
   if (slideElements.length === 0) {
@@ -119,4 +117,15 @@ export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = 
       return buildThumbnailSrcDoc(index)
     },
   }
+}
+
+export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = {}): ParsedDeck {
+  if (!html.trim()) {
+    startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
+    return emptyParsedDeck
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  return parseDeckSlideDocument(doc, options)
 }

@@ -26,10 +26,14 @@ import {
   type DeckManifestStructure,
   type DeckRuntimeManifest,
 } from '@ark/runtime-registry/deck-runtime-manifest.ts'
-import { usesRevealRuntimeAdapter } from '@ark/runtime-registry/deck-runtime.ts'
+import { hasApprovedRevealRuntimeInDocument } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { findSlideElements, SLIDE_SELECTOR_CHAIN } from '@ark/deck-core/deck-preview-slides.ts'
 import { hasRevealSlideStructure } from '@ark/deck-core/reveal-slide-index.ts'
-import { validateDeckHtmlInBrowser } from './deck-validate.ts'
+import {
+  validateDeckDocumentInBrowser,
+  validateDeckHtmlInBrowser,
+  type DeckValidationReport,
+} from './deck-validate.ts'
 
 function detectSlideSelector(doc: Document) {
   if (hasRevealSlideStructure(doc)) {
@@ -60,9 +64,10 @@ function detectStructure(
   return 'unknown'
 }
 
-export function buildDeckRuntimeManifestInBrowser(html: string): DeckRuntimeManifest {
-  const validation = validateDeckHtmlInBrowser(html)
-  const doc = new DOMParser().parseFromString(html, 'text/html')
+export function buildDeckRuntimeManifestFromBrowserDocument(
+  doc: Document,
+  validation: DeckValidationReport,
+): DeckRuntimeManifest {
   const runtimeMode = validation.runtimeMarkers.runtimeMode
 
   return buildDeckRuntimeManifestFromParts(
@@ -86,6 +91,15 @@ export function buildDeckRuntimeManifestInBrowser(html: string): DeckRuntimeMani
       slideCount: validation.slideCount,
       assets: [],
     },
-    usesRevealRuntimeAdapter(html),
+    runtimeMode === 'reveal' && hasApprovedRevealRuntimeInDocument(doc),
   )
+}
+
+export function buildDeckRuntimeManifestInBrowser(html: string): DeckRuntimeManifest {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const validation = html.trim()
+    ? validateDeckDocumentInBrowser(doc, html)
+    : validateDeckHtmlInBrowser(html)
+
+  return buildDeckRuntimeManifestFromBrowserDocument(doc, validation)
 }
