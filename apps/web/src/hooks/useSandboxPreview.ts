@@ -182,6 +182,18 @@ export function useSandboxPreview(
       }
     }
 
+    // Identity mismatch: drop the stored view/edit session before aborting so a
+    // previous identity cannot stay exposed, and so an aborted in-flight request
+    // cannot repopulate after entering the opposite mode.
+    if (previewSessionRef.current.editorBridge !== editorBridge) {
+      const clearedSession: PreviewSessionSnapshot = {
+        ...EMPTY_PREVIEW_SESSION,
+        editorBridge,
+      }
+      previewSessionRef.current = clearedSession
+      setPreviewSession(clearedSession)
+    }
+
     if (latestSessionMatches()) {
       abortActiveRequest()
       settleIdleState()
@@ -237,9 +249,24 @@ export function useSandboxPreview(
     }
   }
 
-  const isStale =
-    previewSession.previewUrl !== null &&
-    (previewSession.html !== html || previewSession.editorBridge !== editorBridge)
+  // Render-time identity guard: never expose a view session under edit identity
+  // (or vice versa) on the first paint after editorBridge flips.
+  if (previewSession.editorBridge !== editorBridge) {
+    return {
+      previewUrl: null,
+      sandboxOrigin,
+      appOrigin,
+      isLoading,
+      isStale: false,
+      error: null,
+      sessionToken: null,
+      handshake: null,
+    }
+  }
+
+  // HTML-only mismatch: keep the last successful URL/token/handshake so the
+  // bridge stays armed for the content still on screen while the refresh runs.
+  const isStale = previewSession.previewUrl !== null && previewSession.html !== html
 
   return {
     previewUrl: previewSession.previewUrl,
@@ -249,7 +276,7 @@ export function useSandboxPreview(
     isStale,
     error,
     sessionToken: previewSession.sessionToken,
-    handshake: isStale ? null : previewSession.handshake,
+    handshake: previewSession.handshake,
   }
 }
 

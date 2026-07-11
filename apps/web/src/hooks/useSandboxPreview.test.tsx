@@ -120,7 +120,8 @@ describe('useSandboxPreview', () => {
     expect(result.current.isStale).toBe(true)
     expect(result.current.previewUrl).toContain('/render/first-token?')
     expect(result.current.sessionToken).toBe('first-token')
-    expect(result.current.handshake).toBeNull()
+    // HTML-only stale keeps the bridge armed for the content still on screen.
+    expect(result.current.handshake).toBe('handshake-first-token')
 
     await resolvePreviewSession(secondSession, 'second-token')
 
@@ -163,7 +164,7 @@ describe('useSandboxPreview', () => {
     expect(result.current.isLoading).toBe(true)
     expect(result.current.isStale).toBe(true)
     expect(result.current.sessionToken).toBe('first-token')
-    expect(result.current.handshake).toBeNull()
+    expect(result.current.handshake).toBe('handshake-first-token')
     expect(result.current.previewUrl).toContain('/render/first-token?')
 
     await act(async () => {
@@ -189,7 +190,7 @@ describe('useSandboxPreview', () => {
     expect(result.current.previewUrl).toContain('/render/third-token?')
   })
 
-  it('keeps the previous session visible with the bridge closed when a replacement fails', async () => {
+  it('keeps the previous session visible with handshake when a replacement fails', async () => {
     const firstSession = createDeferred<Response>()
     const failedRefresh = createDeferred<Response>()
     fetchMock.mockReturnValueOnce(firstSession.promise).mockReturnValueOnce(failedRefresh.promise)
@@ -220,7 +221,90 @@ describe('useSandboxPreview', () => {
     expect(result.current.isStale).toBe(true)
     expect(result.current.error).toBe('nope')
     expect(result.current.sessionToken).toBe('first-token')
-    expect(result.current.handshake).toBeNull()
+    expect(result.current.handshake).toBe('handshake-first-token')
     expect(result.current.previewUrl).toContain('/render/first-token?')
+  })
+
+  it('clears preview immediately when editorBridge toggles until the new session resolves', async () => {
+    const viewSession = createDeferred<Response>()
+    const editSession = createDeferred<Response>()
+    fetchMock.mockReturnValueOnce(viewSession.promise).mockReturnValueOnce(editSession.promise)
+
+    const { result, rerender } = renderHook(
+      ({ html, editorBridge }) => useSandboxPreview(html, true, { editorBridge }),
+      {
+        initialProps: { html: deckHtml('Deck'), editorBridge: false },
+      },
+    )
+    await resolvePreviewSession(viewSession, 'view-token')
+
+    expect(result.current.previewUrl).toContain('/render/view-token?')
+    expect(result.current.sessionToken).toBe('view-token')
+    expect(result.current.handshake).toBe('handshake-view-token')
+    expect(result.current.isStale).toBe(false)
+
+    rerender({ html: deckHtml('Deck'), editorBridge: true })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(requestBody(fetchMock, 1)).toMatchObject({
+      html: deckHtml('Deck'),
+      editorBridge: true,
+    })
+    expect(result.current.isLoading).toBe(true)
+    expect(result.current.isStale).toBe(false)
+    expect(result.current.previewUrl).toBeNull()
+    expect(result.current.sessionToken).toBeNull()
+    expect(result.current.handshake).toBeNull()
+    expect(result.current.error).toBeNull()
+
+    await resolvePreviewSession(editSession, 'edit-token')
+
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.isStale).toBe(false)
+    expect(result.current.sessionToken).toBe('edit-token')
+    expect(result.current.handshake).toBe('handshake-edit-token')
+    expect(result.current.previewUrl).toContain('/render/edit-token?')
+  })
+
+  it('does not let an aborted view session repopulate after entering edit mode', async () => {
+    const viewSession = createDeferred<Response>()
+    const editSession = createDeferred<Response>()
+    fetchMock.mockReturnValueOnce(viewSession.promise).mockReturnValueOnce(editSession.promise)
+
+    const { result, rerender } = renderHook(
+      ({ html, editorBridge }) => useSandboxPreview(html, true, { editorBridge }),
+      {
+        initialProps: { html: deckHtml('Deck'), editorBridge: false },
+      },
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const viewSignal = requestSignal(fetchMock, 0)
+
+    rerender({ html: deckHtml('Deck'), editorBridge: true })
+
+    expect(viewSignal?.aborted).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.previewUrl).toBeNull()
+    expect(result.current.sessionToken).toBeNull()
+    expect(result.current.handshake).toBeNull()
+    expect(result.current.isStale).toBe(false)
+
+    await act(async () => {
+      viewSession.resolve(previewSessionResponse('late-view-token'))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(result.current.previewUrl).toBeNull()
+    expect(result.current.sessionToken).toBeNull()
+    expect(result.current.handshake).toBeNull()
+
+    await resolvePreviewSession(editSession, 'edit-token')
+
+    expect(result.current.sessionToken).toBe('edit-token')
+    expect(result.current.handshake).toBe('handshake-edit-token')
+    expect(result.current.previewUrl).toContain('/render/edit-token?')
   })
 })
