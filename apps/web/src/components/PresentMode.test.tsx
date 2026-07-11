@@ -1,95 +1,61 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-import {
-  createDeckHandshakeMessage,
-  createDeckMetadata,
-  createDeckReadyMessage,
-} from '@ark/deck-core/deck-bridge.ts'
-import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
-import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
-import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
+import { describe, expect, it, vi } from 'vitest'
 
 import { PresentMode } from './PresentMode'
 
-const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
-const previewFrameMock = vi.hoisted(() => ({
-  iframeKey: 'present-preview',
-  handshake: 'present-handshake',
-}))
+type PresentHarnessProps = {
+  initialSlideIndex?: number
+  onExit?: (finalSlideIndex: number) => void
+  onGoToSlide?: (index: number) => void
+  previewCompromised?: boolean
+  slideCount?: number
+}
 
-vi.mock('@/lib/runtime-error-api', () => ({
-  reportRuntimeError: reportRuntimeErrorMock,
-}))
+function PresentHarness({
+  initialSlideIndex = 0,
+  onExit = vi.fn(),
+  onGoToSlide,
+  previewCompromised = false,
+  slideCount = 3,
+}: PresentHarnessProps) {
+  const [activeSlideIndex, setActiveSlideIndex] = useState(initialSlideIndex)
 
-vi.mock('@/hooks/useDeckPreviewFrame', () => ({
-  useDeckPreviewFrame: () => ({
-    iframeKey: previewFrameMock.iframeKey,
-    iframeSrcDoc: '<html></html>',
-    sandboxOrigin: null,
-    isLoading: false,
-    error: null,
-    usesSandboxHost: false,
-    handshake: previewFrameMock.handshake,
-  }),
-}))
+  return (
+    <PresentMode
+      activeSlideIndex={activeSlideIndex}
+      onExit={onExit}
+      onGoToSlide={(index) => {
+        setActiveSlideIndex(index)
+        onGoToSlide?.(index)
+      }}
+      previewCompromised={previewCompromised}
+      slideCount={slideCount}
+    />
+  )
+}
 
 describe('PresentMode', () => {
-  beforeEach(() => {
-    reportRuntimeErrorMock.mockClear()
-    previewFrameMock.iframeKey = 'present-preview'
-    previewFrameMock.handshake = 'present-handshake'
-  })
-
-  it('does not expose edit controls in presentation mode', () => {
-    render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={0}
-        onExit={vi.fn()}
-        runtimeMode="static"
-        slideCount={3}
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
-  })
-
-  it('does not expose edit controls in reveal presentation mode', () => {
-    render(
-      <PresentMode
-        html={revealRegistryDeck}
-        initialSlideIndex={0}
-        onExit={vi.fn()}
-        runtimeMode="reveal"
-        slideCount={2}
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
-  })
-
-  it('renders the deck in an allow-scripts sandbox and exits with the current slide', async () => {
-    const user = userEvent.setup()
-    const onExit = vi.fn()
-    render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={0}
-        onExit={onExit}
-        runtimeMode="static"
-        slideCount={3}
-      />,
-    )
+  it('renders overlay controls without owning a presentation iframe', () => {
+    render(<PresentHarness />)
 
     expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toHaveAttribute(
       'aria-labelledby',
       'ark-present-mode-title',
     )
-    expect(screen.getByTitle('Ark presentation mode')).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  })
+
+  it('delegates slide navigation and exits with the current slide', async () => {
+    const user = userEvent.setup()
+    const onExit = vi.fn()
+    const onGoToSlide = vi.fn()
+    render(<PresentHarness onExit={onExit} onGoToSlide={onGoToSlide} />)
+
     expect(screen.getByText('1 / 3')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Next slide' }))
@@ -97,113 +63,17 @@ describe('PresentMode', () => {
     await waitFor(() => {
       expect(screen.getByText('2 / 3')).toBeInTheDocument()
     })
+    expect(onGoToSlide).toHaveBeenCalledWith(1)
 
     await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
 
     expect(onExit).toHaveBeenCalledWith(1)
   })
 
-  it('syncs the initial slide after a trusted frame load arms the bridge', async () => {
-    render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={1}
-        onExit={vi.fn()}
-        runtimeMode="static"
-        slideCount={3}
-      />,
-    )
-
-    const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
-    const postMessage = vi.spyOn(iframe.contentWindow!, 'postMessage')
-
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: createDeckHandshakeMessage('present-handshake'),
-        origin: window.location.origin,
-      }),
-    )
-    // Bootstrap document → expected preview document.
-    fireEvent.load(iframe)
-    fireEvent.load(iframe)
-
-    await waitFor(() => {
-      expect(postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ index: 1, type: 'ark:deck-goto' }),
-        '*',
-      )
-    })
-  })
-
-  it('re-posts the initial slide when a remounted iframe reports ready at slide 0', async () => {
-    render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={1}
-        onExit={vi.fn()}
-        runtimeMode="static"
-        slideCount={3}
-      />,
-    )
-
-    const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
-    const iframeWindow = iframe.contentWindow!
-    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
-
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: createDeckHandshakeMessage('present-handshake'),
-        origin: window.location.origin,
-      }),
-    )
-    // Bootstrap document → expected preview document.
-    fireEvent.load(iframe)
-    fireEvent.load(iframe)
-
-    await waitFor(() => {
-      expect(postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ index: 1, type: 'ark:deck-goto' }),
-        '*',
-      )
-    })
-
-    postMessage.mockClear()
-
-    const metadata = createDeckMetadata({
-      runtime: 'plain',
-      title: 'Plain CSS Deck',
-      previewMode: 'css-only',
-    })
-
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: createDeckReadyMessage(0, 3, metadata),
-        origin: window.location.origin,
-        source: iframeWindow,
-      }),
-    )
-
-    await waitFor(() => {
-      expect(postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ index: 1, type: 'ark:deck-goto' }),
-        DECK_BRIDGE_POST_MESSAGE_TARGET,
-      )
-    })
-    expect(screen.getByText('2 / 3')).toBeInTheDocument()
-  })
-
   it('exits on Escape with the initial slide when no navigation occurred', async () => {
     const user = userEvent.setup()
     const onExit = vi.fn()
-    render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={2}
-        onExit={onExit}
-        runtimeMode="static"
-        slideCount={3}
-      />,
-    )
+    render(<PresentHarness initialSlideIndex={2} onExit={onExit} />)
 
     await user.keyboard('{Escape}')
 
@@ -212,15 +82,7 @@ describe('PresentMode', () => {
 
   it('supports keyboard-only navigation between controls', async () => {
     const user = userEvent.setup()
-    render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={1}
-        onExit={vi.fn()}
-        runtimeMode="static"
-        slideCount={3}
-      />,
-    )
+    render(<PresentHarness initialSlideIndex={1} />)
 
     const dialog = screen.getByRole('dialog', { name: 'Presentation mode' })
     dialog.focus()
@@ -235,69 +97,54 @@ describe('PresentMode', () => {
     expect(screen.getByRole('button', { name: 'Exit presentation' })).toHaveFocus()
   })
 
-  it('preserves the current slide when exiting reveal present mode', async () => {
-    const user = userEvent.setup()
-    const onExit = vi.fn()
-    render(
-      <PresentMode
-        html={revealRegistryDeck}
-        initialSlideIndex={0}
-        onExit={onExit}
-        runtimeMode="reveal"
-        slideCount={2}
-      />,
-    )
+  it('shows the shared preview compromise state', () => {
+    render(<PresentHarness previewCompromised />)
 
-    await user.click(screen.getByRole('button', { name: 'Next slide' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('2 / 2')).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
-
-    expect(onExit).toHaveBeenCalledWith(1)
+    expect(screen.getByText('Preview stopped')).toBeVisible()
+    expect(screen.getByText(/unexpected navigation/i)).toBeVisible()
   })
 
-  it('tears down the presentation iframe on unexpected self-navigation', async () => {
+  it('portals a viewport-covering backdrop below the shared stage layer', () => {
+    render(<PresentHarness />)
+
+    const dialog = screen.getByRole('dialog', { name: 'Presentation mode' })
+    expect(dialog.className).toContain('z-[70]')
+
+    const portaledBackdrop = [...document.body.children].find(
+      (node) =>
+        node instanceof HTMLElement &&
+        node.getAttribute('aria-hidden') === 'true' &&
+        node.className.includes('z-[40]'),
+    )
+
+    expect(portaledBackdrop).toBeInstanceOf(HTMLElement)
+    expect(portaledBackdrop?.className).toContain('fixed')
+    expect(portaledBackdrop?.className).toContain('inset-0')
+  })
+
+  it('keeps keyboard focus inside present controls', async () => {
+    const user = userEvent.setup()
     render(
-      <PresentMode
-        html={plainCssDeck}
-        initialSlideIndex={0}
-        onExit={vi.fn()}
-        runtimeMode="static"
-        slideCount={3}
-      />,
+      <>
+        <button type="button">Outside control</button>
+        <PresentHarness initialSlideIndex={1} />
+      </>,
     )
 
-    const iframe = screen.getByTitle('Ark presentation mode') as HTMLIFrameElement
-    const postMessage = vi.spyOn(iframe.contentWindow!, 'postMessage')
+    const dialog = screen.getByRole('dialog', { name: 'Presentation mode' })
+    dialog.focus()
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: createDeckHandshakeMessage('present-handshake'),
-        origin: window.location.origin,
-      }),
-    )
-    // Bootstrap document → expected preview document.
-    fireEvent.load(iframe)
-    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
-    expect(postMessage).not.toHaveBeenCalled()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toHaveFocus()
 
-    fireEvent.load(iframe)
-    expect(postMessage).toHaveBeenCalled()
-    const postsBeforeNavigation = postMessage.mock.calls.length
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Next slide' })).toHaveFocus()
 
-    fireEvent.load(iframe)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Exit presentation' })).toHaveFocus()
 
-    expect(await screen.findByText('Preview stopped')).toBeVisible()
-    expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
-    expect(reportRuntimeErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: 'preview-navigation-guard',
-        severity: 'error',
-      }),
-    )
-    expect(postMessage).toHaveBeenCalledTimes(postsBeforeNavigation)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Outside control' })).not.toHaveFocus()
   })
 })

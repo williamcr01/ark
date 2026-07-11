@@ -965,7 +965,7 @@ export type PresentSlideWaitResult = {
 }
 
 /**
- * Re-resolve the Present dialog iframe on every poll. Present remounts can
+ * Re-resolve the shared preview iframe on every poll. HTML refreshes can
  * invalidate a previously captured CDP context before slide sync completes.
  */
 export async function waitForPresentSlide(
@@ -991,7 +991,7 @@ export async function waitForPresentSlide(
         options.cdp,
         `(() => {
           const dialog = document.querySelector('[role="dialog"]');
-          const iframe = dialog?.querySelector('iframe');
+          const iframe = document.querySelector('iframe[title="Generated Ark presentation preview"]');
           return {
             presentSrc: iframe?.src || '',
             shellCounter: (dialog?.innerText || '').match(/\\d+\\s*\\/\\s*\\d+/)?.[0] || '',
