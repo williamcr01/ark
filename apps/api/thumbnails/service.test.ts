@@ -8,7 +8,11 @@ import type { Logger, LogFields, LogLevel } from '../observability/logger.ts'
 import { createThumbnailCache } from './cache.ts'
 import { THUMBNAIL_QUEUE_MAX_PENDING, THUMBNAIL_STATUS } from './constants.ts'
 import { createThumbnailService } from './service.ts'
-import type { ThumbnailRenderer, ThumbnailRenderResult } from './renderer.ts'
+import type {
+  ThumbnailRenderer,
+  ThumbnailRenderRequest,
+  ThumbnailRenderResult,
+} from './renderer.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -19,12 +23,28 @@ const sampleHtml = `<!DOCTYPE html>
 </body>
 </html>`
 
+function renderRequestedSlides(
+  request: ThumbnailRenderRequest,
+  values: Record<number, string> = { 0: 'one', 1: 'two' },
+): ThumbnailRenderResult {
+  const slideIndexes = request.slideIndexes ?? [0, 1]
+
+  return {
+    ok: true,
+    slides: slideIndexes.map((index) => Buffer.from(values[index] ?? `slide-${index}`)),
+    slideCount: 2,
+    width: 480,
+    height: 270,
+    durationMs: 5,
+  }
+}
+
 function createFakeRenderer(
-  renderImpl: (html: string) => Promise<ThumbnailRenderResult>,
+  renderImpl: (request: ThumbnailRenderRequest) => Promise<ThumbnailRenderResult>,
 ): ThumbnailRenderer {
   return {
     isAvailable: () => true,
-    render: async (request) => renderImpl(request.html),
+    render: async (request) => renderImpl(request),
     close: async () => undefined,
   }
 }
@@ -63,7 +83,7 @@ describe('thumbnail service', () => {
   })
 
   async function setup(
-    renderImpl: (html: string) => Promise<ThumbnailRenderResult>,
+    renderImpl: (request: ThumbnailRenderRequest) => Promise<ThumbnailRenderResult>,
     serviceOptions: { logger?: Logger; queueConcurrency?: number } = {},
   ) {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
@@ -127,6 +147,57 @@ describe('thumbnail service', () => {
       slideIndex: 1,
     })
     expect(png?.toString()).toBe('two')
+  })
+
+  it('reuses unchanged slide blobs across versions and renders only misses', async () => {
+    const renderRequests: number[][] = []
+    const { service, cache } = await setup(async (request) => {
+      const slideIndexes = request.slideIndexes ?? [0, 1]
+      renderRequests.push(slideIndexes)
+
+      return {
+        ok: true,
+        slides: slideIndexes.map((index) =>
+          Buffer.from(`render-${renderRequests.length}-${index}`),
+        ),
+        slideCount: 2,
+        width: 480,
+        height: 270,
+        durationMs: 5,
+      }
+    })
+
+    const deckId = 'b0000000-0000-4000-8000-000000000001'
+    const manifestHash = 'abc123'
+    const firstVersionId = 'a0000000-0000-4000-8000-000000000001'
+    const secondVersionId = 'a0000000-0000-4000-8000-000000000002'
+    const editedHtml = sampleHtml.replace('<h1>Two</h1>', '<h1>Two edited</h1>')
+
+    await service.enqueue({ deckId, versionId: firstVersionId, html: sampleHtml, manifestHash })
+    await vi.waitFor(async () => {
+      const ready = await service.getStatus({ deckId, versionId: firstVersionId, manifestHash })
+      expect(ready.status).toBe(THUMBNAIL_STATUS.ready)
+    })
+
+    await service.enqueue({ deckId, versionId: secondVersionId, html: editedHtml, manifestHash })
+    await vi.waitFor(async () => {
+      const ready = await service.getStatus({ deckId, versionId: secondVersionId, manifestHash })
+      expect(ready.status).toBe(THUMBNAIL_STATUS.ready)
+    })
+
+    expect(renderRequests).toEqual([[0, 1], [1]])
+
+    const firstMeta = await cache.readMeta({ versionId: firstVersionId, manifestHash })
+    const secondMeta = await cache.readMeta({ versionId: secondVersionId, manifestHash })
+    expect(secondMeta?.slideFingerprints?.[0]).toBe(firstMeta?.slideFingerprints?.[0])
+    expect(secondMeta?.slideFingerprints?.[1]).not.toBe(firstMeta?.slideFingerprints?.[1])
+
+    await expect(
+      service.readPng({ deckId, versionId: secondVersionId, manifestHash, slideIndex: 0 }),
+    ).resolves.toEqual(Buffer.from('render-1-0'))
+    await expect(
+      service.readPng({ deckId, versionId: secondVersionId, manifestHash, slideIndex: 1 }),
+    ).resolves.toEqual(Buffer.from('render-2-1'))
   })
 
   it('long-polls a local in-flight render and loads html lazily', async () => {
@@ -287,16 +358,9 @@ describe('thumbnail service', () => {
     const restarted = createThumbnailService({
       cache,
       deckStore,
-      renderer: createFakeRenderer(async () => {
+      renderer: createFakeRenderer(async (request) => {
         renderCount += 1
-        return {
-          ok: true,
-          slides: [Buffer.from('one')],
-          slideCount: 1,
-          width: 480,
-          height: 270,
-          durationMs: 5,
-        }
+        return renderRequestedSlides(request)
       }),
     })
 
@@ -499,8 +563,8 @@ describe('thumbnail service', () => {
 
           return {
             ok: true,
-            slides: [Buffer.from('png')],
-            slideCount: 1,
+            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+            slideCount: 2,
             width: 480,
             height: 270,
             durationMs: 1,
@@ -564,8 +628,8 @@ describe('thumbnail service', () => {
 
           return {
             ok: true,
-            slides: [Buffer.from('png')],
-            slideCount: 1,
+            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+            slideCount: 2,
             width: 480,
             height: 270,
             durationMs: 1,
@@ -639,8 +703,8 @@ describe('thumbnail service', () => {
 
           return {
             ok: true,
-            slides: [Buffer.from('png')],
-            slideCount: 1,
+            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+            slideCount: 2,
             width: 480,
             height: 270,
             durationMs: 1,
@@ -730,8 +794,8 @@ describe('thumbnail service', () => {
           renderedVersions.push(request.versionId ?? 'unknown')
           return {
             ok: true,
-            slides: [Buffer.from('png')],
-            slideCount: 1,
+            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+            slideCount: 2,
             width: 480,
             height: 270,
             durationMs: 1,
@@ -838,8 +902,8 @@ describe('thumbnail service', () => {
           renderedVersions.push(request.versionId ?? 'unknown')
           return {
             ok: true,
-            slides: [Buffer.from('png')],
-            slideCount: 1,
+            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+            slideCount: 2,
             width: 480,
             height: 270,
             durationMs: 1,
@@ -850,11 +914,13 @@ describe('thumbnail service', () => {
 
     const versionId = (index: number) =>
       `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    const htmlForVersion = (index: number) =>
+      sampleHtml.replace('<h1>Two</h1>', `<h1>Two ${index}</h1>`)
     const enqueueVersion = (index: number) =>
       service.enqueue({
         deckId: 'b0000000-0000-4000-8000-000000000001',
         versionId: versionId(index),
-        html: sampleHtml,
+        html: htmlForVersion(index),
         manifestHash: 'abc123',
       })
 
@@ -901,8 +967,8 @@ describe('thumbnail service', () => {
           renderedVersions.push(request.versionId ?? 'unknown')
           return {
             ok: true,
-            slides: [Buffer.from('png')],
-            slideCount: 1,
+            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+            slideCount: 2,
             width: 480,
             height: 270,
             durationMs: 1,
@@ -913,11 +979,13 @@ describe('thumbnail service', () => {
 
     const versionId = (index: number) =>
       `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    const htmlForVersion = (index: number) =>
+      sampleHtml.replace('<h1>Two</h1>', `<h1>Two ${index}</h1>`)
     for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
       await service.enqueue({
         deckId: 'b0000000-0000-4000-8000-000000000001',
         versionId: versionId(index),
-        html: sampleHtml,
+        html: htmlForVersion(index),
         manifestHash: 'abc123',
       })
     }

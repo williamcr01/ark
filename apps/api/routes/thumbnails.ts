@@ -8,7 +8,6 @@ import {
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
-import { buildThumbnailManifestFingerprint } from '../thumbnails/cache.ts'
 import { type ThumbnailService } from '../thumbnails/service.ts'
 
 function resolveManifestHash(version: {
@@ -126,24 +125,21 @@ export function createThumbnailsRouter(deps: {
         const parsedQuery = parseQueryParams(deckThumbnailImageQuerySchema, {
           hash: typeof request.query.hash === 'string' ? request.query.hash : '',
         })
-        const manifestHash = resolveManifestHash(version)
-
-        // The full derived fingerprint must match the version manifest.
-        // Missing or malformed values are also a 404 so callers cannot use
-        // image requests to distinguish cache-key validation failures.
-        if (
-          !parsedQuery.ok ||
-          parsedQuery.data.hash !== buildThumbnailManifestFingerprint(manifestHash)
-        ) {
+        // The opaque thumbnail hash must match the cached fingerprint for this
+        // exact slide. Missing or malformed values are also a 404 so callers
+        // cannot use image requests to distinguish cache-key validation failures.
+        if (!parsedQuery.ok) {
           response.status(404).json({ error: 'Thumbnail not found.' })
           return
         }
+        const manifestHash = resolveManifestHash(version)
 
         const png = await thumbnailService.readPng({
           deckId: id,
           versionId,
           manifestHash,
           slideIndex,
+          fingerprint: parsedQuery.data.hash,
         })
 
         if (!png) {

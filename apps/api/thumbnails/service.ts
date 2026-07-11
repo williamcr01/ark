@@ -3,6 +3,7 @@ import { THUMBNAIL_LONG_POLL_MAX_WAIT_MS } from '@ark/contracts'
 import { createLogger, type Logger } from '../observability/logger.ts'
 import {
   buildThumbnailCacheKey,
+  buildThumbnailManifestFingerprint,
   buildThumbnailSlideUrl,
   type ThumbnailCache,
   type ThumbnailCacheKey,
@@ -11,6 +12,7 @@ import {
 import {
   THUMBNAIL_FAILED_RETRY_DELAY_MS,
   THUMBNAIL_MAX_RENDER_ATTEMPTS,
+  THUMBNAIL_MAX_SLIDES,
   THUMBNAIL_OUTPUT_HEIGHT,
   THUMBNAIL_OUTPUT_WIDTH,
   THUMBNAIL_PENDING_LEASE_MS,
@@ -19,6 +21,7 @@ import {
   THUMBNAIL_STATUS,
   type ThumbnailStatus,
 } from './constants.ts'
+import { computeThumbnailSlideFingerprints } from './fingerprints.ts'
 import type { ThumbnailRenderer } from './renderer.ts'
 
 export type ThumbnailSlideInfo = {
@@ -126,7 +129,13 @@ function toStatusResult(
   if (meta.status === THUMBNAIL_STATUS.ready) {
     const slides = Array.from({ length: meta.slideCount }, (_, index) => ({
       index,
-      url: buildThumbnailSlideUrl(deckId, versionId, index, manifestHash),
+      url: buildThumbnailSlideUrl(
+        deckId,
+        versionId,
+        index,
+        manifestHash,
+        meta.slideFingerprints?.[index],
+      ),
     }))
 
     return {
@@ -176,6 +185,7 @@ export type ThumbnailService = {
     versionId: string
     manifestHash: string
     slideIndex: number
+    fingerprint?: string
   }) => Promise<Buffer | null>
   enqueueForDeckVersion: (deckId: string, versionId: string) => Promise<void>
   close: () => Promise<void>
@@ -527,53 +537,131 @@ export function createThumbnailService(options: {
   const runJob = async (input: ThumbnailEnqueueInput): Promise<ThumbnailRunOutcome> => {
     const key = buildThumbnailCacheKey(input.versionId, input.manifestHash)
     const timing = { cacheWriteMs: 0 }
+    const fingerprints = computeThumbnailSlideFingerprints(input.html, key.manifestHash)
     const baseMeta = {
       deckId: input.deckId,
       versionId: input.versionId,
       manifestHash: key.manifestHash,
-      slideCount: 0,
+      slideCount: fingerprints.parsed.slideCount,
+      slideFingerprints: fingerprints.slideFingerprints,
       width: THUMBNAIL_OUTPUT_WIDTH,
       height: THUMBNAIL_OUTPUT_HEIGHT,
     }
 
     await measureCacheWrite(timing, () => options.cache.markPending(key, baseMeta))
 
-    const renderStartedAt = Date.now()
-    const result = await options.renderer.render({
-      html: input.html,
-      deckId: input.deckId,
-      versionId: input.versionId,
-    })
-    const renderMs = result.durationMs ?? Date.now() - renderStartedAt
-
-    if (!result.ok) {
+    if (fingerprints.parsed.slideCount <= 0) {
+      const error = 'Deck has no slides to render.'
       await measureCacheWrite(timing, () =>
         options.cache.markFailed(key, {
           ...baseMeta,
-          error: result.error,
+          error,
         }),
       )
       return {
         status: THUMBNAIL_STATUS.failed,
-        renderMs,
+        renderMs: 0,
         cacheWriteMs: timing.cacheWriteMs,
         slideCount: 0,
-        error: result.error,
+        error,
       }
     }
 
+    if (fingerprints.parsed.slideCount > THUMBNAIL_MAX_SLIDES) {
+      const error = `Deck has ${fingerprints.parsed.slideCount} slides; thumbnail renderer allows at most ${THUMBNAIL_MAX_SLIDES}.`
+      await measureCacheWrite(timing, () =>
+        options.cache.markFailed(key, {
+          ...baseMeta,
+          error,
+        }),
+      )
+      return {
+        status: THUMBNAIL_STATUS.failed,
+        renderMs: 0,
+        cacheWriteMs: timing.cacheWriteMs,
+        slideCount: fingerprints.parsed.slideCount,
+        error,
+      }
+    }
+
+    const missingSlideIndexes: number[] = []
+
     await measureCacheWrite(timing, async () => {
-      for (let index = 0; index < result.slides.length; index += 1) {
-        await options.cache.writeSlidePng(key, index, result.slides[index]!)
+      for (let index = 0; index < fingerprints.slideFingerprints.length; index += 1) {
+        const fingerprint = fingerprints.slideFingerprints[index]!
+        const materialized = await options.cache.materializeSlidePngFromBlob(key, index, fingerprint)
+
+        if (!materialized) {
+          missingSlideIndexes.push(index)
+        }
+      }
+    })
+
+    let renderMs = 0
+
+    if (missingSlideIndexes.length > 0) {
+      const renderStartedAt = Date.now()
+      const result = await options.renderer.render({
+        html: input.html,
+        deckId: input.deckId,
+        versionId: input.versionId,
+        slideIndexes: missingSlideIndexes,
+      })
+      renderMs = result.durationMs ?? Date.now() - renderStartedAt
+
+      if (!result.ok) {
+        await measureCacheWrite(timing, () =>
+          options.cache.markFailed(key, {
+            ...baseMeta,
+            error: result.error,
+          }),
+        )
+        return {
+          status: THUMBNAIL_STATUS.failed,
+          renderMs,
+          cacheWriteMs: timing.cacheWriteMs,
+          slideCount: fingerprints.parsed.slideCount,
+          error: result.error,
+        }
       }
 
+      if (
+        result.slideCount !== fingerprints.parsed.slideCount ||
+        result.slides.length !== missingSlideIndexes.length
+      ) {
+        const error = 'Thumbnail renderer returned an unexpected slide count.'
+        await measureCacheWrite(timing, () =>
+          options.cache.markFailed(key, {
+            ...baseMeta,
+            error,
+          }),
+        )
+        return {
+          status: THUMBNAIL_STATUS.failed,
+          renderMs,
+          cacheWriteMs: timing.cacheWriteMs,
+          slideCount: fingerprints.parsed.slideCount,
+          error,
+        }
+      }
+
+      await measureCacheWrite(timing, async () => {
+        for (let offset = 0; offset < missingSlideIndexes.length; offset += 1) {
+          const slideIndex = missingSlideIndexes[offset]!
+          await options.cache.writeSlidePng(
+            key,
+            slideIndex,
+            result.slides[offset]!,
+            fingerprints.slideFingerprints[slideIndex],
+          )
+        }
+      })
+    }
+
+    await measureCacheWrite(timing, async () => {
       await options.cache.markReady(key, {
         ...baseMeta,
-        slideCount: result.slideCount,
-        width: result.width,
-        height: result.height,
       })
-
       await options.cache.cleanup()
     })
 
@@ -581,7 +669,7 @@ export function createThumbnailService(options: {
       status: THUMBNAIL_STATUS.ready,
       renderMs,
       cacheWriteMs: timing.cacheWriteMs,
-      slideCount: result.slideCount,
+      slideCount: fingerprints.parsed.slideCount,
     }
   }
 
@@ -818,6 +906,24 @@ export function createThumbnailService(options: {
 
       if (input.slideIndex < 0 || input.slideIndex >= meta.slideCount) {
         return null
+      }
+
+      const expectedFingerprint = meta.slideFingerprints?.[input.slideIndex]
+
+      if (input.fingerprint) {
+        const expectedHash =
+          expectedFingerprint ?? buildThumbnailManifestFingerprint(key.manifestHash)
+
+        if (input.fingerprint !== expectedHash) {
+          return null
+        }
+      }
+
+      if (expectedFingerprint) {
+        return (
+          (await options.cache.readBlobPng(expectedFingerprint)) ??
+          options.cache.readSlidePng(key, input.slideIndex)
+        )
       }
 
       return options.cache.readSlidePng(key, input.slideIndex)

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, link, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { REPO_ROOT } from '../repo-root.ts'
 import { THUMBNAIL_CACHE_MAX_ENTRIES, THUMBNAIL_STATUS, type ThumbnailStatus } from './constants.ts'
 
 const DEFAULT_CACHE_DIR = path.resolve(REPO_ROOT, 'data', 'thumbnails')
+const THUMBNAIL_BLOB_DIR_NAME = 'blobs'
 
 export type ThumbnailCacheMeta = {
   status: ThumbnailStatus
@@ -13,6 +14,7 @@ export type ThumbnailCacheMeta = {
   versionId: string
   manifestHash: string
   slideCount: number
+  slideFingerprints?: string[]
   width: number
   height: number
   /** Number of render attempts performed for this key (bounds failure retries). */
@@ -56,8 +58,11 @@ export function buildThumbnailSlideUrl(
   versionId: string,
   slideIndex: number,
   manifestHash: string,
+  slideFingerprint?: string,
 ) {
-  const params = new URLSearchParams({ hash: buildThumbnailManifestFingerprint(manifestHash) })
+  const params = new URLSearchParams({
+    hash: slideFingerprint ?? buildThumbnailManifestFingerprint(manifestHash),
+  })
   return `/api/decks/${encodeURIComponent(deckId)}/thumbnails/${encodeURIComponent(versionId)}/${slideIndex}.png?${params.toString()}`
 }
 
@@ -69,9 +74,22 @@ export type ThumbnailCacheOptions = {
 export type ThumbnailCache = {
   rootDir: string
   resolveDir: (key: ThumbnailCacheKey) => string
+  resolveBlobPath: (fingerprint: string) => string
   readMeta: (key: ThumbnailCacheKey) => Promise<ThumbnailCacheMeta | null>
   writeMeta: (key: ThumbnailCacheKey, meta: ThumbnailCacheMeta) => Promise<void>
-  writeSlidePng: (key: ThumbnailCacheKey, slideIndex: number, png: Buffer) => Promise<void>
+  hasBlob: (fingerprint: string) => Promise<boolean>
+  readBlobPng: (fingerprint: string) => Promise<Buffer | null>
+  writeSlidePng: (
+    key: ThumbnailCacheKey,
+    slideIndex: number,
+    png: Buffer,
+    fingerprint?: string,
+  ) => Promise<void>
+  materializeSlidePngFromBlob: (
+    key: ThumbnailCacheKey,
+    slideIndex: number,
+    fingerprint: string,
+  ) => Promise<boolean>
   readSlidePng: (key: ThumbnailCacheKey, slideIndex: number) => Promise<Buffer | null>
   markPending: (
     key: ThumbnailCacheKey,
@@ -102,6 +120,8 @@ export function createThumbnailCache(
 ): ThumbnailCache {
   const maxEntries = options.maxEntries ?? THUMBNAIL_CACHE_MAX_ENTRIES
   const resolveDir = (key: ThumbnailCacheKey) => path.join(cacheDir, thumbnailCacheDirName(key))
+  const resolveBlobPath = (fingerprint: string) =>
+    path.join(cacheDir, THUMBNAIL_BLOB_DIR_NAME, `${fingerprint}.png`)
 
   const readMeta = async (key: ThumbnailCacheKey) => {
     try {
@@ -118,9 +138,77 @@ export function createThumbnailCache(
     await writeFile(path.join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8')
   }
 
-  const writeSlidePng = async (key: ThumbnailCacheKey, slideIndex: number, png: Buffer) => {
+  const hasBlob = async (fingerprint: string) => {
+    try {
+      const blobStat = await stat(resolveBlobPath(fingerprint))
+      return blobStat.isFile()
+    } catch {
+      return false
+    }
+  }
+
+  const readBlobPng = async (fingerprint: string) => {
+    try {
+      return await readFile(resolveBlobPath(fingerprint))
+    } catch {
+      return null
+    }
+  }
+
+  const materializeSlidePngFromBlob: ThumbnailCache['materializeSlidePngFromBlob'] = async (
+    key,
+    slideIndex,
+    fingerprint,
+  ) => {
+    const blobPath = resolveBlobPath(fingerprint)
+    const dir = resolveDir(key)
+    const slidePath = path.join(dir, slideFileName(slideIndex))
+
+    try {
+      await stat(blobPath)
+    } catch {
+      return false
+    }
+
+    await ensureDir(dir)
+    await rm(slidePath, { force: true })
+
+    try {
+      await link(blobPath, slidePath)
+    } catch {
+      await copyFile(blobPath, slidePath)
+    }
+
+    return true
+  }
+
+  const writeBlobPng = async (fingerprint: string, png: Buffer) => {
+    await ensureDir(path.join(cacheDir, THUMBNAIL_BLOB_DIR_NAME))
+
+    try {
+      await writeFile(resolveBlobPath(fingerprint), png, { flag: 'wx' })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error
+      }
+    }
+  }
+
+  const writeSlidePng: ThumbnailCache['writeSlidePng'] = async (
+    key,
+    slideIndex,
+    png,
+    fingerprint,
+  ) => {
     const dir = resolveDir(key)
     await ensureDir(dir)
+
+    if (fingerprint) {
+      await writeBlobPng(fingerprint, png)
+      await materializeSlidePngFromBlob(key, slideIndex, fingerprint)
+      return
+    }
+
     await writeFile(path.join(dir, slideFileName(slideIndex)), png)
   }
 
@@ -178,7 +266,9 @@ export function createThumbnailCache(
     await ensureDir(cacheDir)
 
     const entries = await readdir(cacheDir, { withFileTypes: true })
-    const dirs = entries.filter((entry) => entry.isDirectory())
+    const dirs = entries.filter(
+      (entry) => entry.isDirectory() && entry.name !== THUMBNAIL_BLOB_DIR_NAME,
+    )
 
     if (dirs.length <= maxEntries) {
       return
@@ -214,9 +304,13 @@ export function createThumbnailCache(
   return {
     rootDir: cacheDir,
     resolveDir,
+    resolveBlobPath,
     readMeta,
     writeMeta,
+    hasBlob,
+    readBlobPng,
     writeSlidePng,
+    materializeSlidePngFromBlob,
     readSlidePng,
     markPending,
     markReady,
