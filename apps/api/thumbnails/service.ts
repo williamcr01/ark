@@ -13,6 +13,7 @@ import {
   THUMBNAIL_MAX_RENDER_ATTEMPTS,
   THUMBNAIL_OUTPUT_HEIGHT,
   THUMBNAIL_OUTPUT_WIDTH,
+  THUMBNAIL_PENDING_LEASE_MS,
   THUMBNAIL_QUEUE_MAX_PENDING,
   THUMBNAIL_STATUS,
   type ThumbnailStatus,
@@ -73,6 +74,20 @@ function shouldRetryFailedRender(meta: ThumbnailCacheMeta, now = Date.now()) {
   return now - updatedAtMs >= THUMBNAIL_FAILED_RETRY_DELAY_MS
 }
 
+function isStalePending(meta: ThumbnailCacheMeta, now = Date.now()) {
+  if (meta.status !== THUMBNAIL_STATUS.pending) {
+    return false
+  }
+
+  const updatedAtMs = Date.parse(meta.updatedAt)
+
+  if (Number.isNaN(updatedAtMs)) {
+    return true
+  }
+
+  return now - updatedAtMs >= THUMBNAIL_PENDING_LEASE_MS
+}
+
 function toStatusResult(
   deckId: string,
   versionId: string,
@@ -105,6 +120,27 @@ function toStatusResult(
     width: meta.width,
     height: meta.height,
   }
+}
+
+/** Client-facing status: retriable failures look like pending so long-poll continues. */
+function toClientStatusResult(
+  deckId: string,
+  versionId: string,
+  manifestHash: string,
+  meta: ThumbnailCacheMeta | null,
+  fallbackStatus: ThumbnailStatus = THUMBNAIL_STATUS.pending,
+): ThumbnailStatusResult {
+  const result = toStatusResult(deckId, versionId, manifestHash, meta, fallbackStatus)
+
+  if (
+    result.status === THUMBNAIL_STATUS.failed &&
+    meta &&
+    (meta.attempts ?? 1) < THUMBNAIL_MAX_RENDER_ATTEMPTS
+  ) {
+    return { status: THUMBNAIL_STATUS.pending, slides: [] }
+  }
+
+  return result
 }
 
 export type ThumbnailService = {
@@ -193,7 +229,7 @@ export function createThumbnailService(options: {
     })
 
     const meta = await options.cache.readMeta(key)
-    return toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
+    return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
   }
 
   const runJob = async (input: ThumbnailEnqueueInput) => {
@@ -358,7 +394,7 @@ export function createThumbnailService(options: {
       const meta = await options.cache.readMeta(key)
 
       if (meta?.status === THUMBNAIL_STATUS.ready) {
-        return toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
+        return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
       }
 
       if (meta?.status === THUMBNAIL_STATUS.failed) {
@@ -369,7 +405,7 @@ export function createThumbnailService(options: {
           (input.html || input.loadHtml) &&
           shouldRetryFailedRender(meta)
         ) {
-          const result = await enqueueInternal({
+          await enqueueInternal({
             deckId: input.deckId,
             versionId: input.versionId,
             html: input.html,
@@ -378,29 +414,59 @@ export function createThumbnailService(options: {
           })
           const waited = await waitForLocalInflight(key, input)
 
-          if (waited && waited.status !== THUMBNAIL_STATUS.failed) {
+          if (waited) {
             return waited
           }
 
-          // The cached meta still says failed until the retry job runs; report
-          // pending so clients keep polling through the retry.
-          if (result.status === THUMBNAIL_STATUS.failed) {
-            return { status: THUMBNAIL_STATUS.pending, slides: [] }
-          }
-
-          return result
+          // Cached meta may still say failed until markPending runs; map
+          // retriable failed → pending so clients keep long-polling.
+          return toClientStatusResult(
+            input.deckId,
+            input.versionId,
+            input.manifestHash,
+            await options.cache.readMeta(key),
+          )
         }
 
-        return toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
+        return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
       }
 
       if (meta?.status === THUMBNAIL_STATUS.pending) {
         const waited = await waitForLocalInflight(key, input)
-        return waited ?? toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
+
+        if (waited) {
+          return waited
+        }
+
+        // No local inflight: another process may own fresh pending work. Only
+        // steal after the lease expires (e.g. API restart left orphaned pending).
+        if (isStalePending(meta) && input.enqueueIfMissing && (input.html || input.loadHtml)) {
+          await enqueueInternal({
+            deckId: input.deckId,
+            versionId: input.versionId,
+            html: input.html,
+            loadHtml: input.loadHtml,
+            manifestHash: input.manifestHash,
+          })
+          const waitedAfterEnqueue = await waitForLocalInflight(key, input)
+
+          if (waitedAfterEnqueue) {
+            return waitedAfterEnqueue
+          }
+
+          return toClientStatusResult(
+            input.deckId,
+            input.versionId,
+            input.manifestHash,
+            await options.cache.readMeta(key),
+          )
+        }
+
+        return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
       }
 
       if (input.enqueueIfMissing && (input.html || input.loadHtml)) {
-        const result = await enqueueInternal({
+        await enqueueInternal({
           deckId: input.deckId,
           versionId: input.versionId,
           html: input.html,
@@ -409,11 +475,19 @@ export function createThumbnailService(options: {
         })
         const waited = await waitForLocalInflight(key, input)
 
-        return waited ?? result
+        return (
+          waited ??
+          toClientStatusResult(
+            input.deckId,
+            input.versionId,
+            input.manifestHash,
+            await options.cache.readMeta(key),
+          )
+        )
       }
 
       if (meta) {
-        return toStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
+        return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
       }
 
       return { status: THUMBNAIL_STATUS.pending, slides: [] }
