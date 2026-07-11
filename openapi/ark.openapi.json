@@ -4469,6 +4469,18 @@
             "required": true,
             "name": "versionId",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0,
+              "maximum": 5000,
+              "default": 0
+            },
+            "required": false,
+            "name": "waitMs",
+            "in": "query"
           }
         ],
         "responses": {

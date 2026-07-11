@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createMemoryPostgresPool } from '../test-utils.ts'
 import { createPostgresDeckStore } from './decks.ts'
@@ -130,6 +130,13 @@ describe('createPostgresDeckStore', () => {
 
       const firstVersion = await store.getVersion(created.id, versions![1].id)
       expect(firstVersion?.html).toBe(sampleHtml)
+
+      const querySpy = vi.spyOn(pool, 'query')
+      const firstVersionMetadata = await store.getVersionMetadata(created.id, versions![1].id)
+      expect(firstVersionMetadata?.versionNumber).toBe(1)
+      expect('html' in firstVersionMetadata!).toBe(false)
+      expect(String(querySpy.mock.calls.at(-1)?.[0] ?? '')).not.toMatch(/\bhtml\b/i)
+      querySpy.mockRestore()
 
       const rolledBack = await store.rollbackToVersion(created.id, versions![1].id)
       expect(rolledBack?.html).toBe(sampleHtml)

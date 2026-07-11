@@ -101,6 +101,13 @@ describe.each([
       source: 'agent',
       isActive: true,
     })
+    const activeMetadata = await deckStore.getVersionMetadata(created.id, versions![0].id)
+    expect(activeMetadata).toMatchObject({
+      versionNumber: 2,
+      source: 'agent',
+      isActive: true,
+    })
+    expect('html' in activeMetadata!).toBe(false)
 
     const rolledBack = await deckStore.rollbackToVersion(created.id, versions![1].id)
     expect(rolledBack?.html).toBe(sampleHtml)

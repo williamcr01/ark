@@ -41,6 +41,7 @@ export function createThumbnailsRouter(deps: {
 
       const parsedQuery = parseQueryParams(deckThumbnailsQuerySchema, {
         versionId: typeof request.query.versionId === 'string' ? request.query.versionId : '',
+        waitMs: typeof request.query.waitMs === 'string' ? request.query.waitMs : undefined,
       })
 
       if (!parsedQuery.ok) {
@@ -49,12 +50,17 @@ export function createThumbnailsRouter(deps: {
       }
 
       try {
-        const version = await deckStore.getVersion(id, parsedQuery.data.versionId)
+        const version = await deckStore.getVersionMetadata(id, parsedQuery.data.versionId)
 
         if (!version) {
           response.status(404).json({ error: 'Version not found.' })
           return
         }
+
+        const abortController = new AbortController()
+        request.on('close', () => {
+          abortController.abort()
+        })
 
         const manifestHash = resolveManifestHash(version)
         const status = await thumbnailService.getStatus({
@@ -62,7 +68,12 @@ export function createThumbnailsRouter(deps: {
           versionId: version.id,
           manifestHash,
           enqueueIfMissing: true,
-          html: version.html,
+          waitMs: parsedQuery.data.waitMs,
+          signal: abortController.signal,
+          loadHtml: async () => {
+            const fullVersion = await deckStore.getVersion(id, version.id)
+            return fullVersion?.html ?? null
+          },
         })
 
         getRequestLogger(request).info('thumbnail.status', {
@@ -105,7 +116,7 @@ export function createThumbnailsRouter(deps: {
       const slideIndex = Number(match[1])
 
       try {
-        const version = await deckStore.getVersion(id, versionId)
+        const version = await deckStore.getVersionMetadata(id, versionId)
 
         if (!version) {
           response.status(404).json({ error: 'Version not found.' })
