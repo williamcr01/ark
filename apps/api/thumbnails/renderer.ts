@@ -112,6 +112,53 @@ async function waitForDeckReady(cdp: CdpClient, timeoutMs: number) {
   throw new Error('Timed out waiting for deck ready during thumbnail render.')
 }
 
+function buildRuntimeError(error: string | undefined) {
+  return new Error(error ?? 'Deck runtime error during thumbnail render.')
+}
+
+async function waitForSlideSettle(cdp: CdpClient, index: number, settleMs: number) {
+  if (settleMs <= 0) {
+    return
+  }
+
+  const requestId = await evaluate<number | null>(
+    cdp,
+    `typeof window.__arkThumbRequestSettle === 'function' ? window.__arkThumbRequestSettle(${index}) : null`,
+  )
+
+  if (!Number.isFinite(requestId)) {
+    await sleep(settleMs)
+    return
+  }
+
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < settleMs) {
+    const state = await evaluate<{
+      settled: boolean
+      errors: string[]
+    }>(
+      cdp,
+      `({
+        settled:
+          Number(window.__arkThumbSettledRequestId || 0) === ${requestId} &&
+          Number(window.__arkThumbSettledIndex || -1) === ${index},
+        errors: Array.isArray(window.__arkThumbErrors) ? window.__arkThumbErrors.slice() : [],
+      })`,
+    )
+
+    if (state.errors.length > 0) {
+      throw buildRuntimeError(state.errors[0])
+    }
+
+    if (state.settled) {
+      return
+    }
+
+    await sleep(Math.min(20, Math.max(1, settleMs - (Date.now() - startedAt))))
+  }
+}
+
 async function gotoSlide(cdp: CdpClient, index: number, slideTimeoutMs: number, settleMs: number) {
   const sent = await evaluate<boolean>(
     cdp,
@@ -125,10 +172,23 @@ async function gotoSlide(cdp: CdpClient, index: number, slideTimeoutMs: number, 
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < slideTimeoutMs) {
-    const current = await evaluate<number>(cdp, `Number(window.__arkThumbIndex || 0)`)
+    const state = await evaluate<{
+      current: number
+      errors: string[]
+    }>(
+      cdp,
+      `({
+        current: Number(window.__arkThumbIndex || 0),
+        errors: Array.isArray(window.__arkThumbErrors) ? window.__arkThumbErrors.slice() : [],
+      })`,
+    )
 
-    if (current === index) {
-      await sleep(settleMs)
+    if (state.errors.length > 0) {
+      throw buildRuntimeError(state.errors[0])
+    }
+
+    if (state.current === index) {
+      await waitForSlideSettle(cdp, index, settleMs)
       return
     }
 
