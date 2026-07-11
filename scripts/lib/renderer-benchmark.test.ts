@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   compareBenchmarkRuns,
+  mutateFixtureHtml,
   summarizeSamples,
   summarizeScenario,
   type BenchmarkIterationResult,
@@ -115,4 +116,15 @@ test('flags p90 regressions above threshold', () => {
   const comparison = compareBenchmarkRuns(baseline, current)
   assert.equal(comparison.ok, false)
   assert.equal(comparison.failures[0]?.metric, 'preview_active_slide_ms')
+})
+
+test('mutates first slide text deterministically', () => {
+  const html = '<section class="slide"><h1>Quarterly planning</h1><p>Body</p></section>'
+  const once = mutateFixtureHtml(html, 7)
+  const twice = mutateFixtureHtml(once, 8)
+
+  assert.match(once, /Quarterly planning · Benchmark mutation 7/)
+  assert.match(twice, /Quarterly planning · Benchmark mutation 8/)
+  assert.doesNotMatch(twice, /Benchmark mutation 7/)
+  assert.match(twice, /<p>Body<\/p>/)
 })
