@@ -225,4 +225,63 @@ describe('renderPreviewHtml', () => {
     expect(second.html).toContain('data-ark-preview-nav')
     expect(second.html).toContain('hostile-two')
   })
+
+  it('discriminates cache entries by usesRevealAdapter for the same reveal HTML', () => {
+    const cache = createPreviewHtmlCache()
+    const revealHtml = `<!DOCTYPE html>
+<html lang="en" data-ark-runtime="reveal" data-ark-runtime-lib="reveal.js" data-ark-runtime-version="5.1.0">
+<head><meta charset="UTF-8" /><title>Reveal</title></head>
+<body>
+  <div class="reveal"><div class="slides"><section><h1>One</h1></section></div></div>
+  <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
+</body>
+</html>`
+
+    const withAdapter = renderCachedPreviewDocument(
+      revealHtml,
+      {
+        parentOrigin: 'http://localhost:5173',
+        handshake: 'adapter-on',
+        manifest: {
+          runtimeMode: 'reveal',
+          usesRevealAdapter: true,
+          previewMode: 'full-js',
+        },
+      },
+      cache,
+    )
+    const withoutAdapter = renderCachedPreviewDocument(
+      revealHtml,
+      {
+        parentOrigin: 'http://localhost:5173',
+        handshake: 'adapter-off',
+        manifest: {
+          runtimeMode: 'reveal',
+          usesRevealAdapter: false,
+          previewMode: 'css-only',
+        },
+      },
+      cache,
+    )
+    const adapterAgain = renderCachedPreviewDocument(
+      revealHtml,
+      {
+        parentOrigin: 'http://localhost:5173',
+        handshake: 'adapter-on-2',
+        manifest: {
+          runtimeMode: 'reveal',
+          usesRevealAdapter: true,
+          previewMode: 'full-js',
+        },
+      },
+      cache,
+    )
+
+    expect(withAdapter.cacheStatus).toBe('miss')
+    expect(withoutAdapter.cacheStatus).toBe('miss')
+    expect(adapterAgain.cacheStatus).toBe('hit')
+    expect(withAdapter.html).toContain('data-ark-preview-reveal')
+    expect(withoutAdapter.html).toContain('data-ark-preview-nav')
+    expect(adapterAgain.html).toContain('adapter-on-2')
+  })
 })
