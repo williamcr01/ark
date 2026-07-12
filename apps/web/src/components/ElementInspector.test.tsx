@@ -55,8 +55,24 @@ function renderInspector(overrides: Partial<ComponentProps<typeof ElementInspect
 }
 
 describe('ElementInspector', () => {
-  it('shows an empty state when nothing is selected', () => {
-    renderInspector({ selection: null })
+  it('renders nothing when nothing is selected in the floating variant', () => {
+    const { container } = render(
+      <TooltipProvider>
+        <ElementInspector
+          geometry={null}
+          isSaving={false}
+          selection={null}
+          textEditActive={false}
+          zIndex={null}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('shows an empty state in the sidebar variant when nothing is selected', () => {
+    renderInspector({ selection: null, variant: 'sidebar' })
 
     expect(screen.getByRole('complementary', { name: 'Element inspector' })).toBeInTheDocument()
     expect(screen.getByText(/select an element on the slide/i)).toBeInTheDocument()
