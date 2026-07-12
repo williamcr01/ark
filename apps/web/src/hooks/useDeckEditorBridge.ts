@@ -263,6 +263,11 @@ export function useDeckEditorBridge(
         setState((current) => ({
           ...current,
           selection: data.selection,
+          // Drop overlay geometry when the runtime clears selection so an
+          // empty-slide click does not leave a stale selection box on the shell.
+          geometry: data.selection ? current.geometry : null,
+          selectionZIndex: data.selection ? current.selectionZIndex : null,
+          transformPreview: data.selection ? current.transformPreview : null,
         }))
         onSelectionChange?.(data.selection)
         return

@@ -1720,8 +1720,16 @@ export function buildDeckEditorBridgeRuntimeScript(
     var target = findEditableTarget(event.target, slide);
 
     if (!target) {
+      // Empty slide / non-editable chrome: deselect like PowerPoint.
+      event.preventDefault();
+      event.stopPropagation();
       setSelectedElement(null, slide, currentSlideIndex);
       postSelection(null, slide, currentSlideIndex);
+      postToParent({
+        type: C.HOVER,
+        slideIndex: currentSlideIndex,
+        elementId: null,
+      });
       return;
     }
 
