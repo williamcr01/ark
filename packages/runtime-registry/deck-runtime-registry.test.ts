@@ -1,3 +1,7 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -11,6 +15,9 @@ import {
   parseRuntimeAssetUrl,
   validateRuntimeAssetReferences,
 } from './deck-runtime-registry'
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const SOURCE_SANS_PRO_LICENSE_PATH = 'runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/LICENSE'
 
 describe('approved runtime registry', () => {
   it('includes reveal.js as the initial approved runtime', () => {
@@ -84,6 +91,15 @@ describe('approved runtime registry', () => {
         '/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-semibold.woff',
       ]),
     )
+  })
+
+  it('keeps the Source Sans Pro OFL license next to vendored reveal.js fonts', () => {
+    const runtime = getApprovedRuntime('reveal.js', '5.1.0')
+
+    expect(existsSync(path.join(ROOT, SOURCE_SANS_PRO_LICENSE_PATH))).toBe(true)
+    expect(
+      runtime?.assets.some((asset) => asset.path === 'theme/fonts/source-sans-pro/LICENSE'),
+    ).toBe(false)
   })
 
   it('rejects unapproved runtime asset references', () => {
