@@ -438,6 +438,12 @@ export async function ensureStripOpen(cdp: CdpClient) {
         return true
       }
 
+      // Strip not mounted yet (e.g. deferred parse still empty). Wait without
+      // clicking — the toggle would collapse the default-open strip once it appears.
+      if (!strip) {
+        return true
+      }
+
       const toggle = document.querySelector('button[aria-controls="ark-slide-strip"]')
       if (!toggle) {
         return false
@@ -787,13 +793,6 @@ export async function measureUploadScenario(options: {
       metrics.shell_ready_ms = Number(elapsed.toFixed(1))
     }
 
-    // Strip toggle only exists after a deck with slides is loaded; default is open,
-    // but reopen if a prior interaction left it collapsed.
-    if (metrics.shell_ready_ms && probe.stripHidden) {
-      await ensureStripOpen(options.cdp).catch(() => undefined)
-      continue
-    }
-
     if (
       !metrics.preview_iframe_src_ms &&
       probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
@@ -807,22 +806,6 @@ export async function measureUploadScenario(options: {
       !probe.previewLoading
     ) {
       metrics.preview_loading_clear_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
-      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
-      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
-      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_visible_decoded_ms && probe.thumbImagesDecoded >= visibleThumbTarget) {
-      metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
     }
 
     if (
@@ -864,6 +847,29 @@ export async function measureUploadScenario(options: {
           }
         }
       }
+    }
+
+    // Strip is only required for thumbnail metrics. Keep collecting preview
+    // timings even while the strip is still mounting or closed.
+    if (metrics.shell_ready_ms && probe.stripHidden) {
+      await ensureStripOpen(options.cdp).catch(() => undefined)
+      continue
+    }
+
+    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
+      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
+      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
+      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_visible_decoded_ms && probe.thumbImagesDecoded >= visibleThumbTarget) {
+      metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
     }
 
     const complete =
@@ -973,11 +979,6 @@ export async function measureDeckReloadWarmScenario(options: {
       metrics.shell_ready_ms = Number(elapsed.toFixed(1))
     }
 
-    if (metrics.shell_ready_ms && probe.stripHidden) {
-      await ensureStripOpen(options.cdp).catch(() => undefined)
-      continue
-    }
-
     if (
       !metrics.preview_iframe_src_ms &&
       probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
@@ -991,22 +992,6 @@ export async function measureDeckReloadWarmScenario(options: {
       !probe.previewLoading
     ) {
       metrics.preview_loading_clear_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
-      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
-      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
-      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_visible_decoded_ms && probe.thumbImagesDecoded >= visibleThumbTarget) {
-      metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
     }
 
     if (
@@ -1032,6 +1017,29 @@ export async function measureDeckReloadWarmScenario(options: {
           metrics.preview_active_slide_ms = Number(elapsed.toFixed(1))
         }
       }
+    }
+
+    // Strip is only required for thumbnail metrics. Keep collecting preview
+    // timings even while the strip is still mounting or closed.
+    if (metrics.shell_ready_ms && probe.stripHidden) {
+      await ensureStripOpen(options.cdp).catch(() => undefined)
+      continue
+    }
+
+    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
+      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
+      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
+      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_visible_decoded_ms && probe.thumbImagesDecoded >= visibleThumbTarget) {
+      metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
     }
 
     const complete =
@@ -1161,11 +1169,6 @@ export async function measureRapidVersionBurstScenario(options: {
       metrics.shell_ready_ms = Number(elapsed.toFixed(1))
     }
 
-    if (metrics.shell_ready_ms && probe.stripHidden) {
-      await ensureStripOpen(options.cdp).catch(() => undefined)
-      continue
-    }
-
     if (
       !metrics.preview_iframe_src_ms &&
       probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
@@ -1179,18 +1182,6 @@ export async function measureRapidVersionBurstScenario(options: {
       !probe.previewLoading
     ) {
       metrics.preview_loading_clear_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
-      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
-      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
-    }
-
-    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
-      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
     }
 
     if (
@@ -1216,6 +1207,25 @@ export async function measureRapidVersionBurstScenario(options: {
           metrics.preview_active_slide_ms = Number(elapsed.toFixed(1))
         }
       }
+    }
+
+    // Strip is only required for thumbnail metrics. Keep collecting preview
+    // timings even while the strip is still mounting or closed.
+    if (metrics.shell_ready_ms && probe.stripHidden) {
+      await ensureStripOpen(options.cdp).catch(() => undefined)
+      continue
+    }
+
+    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
+      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
+      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
+      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
     }
 
     if (

@@ -153,6 +153,7 @@ export function useDeckPersistence() {
           }
 
           setActiveDeck(deck)
+          setIsLoading(false)
           void refreshVersions(deck.id)
         })
 
