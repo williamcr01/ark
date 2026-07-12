@@ -363,57 +363,7 @@ export function createThumbnailRenderer(options: {
         }
       }
 
-      throwIfAborted(signal)
-
-      const slideCount =
-        typeof request.slideCount === 'number' && Number.isInteger(request.slideCount)
-          ? request.slideCount
-          : parseDeckHtml(request.html).slideCount
-      const requestedSlideIndexes = request.slideIndexes
-        ? [...new Set(request.slideIndexes)].sort((left, right) => left - right)
-        : null
-
-      if (slideCount <= 0) {
-        return {
-          ok: false,
-          error: 'Deck has no slides to render.',
-          durationMs: Date.now() - startedAt,
-        }
-      }
-
-      if (slideCount > maxSlides) {
-        return {
-          ok: false,
-          error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${maxSlides}.`,
-          durationMs: Date.now() - startedAt,
-        }
-      }
-
-      if (
-        requestedSlideIndexes?.some(
-          (index) => !Number.isInteger(index) || index < 0 || index >= slideCount,
-        )
-      ) {
-        return {
-          ok: false,
-          error: 'Thumbnail renderer received an invalid slide index.',
-          durationMs: Date.now() - startedAt,
-        }
-      }
-
-      // Precompute the iframe document so Chromium's GET /:token does not pay
-      // for synchronous JSDOM preview rebuild on the navigation critical path.
-      const thumbnailPreview = renderThumbnailPreviewDocument(request.html, {
-        parentOrigin: apiOrigin,
-      })
-      const session = options.previewSessionStore.createSession(request.html, {
-        thumbnailPreview: {
-          html: thumbnailPreview.html,
-          runtimeMode: thumbnailPreview.runtimeMode,
-          nonce: thumbnailPreview.nonce,
-        },
-      })
-      const renderUrl = buildThumbnailRenderUrl(apiOrigin, session.token)
+      let session: ReturnType<PreviewSessionStore['createSession']> | null = null
       const pageRef: { current: BrowserPage | null } = { current: null }
       const networkRequests: Array<{ url: string }> = []
       let renderSucceeded = false
@@ -433,15 +383,68 @@ export function createThumbnailRenderer(options: {
         abortPage()
       }
 
-      if (signal) {
-        if (signal.aborted) {
-          onAbort()
-        } else {
-          signal.addEventListener('abort', onAbort, { once: true })
-        }
-      }
-
       try {
+        throwIfAborted(signal)
+
+        const slideCount =
+          typeof request.slideCount === 'number' && Number.isInteger(request.slideCount)
+            ? request.slideCount
+            : parseDeckHtml(request.html).slideCount
+        const requestedSlideIndexes = request.slideIndexes
+          ? [...new Set(request.slideIndexes)].sort((left, right) => left - right)
+          : null
+
+        if (slideCount <= 0) {
+          return {
+            ok: false,
+            error: 'Deck has no slides to render.',
+            durationMs: Date.now() - startedAt,
+          }
+        }
+
+        if (slideCount > maxSlides) {
+          return {
+            ok: false,
+            error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${maxSlides}.`,
+            durationMs: Date.now() - startedAt,
+          }
+        }
+
+        if (
+          requestedSlideIndexes?.some(
+            (index) => !Number.isInteger(index) || index < 0 || index >= slideCount,
+          )
+        ) {
+          return {
+            ok: false,
+            error: 'Thumbnail renderer received an invalid slide index.',
+            durationMs: Date.now() - startedAt,
+          }
+        }
+
+        // Precompute the iframe document so Chromium's GET /:token does not pay
+        // for synchronous JSDOM preview rebuild on the navigation critical path.
+        const thumbnailPreview = renderThumbnailPreviewDocument(request.html, {
+          parentOrigin: apiOrigin,
+        })
+        session = options.previewSessionStore.createSession(request.html, {
+          thumbnailPreview: {
+            html: thumbnailPreview.html,
+            runtimeMode: thumbnailPreview.runtimeMode,
+            nonce: thumbnailPreview.nonce,
+          },
+        })
+        const renderUrl = buildThumbnailRenderUrl(apiOrigin, session.token)
+
+        if (signal) {
+          if (signal.aborted) {
+            onAbort()
+            throwIfAborted(signal)
+          } else {
+            signal.addEventListener('abort', onAbort, { once: true })
+          }
+        }
+
         const result = await withTimeout(
           (async (): Promise<ThumbnailRenderSuccess> => {
             throwIfAborted(signal)
@@ -561,7 +564,9 @@ export function createThumbnailRenderer(options: {
         }
       } finally {
         signal?.removeEventListener('abort', onAbort)
-        options.previewSessionStore.deleteSession(session.token)
+        if (session) {
+          options.previewSessionStore.deleteSession(session.token)
+        }
         // Reuse the tab across successful renders; destroy after errors/aborts
         // so a poisoned page cannot pollute the next capture.
         if (pageRef.current) {

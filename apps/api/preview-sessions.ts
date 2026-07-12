@@ -43,7 +43,11 @@ function previewSessionContentKey(html: string, editorBridge: boolean) {
 export function createPreviewSessionStore(options: { ttlMs?: number } = {}): PreviewSessionStore {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
   const sessions = new Map<string, PreviewSession>()
-  /** Reuse identical (html, editorBridge) sessions within TTL to skip POST work. */
+  /**
+   * Reuse identical interactive (html, editorBridge) sessions within TTL.
+   * Thumbnail render sessions are never deduped — the renderer deletes its
+   * token in `finally` and must not invalidate shared interactive previews.
+   */
   const tokensByContentKey = new Map<string, string>()
 
   const purgeExpired = () => {
@@ -52,9 +56,11 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
     for (const [token, session] of sessions) {
       if (session.expiresAt <= now) {
         sessions.delete(token)
-        const contentKey = previewSessionContentKey(session.html, session.editorBridge)
-        if (tokensByContentKey.get(contentKey) === token) {
-          tokensByContentKey.delete(contentKey)
+        if (!session.thumbnailPreview) {
+          const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+          if (tokensByContentKey.get(contentKey) === token) {
+            tokensByContentKey.delete(contentKey)
+          }
         }
       }
     }
@@ -65,21 +71,25 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
       purgeExpired()
 
       const editorBridge = options.editorBridge === true
-      const contentKey = previewSessionContentKey(html, editorBridge)
-      const existingToken = tokensByContentKey.get(contentKey)
+      const isThumbnailSession = Boolean(options.thumbnailPreview)
 
-      if (existingToken) {
-        const existing = sessions.get(existingToken)
+      // Thumbnail sessions own a unique token lifecycle (create → Chromium GET
+      // → delete in renderer finally). Never share them with interactive
+      // previews or other thumbnail renders.
+      if (!isThumbnailSession) {
+        const contentKey = previewSessionContentKey(html, editorBridge)
+        const existingToken = tokensByContentKey.get(contentKey)
 
-        if (existing && existing.expiresAt > Date.now()) {
-          existing.expiresAt = Date.now() + ttlMs
-          if (options.thumbnailPreview && !existing.thumbnailPreview) {
-            existing.thumbnailPreview = options.thumbnailPreview
+        if (existingToken) {
+          const existing = sessions.get(existingToken)
+
+          if (existing && !existing.thumbnailPreview && existing.expiresAt > Date.now()) {
+            existing.expiresAt = Date.now() + ttlMs
+            return existing
           }
-          return existing
-        }
 
-        tokensByContentKey.delete(contentKey)
+          tokensByContentKey.delete(contentKey)
+        }
       }
 
       const now = Date.now()
@@ -96,7 +106,10 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
       }
 
       sessions.set(token, session)
-      tokensByContentKey.set(contentKey, token)
+
+      if (!isThumbnailSession) {
+        tokensByContentKey.set(previewSessionContentKey(html, editorBridge), token)
+      }
 
       return session
     },
@@ -112,9 +125,11 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
 
       if (session.expiresAt <= Date.now()) {
         sessions.delete(token)
-        const contentKey = previewSessionContentKey(session.html, session.editorBridge)
-        if (tokensByContentKey.get(contentKey) === token) {
-          tokensByContentKey.delete(contentKey)
+        if (!session.thumbnailPreview) {
+          const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+          if (tokensByContentKey.get(contentKey) === token) {
+            tokensByContentKey.delete(contentKey)
+          }
         }
         return null
       }
@@ -130,9 +145,11 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
       }
 
       sessions.delete(token)
-      const contentKey = previewSessionContentKey(session.html, session.editorBridge)
-      if (tokensByContentKey.get(contentKey) === token) {
-        tokensByContentKey.delete(contentKey)
+      if (!session.thumbnailPreview) {
+        const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+        if (tokensByContentKey.get(contentKey) === token) {
+          tokensByContentKey.delete(contentKey)
+        }
       }
       return true
     },
