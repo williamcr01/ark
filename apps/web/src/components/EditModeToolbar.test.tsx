@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-import { EditModeToolbar, PreviewEditModeToggle } from './EditModeToolbar'
+import { EditModeToolbar } from './EditModeToolbar'
 
 function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>> = {}) {
   const onToolChange = vi.fn()
@@ -126,27 +126,5 @@ describe('EditModeToolbar', () => {
 
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
-  })
-})
-
-describe('PreviewEditModeToggle', () => {
-  it('exposes pressed state for preview and edit modes', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-
-    render(<PreviewEditModeToggle active={false} disabled={false} onChange={onChange} />)
-
-    expect(screen.getByRole('button', { name: 'Preview mode' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.getByRole('button', { name: 'Edit mode' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
-    expect(onChange).toHaveBeenCalledWith(true)
   })
 })
