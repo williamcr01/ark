@@ -145,6 +145,10 @@ export class CdpClient {
   >()
 
   private listeners = new Map<string, CdpListener[]>()
+  private eventWaiters = new Set<{
+    reject: (error: Error) => void
+    cleanup: () => void
+  }>()
   private nextId = 1
   private readonly socket: WebSocket
 
@@ -155,11 +159,7 @@ export class CdpClient {
     })
 
     this.socket.addEventListener('close', () => {
-      for (const callback of this.callbacks.values()) {
-        callback.reject(new Error('CDP socket closed.'))
-      }
-
-      this.callbacks.clear()
+      this.rejectPending('CDP socket closed.')
     })
   }
 
@@ -176,15 +176,26 @@ export class CdpClient {
     })
   }
 
-  close() {
-    const closed = new Error('CDP socket closed.')
+  private rejectPending(message: string) {
+    const closed = new Error(message)
 
     for (const callback of this.callbacks.values()) {
       callback.reject(closed)
     }
 
     this.callbacks.clear()
+
+    for (const waiter of this.eventWaiters) {
+      waiter.cleanup()
+      waiter.reject(closed)
+    }
+
+    this.eventWaiters.clear()
     this.listeners.clear()
+  }
+
+  close() {
+    this.rejectPending('CDP socket closed.')
     this.socket.close()
   }
 
@@ -231,22 +242,54 @@ export class CdpClient {
     timeoutMs = 15_000,
   ) {
     return new Promise<unknown>((resolve, reject) => {
+      let settled = false
+
+      const settle = (action: () => void) => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+        action()
+      }
+
       const timer = setTimeout(() => {
-        unsubscribe()
-        reject(new Error(`Timed out waiting for CDP event ${method}.`))
+        settle(() => {
+          this.eventWaiters.delete(entry)
+          unsubscribe()
+          reject(new Error(`Timed out waiting for CDP event ${method}.`))
+        })
       }, timeoutMs)
+
+      const entry = {
+        reject: (error: Error) => {
+          settle(() => {
+            clearTimeout(timer)
+            unsubscribe()
+            reject(error)
+          })
+        },
+        cleanup: () => {
+          clearTimeout(timer)
+          unsubscribe()
+        },
+      }
 
       const listener: CdpListener = (params, sessionId) => {
         if (!predicate(params, sessionId)) {
           return
         }
 
-        clearTimeout(timer)
-        unsubscribe()
-        resolve(params)
+        settle(() => {
+          clearTimeout(timer)
+          this.eventWaiters.delete(entry)
+          unsubscribe()
+          resolve(params)
+        })
       }
 
       const unsubscribe = this.on(method, listener)
+      this.eventWaiters.add(entry)
     })
   }
 
@@ -481,6 +524,8 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
   let browserPromise: Promise<BrowserProcess> | null = null
   let browser: BrowserProcess | null = null
   let idlePage: BrowserPage | null = null
+  /** True while a successful page is resetting into the idle slot. */
+  let reservingIdleSlot = false
 
   const ensureBrowser = async () => {
     if (!enabled) {
@@ -502,6 +547,7 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
             browser = null
             browserPromise = null
             idlePage = null
+            reservingIdleSlot = false
           }
         })
 
@@ -511,6 +557,7 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
         browserPromise = null
         browser = null
         idlePage = null
+        reservingIdleSlot = false
         throw error
       })
     }
@@ -545,21 +592,28 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
       return createPage(current.debugPort)
     },
     async releasePage(page, options = {}) {
-      if (options.destroy || idlePage) {
+      // Claim the idle slot synchronously so concurrent releases cannot both
+      // await reset and overwrite idlePage (leaking a Chromium tab).
+      if (options.destroy || idlePage || reservingIdleSlot) {
         await destroyPage(page)
         return
       }
+
+      reservingIdleSlot = true
 
       try {
         await resetPageForReuse(page)
         idlePage = page
       } catch {
         await destroyPage(page)
+      } finally {
+        reservingIdleSlot = false
       }
     },
     async close() {
       const reusable = idlePage
       idlePage = null
+      reservingIdleSlot = false
       const current = browser
       browser = null
       browserPromise = null

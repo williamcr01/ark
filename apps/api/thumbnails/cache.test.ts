@@ -220,4 +220,27 @@ describe('thumbnail cache', () => {
     expect(await cache.hasBlob(keptFingerprint)).toBe(true)
     expect(await cache.readSlidePng(second, 0)).toEqual(png)
   })
+
+  it('preserves recent in-flight temp blob files during cleanup', async () => {
+    const { mkdir, writeFile, readdir } = await import('node:fs/promises')
+    const cache = await createCache()
+    const blobDir = path.join(cacheDir, 'blobs')
+    await cache.markReady(buildThumbnailCacheKey('a0000000-0000-4000-8000-000000000001', 'hash0'), {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+      manifestHash: 'hash0',
+      slideCount: 0,
+      width: 480,
+      height: 270,
+    })
+
+    await mkdir(blobDir, { recursive: true })
+    const recentTemp = path.join(blobDir, `.${'d'.repeat(64)}.1234.abcd.tmp`)
+    await writeFile(recentTemp, Buffer.from('temp'))
+
+    await cache.cleanup()
+
+    const remaining = await readdir(blobDir)
+    expect(remaining).toContain(path.basename(recentTemp))
+  })
 })

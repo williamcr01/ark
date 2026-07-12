@@ -22,6 +22,11 @@ export const THUMBNAIL_MAX_RENDER_ATTEMPTS = 3
 export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
 /** Must exceed deck timeout so a live render is not stolen by another process. */
 export const THUMBNAIL_PENDING_LEASE_MS = THUMBNAIL_DECK_TIMEOUT_MS + 30_000
+/**
+ * Deferred cleanup must not delete in-flight blob temp files. Only sweep temps
+ * older than this grace window (covers concurrent writes after markReady).
+ */
+export const THUMBNAIL_TEMP_BLOB_GRACE_MS = 60_000
 export const THUMBNAIL_QUEUE_MAX_PENDING = 20
 export const THUMBNAIL_QUEUE_CONCURRENCY = 1
 
