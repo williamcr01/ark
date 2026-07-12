@@ -6,6 +6,7 @@ import {
   mutateFixtureHtml,
   summarizeSamples,
   summarizeScenario,
+  waitForFinalVersionThumbnailsReady,
   type BenchmarkIterationResult,
   type BenchmarkRunResult,
 } from './renderer-benchmark.ts'
@@ -127,4 +128,67 @@ test('mutates first slide text deterministically', () => {
   assert.match(twice, /Quarterly planning · Benchmark mutation 8/)
   assert.doesNotMatch(twice, /Benchmark mutation 7/)
   assert.match(twice, /<p>Body<\/p>/)
+})
+
+test('waitForFinalVersionThumbnailsReady resolves on ready status with slides', async () => {
+  let calls = 0
+  const fetchImpl = (async () => {
+    calls += 1
+    if (calls < 2) {
+      return new Response(JSON.stringify({ status: 'pending', slides: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    return new Response(
+      JSON.stringify({
+        status: 'ready',
+        slides: [
+          { index: 0, url: '/api/decks/d/thumbnails/v/0.png?hash=abc' },
+          { index: 1, url: '/api/decks/d/thumbnails/v/1.png?hash=def' },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      },
+    )
+  }) as typeof fetch
+
+  const result = await waitForFinalVersionThumbnailsReady({
+    apiOrigin: 'http://127.0.0.1:9',
+    deckId: 'd',
+    versionId: 'v',
+    expectedSlideCount: 2,
+    timeoutMs: 5_000,
+    waitMs: 0,
+    fetchImpl,
+  })
+
+  assert.equal(calls, 2)
+  assert.equal(result.slideCount, 2)
+  assert.ok(result.readyMs >= 0)
+})
+
+test('waitForFinalVersionThumbnailsReady rejects failed status', async () => {
+  const fetchImpl = (async () =>
+    new Response(JSON.stringify({ status: 'failed', slides: [], error: 'boom' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as typeof fetch
+
+  await assert.rejects(
+    () =>
+      waitForFinalVersionThumbnailsReady({
+        apiOrigin: 'http://127.0.0.1:9',
+        deckId: 'd',
+        versionId: 'v',
+        expectedSlideCount: 1,
+        timeoutMs: 1_000,
+        waitMs: 0,
+        fetchImpl,
+      }),
+    /boom|failed/i,
+  )
 })

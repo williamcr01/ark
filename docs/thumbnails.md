@@ -36,18 +36,23 @@ id or the runtime manifest produces a new cache key.
 
 ## Limits and isolation
 
-| Control           | Default  | Notes                                 |
-| ----------------- | -------- | ------------------------------------- |
-| Viewport          | 1600×900 | Matches preview aspect ratio          |
-| Output PNG        | 480×270  | Scaled from the viewport              |
-| Max slides        | 40       | Rejected before Chromium opens a page |
-| Deck timeout      | 45s      | Page + session disposed on failure    |
-| Per-slide timeout | 3s       | Goto + screenshot                     |
-| Max PNG bytes     | 1.5 MB   | Per slide                             |
-| Settle delay      | 80ms     | Per-slide wait after runtime settles  |
-| Queue concurrency | 1        | Serialized by default                 |
-| Queue pending     | 20       | Extra jobs stay `pending` until drain |
-| Cache entries     | 200      | Oldest directories evicted            |
+| Control           | Default  | Notes                                    |
+| ----------------- | -------- | ---------------------------------------- |
+| Viewport          | 1600×900 | Matches preview aspect ratio             |
+| Output PNG        | 480×270  | Scaled from the viewport                 |
+| Max slides        | 40       | Rejected before Chromium opens a page    |
+| Deck timeout      | 45s      | Page + session disposed on failure       |
+| Per-slide timeout | 3s       | Goto + screenshot                        |
+| Max PNG bytes     | 1.5 MB   | Per slide                                |
+| Settle delay      | 80ms     | Max per-slide wait after adaptive settle |
+| Queue concurrency | 1        | Serialized by default                    |
+| Queue pending     | 20       | Extra jobs stay `pending` until drain    |
+| Cache entries     | 200      | Oldest directories evicted               |
+
+The settle delay is a fallback budget around the adaptive font/image/frame settle
+path. It was lowered from 120ms to 80ms after byte-identical PNG comparisons on
+plain/reveal fixtures (see `benchmarks/TUNING.md`); that is not a broad visual
+QA pass across arbitrary decks.
 
 Network access during render is blocked by the same sandbox CSP (`connect-src
 'none'`, `form-action 'none'`, `object-src 'none'`). Render routes are
