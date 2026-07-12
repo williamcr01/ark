@@ -75,11 +75,32 @@ function createTestLogger(entries: CapturedLogEntry[]): Logger {
 describe('thumbnail service', () => {
   let dataDir = ''
   let cacheDir = ''
+  const openServices: Array<{ close: () => Promise<void> }> = []
+
+  async function removeTempDir(dir: string) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        await rm(dir, { recursive: true, force: true })
+        return
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+
+        if (code !== 'ENOTEMPTY' && code !== 'EBUSY') {
+          throw error
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)))
+      }
+    }
+
+    await rm(dir, { recursive: true, force: true })
+  }
 
   afterEach(async () => {
+    await Promise.all(openServices.splice(0).map((service) => service.close()))
     await Promise.all([
-      dataDir ? rm(dataDir, { recursive: true, force: true }) : undefined,
-      cacheDir ? rm(cacheDir, { recursive: true, force: true }) : undefined,
+      dataDir ? removeTempDir(dataDir) : undefined,
+      cacheDir ? removeTempDir(cacheDir) : undefined,
     ])
     dataDir = ''
     cacheDir = ''
@@ -95,7 +116,13 @@ describe('thumbnail service', () => {
     const cache = createThumbnailCache(cacheDir)
     const renderer = createFakeRenderer(renderImpl)
     const service = createThumbnailService({ cache, renderer, deckStore, ...serviceOptions })
+    openServices.push(service)
     return { deckStore, cache, service }
+  }
+
+  function trackService<T extends { close: () => Promise<void> }>(service: T): T {
+    openServices.push(service)
+    return service
   }
 
   it('enqueues a render, dedupes concurrent requests, and returns ready urls', async () => {
@@ -334,13 +361,15 @@ describe('thumbnail service', () => {
     }
 
     // Simulate a previous API process that marked pending then died.
-    const previous = createThumbnailService({
-      cache,
-      deckStore,
-      renderer: createFakeRenderer(async () => {
-        throw new Error('previous process should not render')
+    const previous = trackService(
+      createThumbnailService({
+        cache,
+        deckStore,
+        renderer: createFakeRenderer(async () => {
+          throw new Error('previous process should not render')
+        }),
       }),
-    })
+    )
     await cache.markPending(key, {
       deckId: 'b0000000-0000-4000-8000-000000000001',
       versionId: key.versionId,
@@ -358,14 +387,16 @@ describe('thumbnail service', () => {
     })
 
     let renderCount = 0
-    const restarted = createThumbnailService({
-      cache,
-      deckStore,
-      renderer: createFakeRenderer(async (request) => {
-        renderCount += 1
-        return renderRequestedSlides(request)
+    const restarted = trackService(
+      createThumbnailService({
+        cache,
+        deckStore,
+        renderer: createFakeRenderer(async (request) => {
+          renderCount += 1
+          return renderRequestedSlides(request)
+        }),
       }),
-    })
+    )
 
     const status = await restarted.getStatus({
       deckId: 'b0000000-0000-4000-8000-000000000001',
@@ -550,31 +581,33 @@ describe('thumbnail service', () => {
     const blockerVersionId = 'a0000000-0000-4000-8000-000000000090'
     const foregroundVersionId = 'a0000000-0000-4000-8000-000000000091'
     const deckStore = createDeckStore(dataDir)
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore,
-      renderer: {
-        isAvailable: () => true,
-        close: async () => undefined,
-        render: async (request) => {
-          const versionId = request.versionId ?? 'unknown'
-          renderOrder.push(versionId)
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore,
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            const versionId = request.versionId ?? 'unknown'
+            renderOrder.push(versionId)
 
-          if (versionId === blockerVersionId) {
-            await blockerGate
-          }
+            if (versionId === blockerVersionId) {
+              await blockerGate
+            }
 
-          return {
-            ok: true,
-            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
-            slideCount: 2,
-            width: 480,
-            height: 270,
-            durationMs: 1,
-          }
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
         },
-      },
-    })
+      }),
+    )
 
     const created = await deckStore.createDeck(
       sampleHtml.replace('<h1>One</h1>', '<h1>One warm</h1>'),
@@ -617,32 +650,34 @@ describe('thumbnail service', () => {
     const logs: CapturedLogEntry[] = []
     const blockerVersionId = 'a0000000-0000-4000-8000-000000000092'
     const deckStore = createDeckStore(dataDir)
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore,
-      logger: createTestLogger(logs),
-      renderer: {
-        isAvailable: () => true,
-        close: async () => undefined,
-        render: async (request) => {
-          const versionId = request.versionId ?? 'unknown'
-          renderOrder.push(versionId)
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore,
+        logger: createTestLogger(logs),
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            const versionId = request.versionId ?? 'unknown'
+            renderOrder.push(versionId)
 
-          if (versionId === blockerVersionId) {
-            await blockerGate
-          }
+            if (versionId === blockerVersionId) {
+              await blockerGate
+            }
 
-          return {
-            ok: true,
-            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
-            slideCount: 2,
-            width: 480,
-            height: 270,
-            durationMs: 1,
-          }
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
         },
-      },
-    })
+      }),
+    )
 
     const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
     const oldWarmVersionId = created.activeVersionId!
@@ -692,32 +727,34 @@ describe('thumbnail service', () => {
     const logs: CapturedLogEntry[] = []
     const blockerVersionId = 'a0000000-0000-4000-8000-000000000093'
     const deckStore = createDeckStore(dataDir)
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore,
-      logger: createTestLogger(logs),
-      renderer: {
-        isAvailable: () => true,
-        close: async () => undefined,
-        render: async (request) => {
-          const versionId = request.versionId ?? 'unknown'
-          renderOrder.push(versionId)
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore,
+        logger: createTestLogger(logs),
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            const versionId = request.versionId ?? 'unknown'
+            renderOrder.push(versionId)
 
-          if (versionId === blockerVersionId) {
-            await blockerGate
-          }
+            if (versionId === blockerVersionId) {
+              await blockerGate
+            }
 
-          return {
-            ok: true,
-            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
-            slideCount: 2,
-            width: 480,
-            height: 270,
-            durationMs: 1,
-          }
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
         },
-      },
-    })
+      }),
+    )
 
     const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
     const oldWarmVersionId = created.activeVersionId!
@@ -788,27 +825,29 @@ describe('thumbnail service', () => {
     const renderedVersions: string[] = []
     const logs: CapturedLogEntry[] = []
     const deckStore = createDeckStore(dataDir)
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore,
-      logger: createTestLogger(logs),
-      renderer: {
-        isAvailable: () => true,
-        close: async () => undefined,
-        render: async (request) => {
-          await gate
-          renderedVersions.push(request.versionId ?? 'unknown')
-          return {
-            ok: true,
-            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
-            slideCount: 2,
-            width: 480,
-            height: 270,
-            durationMs: 1,
-          }
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore,
+        logger: createTestLogger(logs),
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            await gate
+            renderedVersions.push(request.versionId ?? 'unknown')
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
         },
-      },
-    })
+      }),
+    )
 
     const warmVersionIds: string[] = []
     for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
@@ -903,26 +942,28 @@ describe('thumbnail service', () => {
       releaseGate = resolve
     })
     const renderedVersions: string[] = []
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore: createDeckStore(dataDir),
-      renderer: {
-        isAvailable: () => true,
-        close: async () => undefined,
-        render: async (request) => {
-          await gate
-          renderedVersions.push(request.versionId ?? 'unknown')
-          return {
-            ok: true,
-            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
-            slideCount: 2,
-            width: 480,
-            height: 270,
-            durationMs: 1,
-          }
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore: createDeckStore(dataDir),
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            await gate
+            renderedVersions.push(request.versionId ?? 'unknown')
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
         },
-      },
-    })
+      }),
+    )
 
     const versionId = (index: number) =>
       `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
@@ -974,26 +1015,28 @@ describe('thumbnail service', () => {
       releaseGate = resolve
     })
     const renderedVersions: string[] = []
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore: createDeckStore(dataDir),
-      renderer: {
-        isAvailable: () => true,
-        close: async () => undefined,
-        render: async (request) => {
-          await gate
-          renderedVersions.push(request.versionId ?? 'unknown')
-          return {
-            ok: true,
-            slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
-            slideCount: 2,
-            width: 480,
-            height: 270,
-            durationMs: 1,
-          }
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore: createDeckStore(dataDir),
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            await gate
+            renderedVersions.push(request.versionId ?? 'unknown')
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
         },
-      },
-    })
+      }),
+    )
 
     const versionId = (index: number) =>
       `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
@@ -1036,15 +1079,17 @@ describe('thumbnail service', () => {
   it('returns disabled when the renderer is unavailable', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
     cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
-    const service = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
-      deckStore: createDeckStore(dataDir),
-      renderer: {
-        isAvailable: () => false,
-        render: async () => ({ ok: false, error: 'disabled', durationMs: 0 }),
-        close: async () => undefined,
-      },
-    })
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore: createDeckStore(dataDir),
+        renderer: {
+          isAvailable: () => false,
+          render: async () => ({ ok: false, error: 'disabled', durationMs: 0 }),
+          close: async () => undefined,
+        },
+      }),
+    )
 
     const status = await service.getStatus({
       deckId: 'b0000000-0000-4000-8000-000000000001',
