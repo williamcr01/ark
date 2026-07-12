@@ -112,3 +112,45 @@ Shell-visible upload/reload metrics moved within run-to-run MAD and are not
 treated as regressions. `pnpm benchmark:settle-delta` still reports
 byte-identical PNGs at 0/40/80/120ms for plain-css, reveal-registry, and
 reveal-fragments after the single-rAF + 40ms settle change.
+
+## 2026-07-12 preview path optimizations
+
+Same host, production web bundle. Primary signals:
+`shell_ready_ms` and `preview_active_slide_ms` on `upload_warm` +
+`deck_reload_warm`.
+
+Changes shipped:
+
+1. **Optimistic title** on persist (unlock chrome before the save round-trip).
+2. **Early active-deck apply** on boot — apply `fetchDeck` as soon as it
+   resolves; validate against `listDecks` afterward; clear loading once the
+   deck applies.
+3. **Lazy thumbnail srcDoc builder** — do not build strip fallback HTML on the
+   main preview path.
+4. **Pre-activate css-only slide 0** before the nav script runs.
+5. **Fast handshake inject** on preview HTML cache hits (string replace).
+6. **Preview HTML cache pipeline v2**; **session content-hash dedupe**;
+   client coalesce **300→100ms**.
+7. **Deferred-strip race fix** — keep the initial empty→slides parse eager so
+   the strip mounts with the slide counter; collect preview metrics without
+   waiting on the strip; do not toggle the strip closed when it is still
+   unmounted.
+
+### Measured results
+
+Paired compare (`preview-baseline.json` @ `66f28a3` →
+`preview-optimized-fixed.json` @ `98a760a`), 5 iterations + 1 warmup,
+fixtures `plain-css` + `reveal-registry`. Compare: **PASS** (no 15s outliers).
+
+| Scenario / fixture                   | Metric                    | Before median | After median |    Delta |
+| ------------------------------------ | ------------------------- | ------------: | -----------: | -------: |
+| `upload_warm` / plain-css            | `preview_active_slide_ms` |         205.0 |         83.8 | **-59%** |
+| `upload_warm` / reveal-registry      | `preview_active_slide_ms` |         197.0 |        127.8 | **-35%** |
+| `deck_reload_warm` / plain-css       | `preview_active_slide_ms` |         154.0 |        137.4 | **-11%** |
+| `deck_reload_warm` / reveal-registry | `preview_active_slide_ms` |         151.0 |        128.5 | **-15%** |
+
+Command:
+
+```bash
+pnpm benchmark:renderer -- --iterations 5 --warmup 1 --fixtures plain-css,reveal-registry --scenarios upload_warm,deck_reload_warm --compare artifacts/renderer-benchmarks/preview-baseline.json
+```
