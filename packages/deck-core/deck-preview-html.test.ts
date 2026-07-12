@@ -28,6 +28,27 @@ function hostileNulMetaRefreshDeck(options: { customJs?: boolean } = {}) {
 }
 
 describe('buildPreviewDocument', () => {
+  it('pre-activates slide 0 for css-only decks before nav script runs', () => {
+    const { html, runtimeMode } = buildPreviewDocument(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Plain</title></head>
+<body>
+  <section class="slide"><h1>One</h1></section>
+  <section class="slide"><h1>Two</h1></section>
+</body>
+</html>`)
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const slides = [...doc.querySelectorAll('section.slide')]
+
+    expect(runtimeMode).toBe('static')
+    expect(slides).toHaveLength(2)
+    expect(slides[0]?.hasAttribute('data-ark-active')).toBe(true)
+    expect(slides[0]?.classList.contains('active')).toBe(true)
+    expect(slides[0]?.getAttribute('aria-hidden')).toBe('false')
+    expect(slides[1]?.hasAttribute('data-ark-hidden')).toBe(true)
+    expect(slides[1]?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('injects the handshake and rewrites cached nonce placeholders after the preview boundary', () => {
     const noncePlaceholder = 'CachedNoncePlaceholder'
     const freshNonce = 'FreshSessionNonce'

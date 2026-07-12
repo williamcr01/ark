@@ -19,6 +19,7 @@ import {
   type StoredDeck,
 } from '@/lib/deck-api'
 import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import { extractDeckTitle } from '@ark/contracts'
 
 const ACTIVE_DECK_STORAGE_KEY = 'ark:active-deck-id'
 
@@ -139,7 +140,14 @@ export function useDeckPersistence() {
 
     const loadDecks = async () => {
       try {
-        const summaries = await listDecks()
+        // Start the active-deck fetch in parallel with the list so reload/warm
+        // shell chrome is not gated on listDecks round-trip latency.
+        const summariesPromise = listDecks()
+        const earlyDeckPromise = storedActiveDeckId
+          ? fetchDeck(storedActiveDeckId).catch(() => null)
+          : Promise.resolve(null)
+
+        const [summaries, earlyDeck] = await Promise.all([summariesPromise, earlyDeckPromise])
 
         if (cancelled) {
           return
@@ -158,7 +166,10 @@ export function useDeckPersistence() {
         }
 
         try {
-          const deck = await fetchDeck(storedActiveDeckId)
+          const deck =
+            earlyDeck && earlyDeck.id === storedActiveDeckId
+              ? earlyDeck
+              : await fetchDeck(storedActiveDeckId)
 
           if (cancelled) {
             return
@@ -200,6 +211,12 @@ export function useDeckPersistence() {
       const requestId = ++saveRequestIdRef.current
 
       setHtml(nextHtml)
+      // Unlock shell chrome before the save round-trip when the title is still
+      // auto-derived from HTML (new decks or unsaved renames).
+      const previousExtracted = extractDeckTitle(savedHtml || html)
+      if (!deckId || !deckTitle || deckTitle === previousExtracted) {
+        setDeckTitle(extractDeckTitle(nextHtml))
+      }
       setIsSaving(true)
       setSaveError('')
 
@@ -237,7 +254,7 @@ export function useDeckPersistence() {
         }
       }
     },
-    [deckId, refreshVersions],
+    [deckId, deckTitle, html, refreshVersions, savedHtml],
   )
 
   const selectDeck = useCallback(

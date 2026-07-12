@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { nanoid } from 'nanoid'
 
 export type ThumbnailPreviewCache = {
@@ -34,9 +35,16 @@ export type PreviewSessionStore = {
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000
 
+function previewSessionContentKey(html: string, editorBridge: boolean) {
+  const hash = createHash('sha256').update(html).digest('hex')
+  return `${editorBridge ? '1' : '0'}:${hash}`
+}
+
 export function createPreviewSessionStore(options: { ttlMs?: number } = {}): PreviewSessionStore {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
   const sessions = new Map<string, PreviewSession>()
+  /** Reuse identical (html, editorBridge) sessions within TTL to skip POST work. */
+  const tokensByContentKey = new Map<string, string>()
 
   const purgeExpired = () => {
     const now = Date.now()
@@ -44,6 +52,10 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
     for (const [token, session] of sessions) {
       if (session.expiresAt <= now) {
         sessions.delete(token)
+        const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+        if (tokensByContentKey.get(contentKey) === token) {
+          tokensByContentKey.delete(contentKey)
+        }
       }
     }
   }
@@ -52,6 +64,24 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
     createSession(html, options = {}) {
       purgeExpired()
 
+      const editorBridge = options.editorBridge === true
+      const contentKey = previewSessionContentKey(html, editorBridge)
+      const existingToken = tokensByContentKey.get(contentKey)
+
+      if (existingToken) {
+        const existing = sessions.get(existingToken)
+
+        if (existing && existing.expiresAt > Date.now()) {
+          existing.expiresAt = Date.now() + ttlMs
+          if (options.thumbnailPreview && !existing.thumbnailPreview) {
+            existing.thumbnailPreview = options.thumbnailPreview
+          }
+          return existing
+        }
+
+        tokensByContentKey.delete(contentKey)
+      }
+
       const now = Date.now()
       const token = nanoid(32)
       const handshake = nanoid(24)
@@ -59,13 +89,14 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
         token,
         handshake,
         html,
-        editorBridge: options.editorBridge === true,
+        editorBridge,
         ...(options.thumbnailPreview ? { thumbnailPreview: options.thumbnailPreview } : {}),
         createdAt: now,
         expiresAt: now + ttlMs,
       }
 
       sessions.set(token, session)
+      tokensByContentKey.set(contentKey, token)
 
       return session
     },
@@ -81,6 +112,10 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
 
       if (session.expiresAt <= Date.now()) {
         sessions.delete(token)
+        const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+        if (tokensByContentKey.get(contentKey) === token) {
+          tokensByContentKey.delete(contentKey)
+        }
         return null
       }
 
@@ -88,7 +123,18 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
     },
 
     deleteSession(token) {
-      return sessions.delete(token)
+      const session = sessions.get(token)
+
+      if (!session) {
+        return false
+      }
+
+      sessions.delete(token)
+      const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+      if (tokensByContentKey.get(contentKey) === token) {
+        tokensByContentKey.delete(contentKey)
+      }
+      return true
     },
   }
 }
