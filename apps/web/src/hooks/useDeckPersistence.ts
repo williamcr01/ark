@@ -19,6 +19,7 @@ import {
   type StoredDeck,
 } from '@/lib/deck-api'
 import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import { extractDeckTitle } from '@ark/contracts'
 
 const ACTIVE_DECK_STORAGE_KEY = 'ark:active-deck-id'
 
@@ -136,10 +137,31 @@ export function useDeckPersistence() {
   useEffect(() => {
     let cancelled = false
     const storedActiveDeckId = readActiveDeckId()
+    // selectDeck / startNewDeck / persistHtml bump this ref; boot must not
+    // overwrite a deck the user chose after early apply unlocked the shell.
+    const bootRequestId = saveRequestIdRef.current
+    const bootStillOwnsSession = () => !cancelled && saveRequestIdRef.current === bootRequestId
 
     const loadDecks = async () => {
       try {
-        const summaries = await listDecks()
+        // Fetch the active deck immediately so shell chrome is not gated on
+        // listDecks. Validate against the list once it arrives.
+        const summariesPromise = listDecks()
+        const earlyDeckPromise = storedActiveDeckId
+          ? fetchDeck(storedActiveDeckId).catch(() => null)
+          : Promise.resolve(null)
+
+        void earlyDeckPromise.then((deck) => {
+          if (!bootStillOwnsSession() || !deck || deck.id !== storedActiveDeckId) {
+            return
+          }
+
+          setActiveDeck(deck)
+          setIsLoading(false)
+          void refreshVersions(deck.id)
+        })
+
+        const summaries = await summariesPromise
 
         if (cancelled) {
           return
@@ -147,6 +169,10 @@ export function useDeckPersistence() {
 
         setDecks(summaries)
         setSaveError('')
+
+        if (!bootStillOwnsSession()) {
+          return
+        }
 
         if (!storedActiveDeckId) {
           return
@@ -157,24 +183,37 @@ export function useDeckPersistence() {
           return
         }
 
+        const earlyDeck = await earlyDeckPromise
+
+        if (!bootStillOwnsSession()) {
+          return
+        }
+
+        if (earlyDeck && earlyDeck.id === storedActiveDeckId) {
+          // Already applied above; keep a second setActiveDeck only if the
+          // optimistic apply raced before this validation path.
+          setActiveDeck(earlyDeck)
+          return
+        }
+
         try {
           const deck = await fetchDeck(storedActiveDeckId)
 
-          if (cancelled) {
+          if (!bootStillOwnsSession()) {
             return
           }
 
           setActiveDeck(deck)
           void refreshVersions(deck.id)
         } catch {
-          if (cancelled) {
+          if (!bootStillOwnsSession()) {
             return
           }
 
           clearActiveDeck()
         }
       } catch {
-        if (cancelled) {
+        if (!bootStillOwnsSession()) {
           return
         }
 
@@ -200,6 +239,12 @@ export function useDeckPersistence() {
       const requestId = ++saveRequestIdRef.current
 
       setHtml(nextHtml)
+      // Unlock shell chrome before the save round-trip when the title is still
+      // auto-derived from HTML (new decks or unsaved renames).
+      const previousExtracted = extractDeckTitle(savedHtml || html)
+      if (!deckId || !deckTitle || deckTitle === previousExtracted) {
+        setDeckTitle(extractDeckTitle(nextHtml))
+      }
       setIsSaving(true)
       setSaveError('')
 
@@ -237,7 +282,7 @@ export function useDeckPersistence() {
         }
       }
     },
-    [deckId, refreshVersions],
+    [deckId, deckTitle, html, refreshVersions, savedHtml],
   )
 
   const selectDeck = useCallback(

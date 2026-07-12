@@ -22,13 +22,20 @@ import {
   THUMBNAIL_VIEWPORT_HEIGHT,
   THUMBNAIL_VIEWPORT_WIDTH,
 } from './constants.ts'
-import { buildThumbnailRenderUrl, THUMBNAIL_RENDER_SECRET_HEADER } from './render-host.ts'
+import {
+  buildThumbnailRenderUrl,
+  renderThumbnailPreviewDocument,
+  THUMBNAIL_RENDER_SECRET_HEADER,
+} from './render-host.ts'
 
 export type ThumbnailRenderRequest = {
   html: string
   deckId?: string
   versionId?: string
   slideIndexes?: number[]
+  /** When provided by the queue, skips a redundant parseDeckHtml. */
+  slideCount?: number
+  signal?: AbortSignal
 }
 
 export type ThumbnailRenderSuccess = {
@@ -44,6 +51,7 @@ export type ThumbnailRenderFailure = {
   ok: false
   error: string
   durationMs: number
+  aborted?: boolean
 }
 
 export type ThumbnailRenderResult = ThumbnailRenderSuccess | ThumbnailRenderFailure
@@ -57,8 +65,16 @@ export type ThumbnailRendererLimits = {
   settleMs?: number
 }
 
+export const THUMBNAIL_RENDER_ABORTED_ERROR = 'Thumbnail render aborted.'
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new Error(THUMBNAIL_RENDER_ABORTED_ERROR)
+  }
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
@@ -80,10 +96,12 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
-async function waitForDeckReady(cdp: CdpClient, timeoutMs: number) {
+async function waitForDeckReady(cdp: CdpClient, timeoutMs: number, signal?: AbortSignal) {
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < timeoutMs) {
+    throwIfAborted(signal)
+
     const state = await evaluate<{
       ready: boolean
       slideCount: number
@@ -107,7 +125,7 @@ async function waitForDeckReady(cdp: CdpClient, timeoutMs: number) {
       return state
     }
 
-    await sleep(50)
+    await sleep(10)
   }
 
   throw new Error('Timed out waiting for deck ready during thumbnail render.')
@@ -117,7 +135,12 @@ function buildRuntimeError(error: string | undefined) {
   return new Error(error ?? 'Deck runtime error during thumbnail render.')
 }
 
-async function waitForSlideSettle(cdp: CdpClient, index: number, settleMs: number) {
+async function waitForSlideSettle(
+  cdp: CdpClient,
+  index: number,
+  settleMs: number,
+  signal?: AbortSignal,
+) {
   if (settleMs <= 0) {
     return
   }
@@ -135,6 +158,8 @@ async function waitForSlideSettle(cdp: CdpClient, index: number, settleMs: numbe
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < settleMs) {
+    throwIfAborted(signal)
+
     const state = await evaluate<{
       settled: boolean
       errors: string[]
@@ -156,11 +181,41 @@ async function waitForSlideSettle(cdp: CdpClient, index: number, settleMs: numbe
       return
     }
 
-    await sleep(Math.min(20, Math.max(1, settleMs - (Date.now() - startedAt))))
+    await sleep(Math.min(5, Math.max(1, settleMs - (Date.now() - startedAt))))
   }
 }
 
-async function gotoSlide(cdp: CdpClient, index: number, slideTimeoutMs: number, settleMs: number) {
+async function gotoSlide(
+  cdp: CdpClient,
+  index: number,
+  slideTimeoutMs: number,
+  settleMs: number,
+  signal?: AbortSignal,
+) {
+  throwIfAborted(signal)
+
+  const current = await evaluate<{
+    current: number
+    errors: string[]
+  }>(
+    cdp,
+    `({
+      current: Number(window.__arkThumbIndex || 0),
+      errors: Array.isArray(window.__arkThumbErrors) ? window.__arkThumbErrors.slice() : [],
+    })`,
+  )
+
+  if (current.errors.length > 0) {
+    throw buildRuntimeError(current.errors[0])
+  }
+
+  // Already on the target slide (common for missing slide 0 after ready): skip
+  // the goto postMessage, but still settle so fragments/fonts/images paint.
+  if (current.current === index) {
+    await waitForSlideSettle(cdp, index, settleMs, signal)
+    return
+  }
+
   const sent = await evaluate<boolean>(
     cdp,
     `typeof window.__arkThumbGoto === 'function' ? window.__arkThumbGoto(${index}) : false`,
@@ -173,6 +228,8 @@ async function gotoSlide(cdp: CdpClient, index: number, slideTimeoutMs: number, 
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < slideTimeoutMs) {
+    throwIfAborted(signal)
+
     const state = await evaluate<{
       current: number
       errors: string[]
@@ -189,11 +246,11 @@ async function gotoSlide(cdp: CdpClient, index: number, slideTimeoutMs: number, 
     }
 
     if (state.current === index) {
-      await waitForSlideSettle(cdp, index, settleMs)
+      await waitForSlideSettle(cdp, index, settleMs, signal)
       return
     }
 
-    await sleep(40)
+    await sleep(10)
   }
 
   throw new Error(`Timed out waiting for slide ${index} during thumbnail render.`)
@@ -219,6 +276,19 @@ async function captureSlidePng(cdp: CdpClient, maxPngBytes: number) {
   }
 
   return png
+}
+
+async function releaseRendererPage(
+  chromiumPool: ChromiumPool,
+  page: BrowserPage,
+  options: { destroy: boolean },
+) {
+  if (chromiumPool.releasePage) {
+    await chromiumPool.releasePage(page, options)
+    return
+  }
+
+  await page.close().catch(() => undefined)
 }
 
 /** Exported for unit tests of the post-hoc network allowlist. */
@@ -283,6 +353,7 @@ export function createThumbnailRenderer(options: {
     },
     async render(request) {
       const startedAt = Date.now()
+      const signal = request.signal
 
       if (!enabled || !chromiumPool.isAvailable()) {
         return {
@@ -292,50 +363,94 @@ export function createThumbnailRenderer(options: {
         }
       }
 
-      const parsed = parseDeckHtml(request.html)
-      const slideCount = parsed.slideCount
-      const requestedSlideIndexes = request.slideIndexes
-        ? [...new Set(request.slideIndexes)].sort((left, right) => left - right)
-        : null
-
-      if (slideCount <= 0) {
-        return {
-          ok: false,
-          error: 'Deck has no slides to render.',
-          durationMs: Date.now() - startedAt,
-        }
-      }
-
-      if (slideCount > maxSlides) {
-        return {
-          ok: false,
-          error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${maxSlides}.`,
-          durationMs: Date.now() - startedAt,
-        }
-      }
-
-      if (
-        requestedSlideIndexes?.some(
-          (index) => !Number.isInteger(index) || index < 0 || index >= slideCount,
-        )
-      ) {
-        return {
-          ok: false,
-          error: 'Thumbnail renderer received an invalid slide index.',
-          durationMs: Date.now() - startedAt,
-        }
-      }
-
-      const session = options.previewSessionStore.createSession(request.html)
-      const renderUrl = buildThumbnailRenderUrl(apiOrigin, session.token)
+      let session: ReturnType<PreviewSessionStore['createSession']> | null = null
       const pageRef: { current: BrowserPage | null } = { current: null }
       const networkRequests: Array<{ url: string }> = []
+      let renderSucceeded = false
+      let aborted = false
+      const abortPage = () => {
+        const page = pageRef.current
+        pageRef.current = null
+
+        if (!page) {
+          return
+        }
+
+        void releaseRendererPage(chromiumPool, page, { destroy: true })
+      }
+      const onAbort = () => {
+        aborted = true
+        abortPage()
+      }
 
       try {
+        throwIfAborted(signal)
+
+        const slideCount =
+          typeof request.slideCount === 'number' && Number.isInteger(request.slideCount)
+            ? request.slideCount
+            : parseDeckHtml(request.html).slideCount
+        const requestedSlideIndexes = request.slideIndexes
+          ? [...new Set(request.slideIndexes)].sort((left, right) => left - right)
+          : null
+
+        if (slideCount <= 0) {
+          return {
+            ok: false,
+            error: 'Deck has no slides to render.',
+            durationMs: Date.now() - startedAt,
+          }
+        }
+
+        if (slideCount > maxSlides) {
+          return {
+            ok: false,
+            error: `Deck has ${slideCount} slides; thumbnail renderer allows at most ${maxSlides}.`,
+            durationMs: Date.now() - startedAt,
+          }
+        }
+
+        if (
+          requestedSlideIndexes?.some(
+            (index) => !Number.isInteger(index) || index < 0 || index >= slideCount,
+          )
+        ) {
+          return {
+            ok: false,
+            error: 'Thumbnail renderer received an invalid slide index.',
+            durationMs: Date.now() - startedAt,
+          }
+        }
+
+        // Precompute the iframe document so Chromium's GET /:token does not pay
+        // for synchronous JSDOM preview rebuild on the navigation critical path.
+        const thumbnailPreview = renderThumbnailPreviewDocument(request.html, {
+          parentOrigin: apiOrigin,
+        })
+        session = options.previewSessionStore.createSession(request.html, {
+          thumbnailPreview: {
+            html: thumbnailPreview.html,
+            runtimeMode: thumbnailPreview.runtimeMode,
+            nonce: thumbnailPreview.nonce,
+          },
+        })
+        const renderUrl = buildThumbnailRenderUrl(apiOrigin, session.token)
+
+        if (signal) {
+          if (signal.aborted) {
+            onAbort()
+            throwIfAborted(signal)
+          } else {
+            signal.addEventListener('abort', onAbort, { once: true })
+          }
+        }
+
         const result = await withTimeout(
           (async (): Promise<ThumbnailRenderSuccess> => {
+            throwIfAborted(signal)
             const page = await chromiumPool.createPage()
             pageRef.current = page
+            throwIfAborted(signal)
             const { cdp } = page
 
             await cdp.send('Page.enable')
@@ -365,17 +480,19 @@ export function createThumbnailRenderer(options: {
               mobile: false,
             })
 
+            throwIfAborted(signal)
             await cdp.send('Page.navigate', { url: renderUrl })
             await cdp.waitForEvent('Page.loadEventFired', () => true, readyTimeoutMs)
-            await waitForDeckReady(cdp, readyTimeoutMs)
+            await waitForDeckReady(cdp, readyTimeoutMs, signal)
 
             const slides: Buffer[] = []
             const captureIndexes =
               requestedSlideIndexes ?? Array.from({ length: slideCount }, (_value, index) => index)
 
             for (const index of captureIndexes) {
+              throwIfAborted(signal)
               await withTimeout(
-                gotoSlide(cdp, index, slideTimeoutMs, settleMs),
+                gotoSlide(cdp, index, slideTimeoutMs, settleMs, signal),
                 slideTimeoutMs,
                 `slide ${index}`,
               )
@@ -399,6 +516,8 @@ export function createThumbnailRenderer(options: {
                 `Thumbnail render blocked external network request: ${external[0]?.url}`,
               )
             }
+
+            renderSucceeded = true
 
             return {
               ok: true,
@@ -426,26 +545,36 @@ export function createThumbnailRenderer(options: {
         return result
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Thumbnail render failed.'
+        aborted = aborted || message === THUMBNAIL_RENDER_ABORTED_ERROR || Boolean(signal?.aborted)
 
-        logger.warn('thumbnail.render.failed', {
+        logger.warn(aborted ? 'thumbnail.render.aborted' : 'thumbnail.render.failed', {
           deckId: request.deckId ?? null,
           fields: {
             versionId: request.versionId ?? null,
-            error: message,
+            error: aborted ? THUMBNAIL_RENDER_ABORTED_ERROR : message,
             durationMs: Date.now() - startedAt,
           },
         })
 
         return {
           ok: false,
-          error: message,
+          error: aborted ? THUMBNAIL_RENDER_ABORTED_ERROR : message,
           durationMs: Date.now() - startedAt,
+          aborted,
         }
       } finally {
-        options.previewSessionStore.deleteSession(session.token)
-        // Dispose the tab (not just the CDP socket) so the shared browser does
-        // not accumulate one open page per render.
-        await pageRef.current?.close().catch(() => undefined)
+        signal?.removeEventListener('abort', onAbort)
+        if (session) {
+          options.previewSessionStore.deleteSession(session.token)
+        }
+        // Reuse the tab across successful renders; destroy after errors/aborts
+        // so a poisoned page cannot pollute the next capture.
+        if (pageRef.current) {
+          await releaseRendererPage(chromiumPool, pageRef.current, {
+            destroy: !renderSucceeded || aborted,
+          })
+          pageRef.current = null
+        }
       }
     },
   }

@@ -44,15 +44,16 @@ id or the runtime manifest produces a new cache key.
 | Deck timeout      | 45s      | Page + session disposed on failure       |
 | Per-slide timeout | 3s       | Goto + screenshot                        |
 | Max PNG bytes     | 1.5 MB   | Per slide                                |
-| Settle delay      | 80ms     | Max per-slide wait after adaptive settle |
+| Settle delay      | 40ms     | Max per-slide wait after adaptive settle |
 | Queue concurrency | 1        | Serialized by default                    |
 | Queue pending     | 20       | Extra jobs stay `pending` until drain    |
 | Cache entries     | 200      | Oldest directories evicted               |
 
 The settle delay is a fallback budget around the adaptive font/image/frame settle
-path. It was lowered from 120ms to 80ms after byte-identical PNG comparisons on
-plain/reveal fixtures (see `benchmarks/TUNING.md`); that is not a broad visual
-QA pass across arbitrary decks.
+path. It was lowered from 120ms → 80ms → 40ms after byte-identical PNG comparisons
+on plain/reveal fixtures (see `benchmarks/TUNING.md`); that is not a broad visual
+QA pass across arbitrary decks. Adaptive settle uses a single
+`requestAnimationFrame` after fonts/images.
 
 Network access during render is blocked by the same sandbox CSP (`connect-src
 'none'`, `form-action 'none'`, `object-src 'none'`). Render routes are
@@ -70,17 +71,19 @@ scale. Timeouts always dispose the Chromium page target.
 | `ARK_CHROMIUM_PATH`               | Chromium/Chrome binary for rendering and browser smoke      |
 | `ARK_THUMBNAIL_CACHE_DIR`         | PNG cache root (default `data/thumbnails`)                  |
 | `ARK_THUMBNAIL_QUEUE_CONCURRENCY` | Renderer queue concurrency (positive integer, default `1`)  |
-| `ARK_THUMBNAIL_SETTLE_MS`         | Per-slide settle delay (non-negative integer, default `80`) |
+| `ARK_THUMBNAIL_SETTLE_MS`         | Per-slide settle delay (non-negative integer, default `40`) |
 
 ## Observability
 
-| Event                        | When                           |
-| ---------------------------- | ------------------------------ |
-| `thumbnail.status`           | Status poll response           |
-| `thumbnail.render.succeeded` | Deck render completed          |
-| `thumbnail.render.failed`    | Deck render failed / timed out |
-| `thumbnail.queue.saturated`  | Pending queue hit its bound    |
-| `thumbnail.queue.failed`     | Unexpected queue exception     |
+| Event                        | When                             |
+| ---------------------------- | -------------------------------- |
+| `thumbnail.status`           | Status poll response             |
+| `thumbnail.render.succeeded` | Deck render completed            |
+| `thumbnail.render.failed`    | Deck render failed / timed out   |
+| `thumbnail.render.aborted`   | In-flight render superseded      |
+| `thumbnail.queue.saturated`  | Pending queue hit its bound      |
+| `thumbnail.queue.failed`     | Unexpected queue exception       |
+| `thumbnail.queue.aborted`    | Running warm aborted as obsolete |
 
 ## Related code
 
