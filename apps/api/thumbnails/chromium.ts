@@ -184,7 +184,13 @@ export class CdpClient {
     }
 
     this.callbacks.clear()
+    this.listeners.clear()
     this.socket.close()
+  }
+
+  /** Drop event listeners so a reused page does not accumulate handlers. */
+  clearListeners() {
+    this.listeners.clear()
   }
 
   on(method: string, listener: CdpListener) {
@@ -461,6 +467,11 @@ export async function evaluate<T>(cdp: CdpClient, expression: string) {
 export type ChromiumPool = {
   ensureBrowser: () => Promise<BrowserProcess>
   createPage: () => Promise<BrowserPage>
+  /**
+   * Return a page to the pool for reuse, or destroy it after errors/aborts.
+   * When omitted (tests), callers should fall back to `page.close()`.
+   */
+  releasePage?: (page: BrowserPage, options?: { destroy?: boolean }) => Promise<void>
   close: () => Promise<void>
   isAvailable: () => boolean
 }
@@ -469,6 +480,7 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
   const enabled = options.enabled ?? isThumbnailRendererAvailable()
   let browserPromise: Promise<BrowserProcess> | null = null
   let browser: BrowserProcess | null = null
+  let idlePage: BrowserPage | null = null
 
   const ensureBrowser = async () => {
     if (!enabled) {
@@ -489,6 +501,7 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
           if (browser === nextBrowser) {
             browser = null
             browserPromise = null
+            idlePage = null
           }
         })
 
@@ -497,6 +510,7 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
       })().catch((error) => {
         browserPromise = null
         browser = null
+        idlePage = null
         throw error
       })
     }
@@ -504,17 +518,56 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
     return browserPromise
   }
 
+  const destroyPage = async (page: BrowserPage) => {
+    await page.close().catch(() => undefined)
+  }
+
+  const resetPageForReuse = async (page: BrowserPage) => {
+    page.cdp.clearListeners()
+    // Clear leftover CDP domain state from the previous render (network audit, etc.).
+    await page.cdp.send('Network.disable').catch(() => undefined)
+    await page.cdp.send('Page.navigate', { url: 'about:blank' })
+    await page.cdp.waitForEvent('Page.loadEventFired', () => true, 5_000).catch(() => undefined)
+  }
+
   return {
     isAvailable: () => enabled && Boolean(findChromium()),
     ensureBrowser,
     async createPage() {
       const current = await ensureBrowser()
+      const reusable = idlePage
+      idlePage = null
+
+      if (reusable) {
+        return reusable
+      }
+
       return createPage(current.debugPort)
     },
+    async releasePage(page, options = {}) {
+      if (options.destroy || idlePage) {
+        await destroyPage(page)
+        return
+      }
+
+      try {
+        await resetPageForReuse(page)
+        idlePage = page
+      } catch {
+        await destroyPage(page)
+      }
+    },
     async close() {
+      const reusable = idlePage
+      idlePage = null
       const current = browser
       browser = null
       browserPromise = null
+
+      if (reusable) {
+        await destroyPage(reusable)
+      }
+
       await stopChromium(current)
     },
   }

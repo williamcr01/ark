@@ -715,6 +715,107 @@ describe('thumbnail service', () => {
     })
   })
 
+  it('aborts an in-flight obsolete background warm for the same deck', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
+    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))
+
+    const renderOrder: string[] = []
+    const logs: CapturedLogEntry[] = []
+    const seenSignals: Array<AbortSignal | undefined> = []
+    let oldWarmVersionId = ''
+    let releaseOldRender: (() => void) | null = null
+    let resolveOldRenderStarted: (() => void) | null = null
+    const oldRenderStarted = new Promise<void>((resolve) => {
+      resolveOldRenderStarted = resolve
+    })
+    const oldRenderGate = new Promise<void>((resolve) => {
+      releaseOldRender = resolve
+    })
+    const deckStore = createDeckStore(dataDir)
+    const service = trackService(
+      createThumbnailService({
+        cache: createThumbnailCache(cacheDir),
+        deckStore,
+        logger: createTestLogger(logs),
+        renderer: {
+          isAvailable: () => true,
+          close: async () => undefined,
+          render: async (request) => {
+            const versionId = request.versionId ?? 'unknown'
+            seenSignals.push(request.signal)
+            renderOrder.push(versionId)
+            resolveOldRenderStarted?.()
+
+            if (versionId === oldWarmVersionId) {
+              try {
+                await Promise.race([
+                  oldRenderGate,
+                  new Promise<void>((_resolve, reject) => {
+                    if (request.signal?.aborted) {
+                      reject(new Error('Thumbnail render aborted.'))
+                      return
+                    }
+
+                    request.signal?.addEventListener(
+                      'abort',
+                      () => reject(new Error('Thumbnail render aborted.')),
+                      { once: true },
+                    )
+                  }),
+                ])
+              } catch (error) {
+                return {
+                  ok: false as const,
+                  error: error instanceof Error ? error.message : 'Thumbnail render aborted.',
+                  durationMs: 1,
+                  aborted: true,
+                }
+              }
+            }
+
+            return {
+              ok: true,
+              slides: (request.slideIndexes ?? [0, 1]).map(() => Buffer.from('png')),
+              slideCount: 2,
+              width: 480,
+              height: 270,
+              durationMs: 1,
+            }
+          },
+        },
+      }),
+    )
+
+    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    oldWarmVersionId = created.activeVersionId!
+    await service.enqueueForDeckVersion(created.id, oldWarmVersionId)
+    await oldRenderStarted
+
+    const updated = await deckStore.updateDeck(
+      created.id,
+      sampleHtml.replace('Two', 'Two updated'),
+      {
+        source: 'manual',
+      },
+    )
+    const newWarmVersionId = updated!.activeVersionId!
+    await service.enqueueForDeckVersion(created.id, newWarmVersionId)
+
+    await vi.waitFor(() => {
+      expect(renderOrder).toContain(newWarmVersionId)
+    })
+    expect(seenSignals[0]?.aborted).toBe(true)
+
+    const abortLog = logs.find((entry) => entry.event === 'thumbnail.queue.aborted')
+    expect(abortLog?.fields.fields).toMatchObject({
+      versionId: oldWarmVersionId,
+      replacementVersionId: newWarmVersionId,
+      reason: 'obsolete_warm',
+    })
+
+    releaseOldRender?.()
+  })
+
   it('preserves a newer warm when an older warm resolves out of order', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-decks-'))
     cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-cache-'))

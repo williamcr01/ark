@@ -59,8 +59,35 @@ Artifact:
 | `reveal-registry`  | 0ms, 40ms, 80ms, 120ms                          |
 | `reveal-fragments` | 0ms, 40ms, 80ms, 120ms                          |
 
-Decision: lower `THUMBNAIL_SETTLE_MS` from 120ms to 80ms. The tested lower values
-were byte-identical on these fixtures, but 80ms is a conservative fallback that
-preserves some time budget around the adaptive font/image/frame settle path.
-This is **not** a broad visual QA pass; fixtures are small and the
-`reveal-fragments` case only embeds a fragment span (it does not step fragments).
+Decision: lower `THUMBNAIL_SETTLE_MS` from 120ms to 80ms, then to **40ms**.
+The tested lower values were byte-identical on these fixtures; 40ms keeps a
+small fallback budget around the adaptive font/image/frame settle path while
+cutting up to ~40ms per captured slide vs the prior 80ms default. This is
+**not** a broad visual QA pass; fixtures are small and the `reveal-fragments`
+case only embeds a fragment span (it does not step fragments).
+
+## 2026-07-12 renderer hot-path optimizations
+
+Same host, production web bundle. Primary signal remains
+`final_version_thumb_ready_ms` on `rapid_version_burst` (API ready after last
+PUT). Supporting signals: `thumbnail_render_count`, per-render
+`durationMs`, upload/reload shell metrics.
+
+Changes shipped:
+
+1. **Abort in-flight obsolete warms** — a newer background warm for the same
+   deck aborts the running Chromium capture via `AbortSignal`, so mid-burst
+   versions stop blocking the final version (was: only queued jobs discarded).
+2. **Reuse Chromium tabs** — successful renders return the page to a one-slot
+   pool (`about:blank` + cleared CDP listeners) instead of
+   create/dispose every job.
+3. **Precompute thumbnail preview HTML** at session create so
+   `GET /api/thumbnail-render/:token` does not rebuild JSDOM on the navigation
+   critical path.
+4. **Tighter CDP polls** (ready/goto 10ms, settle 5ms), **skip goto** when
+   already on the target slide, **single rAF** settle, **settleMs=40**,
+   **defer `cache.cleanup()`** off the ready path, pass `slideCount` to skip a
+   redundant parse, and reduce client `PENDING_REPOLL_MS` 250→50.
+
+See PR notes / `artifacts/renderer-benchmarks/{baseline,optimized}.json` for
+measured before/after on this host.

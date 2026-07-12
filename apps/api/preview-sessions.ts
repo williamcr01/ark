@@ -1,17 +1,29 @@
 import { nanoid } from 'nanoid'
 
+export type ThumbnailPreviewCache = {
+  html: string
+  runtimeMode: 'static' | 'reveal' | 'custom-js'
+  nonce: string | null
+}
+
 export type PreviewSession = {
   token: string
   /** Correlates the render generation for the bridge handshake (not a secret). */
   handshake: string
   html: string
   editorBridge: boolean
+  /**
+   * Optional prebuilt thumbnail iframe document. When set, the thumbnail render
+   * host serves this instead of synchronously rebuilding preview HTML on GET.
+   */
+  thumbnailPreview?: ThumbnailPreviewCache
   createdAt: number
   expiresAt: number
 }
 
 export type PreviewSessionOptions = {
   editorBridge?: boolean
+  thumbnailPreview?: ThumbnailPreviewCache
 }
 
 export type PreviewSessionStore = {
@@ -48,6 +60,7 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
         handshake,
         html,
         editorBridge: options.editorBridge === true,
+        ...(options.thumbnailPreview ? { thumbnailPreview: options.thumbnailPreview } : {}),
         createdAt: now,
         expiresAt: now + ttlMs,
       }

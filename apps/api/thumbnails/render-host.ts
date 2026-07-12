@@ -186,7 +186,6 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
     revealFragments();
     return waitForImages()
       .then(waitForFonts)
-      .then(waitForAnimationFrame)
       .then(waitForAnimationFrame);
   }
 
@@ -574,7 +573,13 @@ export function createThumbnailRenderRouter(deps: {
         return
       }
 
-      const preview = renderThumbnailPreviewDocument(session.html, { parentOrigin })
+      const preview = session.thumbnailPreview
+        ? {
+            html: session.thumbnailPreview.html,
+            runtimeMode: session.thumbnailPreview.runtimeMode,
+            nonce: session.thumbnailPreview.nonce,
+          }
+        : renderThumbnailPreviewDocument(session.html, { parentOrigin })
 
       applyThumbnailRenderSecurityHeaders(response, parentOrigin, {
         runtimeMode: preview.runtimeMode,
