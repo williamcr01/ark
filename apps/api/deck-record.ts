@@ -11,7 +11,12 @@ export type {
 
 export type { DeckVersionOptions as DeckVersionRequestOptions } from '@ark/contracts'
 
-export { isValidDeckId, normalizeDeckTitle, normalizeDeckVersionSource } from '@ark/contracts'
+export {
+  isValidDeckId,
+  normalizeDeckTitle,
+  normalizeDeckVersionSource,
+  extractDeckTitle,
+} from '@ark/contracts'
 
 import type {
   DeckSummary,
@@ -21,7 +26,6 @@ import type {
   StoredDeck,
   DeckVersionOptions as SharedDeckVersionOptions,
 } from '@ark/contracts'
-import { normalizeDeckTitle } from '@ark/contracts'
 
 export type DeckVersionOptions = SharedDeckVersionOptions & {
   validationStatus?: DeckValidationStatus
@@ -45,12 +49,6 @@ export type DeckStore = {
     versionId: string,
     options?: DeckVersionOptions,
   ) => Promise<StoredDeck | null>
-}
-
-export function extractDeckTitle(html: string) {
-  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
-
-  return normalizeDeckTitle(match?.[1])
 }
 
 export function normalizeDeckValidationStatus(

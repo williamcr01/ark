@@ -13,7 +13,12 @@ import {
 import path from 'node:path'
 
 import { REPO_ROOT } from '../repo-root.ts'
-import { THUMBNAIL_CACHE_MAX_ENTRIES, THUMBNAIL_STATUS, type ThumbnailStatus } from './constants.ts'
+import {
+  THUMBNAIL_CACHE_MAX_ENTRIES,
+  THUMBNAIL_STATUS,
+  THUMBNAIL_TEMP_BLOB_GRACE_MS,
+  type ThumbnailStatus,
+} from './constants.ts'
 
 const DEFAULT_CACHE_DIR = path.resolve(REPO_ROOT, 'data', 'thumbnails')
 const THUMBNAIL_BLOB_DIR_NAME = 'blobs'
@@ -319,7 +324,7 @@ export function createThumbnailCache(
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.failed,
-      attempts: existing?.attempts ?? 1,
+      attempts: input.attempts ?? existing?.attempts ?? 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
@@ -362,11 +367,23 @@ export function createThumbnailCache(
 
     const referenced = await collectReferencedFingerprints(versionDirs)
 
+    const nowMs = Date.now()
+
     await Promise.all(
       blobEntries.map(async (name) => {
         const blobPath = path.join(blobDir, name)
 
         if (name.endsWith('.tmp') || name.startsWith('.')) {
+          // Skip recent temps so deferred cleanup cannot race an in-flight write.
+          try {
+            const tempStat = await stat(blobPath)
+            if (nowMs - tempStat.mtimeMs < THUMBNAIL_TEMP_BLOB_GRACE_MS) {
+              return
+            }
+          } catch {
+            return
+          }
+
           await rm(blobPath, { force: true })
           return
         }

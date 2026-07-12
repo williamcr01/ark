@@ -19,7 +19,7 @@ export type SandboxPreviewState = {
   handshake: string | null
 }
 
-const PREVIEW_SESSION_COALESCE_MS = 300
+const PREVIEW_SESSION_COALESCE_MS = 100
 /** Interactive shell previews always inject a dormant editor runtime. */
 const INTERACTIVE_EDITOR_BRIDGE = true
 

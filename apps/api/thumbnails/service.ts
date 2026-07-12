@@ -24,6 +24,7 @@ import {
 } from './constants.ts'
 import { computeThumbnailSlideFingerprints } from './fingerprints.ts'
 import type { ThumbnailRenderer } from './renderer.ts'
+import { THUMBNAIL_RENDER_ABORTED_ERROR } from './renderer.ts'
 
 export type ThumbnailSlideInfo = {
   index: number
@@ -72,6 +73,7 @@ type ThumbnailQueueJob = {
   priority: ThumbnailQueuePriority
   state: 'queued' | 'running'
   enqueuedAt: number
+  abortController: AbortController
   promise: Promise<void>
   resolve: () => void
 }
@@ -376,6 +378,42 @@ export function createThumbnailService(options: {
     }
   }
 
+  const abortObsoleteRunningWarms = (input: ThumbnailInternalEnqueueInput) => {
+    const incomingVersion = input.versionNumber
+
+    if (typeof incomingVersion !== 'number') {
+      return
+    }
+
+    for (const job of jobsById.values()) {
+      if (
+        job.state !== 'running' ||
+        job.priority !== 'background' ||
+        job.input.deckId !== input.deckId ||
+        job.abortController.signal.aborted
+      ) {
+        continue
+      }
+
+      const jobVersion = job.input.versionNumber
+
+      if (typeof jobVersion === 'number' && jobVersion < incomingVersion) {
+        job.abortController.abort()
+        logger.info('thumbnail.queue.aborted', {
+          deckId: job.input.deckId,
+          fields: {
+            versionId: job.input.versionId,
+            manifestHash: job.input.manifestHash,
+            priority: job.priority,
+            replacementVersionId: input.versionId,
+            replacementManifestHash: input.manifestHash,
+            reason: 'obsolete_warm',
+          },
+        })
+      }
+    }
+  }
+
   const isObsoleteIncomingWarm = (input: ThumbnailInternalEnqueueInput) => {
     const incomingVersion = input.versionNumber
 
@@ -416,11 +454,9 @@ export function createThumbnailService(options: {
     input: ThumbnailInternalEnqueueInput,
     priority: ThumbnailQueuePriority,
   ) => {
-    if (
-      existing.state === 'queued' &&
-      existing.priority === 'background' &&
-      priority === 'foreground'
-    ) {
+    // Promote even while running so a foreground waiter cannot be aborted as
+    // an obsolete background warm.
+    if (existing.priority === 'background' && priority === 'foreground') {
       existing.priority = 'foreground'
       logger.debug('thumbnail.queue.promoted', {
         deckId: existing.input.deckId,
@@ -428,6 +464,7 @@ export function createThumbnailService(options: {
           versionId: existing.input.versionId,
           manifestHash: existing.input.manifestHash,
           priority: existing.priority,
+          state: existing.state,
         },
       })
     }
@@ -460,6 +497,7 @@ export function createThumbnailService(options: {
 
     if (priority === 'background') {
       discardObsoleteWarmJobs(input, id)
+      abortObsoleteRunningWarms(input)
 
       // A late older warm must not join the queue when a newer warm is already
       // present (queued or running) for the same deck.
@@ -509,6 +547,7 @@ export function createThumbnailService(options: {
       priority,
       state: 'queued',
       enqueuedAt: Date.now(),
+      abortController: new AbortController(),
       promise,
       resolve: resolveJob,
     }
@@ -571,7 +610,10 @@ export function createThumbnailService(options: {
     return toClientStatusResult(input.deckId, input.versionId, input.manifestHash, meta)
   }
 
-  const runJob = async (input: ThumbnailEnqueueInput): Promise<ThumbnailRunOutcome> => {
+  const runJob = async (
+    input: ThumbnailEnqueueInput,
+    signal?: AbortSignal,
+  ): Promise<ThumbnailRunOutcome> => {
     const key = buildThumbnailCacheKey(input.versionId, input.manifestHash)
     const timing = { cacheWriteMs: 0 }
     const fingerprints = computeThumbnailSlideFingerprints(input.html, key.manifestHash)
@@ -587,6 +629,25 @@ export function createThumbnailService(options: {
     }
 
     await measureCacheWrite(timing, () => options.cache.markPending(key, baseMeta))
+
+    if (signal?.aborted) {
+      await measureCacheWrite(timing, async () => {
+        const existing = await options.cache.readMeta(key)
+        // Undo the markPending attempt increment so abort does not burn budget.
+        await options.cache.markFailed(key, {
+          ...baseMeta,
+          error: THUMBNAIL_RENDER_ABORTED_ERROR,
+          attempts: Math.max(0, (existing?.attempts ?? 1) - 1),
+        })
+      })
+      return {
+        status: THUMBNAIL_STATUS.failed,
+        renderMs: 0,
+        cacheWriteMs: timing.cacheWriteMs,
+        slideCount: fingerprints.parsed.slideCount,
+        error: THUMBNAIL_RENDER_ABORTED_ERROR,
+      }
+    }
 
     if (fingerprints.parsed.slideCount <= 0) {
       const error = 'Deck has no slides to render.'
@@ -648,16 +709,34 @@ export function createThumbnailService(options: {
         deckId: input.deckId,
         versionId: input.versionId,
         slideIndexes: missingSlideIndexes,
+        slideCount: fingerprints.parsed.slideCount,
+        signal,
       })
       renderMs = result.durationMs ?? Date.now() - renderStartedAt
 
       if (!result.ok) {
-        await measureCacheWrite(timing, () =>
-          options.cache.markFailed(key, {
+        const aborted =
+          result.aborted ||
+          result.error === THUMBNAIL_RENDER_ABORTED_ERROR ||
+          Boolean(signal?.aborted)
+        await measureCacheWrite(timing, async () => {
+          if (!aborted) {
+            await options.cache.markFailed(key, {
+              ...baseMeta,
+              error: result.error,
+            })
+            return
+          }
+
+          const existing = await options.cache.readMeta(key)
+          // Aborted/superseded renders must remain retryable (e.g. rollback).
+          // Undo the markPending attempt increment so abort does not burn budget.
+          await options.cache.markFailed(key, {
             ...baseMeta,
             error: result.error,
-          }),
-        )
+            attempts: Math.max(0, (existing?.attempts ?? 1) - 1),
+          })
+        })
         return {
           status: THUMBNAIL_STATUS.failed,
           renderMs,
@@ -704,8 +783,10 @@ export function createThumbnailService(options: {
       await options.cache.markReady(key, {
         ...baseMeta,
       })
-      await options.cache.cleanup()
     })
+    // Cleanup is not on the client-visible ready path: orphan blob sweeps can
+    // wait until after long-pollers unblock.
+    void options.cache.cleanup().catch(() => undefined)
 
     return {
       status: THUMBNAIL_STATUS.ready,
@@ -748,7 +829,7 @@ export function createThumbnailService(options: {
         return
       }
 
-      const outcome = await runJob({ ...job.input, html })
+      const outcome = await runJob({ ...job.input, html }, job.abortController.signal)
       const durationMs = Date.now() - job.enqueuedAt
 
       logger.info('thumbnail.queue.completed', {
@@ -877,6 +958,26 @@ export function createThumbnailService(options: {
       }
 
       if (meta?.status === THUMBNAIL_STATUS.pending) {
+        // Promote an already-running/queued local warm so a foreground waiter
+        // cannot be aborted as obsolete. Do not create a new job here — another
+        // process may own the pending lease.
+        if (input.enqueueIfMissing && (input.html || input.loadHtml)) {
+          const existing = jobsById.get(keyId(key))
+          if (existing) {
+            mergeJobInput(
+              existing,
+              {
+                deckId: input.deckId,
+                versionId: input.versionId,
+                html: input.html,
+                loadHtml: input.loadHtml,
+                manifestHash: input.manifestHash,
+              },
+              'foreground',
+            )
+          }
+        }
+
         const waited = await waitForLocalInflight(key, input)
 
         if (waited) {

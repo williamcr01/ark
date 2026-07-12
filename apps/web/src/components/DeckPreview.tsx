@@ -248,7 +248,14 @@ export function DeckPreview({
   })
   // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
   // while the main preview is still settling (manual-edit smoke / CDP context lookup).
+  // Never defer the initial empty→slides transition: a deferred empty parse leaves the
+  // strip unmounted while the slide counter is already visible, and benchmarks/tooling
+  // that toggle the strip can accidentally collapse it before it appears.
   const deferredParsedDeck = useDeferredValue(parsedDeck)
+  const stripParsedDeck =
+    deferredParsedDeck.slideCount === 0 && parsedDeck.slideCount > 0
+      ? parsedDeck
+      : deferredParsedDeck
   const deferredThumbnailUrls = useDeferredValue(thumbnailUrls)
 
   useEffect(() => {
@@ -1196,7 +1203,7 @@ export function DeckPreview({
             isOpen={isStripOpen}
             onSelect={goToSlide}
             orientation={stripOrientation}
-            parsedDeck={deferredParsedDeck}
+            parsedDeck={stripParsedDeck}
             thumbnailUrls={deferredThumbnailUrls}
           />
         ) : null}

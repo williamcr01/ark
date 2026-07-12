@@ -16,6 +16,7 @@ import {
 } from '@ark/runtime-registry/deck-runtime.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
 import {
+  findSlideElements,
   SLIDE_SELECTOR_CHAIN,
   stripHostileNavigationFromHtml,
   stripHostileNavigationVectors,
@@ -396,6 +397,37 @@ function finalizePreviewHtml(doc: Document): string {
 }
 
 /**
+ * Mark slide 0 visible and hide siblings before CSS-nav JS runs so the first
+ * paint already shows the active slide (benchmark `preview_active_slide_ms`).
+ */
+function activateInitialCssNavSlide(doc: Document) {
+  const slides = findSlideElements(doc)
+
+  if (slides.length === 0) {
+    return
+  }
+
+  for (let index = 0; index < slides.length; index += 1) {
+    const slide = slides[index]!
+    const isActive = index === 0
+
+    if (isActive) {
+      slide.removeAttribute('data-ark-hidden')
+      slide.setAttribute('data-ark-active', '')
+      slide.classList.add('active', 'is-active', 'present')
+      slide.setAttribute('aria-hidden', 'false')
+      slide.setAttribute('data-active', '')
+    } else {
+      slide.removeAttribute('data-ark-active')
+      slide.setAttribute('data-ark-hidden', '')
+      slide.classList.remove('active', 'is-active', 'present')
+      slide.setAttribute('aria-hidden', 'true')
+      slide.removeAttribute('data-active')
+    }
+  }
+}
+
+/**
  * Build the full preview document, returning HTML plus the CSP nonce used for
  * Ark-injected scripts (null in custom-js mode). Prefer this over
  * {@link buildPreviewHtml} when the caller also needs to set a matching HTTP
@@ -476,6 +508,7 @@ export function buildPreviewDocument(
   absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
   injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
   appendPreviewFill(doc, { nonce })
+  activateInitialCssNavSlide(doc)
   appendScript(
     doc,
     body,
@@ -511,6 +544,12 @@ export function injectPreviewHandshake(
     return html
   }
 
+  const fastPath = tryInjectPreviewHandshakeFast(html, options)
+
+  if (fastPath !== null) {
+    return fastPath
+  }
+
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const nonce = options.nonce?.trim() || null
 
@@ -530,6 +569,51 @@ export function injectPreviewHandshake(
   // Same post-serialize hostile strip as buildPreviewDocument so a second
   // parse/serialize cannot resurrect NUL-byte meta refresh (or similar).
   return finalizePreviewHtml(doc)
+}
+
+/**
+ * Cache-hit fast path: rewrite the unique nonce placeholder and inject the
+ * handshake sentinel without a full DOM re-parse. Falls back to null when the
+ * document shape is unfamiliar.
+ */
+function tryInjectPreviewHandshakeFast(
+  html: string,
+  options: PreviewHandshakeInjectionOptions,
+): string | null {
+  const handshake = options.handshake?.trim()
+  const nonce = options.nonce?.trim()
+  const placeholder = options.noncePlaceholder?.trim()
+
+  if (!handshake || !nonce || !placeholder || nonce === placeholder) {
+    return null
+  }
+
+  if (!html.includes(placeholder)) {
+    return null
+  }
+
+  // Placeholder is a unique cache token (`ArkPreviewCacheNoncePlaceholder`);
+  // global replace rewrites both attribute nonces and CSP `'nonce-…'` sources.
+  let next = html.replaceAll(placeholder, nonce)
+
+  // Only treat an Ark-injected handshake <script> as already present. Deck
+  // authored attributes like data-ark-preview-handshake must not suppress
+  // sentinel injection.
+  if (/<script\b[^>]*\bdata-ark-preview-handshake\b/i.test(next)) {
+    return next
+  }
+
+  const scriptBody = buildDeckHandshakeSentinelScript(handshake, options.parentOrigin)
+  const scriptTag = `<script data-ark-preview-handshake="" nonce="${nonce}">${scriptBody}</script>`
+  const headOpen = next.match(/<head([^>]*)>/i)
+
+  if (!headOpen || headOpen.index === undefined) {
+    return null
+  }
+
+  const insertAt = headOpen.index + headOpen[0].length
+  next = `${next.slice(0, insertAt)}${scriptTag}${next.slice(insertAt)}`
+  return next
 }
 
 /** @deprecated Use {@link buildPreviewHtml} */

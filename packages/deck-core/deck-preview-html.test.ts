@@ -28,6 +28,27 @@ function hostileNulMetaRefreshDeck(options: { customJs?: boolean } = {}) {
 }
 
 describe('buildPreviewDocument', () => {
+  it('pre-activates slide 0 for css-only decks before nav script runs', () => {
+    const { html, runtimeMode } = buildPreviewDocument(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Plain</title></head>
+<body>
+  <section class="slide"><h1>One</h1></section>
+  <section class="slide"><h1>Two</h1></section>
+</body>
+</html>`)
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const slides = [...doc.querySelectorAll('section.slide')]
+
+    expect(runtimeMode).toBe('static')
+    expect(slides).toHaveLength(2)
+    expect(slides[0]?.hasAttribute('data-ark-active')).toBe(true)
+    expect(slides[0]?.classList.contains('active')).toBe(true)
+    expect(slides[0]?.getAttribute('aria-hidden')).toBe('false')
+    expect(slides[1]?.hasAttribute('data-ark-hidden')).toBe(true)
+    expect(slides[1]?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('injects the handshake and rewrites cached nonce placeholders after the preview boundary', () => {
     const noncePlaceholder = 'CachedNoncePlaceholder'
     const freshNonce = 'FreshSessionNonce'
@@ -62,6 +83,31 @@ describe('buildPreviewDocument', () => {
     expect(previewDoc.querySelector('[data-ark-preview-nav]')?.getAttribute('nonce')).toBe(
       freshNonce,
     )
+  })
+
+  it('still injects the handshake when authored markup uses the handshake attribute name', () => {
+    const noncePlaceholder = 'CachedNoncePlaceholder'
+    const authored = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Plain</title></head>
+<body>
+  <section class="slide" data-ark-preview-handshake="authored"><h1>One</h1></section>
+</body>
+</html>`
+    const { html } = buildPreviewDocument(authored, {
+      parentOrigin: 'http://localhost:5173',
+      nonce: noncePlaceholder,
+    })
+
+    const previewHtml = injectPreviewHandshake(html, {
+      parentOrigin: 'http://localhost:5173',
+      handshake: 'session-handshake-authored',
+      nonce: 'FreshSessionNonce',
+      noncePlaceholder,
+    })
+
+    expect(previewHtml).toContain('session-handshake-authored')
+    expect(previewHtml).toMatch(/<script\b[^>]*\bdata-ark-preview-handshake\b/i)
   })
 
   it('keeps post-serialize hostile stripping on the handshake injection path', () => {

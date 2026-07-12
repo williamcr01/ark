@@ -76,8 +76,6 @@ export function parseDeckSlideDocument(
   doc: Document,
   options: ParseDeckSlidesOptions = {},
 ): ParsedDeck {
-  startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
-
   const slideElements = findSlideElements(doc)
 
   if (slideElements.length === 0) {
@@ -95,13 +93,9 @@ export function parseDeckSlideDocument(
   }))
 
   const runtimeMode = detectRuntimeModeFromDocument(doc)
-  const buildThumbnailSrcDoc = createThumbnailSrcDocBuilder(
-    doc,
-    htmlAttrs,
-    bodyAttrs,
-    runtimeMode,
-    options,
-  )
+  // Thumbnail srcDoc prep (reveal CSS inlining, etc.) is deferred until the
+  // strip actually needs a fallback iframe — main preview/shell must not wait.
+  let buildThumbnailSrcDoc: ((index: number) => string) | null = null
 
   return {
     slideCount: slides.length,
@@ -114,6 +108,17 @@ export function parseDeckSlideDocument(
         return ''
       }
 
+      if (!buildThumbnailSrcDoc) {
+        startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
+        buildThumbnailSrcDoc = createThumbnailSrcDocBuilder(
+          doc,
+          htmlAttrs,
+          bodyAttrs,
+          runtimeMode,
+          options,
+        )
+      }
+
       return buildThumbnailSrcDoc(index)
     },
   }
@@ -121,7 +126,6 @@ export function parseDeckSlideDocument(
 
 export function parseDeckSlides(html: string, options: ParseDeckSlidesOptions = {}): ParsedDeck {
   if (!html.trim()) {
-    startRevealThumbnailStylesPreload({ assetOrigin: options.assetOrigin })
     return emptyParsedDeck
   }
 
