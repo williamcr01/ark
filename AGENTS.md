@@ -169,6 +169,13 @@ Server implementation: `server/deck-parser.ts`, `server/deck-tools.ts`, `server/
 
 One user message → one agent run → as many tool/model steps as needed → deck update + assistant summary.
 
+## Licensing
+
+- Check licenses before adding or upgrading dependencies (direct or notable transitive) and before vendoring assets such as fonts, runtimes, or scripts.
+- Prefer permissive, commercial SaaS-friendly licenses: MIT, Apache-2.0, BSD, ISC, 0BSD, BlueOak, and OFL for fonts. For dual-licensed packages, choose the permissive option (e.g. Apache-2.0 over MPL).
+- Avoid or escalate copyleft/restrictive terms that can conflict with closed-source SaaS use: GPL, AGPL, SSPL, BUSL, Commons Clause, or proprietary licenses without a commercial grant.
+- When redistributing fonts/assets, keep their LICENSE/NOTICE files with the redistributed files and update the root `NOTICE` when present.
+
 ## What to avoid
 
 - Do not use npm or yarn — always pnpm.
