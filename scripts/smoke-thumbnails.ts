@@ -106,17 +106,37 @@ async function runSmoke() {
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
-    await waitFor(
+    const mainPreview = await waitFor(
       'main sandbox preview frame context',
       () => findContextByUrl(cdp!, contexts, mainPreviewSrc!),
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
+    await waitFor('active slide content before thumbnail loading', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `(() => {
+          const active = document.querySelector('section.slide.active, section.slide.is-active');
+          return Boolean(active && (active.textContent || '').includes('Quarterly planning'));
+        })()`,
+        { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
+      ),
+    )
+
     const renderedThumbnails = await waitFor(
-      'sandbox-rendered PNG thumbnails',
+      'decoded sandbox-rendered PNG thumbnails',
       async () => {
         const thumbs = await evaluate<
-          Array<{ title: string; tag: string; src: string | null; sandbox: string | null }>
+          Array<{
+            title: string
+            tag: string
+            src: string | null
+            sandbox: string | null
+            complete: boolean
+            naturalWidth: number
+            loading: string | null
+            fetchPriority: string | null
+          }>
         >(
           cdp!,
           `Array.from(document.querySelectorAll('[title$="thumbnail"]')).map((node) => ({
@@ -124,6 +144,10 @@ async function runSmoke() {
             tag: node.tagName,
             src: node.getAttribute('src'),
             sandbox: node.getAttribute('sandbox'),
+            complete: node instanceof HTMLImageElement ? node.complete : false,
+            naturalWidth: node instanceof HTMLImageElement ? node.naturalWidth : 0,
+            loading: node.getAttribute('loading'),
+            fetchPriority: node.getAttribute('fetchpriority'),
           }))`,
         )
 
@@ -136,7 +160,9 @@ async function runSmoke() {
             thumb.tag === 'IMG' &&
             typeof thumb.src === 'string' &&
             thumb.src.includes('/thumbnails/') &&
-            thumb.src.includes('.png?hash='),
+            thumb.src.includes('.png?hash=') &&
+            thumb.complete &&
+            thumb.naturalWidth > 0,
         )
 
         return images.length >= 3 ? images : null
@@ -147,6 +173,14 @@ async function runSmoke() {
     assert(
       renderedThumbnails.length >= 3,
       `Expected rendered PNG thumbnails, found ${JSON.stringify(renderedThumbnails)}`,
+    )
+    const firstThumbnail = renderedThumbnails.find(
+      (thumbnail) => thumbnail.title === 'Slide 1 thumbnail',
+    )
+    assert(firstThumbnail, 'Expected slide 1 thumbnail to load and decode.')
+    assert(
+      firstThumbnail.loading === 'eager' && firstThumbnail.fetchPriority === 'high',
+      `Expected slide 1 thumbnail to be prioritized, found ${JSON.stringify(firstThumbnail)}`,
     )
 
     await evaluate<boolean>(

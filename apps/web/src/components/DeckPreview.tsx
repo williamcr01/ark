@@ -207,6 +207,14 @@ export function DeckPreview({
   })
   const previewCompromised = bridgeSession.compromised
   const bridgeEnabled = previewEnabled && !previewCompromised
+  // Keep secondary preview work off the critical path until the current main
+  // frame has loaded and completed its handshake. In particular, a thumbnail
+  // long-poll can occupy an HTTP/1.1 connection for five seconds and fallback
+  // iframes compete with the main frame for parse/layout time.
+  const mainPreviewReady =
+    previewCompromised ||
+    Boolean(previewFrame.error) ||
+    (bridgeSession.armed && !previewFrame.isLoading && !previewFrame.isStale)
   const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
@@ -244,7 +252,7 @@ export function DeckPreview({
     },
   )
   const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
-    enabled: !editChromeActive,
+    enabled: !editChromeActive && mainPreviewReady,
   })
   // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
   // while the main preview is still settling (manual-edit smoke / CDP context lookup).
@@ -1199,6 +1207,7 @@ export function DeckPreview({
         {hasStrip ? (
           <SlideThumbnailStrip
             activeIndex={activeSlideIndex}
+            contentEnabled={mainPreviewReady}
             id="ark-slide-strip"
             isOpen={isStripOpen}
             onSelect={goToSlide}
