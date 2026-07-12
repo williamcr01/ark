@@ -148,6 +148,63 @@ describe('useDeckPersistence', () => {
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
 
+  it('does not let a slow boot list overwrite a deck selected after early apply', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    let resolveList: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
+    const listGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolveList = resolve
+    })
+
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url === '/api/decks' && (!init || init.method === undefined || init.method === 'GET')) {
+        return listGate
+      }
+
+      if (url === `/api/decks/${deck.id}`) {
+        return jsonResponse({ deck })
+      }
+
+      if (url === `/api/decks/${secondDeck.id}`) {
+        return jsonResponse({ deck: secondDeck })
+      }
+
+      if (url.includes('/versions')) {
+        return versionsResponse(secondDeck.id)
+      }
+
+      return jsonResponse({ error: 'Not found' }, { status: 404 })
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => {
+      expect(result.current.deckId).toBe(deck.id)
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.selectDeck(secondDeck.id)
+    })
+
+    expect(result.current.deckId).toBe(secondDeck.id)
+
+    await act(async () => {
+      resolveList?.(jsonResponse({ decks: [toSummary(deck), toSummary(secondDeck)] }))
+    })
+
+    await waitFor(() => {
+      expect(result.current.decks).toEqual([toSummary(deck), toSummary(secondDeck)])
+    })
+
+    expect(result.current.deckId).toBe(secondDeck.id)
+    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(secondDeck.id)
+  })
+
   it('persists new HTML and marks the deck as saved', async () => {
     const fetchMock = vi
       .fn()
