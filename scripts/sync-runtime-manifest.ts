@@ -71,6 +71,22 @@ async function copyRevealFontAssets(targetVersionDir: string) {
   )
 }
 
+async function assertRevealFontLicense(fontRoot: string) {
+  // Source Sans Pro is redistributed under the OFL; keep the license with the font files.
+  const licensePath = path.join(fontRoot, 'LICENSE')
+
+  try {
+    await fs.access(licensePath)
+  } catch {
+    throw new Error(
+      `Missing reveal.js ${REVEAL_THEME_FONT_FAMILY} font license at ${path.relative(
+        ROOT,
+        licensePath,
+      )}`,
+    )
+  }
+}
+
 async function buildAssetMetadata(versionDir: string, assetPath: string): Promise<ManifestAsset> {
   const absolutePath = path.join(versionDir, assetPath)
   const { sha256, size } = await hashFile(absolutePath)
@@ -101,6 +117,7 @@ async function syncRevealRuntime(manifest: RuntimeManifest) {
   }
 
   const fontRoot = path.join(versionDir, 'theme', 'fonts', REVEAL_THEME_FONT_FAMILY)
+  await assertRevealFontLicense(fontRoot)
   const fontAssetPaths = await listRuntimeAssetFiles(fontRoot, fontRoot)
   const assetPaths = [
     ...(entry.requiredAssets.js ?? []),

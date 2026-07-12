@@ -214,8 +214,33 @@ export function createThumbnailService(options: {
   const jobsById = new Map<string, ThumbnailQueueJob>()
   const queuedJobs: ThumbnailQueueJob[] = []
   let activeCount = 0
+  let closed = false
+  let closing: Promise<void> | null = null
+  let idleWaiters: Array<() => void> = []
 
   const keyId = (key: ThumbnailCacheKey) => `${key.versionId}:${key.manifestHash}`
+
+  const notifyIdle = () => {
+    if (activeCount > 0 || queuedJobs.length > 0) {
+      return
+    }
+
+    const waiters = idleWaiters
+    idleWaiters = []
+    for (const resolve of waiters) {
+      resolve()
+    }
+  }
+
+  const waitUntilIdle = () => {
+    if (activeCount === 0 && queuedJobs.length === 0) {
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve) => {
+      idleWaiters.push(resolve)
+    })
+  }
 
   const resolveHtml = async (input: ThumbnailInternalEnqueueInput) => {
     if (typeof input.html === 'string') {
@@ -286,6 +311,7 @@ export function createThumbnailService(options: {
 
         job.resolve()
         drainQueue()
+        notifyIdle()
       })
     }
   }
@@ -419,6 +445,10 @@ export function createThumbnailService(options: {
     input: ThumbnailInternalEnqueueInput,
     priority: ThumbnailQueuePriority,
   ) => {
+    if (closed) {
+      return null
+    }
+
     const key = buildThumbnailCacheKey(input.versionId, input.manifestHash)
     const id = keyId(key)
     const existing = jobsById.get(id)
@@ -965,7 +995,27 @@ export function createThumbnailService(options: {
       )
     },
     async close() {
-      await options.renderer.close()
+      if (closing) {
+        return closing
+      }
+
+      closing = (async () => {
+        closed = true
+
+        for (const job of queuedJobs.splice(0)) {
+          if (jobsById.get(job.id) === job) {
+            jobsById.delete(job.id)
+          }
+
+          job.resolve()
+        }
+
+        notifyIdle()
+        await waitUntilIdle()
+        await options.renderer.close()
+      })()
+
+      return closing
     },
   }
 }
