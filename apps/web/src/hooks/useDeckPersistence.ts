@@ -140,14 +140,23 @@ export function useDeckPersistence() {
 
     const loadDecks = async () => {
       try {
-        // Start the active-deck fetch in parallel with the list so reload/warm
-        // shell chrome is not gated on listDecks round-trip latency.
+        // Fetch the active deck immediately so shell chrome is not gated on
+        // listDecks. Validate against the list once it arrives.
         const summariesPromise = listDecks()
         const earlyDeckPromise = storedActiveDeckId
           ? fetchDeck(storedActiveDeckId).catch(() => null)
           : Promise.resolve(null)
 
-        const [summaries, earlyDeck] = await Promise.all([summariesPromise, earlyDeckPromise])
+        void earlyDeckPromise.then((deck) => {
+          if (cancelled || !deck || deck.id !== storedActiveDeckId) {
+            return
+          }
+
+          setActiveDeck(deck)
+          void refreshVersions(deck.id)
+        })
+
+        const summaries = await summariesPromise
 
         if (cancelled) {
           return
@@ -165,11 +174,21 @@ export function useDeckPersistence() {
           return
         }
 
+        const earlyDeck = await earlyDeckPromise
+
+        if (cancelled) {
+          return
+        }
+
+        if (earlyDeck && earlyDeck.id === storedActiveDeckId) {
+          // Already applied above; keep a second setActiveDeck only if the
+          // optimistic apply raced before this validation path.
+          setActiveDeck(earlyDeck)
+          return
+        }
+
         try {
-          const deck =
-            earlyDeck && earlyDeck.id === storedActiveDeckId
-              ? earlyDeck
-              : await fetchDeck(storedActiveDeckId)
+          const deck = await fetchDeck(storedActiveDeckId)
 
           if (cancelled) {
             return
