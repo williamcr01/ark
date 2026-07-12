@@ -68,6 +68,8 @@ const editorBridgeMock = vi.hoisted(() => ({
 const previewFrameMock = vi.hoisted(() => ({
   iframeKey: 'test-preview',
   handshake: 'test-handshake-value',
+  isLoading: false,
+  isStale: false,
 }))
 
 const useDeckPreviewFrameMock = vi.hoisted(() =>
@@ -75,7 +77,8 @@ const useDeckPreviewFrameMock = vi.hoisted(() =>
     iframeKey: previewFrameMock.iframeKey,
     iframeSrcDoc: '<html></html>',
     sandboxOrigin: null,
-    isLoading: false,
+    isLoading: previewFrameMock.isLoading,
+    isStale: previewFrameMock.isStale,
     error: null,
     usesSandboxHost: false,
     handshake: previewFrameMock.handshake,
@@ -83,6 +86,14 @@ const useDeckPreviewFrameMock = vi.hoisted(() =>
 )
 
 const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
+const useDeckThumbnailsMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    status: null,
+    thumbnailUrls: null,
+    error: null,
+    isLoading: false,
+  })),
+)
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
   useDeckEditorBridge: () => editorBridgeMock,
@@ -97,6 +108,10 @@ vi.mock('@/hooks/useDeckSlideNavigation', () => ({
 
 vi.mock('@/hooks/useDeckPreviewFrame', () => ({
   useDeckPreviewFrame: useDeckPreviewFrameMock,
+}))
+
+vi.mock('@/hooks/useDeckThumbnails', () => ({
+  useDeckThumbnails: useDeckThumbnailsMock,
 }))
 
 vi.mock('@/lib/runtime-error-api', () => ({
@@ -140,7 +155,10 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.setTool.mockClear()
     previewFrameMock.iframeKey = 'test-preview'
     previewFrameMock.handshake = 'test-handshake-value'
+    previewFrameMock.isLoading = false
+    previewFrameMock.isStale = false
     useDeckPreviewFrameMock.mockClear()
+    useDeckThumbnailsMock.mockClear()
     reportRuntimeErrorMock.mockClear()
   })
 
@@ -415,6 +433,48 @@ describe('DeckPreview script divergence UI', () => {
     fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
 
     expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0, 'select')
+  })
+
+  it('starts thumbnail work only after the current main preview is ready', async () => {
+    const props = {
+      ...plainDeckProps,
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000001',
+    }
+    const { rerender } = renderDeckPreview(props)
+
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(props.deckId, props.versionId, 3, {
+      enabled: false,
+    })
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'ark:deck-handshake',
+            handshake: previewFrameMock.handshake,
+            protocolVersion: 1,
+          },
+          origin: window.location.origin,
+        }),
+      )
+    })
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(props.deckId, props.versionId, 3, {
+      enabled: true,
+    })
+
+    previewFrameMock.isStale = true
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(props.deckId, props.versionId, 3, {
+      enabled: false,
+    })
   })
 
   it('shows an edit-text action for unlocked text selections', async () => {

@@ -15,12 +15,15 @@ const THUMBNAIL_STRIP_WIDTH_PX = 168
 const THUMBNAIL_MOUNT_BUFFER = 5
 const ACTIVE_MOUNT_RADIUS = 3
 const MAX_MOUNTED_THUMBNAILS = 24
+const INITIAL_EAGER_THUMBNAILS = 5
 
 type ScheduledThumbnailFrame =
   { id: number; type: 'animation-frame' } | { id: ReturnType<typeof setTimeout>; type: 'timeout' }
 
 type SlideThumbnailStripProps = {
   activeIndex: number
+  /** Defers thumbnail parsing and requests until the main preview is ready. */
+  contentEnabled?: boolean
   id?: string
   isOpen: boolean
   onSelect: (index: number) => void
@@ -38,6 +41,7 @@ type LazyThumbnailProps = {
   onThumbnailImageError: (index: number, url: string) => void
   onVisibilityChange: (index: number, isVisible: boolean) => void
   orientation: 'horizontal' | 'vertical'
+  prioritizeLoad: boolean
   srcDoc: string | null
   thumbnailUrl: string | null
   trackVisibility: boolean
@@ -101,6 +105,12 @@ function computeMountedIndices(
     indices.add(index)
   }
 
+  // Keep slide 1 materialized even after the strip scrolls elsewhere. Its
+  // small eager image is requested only after the main preview is ready.
+  if (slideCount > 0) {
+    indices.add(0)
+  }
+
   if (indices.size <= MAX_MOUNTED_THUMBNAILS) {
     return indices
   }
@@ -109,7 +119,13 @@ function computeMountedIndices(
     (left, right) => Math.abs(left - activeIndex) - Math.abs(right - activeIndex) || left - right,
   )
 
-  return new Set(sorted.slice(0, MAX_MOUNTED_THUMBNAILS))
+  const selected = sorted.slice(0, MAX_MOUNTED_THUMBNAILS)
+
+  if (slideCount > 0 && !selected.includes(0)) {
+    selected[selected.length - 1] = 0
+  }
+
+  return new Set(selected)
 }
 
 function LazyThumbnail({
@@ -120,6 +136,7 @@ function LazyThumbnail({
   onThumbnailImageError,
   onVisibilityChange,
   orientation,
+  prioritizeLoad,
   srcDoc,
   thumbnailUrl,
   trackVisibility,
@@ -175,7 +192,8 @@ function LazyThumbnail({
               alt=""
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
               decoding="async"
-              loading="lazy"
+              fetchPriority={prioritizeLoad ? 'high' : 'auto'}
+              loading={prioritizeLoad ? 'eager' : 'lazy'}
               onError={() => onThumbnailImageError(index, thumbnailUrl)}
               src={thumbnailUrl}
               title={`Slide ${index + 1} thumbnail`}
@@ -215,6 +233,7 @@ function LazyThumbnail({
 
 export function SlideThumbnailStrip({
   activeIndex,
+  contentEnabled = true,
   id,
   isOpen,
   onSelect,
@@ -292,7 +311,7 @@ export function SlideThumbnailStrip({
   )
 
   const fallbackCandidateIndices = useMemo(() => {
-    if (!isOpen) {
+    if (!contentEnabled || !isOpen) {
       return []
     }
 
@@ -304,7 +323,7 @@ export function SlideThumbnailStrip({
           Math.abs(left - activeIndex) - Math.abs(right - activeIndex) ||
           left - right,
       )
-  }, [activeIndex, getUsableThumbnailUrl, isOpen, mountedIndices])
+  }, [activeIndex, contentEnabled, getUsableThumbnailUrl, isOpen, mountedIndices])
 
   const handleVisibilityChange = useCallback((index: number, isVisible: boolean) => {
     setVisibleIndices((current) => {
@@ -438,7 +457,7 @@ export function SlideThumbnailStrip({
           className={cn('p-2', orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2')}
         >
           {Array.from({ length: slideCount }, (_, index) => {
-            const mountContent = mountedIndices.has(index)
+            const mountContent = contentEnabled && mountedIndices.has(index)
             const thumbnailUrl = getUsableThumbnailUrl(index)
             const needsFallback = isOpen && mountContent && !thumbnailUrl
             const srcDoc = needsFallback
@@ -457,6 +476,7 @@ export function SlideThumbnailStrip({
                   onThumbnailImageError={handleThumbnailImageError}
                   onVisibilityChange={handleVisibilityChange}
                   orientation={orientation}
+                  prioritizeLoad={index < INITIAL_EAGER_THUMBNAILS || index === activeIndex}
                   srcDoc={srcDoc}
                   thumbnailUrl={thumbnailUrl}
                   trackVisibility={isOpen}
