@@ -75,13 +75,15 @@ scale. Timeouts always dispose the Chromium page target.
 
 ## Observability
 
-| Event                        | When                           |
-| ---------------------------- | ------------------------------ |
-| `thumbnail.status`           | Status poll response           |
-| `thumbnail.render.succeeded` | Deck render completed          |
-| `thumbnail.render.failed`    | Deck render failed / timed out |
-| `thumbnail.queue.saturated`  | Pending queue hit its bound    |
-| `thumbnail.queue.failed`     | Unexpected queue exception     |
+| Event                        | When                             |
+| ---------------------------- | -------------------------------- |
+| `thumbnail.status`           | Status poll response             |
+| `thumbnail.render.succeeded` | Deck render completed            |
+| `thumbnail.render.failed`    | Deck render failed / timed out   |
+| `thumbnail.render.aborted`   | In-flight render superseded      |
+| `thumbnail.queue.saturated`  | Pending queue hit its bound      |
+| `thumbnail.queue.failed`     | Unexpected queue exception       |
+| `thumbnail.queue.aborted`    | Running warm aborted as obsolete |
 
 ## Related code
 

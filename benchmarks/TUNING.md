@@ -89,5 +89,26 @@ Changes shipped:
    **defer `cache.cleanup()`** off the ready path, pass `slideCount` to skip a
    redundant parse, and reduce client `PENDING_REPOLL_MS` 250→50.
 
-See PR notes / `artifacts/renderer-benchmarks/{baseline,optimized}.json` for
-measured before/after on this host.
+### Measured results (same host, production web bundle)
+
+Paired 3-iteration compare (`baseline.json` @ `5f46aac` → `optimized.json` @
+`64399b5`), fixtures `plain-css` + `reveal-registry`:
+
+| Scenario / fixture                      | Metric                         | Before median | After median |    Delta |
+| --------------------------------------- | ------------------------------ | ------------: | -----------: | -------: |
+| `rapid_version_burst` / plain-css       | `final_version_thumb_ready_ms` |         300.7 |        135.0 | **-55%** |
+| `rapid_version_burst` / reveal-registry | `final_version_thumb_ready_ms` |         373.8 |        174.9 | **-53%** |
+| `rapid_version_burst` / plain-css       | `thumbnail_render_count`       |             2 |            1 | **-50%** |
+| `rapid_version_burst` / reveal-registry | `thumbnail_render_count`       |             2 |            1 | **-50%** |
+| `rapid_version_burst` / plain-css       | render `durationMs` (sample)   |          ~251 |          ~97 | **-61%** |
+| `rapid_version_burst` / reveal-registry | render `durationMs` (sample)   |          ~303 |         ~137 | **-55%** |
+
+Confirmatory 5-iteration burst-only (`optimized-burst5.json`): render count stays
+at **1**; `final_version_thumb_ready_ms` median **221.9** (plain) / **208.6**
+(reveal) — still well below the 3-iter baseline (~301 / ~374). Per-render
+`durationMs` median ~139 / ~172.
+
+Shell-visible upload/reload metrics moved within run-to-run MAD and are not
+treated as regressions. `pnpm benchmark:settle-delta` still reports
+byte-identical PNGs at 0/40/80/120ms for plain-css, reveal-registry, and
+reveal-fragments after the single-rAF + 40ms settle change.
