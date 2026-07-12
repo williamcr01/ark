@@ -124,7 +124,15 @@ describe('useDeckPersistence', () => {
   it('clears a stale active deck id after refresh', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ decks: [] }))
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo) => {
+      const url = String(input)
+
+      if (url === '/api/decks') {
+        return jsonResponse({ decks: [] })
+      }
+
+      return jsonResponse({ error: 'Not found' }, { status: 404 })
+    })
 
     vi.stubGlobal('fetch', fetchMock)
 
@@ -134,7 +142,8 @@ describe('useDeckPersistence', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks')
+    expect(fetchMock).toHaveBeenCalledWith(`/api/decks/${deck.id}`)
     expect(result.current.hasDeck).toBe(false)
     expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })

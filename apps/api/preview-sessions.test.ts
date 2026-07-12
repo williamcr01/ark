@@ -21,6 +21,18 @@ describe('preview session store', () => {
     expect(store.getSession(session.token)?.editorBridge).toBe(true)
   })
 
+  it('reuses identical html+editorBridge sessions within the ttl', () => {
+    const store = createPreviewSessionStore({ ttlMs: 60_000 })
+    const html = '<html><body>same deck</body></html>'
+    const first = store.createSession(html, { editorBridge: true })
+    const second = store.createSession(html, { editorBridge: true })
+    const differentBridge = store.createSession(html, { editorBridge: false })
+
+    expect(second.token).toBe(first.token)
+    expect(second.handshake).toBe(first.handshake)
+    expect(differentBridge.token).not.toBe(first.token)
+  })
+
   it('expires preview sessions after the configured ttl', () => {
     vi.useFakeTimers()
 
