@@ -27,6 +27,7 @@ import { createPreviewSessionsRouter } from './routes/preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './routes/runtimes-and-assets.ts'
 import { createThumbnailsRouter } from './routes/thumbnails.ts'
 import { createDefaultThumbnailCache } from './thumbnails/cache.ts'
+import { THUMBNAIL_QUEUE_CONCURRENCY, THUMBNAIL_SETTLE_MS } from './thumbnails/constants.ts'
 import {
   createThumbnailRenderRouter,
   createThumbnailRenderSecret,
@@ -46,6 +47,16 @@ type CreateAppOptions = {
   thumbnailService?: ThumbnailService
   /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
   thumbnailRenderSecret?: string
+}
+
+function readPositiveIntEnv(name: string, fallback: number) {
+  const parsed = Number(process.env[name])
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function readNonNegativeIntEnv(name: string, fallback: number) {
+  const parsed = Number(process.env[name])
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 function scheduleThumbnailWarm(
@@ -71,6 +82,11 @@ export function createApp(options: CreateAppOptions = {}) {
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
   const thumbnailRenderSecret = options.thumbnailRenderSecret ?? createThumbnailRenderSecret()
+  const thumbnailQueueConcurrency = readPositiveIntEnv(
+    'ARK_THUMBNAIL_QUEUE_CONCURRENCY',
+    THUMBNAIL_QUEUE_CONCURRENCY,
+  )
+  const thumbnailSettleMs = readNonNegativeIntEnv('ARK_THUMBNAIL_SETTLE_MS', THUMBNAIL_SETTLE_MS)
 
   const thumbnailService =
     options.thumbnailService ??
@@ -79,8 +95,10 @@ export function createApp(options: CreateAppOptions = {}) {
       renderer: createThumbnailRenderer({
         previewSessionStore,
         renderSecret: thumbnailRenderSecret,
+        limits: { settleMs: thumbnailSettleMs },
       }),
       deckStore,
+      queueConcurrency: thumbnailQueueConcurrency,
     })
 
   const generationJobs =

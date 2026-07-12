@@ -35,7 +35,10 @@ import {
   compareBenchmarkRuns,
   formatMetricTable,
   installBenchmarkInstrumentation,
+  measureDeckReloadWarmScenario,
+  measureRapidVersionBurstScenario,
   measureUploadScenario,
+  readActiveDeckIdFromShell,
   summarizeScenario,
   writeBenchmarkRun,
   type BenchmarkFixture,
@@ -55,6 +58,9 @@ type CliOptions = {
   fixtures: BenchmarkFixtureKind[]
   scenarios: BenchmarkScenarioId[]
   extended: boolean
+  burstCount: number
+  queueConcurrency: number
+  settleMs: number | null
 }
 
 function printUsage() {
@@ -69,6 +75,10 @@ Options:
   --fixtures <list>    Comma-separated fixture ids
   --scenarios <list>   Comma-separated scenario ids
   --extended           Include large-style + 20-slide fixtures
+  --burst-count <n>    PUT versions per rapid_version_burst iteration (default 6)
+  --queue-concurrency <n>
+                       Thumbnail queue concurrency for the benchmark stack (default 1)
+  --settle-ms <n>      Override thumbnail settle delay in milliseconds
   --help               Show this message
 
 Default fixtures: plain-css,reveal-registry,full-js
@@ -86,6 +96,9 @@ function parseArgs(argv: string[]): CliOptions {
     fixtures: ['plain-css', 'reveal-registry', 'full-js'],
     scenarios: ['upload_cold', 'upload_warm'],
     extended: false,
+    burstCount: 6,
+    queueConcurrency: 1,
+    settleMs: null,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -150,6 +163,24 @@ function parseArgs(argv: string[]): CliOptions {
       continue
     }
 
+    if (arg === '--burst-count' && value) {
+      options.burstCount = Number(value)
+      index += 1
+      continue
+    }
+
+    if (arg === '--queue-concurrency' && value) {
+      options.queueConcurrency = Number(value)
+      index += 1
+      continue
+    }
+
+    if (arg === '--settle-ms' && value) {
+      options.settleMs = Number(value)
+      index += 1
+      continue
+    }
+
     throw new Error(`Unknown argument: ${arg}`)
   }
 
@@ -166,6 +197,18 @@ function parseArgs(argv: string[]): CliOptions {
 
   assert(options.iterations > 0, '--iterations must be > 0')
   assert(options.warmup >= 0, '--warmup must be >= 0')
+  assert(
+    Number.isInteger(options.burstCount) && options.burstCount > 0,
+    '--burst-count must be > 0',
+  )
+  assert(
+    Number.isInteger(options.queueConcurrency) && options.queueConcurrency > 0,
+    '--queue-concurrency must be > 0',
+  )
+  assert(
+    options.settleMs === null || (Number.isInteger(options.settleMs) && options.settleMs >= 0),
+    '--settle-ms must be >= 0',
+  )
 
   return options
 }
@@ -325,6 +368,8 @@ async function bootStack(options: {
   webPort: number
   tempRoot: string
   webMode: BrowserSmokeWebMode
+  queueConcurrency: number
+  settleMs: number | null
 }) {
   const thumbnailCacheDir = path.join(options.tempRoot, 'thumbnails')
   let lastError: unknown
@@ -338,6 +383,8 @@ async function bootStack(options: {
         tempRoot: options.tempRoot,
         thumbnailRenderer: 'on',
         thumbnailCacheDir,
+        thumbnailQueueConcurrency: options.queueConcurrency,
+        thumbnailSettleMs: options.settleMs ?? undefined,
         webMode: options.webMode,
       })
 
@@ -374,6 +421,8 @@ async function runUploadIterations(options: {
   webPort: number
   artifactsRoot: string
   sharedTempRoot: string
+  queueConcurrency: number
+  settleMs: number | null
 }) {
   const results: BenchmarkIterationResult[] = []
   const total = options.iterations + options.warmup
@@ -399,6 +448,8 @@ async function runUploadIterations(options: {
         webPort: options.webPort,
         tempRoot: warmTempRoot,
         webMode: options.webMode,
+        queueConcurrency: options.queueConcurrency,
+        settleMs: options.settleMs,
       })
       sharedBrowser = await spawnChromium(
         await getFreePort(),
@@ -450,6 +501,8 @@ async function runUploadIterations(options: {
             webPort: options.webPort,
             tempRoot: iterTempRoot,
             webMode: options.webMode,
+            queueConcurrency: options.queueConcurrency,
+            settleMs: options.settleMs,
           })
           browser = await spawnChromium(
             await getFreePort(),
@@ -562,6 +615,274 @@ async function runUploadIterations(options: {
   return results
 }
 
+async function runDeckReloadWarmIterations(options: {
+  fixture: BenchmarkFixture
+  iterations: number
+  warmup: number
+  webMode: BrowserSmokeWebMode
+  apiPort: number
+  sandboxPort: number
+  webPort: number
+  artifactsRoot: string
+  sharedTempRoot: string
+  queueConcurrency: number
+  settleMs: number | null
+}) {
+  const results: BenchmarkIterationResult[] = []
+  const total = options.iterations + options.warmup
+  const warmTempRoot = path.join(options.sharedTempRoot, `deck_reload_warm-${options.fixture.id}`)
+  let servers: StartedServers | null = null
+  let browser: Awaited<ReturnType<typeof spawnChromium>> | null = null
+  let cdp: Awaited<ReturnType<typeof createPage>> | null = null
+  let contexts: Map<string, RuntimeContext> | null = null
+  let observability: ReturnType<typeof startObservabilityCapture> | null = null
+  let mainPreviewSrc: string | null = null
+
+  try {
+    await mkdirp(warmTempRoot)
+    observability = startObservabilityCapture()
+    servers = await bootStack({
+      apiPort: options.apiPort,
+      sandboxPort: options.sandboxPort,
+      webPort: options.webPort,
+      tempRoot: warmTempRoot,
+      webMode: options.webMode,
+      queueConcurrency: options.queueConcurrency,
+      settleMs: options.settleMs,
+    })
+    browser = await spawnChromium(await getFreePort(), path.join(warmTempRoot, 'chromium-profile'))
+    cdp = await createPage(browser.debugPort)
+    contexts = new Map<string, RuntimeContext>()
+
+    cdp.on('Runtime.executionContextCreated', (params, sessionId) => {
+      const context = readContext(params, sessionId)
+
+      if (context && contexts) {
+        contexts.set(`${context.sessionId ?? 'root'}:${context.id}`, context)
+      }
+    })
+    cdp.on('Runtime.executionContextDestroyed', (params, sessionId) => {
+      const id = (params as { executionContextId?: unknown }).executionContextId
+
+      if (typeof id === 'number' && contexts) {
+        contexts.delete(`${sessionId ?? 'root'}:${id}`)
+      }
+    })
+
+    await attachCdpTargets(cdp)
+    await openApp(cdp, servers.appOrigin)
+    await installBenchmarkInstrumentation(cdp)
+
+    observability.clear()
+    const setup = await measureUploadScenario({
+      cdp,
+      contexts,
+      sandboxOrigin: servers.sandboxOrigin,
+      fixture: options.fixture,
+      observabilityEntries: observability.entries,
+    })
+    console.log(
+      `[deck_reload_warm/${options.fixture.id}] setup: preview=${setup.metrics.preview_active_slide_ms?.toFixed(0)}ms thumbs=${setup.metrics.thumb_png_visible_decoded_ms?.toFixed(0)}ms`,
+    )
+
+    for (let index = 0; index < total; index += 1) {
+      const warmup = index < options.warmup
+
+      try {
+        assert(servers && cdp && contexts && observability, 'Benchmark stack was not started.')
+        observability.clear()
+        const measured = await measureDeckReloadWarmScenario({
+          cdp,
+          contexts,
+          appOrigin: servers.appOrigin,
+          sandboxOrigin: servers.sandboxOrigin,
+          fixture: options.fixture,
+          observabilityEntries: observability.entries,
+        })
+
+        mainPreviewSrc =
+          (await evaluate<string>(
+            cdp,
+            `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+          )) || null
+
+        results.push({
+          index,
+          warmup,
+          metrics: measured.metrics,
+          observability: measured.observability,
+        })
+
+        const label = warmup ? 'warmup' : 'iter'
+        console.log(
+          `[deck_reload_warm/${options.fixture.id}] ${label} ${index + 1}/${total}: shell=${measured.metrics.shell_ready_ms?.toFixed(0)}ms thumbs=${measured.metrics.thumb_png_visible_decoded_ms?.toFixed(0)}ms renders=${measured.metrics.thumbnail_render_count ?? 0}`,
+        )
+      } catch (error) {
+        await writeBrowserSmokeArtifacts({
+          label: `renderer-benchmark-deck_reload_warm-${options.fixture.id}-${index}`,
+          artifactsRoot: options.artifactsRoot,
+          browser,
+          cdp,
+          appOrigin: servers?.appOrigin ?? null,
+          mainPreviewSrc,
+          error,
+        }).catch(() => undefined)
+        throw error
+      }
+    }
+  } finally {
+    observability?.stop()
+    cdp?.close()
+    await stopChromium(browser)
+    await closeThumbnailService(servers)
+    if (servers) {
+      await stopServers(servers)
+    }
+  }
+
+  return results
+}
+
+async function runRapidVersionBurstIterations(options: {
+  fixture: BenchmarkFixture
+  iterations: number
+  warmup: number
+  webMode: BrowserSmokeWebMode
+  apiPort: number
+  sandboxPort: number
+  webPort: number
+  artifactsRoot: string
+  sharedTempRoot: string
+  queueConcurrency: number
+  settleMs: number | null
+  burstCount: number
+}) {
+  const results: BenchmarkIterationResult[] = []
+  const total = options.iterations + options.warmup
+  const warmTempRoot = path.join(
+    options.sharedTempRoot,
+    `rapid_version_burst-${options.fixture.id}`,
+  )
+  const baseHtml = await readFile(options.fixture.path, 'utf8')
+  let servers: StartedServers | null = null
+  let browser: Awaited<ReturnType<typeof spawnChromium>> | null = null
+  let cdp: Awaited<ReturnType<typeof createPage>> | null = null
+  let contexts: Map<string, RuntimeContext> | null = null
+  let observability: ReturnType<typeof startObservabilityCapture> | null = null
+  let mainPreviewSrc: string | null = null
+
+  try {
+    await mkdirp(warmTempRoot)
+    observability = startObservabilityCapture()
+    servers = await bootStack({
+      apiPort: options.apiPort,
+      sandboxPort: options.sandboxPort,
+      webPort: options.webPort,
+      tempRoot: warmTempRoot,
+      webMode: options.webMode,
+      queueConcurrency: options.queueConcurrency,
+      settleMs: options.settleMs,
+    })
+    browser = await spawnChromium(await getFreePort(), path.join(warmTempRoot, 'chromium-profile'))
+    cdp = await createPage(browser.debugPort)
+    contexts = new Map<string, RuntimeContext>()
+
+    cdp.on('Runtime.executionContextCreated', (params, sessionId) => {
+      const context = readContext(params, sessionId)
+
+      if (context && contexts) {
+        contexts.set(`${context.sessionId ?? 'root'}:${context.id}`, context)
+      }
+    })
+    cdp.on('Runtime.executionContextDestroyed', (params, sessionId) => {
+      const id = (params as { executionContextId?: unknown }).executionContextId
+
+      if (typeof id === 'number' && contexts) {
+        contexts.delete(`${sessionId ?? 'root'}:${id}`)
+      }
+    })
+
+    await attachCdpTargets(cdp)
+    await openApp(cdp, servers.appOrigin)
+    await installBenchmarkInstrumentation(cdp)
+
+    observability.clear()
+    const setup = await measureUploadScenario({
+      cdp,
+      contexts,
+      sandboxOrigin: servers.sandboxOrigin,
+      fixture: options.fixture,
+      observabilityEntries: observability.entries,
+    })
+    const deckId = await readActiveDeckIdFromShell(cdp)
+    assert(deckId, 'Could not read active deck id after benchmark setup upload.')
+    console.log(
+      `[rapid_version_burst/${options.fixture.id}] setup: preview=${setup.metrics.preview_active_slide_ms?.toFixed(0)}ms thumbs=${setup.metrics.thumb_png_visible_decoded_ms?.toFixed(0)}ms deck=${deckId}`,
+    )
+
+    for (let index = 0; index < total; index += 1) {
+      const warmup = index < options.warmup
+
+      try {
+        assert(servers && cdp && contexts && observability, 'Benchmark stack was not started.')
+        observability.clear()
+        const measured = await measureRapidVersionBurstScenario({
+          cdp,
+          contexts,
+          appOrigin: servers.appOrigin,
+          apiOrigin: servers.apiOrigin,
+          sandboxOrigin: servers.sandboxOrigin,
+          deckId,
+          baseHtml,
+          fixture: options.fixture,
+          burstCount: options.burstCount,
+          mutationStartIndex: index * options.burstCount,
+          observabilityEntries: observability.entries,
+        })
+
+        mainPreviewSrc =
+          (await evaluate<string>(
+            cdp,
+            `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+          )) || null
+
+        results.push({
+          index,
+          warmup,
+          metrics: measured.metrics,
+          observability: measured.observability,
+        })
+
+        const label = warmup ? 'warmup' : 'iter'
+        console.log(
+          `[rapid_version_burst/${options.fixture.id}] ${label} ${index + 1}/${total}: burst=${measured.metrics.burst_submit_ms?.toFixed(0)}ms finalThumbs=${measured.metrics.final_version_thumb_ready_ms?.toFixed(0)}ms renders=${measured.metrics.thumbnail_render_count ?? 0}`,
+        )
+      } catch (error) {
+        await writeBrowserSmokeArtifacts({
+          label: `renderer-benchmark-rapid_version_burst-${options.fixture.id}-${index}`,
+          artifactsRoot: options.artifactsRoot,
+          browser,
+          cdp,
+          appOrigin: servers?.appOrigin ?? null,
+          mainPreviewSrc,
+          error,
+        }).catch(() => undefined)
+        throw error
+      }
+    }
+  } finally {
+    observability?.stop()
+    cdp?.close()
+    await stopChromium(browser)
+    await closeThumbnailService(servers)
+    if (servers) {
+      await stopServers(servers)
+    }
+  }
+
+  return results
+}
+
 async function mkdirp(dir: string) {
   await mkdir(dir, { recursive: true })
 }
@@ -600,25 +921,52 @@ async function runBenchmark(options: CliOptions) {
 
   try {
     for (const scenario of options.scenarios) {
-      if (scenario !== 'upload_cold' && scenario !== 'upload_warm') {
-        console.warn(`Skipping unsupported scenario in PR1 harness: ${scenario}`)
-        continue
-      }
-
       for (const fixture of fixtures) {
         console.log(`\n=== ${scenario}/${fixture.id} ===`)
-        const iterations = await runUploadIterations({
-          scenario,
-          fixture,
-          iterations: options.iterations,
-          warmup: options.warmup,
-          webMode: options.webMode,
-          apiPort,
-          sandboxPort,
-          webPort,
-          artifactsRoot,
-          sharedTempRoot,
-        })
+        const iterations =
+          scenario === 'upload_cold' || scenario === 'upload_warm'
+            ? await runUploadIterations({
+                scenario,
+                fixture,
+                iterations: options.iterations,
+                warmup: options.warmup,
+                webMode: options.webMode,
+                apiPort,
+                sandboxPort,
+                webPort,
+                artifactsRoot,
+                sharedTempRoot,
+                queueConcurrency: options.queueConcurrency,
+                settleMs: options.settleMs,
+              })
+            : scenario === 'deck_reload_warm'
+              ? await runDeckReloadWarmIterations({
+                  fixture,
+                  iterations: options.iterations,
+                  warmup: options.warmup,
+                  webMode: options.webMode,
+                  apiPort,
+                  sandboxPort,
+                  webPort,
+                  artifactsRoot,
+                  sharedTempRoot,
+                  queueConcurrency: options.queueConcurrency,
+                  settleMs: options.settleMs,
+                })
+              : await runRapidVersionBurstIterations({
+                  fixture,
+                  iterations: options.iterations,
+                  warmup: options.warmup,
+                  webMode: options.webMode,
+                  apiPort,
+                  sandboxPort,
+                  webPort,
+                  artifactsRoot,
+                  sharedTempRoot,
+                  queueConcurrency: options.queueConcurrency,
+                  settleMs: options.settleMs,
+                  burstCount: options.burstCount,
+                })
 
         scenarioResults.push({
           scenario,
