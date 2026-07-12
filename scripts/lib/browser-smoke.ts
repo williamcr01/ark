@@ -677,6 +677,10 @@ export type StartServersOptions = {
   thumbnailRenderer?: 'on' | 'off'
   /** Optional thumbnail PNG cache root for deterministic cold/warm scenarios. */
   thumbnailCacheDir?: string
+  /** Optional thumbnail queue concurrency override for renderer benchmarks. */
+  thumbnailQueueConcurrency?: number
+  /** Optional per-slide thumbnail settle override in milliseconds. */
+  thumbnailSettleMs?: number
   /** Defaults to development. Production serves the built web bundle via Vite preview. */
   webMode?: BrowserSmokeWebMode
 }
@@ -737,6 +741,18 @@ export async function startServers(options: StartServersOptions): Promise<Starte
   // Keep default browser smoke focused on preview/bridge behavior; the dedicated
   // thumbnail smoke opts into the renderer explicitly.
   process.env.ARK_THUMBNAIL_RENDERER = options.thumbnailRenderer ?? 'off'
+
+  if (typeof options.thumbnailQueueConcurrency === 'number') {
+    process.env.ARK_THUMBNAIL_QUEUE_CONCURRENCY = String(options.thumbnailQueueConcurrency)
+  } else {
+    delete process.env.ARK_THUMBNAIL_QUEUE_CONCURRENCY
+  }
+
+  if (typeof options.thumbnailSettleMs === 'number') {
+    process.env.ARK_THUMBNAIL_SETTLE_MS = String(options.thumbnailSettleMs)
+  } else {
+    delete process.env.ARK_THUMBNAIL_SETTLE_MS
+  }
 
   if (options.thumbnailCacheDir) {
     process.env.ARK_THUMBNAIL_CACHE_DIR = options.thumbnailCacheDir

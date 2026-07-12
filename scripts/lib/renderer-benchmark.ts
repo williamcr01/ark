@@ -7,6 +7,7 @@ import {
   assert,
   evaluate,
   findContextByUrl,
+  openApp,
   setUploadFile,
   sleep,
   waitFor,
@@ -14,7 +15,7 @@ import {
   type RuntimeContext,
 } from './browser-smoke.ts'
 
-export const BENCHMARK_SCHEMA_VERSION = 1
+export const BENCHMARK_SCHEMA_VERSION = 2
 export const BENCHMARK_DEFAULT_ITERATIONS = 10
 export const BENCHMARK_DEFAULT_WARMUP = 1
 export const BENCHMARK_POLL_MS = 16
@@ -56,6 +57,9 @@ export type MetricId =
   | 'long_task_max_ms'
   | 'thumbnail_render_duration_ms'
   | 'thumb_render_done_to_png_decoded_ms'
+  | 'thumbnail_render_count'
+  | 'burst_submit_ms'
+  | 'final_version_thumb_ready_ms'
 
 export type MetricSummary = {
   min: number
@@ -139,11 +143,70 @@ const HEADLINE_METRICS: MetricId[] = [
   'shell_ready_ms',
   'preview_active_slide_ms',
   'thumb_png_visible_decoded_ms',
+  'final_version_thumb_ready_ms',
   'preview_session_count',
   'status_request_count',
   'mounted_iframe_peak',
   'long_task_total_ms',
 ]
+
+const BENCHMARK_INSTRUMENTATION_SOURCE = `(() => {
+  if (window.__arkBenchmark) {
+    return true
+  }
+
+  const state = {
+    parses: [],
+    longTasks: [],
+    statusRequests: 0,
+    previewSessions: 0,
+  }
+
+  const OriginalParser = window.DOMParser
+  window.DOMParser = class extends OriginalParser {
+    parseFromString(source, type) {
+      const started = performance.now()
+      const result = super.parseFromString(source, type)
+      state.parses.push({
+        bytes: typeof source === 'string' ? source.length : 0,
+        ms: performance.now() - started,
+      })
+      return result
+    }
+  }
+
+  const OriginalFetch = window.fetch.bind(window)
+  window.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
+    if (url.includes('/thumbnails?')) {
+      state.statusRequests += 1
+    }
+
+    if (url.includes('/preview-sessions') && (!init || !init.method || init.method.toUpperCase() === 'POST')) {
+      state.previewSessions += 1
+    }
+
+    return OriginalFetch(input, init)
+  }
+
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        state.longTasks.push({
+          start: entry.startTime,
+          duration: entry.duration,
+        })
+      }
+    })
+    observer.observe({ type: 'longtask', buffered: true })
+  } catch {
+    // Long Tasks API is Chromium-only; benchmarks still collect other metrics.
+  }
+
+  window.__arkBenchmark = state
+  return true
+})()`
 
 export function percentile(sorted: number[], ratio: number) {
   if (sorted.length === 0) {
@@ -297,66 +360,12 @@ export function formatMetricTable(result: BenchmarkRunResult) {
 }
 
 export async function installBenchmarkInstrumentation(cdp: CdpClient) {
-  await evaluate<boolean>(
-    cdp,
-    `(() => {
-      if (window.__arkBenchmark) {
-        return true
-      }
-
-      const state = {
-        parses: [],
-        longTasks: [],
-        statusRequests: 0,
-        previewSessions: 0,
-      }
-
-      const OriginalParser = window.DOMParser
-      window.DOMParser = class extends OriginalParser {
-        parseFromString(source, type) {
-          const started = performance.now()
-          const result = super.parseFromString(source, type)
-          state.parses.push({
-            bytes: typeof source === 'string' ? source.length : 0,
-            ms: performance.now() - started,
-          })
-          return result
-        }
-      }
-
-      const OriginalFetch = window.fetch.bind(window)
-      window.fetch = (input, init) => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-
-        if (url.includes('/thumbnails?')) {
-          state.statusRequests += 1
-        }
-
-        if (url.includes('/preview-sessions') && (!init || !init.method || init.method.toUpperCase() === 'POST')) {
-          state.previewSessions += 1
-        }
-
-        return OriginalFetch(input, init)
-      }
-
-      try {
-        const observer = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
-            state.longTasks.push({
-              start: entry.startTime,
-              duration: entry.duration,
-            })
-          }
-        })
-        observer.observe({ type: 'longtask', buffered: true })
-      } catch {
-        // Long Tasks API is Chromium-only; benchmarks still collect other metrics.
-      }
-
-      window.__arkBenchmark = state
-      return true
-    })()`,
-  )
+  await cdp
+    .send('Page.addScriptToEvaluateOnNewDocument', {
+      source: BENCHMARK_INSTRUMENTATION_SOURCE,
+    })
+    .catch(() => undefined)
+  await evaluate<boolean>(cdp, BENCHMARK_INSTRUMENTATION_SOURCE)
 }
 
 export async function resetBenchmarkInstrumentation(cdp: CdpClient) {
@@ -445,6 +454,162 @@ export async function ensureStripOpen(cdp: CdpClient) {
     const probe = await readShellProbe(cdp)
     return !probe.stripHidden
   })
+}
+
+export async function readActiveDeckIdFromShell(cdp: CdpClient) {
+  return evaluate<string | null>(
+    cdp,
+    `(() => {
+      try {
+        return window.localStorage?.getItem('ark:active-deck-id') || null
+      } catch {
+        return null
+      }
+    })()`,
+  )
+}
+
+export async function readShellVersionNumber(cdp: CdpClient) {
+  const value = await evaluate<string>(
+    cdp,
+    `[
+      document.body?.innerText || '',
+      document.title || ''
+    ].join('\\n')`,
+  )
+  const match = value.match(/(?:^|[\\s·])v(\\d+)\\b/i)
+  return match ? Number(match[1]) : null
+}
+
+export function mutateFixtureHtml(html: string, index: number) {
+  const normalizedIndex = Math.max(0, Math.floor(index))
+  const mutation = `Benchmark mutation ${normalizedIndex}`
+  const replaceText = (text: string) =>
+    text.replace(/\s+·\s+Benchmark mutation \d+/g, '').trimEnd() + ` · ${mutation}`
+
+  return html.replace(
+    /(<(?:h1|h2|p)\b[^>]*>)([^<]*)(<\/(?:h1|h2|p)>)/i,
+    (_match, open: string, text: string, close: string) => `${open}${replaceText(text)}${close}`,
+  )
+}
+
+export async function burstDeckVersions(options: {
+  apiOrigin: string
+  deckId: string
+  baseHtml: string
+  count: number
+  startIndex?: number
+}) {
+  const startedAt = performance.now()
+  const count = Math.max(1, Math.floor(options.count))
+  const startIndex = Math.max(0, Math.floor(options.startIndex ?? 0))
+  let finalDeck: {
+    id: string
+    html: string
+    title: string
+    activeVersionId?: string | null
+    versionNumber?: number | null
+  } | null = null
+  let finalHtml = options.baseHtml
+
+  for (let offset = 0; offset < count; offset += 1) {
+    const mutationIndex = startIndex + offset
+    finalHtml = mutateFixtureHtml(options.baseHtml, mutationIndex)
+    const response = await fetch(
+      `${options.apiOrigin}/api/decks/${encodeURIComponent(options.deckId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html: finalHtml,
+          source: 'manual',
+          summary: `Benchmark burst mutation ${mutationIndex}`,
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      throw new Error(`Burst PUT ${offset + 1}/${count} failed with ${response.status}.`)
+    }
+
+    const payload = (await response.json()) as {
+      deck?: typeof finalDeck
+      error?: string
+    }
+
+    if (!payload.deck) {
+      throw new Error(payload.error ?? `Burst PUT ${offset + 1}/${count} returned no deck.`)
+    }
+
+    finalDeck = payload.deck
+  }
+
+  if (!finalDeck) {
+    throw new Error('Burst did not persist any deck versions.')
+  }
+
+  return {
+    deck: finalDeck,
+    html: finalHtml,
+    burstSubmitMs: Number((performance.now() - startedAt).toFixed(1)),
+  }
+}
+
+function nestedFields(entry: StructuredLogEntry | null | undefined) {
+  const nested = entry?.fields?.fields
+  return nested && typeof nested === 'object' ? (nested as Record<string, unknown>) : {}
+}
+
+function findThumbnailStatusReady(entries: StructuredLogEntry[]) {
+  return (
+    entries.find(
+      (entry) => entry.event === 'thumbnail.status' && nestedFields(entry).status === 'ready',
+    ) ?? null
+  )
+}
+
+function collectBenchmarkObservability(entries: StructuredLogEntry[]) {
+  return {
+    thumbnailRenderSucceeded:
+      entries.find((entry) => entry.event === 'thumbnail.render.succeeded') ?? null,
+    previewSessionCreated:
+      entries.find((entry) => entry.event === 'preview.session.created') ?? null,
+    thumbnailStatusReady: findThumbnailStatusReady(entries),
+  }
+}
+
+function countThumbnailRenders(entries: StructuredLogEntry[]) {
+  return entries.filter((entry) => entry.event === 'thumbnail.render.succeeded').length
+}
+
+async function decodeReadyThumbnailImages(cdp: CdpClient) {
+  return evaluate<number>(
+    cdp,
+    `(async () => {
+      const images = [...document.querySelectorAll('img[title$="thumbnail"]')]
+        .filter((img) => {
+          const src = img.getAttribute('src') || ''
+          return src.includes('/thumbnails/') && src.includes('.png')
+        })
+
+      await Promise.all(images.map((img) => {
+        if (typeof img.decode === 'function') {
+          return img.decode().catch(() => undefined)
+        }
+
+        if (img.complete) {
+          return undefined
+        }
+
+        return new Promise((resolve) => {
+          img.addEventListener('load', resolve, { once: true })
+          img.addEventListener('error', resolve, { once: true })
+        })
+      }))
+
+      return images.filter((img) => img.complete && img.naturalWidth > 0).length
+    })()`,
+  )
 }
 
 export function buildPlainFixtureHtml(options: {
@@ -550,7 +715,7 @@ export async function measureUploadScenario(options: {
     // Strip toggle only exists after a deck with slides is loaded; default is open,
     // but reopen if a prior interaction left it collapsed.
     if (metrics.shell_ready_ms && probe.stripHidden) {
-      await ensureStripOpen(options.cdp)
+      await ensureStripOpen(options.cdp).catch(() => undefined)
       continue
     }
 
@@ -667,20 +832,9 @@ export async function measureUploadScenario(options: {
   metrics.long_task_total_ms = Number(finalProbe.longTaskTotalMs.toFixed(1))
   metrics.long_task_max_ms = Number(finalProbe.longTaskMaxMs.toFixed(1))
 
-  const thumbnailRenderSucceeded =
-    options.observabilityEntries.find((entry) => entry.event === 'thumbnail.render.succeeded') ??
-    null
-  const previewSessionCreated =
-    options.observabilityEntries.find((entry) => entry.event === 'preview.session.created') ?? null
-  const thumbnailStatusReady =
-    options.observabilityEntries.find(
-      (entry) =>
-        entry.event === 'thumbnail.status' &&
-        Boolean(
-          entry.fields &&
-          (entry.fields as { fields?: { status?: string } }).fields?.status === 'ready',
-        ),
-    ) ?? null
+  const { thumbnailRenderSucceeded, previewSessionCreated, thumbnailStatusReady } =
+    collectBenchmarkObservability(options.observabilityEntries)
+  metrics.thumbnail_render_count = countThumbnailRenders(options.observabilityEntries)
 
   if (typeof thumbnailRenderSucceeded?.durationMs === 'number') {
     metrics.thumbnail_render_duration_ms = thumbnailRenderSucceeded.durationMs
@@ -707,6 +861,320 @@ export async function measureUploadScenario(options: {
       previewSessionCreated,
       thumbnailStatusReady,
     },
+  }
+}
+
+export async function measureDeckReloadWarmScenario(options: {
+  cdp: CdpClient
+  contexts: Map<string, RuntimeContext>
+  appOrigin: string
+  sandboxOrigin: string
+  fixture: BenchmarkFixture
+  timeoutMs?: number
+  observabilityEntries: StructuredLogEntry[]
+}) {
+  const timeoutMs = options.timeoutMs ?? BENCHMARK_THUMB_TIMEOUT_MS
+  const visibleThumbTarget = Math.min(options.fixture.slideCount, 7)
+  const metrics: Partial<Record<MetricId, number>> = {}
+  let peakIframes = 0
+
+  await resetBenchmarkInstrumentation(options.cdp).catch(() => undefined)
+  const startedAt = performance.now()
+  await openApp(options.cdp, options.appOrigin)
+  await installBenchmarkInstrumentation(options.cdp)
+
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const probe = await readShellProbe(options.cdp)
+    const elapsed = performance.now() - startedAt
+    peakIframes = Math.max(peakIframes, probe.thumbIframeCount)
+
+    if (
+      !metrics.shell_ready_ms &&
+      probe.bodyText.includes(options.fixture.title) &&
+      probe.slideCounter?.includes(`of ${options.fixture.slideCount}`)
+    ) {
+      metrics.shell_ready_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (metrics.shell_ready_ms && probe.stripHidden) {
+      await ensureStripOpen(options.cdp).catch(() => undefined)
+      continue
+    }
+
+    if (
+      !metrics.preview_iframe_src_ms &&
+      probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
+    ) {
+      metrics.preview_iframe_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (
+      !metrics.preview_loading_clear_ms &&
+      metrics.preview_iframe_src_ms &&
+      !probe.previewLoading
+    ) {
+      metrics.preview_loading_clear_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
+      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
+      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
+      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_visible_decoded_ms && probe.thumbImagesDecoded >= visibleThumbTarget) {
+      metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (
+      !metrics.preview_active_slide_ms &&
+      probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
+    ) {
+      const previewContext = await findContextByUrl(options.cdp, options.contexts, probe.previewSrc)
+
+      if (previewContext) {
+        const active = await evaluate<boolean>(
+          options.cdp,
+          `(() => {
+            const active = document.querySelector(
+              'section.slide.active, section.slide.is-active, .reveal .slides section.present, .reveal .slides section[data-active]'
+            )
+            const text = (active?.textContent || document.body?.innerText || '')
+            return text.includes(${JSON.stringify(options.fixture.activeSlideText)})
+          })()`,
+          { contextId: previewContext.id, sessionId: previewContext.sessionId },
+        ).catch(() => false)
+
+        if (active) {
+          metrics.preview_active_slide_ms = Number(elapsed.toFixed(1))
+        }
+      }
+    }
+
+    const complete =
+      metrics.shell_ready_ms &&
+      metrics.preview_active_slide_ms &&
+      metrics.thumb_png_visible_decoded_ms &&
+      metrics.preview_loading_clear_ms
+
+    if (complete) {
+      break
+    }
+
+    await sleep(BENCHMARK_POLL_MS)
+  }
+
+  if (
+    !metrics.shell_ready_ms ||
+    !metrics.preview_active_slide_ms ||
+    !metrics.thumb_png_visible_decoded_ms
+  ) {
+    throw new Error(
+      `Timed out measuring warm deck reload for ${options.fixture.id}. Collected metrics: ${JSON.stringify(metrics)}`,
+    )
+  }
+
+  const finalProbe = await readShellProbe(options.cdp)
+  metrics.status_request_count = finalProbe.statusRequestCount
+  metrics.preview_session_count = finalProbe.previewSessionCount
+  metrics.mounted_iframe_peak = Math.max(peakIframes, finalProbe.thumbIframeCount)
+  metrics.dom_parser_count = finalProbe.domParserCount
+  metrics.dom_parser_total_ms = Number(finalProbe.domParserTotalMs.toFixed(1))
+  metrics.long_task_count = finalProbe.longTaskCount
+  metrics.long_task_total_ms = Number(finalProbe.longTaskTotalMs.toFixed(1))
+  metrics.long_task_max_ms = Number(finalProbe.longTaskMaxMs.toFixed(1))
+  metrics.thumbnail_render_count = countThumbnailRenders(options.observabilityEntries)
+
+  if (metrics.thumbnail_render_count !== 0) {
+    throw new Error(
+      `Warm deck reload unexpectedly rendered ${metrics.thumbnail_render_count} thumbnail batch(es).`,
+    )
+  }
+
+  return {
+    metrics,
+    observability: collectBenchmarkObservability(options.observabilityEntries),
+  }
+}
+
+export async function measureRapidVersionBurstScenario(options: {
+  cdp: CdpClient
+  contexts: Map<string, RuntimeContext>
+  appOrigin: string
+  apiOrigin: string
+  sandboxOrigin: string
+  deckId: string
+  baseHtml: string
+  fixture: BenchmarkFixture
+  burstCount: number
+  mutationStartIndex?: number
+  timeoutMs?: number
+  observabilityEntries: StructuredLogEntry[]
+}) {
+  const timeoutMs = options.timeoutMs ?? BENCHMARK_THUMB_TIMEOUT_MS
+  const visibleThumbTarget = Math.min(options.fixture.slideCount, 7)
+  const metrics: Partial<Record<MetricId, number>> = {}
+  let peakIframes = 0
+
+  await resetBenchmarkInstrumentation(options.cdp).catch(() => undefined)
+  const burst = await burstDeckVersions({
+    apiOrigin: options.apiOrigin,
+    deckId: options.deckId,
+    baseHtml: options.baseHtml,
+    count: options.burstCount,
+    startIndex: options.mutationStartIndex,
+  })
+  metrics.burst_submit_ms = burst.burstSubmitMs
+
+  const expectedVersionNumber =
+    typeof burst.deck.versionNumber === 'number' ? burst.deck.versionNumber : null
+  const finalMutationIndex =
+    Math.max(0, Math.floor(options.mutationStartIndex ?? 0)) +
+    Math.max(1, Math.floor(options.burstCount)) -
+    1
+  const expectedActiveSlideText = `Benchmark mutation ${finalMutationIndex}`
+  const startedAt = performance.now()
+
+  await openApp(options.cdp, options.appOrigin)
+  await installBenchmarkInstrumentation(options.cdp)
+
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const probe = await readShellProbe(options.cdp)
+    const elapsed = performance.now() - startedAt
+    peakIframes = Math.max(peakIframes, probe.thumbIframeCount)
+    const shellVersion = await readShellVersionNumber(options.cdp).catch(() => null)
+    const expectedShellVersionVisible =
+      expectedVersionNumber === null ||
+      (typeof shellVersion === 'number' && shellVersion >= expectedVersionNumber)
+
+    if (
+      !metrics.shell_ready_ms &&
+      probe.bodyText.includes(options.fixture.title) &&
+      probe.slideCounter?.includes(`of ${options.fixture.slideCount}`)
+    ) {
+      metrics.shell_ready_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (metrics.shell_ready_ms && probe.stripHidden) {
+      await ensureStripOpen(options.cdp).catch(() => undefined)
+      continue
+    }
+
+    if (
+      !metrics.preview_iframe_src_ms &&
+      probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
+    ) {
+      metrics.preview_iframe_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (
+      !metrics.preview_loading_clear_ms &&
+      metrics.preview_iframe_src_ms &&
+      !probe.previewLoading
+    ) {
+      metrics.preview_loading_clear_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_fallback_visible_ms && probe.thumbIframeCount > 0) {
+      metrics.thumb_fallback_visible_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_src_ms && probe.thumbImagesReady > 0) {
+      metrics.thumb_png_first_src_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (!metrics.thumb_png_first_decoded_ms && probe.thumbImagesDecoded > 0) {
+      metrics.thumb_png_first_decoded_ms = Number(elapsed.toFixed(1))
+    }
+
+    if (
+      !metrics.preview_active_slide_ms &&
+      probe.previewSrc.startsWith(`${options.sandboxOrigin}/render/`)
+    ) {
+      const previewContext = await findContextByUrl(options.cdp, options.contexts, probe.previewSrc)
+
+      if (previewContext) {
+        const active = await evaluate<boolean>(
+          options.cdp,
+          `(() => {
+            const active = document.querySelector(
+              'section.slide.active, section.slide.is-active, .reveal .slides section.present, .reveal .slides section[data-active]'
+            )
+            const text = (active?.textContent || document.body?.innerText || '')
+            return text.includes(${JSON.stringify(expectedActiveSlideText)})
+          })()`,
+          { contextId: previewContext.id, sessionId: previewContext.sessionId },
+        ).catch(() => false)
+
+        if (active) {
+          metrics.preview_active_slide_ms = Number(elapsed.toFixed(1))
+        }
+      }
+    }
+
+    if (
+      metrics.preview_active_slide_ms &&
+      !metrics.thumb_png_visible_decoded_ms &&
+      probe.thumbImagesReady >= visibleThumbTarget
+    ) {
+      const decoded =
+        probe.thumbImagesDecoded >= visibleThumbTarget
+          ? probe.thumbImagesDecoded
+          : await decodeReadyThumbnailImages(options.cdp).catch(() => probe.thumbImagesDecoded)
+
+      if (decoded >= visibleThumbTarget || (decoded > 0 && expectedShellVersionVisible)) {
+        metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
+        metrics.final_version_thumb_ready_ms = metrics.thumb_png_visible_decoded_ms
+      }
+    }
+
+    const complete =
+      metrics.shell_ready_ms &&
+      metrics.preview_active_slide_ms &&
+      metrics.thumb_png_visible_decoded_ms &&
+      metrics.preview_loading_clear_ms
+
+    if (complete) {
+      break
+    }
+
+    await sleep(BENCHMARK_POLL_MS)
+  }
+
+  if (
+    !metrics.shell_ready_ms ||
+    !metrics.preview_active_slide_ms ||
+    !metrics.thumb_png_visible_decoded_ms
+  ) {
+    throw new Error(
+      `Timed out measuring rapid version burst for ${options.fixture.id}. Collected metrics: ${JSON.stringify(metrics)}`,
+    )
+  }
+
+  const finalProbe = await readShellProbe(options.cdp)
+  metrics.status_request_count = finalProbe.statusRequestCount
+  metrics.preview_session_count = finalProbe.previewSessionCount
+  metrics.mounted_iframe_peak = Math.max(peakIframes, finalProbe.thumbIframeCount)
+  metrics.dom_parser_count = finalProbe.domParserCount
+  metrics.dom_parser_total_ms = Number(finalProbe.domParserTotalMs.toFixed(1))
+  metrics.long_task_count = finalProbe.longTaskCount
+  metrics.long_task_total_ms = Number(finalProbe.longTaskTotalMs.toFixed(1))
+  metrics.long_task_max_ms = Number(finalProbe.longTaskMaxMs.toFixed(1))
+  metrics.thumbnail_render_count = countThumbnailRenders(options.observabilityEntries)
+
+  return {
+    metrics,
+    observability: collectBenchmarkObservability(options.observabilityEntries),
   }
 }
 
