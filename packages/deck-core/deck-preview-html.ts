@@ -596,7 +596,10 @@ function tryInjectPreviewHandshakeFast(
   // global replace rewrites both attribute nonces and CSP `'nonce-…'` sources.
   let next = html.replaceAll(placeholder, nonce)
 
-  if (next.includes('data-ark-preview-handshake')) {
+  // Only treat an Ark-injected handshake <script> as already present. Deck
+  // authored attributes like data-ark-preview-handshake must not suppress
+  // sentinel injection.
+  if (/<script\b[^>]*\bdata-ark-preview-handshake\b/i.test(next)) {
     return next
   }
 

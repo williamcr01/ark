@@ -137,6 +137,10 @@ export function useDeckPersistence() {
   useEffect(() => {
     let cancelled = false
     const storedActiveDeckId = readActiveDeckId()
+    // selectDeck / startNewDeck / persistHtml bump this ref; boot must not
+    // overwrite a deck the user chose after early apply unlocked the shell.
+    const bootRequestId = saveRequestIdRef.current
+    const bootStillOwnsSession = () => !cancelled && saveRequestIdRef.current === bootRequestId
 
     const loadDecks = async () => {
       try {
@@ -148,7 +152,7 @@ export function useDeckPersistence() {
           : Promise.resolve(null)
 
         void earlyDeckPromise.then((deck) => {
-          if (cancelled || !deck || deck.id !== storedActiveDeckId) {
+          if (!bootStillOwnsSession() || !deck || deck.id !== storedActiveDeckId) {
             return
           }
 
@@ -166,6 +170,10 @@ export function useDeckPersistence() {
         setDecks(summaries)
         setSaveError('')
 
+        if (!bootStillOwnsSession()) {
+          return
+        }
+
         if (!storedActiveDeckId) {
           return
         }
@@ -177,7 +185,7 @@ export function useDeckPersistence() {
 
         const earlyDeck = await earlyDeckPromise
 
-        if (cancelled) {
+        if (!bootStillOwnsSession()) {
           return
         }
 
@@ -191,21 +199,21 @@ export function useDeckPersistence() {
         try {
           const deck = await fetchDeck(storedActiveDeckId)
 
-          if (cancelled) {
+          if (!bootStillOwnsSession()) {
             return
           }
 
           setActiveDeck(deck)
           void refreshVersions(deck.id)
         } catch {
-          if (cancelled) {
+          if (!bootStillOwnsSession()) {
             return
           }
 
           clearActiveDeck()
         }
       } catch {
-        if (cancelled) {
+        if (!bootStillOwnsSession()) {
           return
         }
 

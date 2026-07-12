@@ -454,11 +454,9 @@ export function createThumbnailService(options: {
     input: ThumbnailInternalEnqueueInput,
     priority: ThumbnailQueuePriority,
   ) => {
-    if (
-      existing.state === 'queued' &&
-      existing.priority === 'background' &&
-      priority === 'foreground'
-    ) {
+    // Promote even while running so a foreground waiter cannot be aborted as
+    // an obsolete background warm.
+    if (existing.priority === 'background' && priority === 'foreground') {
       existing.priority = 'foreground'
       logger.debug('thumbnail.queue.promoted', {
         deckId: existing.input.deckId,
@@ -466,6 +464,7 @@ export function createThumbnailService(options: {
           versionId: existing.input.versionId,
           manifestHash: existing.input.manifestHash,
           priority: existing.priority,
+          state: existing.state,
         },
       })
     }
@@ -632,13 +631,15 @@ export function createThumbnailService(options: {
     await measureCacheWrite(timing, () => options.cache.markPending(key, baseMeta))
 
     if (signal?.aborted) {
-      await measureCacheWrite(timing, () =>
-        options.cache.markFailed(key, {
+      await measureCacheWrite(timing, async () => {
+        const existing = await options.cache.readMeta(key)
+        // Undo the markPending attempt increment so abort does not burn budget.
+        await options.cache.markFailed(key, {
           ...baseMeta,
           error: THUMBNAIL_RENDER_ABORTED_ERROR,
-          attempts: THUMBNAIL_MAX_RENDER_ATTEMPTS,
-        }),
-      )
+          attempts: Math.max(0, (existing?.attempts ?? 1) - 1),
+        })
+      })
       return {
         status: THUMBNAIL_STATUS.failed,
         renderMs: 0,
@@ -718,15 +719,24 @@ export function createThumbnailService(options: {
           result.aborted ||
           result.error === THUMBNAIL_RENDER_ABORTED_ERROR ||
           Boolean(signal?.aborted)
-        await measureCacheWrite(timing, () =>
-          options.cache.markFailed(key, {
+        await measureCacheWrite(timing, async () => {
+          if (!aborted) {
+            await options.cache.markFailed(key, {
+              ...baseMeta,
+              error: result.error,
+            })
+            return
+          }
+
+          const existing = await options.cache.readMeta(key)
+          // Aborted/superseded renders must remain retryable (e.g. rollback).
+          // Undo the markPending attempt increment so abort does not burn budget.
+          await options.cache.markFailed(key, {
             ...baseMeta,
             error: result.error,
-            // Superseded renders should not burn the failure retry budget for
-            // a version nobody is waiting on; mark attempts exhausted.
-            ...(aborted ? { attempts: THUMBNAIL_MAX_RENDER_ATTEMPTS } : {}),
-          }),
-        )
+            attempts: Math.max(0, (existing?.attempts ?? 1) - 1),
+          })
+        })
         return {
           status: THUMBNAIL_STATUS.failed,
           renderMs,
@@ -948,6 +958,26 @@ export function createThumbnailService(options: {
       }
 
       if (meta?.status === THUMBNAIL_STATUS.pending) {
+        // Promote an already-running/queued local warm so a foreground waiter
+        // cannot be aborted as obsolete. Do not create a new job here — another
+        // process may own the pending lease.
+        if (input.enqueueIfMissing && (input.html || input.loadHtml)) {
+          const existing = jobsById.get(keyId(key))
+          if (existing) {
+            mergeJobInput(
+              existing,
+              {
+                deckId: input.deckId,
+                versionId: input.versionId,
+                html: input.html,
+                loadHtml: input.loadHtml,
+                manifestHash: input.manifestHash,
+              },
+              'foreground',
+            )
+          }
+        }
+
         const waited = await waitForLocalInflight(key, input)
 
         if (waited) {

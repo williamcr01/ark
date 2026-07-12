@@ -85,6 +85,31 @@ describe('buildPreviewDocument', () => {
     )
   })
 
+  it('still injects the handshake when authored markup uses the handshake attribute name', () => {
+    const noncePlaceholder = 'CachedNoncePlaceholder'
+    const authored = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Plain</title></head>
+<body>
+  <section class="slide" data-ark-preview-handshake="authored"><h1>One</h1></section>
+</body>
+</html>`
+    const { html } = buildPreviewDocument(authored, {
+      parentOrigin: 'http://localhost:5173',
+      nonce: noncePlaceholder,
+    })
+
+    const previewHtml = injectPreviewHandshake(html, {
+      parentOrigin: 'http://localhost:5173',
+      handshake: 'session-handshake-authored',
+      nonce: 'FreshSessionNonce',
+      noncePlaceholder,
+    })
+
+    expect(previewHtml).toContain('session-handshake-authored')
+    expect(previewHtml).toMatch(/<script\b[^>]*\bdata-ark-preview-handshake\b/i)
+  })
+
   it('keeps post-serialize hostile stripping on the handshake injection path', () => {
     const noncePlaceholder = 'CachedNoncePlaceholder'
     const { html } = buildPreviewDocument(hostileNulMetaRefreshDeck(), {
