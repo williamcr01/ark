@@ -28,30 +28,30 @@ pnpm benchmark:renderer -- --compare artifacts/renderer-benchmarks/before.json
 
 User-visible timings from the instant before HTML upload:
 
-| Metric                         | Meaning                                                                                                                                |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `shell_ready_ms`               | Deck title + slide counter appear in the shell                                                                                         |
-| `preview_active_slide_ms`      | Active slide content is visible in the sandbox iframe                                                                                  |
-| `thumb_png_visible_decoded_ms` | Initially visible PNG thumbnails are decoded                                                                                           |
-| `final_version_thumb_ready_ms` | Final burst version PNGs decoded (rapid burst only; same timer as `thumb_png_visible_decoded_ms`, starting after the last PUT returns) |
-| `burst_submit_ms`              | Time to submit sequential PUTs in `rapid_version_burst`                                                                                |
-| `thumbnail_render_count`       | API thumbnail render batches observed during the scenario                                                                              |
-| `preview_session_count`        | `POST /api/preview-sessions` calls                                                                                                     |
-| `status_request_count`         | Thumbnail status requests                                                                                                              |
-| `mounted_iframe_peak`          | Peak fallback thumbnail iframe count                                                                                                   |
-| `long_task_total_ms`           | Accumulated long tasks during the upload flow                                                                                          |
+| Metric                         | Meaning                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `shell_ready_ms`               | Deck title + slide counter appear in the shell                                                             |
+| `preview_active_slide_ms`      | Active slide content is visible in the sandbox iframe                                                      |
+| `thumb_png_visible_decoded_ms` | Initially visible PNG thumbnails are decoded                                                               |
+| `final_version_thumb_ready_ms` | Time from last burst PUT until final-version thumbnail status is `ready` (API poll; excludes shell reload) |
+| `burst_submit_ms`              | Time to submit sequential PUTs in `rapid_version_burst`                                                    |
+| `thumbnail_render_count`       | API thumbnail render batches observed during the scenario                                                  |
+| `preview_session_count`        | `POST /api/preview-sessions` calls                                                                         |
+| `status_request_count`         | Thumbnail status requests                                                                                  |
+| `mounted_iframe_peak`          | Peak fallback thumbnail iframe count                                                                       |
+| `long_task_total_ms`           | Accumulated long tasks during the upload flow                                                              |
 
 JSON output also includes DOMParser counts, fallback iframe timing, and correlated
 API events such as `thumbnail.render.succeeded`.
 
 ## Scenarios
 
-| Scenario              | Behavior                                                                                      |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| `upload_cold`         | Fresh API/sandbox/web stack, empty thumbnail cache, new Chromium profile                      |
-| `upload_warm`         | Reuses servers (warm Chromium pool) and reloads the shell between uploads                     |
-| `deck_reload_warm`    | Uploads once, verifies warm-cache reloads decode PNGs with zero thumbnail renders             |
-| `rapid_version_burst` | Uploads once, submits a sequential PUT burst, then measures final-version thumbnail readiness |
+| Scenario              | Behavior                                                                                                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upload_cold`         | Fresh API/sandbox/web stack, empty thumbnail cache, new Chromium profile                                                                                                                                        |
+| `upload_warm`         | Reuses servers (warm Chromium pool) and reloads the shell between uploads                                                                                                                                       |
+| `deck_reload_warm`    | Uploads once, verifies warm-cache reloads decode PNGs with zero thumbnail renders                                                                                                                               |
+| `rapid_version_burst` | Uploads once, submits a sequential PUT burst, measures API thumbnail readiness for the final version, then reloads the shell to verify the final mutation (PNG decode is best-effort and does not fail the run) |
 
 `--extended` adds generated 20-slide plain/Reveal fixtures and a large-inline-style deck.
 

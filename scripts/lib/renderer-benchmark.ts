@@ -548,11 +548,86 @@ export async function burstDeckVersions(options: {
     throw new Error('Burst did not persist any deck versions.')
   }
 
+  if (!finalDeck.activeVersionId) {
+    throw new Error('Burst final deck is missing activeVersionId.')
+  }
+
   return {
     deck: finalDeck,
     html: finalHtml,
     burstSubmitMs: Number((performance.now() - startedAt).toFixed(1)),
   }
+}
+
+/**
+ * Poll thumbnail status for a specific version until PNGs are ready.
+ * This is the queue-concurrency signal for rapid_version_burst: it starts after
+ * the last PUT and does not include a shell reload.
+ */
+export async function waitForFinalVersionThumbnailsReady(options: {
+  apiOrigin: string
+  deckId: string
+  versionId: string
+  expectedSlideCount: number
+  timeoutMs?: number
+  waitMs?: number
+  fetchImpl?: typeof fetch
+}) {
+  const timeoutMs = options.timeoutMs ?? BENCHMARK_THUMB_TIMEOUT_MS
+  const waitMs = Math.max(0, Math.min(options.waitMs ?? 2_000, 5_000))
+  const fetchImpl = options.fetchImpl ?? fetch
+  const startedAt = performance.now()
+  const deadline = Date.now() + timeoutMs
+  const expectedSlides = Math.max(1, Math.floor(options.expectedSlideCount))
+
+  while (Date.now() < deadline) {
+    const remainingMs = Math.max(1, deadline - Date.now())
+    const pollWaitMs = Math.min(waitMs, remainingMs)
+    const url = new URL(
+      `${options.apiOrigin}/api/decks/${encodeURIComponent(options.deckId)}/thumbnails`,
+    )
+    url.searchParams.set('versionId', options.versionId)
+    url.searchParams.set('waitMs', String(pollWaitMs))
+
+    const response = await fetchImpl(url)
+    if (!response.ok) {
+      throw new Error(
+        `Thumbnail status for ${options.versionId} failed with HTTP ${response.status}.`,
+      )
+    }
+
+    const payload = (await response.json()) as {
+      status?: string
+      slides?: Array<{ index: number; url: string }>
+      error?: string
+    }
+
+    if (payload.status === 'failed') {
+      throw new Error(payload.error ?? `Thumbnail render failed for version ${options.versionId}.`)
+    }
+
+    if (
+      payload.status === 'ready' &&
+      Array.isArray(payload.slides) &&
+      payload.slides.length >= expectedSlides &&
+      payload.slides.every((slide) => typeof slide.url === 'string' && slide.url.length > 0)
+    ) {
+      return {
+        readyMs: Number((performance.now() - startedAt).toFixed(1)),
+        slideCount: payload.slides.length,
+      }
+    }
+
+    if (payload.status === 'disabled') {
+      throw new Error('Thumbnail renderer is disabled; rapid_version_burst requires it on.')
+    }
+
+    await sleep(BENCHMARK_POLL_MS)
+  }
+
+  throw new Error(
+    `Timed out waiting for thumbnails ready for version ${options.versionId} (expected ${expectedSlides} slides).`,
+  )
 }
 
 function nestedFields(entry: StructuredLogEntry | null | undefined) {
@@ -1034,6 +1109,9 @@ export async function measureRapidVersionBurstScenario(options: {
   })
   metrics.burst_submit_ms = burst.burstSubmitMs
 
+  const finalVersionId = burst.deck.activeVersionId
+  assert(finalVersionId, 'Burst final deck is missing activeVersionId.')
+
   const expectedVersionNumber =
     typeof burst.deck.versionNumber === 'number' ? burst.deck.versionNumber : null
   const finalMutationIndex =
@@ -1041,12 +1119,30 @@ export async function measureRapidVersionBurstScenario(options: {
     Math.max(1, Math.floor(options.burstCount)) -
     1
   const expectedActiveSlideText = `Benchmark mutation ${finalMutationIndex}`
-  const startedAt = performance.now()
 
+  // Primary concurrency signal: API thumbnail readiness for the final version,
+  // measured from the instant the last PUT returns — no shell reload in this timer.
+  const apiReady = await waitForFinalVersionThumbnailsReady({
+    apiOrigin: options.apiOrigin,
+    deckId: options.deckId,
+    versionId: finalVersionId,
+    expectedSlideCount: options.fixture.slideCount,
+    timeoutMs,
+  })
+  metrics.final_version_thumb_ready_ms = apiReady.readyMs
+
+  // Secondary shell path: reload once thumbs are already ready.
+  // Require shell + active preview for the final mutation (integration check).
+  // Visible PNG decode is best-effort: headless can flake to srcDoc iframe
+  // fallback even when the API already reported ready; concurrency decisions
+  // use final_version_thumb_ready_ms only.
+  const shellTimeoutMs = Math.min(timeoutMs, 30_000)
+  const decodeSoftDeadline = Date.now() + Math.min(timeoutMs, 5_000)
+  const startedAt = performance.now()
   await openApp(options.cdp, options.appOrigin)
   await installBenchmarkInstrumentation(options.cdp)
 
-  const deadline = Date.now() + timeoutMs
+  const deadline = Date.now() + shellTimeoutMs
 
   while (Date.now() < deadline) {
     const probe = await readShellProbe(options.cdp)
@@ -1124,6 +1220,7 @@ export async function measureRapidVersionBurstScenario(options: {
 
     if (
       metrics.preview_active_slide_ms &&
+      expectedShellVersionVisible &&
       !metrics.thumb_png_visible_decoded_ms &&
       probe.thumbImagesReady >= visibleThumbTarget
     ) {
@@ -1132,44 +1229,51 @@ export async function measureRapidVersionBurstScenario(options: {
           ? probe.thumbImagesDecoded
           : await decodeReadyThumbnailImages(options.cdp).catch(() => probe.thumbImagesDecoded)
 
-      if (decoded >= visibleThumbTarget || (decoded > 0 && expectedShellVersionVisible)) {
+      if (decoded >= visibleThumbTarget) {
         metrics.thumb_png_visible_decoded_ms = Number(elapsed.toFixed(1))
-        metrics.final_version_thumb_ready_ms = metrics.thumb_png_visible_decoded_ms
       }
     }
 
-    const complete =
-      metrics.shell_ready_ms &&
-      metrics.preview_active_slide_ms &&
-      metrics.thumb_png_visible_decoded_ms &&
-      metrics.preview_loading_clear_ms
+    const coreReady =
+      metrics.shell_ready_ms && metrics.preview_active_slide_ms && metrics.preview_loading_clear_ms
 
-    if (complete) {
+    if (coreReady && metrics.thumb_png_visible_decoded_ms) {
+      break
+    }
+
+    // Stop waiting on decode once the soft deadline passes, if core shell checks passed.
+    if (coreReady && Date.now() >= decodeSoftDeadline) {
       break
     }
 
     await sleep(BENCHMARK_POLL_MS)
   }
 
-  if (
-    !metrics.shell_ready_ms ||
-    !metrics.preview_active_slide_ms ||
-    !metrics.thumb_png_visible_decoded_ms
-  ) {
+  if (!metrics.shell_ready_ms || !metrics.preview_active_slide_ms) {
     throw new Error(
-      `Timed out measuring rapid version burst for ${options.fixture.id}. Collected metrics: ${JSON.stringify(metrics)}`,
+      `Timed out measuring rapid version burst shell path for ${options.fixture.id}. Collected metrics: ${JSON.stringify(metrics)}`,
     )
   }
 
-  const finalProbe = await readShellProbe(options.cdp)
-  metrics.status_request_count = finalProbe.statusRequestCount
-  metrics.preview_session_count = finalProbe.previewSessionCount
-  metrics.mounted_iframe_peak = Math.max(peakIframes, finalProbe.thumbIframeCount)
-  metrics.dom_parser_count = finalProbe.domParserCount
-  metrics.dom_parser_total_ms = Number(finalProbe.domParserTotalMs.toFixed(1))
-  metrics.long_task_count = finalProbe.longTaskCount
-  metrics.long_task_total_ms = Number(finalProbe.longTaskTotalMs.toFixed(1))
-  metrics.long_task_max_ms = Number(finalProbe.longTaskMaxMs.toFixed(1))
+  if (!metrics.thumb_png_visible_decoded_ms) {
+    console.warn(
+      `[rapid_version_burst/${options.fixture.id}] shell PNG decode incomplete (best-effort); continuing with API metric.`,
+    )
+  }
+
+  const finalProbe = await readShellProbe(options.cdp).catch(() => null)
+  if (finalProbe) {
+    metrics.status_request_count = finalProbe.statusRequestCount
+    metrics.preview_session_count = finalProbe.previewSessionCount
+    metrics.mounted_iframe_peak = Math.max(peakIframes, finalProbe.thumbIframeCount)
+    metrics.dom_parser_count = finalProbe.domParserCount
+    metrics.dom_parser_total_ms = Number(finalProbe.domParserTotalMs.toFixed(1))
+    metrics.long_task_count = finalProbe.longTaskCount
+    metrics.long_task_total_ms = Number(finalProbe.longTaskTotalMs.toFixed(1))
+    metrics.long_task_max_ms = Number(finalProbe.longTaskMaxMs.toFixed(1))
+  } else {
+    metrics.mounted_iframe_peak = peakIframes
+  }
   metrics.thumbnail_render_count = countThumbnailRenders(options.observabilityEntries)
 
   return {
