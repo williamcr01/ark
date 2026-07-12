@@ -319,7 +319,7 @@ export function createThumbnailCache(
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.failed,
-      attempts: existing?.attempts ?? 1,
+      attempts: input.attempts ?? existing?.attempts ?? 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }

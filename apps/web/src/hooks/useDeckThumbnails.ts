@@ -15,7 +15,7 @@ export type DeckThumbnailsState = {
   isLoading: boolean
 }
 
-const PENDING_REPOLL_MS = 250
+const PENDING_REPOLL_MS = 50
 
 async function fetchDeckThumbnails(deckId: string, versionId: string, signal: AbortSignal) {
   const params = new URLSearchParams({
