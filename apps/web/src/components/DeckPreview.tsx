@@ -18,10 +18,10 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { EditModeToolbar, PreviewEditModeToggle } from '@/components/EditModeToolbar'
-import { ElementInspector } from '@/components/ElementInspector'
+import { EditModeToolbar } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
 import { PresentMode } from '@/components/PresentMode'
+import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -73,7 +73,6 @@ export type DeckPreviewProps = {
   layout: 'desktop' | 'mobile'
   deckAnalysis: DeckBrowserAnalysis
   editorBridgeEnabled?: boolean
-  editModeActive?: boolean
   isTextEditSaving?: boolean
   canUndo?: boolean
   canRedo?: boolean
@@ -81,9 +80,8 @@ export type DeckPreviewProps = {
   redoSlideIndex?: number | null
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
-  onEditModeActiveChange?: (active: boolean) => void
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<void>
-  /** Reports the current editor selection to the shell (issue #83); null when edit mode is inactive. */
+  /** Reports the current editor selection to the shell (issue #83); null when edit chrome is inactive. */
   onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
   onPatchEditorOperations?: (
     operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
@@ -101,7 +99,6 @@ export function DeckPreview({
   layout,
   deckAnalysis,
   editorBridgeEnabled = false,
-  editModeActive: controlledEditModeActive,
   isTextEditSaving = false,
   canUndo = false,
   canRedo = false,
@@ -109,7 +106,6 @@ export function DeckPreview({
   redoSlideIndex = null,
   onUndo,
   onRedo,
-  onEditModeActiveChange,
   onCommitTextEdit,
   onEditorSelectionChange,
   onPatchEditorOperations,
@@ -123,7 +119,6 @@ export function DeckPreview({
     width: typeof window === 'undefined' ? 0 : window.innerWidth,
     height: typeof window === 'undefined' ? 0 : window.innerHeight,
   }))
-  const [uncontrolledEditModeActive, setUncontrolledEditModeActive] = useState(false)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
   const [imageFitOverride, setImageFitOverride] = useState<{
     elementId: string
@@ -157,22 +152,10 @@ export function DeckPreview({
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
-  const editModeActive = controlledEditModeActive ?? uncontrolledEditModeActive
-  const setEditModeActive = useCallback(
-    (nextActive: boolean) => {
-      if (onEditModeActiveChange) {
-        onEditModeActiveChange(nextActive)
-        return
-      }
-
-      setUncontrolledEditModeActive(nextActive)
-    },
-    [onEditModeActiveChange],
-  )
   const hasSlides = parsedDeck.slideCount > 0
-  const editChromeActive = editModeActive && !isGenerating && !isPresentOpen
-  const editorBridgeActive = editorBridgeEnabled && editChromeActive
   const previewEnabled = html.length > 0 && hasSlides
+  const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
+  const editorBridgeActive = editorBridgeEnabled && editChromeActive
   const previewFrame = useDeckPreviewFrame(html, previewEnabled)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
@@ -243,9 +226,7 @@ export function DeckPreview({
       },
     },
   )
-  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
-    enabled: !editChromeActive,
-  })
+  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount)
   // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
   // while the main preview is still settling (manual-edit smoke / CDP context lookup).
   // Never defer the initial empty→slides transition: a deferred empty parse leaves the
@@ -279,6 +260,7 @@ export function DeckPreview({
     enableEditor,
     disableEditor,
     selectElement,
+    clearSelection,
     requestGeometry,
     startTextEdit,
     cancelTextEdit,
@@ -501,15 +483,6 @@ export function DeckPreview({
     cancelTextEdit()
   }, [cancelTextEdit, textEditActive])
 
-  const exitEditMode = useCallback(() => {
-    endTextEditing()
-    disableEditor()
-    setActiveTool('select')
-    setImageFitOverride(null)
-    pendingReselectRef.current = null
-    setEditModeActive(false)
-  }, [disableEditor, endTextEditing, setEditModeActive])
-
   useEffect(() => {
     const wasEditChromeActive = wasEditChromeActiveRef.current
     wasEditChromeActiveRef.current = editChromeActive
@@ -521,22 +494,6 @@ export function DeckPreview({
     endTextEditing()
     disableEditor()
   }, [disableEditor, editChromeActive, endTextEditing])
-
-  const handleEditModeChange = useCallback(
-    (nextActive: boolean) => {
-      if (!nextActive) {
-        exitEditMode()
-        return
-      }
-
-      if (!(html.length > 0 && hasSlides && !isGenerating)) {
-        return
-      }
-
-      setEditModeActive(true)
-    },
-    [exitEditMode, hasSlides, html.length, isGenerating, setEditModeActive],
-  )
 
   const handleToolChange = useCallback(
     (tool: EditorTool) => {
@@ -1095,15 +1052,7 @@ export function DeckPreview({
             aria-hidden
             className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
           />
-          {editorBridgeEnabled ? (
-            <PreviewEditModeToggle
-              active={editModeActive}
-              disabled={!canPresent || isPresentOpen}
-              onChange={handleEditModeChange}
-            />
-          ) : (
-            <span className="truncate text-xs font-medium">Preview</span>
-          )}
+          <span className="truncate text-xs font-medium">Preview</span>
           <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
             ›
           </span>
@@ -1239,6 +1188,20 @@ export function DeckPreview({
               )
               void handleInsertImageFile(file, position)
             }}
+            onPointerDown={(event) => {
+              if (!editChromeActive || textEditActive || !selection) {
+                return
+              }
+
+              // Clicks on the letterbox / stage chrome (not the iframe) clear the
+              // selection the same way empty-slide clicks do inside the deck.
+              if (
+                event.target === previewViewportRef.current ||
+                event.target === previewStageRef.current
+              ) {
+                clearSelection()
+              }
+            }}
             ref={previewViewportRef}
           >
             {html ? (
@@ -1306,11 +1269,23 @@ export function DeckPreview({
                 ) : null}
                 {editChromeActive ? (
                   <EditorSelectionOverlay
-                    geometry={geometry}
+                    geometry={selection ? geometry : null}
                     hoverGeometry={hoverGeometry}
                     isEditing={textEditActive}
                     locked={selection?.locked ?? false}
                     scale={previewFrameScale}
+                  />
+                ) : null}
+                {editorBridgeEnabled && editChromeActive ? (
+                  <SelectionInspectorChrome
+                    geometry={transformPreview?.geometry ?? geometry}
+                    isSaving={isTextEditSaving}
+                    onApplyOperations={onPatchEditorOperations ? handleInspectorApply : undefined}
+                    scale={previewFrameScale}
+                    selection={selection}
+                    textEditActive={textEditActive}
+                    transforming={Boolean(transformPreview)}
+                    zIndex={selectionZIndex}
                   />
                 ) : null}
                 {!isPresentOpen && usesStaticPreview ? (
@@ -1383,17 +1358,6 @@ export function DeckPreview({
             )}
           </div>
         </div>
-
-        {editorBridgeEnabled && editChromeActive && layout === 'desktop' ? (
-          <ElementInspector
-            geometry={geometry}
-            isSaving={isTextEditSaving}
-            onApplyOperations={onPatchEditorOperations ? handleInspectorApply : undefined}
-            selection={selection}
-            textEditActive={textEditActive}
-            zIndex={selectionZIndex}
-          />
-        ) : null}
       </div>
 
       {isPresentOpen ? (

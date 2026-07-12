@@ -1,5 +1,5 @@
 import type { EditorNormalizedRect } from '@ark/deck-core/deck-editor-bridge.ts'
-import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
+import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
 import { cn } from '@/lib/utils'
 
 export type EditorSelectionOverlayProps = {
@@ -8,18 +8,6 @@ export type EditorSelectionOverlayProps = {
   scale: number
   locked?: boolean
   isEditing?: boolean
-}
-
-function overlayBoxStyle(geometry: EditorNormalizedRect, scale: number) {
-  const width = PREVIEW_FRAME_WIDTH * scale
-  const height = PREVIEW_FRAME_HEIGHT * scale
-
-  return {
-    left: geometry.x * width,
-    top: geometry.y * height,
-    width: Math.max(geometry.width * width, 2),
-    height: Math.max(geometry.height * height, 2),
-  }
 }
 
 export function EditorSelectionOverlay({
@@ -47,7 +35,7 @@ export function EditorSelectionOverlay({
         <div
           aria-hidden
           className="pointer-events-none absolute left-0 top-0 rounded-sm border border-[var(--ark-accent)]/40 bg-[var(--ark-accent-soft)]/5"
-          style={overlayBoxStyle(hoverGeometry, scale)}
+          style={normalizedRectToStagePixels(hoverGeometry, scale)}
         />
       ) : null}
       {geometry ? (
@@ -61,7 +49,7 @@ export function EditorSelectionOverlay({
                 ? 'border-[var(--ark-accent)] bg-[var(--ark-accent-soft)]/20'
                 : 'border-[var(--ark-accent)]/80 bg-[var(--ark-accent-soft)]/10',
           )}
-          style={overlayBoxStyle(geometry, scale)}
+          style={normalizedRectToStagePixels(geometry, scale)}
         />
       ) : null}
     </>

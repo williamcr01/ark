@@ -99,12 +99,7 @@ async function enterEditMode(
   servers: { sandboxOrigin: string },
   contexts: Map<string, RuntimeContext>,
 ) {
-  await evaluate<boolean>(
-    cdp,
-    `Boolean(document.querySelector('button[aria-label="Edit mode"]')?.click())`,
-  )
-
-  await waitFor('edit mode toolbar', async () =>
+  await waitFor('always-on edit mode toolbar', async () =>
     evaluate<boolean>(cdp!, `Boolean(document.querySelector('[aria-label="Edit mode toolbar"]'))`),
   )
 

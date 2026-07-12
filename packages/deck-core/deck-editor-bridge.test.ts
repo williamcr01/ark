@@ -223,6 +223,24 @@ describe('deck editor bridge protocol', () => {
     expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
   })
 
+  it('deselects on empty-slide pointerdown in the runtime script', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    const emptyClickIndex = script.indexOf('var target = findEditableTarget(event.target, slide);')
+    expect(emptyClickIndex).toBeGreaterThan(-1)
+
+    const deselectIndex = script.indexOf(
+      'postSelection(null, slide, currentSlideIndex);',
+      emptyClickIndex,
+    )
+    expect(deselectIndex).toBeGreaterThan(emptyClickIndex)
+
+    const hoverClearIndex = script.indexOf('elementId: null', deselectIndex)
+    expect(hoverClearIndex).toBeGreaterThan(deselectIndex)
+  })
+
   it('gates keyboard deletion to Ark-managed elements in the runtime script', () => {
     const script = buildDeckEditorBridgeRuntimeScript({
       slideSelectors: ['section.slide'],

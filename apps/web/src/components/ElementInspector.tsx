@@ -50,6 +50,8 @@ export type ElementInspectorProps = {
   zIndex: number | null
   isSaving: boolean
   textEditActive: boolean
+  /** Floating panel (default) vs legacy full-height sidebar chrome. */
+  variant?: 'floating' | 'sidebar'
   onApplyOperations?: (operations: DeckElementPatchOperation[], summary: string) => void
 }
 
@@ -268,6 +270,7 @@ export function ElementInspector({
   zIndex,
   isSaving,
   textEditActive,
+  variant = 'floating',
   onApplyOperations,
 }: ElementInspectorProps) {
   const colorInputId = useId()
@@ -299,6 +302,10 @@ export function ElementInspector({
   }, [selectionElementId])
 
   if (!selection) {
+    if (variant === 'floating') {
+      return null
+    }
+
     return (
       <aside
         aria-label="Element inspector"
@@ -425,10 +432,16 @@ export function ElementInspector({
 
   const resetAspectOperation = geometry ? buildResetImageAspectOperation(selection, geometry) : null
 
+  const shellClassName =
+    variant === 'floating'
+      ? 'flex max-h-[min(70vh,28rem)] w-60 flex-col overflow-y-auto rounded-lg bg-[var(--ark-titlebar)] shadow-md ring-1 ring-foreground/10'
+      : 'flex w-60 shrink-0 flex-col overflow-y-auto border-l border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)]'
+
   return (
-    <aside
-      aria-label="Element inspector"
-      className="flex w-60 shrink-0 flex-col overflow-y-auto border-l border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)]"
+    <div
+      aria-label={variant === 'floating' ? undefined : 'Element inspector'}
+      className={shellClassName}
+      role={variant === 'floating' ? undefined : 'complementary'}
     >
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] px-3">
         <h2 className="text-[11px] font-semibold text-[var(--ark-titlebar-fg)]">Inspector</h2>
@@ -671,6 +684,6 @@ export function ElementInspector({
           </button>
         </InspectorSection>
       </div>
-    </aside>
+    </div>
   )
 }
