@@ -133,6 +133,65 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
   })
 
+  it('clears overlay geometry when the runtime deselects', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-title',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Title',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('ark-el-title', 0, {
+            x: 0.1,
+            y: 0.2,
+            width: 0.5,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage(null),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
+  })
+
   it('rejects editor messages from non-active frames and hostile origins', async () => {
     render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
 

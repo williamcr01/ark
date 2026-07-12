@@ -260,6 +260,7 @@ export function DeckPreview({
     enableEditor,
     disableEditor,
     selectElement,
+    clearSelection,
     requestGeometry,
     startTextEdit,
     cancelTextEdit,
@@ -1187,6 +1188,20 @@ export function DeckPreview({
               )
               void handleInsertImageFile(file, position)
             }}
+            onPointerDown={(event) => {
+              if (!editChromeActive || textEditActive || !selection) {
+                return
+              }
+
+              // Clicks on the letterbox / stage chrome (not the iframe) clear the
+              // selection the same way empty-slide clicks do inside the deck.
+              if (
+                event.target === previewViewportRef.current ||
+                event.target === previewStageRef.current
+              ) {
+                clearSelection()
+              }
+            }}
             ref={previewViewportRef}
           >
             {html ? (
@@ -1254,7 +1269,7 @@ export function DeckPreview({
                 ) : null}
                 {editChromeActive ? (
                   <EditorSelectionOverlay
-                    geometry={geometry}
+                    geometry={selection ? geometry : null}
                     hoverGeometry={hoverGeometry}
                     isEditing={textEditActive}
                     locked={selection?.locked ?? false}
