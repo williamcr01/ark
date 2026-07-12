@@ -155,7 +155,7 @@ describe('useSandboxPreview', () => {
     expect(abortedRefreshSignal?.aborted).toBe(false)
 
     act(() => {
-      vi.advanceTimersByTime(100)
+      vi.advanceTimersByTime(50)
     })
     rerender({ html: deckHtml('Third') })
 
@@ -168,7 +168,7 @@ describe('useSandboxPreview', () => {
     expect(result.current.previewUrl).toContain('/render/first-token?')
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(299)
+      await vi.advanceTimersByTimeAsync(99)
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
