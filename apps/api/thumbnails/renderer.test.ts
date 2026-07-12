@@ -492,15 +492,17 @@ describe.runIf(liveChromiumTestsEnabled && chromiumAvailable)(
 
       const browser = await chromiumPool.ensureBrowser()
 
-      // Target disposal via /json/close is asynchronous; poll until the render
-      // tabs are gone. Only the initial about:blank startup tab should remain.
+      // Successful renders may keep one reused idle tab (about:blank) in
+      // addition to Chromium's startup blank. Bound the pool so render tabs
+      // never accumulate across jobs.
       await vi.waitFor(async () => {
         const targets = await listPageTargets(browser.debugPort)
         const pageTargets = targets.filter((target) => target.type === 'page')
 
-        expect(pageTargets.length).toBeLessThanOrEqual(1)
+        expect(pageTargets.length).toBeLessThanOrEqual(2)
         for (const target of pageTargets) {
           expect(target.url).not.toContain('/api/thumbnail-render/')
+          expect(target.url ?? '').toMatch(/^(about:blank)?$/)
         }
       })
     }, 120_000)
@@ -555,9 +557,11 @@ describe.runIf(liveChromiumTestsEnabled && chromiumAvailable)(
       await vi.waitFor(async () => {
         const targets = await listPageTargets(browser.debugPort)
         const pageTargets = targets.filter((target) => target.type === 'page')
-        expect(pageTargets.length).toBeLessThanOrEqual(1)
+        // Reused idle tab + Chromium startup blank; no hostile navigations.
+        expect(pageTargets.length).toBeLessThanOrEqual(2)
         for (const target of pageTargets) {
           expect(target.url).not.toMatch(/evil\.example/)
+          expect(target.url ?? '').toMatch(/^(about:blank)?$/)
         }
       })
     }, 180_000)
