@@ -226,7 +226,9 @@ export function DeckPreview({
       },
     },
   )
-  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount)
+  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
+    enabled: !editChromeActive,
+  })
   // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
   // while the main preview is still settling (manual-edit smoke / CDP context lookup).
   // Never defer the initial empty→slides transition: a deferred empty parse leaves the
