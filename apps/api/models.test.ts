@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   clearModelCatalogCache,
   fetchAllAvailableModels,
+  fetchProviderModels,
   getModelCatalog,
+  isAnthropicChatModel,
+  isGoogleChatModel,
+  isOpenAIChatModel,
   refreshModelCatalog,
 } from './models.ts'
 
@@ -21,6 +25,156 @@ afterEach(() => {
   }
 
   Object.assign(process.env, ORIGINAL_ENV)
+})
+
+describe('provider chat model filters', () => {
+  it('applies the shared non-chat markers across providers', () => {
+    expect(isOpenAIChatModel('text-embedding-3-large')).toBe(false)
+    expect(isAnthropicChatModel('claude-embedding-1')).toBe(false)
+    expect(isGoogleChatModel('gemini-embedding-001')).toBe(false)
+
+    expect(isOpenAIChatModel('gpt-image-1')).toBe(false)
+    expect(isAnthropicChatModel('claude-image-1')).toBe(false)
+    expect(isGoogleChatModel('gemini-2.0-flash-preview-image-generation')).toBe(false)
+  })
+
+  it('keeps OpenAI chat models and drops media/specialty SKUs', () => {
+    expect(isOpenAIChatModel('gpt-4o-mini')).toBe(true)
+    expect(isOpenAIChatModel('o3-mini')).toBe(true)
+    expect(isOpenAIChatModel('chatgpt-4o-latest')).toBe(true)
+
+    expect(isOpenAIChatModel('dall-e-3')).toBe(false)
+    expect(isOpenAIChatModel('gpt-image-1')).toBe(false)
+    expect(isOpenAIChatModel('text-embedding-3-large')).toBe(false)
+    expect(isOpenAIChatModel('whisper-1')).toBe(false)
+    expect(isOpenAIChatModel('tts-1')).toBe(false)
+    expect(isOpenAIChatModel('sora-2')).toBe(false)
+    expect(isOpenAIChatModel('gpt-4o-realtime-preview')).toBe(false)
+  })
+
+  it('keeps Anthropic Claude chat models and drops non-chat names', () => {
+    expect(isAnthropicChatModel('claude-sonnet-5')).toBe(true)
+    expect(isAnthropicChatModel('claude-haiku-4-5-20251001')).toBe(true)
+
+    expect(isAnthropicChatModel('claude-embedding-1')).toBe(false)
+    expect(isAnthropicChatModel('not-claude')).toBe(false)
+  })
+
+  it('keeps stable Gemini chat models and drops image/preview/revision SKUs', () => {
+    expect(isGoogleChatModel('gemini-2.5-flash')).toBe(true)
+    expect(isGoogleChatModel('gemini-2.5-flash-lite')).toBe(true)
+    expect(isGoogleChatModel('gemini-2.5-pro')).toBe(true)
+    expect(isGoogleChatModel('gemini-3.5-flash')).toBe(true)
+    expect(isGoogleChatModel('gemini-2.0-flash')).toBe(true)
+
+    expect(isGoogleChatModel('gemini-2.0-flash-preview-image-generation')).toBe(false)
+    expect(isGoogleChatModel('gemini-embedding-001')).toBe(false)
+    expect(isGoogleChatModel('gemini-2.5-flash-preview-05-20')).toBe(false)
+    expect(isGoogleChatModel('gemini-exp-1206')).toBe(false)
+    expect(isGoogleChatModel('gemini-1.5-flash-001')).toBe(false)
+    expect(isGoogleChatModel('imagen-3.0-generate-002')).toBe(false)
+  })
+})
+
+describe('fetchProviderModels filtering', () => {
+  it('filters Google list models through isGoogleChatModel', async () => {
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key'
+    delete process.env.OPENAI_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          models: [
+            {
+              name: 'models/gemini-2.5-flash',
+              displayName: 'Gemini 2.5 Flash',
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/gemini-2.5-flash-lite',
+              displayName: 'Gemini 2.5 Flash Lite',
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/gemini-2.0-flash-preview-image-generation',
+              displayName: 'Image Gen',
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/gemini-embedding-001',
+              displayName: 'Embedding',
+              supportedGenerationMethods: ['embedContent', 'generateContent'],
+            },
+            {
+              name: 'models/gemini-2.5-flash-preview-05-20',
+              displayName: 'Preview',
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/imagen-3.0-generate-002',
+              displayName: 'Imagen',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+        }),
+      ),
+    )
+
+    const models = await fetchProviderModels('google')
+    expect(models.map((model) => model.modelId).sort()).toEqual([
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+    ])
+  })
+
+  it('filters Anthropic list models through isAnthropicChatModel', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: [
+            { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5' },
+            { id: 'claude-embedding-1', display_name: 'Claude Embedding' },
+            { id: 'some-other-model', display_name: 'Other' },
+          ],
+          has_more: false,
+        }),
+      ),
+    )
+
+    const models = await fetchProviderModels('anthropic')
+    expect(models.map((model) => model.modelId)).toEqual(['claude-sonnet-5'])
+  })
+
+  it('filters OpenAI list models through isOpenAIChatModel', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: [
+            { id: 'gpt-4o-mini' },
+            { id: 'dall-e-3' },
+            { id: 'gpt-image-1' },
+            { id: 'text-embedding-3-small' },
+            { id: 'o3-mini' },
+          ],
+        }),
+      ),
+    )
+
+    const models = await fetchProviderModels('openai')
+    expect(models.map((model) => model.modelId).sort()).toEqual(['gpt-4o-mini', 'o3-mini'])
+  })
 })
 
 describe('fetchAllAvailableModels', () => {

@@ -7,29 +7,103 @@ type ModelUnavailableReason = NonNullable<ModelInfo['unavailableReason']>
 
 const OPENAI_CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i
 
-const OPENAI_EXCLUDED_PREFIXES = [
-  'text-embedding',
-  'whisper',
+/**
+ * Cross-provider exclusions for non-chat / non-agent model ids.
+ * Matched as case-insensitive substrings.
+ */
+const GLOBAL_EXCLUDED_SUBSTRINGS = [
+  'embed',
+  'embedding',
+  'image',
   'tts',
-  'dall-e',
-  'davinci',
-  'babbage',
-  'gpt-image',
-  'sora',
-  'omni-moderation',
-  'gpt-3.5-turbo-instruct',
-  'ft:',
-  'codex-',
-]
+  'whisper',
+  'video',
+  'audio',
+  'realtime',
+  'transcribe',
+  'moderation',
+  'computer-use',
+] as const
 
-const isOpenAIChatModel = (id: string) => {
+/** OpenAI-only media / legacy naming. */
+const OPENAI_EXCLUDED_SUBSTRINGS = ['dall-e', 'sora', 'davinci', 'babbage', 'instruct'] as const
+
+/** OpenAI-only prefixes (fine-tunes, codex, etc.). */
+const OPENAI_EXCLUDED_PREFIXES = ['ft:', 'codex-'] as const
+
+/** Anthropic-only exclusions (shared list covers most non-chat SKUs today). */
+const ANTHROPIC_EXCLUDED_SUBSTRINGS = [] as const
+
+/** Google-only media / specialty naming and noisy aliases. */
+const GOOGLE_EXCLUDED_SUBSTRINGS = [
+  'imagen',
+  'veo',
+  'nano-banana',
+  'lyria',
+  'robotics',
+  'aqa',
+  '-preview',
+  '-exp',
+] as const
+
+const includesAnySubstring = (normalizedId: string, parts: readonly string[]) =>
+  parts.some((part) => normalizedId.includes(part))
+
+const startsWithAnyPrefix = (normalizedId: string, prefixes: readonly string[]) =>
+  prefixes.some((prefix) => normalizedId.startsWith(prefix))
+
+const isExcludedModelId = (
+  normalizedId: string,
+  providerExcludedSubstrings: readonly string[],
+  providerExcludedPrefixes: readonly string[] = [],
+) =>
+  includesAnySubstring(normalizedId, GLOBAL_EXCLUDED_SUBSTRINGS) ||
+  includesAnySubstring(normalizedId, providerExcludedSubstrings) ||
+  startsWithAnyPrefix(normalizedId, providerExcludedPrefixes)
+
+/** Keep chat/tool-calling OpenAI models; drop embeddings, media, and specialty SKUs. */
+export const isOpenAIChatModel = (id: string) => {
   const normalized = id.toLowerCase()
 
-  if (OPENAI_EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+  if (isExcludedModelId(normalized, OPENAI_EXCLUDED_SUBSTRINGS, OPENAI_EXCLUDED_PREFIXES)) {
     return false
   }
 
   return OPENAI_CHAT_MODEL_PATTERN.test(normalized)
+}
+
+/** Keep Claude chat models from Anthropic's Models API. */
+export const isAnthropicChatModel = (id: string) => {
+  const normalized = id.toLowerCase()
+
+  if (!normalized.startsWith('claude')) {
+    return false
+  }
+
+  return !isExcludedModelId(normalized, ANTHROPIC_EXCLUDED_SUBSTRINGS)
+}
+
+/**
+ * Keep stable Gemini chat models suitable for generateContent + tools.
+ * Applies global + Google exclusions, then drops numbered revision aliases.
+ */
+export const isGoogleChatModel = (id: string) => {
+  const normalized = id.toLowerCase()
+
+  if (!normalized.startsWith('gemini')) {
+    return false
+  }
+
+  if (isExcludedModelId(normalized, GOOGLE_EXCLUDED_SUBSTRINGS)) {
+    return false
+  }
+
+  // Drop dated numeric revisions (gemini-1.5-flash-001) when a base SKU exists.
+  if (/-\d{3}$/.test(normalized)) {
+    return false
+  }
+
+  return true
 }
 
 const toModelRef = (
@@ -178,7 +252,7 @@ async function fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
 
     for (const entry of payload.data ?? []) {
       const modelId = entry.id?.trim() ?? ''
-      if (!modelId) {
+      if (!modelId || !isAnthropicChatModel(modelId)) {
         continue
       }
 
@@ -225,7 +299,7 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
       const modelId = rawName.replace(/^models\//, '')
       const supportsGenerate = entry.supportedGenerationMethods?.includes('generateContent')
 
-      if (!modelId || !supportsGenerate || !/^gemini/i.test(modelId)) {
+      if (!modelId || !supportsGenerate || !isGoogleChatModel(modelId)) {
         continue
       }
 
