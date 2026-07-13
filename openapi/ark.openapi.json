@@ -2310,7 +2310,18 @@
                                     "summary": { "type": "string" },
                                     "stepIndex": { "type": "integer", "minimum": 0 },
                                     "toolCallId": { "type": "string" },
-                                    "input": { "nullable": true }
+                                    "input": { "nullable": true },
+                                    "mutating": { "type": "boolean" },
+                                    "truncated": { "type": "boolean" },
+                                    "recovery": {
+                                      "type": "object",
+                                      "properties": {
+                                        "toolName": { "type": "string" },
+                                        "input": { "nullable": true },
+                                        "instruction": { "type": "string" }
+                                      },
+                                      "required": ["toolName", "input", "instruction"]
+                                    }
                                   },
                                   "required": ["type", "toolName", "summary"]
                                 },
@@ -2324,7 +2335,18 @@
                                     "stepIndex": { "type": "integer", "minimum": 0 },
                                     "toolCallId": { "type": "string" },
                                     "output": { "nullable": true },
-                                    "isError": { "type": "boolean" }
+                                    "isError": { "type": "boolean" },
+                                    "mutating": { "type": "boolean" },
+                                    "truncated": { "type": "boolean" },
+                                    "recovery": {
+                                      "type": "object",
+                                      "properties": {
+                                        "toolName": { "type": "string" },
+                                        "input": { "nullable": true },
+                                        "instruction": { "type": "string" }
+                                      },
+                                      "required": ["toolName", "input", "instruction"]
+                                    }
                                   },
                                   "required": ["type", "toolName", "summary"]
                                 }
@@ -2532,7 +2554,18 @@
                             "summary": { "type": "string" },
                             "stepIndex": { "type": "integer", "minimum": 0 },
                             "toolCallId": { "type": "string" },
-                            "input": { "nullable": true }
+                            "input": { "nullable": true },
+                            "mutating": { "type": "boolean" },
+                            "truncated": { "type": "boolean" },
+                            "recovery": {
+                              "type": "object",
+                              "properties": {
+                                "toolName": { "type": "string" },
+                                "input": { "nullable": true },
+                                "instruction": { "type": "string" }
+                              },
+                              "required": ["toolName", "input", "instruction"]
+                            }
                           },
                           "required": ["type", "toolName", "summary"]
                         },
@@ -2546,7 +2579,18 @@
                             "stepIndex": { "type": "integer", "minimum": 0 },
                             "toolCallId": { "type": "string" },
                             "output": { "nullable": true },
-                            "isError": { "type": "boolean" }
+                            "isError": { "type": "boolean" },
+                            "mutating": { "type": "boolean" },
+                            "truncated": { "type": "boolean" },
+                            "recovery": {
+                              "type": "object",
+                              "properties": {
+                                "toolName": { "type": "string" },
+                                "input": { "nullable": true },
+                                "instruction": { "type": "string" }
+                              },
+                              "required": ["toolName", "input", "instruction"]
+                            }
                           },
                           "required": ["type", "toolName", "summary"]
                         }
@@ -2632,7 +2676,18 @@
                                   "summary": { "type": "string" },
                                   "stepIndex": { "type": "integer", "minimum": 0 },
                                   "toolCallId": { "type": "string" },
-                                  "input": { "nullable": true }
+                                  "input": { "nullable": true },
+                                  "mutating": { "type": "boolean" },
+                                  "truncated": { "type": "boolean" },
+                                  "recovery": {
+                                    "type": "object",
+                                    "properties": {
+                                      "toolName": { "type": "string" },
+                                      "input": { "nullable": true },
+                                      "instruction": { "type": "string" }
+                                    },
+                                    "required": ["toolName", "input", "instruction"]
+                                  }
                                 },
                                 "required": ["type", "toolName", "summary"]
                               },
@@ -2646,7 +2701,18 @@
                                   "stepIndex": { "type": "integer", "minimum": 0 },
                                   "toolCallId": { "type": "string" },
                                   "output": { "nullable": true },
-                                  "isError": { "type": "boolean" }
+                                  "isError": { "type": "boolean" },
+                                  "mutating": { "type": "boolean" },
+                                  "truncated": { "type": "boolean" },
+                                  "recovery": {
+                                    "type": "object",
+                                    "properties": {
+                                      "toolName": { "type": "string" },
+                                      "input": { "nullable": true },
+                                      "instruction": { "type": "string" }
+                                    },
+                                    "required": ["toolName", "input", "instruction"]
+                                  }
                                 },
                                 "required": ["type", "toolName", "summary"]
                               }
@@ -3203,7 +3269,18 @@
                                       "summary": { "type": "string" },
                                       "stepIndex": { "type": "integer", "minimum": 0 },
                                       "toolCallId": { "type": "string" },
-                                      "input": { "nullable": true }
+                                      "input": { "nullable": true },
+                                      "mutating": { "type": "boolean" },
+                                      "truncated": { "type": "boolean" },
+                                      "recovery": {
+                                        "type": "object",
+                                        "properties": {
+                                          "toolName": { "type": "string" },
+                                          "input": { "nullable": true },
+                                          "instruction": { "type": "string" }
+                                        },
+                                        "required": ["toolName", "input", "instruction"]
+                                      }
                                     },
                                     "required": ["type", "toolName", "summary"]
                                   },
@@ -3217,7 +3294,18 @@
                                       "stepIndex": { "type": "integer", "minimum": 0 },
                                       "toolCallId": { "type": "string" },
                                       "output": { "nullable": true },
-                                      "isError": { "type": "boolean" }
+                                      "isError": { "type": "boolean" },
+                                      "mutating": { "type": "boolean" },
+                                      "truncated": { "type": "boolean" },
+                                      "recovery": {
+                                        "type": "object",
+                                        "properties": {
+                                          "toolName": { "type": "string" },
+                                          "input": { "nullable": true },
+                                          "instruction": { "type": "string" }
+                                        },
+                                        "required": ["toolName", "input", "instruction"]
+                                      }
                                     },
                                     "required": ["type", "toolName", "summary"]
                                   }

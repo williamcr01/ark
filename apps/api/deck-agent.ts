@@ -1,12 +1,13 @@
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
 
 import {
-  buildAgentModelMessages,
   type AgentStep,
   type ApiChatMessage,
   type ChatMessagePart,
   type EditorSelectionContext,
+  type JsonValue,
 } from '@ark/deck-core/chat.ts'
+import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
 import type { ProviderCallMetrics } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
@@ -286,6 +287,14 @@ export function extractAgentSteps(
   return events
 }
 
+const projectionMetadata = (projection: {
+  truncated: boolean
+  recovery?: { toolName: string; input: JsonValue; instruction: string }
+}) => ({
+  ...(projection.truncated ? { truncated: true } : {}),
+  ...(projection.recovery ? { recovery: projection.recovery } : {}),
+})
+
 export function extractAgentTranscriptParts(
   steps: Array<{
     content?: Array<Record<string, unknown>>
@@ -310,13 +319,16 @@ export function extractAgentTranscriptParts(
         const definition = findToolDefinition(definitions, item.toolName)
         if (!definition) continue
         seen.add(item.toolCallId)
+        const projection = definition.projectInputForTranscript(item.input)
         parts.push({
           type: 'tool-call',
           toolName: item.toolName,
           toolCallId: item.toolCallId,
           stepIndex,
           summary: definition.summarizeInput(item.input),
-          input: definition.projectInputForTranscript(item.input).value,
+          input: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
         })
       }
       if (
@@ -326,10 +338,10 @@ export function extractAgentTranscriptParts(
       ) {
         const definition = findToolDefinition(definitions, item.toolName)
         if (!definition) continue
-        const output =
+        const projection =
           item.type === 'tool-error'
-            ? normalizeTranscriptValue(item.error)
-            : definition.projectOutputForTranscript(item.output).value
+            ? { value: normalizeTranscriptValue(item.error), truncated: false }
+            : definition.projectOutputForTranscript(item.output)
         parts.push({
           type: 'tool-result',
           toolName: item.toolName,
@@ -341,7 +353,9 @@ export function extractAgentTranscriptParts(
                 ? item.error.message
                 : 'Tool execution failed'
               : definition.summarizeOutput(item.output),
-          output,
+          output: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
           isError: item.type === 'tool-error' || definition.isErrorOutput(item.output),
           error: item.type === 'tool-error' || definition.isErrorOutput(item.output),
         })
@@ -353,26 +367,32 @@ export function extractAgentTranscriptParts(
         if (typeof call.toolCallId !== 'string' || typeof call.toolName !== 'string') continue
         const definition = findToolDefinition(definitions, call.toolName)
         if (!definition) continue
+        const projection = definition.projectInputForTranscript(call.input)
         parts.push({
           type: 'tool-call',
           toolName: call.toolName,
           toolCallId: call.toolCallId,
           stepIndex,
           summary: definition.summarizeInput(call.input),
-          input: definition.projectInputForTranscript(call.input).value,
+          input: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
         })
       }
       for (const result of step.toolResults ?? []) {
         if (typeof result.toolCallId !== 'string' || typeof result.toolName !== 'string') continue
         const definition = findToolDefinition(definitions, result.toolName)
         if (!definition) continue
+        const projection = definition.projectOutputForTranscript(result.output)
         parts.push({
           type: 'tool-result',
           toolName: result.toolName,
           toolCallId: result.toolCallId,
           stepIndex,
           summary: definition.summarizeOutput(result.output),
-          output: definition.projectOutputForTranscript(result.output).value,
+          output: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
           isError: definition.isErrorOutput(result.output),
           error: definition.isErrorOutput(result.output),
         })
@@ -431,6 +451,8 @@ export async function runDeckAgent({
   const transcriptParts: ChatMessagePart[] = []
   let transcriptStepIndex = 0
   const startedAt = performance.now()
+  const context = assembleDeckAgentContext({ messages, currentHtml, editorSelection })
+  logger?.info('generation.context.assembled', context.metadata)
 
   let result
 
@@ -438,7 +460,7 @@ export async function runDeckAgent({
     result = await generateText({
       model,
       system: buildDeckAgentSystemPrompt(activeDefinitions),
-      messages: buildAgentModelMessages(messages, currentHtml, editorSelection),
+      messages: context.modelMessages,
       tools,
       stopWhen: stepCountIs(MAX_AGENT_STEPS),
       temperature: 0.4,

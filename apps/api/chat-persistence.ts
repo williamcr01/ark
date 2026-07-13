@@ -3,6 +3,7 @@ import {
   type ApiChatMessage,
   type ChatMessagePart,
 } from '@ark/deck-core/chat.ts'
+import { projectAssistantTurnForPersistence } from '@ark/deck-core/chat-context.ts'
 import type {
   GenerationJob,
   GenerationJobError,
@@ -90,12 +91,13 @@ export async function persistAssistantGenerationMessage(
     const lastStep = assistantParts.reduce((max, part) => Math.max(max, part.stepIndex ?? -1), -1)
     assistantParts.push({ type: 'text', content: extraText, stepIndex: lastStep + 1 })
   }
+  const persistedParts = projectAssistantTurnForPersistence(assistantParts)
 
   return chatStore.appendMessage(deckId, {
     id: options.jobId,
     role: 'assistant',
     content,
-    parts: assistantParts.length > 0 ? assistantParts : undefined,
+    parts: persistedParts.length > 0 ? persistedParts : undefined,
     deckVersionId: options.deckVersionId ?? null,
     generationJobId: options.jobId,
     generationStatus: options.status,

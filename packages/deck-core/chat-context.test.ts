@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { assembleDeckAgentContext, projectAssistantTurnForModel } from './chat-context.ts'
+import {
+  assembleDeckAgentContext,
+  projectAssistantTurnForModel,
+  projectAssistantTurnForPersistence,
+} from './chat-context.ts'
 import {
   MAX_MODEL_ASSISTANT_TURN_BYTES,
+  MAX_PERSISTED_ASSISTANT_TURN_BYTES,
   type ApiChatMessage,
   type ChatMessagePart,
 } from './chat.ts'
@@ -56,12 +61,10 @@ describe('agent context assembly', () => {
     ] satisfies ChatMessagePart[]
     const projected = projectAssistantTurnForModel(parts, 2200)
     expect(projected.omittedStepCount).toBeGreaterThan(0)
-    expect(JSON.stringify(projected.parts)).toContain('Earlier agent steps summarized')
-    expect(JSON.stringify(projected.parts)).toContain('error: read failed')
+    expect(projected.ledger).toContain('Earlier agent steps summarized')
+    expect(projected.ledger).toContain('error: read failed')
     expect(projected.parts.at(-1)).toMatchObject({ content: 'Final response exactly.' })
-    expect(
-      new TextEncoder().encode(JSON.stringify(projected.parts)).byteLength,
-    ).toBeLessThanOrEqual(2200)
+    expect(projected.bytesAfter).toBeLessThanOrEqual(2200)
     expect(parts[0]).toMatchObject({ toolCallId: 'call-old' })
   })
 
@@ -93,5 +96,95 @@ describe('agent context assembly', () => {
     expect(projected.bytesAfter).toBeLessThanOrEqual(MAX_MODEL_ASSISTANT_TURN_BYTES)
     expect(parts).toEqual(before)
     expect(projected.parts.at(-1)).toMatchObject({ content: 'Final.' })
+  })
+
+  it('emits the semantic ledger as user context rather than assistant history', () => {
+    const parts = [
+      ...toolStep(0, 'call-old', 'old'),
+      ...toolStep(1, 'call-new', 'new'),
+    ] satisfies ChatMessagePart[]
+    const context = assembleDeckAgentContext({
+      messages: [{ role: 'assistant', content: 'Read deck.', parts }],
+      currentHtml: '',
+      projectionLimits: { maxAssistantTurnBytes: 1800 },
+    })
+    expect(context.modelMessages[0]).toMatchObject({
+      role: 'user',
+      content: expect.stringContaining('Earlier agent steps summarized'),
+    })
+  })
+
+  it('never recommends repeating a compacted mutation', () => {
+    const parts = [
+      { type: 'text', content: 'x'.repeat(3000), stepIndex: 0 },
+      {
+        type: 'tool-call',
+        toolName: 'patch_deck',
+        summary: 'replace slide 2',
+        stepIndex: 1,
+        toolCallId: 'patch-1',
+        input: { operations: [{ op: 'replace', index: 2, html: 'x'.repeat(3000) }] },
+        mutating: true,
+      },
+      {
+        type: 'tool-result',
+        toolName: 'patch_deck',
+        summary: 'changed slide 2',
+        stepIndex: 1,
+        toolCallId: 'patch-1',
+        output: { changedSlideIndexes: [2] },
+        mutating: true,
+      },
+    ] satisfies ChatMessagePart[]
+    const projected = projectAssistantTurnForModel(parts, 1200)
+    expect(JSON.stringify(projected)).toContain('Do not repeat patch_deck')
+    expect(JSON.stringify(projected)).not.toContain('Call patch_deck again')
+  })
+
+  it('keeps the exact newest tool-ending step when it fits with the ledger', () => {
+    const newest = toolStep(1, 'call-new', 'exact newest')
+    const parts = [
+      { type: 'text', content: 'x'.repeat(10_000), stepIndex: 0 },
+      ...newest,
+    ] satisfies ChatMessagePart[]
+    const projected = projectAssistantTurnForModel(parts, 3000)
+    expect(projected.parts).toEqual(newest)
+  })
+
+  it('bounds final assistant text that exceeds the model budget', () => {
+    const projected = projectAssistantTurnForModel(
+      [{ type: 'text', content: 'x'.repeat(3000), stepIndex: 0 }],
+      1000,
+    )
+    expect(projected.bytesAfter).toBeLessThanOrEqual(1000)
+    expect(projected.parts[0]).toMatchObject({
+      type: 'text',
+      content: expect.stringContaining('truncated for model'),
+    })
+  })
+
+  it('prioritizes an early error when more than 40 steps are omitted', () => {
+    const parts = Array.from({ length: 50 }, (_, index) =>
+      toolStep(index, `call-${index}`, `read ${index}`, index === 0),
+    ).flat()
+    const projected = projectAssistantTurnForModel(parts, 5000)
+    expect(projected.ledger).toContain('error: read failed')
+  })
+
+  it('keeps every logical part while compacting generated turns for persistence', () => {
+    const parts = [
+      ...Array.from({ length: 30 }, (_, stepIndex) => [
+        ...toolStep(stepIndex, `a-${stepIndex}`, `read ${stepIndex}`),
+        ...toolStep(stepIndex, `b-${stepIndex}`, `read ${stepIndex}`),
+      ]).flat(2),
+      { type: 'text', content: 'z'.repeat(600_000), stepIndex: 30 },
+    ] satisfies ChatMessagePart[]
+    const projected = projectAssistantTurnForPersistence(parts)
+    expect(projected).toHaveLength(parts.length)
+    expect(new TextEncoder().encode(JSON.stringify(projected)).byteLength).toBeLessThanOrEqual(
+      MAX_PERSISTED_ASSISTANT_TURN_BYTES,
+    )
+    expect(projected.filter((part) => part.type === 'tool-call')).toHaveLength(60)
+    expect(projected.filter((part) => part.type === 'tool-result')).toHaveLength(60)
   })
 })

@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   agentStepsToChatParts,
   applyResolvedAssetAttachments,
-  buildAgentModelMessages,
-  convertChatHistoryToModelMessages,
   buildAssistantMessageContent,
   buildModelMessages,
   chatAttachmentsToFileParts,
@@ -14,6 +12,7 @@ import {
   MAX_PERSISTED_TOOL_VALUE_BYTES,
   wrapUserPromptForGeneration,
 } from './chat.ts'
+import { buildAgentModelMessages, convertChatHistoryToModelMessages } from './chat-context.ts'
 
 const ASSET_ID = '00000000-0000-4000-8000-000000000901'
 

@@ -49,4 +49,33 @@ describe('deck tool catalog', () => {
     })
     expect(projected.value).toMatchObject({ totalLines: 3000, nextOffset: 2001 })
   })
+
+  it('preserves a 10KB single-line read without skipping to the next line', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
+    const readDeck = activeDefinitions.find(({ name }) => name === 'read_deck')!
+    const content = 'x'.repeat(10_000)
+    const projected = readDeck.projectOutputForTranscript({
+      mode: 'lines',
+      content,
+      totalLines: 2,
+      offset: 1,
+      truncated: true,
+      nextOffset: 2,
+    })
+    expect(projected.value).toMatchObject({ content, nextOffset: 2 })
+    expect(projected.recovery?.input).toEqual({ offset: 2 })
+  })
+
+  it('stores mutation verification policy without recommending replay', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
+    const patchDeck = activeDefinitions.find(({ name }) => name === 'patch_deck')!
+    const projected = patchDeck.projectInputForTranscript({
+      operations: [{ op: 'replace', index: 2, html: '<section>new</section>' }],
+    })
+    expect(projected.value).toMatchObject({
+      operations: [{ op: 'replace', index: 2, html: expect.stringContaining('sha256:') }],
+    })
+    expect(projected.recovery?.instruction).toContain('Do not repeat patch_deck')
+    expect(projected.recovery?.toolName).toBe('read_deck')
+  })
 })

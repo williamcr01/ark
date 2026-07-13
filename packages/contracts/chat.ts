@@ -39,6 +39,12 @@ export const jsonValueSchema = z
   .refine(isJsonValue, 'Expected a JSON-safe value')
   .transform((value) => value as JsonValue)
 
+const transcriptRecoverySchema = z.object({
+  toolName: z.string(),
+  input: jsonValueSchema,
+  instruction: z.string(),
+})
+
 export const chatMessagePartSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
@@ -52,6 +58,9 @@ export const chatMessagePartSchema = z.discriminatedUnion('type', [
     stepIndex: z.number().int().min(0).optional(),
     toolCallId: z.string().optional(),
     input: jsonValueSchema.optional(),
+    mutating: z.boolean().optional(),
+    truncated: z.boolean().optional(),
+    recovery: transcriptRecoverySchema.optional(),
   }),
   z.object({
     type: z.literal('tool-result'),
@@ -62,6 +71,9 @@ export const chatMessagePartSchema = z.discriminatedUnion('type', [
     toolCallId: z.string().optional(),
     output: jsonValueSchema.optional(),
     isError: z.boolean().optional(),
+    mutating: z.boolean().optional(),
+    truncated: z.boolean().optional(),
+    recovery: transcriptRecoverySchema.optional(),
   }),
 ])
 

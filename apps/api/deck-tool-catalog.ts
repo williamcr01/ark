@@ -13,6 +13,7 @@ export type DeckToolDefinition = {
   summarizeInput: (input: unknown) => string
   summarizeOutput: (output: unknown) => string
   isErrorOutput: (output: unknown) => boolean
+  mutating: boolean
   projectInputForTranscript: (input: unknown) => TranscriptProjection
   projectOutputForTranscript: (output: unknown) => TranscriptProjection
 }
@@ -26,28 +27,29 @@ export type TranscriptProjection = {
 export const transcriptHtmlMarker = (html: string) =>
   `[deck HTML omitted: ${html.length} characters, sha256:${createHash('sha256').update(html).digest('hex')}; re-read the current deck with read_deck]`
 
-const truncateString = (value: string) => {
-  if (value.length <= 4_000) return value
-  return `${value.slice(0, 4_000)}[... ${value.length - 4_000} characters omitted; re-read the current deck if needed]`
+const truncateString = (value: string, limit = 4_000) => {
+  if (value.length <= limit) return value
+  return `${value.slice(0, limit)}[... ${value.length - limit} characters omitted; re-read the current deck if needed]`
 }
 
-export function normalizeTranscriptValue(value: unknown, key = ''): JsonValue {
+export function normalizeTranscriptValue(value: unknown, key = '', stringLimit = 4_000): JsonValue {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') {
     if (typeof value === 'string') {
       if (key === 'html' || /<!doctype html|<html[\s>]/i.test(value))
         return transcriptHtmlMarker(value)
-      return truncateString(value)
+      return truncateString(value, stringLimit)
     }
     return value
   }
   if (typeof value === 'number') return Number.isFinite(value) ? value : String(value)
   if (value instanceof Error) return { name: value.name, message: value.message }
-  if (Array.isArray(value)) return value.map((item) => normalizeTranscriptValue(item))
+  if (Array.isArray(value))
+    return value.map((item) => normalizeTranscriptValue(item, '', stringLimit))
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([entryKey, entryValue]) => [
         entryKey,
-        normalizeTranscriptValue(entryValue, entryKey),
+        normalizeTranscriptValue(entryValue, entryKey, stringLimit),
       ]),
     )
   }
@@ -102,96 +104,151 @@ const summarizeOutput = (toolName: string, output: unknown) => {
 const asRecord = (value: JsonValue): Record<string, JsonValue> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : { value }
 
-function projectToolValue(toolName: string, value: unknown, output: boolean): TranscriptProjection {
-  const projected = normalizeTranscriptValue(value)
-  const record = asRecord(projected)
-  if (toolName === 'read_deck' && output) {
-    const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-    const contentWasProjected =
-      typeof source.content === 'string' &&
-      typeof record.content === 'string' &&
-      source.content !== record.content
-    const truncated =
-      contentWasProjected || record.truncated === true || typeof record.hint === 'string'
-    const nextOffset = typeof record.nextOffset === 'number' ? record.nextOffset : undefined
-    const nextCharOffset =
-      typeof record.nextCharOffset === 'number' ? record.nextCharOffset : undefined
-    const offset = typeof record.offset === 'number' ? record.offset : 1
-    const slideIndex = typeof record.index === 'number' ? record.index : undefined
-    const recoveryInput: JsonValue | undefined = nextCharOffset
+const utf8Prefix = (value: string, maxBytes: number) => {
+  let content = ''
+  let characters = 0
+  let used = 0
+  for (const character of value) {
+    const size = Buffer.byteLength(character, 'utf8')
+    if (used + size > maxBytes) break
+    content += character
+    used += size
+    characters += 1
+  }
+  return { content, characters }
+}
+
+const recoveryValue = (
+  record: Record<string, JsonValue>,
+  recovery: TranscriptProjection['recovery'],
+) => (recovery ? { ...record, transcriptRecovery: recovery } : record)
+
+function projectReadOutput(value: unknown): TranscriptProjection {
+  const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  const record = asRecord(normalizeTranscriptValue({ ...source, content: undefined }))
+  delete record.content
+  const rawContent = typeof source.content === 'string' ? source.content : ''
+  const page = utf8Prefix(rawContent, 40 * 1024)
+  const contentWasProjected = page.content !== rawContent
+  if (rawContent) record.content = page.content
+  const nextOffset = typeof source.nextOffset === 'number' ? source.nextOffset : undefined
+  const nextCharOffset =
+    typeof source.nextCharOffset === 'number' ? source.nextCharOffset : undefined
+  const offset = typeof source.offset === 'number' ? source.offset : 1
+  const slideIndex = typeof source.index === 'number' ? source.index : undefined
+  const currentCharOffset = typeof source.charOffset === 'number' ? source.charOffset : 0
+  const recoveryInput: JsonValue | undefined = contentWasProjected
+    ? slideIndex !== undefined
+      ? { slideIndex, charOffset: currentCharOffset + page.characters }
+      : rawContent.includes('\n')
+        ? { offset }
+        : { offset, charOffset: currentCharOffset + page.characters }
+    : nextCharOffset !== undefined
       ? slideIndex !== undefined
         ? { slideIndex, charOffset: nextCharOffset }
         : { offset, charOffset: nextCharOffset }
       : nextOffset
         ? { offset: nextOffset }
-        : contentWasProjected
-          ? slideIndex !== undefined
-            ? { slideIndex }
-            : { offset }
-          : undefined
-    return {
-      value: capTranscriptValue(record),
-      truncated,
-      ...(truncated && recoveryInput
-        ? {
-            recovery: {
-              toolName,
-              input: recoveryInput,
-              instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
-            },
-          }
-        : {}),
-    }
+        : undefined
+  const recovery = recoveryInput
+    ? {
+        toolName: 'read_deck',
+        input: recoveryInput,
+        instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
+      }
+    : undefined
+  const truncated = contentWasProjected || source.truncated === true
+  return { value: capTranscriptValue(recoveryValue(record, recovery)), truncated, recovery }
+}
+
+function projectMutation(toolName: string, value: unknown): TranscriptProjection {
+  const projected = capTranscriptValue(normalizeTranscriptValue(value, '', 512))
+  const recovery = {
+    toolName: 'read_deck',
+    input: {},
+    instruction: `Do not repeat ${toolName}; inspect the current deck to verify its effect.`,
   }
+  const record = asRecord(projected)
+  return {
+    value: capTranscriptValue(recoveryValue(record, recovery)),
+    truncated: JSON.stringify(projected) !== JSON.stringify(normalizeTranscriptValue(value)),
+    recovery,
+  }
+}
+
+function projectReadOnly(toolName: string, value: unknown): TranscriptProjection {
+  const projected = normalizeTranscriptValue(value, '', 1_000)
   const capped = capTranscriptValue(projected)
   const truncated = JSON.stringify(capped) !== JSON.stringify(projected)
+  const recovery = truncated
+    ? { toolName, input: {}, instruction: `Call ${toolName} again to recover current data.` }
+    : undefined
   return {
-    value: capped,
+    value: recoveryValue(asRecord(capped), recovery),
     truncated,
-    ...(truncated
-      ? {
-          recovery: {
-            toolName,
-            input: {},
-            instruction: `Call ${toolName} again to recover current data.`,
-          },
-        }
-      : {}),
+    recovery,
   }
+}
+
+function projectToolValue(
+  toolName: string,
+  value: unknown,
+  output: boolean,
+  policy: 'read' | 'mutation' | 'readonly',
+): TranscriptProjection {
+  if (policy === 'read' && output) return projectReadOutput(value)
+  if (policy === 'mutation') return projectMutation(toolName, value)
+  return projectReadOnly(toolName, value)
 }
 
 const metadata = {
   parse_deck: {
+    mutating: false,
+    projection: 'readonly',
     snippet: 'parse_deck()',
     guidelines: [
       'Use parse_deck to understand deck structure and editable element ids before targeted edits.',
     ],
   },
   list_slides: {
+    mutating: false,
+    projection: 'readonly',
     snippet: 'list_slides()',
     guidelines: ['Use list_slides before slide-level changes.'],
   },
   read_deck: {
+    mutating: false,
+    projection: 'read',
     snippet: 'read_deck({ slideIndex }) or read_deck({ offset, limit })',
     guidelines: ['Re-read current deck content when transcript markers say content was omitted.'],
   },
   edit_deck: {
+    mutating: true,
+    projection: 'mutation',
     snippet: 'edit_deck({ edits })',
     guidelines: ['Use edit_deck only for small exact inline replacements.'],
   },
   patch_deck: {
+    mutating: true,
+    projection: 'mutation',
     snippet: 'patch_deck({ operations })',
     guidelines: ['Prefer patch_deck for slide changes.'],
   },
   patch_element: {
+    mutating: true,
+    projection: 'mutation',
     snippet: 'patch_element({ operations })',
     guidelines: ['Prefer patch_element for a selected element id.'],
   },
   write_deck: {
+    mutating: true,
+    projection: 'mutation',
     snippet: 'write_deck({ html })',
     guidelines: ['Use write_deck only for new decks or explicit full rewrites.'],
   },
   list_versions: {
+    mutating: false,
+    projection: 'readonly',
     snippet: 'list_versions({ limit })',
     guidelines: ['Use list_versions before large rewrites or when asked what changed.'],
   },
@@ -209,14 +266,17 @@ export function createActiveDeckTools(
       snippet: info.snippet,
       description: registeredTool.description ?? '',
       guidelines: info.guidelines,
+      mutating: info.mutating,
       summarizeInput: (input: unknown) => summarizeInput(name, input),
       summarizeOutput: (output: unknown) => summarizeOutput(name, output),
       isErrorOutput: (output: unknown) =>
         !!output &&
         typeof output === 'object' &&
         ('error' in output || ('ok' in output && output.ok === false)),
-      projectInputForTranscript: (input: unknown) => projectToolValue(name, input, false),
-      projectOutputForTranscript: (output: unknown) => projectToolValue(name, output, true),
+      projectInputForTranscript: (input: unknown) =>
+        projectToolValue(name, input, false, info.projection),
+      projectOutputForTranscript: (output: unknown) =>
+        projectToolValue(name, output, true, info.projection),
     } satisfies DeckToolDefinition
   })
   return { tools: rawTools, activeDefinitions }
