@@ -192,6 +192,119 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
   })
 
+  it('clears overlay geometry when selection identity changes', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-title',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Title',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('ark-el-title', 0, {
+            x: 0.1,
+            y: 0.2,
+            width: 0.5,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-body',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'p',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Body',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-body')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
+  })
+
+  it('ignores late geometry for a previously selected element', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-body',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'p',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Body',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('ark-el-title', 0, {
+            x: 0.1,
+            y: 0.2,
+            width: 0.5,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-body')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
+  })
+
   it('rejects editor messages from non-active frames and hostile origins', async () => {
     render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
 
@@ -254,11 +367,27 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Editor error')).toHaveTextContent('Element was not found.')
   })
 
-  it('stores normalized geometry responses separately from selection', async () => {
+  it('stores normalized geometry responses for the active selection', async () => {
     render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-title',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Title',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
       window.dispatchEvent(
         new MessageEvent('message', {
           data: createEditorGeometryMessage('ark-el-title', 0, {
@@ -273,6 +402,7 @@ describe('useDeckEditorBridge', () => {
       )
     })
 
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
   })
 

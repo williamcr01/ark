@@ -248,7 +248,9 @@ export function DeckPreview({
     selection,
     hover,
     geometry,
+    slideBounds,
     hoverGeometry,
+    hoverSlideBounds,
     selectionZIndex,
     editorError,
     lastTextCommit,
@@ -939,7 +941,15 @@ export function DeckPreview({
     }
 
     requestGeometry(selection.elementId, selection.slideIndex)
-  }, [editChromeActive, requestGeometry, selection])
+    // Re-measure when the preview viewport resizes so letterboxed slides keep
+    // the parent overlay aligned after scale changes.
+  }, [
+    editChromeActive,
+    previewViewportSize.height,
+    previewViewportSize.width,
+    requestGeometry,
+    selection,
+  ])
 
   // Restore the selection after the preview reloads with patched HTML so the
   // inspector stays populated across saves (issue #84). Waits for a *new*
@@ -1271,9 +1281,11 @@ export function DeckPreview({
                   <EditorSelectionOverlay
                     geometry={selection ? geometry : null}
                     hoverGeometry={hoverGeometry}
+                    hoverSlideBounds={hoverSlideBounds}
                     isEditing={textEditActive}
                     locked={selection?.locked ?? false}
                     scale={previewFrameScale}
+                    slideBounds={slideBounds}
                   />
                 ) : null}
                 {editorBridgeEnabled && editChromeActive ? (
@@ -1283,6 +1295,7 @@ export function DeckPreview({
                     onApplyOperations={onPatchEditorOperations ? handleInspectorApply : undefined}
                     scale={previewFrameScale}
                     selection={selection}
+                    slideBounds={transformPreview?.slideBounds ?? slideBounds}
                     textEditActive={textEditActive}
                     transforming={Boolean(transformPreview)}
                     zIndex={selectionZIndex}

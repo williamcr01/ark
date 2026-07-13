@@ -117,9 +117,9 @@ type EditorSelectionInfo = {
 
 #### Geometry
 
-| Type                  | Payload fields                                                                        | When fired                                | Parent behavior                   |
-| --------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- |
-| `ark:editor-geometry` | `elementId`, `slideIndex`, `geometry: EditorNormalizedRect`, `zIndex: number \| null` | Response to `ark:editor-request-geometry` | Position `EditorSelectionOverlay` |
+| Type                  | Payload fields                                                                                                              | When fired                                | Parent behavior                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- |
+| `ark:editor-geometry` | `elementId`, `slideIndex`, `geometry: EditorNormalizedRect`, `zIndex: number \| null`, `slideBounds?: EditorNormalizedRect` | Response to `ark:editor-request-geometry` | Position `EditorSelectionOverlay` |
 
 ```ts
 type EditorNormalizedRect = {
@@ -130,7 +130,9 @@ type EditorNormalizedRect = {
 }
 ```
 
-Coordinates are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `packages/deck-core/deck-metadata.ts` and applied server-side when converting to inline CSS.
+Coordinates in `geometry` are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `packages/deck-core/deck-metadata.ts` and applied server-side when converting to inline CSS.
+
+Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`document.documentElement`). The shell composes `slideBounds` with slide-relative `geometry` when drawing `EditorSelectionOverlay` and the inspector settings trigger, so letterboxed or scaled slides (e.g. Reveal) stay aligned with the parent chrome. When omitted, the shell treats the slide as filling the stage (`{ x: 0, y: 0, width: 1, height: 1 }`). Transform preview/commit messages carry the same optional field for live drag chrome.
 
 #### Text editing
 
@@ -147,10 +149,10 @@ Coordinates are **slide-relative normalized fractions** (0–1), derived from `g
 
 #### Transforms
 
-| Type                           | Payload fields                                   | When fired                          | Semantics                                                                                 |
-| ------------------------------ | ------------------------------------------------ | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?` | During drag/resize (future toolbar) | **Uncommitted** visual update; parent may mirror in chrome but must not persist           |
-| `ark:editor-transform-commit`  | `elementId`, `slideIndex`, `geometry`, `zIndex?` | Transform gesture complete          | **Persistence trigger**; parent should map to `move_element` / `resize_element` patch ops |
+| Type                           | Payload fields                                                   | When fired                          | Semantics                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?` | During drag/resize (future toolbar) | **Uncommitted** visual update; parent may mirror in chrome but must not persist           |
+| `ark:editor-transform-commit`  | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?` | Transform gesture complete          | **Persistence trigger**; parent should map to `move_element` / `resize_element` patch ops |
 
 `useDeckEditorBridge` stores preview and commit messages in separate state fields; a preview clears any pending commit and vice versa. End-to-end transform persistence is tracked in #80.
 
