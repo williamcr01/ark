@@ -808,8 +808,7 @@ export function createGenerationJobRunner({
       if (failedAssistant) {
         retryControlMessage = {
           role: 'user',
-          content:
-            'Retry the previous request using the current deck state and the prior attempt transcript.',
+          content: 'Retry previous request',
         }
         request.messages.push(
           {

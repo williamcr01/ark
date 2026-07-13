@@ -16,7 +16,6 @@ import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
 import {
   createActiveDeckTools,
-  capTranscriptParts,
   findToolDefinition,
   normalizeTranscriptValue,
   type DeckToolDefinition,
@@ -317,7 +316,7 @@ export function extractAgentTranscriptParts(
           toolCallId: item.toolCallId,
           stepIndex,
           summary: definition.summarizeInput(item.input),
-          input: definition.projectInputForTranscript(item.input),
+          input: definition.projectInputForTranscript(item.input).value,
         })
       }
       if (
@@ -330,7 +329,7 @@ export function extractAgentTranscriptParts(
         const output =
           item.type === 'tool-error'
             ? normalizeTranscriptValue(item.error)
-            : definition.projectOutputForTranscript(item.output)
+            : definition.projectOutputForTranscript(item.output).value
         parts.push({
           type: 'tool-result',
           toolName: item.toolName,
@@ -360,7 +359,7 @@ export function extractAgentTranscriptParts(
           toolCallId: call.toolCallId,
           stepIndex,
           summary: definition.summarizeInput(call.input),
-          input: definition.projectInputForTranscript(call.input),
+          input: definition.projectInputForTranscript(call.input).value,
         })
       }
       for (const result of step.toolResults ?? []) {
@@ -373,7 +372,7 @@ export function extractAgentTranscriptParts(
           toolCallId: result.toolCallId,
           stepIndex,
           summary: definition.summarizeOutput(result.output),
-          output: definition.projectOutputForTranscript(result.output),
+          output: definition.projectOutputForTranscript(result.output).value,
           isError: definition.isErrorOutput(result.output),
           error: definition.isErrorOutput(result.output),
         })
@@ -453,7 +452,6 @@ export async function runDeckAgent({
           (part) => ({ ...part, stepIndex: transcriptStepIndex }),
         )
         transcriptParts.push(...extracted)
-        transcriptParts.splice(0, transcriptParts.length, ...capTranscriptParts(transcriptParts))
         transcriptStepIndex += 1
         await onStepProgress?.(accumulatedSteps)
       },
@@ -495,11 +493,10 @@ export async function runDeckAgent({
       ? accumulatedSteps
       : extractAgentSteps(result.steps as ExtractableAgentStep[], activeDefinitions)
   const assistantText = result.text.trim()
-  const finalTranscriptParts = capTranscriptParts(
+  const finalTranscriptParts =
     transcriptParts.length > 0
       ? transcriptParts
-      : extractAgentTranscriptParts(result.steps as never, activeDefinitions),
-  )
+      : extractAgentTranscriptParts(result.steps as never, activeDefinitions)
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})

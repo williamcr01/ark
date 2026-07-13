@@ -11,7 +11,7 @@ import {
   collectAssetIds,
   collectAssetIdsFromMessages,
   parseGenerateMessages,
-  MAX_TRANSCRIPT_VALUE_CHARS,
+  MAX_PERSISTED_TOOL_VALUE_BYTES,
   wrapUserPromptForGeneration,
 } from './chat.ts'
 
@@ -85,14 +85,14 @@ describe('parseGenerateMessages', () => {
             summary: 'full deck',
             stepIndex: 0,
             toolCallId: 'call-1',
-            input: { html: 'x'.repeat(MAX_TRANSCRIPT_VALUE_CHARS + 1) },
+            input: { html: 'x'.repeat(MAX_PERSISTED_TOOL_VALUE_BYTES + 1) },
           },
         ],
       },
     ])
     expect(result).toEqual({
       ok: false,
-      error: expect.stringContaining('exceeds the 24000 character replay limit'),
+      error: expect.stringContaining('exceeds the 51200 byte persistence limit'),
     })
   })
 

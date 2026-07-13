@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildDeckAgentSystemPrompt } from './deck-agent.ts'
-import { capTranscriptParts, createActiveDeckTools } from './deck-tool-catalog.ts'
-import { MAX_TRANSCRIPT_TURN_CHARS, type ChatMessagePart } from '@ark/deck-core/chat.ts'
+import { createActiveDeckTools } from './deck-tool-catalog.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 
 describe('deck tool catalog', () => {
@@ -28,67 +27,26 @@ describe('deck tool catalog', () => {
     const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
     const writeDeck = activeDefinitions.find(({ name }) => name === 'write_deck')!
     const html = `<!DOCTYPE html><html><body>${'x'.repeat(10_000)}</body></html>`
-    const projected = writeDeck.projectInputForTranscript({ html })
+    const projected = writeDeck.projectInputForTranscript({ html }).value
     expect(JSON.stringify(projected)).toContain('sha256:')
     expect(JSON.stringify(projected)).toContain('re-read the current deck')
     expect(JSON.stringify(projected)).not.toContain('x'.repeat(1_000))
   })
 
-  it('retains recent complete steps and marks omitted history', () => {
-    const parts: ChatMessagePart[] = Array.from({ length: 6 }, (_, stepIndex) => ({
-      type: 'text',
-      stepIndex,
-      content: `${stepIndex}:${'x'.repeat(20_000)}`,
-    }))
-    const capped = capTranscriptParts(parts)
-    expect(JSON.stringify(capped).length).toBeLessThanOrEqual(MAX_TRANSCRIPT_TURN_CHARS)
-    expect(capped[0]).toMatchObject({
-      type: 'text',
-      content: expect.stringContaining('earlier transcript step'),
+  it('keeps read recovery metadata', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
+    const readDeck = activeDefinitions.find(({ name }) => name === 'read_deck')!
+    const projected = readDeck.projectOutputForTranscript({
+      mode: 'lines',
+      content: 'partial',
+      totalLines: 3000,
+      truncated: true,
+      nextOffset: 2001,
     })
-    expect(capped.at(-1)).toMatchObject({ type: 'text', stepIndex: 5 })
-    expect(
-      capped.some(
-        (part) => part.stepIndex === 0 && part.type === 'text' && part.content.startsWith('0:'),
-      ),
-    ).toBe(false)
-  })
-
-  it('keeps an oversized newest tool step replayable with compact values', () => {
-    const parts: ChatMessagePart[] = [
-      {
-        type: 'tool-call',
-        toolName: 'read_deck',
-        summary: 'large read',
-        stepIndex: 0,
-        toolCallId: 'call-large',
-        input: { query: 'x'.repeat(MAX_TRANSCRIPT_TURN_CHARS) },
-      },
-      {
-        type: 'tool-result',
-        toolName: 'read_deck',
-        summary: 'large result',
-        stepIndex: 0,
-        toolCallId: 'call-large',
-        output: { html: 'y'.repeat(MAX_TRANSCRIPT_TURN_CHARS) },
-      },
-    ]
-
-    const capped = capTranscriptParts(parts)
-    expect(capped.map(({ type }) => type)).toEqual(['tool-call', 'tool-result'])
-    expect(JSON.stringify(capped)).toContain('Transcript step exceeded limit')
-    expect(JSON.stringify(capped).length).toBeLessThanOrEqual(MAX_TRANSCRIPT_TURN_CHARS)
-  })
-
-  it('reserves omission-marker space at the turn boundary', () => {
-    const parts: ChatMessagePart[] = [
-      { type: 'text', stepIndex: 0, content: 'old step' },
-      { type: 'text', stepIndex: 1, content: 'x'.repeat(MAX_TRANSCRIPT_TURN_CHARS - 1) },
-    ]
-
-    const capped = capTranscriptParts(parts)
-    expect(JSON.stringify(capped).length).toBeLessThanOrEqual(MAX_TRANSCRIPT_TURN_CHARS)
-    expect(capped[0]).toMatchObject({ content: expect.stringContaining('earlier transcript') })
-    expect(capped[1]).toMatchObject({ stepIndex: 1 })
+    expect(projected).toMatchObject({
+      truncated: true,
+      recovery: { toolName: 'read_deck', input: { offset: 2001 } },
+    })
+    expect(projected.value).toMatchObject({ totalLines: 3000, nextOffset: 2001 })
   })
 })

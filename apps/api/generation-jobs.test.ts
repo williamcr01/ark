@@ -694,7 +694,7 @@ describe('generation job runner', () => {
       expect(persisted.messages).toHaveLength(3)
     })
     expect(persisted.messages.map(({ role }) => role)).toEqual(['assistant', 'user', 'assistant'])
-    expect(persisted.messages[1]?.content).toContain('Retry the previous request')
+    expect(persisted.messages[1]?.content).toBe('Retry previous request')
 
     const nextMessages = [
       ...persisted.messages.map(({ id, role, content, parts, attachments }) => ({

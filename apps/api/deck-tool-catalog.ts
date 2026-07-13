@@ -1,11 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type { JsonValue } from '@ark/deck-core/chat.ts'
-import {
-  MAX_TRANSCRIPT_TURN_CHARS,
-  MAX_TRANSCRIPT_VALUE_CHARS,
-  type ChatMessagePart,
-} from '@ark/deck-core/chat.ts'
+import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/deck-core/chat.ts'
 import type { Logger } from './observability/logger.ts'
 import { createDeckTools, type DeckVersionInspector } from './deck-tools.ts'
 import type { DeckWorkspace } from './deck-workspace.ts'
@@ -18,8 +13,14 @@ export type DeckToolDefinition = {
   summarizeInput: (input: unknown) => string
   summarizeOutput: (output: unknown) => string
   isErrorOutput: (output: unknown) => boolean
-  projectInputForTranscript: (input: unknown) => JsonValue
-  projectOutputForTranscript: (output: unknown) => JsonValue
+  projectInputForTranscript: (input: unknown) => TranscriptProjection
+  projectOutputForTranscript: (output: unknown) => TranscriptProjection
+}
+
+export type TranscriptProjection = {
+  value: JsonValue
+  truncated: boolean
+  recovery?: { toolName: string; input: JsonValue; instruction: string }
 }
 
 export const transcriptHtmlMarker = (html: string) =>
@@ -55,70 +56,13 @@ export function normalizeTranscriptValue(value: unknown, key = ''): JsonValue {
 
 export function capTranscriptValue(value: JsonValue): JsonValue {
   const serialized = JSON.stringify(value)
-  return serialized.length <= MAX_TRANSCRIPT_VALUE_CHARS
+  return Buffer.byteLength(serialized, 'utf8') <= MAX_PERSISTED_TOOL_VALUE_BYTES
     ? value
     : {
         omitted: true,
-        originalCharacters: serialized.length,
+        originalBytes: Buffer.byteLength(serialized, 'utf8'),
         reason: 'Transcript value exceeded limit; re-read the current deck.',
       }
-}
-
-export function capTranscriptParts(parts: readonly ChatMessagePart[]): ChatMessagePart[] {
-  const keptSteps: ChatMessagePart[][] = []
-  const steps = new Map<number, ChatMessagePart[]>()
-  for (const part of parts)
-    steps.set(part.stepIndex ?? -1, [...(steps.get(part.stepIndex ?? -1) ?? []), part])
-  const orderedSteps = [...steps].sort(([a], [b]) => a - b)
-  for (const [stepIndex, stepParts] of orderedSteps.toReversed()) {
-    const omittedAfterAdding = orderedSteps.length - keptSteps.length - 1
-    const marker =
-      omittedAfterAdding > 0 ? transcriptOmissionMarker(omittedAfterAdding, stepIndex) : null
-    const reservedSize = JSON.stringify([...(marker ? [marker] : []), ...keptSteps.flat()]).length
-    const compactedStep =
-      keptSteps.length === 0
-        ? compactTranscriptStep(stepParts, MAX_TRANSCRIPT_TURN_CHARS - reservedSize)
-        : stepParts
-    if (
-      JSON.stringify([...(marker ? [marker] : []), ...compactedStep, ...keptSteps.flat()]).length >
-      MAX_TRANSCRIPT_TURN_CHARS
-    )
-      break
-    keptSteps.unshift(compactedStep)
-    if (compactedStep !== stepParts && omittedAfterAdding > 0) break
-  }
-
-  const omittedStepCount = orderedSteps.length - keptSteps.length
-  if (omittedStepCount === 0) return keptSteps.flat()
-
-  const firstStepIndex = keptSteps[0]?.[0]?.stepIndex ?? 1
-  return [transcriptOmissionMarker(omittedStepCount, firstStepIndex), ...keptSteps.flat()]
-}
-
-function transcriptOmissionMarker(omittedStepCount: number, firstStepIndex: number) {
-  return {
-    type: 'text',
-    stepIndex: Math.max(0, firstStepIndex - 1),
-    content: `[${omittedStepCount} earlier transcript step(s) omitted to retain the most recent agent state; re-read the current deck as needed]`,
-  } satisfies ChatMessagePart
-}
-
-function compactTranscriptStep(parts: ChatMessagePart[], maxChars: number): ChatMessagePart[] {
-  if (JSON.stringify(parts).length <= maxChars) return parts
-
-  const omittedValue = {
-    omitted: true,
-    reason: 'Transcript step exceeded limit; re-read the current deck.',
-  } as const
-  return parts.map((part) => {
-    if (part.type === 'tool-call') return { ...part, input: omittedValue }
-    if (part.type === 'tool-result') return { ...part, output: omittedValue }
-    return {
-      ...part,
-      content:
-        '[assistant text omitted because this transcript step exceeded the replay limit; re-read the current deck as needed]',
-    }
-  })
 }
 
 const summarizeInput = (toolName: string, input: unknown) => {
@@ -153,6 +97,67 @@ const summarizeOutput = (toolName: string, output: unknown) => {
   if (typeof record.appliedCount === 'number') return `Applied ${record.appliedCount} operation(s)`
   if (typeof record.slideCount === 'number') return `${record.slideCount} slide(s) written`
   return 'Done'
+}
+
+const asRecord = (value: JsonValue): Record<string, JsonValue> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value : { value }
+
+function projectToolValue(toolName: string, value: unknown, output: boolean): TranscriptProjection {
+  const projected = normalizeTranscriptValue(value)
+  const record = asRecord(projected)
+  if (toolName === 'read_deck' && output) {
+    const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+    const contentWasProjected =
+      typeof source.content === 'string' &&
+      typeof record.content === 'string' &&
+      source.content !== record.content
+    const truncated =
+      contentWasProjected || record.truncated === true || typeof record.hint === 'string'
+    const nextOffset = typeof record.nextOffset === 'number' ? record.nextOffset : undefined
+    const nextCharOffset =
+      typeof record.nextCharOffset === 'number' ? record.nextCharOffset : undefined
+    const offset = typeof record.offset === 'number' ? record.offset : 1
+    const slideIndex = typeof record.index === 'number' ? record.index : undefined
+    const recoveryInput: JsonValue | undefined = nextCharOffset
+      ? slideIndex !== undefined
+        ? { slideIndex, charOffset: nextCharOffset }
+        : { offset, charOffset: nextCharOffset }
+      : nextOffset
+        ? { offset: nextOffset }
+        : contentWasProjected
+          ? slideIndex !== undefined
+            ? { slideIndex }
+            : { offset }
+          : undefined
+    return {
+      value: capTranscriptValue(record),
+      truncated,
+      ...(truncated && recoveryInput
+        ? {
+            recovery: {
+              toolName,
+              input: recoveryInput,
+              instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
+            },
+          }
+        : {}),
+    }
+  }
+  const capped = capTranscriptValue(projected)
+  const truncated = JSON.stringify(capped) !== JSON.stringify(projected)
+  return {
+    value: capped,
+    truncated,
+    ...(truncated
+      ? {
+          recovery: {
+            toolName,
+            input: {},
+            instruction: `Call ${toolName} again to recover current data.`,
+          },
+        }
+      : {}),
+  }
 }
 
 const metadata = {
@@ -210,10 +215,8 @@ export function createActiveDeckTools(
         !!output &&
         typeof output === 'object' &&
         ('error' in output || ('ok' in output && output.ok === false)),
-      projectInputForTranscript: (input: unknown) =>
-        capTranscriptValue(normalizeTranscriptValue(input)),
-      projectOutputForTranscript: (output: unknown) =>
-        capTranscriptValue(normalizeTranscriptValue(output)),
+      projectInputForTranscript: (input: unknown) => projectToolValue(name, input, false),
+      projectOutputForTranscript: (output: unknown) => projectToolValue(name, output, true),
     } satisfies DeckToolDefinition
   })
   return { tools: rawTools, activeDefinitions }

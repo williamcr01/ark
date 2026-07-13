@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
 import { deckIdSchema, withRequestId } from './common.ts'
-import { parseChatAttachments } from '@ark/deck-core/chat.ts'
+import {
+  MAX_PERSISTED_ASSISTANT_TURN_BYTES,
+  MAX_PERSISTED_TOOL_VALUE_BYTES,
+  parseChatAttachments,
+} from '@ark/deck-core/chat.ts'
 import type { JsonValue } from '@ark/deck-core/chat.ts'
 
 export const chatThreadStatusSchema = z.enum(['active', 'archived'])
@@ -61,6 +65,26 @@ export const chatMessagePartSchema = z.discriminatedUnion('type', [
   }),
 ])
 
+const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
+
+const assistantPartsSchema = z.array(chatMessagePartSchema).superRefine((parts, context) => {
+  for (const [index, part] of parts.entries()) {
+    const value =
+      part.type === 'tool-call' ? part.input : part.type === 'tool-result' ? part.output : undefined
+    if (value !== undefined && jsonBytes(value) > MAX_PERSISTED_TOOL_VALUE_BYTES)
+      context.addIssue({
+        code: 'custom',
+        path: [index, part.type === 'tool-call' ? 'input' : 'output'],
+        message: `Tool transcript value exceeds the ${MAX_PERSISTED_TOOL_VALUE_BYTES} byte persistence limit.`,
+      })
+  }
+  if (jsonBytes(parts) > MAX_PERSISTED_ASSISTANT_TURN_BYTES)
+    context.addIssue({
+      code: 'custom',
+      message: `Assistant transcript exceeds the ${MAX_PERSISTED_ASSISTANT_TURN_BYTES} byte persistence limit.`,
+    })
+})
+
 export const chatAttachmentSchema = z.object({
   type: z.literal('file'),
   mediaType: z.string(),
@@ -82,7 +106,7 @@ export const apiChatMessageSchema = z.discriminatedUnion('role', [
     role: z.literal('assistant'),
     content: z.string(),
     attachments: z.array(chatAttachmentSchema).optional(),
-    parts: z.array(chatMessagePartSchema).optional(),
+    parts: assistantPartsSchema.optional(),
   }),
 ])
 
@@ -95,7 +119,7 @@ export const persistedChatMessageSchema = z.object({
   deckVersionId: deckIdSchema.nullable(),
   role: z.enum(['user', 'assistant']),
   content: z.string(),
-  parts: z.array(chatMessagePartSchema).optional(),
+  parts: assistantPartsSchema.optional(),
   attachments: z.array(chatAttachmentSchema).optional(),
   generationJobId: z.string().nullable().optional(),
   generationStatus: z.string().nullable().optional(),
@@ -111,7 +135,7 @@ export const appendChatMessageRequestSchema = z
     id: z.string().optional(),
     role: z.enum(['user', 'assistant']),
     content: z.string(),
-    parts: z.array(chatMessagePartSchema).optional(),
+    parts: assistantPartsSchema.optional(),
     attachments: z.array(chatAttachmentSchema).optional(),
     deckVersionId: deckIdSchema.nullable().optional(),
     generationJobId: z.string().nullable().optional(),
