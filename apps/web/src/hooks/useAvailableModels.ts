@@ -16,9 +16,6 @@ export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
 
 const SELECTED_MODEL_STORAGE_KEY = 'ark:selected-model'
 
-const MISSING_KEY_MESSAGE =
-  'No API keys configured. Add at least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY to .env and restart the dev server.'
-
 const readStoredModel = () => {
   try {
     return localStorage.getItem(SELECTED_MODEL_STORAGE_KEY)
@@ -60,23 +57,67 @@ const resolveStoredModel = (models: AvailableModel[], storedModel: string | null
   return legacyMatch?.id ?? null
 }
 
-const resolveSelectedModel = (
+/** Prefer faster/cheaper models when auto-picking a fallback. */
+const fallbackPreferenceScore = (model: AvailableModel): number => {
+  const id = model.modelId.toLowerCase()
+
+  if (/mini|flash|haiku|nano/.test(id)) {
+    return 0
+  }
+
+  if (/sonnet|gpt-4o$|pro/.test(id)) {
+    return 1
+  }
+
+  return 2
+}
+
+export const pickAvailableFallbackModel = (models: AvailableModel[]): string | null => {
+  const available = models.filter((model) => model.available)
+
+  if (available.length === 0) {
+    return null
+  }
+
+  return [...available].sort((left, right) => {
+    const scoreDiff = fallbackPreferenceScore(left) - fallbackPreferenceScore(right)
+    if (scoreDiff !== 0) {
+      return scoreDiff
+    }
+
+    const providerOrder = left.provider.localeCompare(right.provider)
+    if (providerOrder !== 0) {
+      return providerOrder
+    }
+
+    return left.modelId.localeCompare(right.modelId)
+  })[0]!.id
+}
+
+/**
+ * Resolve the active model for the selector.
+ * Priority: available stored preference → available server default → cheap available fallback.
+ * Unavailable preferences are never selected; generation recovery may still call loadModels().
+ */
+export const resolveSelectedModel = (
   models: AvailableModel[],
   storedModel: string | null,
   defaultModel: string,
 ) => {
-  const preferred =
-    resolveStoredModel(models, storedModel) ??
-    (models.some((model) => model.id === defaultModel) ? defaultModel : null)
-
-  if (preferred) {
-    const preferredModel = models.find((model) => model.id === preferred)
-    if (preferredModel?.available) {
-      return preferred
+  const stored = resolveStoredModel(models, storedModel)
+  if (stored) {
+    const storedEntry = models.find((model) => model.id === stored)
+    if (storedEntry?.available) {
+      return stored
     }
   }
 
-  return models.find((model) => model.available)?.id ?? preferred ?? ''
+  const defaultEntry = models.find((model) => model.id === defaultModel)
+  if (defaultEntry?.available) {
+    return defaultModel
+  }
+
+  return pickAvailableFallbackModel(models) ?? stored ?? defaultEntry?.id ?? ''
 }
 
 async function fetchHealth() {
@@ -117,7 +158,7 @@ export function useAvailableModels() {
       setDefaultModel(nextDefault)
       setSelectedModelState(nextSelected)
       setApiKeyStatus(toApiKeyStatus(hasConfiguredKey, hasAvailableModel))
-      setError(hasConfiguredKey ? '' : MISSING_KEY_MESSAGE)
+      setError('')
 
       if (nextSelected) {
         writeStoredModel(nextSelected)
@@ -207,10 +248,18 @@ export function useAvailableModels() {
     }
   }, [applyModels])
 
-  const setSelectedModel = useCallback((modelId: string) => {
-    setSelectedModelState(modelId)
-    writeStoredModel(modelId)
-  }, [])
+  const setSelectedModel = useCallback(
+    (modelId: string) => {
+      const model = models.find((entry) => entry.id === modelId)
+      if (model && !model.available) {
+        return
+      }
+
+      setSelectedModelState(modelId)
+      writeStoredModel(modelId)
+    },
+    [models],
+  )
 
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
   const canGenerate = Boolean(selectedModelInfo?.available)
@@ -236,9 +285,31 @@ export const formatModelLabel = (model: AvailableModel) => {
     return label
   }
 
-  if (model.unavailableReason === 'not_found') {
-    return `${label} (unavailable)`
+  if (model.unavailableReason === 'missing_api_key') {
+    return `${label} (no API key)`
   }
 
-  return `${label} (add API key)`
+  return `${label} (unavailable)`
+}
+
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+}
+
+export const formatModelName = (model: AvailableModel) => model.name?.trim() || model.modelId
+
+export const formatProviderLabel = (provider: ProviderId) => PROVIDER_LABELS[provider]
+
+export const formatUnavailableBadge = (model: AvailableModel) => {
+  if (model.available) {
+    return null
+  }
+
+  if (model.unavailableReason === 'missing_api_key') {
+    return 'No API key'
+  }
+
+  return 'Unavailable'
 }

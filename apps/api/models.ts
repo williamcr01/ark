@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderId } from '@ark/contracts'
-import { getProviderApiKey, parseProviderHttpError } from './credentials.ts'
+import { getProviderApiKey, parseProviderHttpError, PROVIDER_LABELS } from './credentials.ts'
 
 export type { ProviderId, ModelInfo }
 
@@ -55,13 +55,13 @@ const PROVIDER_SEED_MODELS: Record<ProviderId, Array<{ modelId: string; name: st
     { modelId: 'gpt-4.1', name: 'GPT-4.1' },
   ],
   anthropic: [
-    { modelId: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-    { modelId: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
-    { modelId: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku' },
+    { modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+    { modelId: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+    { modelId: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
   ],
   google: [
-    { modelId: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-    { modelId: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { modelId: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
+    { modelId: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
     { modelId: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
   ],
 }
@@ -255,10 +255,46 @@ export async function fetchProviderModels(provider: ProviderId): Promise<ModelIn
 
 const ALL_PROVIDERS: ProviderId[] = ['openai', 'anthropic', 'google']
 
-export async function fetchAllAvailableModels(): Promise<{
+export const formatModelCatalogWarning = (provider: ProviderId, error: unknown): string => {
+  const label = PROVIDER_LABELS[provider]
+  const message = error instanceof Error ? error.message.trim() : ''
+
+  if (
+    /fetch failed/i.test(message) ||
+    /network/i.test(message) ||
+    /econnreset/i.test(message) ||
+    /enotfound/i.test(message) ||
+    /econnrefused/i.test(message)
+  ) {
+    return `Could not reach ${label} to load models. Showing fallback models until the network is available.`
+  }
+
+  if (!message) {
+    return `Could not load ${label} models.`
+  }
+
+  // HTTP/API errors from parseProviderHttpError already name the provider when relevant.
+  if (message.includes(label) || /api key/i.test(message)) {
+    return message
+  }
+
+  return `Could not load ${label} models: ${message}`
+}
+
+export type ModelCatalog = {
   models: ModelInfo[]
   warnings: string[]
-}> {
+}
+
+let modelCatalogCache: ModelCatalog | null = null
+let modelCatalogInflight: Promise<ModelCatalog> | null = null
+
+export const clearModelCatalogCache = () => {
+  modelCatalogCache = null
+  modelCatalogInflight = null
+}
+
+export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
   const warnings: string[] = []
   const models: ModelInfo[] = []
 
@@ -275,10 +311,12 @@ export async function fetchAllAvailableModels(): Promise<{
         const providerModels = await PROVIDER_FETCHERS[provider](apiKey)
         models.push(...providerModels)
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : `Could not load ${provider} models.`
-        warnings.push(message)
-        models.push(...seedModelsForProvider(provider))
+        warnings.push(formatModelCatalogWarning(provider, error))
+        models.push(
+          ...PROVIDER_SEED_MODELS[provider].map((entry) =>
+            toModelRef(provider, entry.modelId, entry.name, false, 'not_found'),
+          ),
+        )
       }
     }),
   )
@@ -286,6 +324,41 @@ export async function fetchAllAvailableModels(): Promise<{
   return {
     models: sortModels(models),
     warnings,
+  }
+}
+
+/** Fetch provider catalogs and replace the process-local cache. */
+export async function refreshModelCatalog(): Promise<ModelCatalog> {
+  const catalog = await fetchAllAvailableModels()
+  modelCatalogCache = catalog
+  return catalog
+}
+
+/**
+ * Return the cached catalog, sharing one in-flight refresh when empty.
+ * Call {@link warmModelCatalog} at process startup so page reloads stay local.
+ */
+export async function getModelCatalog(): Promise<ModelCatalog> {
+  if (modelCatalogCache) {
+    return modelCatalogCache
+  }
+
+  if (!modelCatalogInflight) {
+    modelCatalogInflight = refreshModelCatalog().finally(() => {
+      modelCatalogInflight = null
+    })
+  }
+
+  return modelCatalogInflight
+}
+
+/** Best-effort warm of the catalog during API boot. */
+export async function warmModelCatalog(): Promise<void> {
+  try {
+    await refreshModelCatalog()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown model catalog error.'
+    console.warn(`Model catalog warm failed: ${message}`)
   }
 }
 
@@ -300,22 +373,4 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
     : 'missing_api_key'
 
   return sortModels([...models, toModelRef(provider, modelId, undefined, false, unavailableReason)])
-}
-
-export function getDefaultModelWarning(
-  models: ModelInfo[],
-  defaultModel: string,
-): string | undefined {
-  const entry = models.find((model) => model.id === defaultModel)
-  if (!entry || entry.available) {
-    return undefined
-  }
-
-  const { provider } = parseModelRef(defaultModel)
-
-  if (entry.unavailableReason === 'missing_api_key') {
-    return `Configured default model "${defaultModel}" requires a ${provider} API key. Add the key to .env and restart the dev server.`
-  }
-
-  return `Configured default model "${defaultModel}" is not available from ${provider}. Update ARK_DEFAULT_MODEL or OPENAI_MODEL in .env and restart the dev server.`
 }

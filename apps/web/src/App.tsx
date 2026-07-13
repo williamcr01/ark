@@ -115,7 +115,6 @@ function App() {
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const {
-    apiKeyStatus,
     canGenerate,
     error: modelsError,
     isLoading: isLoadingModels,
@@ -471,7 +470,6 @@ function App() {
   const chatPanel = (
     <ChatPanel
       activeSteps={activeSteps}
-      apiKeyStatus={apiKeyStatus}
       assetsSlot={deckAssetsSlot}
       attachmentError={attachmentError}
       canGenerate={canGenerate}
@@ -491,7 +489,6 @@ function App() {
       onInputChange={setInput}
       onModelChange={setSelectedModel}
       onPromptSubmit={handlePromptSubmit}
-      onRefreshModels={loadModels}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}
       selectedAssetIds={selectedAssetIds}

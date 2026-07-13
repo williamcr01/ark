@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express'
 
 import { resolveAppOrigin, resolveSandboxOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 import { getProviderStatus, hasAnyConfiguredProvider } from '../credentials.ts'
-import { ensureModelInList, fetchAllAvailableModels, getDefaultModelWarning } from '../models.ts'
+import { ensureModelInList, getModelCatalog } from '../models.ts'
 import {
   getRequestId,
   getRequestLogger,
@@ -37,14 +37,13 @@ export function createMiscRouter(deps: {
 
   router.get('/api/models', async (_request: Request, response: Response) => {
     try {
-      const { models, warnings } = await fetchAllAvailableModels()
+      const { models, warnings } = await getModelCatalog()
       const modelsWithDefault = ensureModelInList(models, defaultModel)
-      const defaultModelWarning = getDefaultModelWarning(modelsWithDefault, defaultModel)
 
       response.json({
         defaultModel,
         models: modelsWithDefault,
-        warnings: defaultModelWarning ? [...warnings, defaultModelWarning] : warnings,
+        warnings,
       })
     } catch (error) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
