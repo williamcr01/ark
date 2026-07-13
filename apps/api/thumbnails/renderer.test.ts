@@ -62,37 +62,21 @@ function createMockCdp(options: {
   slideIndex?: number
   screenshotData?: string
   onNavigate?: () => void
-  onScreenshot?: (params: unknown, sessionId: string | null) => void
+  onScreenshot?: (params: unknown) => void
   onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
 }): CdpClient {
   const listeners = new Map<string, Array<(params: unknown, sessionId: string | null) => void>>()
   let slideIndex = options.slideIndex ?? 0
 
   return {
-    send: async (method: string, params?: unknown, sessionId: string | null = null) => {
+    send: async (method: string, params?: unknown) => {
       if (method === 'Page.navigate') {
         options.onNavigate?.()
         return {}
       }
 
-      if (method === 'Target.getTargets') {
-        return {
-          targetInfos: [
-            {
-              targetId: 'mock-frame',
-              type: 'iframe',
-              url: 'http://127.0.0.1:9/api/thumbnail-render/token',
-            },
-          ],
-        }
-      }
-
-      if (method === 'Target.attachToTarget') {
-        return { sessionId: 'mock-frame-session' }
-      }
-
       if (method === 'Page.captureScreenshot') {
-        options.onScreenshot?.(params, sessionId)
+        options.onScreenshot?.(params)
         return { data: options.screenshotData ?? tinyPngBase64 }
       }
 
@@ -158,7 +142,7 @@ function createMockPool(options: {
   screenshotData?: string
   createPageImpl?: () => Promise<BrowserPage>
   onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
-  onScreenshot?: (params: unknown, sessionId: string | null) => void
+  onScreenshot?: (params: unknown) => void
 }): { pool: ChromiumPool; closedPages: { count: number } } {
   const closedPages = { count: 0 }
 
@@ -271,7 +255,7 @@ describe('thumbnail renderer limits (unit)', () => {
     let settleRequested = false
     let settlePolls = 0
     let capturedBeforeSettled = false
-    const screenshotSessions: Array<string | null> = []
+    let screenshotCount = 0
     const mock = createMockPool({
       ready: true,
       onEvaluate: (expression) => {
@@ -293,9 +277,9 @@ describe('thumbnail renderer limits (unit)', () => {
 
         return undefined
       },
-      onScreenshot: (_params, sessionId) => {
+      onScreenshot: () => {
         capturedBeforeSettled = settlePolls < 2
-        screenshotSessions.push(sessionId)
+        screenshotCount += 1
       },
     })
     const previewSessionStore = createPreviewSessionStore()
@@ -320,7 +304,7 @@ describe('thumbnail renderer limits (unit)', () => {
     expect(settleRequested).toBe(true)
     expect(settlePolls).toBeGreaterThanOrEqual(2)
     expect(capturedBeforeSettled).toBe(false)
-    expect(screenshotSessions).toEqual(['mock-frame-session'])
+    expect(screenshotCount).toBe(1)
     expect(mock.closedPages.count).toBe(1)
   })
 

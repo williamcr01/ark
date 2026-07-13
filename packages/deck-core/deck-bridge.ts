@@ -421,9 +421,9 @@ export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOpt
   }
 
   function postToParent(message) {
-    if (window.parent !== window) {
-      window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
-    }
+    // Always post: thumbnail Chromium loads the deck top-level, so parent ===
+    // window and the settle script listens for self-posted READY/CHANGE.
+    window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
   }
 
   function postSlideChange(index, slideCount) {
@@ -588,9 +588,9 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
   }
 
   function postToParent(message) {
-    if (window.parent !== window) {
-      window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
-    }
+    // Always post: thumbnail Chromium loads the deck top-level, so parent ===
+    // window and the settle script listens for self-posted READY/CHANGE.
+    window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
   }
 
   function postRuntimeError(message, source) {
@@ -832,9 +832,9 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
   }
 
   function postToParent(message) {
-    if (window.parent !== window) {
-      window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
-    }
+    // Always post: thumbnail Chromium loads the deck top-level, so parent ===
+    // window and the settle script listens for self-posted READY/CHANGE.
+    window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
   }
 
   function postRuntimeError(message, source) {

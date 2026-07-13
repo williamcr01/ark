@@ -256,74 +256,12 @@ async function gotoSlide(
   throw new Error(`Timed out waiting for slide ${index} during thumbnail render.`)
 }
 
-async function attachDeckFrameSession(
-  cdp: CdpClient,
-  frameUrl: string,
-  timeoutMs: number,
-  signal?: AbortSignal,
-) {
-  const startedAt = Date.now()
-
-  while (Date.now() - startedAt < timeoutMs) {
-    throwIfAborted(signal)
-
-    const targets = await cdp.send<{
-      targetInfos: Array<{ targetId?: string; type?: string; url?: string }>
-    }>('Target.getTargets')
-    const frame = targets.targetInfos.find((target) => {
-      if (
-        target.type !== 'iframe' ||
-        typeof target.targetId !== 'string' ||
-        typeof target.url !== 'string'
-      ) {
-        return false
-      }
-
-      try {
-        const url = new URL(target.url)
-        const expected = new URL(frameUrl)
-        return (
-          url.origin === expected.origin &&
-          url.pathname.includes('/api/thumbnail-render/') &&
-          !url.pathname.endsWith('/host')
-        )
-      } catch {
-        return target.url.includes('/api/thumbnail-render/') && !target.url.includes('/host')
-      }
-    })
-
-    if (frame?.targetId) {
-      const attached = await cdp.send<{ sessionId?: string }>('Target.attachToTarget', {
-        targetId: frame.targetId,
-        flatten: true,
-      })
-
-      if (!attached.sessionId) {
-        throw new Error('Could not attach to thumbnail deck frame.')
-      }
-
-      await cdp.send('Page.enable', {}, attached.sessionId)
-      return attached.sessionId
-    }
-
-    await sleep(10)
-  }
-
-  throw new Error('Timed out waiting for thumbnail deck frame.')
-}
-
-async function captureSlidePng(cdp: CdpClient, maxPngBytes: number, sessionId: string) {
-  // Capture the sandboxed deck frame directly. Host-page screenshots can lag one
-  // compositor submission behind the iframe and produce a blank first PNG.
-  const result = await cdp.send<{ data: string }>(
-    'Page.captureScreenshot',
-    {
-      format: 'png',
-      fromSurface: true,
-      captureBeyondViewport: false,
-    },
-    sessionId,
-  )
+async function captureSlidePng(cdp: CdpClient, maxPngBytes: number) {
+  const result = await cdp.send<{ data: string }>('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: false,
+  })
 
   const png = Buffer.from(result.data, 'base64')
 
@@ -546,46 +484,24 @@ export function createThumbnailRenderer(options: {
             await cdp.send('Page.navigate', { url: renderUrl })
             await cdp.waitForEvent('Page.loadEventFired', () => true, readyTimeoutMs)
             await waitForDeckReady(cdp, readyTimeoutMs, signal)
-            const frameSessionId = await attachDeckFrameSession(
-              cdp,
-              renderUrl.replace(/\/host$/, ''),
-              readyTimeoutMs,
-              signal,
-            )
-            await cdp.send(
-              'Emulation.setDeviceMetricsOverride',
-              {
-                width: THUMBNAIL_VIEWPORT_WIDTH,
-                height: THUMBNAIL_VIEWPORT_HEIGHT,
-                deviceScaleFactor: THUMBNAIL_OUTPUT_WIDTH / THUMBNAIL_VIEWPORT_WIDTH,
-                mobile: false,
-              },
-              frameSessionId,
-            )
 
             const slides: Buffer[] = []
             const captureIndexes =
               requestedSlideIndexes ?? Array.from({ length: slideCount }, (_value, index) => index)
 
-            try {
-              for (const index of captureIndexes) {
-                throwIfAborted(signal)
-                await withTimeout(
-                  gotoSlide(cdp, index, slideTimeoutMs, settleMs, signal),
-                  slideTimeoutMs,
-                  `slide ${index}`,
-                )
-                const png = await withTimeout(
-                  captureSlidePng(cdp, maxPngBytes, frameSessionId),
-                  slideTimeoutMs,
-                  `screenshot ${index}`,
-                )
-                slides.push(png)
-              }
-            } finally {
-              await cdp
-                .send('Target.detachFromTarget', { sessionId: frameSessionId })
-                .catch(() => undefined)
+            for (const index of captureIndexes) {
+              throwIfAborted(signal)
+              await withTimeout(
+                gotoSlide(cdp, index, slideTimeoutMs, settleMs, signal),
+                slideTimeoutMs,
+                `slide ${index}`,
+              )
+              const png = await withTimeout(
+                captureSlidePng(cdp, maxPngBytes),
+                slideTimeoutMs,
+                `screenshot ${index}`,
+              )
+              slides.push(png)
             }
 
             // Post-hoc defense-in-depth only: the injected sandbox CSP is what
