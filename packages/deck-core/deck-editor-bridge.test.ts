@@ -57,10 +57,28 @@ describe('deck editor bridge protocol', () => {
       geometry: { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
       zIndex: null,
     })
+
+    expect(
+      createEditorGeometryMessage(
+        'ark-el-title',
+        0,
+        { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
+        null,
+        { x: 0.05, y: 0.05, width: 0.9, height: 0.9 },
+      ),
+    ).toEqual({
+      type: EDITOR_GEOMETRY_MESSAGE_TYPE,
+      elementId: 'ark-el-title',
+      slideIndex: 0,
+      geometry: { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
+      zIndex: null,
+      slideBounds: { x: 0.05, y: 0.05, width: 0.9, height: 0.9 },
+    })
   })
 
   it('keeps transform preview and commit messages distinct', () => {
     const geometry = { x: 0.2, y: 0.3, width: 0.4, height: 0.2 }
+    const slideBounds = { x: 0.1, y: 0.1, width: 0.8, height: 0.8 }
 
     expect(createEditorTransformPreviewMessage('ark-el-body', 0, geometry).type).toBe(
       EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
@@ -71,6 +89,12 @@ describe('deck editor bridge protocol', () => {
     expect(createEditorTransformPreviewMessage('ark-el-body', 0, geometry).type).not.toBe(
       createEditorTransformCommitMessage('ark-el-body', 0, geometry).type,
     )
+    expect(
+      createEditorTransformPreviewMessage('ark-el-body', 0, geometry, null, slideBounds),
+    ).toMatchObject({ slideBounds })
+    expect(
+      createEditorTransformCommitMessage('ark-el-body', 0, geometry, 2, slideBounds),
+    ).toMatchObject({ slideBounds, zIndex: 2 })
   })
 
   it('validates editor messages and rejects malformed payloads', () => {
@@ -211,6 +235,23 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain('ArrowLeft')
   })
 
+  it('posts slideBounds with geometry and transform messages in the runtime script', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    expect(script).toContain('function normalizeSlideBounds')
+    expect(script).toContain('slideBounds: normalizeSlideBounds(slide)')
+
+    const selectHandler = script.indexOf('data.type === C.SELECT ||')
+    const setIndex = script.indexOf('currentSlideIndex = data.slideIndex', selectHandler)
+    const getSlide = script.indexOf('var slide = getActiveSlide();', setIndex)
+
+    expect(selectHandler).toBeGreaterThan(-1)
+    expect(setIndex).toBeGreaterThan(selectHandler)
+    expect(getSlide).toBeGreaterThan(setIndex)
+  })
+
   it('prefers the text-box wrapper over inner text elements as the editable target', () => {
     const script = buildDeckEditorBridgeRuntimeScript({
       slideSelectors: ['section.slide'],
@@ -221,6 +262,24 @@ describe('deck editor bridge protocol', () => {
 
     const ancestorPreferenceIndex = script.indexOf('findTextBoxAncestor(current, slide) || current')
     expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
+  })
+
+  it('deselects on empty-slide pointerdown in the runtime script', () => {
+    const script = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+    })
+
+    const emptyClickIndex = script.indexOf('var target = findEditableTarget(event.target, slide);')
+    expect(emptyClickIndex).toBeGreaterThan(-1)
+
+    const deselectIndex = script.indexOf(
+      'postSelection(null, slide, currentSlideIndex);',
+      emptyClickIndex,
+    )
+    expect(deselectIndex).toBeGreaterThan(emptyClickIndex)
+
+    const hoverClearIndex = script.indexOf('elementId: null', deselectIndex)
+    expect(hoverClearIndex).toBeGreaterThan(deselectIndex)
   })
 
   it('gates keyboard deletion to Ark-managed elements in the runtime script', () => {

@@ -108,10 +108,6 @@ function App() {
   const editorSelectionRef = useRef<EditorSelectionInfo | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
-  const [previewEditModeState, setPreviewEditModeState] = useState<{
-    deckId: string | null
-    active: boolean
-  }>({ deckId: null, active: false })
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -203,15 +199,6 @@ function App() {
   useEffect(() => {
     resetEditHistory()
   }, [deckId, resetEditHistory])
-
-  const isPreviewEditModeActive =
-    previewEditModeState.deckId === deckId ? previewEditModeState.active : false
-  const handlePreviewEditModeActiveChange = useCallback(
-    (active: boolean) => {
-      setPreviewEditModeState({ deckId, active })
-    },
-    [deckId],
-  )
 
   const deckAnalysis = useMemo(() => {
     void thumbnailStylesRevision
@@ -558,7 +545,6 @@ function App() {
                   canRedo={canRedo}
                   canUndo={canUndo}
                   deckId={deckId}
-                  editModeActive={isPreviewEditModeActive}
                   editorBridgeEnabled
                   html={generatedHtml}
                   isGenerating={isGenerating}
@@ -566,7 +552,6 @@ function App() {
                   isTextEditSaving={isDeckPatching || isDeckSaving}
                   layout="desktop"
                   onCommitTextEdit={handleCommitTextEdit}
-                  onEditModeActiveChange={handlePreviewEditModeActiveChange}
                   onEditorSelectionChange={handleEditorSelectionChange}
                   onPatchEditorOperations={handlePatchEditorOperations}
                   onRedo={handleRedoEdit}
@@ -603,7 +588,6 @@ function App() {
                   canRedo={canRedo}
                   canUndo={canUndo}
                   deckId={deckId}
-                  editModeActive={isPreviewEditModeActive}
                   editorBridgeEnabled
                   html={generatedHtml}
                   isGenerating={isGenerating}
@@ -611,7 +595,6 @@ function App() {
                   isTextEditSaving={isDeckPatching || isDeckSaving}
                   layout="mobile"
                   onCommitTextEdit={handleCommitTextEdit}
-                  onEditModeActiveChange={handlePreviewEditModeActiveChange}
                   onEditorSelectionChange={handleEditorSelectionChange}
                   onPatchEditorOperations={handlePatchEditorOperations}
                   onRedo={handleRedoEdit}
