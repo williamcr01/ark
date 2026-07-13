@@ -281,10 +281,20 @@ export const formatModelCatalogWarning = (provider: ProviderId, error: unknown):
   return `Could not load ${label} models: ${message}`
 }
 
-export async function fetchAllAvailableModels(): Promise<{
+export type ModelCatalog = {
   models: ModelInfo[]
   warnings: string[]
-}> {
+}
+
+let modelCatalogCache: ModelCatalog | null = null
+let modelCatalogInflight: Promise<ModelCatalog> | null = null
+
+export const clearModelCatalogCache = () => {
+  modelCatalogCache = null
+  modelCatalogInflight = null
+}
+
+export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
   const warnings: string[] = []
   const models: ModelInfo[] = []
 
@@ -314,6 +324,41 @@ export async function fetchAllAvailableModels(): Promise<{
   return {
     models: sortModels(models),
     warnings,
+  }
+}
+
+/** Fetch provider catalogs and replace the process-local cache. */
+export async function refreshModelCatalog(): Promise<ModelCatalog> {
+  const catalog = await fetchAllAvailableModels()
+  modelCatalogCache = catalog
+  return catalog
+}
+
+/**
+ * Return the cached catalog, sharing one in-flight refresh when empty.
+ * Call {@link warmModelCatalog} at process startup so page reloads stay local.
+ */
+export async function getModelCatalog(): Promise<ModelCatalog> {
+  if (modelCatalogCache) {
+    return modelCatalogCache
+  }
+
+  if (!modelCatalogInflight) {
+    modelCatalogInflight = refreshModelCatalog().finally(() => {
+      modelCatalogInflight = null
+    })
+  }
+
+  return modelCatalogInflight
+}
+
+/** Best-effort warm of the catalog during API boot. */
+export async function warmModelCatalog(): Promise<void> {
+  try {
+    await refreshModelCatalog()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown model catalog error.'
+    console.warn(`Model catalog warm failed: ${message}`)
   }
 }
 

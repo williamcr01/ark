@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchAllAvailableModels } from './models.ts'
+import {
+  clearModelCatalogCache,
+  fetchAllAvailableModels,
+  getModelCatalog,
+  refreshModelCatalog,
+} from './models.ts'
 
 const ORIGINAL_ENV = { ...process.env }
 
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  clearModelCatalogCache()
 
   for (const key of Object.keys(process.env)) {
     if (!(key in ORIGINAL_ENV)) {
@@ -82,5 +88,65 @@ describe('fetchAllAvailableModels', () => {
     expect(
       models.filter((model) => model.provider === 'google').every((model) => !model.available),
     ).toBe(true)
+  })
+})
+
+describe('model catalog cache', () => {
+  it('serves the warmed catalog without re-fetching providers', async () => {
+    delete process.env.OPENAI_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    const fetchMock = vi.fn(async () => {
+      throw new Error('provider fetch should not run without API keys')
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const warmed = await refreshModelCatalog()
+    const cached = await getModelCatalog()
+
+    expect(cached).toBe(warmed)
+    expect(cached.models.length).toBeGreaterThan(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('shares one in-flight refresh when the cache is cold', async () => {
+    delete process.env.OPENAI_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key'
+
+    let resolveFetch: ((value: Response) => void) | undefined
+    const fetchStarted = new Promise<void>((resolve) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          () =>
+            new Promise<Response>((resolveResponse) => {
+              resolve()
+              resolveFetch = resolveResponse
+            }),
+        ),
+      )
+    })
+
+    const first = getModelCatalog()
+    const second = getModelCatalog()
+
+    await fetchStarted
+    resolveFetch?.(
+      Response.json({
+        models: [
+          {
+            name: 'models/gemini-2.5-flash',
+            displayName: 'Gemini 2.5 Flash',
+            supportedGenerationMethods: ['generateContent'],
+          },
+        ],
+      }),
+    )
+
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toBe(b)
+    expect(a.models.some((model) => model.id === 'google:gemini-2.5-flash')).toBe(true)
   })
 })
