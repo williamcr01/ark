@@ -4,6 +4,7 @@ import {
   agentStepsToChatParts,
   applyResolvedAssetAttachments,
   buildAgentModelMessages,
+  convertChatHistoryToModelMessages,
   buildAssistantMessageContent,
   buildModelMessages,
   chatAttachmentsToFileParts,
@@ -230,6 +231,79 @@ describe('buildModelMessages', () => {
 })
 
 describe('buildAgentModelMessages', () => {
+  it('replays paired tool calls and results with original ids', () => {
+    const messages = convertChatHistoryToModelMessages([
+      {
+        role: 'assistant',
+        content: 'Updated.',
+        parts: [
+          { type: 'text', content: 'Inspecting.', stepIndex: 0 },
+          {
+            type: 'tool-call',
+            toolName: 'list_slides',
+            summary: 'outline',
+            stepIndex: 0,
+            toolCallId: 'call-1',
+            input: {},
+          },
+          {
+            type: 'tool-result',
+            toolName: 'list_slides',
+            summary: '2 slides',
+            stepIndex: 0,
+            toolCallId: 'call-1',
+            output: { slideCount: 2 },
+            isError: false,
+          },
+          { type: 'text', content: 'Updated.', stepIndex: 1 },
+        ],
+      },
+    ])
+    expect(messages).toHaveLength(3)
+    expect(messages[0]).toMatchObject({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Inspecting.' },
+        { type: 'tool-call', toolCallId: 'call-1' },
+      ],
+    })
+    expect(messages[1]).toMatchObject({
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: 'call-1',
+          output: { type: 'json', value: { slideCount: 2 } },
+        },
+      ],
+    })
+    expect(messages[2]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Updated.' }],
+    })
+  })
+
+  it('falls back to assistant content for an incomplete replay turn', () => {
+    expect(
+      convertChatHistoryToModelMessages([
+        {
+          role: 'assistant',
+          content: 'Legacy summary',
+          parts: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              summary: 'slide',
+              stepIndex: 0,
+              toolCallId: 'call-1',
+              input: {},
+            },
+          ],
+        },
+      ]),
+    ).toEqual([{ role: 'assistant', content: 'Legacy summary' }])
+  })
+
   it('does not embed full HTML in the latest user turn', () => {
     const messages = buildAgentModelMessages(
       [{ role: 'user', content: 'Make the title larger' }],
@@ -238,7 +312,7 @@ describe('buildAgentModelMessages', () => {
 
     expect(messages[0]?.role).toBe('user')
     expect(messages[0]?.content).toContain('Make the title larger')
-    expect(messages[0]?.content).toContain('read_deck')
+    expect(messages[0]?.content).toContain('available tools')
     expect(JSON.stringify(messages[0]?.content)).not.toContain('<section class="slide">')
   })
 

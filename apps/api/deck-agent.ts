@@ -1,9 +1,10 @@
-import { generateText, type LanguageModel } from 'ai'
+import { generateText, stepCountIs, type LanguageModel } from 'ai'
 
 import {
   buildAgentModelMessages,
   type AgentStep,
   type ApiChatMessage,
+  type ChatMessagePart,
   type EditorSelectionContext,
 } from '@ark/deck-core/chat.ts'
 import type { ProviderCallMetrics } from '@ark/deck-core/generation-job.ts'
@@ -13,21 +14,38 @@ import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
+import {
+  createActiveDeckTools,
+  capTranscriptParts,
+  findToolDefinition,
+  normalizeTranscriptValue,
+  type DeckToolDefinition,
+} from './deck-tool-catalog.ts'
 
-export const deckAgentSystemPrompt = `You are Ark, an expert presentation designer and front-end engineer.
+export const MAX_AGENT_STEPS = 30
+
+export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolDefinition[]) {
+  const available = activeDefinitions
+    .map(
+      (definition) => `- **${definition.name}**: ${definition.snippet} - ${definition.description}`,
+    )
+    .join('\n')
+  const toolGuidelines = [
+    ...new Set(activeDefinitions.flatMap((definition) => definition.guidelines)),
+  ]
+    .map((guideline) => `- ${guideline}`)
+    .join('\n')
+  return `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
 
-Tool workflow:
-- **New deck**: call write_deck with a complete HTML document.
-- **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first.
-- **Version history**: when editing an existing deck, call list_versions to inspect recent sources, summaries, structural diffs, and compact provenance (no HTML snapshots) before large rewrites or when the user asks what changed.
-- **Selected element**: when the user has an element selected (see the selection note in their message), prefer patch_element targeting that elementId. parse_deck lists element ids, kinds, and locked/managed flags.
-- **Slide changes**: prefer patch_deck (add/delete/replace/reorder/title/notes) over edit_deck or write_deck.
-- **Small inline HTML tweaks**: use edit_deck with exact oldText/newText patches.
-- Use write_deck only for brand-new decks or explicit full rewrites.
+Available tools:
+${available}
+
+Guidelines:
+- Inspect the current deck before editing and prefer targeted patches over full rewrites.
 - If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.
-- After edits, you may read_deck again to verify structure before replying.
+${toolGuidelines}
 
 Hard requirements for deck HTML:
 - Include <!DOCTYPE html>, <html>, <head>, and <body>.
@@ -61,6 +79,7 @@ Reveal.js rules (only when requested or clearly needed — see docs/reveal-runti
 - CDN reveal.js URLs are invalid even if the version matches.
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
+}
 
 export type RunDeckAgentOptions = {
   model: LanguageModel
@@ -112,12 +131,14 @@ export type RunDeckAgentResult =
       validation: ReturnType<typeof validateDeckHtmlOnServer>
       steps: AgentStep[]
       assistantText: string
+      transcriptParts: ChatMessagePart[]
       providerMetrics: ProviderCallMetrics
     }
   | {
       ok: false
       error: string
       steps: AgentStep[]
+      transcriptParts: ChatMessagePart[]
       validation?: ReturnType<typeof validateDeckHtmlOnServer>
       providerMetrics?: ProviderCallMetrics | null
     }
@@ -205,6 +226,7 @@ export function extractAgentSteps(
     toolCalls: Array<{ toolName: string; input: unknown }>
     toolResults: Array<{ toolName: string; output: unknown }>
   }>,
+  definitions?: readonly DeckToolDefinition[],
 ): AgentStep[] {
   const events: AgentStep[] = []
 
@@ -214,20 +236,27 @@ export function extractAgentSteps(
     }
 
     for (const toolCall of step.toolCalls) {
+      const definition = definitions && findToolDefinition(definitions, toolCall.toolName)
       events.push({
         type: 'tool-call',
         toolName: toolCall.toolName,
-        summary: summarizeToolInput(toolCall.toolName, toolCall.input),
+        summary:
+          definition?.summarizeInput(toolCall.input) ??
+          summarizeToolInput(toolCall.toolName, toolCall.input),
       })
     }
 
     for (const toolResult of step.toolResults) {
-      const summary = summarizeToolOutput(toolResult.toolName, toolResult.output)
+      const definition = definitions && findToolDefinition(definitions, toolResult.toolName)
+      const summary =
+        definition?.summarizeOutput(toolResult.output) ??
+        summarizeToolOutput(toolResult.toolName, toolResult.output)
       const isError =
-        !!toolResult.output &&
-        typeof toolResult.output === 'object' &&
-        ('error' in toolResult.output ||
-          ('ok' in toolResult.output && toolResult.output.ok === false))
+        definition?.isErrorOutput(toolResult.output) ??
+        (!!toolResult.output &&
+          typeof toolResult.output === 'object' &&
+          ('error' in toolResult.output ||
+            ('ok' in toolResult.output && toolResult.output.ok === false)))
 
       events.push({
         type: 'tool-result',
@@ -239,6 +268,102 @@ export function extractAgentSteps(
   }
 
   return events
+}
+
+export function extractAgentTranscriptParts(
+  steps: Array<{
+    content?: Array<Record<string, unknown>>
+    text?: string
+    toolCalls?: Array<Record<string, unknown>>
+    toolResults?: Array<Record<string, unknown>>
+  }>,
+  definitions: readonly DeckToolDefinition[],
+): ChatMessagePart[] {
+  const parts: ChatMessagePart[] = []
+  for (const [stepIndex, step] of steps.entries()) {
+    const content = step.content ?? []
+    const seen = new Set<string>()
+    for (const item of content) {
+      if (item.type === 'text' && typeof item.text === 'string' && item.text.trim())
+        parts.push({ type: 'text', content: item.text.trim(), stepIndex })
+      if (
+        item.type === 'tool-call' &&
+        typeof item.toolCallId === 'string' &&
+        typeof item.toolName === 'string'
+      ) {
+        const definition = findToolDefinition(definitions, item.toolName)
+        if (!definition) continue
+        seen.add(item.toolCallId)
+        parts.push({
+          type: 'tool-call',
+          toolName: item.toolName,
+          toolCallId: item.toolCallId,
+          stepIndex,
+          summary: definition.summarizeInput(item.input),
+          input: definition.projectInputForTranscript(item.input),
+        })
+      }
+      if (
+        (item.type === 'tool-result' || item.type === 'tool-error') &&
+        typeof item.toolCallId === 'string' &&
+        typeof item.toolName === 'string'
+      ) {
+        const definition = findToolDefinition(definitions, item.toolName)
+        if (!definition) continue
+        const output =
+          item.type === 'tool-error'
+            ? normalizeTranscriptValue(item.error)
+            : definition.projectOutputForTranscript(item.output)
+        parts.push({
+          type: 'tool-result',
+          toolName: item.toolName,
+          toolCallId: item.toolCallId,
+          stepIndex,
+          summary:
+            item.type === 'tool-error'
+              ? item.error instanceof Error
+                ? item.error.message
+                : 'Tool execution failed'
+              : definition.summarizeOutput(item.output),
+          output,
+          isError: item.type === 'tool-error' || definition.isErrorOutput(item.output),
+          error: item.type === 'tool-error' || definition.isErrorOutput(item.output),
+        })
+      }
+    }
+    if (!content.length) {
+      if (step.text?.trim()) parts.push({ type: 'text', content: step.text.trim(), stepIndex })
+      for (const call of step.toolCalls ?? []) {
+        if (typeof call.toolCallId !== 'string' || typeof call.toolName !== 'string') continue
+        const definition = findToolDefinition(definitions, call.toolName)
+        if (!definition) continue
+        parts.push({
+          type: 'tool-call',
+          toolName: call.toolName,
+          toolCallId: call.toolCallId,
+          stepIndex,
+          summary: definition.summarizeInput(call.input),
+          input: definition.projectInputForTranscript(call.input),
+        })
+      }
+      for (const result of step.toolResults ?? []) {
+        if (typeof result.toolCallId !== 'string' || typeof result.toolName !== 'string') continue
+        const definition = findToolDefinition(definitions, result.toolName)
+        if (!definition) continue
+        parts.push({
+          type: 'tool-result',
+          toolName: result.toolName,
+          toolCallId: result.toolCallId,
+          stepIndex,
+          summary: definition.summarizeOutput(result.output),
+          output: definition.projectOutputForTranscript(result.output),
+          isError: definition.isErrorOutput(result.output),
+          error: definition.isErrorOutput(result.output),
+        })
+      }
+    }
+  }
+  return parts
 }
 
 function throwIfAborted(abortSignal?: AbortSignal) {
@@ -282,9 +407,13 @@ export async function runDeckAgent({
   throwIfAborted(abortSignal)
 
   const workspace = createDeckWorkspace(currentHtml)
-  const { createDeckTools } = await import('./deck-tools.ts')
-  const tools = createDeckTools(workspace, { logger, versionInspector })
+  const { tools, activeDefinitions } = createActiveDeckTools(workspace, {
+    logger,
+    versionInspector,
+  })
   const accumulatedSteps: AgentStep[] = []
+  const transcriptParts: ChatMessagePart[] = []
+  let transcriptStepIndex = 0
   const startedAt = performance.now()
 
   let result
@@ -292,15 +421,23 @@ export async function runDeckAgent({
   try {
     result = await generateText({
       model,
-      system: deckAgentSystemPrompt,
+      system: buildDeckAgentSystemPrompt(activeDefinitions),
       messages: buildAgentModelMessages(messages, currentHtml, editorSelection),
       tools,
-      stopWhen: () => false,
+      stopWhen: stepCountIs(MAX_AGENT_STEPS),
       temperature: 0.4,
       abortSignal,
       onStepFinish: async (step) => {
         throwIfAborted(abortSignal)
-        accumulatedSteps.push(...extractAgentSteps([step as ExtractableAgentStep]))
+        accumulatedSteps.push(
+          ...extractAgentSteps([step as ExtractableAgentStep], activeDefinitions),
+        )
+        const extracted = extractAgentTranscriptParts([step as never], activeDefinitions).map(
+          (part) => ({ ...part, stepIndex: transcriptStepIndex }),
+        )
+        transcriptParts.push(...extracted)
+        transcriptParts.splice(0, transcriptParts.length, ...capTranscriptParts(transcriptParts))
+        transcriptStepIndex += 1
         await onStepProgress?.(accumulatedSteps)
       },
     })
@@ -312,6 +449,7 @@ export async function runDeckAgent({
       ok: false,
       error: error instanceof Error ? error.message : 'Model provider request failed.',
       steps: accumulatedSteps,
+      transcriptParts,
       providerMetrics: buildProviderMetrics({
         provider,
         modelRef,
@@ -338,8 +476,13 @@ export async function runDeckAgent({
   const steps =
     accumulatedSteps.length > 0
       ? accumulatedSteps
-      : extractAgentSteps(result.steps as ExtractableAgentStep[])
+      : extractAgentSteps(result.steps as ExtractableAgentStep[], activeDefinitions)
   const assistantText = result.text.trim()
+  const finalTranscriptParts = capTranscriptParts(
+    transcriptParts.length > 0
+      ? transcriptParts
+      : extractAgentTranscriptParts(result.steps as never, activeDefinitions),
+  )
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
@@ -353,6 +496,7 @@ export async function runDeckAgent({
           primaryIssue?.message ??
           'The agent produced an invalid deck. Try a more specific edit request.',
         steps,
+        transcriptParts: finalTranscriptParts,
         validation,
         providerMetrics,
       }
@@ -364,6 +508,7 @@ export async function runDeckAgent({
       changed: true,
       validation,
       steps,
+      transcriptParts: finalTranscriptParts,
       assistantText,
       providerMetrics,
     }
@@ -378,6 +523,7 @@ export async function runDeckAgent({
       changed: true,
       validation: fallback.validation,
       steps,
+      transcriptParts: finalTranscriptParts,
       assistantText,
       providerMetrics,
     }
@@ -395,6 +541,7 @@ export async function runDeckAgent({
         changed: true,
         validation: extractedFinal.validation,
         steps,
+        transcriptParts: finalTranscriptParts,
         assistantText,
         providerMetrics,
       }
@@ -418,6 +565,7 @@ export async function runDeckAgent({
         changed: false,
         validation,
         steps,
+        transcriptParts: finalTranscriptParts,
         assistantText,
         providerMetrics,
       }
@@ -430,6 +578,7 @@ export async function runDeckAgent({
       fallback.error ??
       'The agent did not update the deck. Ask for a specific change or try again.',
     steps,
+    transcriptParts: finalTranscriptParts,
     validation: fallback.validation,
     providerMetrics,
   }

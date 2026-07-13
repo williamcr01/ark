@@ -2297,7 +2297,8 @@
                                   "type": "object",
                                   "properties": {
                                     "type": { "type": "string", "enum": ["text"] },
-                                    "content": { "type": "string" }
+                                    "content": { "type": "string" },
+                                    "stepIndex": { "type": "integer", "minimum": 0 }
                                   },
                                   "required": ["type", "content"]
                                 },
@@ -2306,7 +2307,10 @@
                                   "properties": {
                                     "type": { "type": "string", "enum": ["tool-call"] },
                                     "toolName": { "type": "string" },
-                                    "summary": { "type": "string" }
+                                    "summary": { "type": "string" },
+                                    "stepIndex": { "type": "integer", "minimum": 0 },
+                                    "toolCallId": { "type": "string" },
+                                    "input": { "nullable": true }
                                   },
                                   "required": ["type", "toolName", "summary"]
                                 },
@@ -2316,7 +2320,11 @@
                                     "type": { "type": "string", "enum": ["tool-result"] },
                                     "toolName": { "type": "string" },
                                     "summary": { "type": "string" },
-                                    "error": { "type": "boolean" }
+                                    "error": { "type": "boolean" },
+                                    "stepIndex": { "type": "integer", "minimum": 0 },
+                                    "toolCallId": { "type": "string" },
+                                    "output": { "nullable": true },
+                                    "isError": { "type": "boolean" }
                                   },
                                   "required": ["type", "toolName", "summary"]
                                 }
@@ -2511,7 +2519,8 @@
                           "type": "object",
                           "properties": {
                             "type": { "type": "string", "enum": ["text"] },
-                            "content": { "type": "string" }
+                            "content": { "type": "string" },
+                            "stepIndex": { "type": "integer", "minimum": 0 }
                           },
                           "required": ["type", "content"]
                         },
@@ -2520,7 +2529,10 @@
                           "properties": {
                             "type": { "type": "string", "enum": ["tool-call"] },
                             "toolName": { "type": "string" },
-                            "summary": { "type": "string" }
+                            "summary": { "type": "string" },
+                            "stepIndex": { "type": "integer", "minimum": 0 },
+                            "toolCallId": { "type": "string" },
+                            "input": { "nullable": true }
                           },
                           "required": ["type", "toolName", "summary"]
                         },
@@ -2530,7 +2542,11 @@
                             "type": { "type": "string", "enum": ["tool-result"] },
                             "toolName": { "type": "string" },
                             "summary": { "type": "string" },
-                            "error": { "type": "boolean" }
+                            "error": { "type": "boolean" },
+                            "stepIndex": { "type": "integer", "minimum": 0 },
+                            "toolCallId": { "type": "string" },
+                            "output": { "nullable": true },
+                            "isError": { "type": "boolean" }
                           },
                           "required": ["type", "toolName", "summary"]
                         }
@@ -2603,7 +2619,8 @@
                                 "type": "object",
                                 "properties": {
                                   "type": { "type": "string", "enum": ["text"] },
-                                  "content": { "type": "string" }
+                                  "content": { "type": "string" },
+                                  "stepIndex": { "type": "integer", "minimum": 0 }
                                 },
                                 "required": ["type", "content"]
                               },
@@ -2612,7 +2629,10 @@
                                 "properties": {
                                   "type": { "type": "string", "enum": ["tool-call"] },
                                   "toolName": { "type": "string" },
-                                  "summary": { "type": "string" }
+                                  "summary": { "type": "string" },
+                                  "stepIndex": { "type": "integer", "minimum": 0 },
+                                  "toolCallId": { "type": "string" },
+                                  "input": { "nullable": true }
                                 },
                                 "required": ["type", "toolName", "summary"]
                               },
@@ -2622,7 +2642,11 @@
                                   "type": { "type": "string", "enum": ["tool-result"] },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
-                                  "error": { "type": "boolean" }
+                                  "error": { "type": "boolean" },
+                                  "stepIndex": { "type": "integer", "minimum": 0 },
+                                  "toolCallId": { "type": "string" },
+                                  "output": { "nullable": true },
+                                  "isError": { "type": "boolean" }
                                 },
                                 "required": ["type", "toolName", "summary"]
                               }
@@ -3114,27 +3138,96 @@
                   "messages": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": { "type": "string" },
-                        "role": { "type": "string", "enum": ["user", "assistant"] },
-                        "content": { "type": "string" },
-                        "attachments": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": { "type": "string", "enum": ["file"] },
-                              "mediaType": { "type": "string" },
-                              "filename": { "type": "string" },
-                              "url": { "type": "string" },
-                              "assetId": { "type": "string" }
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" },
+                            "role": { "type": "string", "enum": ["user"] },
+                            "content": { "type": "string" },
+                            "attachments": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "type": { "type": "string", "enum": ["file"] },
+                                  "mediaType": { "type": "string" },
+                                  "filename": { "type": "string" },
+                                  "url": { "type": "string" },
+                                  "assetId": { "type": "string" }
+                                },
+                                "required": ["type", "mediaType", "url"]
+                              }
+                            }
+                          },
+                          "required": ["role", "content"]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" },
+                            "role": { "type": "string", "enum": ["assistant"] },
+                            "content": { "type": "string" },
+                            "attachments": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "type": { "type": "string", "enum": ["file"] },
+                                  "mediaType": { "type": "string" },
+                                  "filename": { "type": "string" },
+                                  "url": { "type": "string" },
+                                  "assetId": { "type": "string" }
+                                },
+                                "required": ["type", "mediaType", "url"]
+                              }
                             },
-                            "required": ["type", "mediaType", "url"]
-                          }
+                            "parts": {
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": { "type": "string", "enum": ["text"] },
+                                      "content": { "type": "string" },
+                                      "stepIndex": { "type": "integer", "minimum": 0 }
+                                    },
+                                    "required": ["type", "content"]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": { "type": "string", "enum": ["tool-call"] },
+                                      "toolName": { "type": "string" },
+                                      "summary": { "type": "string" },
+                                      "stepIndex": { "type": "integer", "minimum": 0 },
+                                      "toolCallId": { "type": "string" },
+                                      "input": { "nullable": true }
+                                    },
+                                    "required": ["type", "toolName", "summary"]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": { "type": "string", "enum": ["tool-result"] },
+                                      "toolName": { "type": "string" },
+                                      "summary": { "type": "string" },
+                                      "error": { "type": "boolean" },
+                                      "stepIndex": { "type": "integer", "minimum": 0 },
+                                      "toolCallId": { "type": "string" },
+                                      "output": { "nullable": true },
+                                      "isError": { "type": "boolean" }
+                                    },
+                                    "required": ["type", "toolName", "summary"]
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "required": ["role", "content"]
                         }
-                      },
-                      "required": ["role", "content"]
+                      ]
                     }
                   },
                   "currentHtml": { "type": "string", "nullable": true },
