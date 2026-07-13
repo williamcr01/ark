@@ -94,23 +94,30 @@ export const pickAvailableFallbackModel = (models: AvailableModel[]): string | n
   })[0]!.id
 }
 
+/**
+ * Resolve the active model for the selector.
+ * Priority: available stored preference → available server default → cheap available fallback.
+ * Unavailable preferences are never selected; generation recovery may still call loadModels().
+ */
 export const resolveSelectedModel = (
   models: AvailableModel[],
   storedModel: string | null,
   defaultModel: string,
 ) => {
-  const preferred =
-    resolveStoredModel(models, storedModel) ??
-    (models.some((model) => model.id === defaultModel) ? defaultModel : null)
-
-  if (preferred) {
-    const preferredModel = models.find((model) => model.id === preferred)
-    if (preferredModel?.available) {
-      return preferred
+  const stored = resolveStoredModel(models, storedModel)
+  if (stored) {
+    const storedEntry = models.find((model) => model.id === stored)
+    if (storedEntry?.available) {
+      return stored
     }
   }
 
-  return pickAvailableFallbackModel(models) ?? preferred ?? ''
+  const defaultEntry = models.find((model) => model.id === defaultModel)
+  if (defaultEntry?.available) {
+    return defaultModel
+  }
+
+  return pickAvailableFallbackModel(models) ?? stored ?? defaultEntry?.id ?? ''
 }
 
 async function fetchHealth() {
@@ -283,4 +290,26 @@ export const formatModelLabel = (model: AvailableModel) => {
   }
 
   return `${label} (unavailable)`
+}
+
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+}
+
+export const formatModelName = (model: AvailableModel) => model.name?.trim() || model.modelId
+
+export const formatProviderLabel = (provider: ProviderId) => PROVIDER_LABELS[provider]
+
+export const formatUnavailableBadge = (model: AvailableModel) => {
+  if (model.available) {
+    return null
+  }
+
+  if (model.unavailableReason === 'missing_api_key') {
+    return 'No API key'
+  }
+
+  return 'Unavailable'
 }

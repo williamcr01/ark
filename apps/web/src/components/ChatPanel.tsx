@@ -26,19 +26,15 @@ import {
   PromptInputFooter,
   PromptInputHeader,
   type PromptInputMessage,
-  PromptInputSelect,
-  PromptInputSelectContent,
-  PromptInputSelectItem,
-  PromptInputSelectTrigger,
-  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
+import { ModelSelector } from '@/components/ModelSelector'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatModelLabel, type AvailableModel } from '@/hooks/useAvailableModels'
+import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
 import type {
   AgentStep,
@@ -241,12 +237,12 @@ export type ChatPanelProps = {
   selectedModel: string
   isLoadingModels: boolean
   modelsError: string
+  modelWarnings: string[]
   canGenerate: boolean
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
-  onRefreshModels: () => Promise<void>
   onPromptSubmit: (message: PromptInputMessage) => void
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
@@ -268,12 +264,12 @@ export function ChatPanel({
   selectedModel,
   isLoadingModels,
   modelsError,
+  modelWarnings,
   canGenerate,
   selectedAssetIds = [],
   assetsSlot,
   onInputChange,
   onModelChange,
-  onRefreshModels,
   onPromptSubmit,
   onAttachmentError,
   onCancelGeneration,
@@ -353,7 +349,7 @@ export function ChatPanel({
           <ConversationScrollButton />
         </Conversation>
 
-        <div className="shrink-0 border-t bg-white p-4">
+        <div className="shrink-0 border-t border-[var(--ark-line)] bg-[var(--ark-paper)] p-4">
           {assetsSlot}
           {error ? (
             <Alert className="mb-3" variant="destructive">
@@ -395,8 +391,23 @@ export function ChatPanel({
             </Alert>
           ) : null}
 
+          {modelWarnings.length > 0 ? (
+            <Alert className="mb-3">
+              <AlertCircleIcon />
+              <AlertTitle>Model catalog notice</AlertTitle>
+              <AlertDescription>
+                <ul className="flex list-disc flex-col gap-1 pl-4">
+                  {modelWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           <PromptInput
             accept="image/*,text/*,application/pdf"
+            className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
             maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
             maxFiles={MAX_CHAT_ATTACHMENTS}
             multiple
@@ -408,15 +419,15 @@ export function ChatPanel({
             </PromptInputHeader>
             <PromptInputBody>
               <PromptInputTextarea
-                className="min-h-24 resize-none"
+                className="min-h-24 resize-none bg-transparent"
                 disabled={isGenerating}
                 onChange={(event) => onInputChange(event.currentTarget.value)}
                 placeholder="Describe the deck you want, or ask for an edit…"
                 value={input}
               />
             </PromptInputBody>
-            <PromptInputFooter>
-              <PromptInputTools>
+            <PromptInputFooter className="gap-2">
+              <PromptInputTools className="gap-1.5">
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="Add attachments"
@@ -427,41 +438,14 @@ export function ChatPanel({
                     <PromptInputActionAddScreenshot />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
-                <PromptInputSelect
+                <ModelSelector
+                  canGenerate={canGenerate}
                   disabled={isGenerating}
+                  isLoading={isLoadingModels}
+                  models={models}
                   onValueChange={onModelChange}
                   value={selectedModel}
-                >
-                  <PromptInputSelectTrigger
-                    className={cn('max-w-[300px]', !canGenerate && 'text-muted-foreground')}
-                  >
-                    <PromptInputSelectValue
-                      placeholder={isLoadingModels ? 'Loading models…' : 'Select model'}
-                    />
-                  </PromptInputSelectTrigger>
-                  <PromptInputSelectContent>
-                    {models.map((model) => (
-                      <PromptInputSelectItem
-                        className={cn(!model.available && 'text-muted-foreground opacity-60')}
-                        disabled={!model.available}
-                        key={model.id}
-                        value={model.id}
-                      >
-                        {formatModelLabel(model)}
-                      </PromptInputSelectItem>
-                    ))}
-                  </PromptInputSelectContent>
-                </PromptInputSelect>
-                <PromptInputButton
-                  aria-label="Refresh available models"
-                  disabled={isGenerating || isLoadingModels}
-                  onClick={() => {
-                    void onRefreshModels()
-                  }}
-                  tooltip="Refresh models"
-                >
-                  <RefreshCwIcon className={cn('size-4', isLoadingModels && 'animate-spin')} />
-                </PromptInputButton>
+                />
                 {isGenerating ? (
                   <PromptInputButton
                     aria-label="Cancel generation"
