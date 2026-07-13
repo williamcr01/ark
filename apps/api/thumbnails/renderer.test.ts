@@ -62,7 +62,7 @@ function createMockCdp(options: {
   slideIndex?: number
   screenshotData?: string
   onNavigate?: () => void
-  onScreenshot?: () => void
+  onScreenshot?: (params: unknown) => void
   onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
 }): CdpClient {
   const listeners = new Map<string, Array<(params: unknown, sessionId: string | null) => void>>()
@@ -76,7 +76,7 @@ function createMockCdp(options: {
       }
 
       if (method === 'Page.captureScreenshot') {
-        options.onScreenshot?.()
+        options.onScreenshot?.(params)
         return { data: options.screenshotData ?? tinyPngBase64 }
       }
 
@@ -142,7 +142,7 @@ function createMockPool(options: {
   screenshotData?: string
   createPageImpl?: () => Promise<BrowserPage>
   onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
-  onScreenshot?: () => void
+  onScreenshot?: (params: unknown) => void
 }): { pool: ChromiumPool; closedPages: { count: number } } {
   const closedPages = { count: 0 }
 
@@ -255,6 +255,7 @@ describe('thumbnail renderer limits (unit)', () => {
     let settleRequested = false
     let settlePolls = 0
     let capturedBeforeSettled = false
+    let screenshotCount = 0
     const mock = createMockPool({
       ready: true,
       onEvaluate: (expression) => {
@@ -278,6 +279,7 @@ describe('thumbnail renderer limits (unit)', () => {
       },
       onScreenshot: () => {
         capturedBeforeSettled = settlePolls < 2
+        screenshotCount += 1
       },
     })
     const previewSessionStore = createPreviewSessionStore()
@@ -302,6 +304,7 @@ describe('thumbnail renderer limits (unit)', () => {
     expect(settleRequested).toBe(true)
     expect(settlePolls).toBeGreaterThanOrEqual(2)
     expect(capturedBeforeSettled).toBe(false)
+    expect(screenshotCount).toBe(1)
     expect(mock.closedPages.count).toBe(1)
   })
 
