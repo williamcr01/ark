@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import type { ChatAttachment, ChatMessage, EditorSelectionContext } from '@ark/deck-core/chat.ts'
 import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
+import type { ReasoningEffort } from '@ark/contracts'
 import { describeDeckValidation } from '@/lib/deck-io'
 import { newId } from '@/lib/id'
 
@@ -28,6 +29,7 @@ export type UseDeckGenerationFlowOptions = {
   deck: DeckPersistenceSlice
   chat: ChatSessionSlice
   selectedModel: string
+  reasoningEffort?: ReasoningEffort
   canGenerate: boolean
   loadModels: () => Promise<void>
   /** Surfaces generation errors on the shell (kept separate from the job's own error). */
@@ -48,6 +50,7 @@ export function useDeckGenerationFlow({
   deck,
   chat,
   selectedModel,
+  reasoningEffort,
   canGenerate,
   loadModels,
   onError,
@@ -72,6 +75,7 @@ export function useDeckGenerationFlow({
     deckId,
     baseVersionId: activeVersionId,
     selectedModel,
+    reasoningEffort,
     canGenerate,
     onReloadModels: loadModels,
   })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MockLanguageModelV3 } from 'ai/test'
+import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 
 import { extractAgentSteps, runDeckAgent } from './deck-agent.ts'
 
@@ -27,6 +27,22 @@ const mockUsage = {
     reasoning: 0,
   },
 }
+
+const streamTextReply = (text: string) => ({
+  stream: simulateReadableStream({
+    chunks: [
+      { type: 'stream-start', warnings: [] },
+      { type: 'text-start', id: 'text-1' },
+      { type: 'text-delta', id: 'text-1', delta: text },
+      { type: 'text-end', id: 'text-1' },
+      {
+        type: 'finish',
+        finishReason: 'stop' as const,
+        usage: mockUsage,
+      },
+    ],
+  }),
+})
 
 describe('extractAgentSteps', () => {
   it('maps tool calls and results into chat-friendly steps', () => {
@@ -64,6 +80,22 @@ describe('extractAgentSteps', () => {
         summary: 'oldText was not found',
         error: true,
       },
+    ])
+  })
+
+  it('includes thinking from reasoningText', () => {
+    const steps = extractAgentSteps([
+      {
+        text: 'Done.',
+        reasoningText: 'I should inspect first.',
+        toolCalls: [],
+        toolResults: [],
+      },
+    ])
+
+    expect(steps).toEqual([
+      { type: 'thinking', summary: 'I should inspect first.' },
+      { type: 'text', summary: 'Done.' },
     ])
   })
 
@@ -109,12 +141,7 @@ describe('runDeckAgent', () => {
     const assistantText =
       'That selected element is locked, so I cannot change it directly. I can edit nearby unlocked content instead.'
     const model = new MockLanguageModelV3({
-      doGenerate: {
-        content: [{ type: 'text', text: assistantText }],
-        finishReason: 'stop',
-        usage: mockUsage,
-        warnings: [],
-      },
+      doStream: streamTextReply(assistantText),
     })
 
     const result = await runDeckAgent({
@@ -140,5 +167,67 @@ describe('runDeckAgent', () => {
     expect(result.html).toBe(sampleHtml)
     expect(result.assistantText).toBe(assistantText)
     expect(result.validation.valid).toBe(true)
+  })
+
+  it('streams reasoning deltas into thinking progress', async () => {
+    const progressSnapshots: Array<Array<{ type: string; summary: string }>> = []
+    const model = new MockLanguageModelV3({
+      doStream: {
+        stream: simulateReadableStream({
+          chunkDelayInMs: 0,
+          initialDelayInMs: 0,
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'reasoning-start', id: 'r1' },
+            { type: 'reasoning-delta', id: 'r1', delta: 'Plan A' },
+            { type: 'reasoning-delta', id: 'r1', delta: ' then B' },
+            { type: 'reasoning-end', id: 'r1' },
+            { type: 'text-start', id: 'text-1' },
+            {
+              type: 'text-delta',
+              id: 'text-1',
+              delta:
+                'That selected element is locked, so I cannot change it directly. I can edit nearby unlocked content instead.',
+            },
+            { type: 'text-end', id: 'text-1' },
+            {
+              type: 'finish',
+              finishReason: 'stop',
+              usage: mockUsage,
+            },
+          ],
+        }),
+      },
+    })
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'openai',
+      modelRef: 'openai:gpt-5',
+      messages: [{ role: 'user', content: 'Make this punchier' }],
+      currentHtml: sampleHtml,
+      reasoningEffort: 'high',
+      editorSelection: {
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        elementKind: 'text',
+        locked: true,
+      },
+      onStepProgress: async (steps) => {
+        progressSnapshots.push(steps.map((step) => ({ type: step.type, summary: step.summary })))
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    expect(
+      result.steps.some((step) => step.type === 'thinking' && step.summary.includes('Plan A')),
+    ).toBe(true)
+    expect(progressSnapshots.some((steps) => steps.some((step) => step.type === 'thinking'))).toBe(
+      true,
+    )
   })
 })
