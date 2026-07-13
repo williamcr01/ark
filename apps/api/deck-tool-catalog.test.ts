@@ -79,4 +79,16 @@ describe('deck tool catalog', () => {
     expect(JSON.stringify(capped)).toContain('Transcript step exceeded limit')
     expect(JSON.stringify(capped).length).toBeLessThanOrEqual(MAX_TRANSCRIPT_TURN_CHARS)
   })
+
+  it('reserves omission-marker space at the turn boundary', () => {
+    const parts: ChatMessagePart[] = [
+      { type: 'text', stepIndex: 0, content: 'old step' },
+      { type: 'text', stepIndex: 1, content: 'x'.repeat(MAX_TRANSCRIPT_TURN_CHARS - 1) },
+    ]
+
+    const capped = capTranscriptParts(parts)
+    expect(JSON.stringify(capped).length).toBeLessThanOrEqual(MAX_TRANSCRIPT_TURN_CHARS)
+    expect(capped[0]).toMatchObject({ content: expect.stringContaining('earlier transcript') })
+    expect(capped[1]).toMatchObject({ stepIndex: 1 })
+  })
 })

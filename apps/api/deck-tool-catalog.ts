@@ -66,39 +66,45 @@ export function capTranscriptValue(value: JsonValue): JsonValue {
 
 export function capTranscriptParts(parts: readonly ChatMessagePart[]): ChatMessagePart[] {
   const keptSteps: ChatMessagePart[][] = []
-  let size = 0
   const steps = new Map<number, ChatMessagePart[]>()
   for (const part of parts)
     steps.set(part.stepIndex ?? -1, [...(steps.get(part.stepIndex ?? -1) ?? []), part])
   const orderedSteps = [...steps].sort(([a], [b]) => a - b)
-  for (const [, stepParts] of orderedSteps.toReversed()) {
-    const compactedStep = compactTranscriptStep(stepParts)
-    const stepSize = JSON.stringify(compactedStep).length
-    if (size + stepSize > MAX_TRANSCRIPT_TURN_CHARS) break
+  for (const [stepIndex, stepParts] of orderedSteps.toReversed()) {
+    const omittedAfterAdding = orderedSteps.length - keptSteps.length - 1
+    const marker =
+      omittedAfterAdding > 0 ? transcriptOmissionMarker(omittedAfterAdding, stepIndex) : null
+    const reservedSize = JSON.stringify([...(marker ? [marker] : []), ...keptSteps.flat()]).length
+    const compactedStep =
+      keptSteps.length === 0
+        ? compactTranscriptStep(stepParts, MAX_TRANSCRIPT_TURN_CHARS - reservedSize)
+        : stepParts
+    if (
+      JSON.stringify([...(marker ? [marker] : []), ...compactedStep, ...keptSteps.flat()]).length >
+      MAX_TRANSCRIPT_TURN_CHARS
+    )
+      break
     keptSteps.unshift(compactedStep)
-    size += stepSize
+    if (compactedStep !== stepParts && omittedAfterAdding > 0) break
   }
 
   const omittedStepCount = orderedSteps.length - keptSteps.length
   if (omittedStepCount === 0) return keptSteps.flat()
 
   const firstStepIndex = keptSteps[0]?.[0]?.stepIndex ?? 1
-  const marker: ChatMessagePart = {
+  return [transcriptOmissionMarker(omittedStepCount, firstStepIndex), ...keptSteps.flat()]
+}
+
+function transcriptOmissionMarker(omittedStepCount: number, firstStepIndex: number) {
+  return {
     type: 'text',
     stepIndex: Math.max(0, firstStepIndex - 1),
     content: `[${omittedStepCount} earlier transcript step(s) omitted to retain the most recent agent state; re-read the current deck as needed]`,
-  }
-  while (
-    keptSteps.length > 0 &&
-    JSON.stringify([marker, ...keptSteps.flat()]).length > MAX_TRANSCRIPT_TURN_CHARS
-  ) {
-    keptSteps.shift()
-  }
-  return [marker, ...keptSteps.flat()]
+  } satisfies ChatMessagePart
 }
 
-function compactTranscriptStep(parts: ChatMessagePart[]): ChatMessagePart[] {
-  if (JSON.stringify(parts).length <= MAX_TRANSCRIPT_TURN_CHARS) return parts
+function compactTranscriptStep(parts: ChatMessagePart[], maxChars: number): ChatMessagePart[] {
+  if (JSON.stringify(parts).length <= maxChars) return parts
 
   const omittedValue = {
     omitted: true,
