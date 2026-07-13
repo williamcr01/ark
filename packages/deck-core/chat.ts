@@ -593,7 +593,12 @@ export function convertChatHistoryToModelMessages(messages: ApiChatMessage[]): M
     const parts = message.parts
     const replayable = parts?.length && parts.some((part) => part.type !== 'text')
     if (!replayable) {
-      result.push({ role: 'assistant', content: message.content })
+      const replayText = parts?.length
+        ? parts.every((part) => part.type === 'text' && part.stepIndex !== undefined)
+          ? parts.map((part) => (part.type === 'text' ? part.content : '')).join('\n')
+          : null
+        : null
+      result.push({ role: 'assistant', content: replayText ?? message.content })
       continue
     }
     const ids = new Set<string>()

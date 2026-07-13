@@ -72,9 +72,10 @@ export function capTranscriptParts(parts: readonly ChatMessagePart[]): ChatMessa
     steps.set(part.stepIndex ?? -1, [...(steps.get(part.stepIndex ?? -1) ?? []), part])
   const orderedSteps = [...steps].sort(([a], [b]) => a - b)
   for (const [, stepParts] of orderedSteps.toReversed()) {
-    const stepSize = JSON.stringify(stepParts).length
+    const compactedStep = compactTranscriptStep(stepParts)
+    const stepSize = JSON.stringify(compactedStep).length
     if (size + stepSize > MAX_TRANSCRIPT_TURN_CHARS) break
-    keptSteps.unshift(stepParts)
+    keptSteps.unshift(compactedStep)
     size += stepSize
   }
 
@@ -94,6 +95,24 @@ export function capTranscriptParts(parts: readonly ChatMessagePart[]): ChatMessa
     keptSteps.shift()
   }
   return [marker, ...keptSteps.flat()]
+}
+
+function compactTranscriptStep(parts: ChatMessagePart[]): ChatMessagePart[] {
+  if (JSON.stringify(parts).length <= MAX_TRANSCRIPT_TURN_CHARS) return parts
+
+  const omittedValue = {
+    omitted: true,
+    reason: 'Transcript step exceeded limit; re-read the current deck.',
+  } as const
+  return parts.map((part) => {
+    if (part.type === 'tool-call') return { ...part, input: omittedValue }
+    if (part.type === 'tool-result') return { ...part, output: omittedValue }
+    return {
+      ...part,
+      content:
+        '[assistant text omitted because this transcript step exceeded the replay limit; re-read the current deck as needed]',
+    }
+  })
 }
 
 const summarizeInput = (toolName: string, input: unknown) => {

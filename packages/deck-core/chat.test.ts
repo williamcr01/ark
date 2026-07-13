@@ -255,6 +255,18 @@ describe('buildModelMessages', () => {
 })
 
 describe('buildAgentModelMessages', () => {
+  it('replays bounded transcript omission text instead of the legacy summary', () => {
+    expect(
+      convertChatHistoryToModelMessages([
+        {
+          role: 'assistant',
+          content: 'Legacy summary',
+          parts: [{ type: 'text', content: '[earlier steps omitted]', stepIndex: 0 }],
+        },
+      ]),
+    ).toEqual([{ role: 'assistant', content: '[earlier steps omitted]' }])
+  })
+
   it('replays paired tool calls and results with original ids', () => {
     const messages = convertChatHistoryToModelMessages([
       {

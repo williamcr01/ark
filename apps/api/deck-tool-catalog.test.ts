@@ -53,4 +53,30 @@ describe('deck tool catalog', () => {
       ),
     ).toBe(false)
   })
+
+  it('keeps an oversized newest tool step replayable with compact values', () => {
+    const parts: ChatMessagePart[] = [
+      {
+        type: 'tool-call',
+        toolName: 'read_deck',
+        summary: 'large read',
+        stepIndex: 0,
+        toolCallId: 'call-large',
+        input: { query: 'x'.repeat(MAX_TRANSCRIPT_TURN_CHARS) },
+      },
+      {
+        type: 'tool-result',
+        toolName: 'read_deck',
+        summary: 'large result',
+        stepIndex: 0,
+        toolCallId: 'call-large',
+        output: { html: 'y'.repeat(MAX_TRANSCRIPT_TURN_CHARS) },
+      },
+    ]
+
+    const capped = capTranscriptParts(parts)
+    expect(capped.map(({ type }) => type)).toEqual(['tool-call', 'tool-result'])
+    expect(JSON.stringify(capped)).toContain('Transcript step exceeded limit')
+    expect(JSON.stringify(capped).length).toBeLessThanOrEqual(MAX_TRANSCRIPT_TURN_CHARS)
+  })
 })
