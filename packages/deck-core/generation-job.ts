@@ -15,6 +15,8 @@ export const ACTIVE_GENERATION_JOB_STATUSES = new Set<GenerationJobStatus>([
   'canceling',
 ])
 
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
 export type GenerationJobRequest = {
   messages: ApiChatMessage[]
   currentHtml: string
@@ -22,6 +24,8 @@ export type GenerationJobRequest = {
   editingExistingDeck?: boolean
   /** Manual-editor selection captured when the request was submitted (issue #83). */
   editorSelection?: EditorSelectionContext
+  /** Reasoning effort captured when the request was submitted. */
+  reasoningEffort?: ReasoningEffort
 }
 
 export type GenerationJobProgress = {

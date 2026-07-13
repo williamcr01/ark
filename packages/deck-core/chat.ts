@@ -31,9 +31,9 @@ export function isValidChatMessageId(id: string) {
   return CHAT_MESSAGE_ID_PATTERN.test(id)
 }
 
-export type AgentStepType = 'text' | 'tool-call' | 'tool-result'
+export type AgentStepType = 'text' | 'thinking' | 'tool-call' | 'tool-result'
 
-/** One visible agent loop event (tool call, result, or assistant text chunk). */
+/** One visible agent loop event (tool call, result, thinking, or assistant text chunk). */
 export type AgentStep = {
   type: AgentStepType
   toolName?: string
@@ -44,6 +44,7 @@ export type AgentStep = {
 /** Rich assistant turn content persisted in chat history. */
 export type ChatMessagePart =
   | { type: 'text'; content: string }
+  | { type: 'thinking'; content: string }
   | { type: 'tool-call'; toolName: string; summary: string }
   | { type: 'tool-result'; toolName: string; summary: string; error?: boolean }
 
@@ -563,6 +564,11 @@ export function agentStepsToChatParts(steps: AgentStep[]): ChatMessagePart[] {
   for (const step of steps) {
     if (step.type === 'text') {
       parts.push({ type: 'text', content: step.summary })
+      continue
+    }
+
+    if (step.type === 'thinking') {
+      parts.push({ type: 'thinking', content: step.summary })
       continue
     }
 

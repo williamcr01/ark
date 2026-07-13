@@ -92,7 +92,8 @@
                           "unavailableReason": {
                             "type": "string",
                             "enum": ["missing_api_key", "not_found"]
-                          }
+                          },
+                          "supportsReasoning": { "type": "boolean" }
                         },
                         "required": ["id", "provider", "modelId", "available"]
                       }
@@ -2304,6 +2305,14 @@
                                 {
                                   "type": "object",
                                   "properties": {
+                                    "type": { "type": "string", "enum": ["thinking"] },
+                                    "content": { "type": "string" }
+                                  },
+                                  "required": ["type", "content"]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
                                     "type": { "type": "string", "enum": ["tool-call"] },
                                     "toolName": { "type": "string" },
                                     "summary": { "type": "string" }
@@ -2518,6 +2527,14 @@
                         {
                           "type": "object",
                           "properties": {
+                            "type": { "type": "string", "enum": ["thinking"] },
+                            "content": { "type": "string" }
+                          },
+                          "required": ["type", "content"]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
                             "type": { "type": "string", "enum": ["tool-call"] },
                             "toolName": { "type": "string" },
                             "summary": { "type": "string" }
@@ -2603,6 +2620,14 @@
                                 "type": "object",
                                 "properties": {
                                   "type": { "type": "string", "enum": ["text"] },
+                                  "content": { "type": "string" }
+                                },
+                                "required": ["type", "content"]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": { "type": "string", "enum": ["thinking"] },
                                   "content": { "type": "string" }
                                 },
                                 "required": ["type", "content"]
@@ -3139,6 +3164,10 @@
                   },
                   "currentHtml": { "type": "string", "nullable": true },
                   "model": { "type": "string" },
+                  "reasoningEffort": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "xhigh"]
+                  },
                   "deckId": {
                     "type": "string",
                     "nullable": true,
@@ -3225,7 +3254,7 @@
                                 "properties": {
                                   "type": {
                                     "type": "string",
-                                    "enum": ["text", "tool-call", "tool-result"]
+                                    "enum": ["text", "thinking", "tool-call", "tool-result"]
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
@@ -3515,7 +3544,7 @@
                                 "properties": {
                                   "type": {
                                     "type": "string",
-                                    "enum": ["text", "tool-call", "tool-result"]
+                                    "enum": ["text", "thinking", "tool-call", "tool-result"]
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
@@ -3796,7 +3825,7 @@
                                 "properties": {
                                   "type": {
                                     "type": "string",
-                                    "enum": ["text", "tool-call", "tool-result"]
+                                    "enum": ["text", "thinking", "tool-call", "tool-result"]
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
@@ -4077,7 +4106,7 @@
                                 "properties": {
                                   "type": {
                                     "type": "string",
-                                    "enum": ["text", "tool-call", "tool-result"]
+                                    "enum": ["text", "thinking", "tool-call", "tool-result"]
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
