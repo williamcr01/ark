@@ -797,6 +797,29 @@ export function createGenerationJobRunner({
     const deckId = existing.deckId
     let baseVersionId = existing.baseVersionId
 
+    if (chatStore && deckId) {
+      const chat = await chatStore.listMessages(deckId, { limit: 500 })
+      const failedAssistant = [...chat.messages]
+        .reverse()
+        .find((message) => message.role === 'assistant' && message.generationJobId === existing.id)
+
+      if (failedAssistant) {
+        request.messages.push(
+          {
+            id: failedAssistant.id,
+            role: 'assistant',
+            content: failedAssistant.content,
+            ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
+          },
+          {
+            role: 'user',
+            content:
+              'Retry the previous request using the current deck state and the prior attempt transcript.',
+          },
+        )
+      }
+    }
+
     if (deckId) {
       const deck = await deckStore.getDeck(deckId)
 

@@ -65,18 +65,35 @@ export function capTranscriptValue(value: JsonValue): JsonValue {
 }
 
 export function capTranscriptParts(parts: readonly ChatMessagePart[]): ChatMessagePart[] {
-  const kept: ChatMessagePart[] = []
+  const keptSteps: ChatMessagePart[][] = []
   let size = 0
   const steps = new Map<number, ChatMessagePart[]>()
   for (const part of parts)
     steps.set(part.stepIndex ?? -1, [...(steps.get(part.stepIndex ?? -1) ?? []), part])
-  for (const [, stepParts] of [...steps].sort(([a], [b]) => a - b)) {
+  const orderedSteps = [...steps].sort(([a], [b]) => a - b)
+  for (const [, stepParts] of orderedSteps.toReversed()) {
     const stepSize = JSON.stringify(stepParts).length
     if (size + stepSize > MAX_TRANSCRIPT_TURN_CHARS) break
-    kept.push(...stepParts)
+    keptSteps.unshift(stepParts)
     size += stepSize
   }
-  return kept
+
+  const omittedStepCount = orderedSteps.length - keptSteps.length
+  if (omittedStepCount === 0) return keptSteps.flat()
+
+  const firstStepIndex = keptSteps[0]?.[0]?.stepIndex ?? 1
+  const marker: ChatMessagePart = {
+    type: 'text',
+    stepIndex: Math.max(0, firstStepIndex - 1),
+    content: `[${omittedStepCount} earlier transcript step(s) omitted to retain the most recent agent state; re-read the current deck as needed]`,
+  }
+  while (
+    keptSteps.length > 0 &&
+    JSON.stringify([marker, ...keptSteps.flat()]).length > MAX_TRANSCRIPT_TURN_CHARS
+  ) {
+    keptSteps.shift()
+  }
+  return [marker, ...keptSteps.flat()]
 }
 
 const summarizeInput = (toolName: string, input: unknown) => {

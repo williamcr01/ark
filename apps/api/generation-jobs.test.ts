@@ -613,6 +613,65 @@ describe('generation job runner', () => {
     await new Promise((resolve) => setTimeout(resolve, 25))
   })
 
+  it('replays the persisted failed attempt transcript when retrying', async () => {
+    const { chatStore, deckStore, runner, jobStore } = await createRunner()
+    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const failed = await jobStore.createJob({
+      deckId: deck.id,
+      baseVersionId: deck.activeVersionId,
+      model: 'openai:gpt-4.1-mini',
+      provider: 'openai',
+      request: {
+        messages: [{ role: 'user', content: 'Retry this edit' }],
+        currentHtml: deck.html,
+        editingExistingDeck: true,
+      },
+    })
+    const parts = [
+      {
+        type: 'tool-call' as const,
+        toolName: 'read_deck',
+        summary: 'slide 0',
+        stepIndex: 0,
+        toolCallId: 'call-1',
+        input: { slideIndex: 0 },
+      },
+      {
+        type: 'tool-result' as const,
+        toolName: 'read_deck',
+        summary: 'Title',
+        stepIndex: 0,
+        toolCallId: 'call-1',
+        output: { title: 'Title' },
+        isError: false,
+      },
+    ]
+    await chatStore.appendMessage(deck.id, {
+      id: failed.id,
+      role: 'assistant',
+      content: 'The attempt failed after inspection.',
+      parts,
+      generationJobId: failed.id,
+      generationStatus: 'failed',
+    })
+    await jobStore.updateJob(failed.id, {
+      status: 'failed',
+      error: { message: 'Provider unavailable', code: 'provider_error' },
+      completedAt: new Date().toISOString(),
+    })
+
+    const retried = await runner.retryJob(failed.id)
+    expect(retried?.request.messages).toEqual([
+      { role: 'user', content: 'Retry this edit' },
+      expect.objectContaining({ role: 'assistant', parts }),
+      expect.objectContaining({ role: 'user', content: expect.stringContaining('Retry') }),
+    ])
+    expect(retried?.request.messages[1]?.parts).not.toBe(parts)
+
+    if (retried) await runner.cancelJob(retried.id)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  })
+
   it('refreshes deck snapshot when retrying a failed edit job', async () => {
     const { deckStore, runner, jobStore } = await createRunner()
     const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })

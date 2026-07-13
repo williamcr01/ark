@@ -225,6 +225,7 @@ export function extractAgentSteps(
     text: string
     toolCalls: Array<{ toolName: string; input: unknown }>
     toolResults: Array<{ toolName: string; output: unknown }>
+    content?: Array<Record<string, unknown>>
   }>,
   definitions?: readonly DeckToolDefinition[],
 ): AgentStep[] {
@@ -263,6 +264,22 @@ export function extractAgentSteps(
         toolName: toolResult.toolName,
         summary,
         error: isError,
+      })
+    }
+
+    for (const item of step.content ?? []) {
+      if (item.type !== 'tool-error' || typeof item.toolName !== 'string') continue
+      const error = item.error
+      events.push({
+        type: 'tool-result',
+        toolName: item.toolName,
+        summary:
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : 'Tool execution failed',
+        error: true,
       })
     }
   }

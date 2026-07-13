@@ -11,6 +11,7 @@ import {
   collectAssetIds,
   collectAssetIdsFromMessages,
   parseGenerateMessages,
+  MAX_TRANSCRIPT_VALUE_CHARS,
   wrapUserPromptForGeneration,
 } from './chat.ts'
 
@@ -69,6 +70,29 @@ describe('parseGenerateMessages', () => {
     expect(parseGenerateMessages([{ role: 'user', content: 42 }])).toEqual({
       ok: false,
       error: 'messages[0].content must be a string.',
+    })
+  })
+
+  it('rejects oversized replay values with a clear validation error', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'assistant',
+        content: 'Large replay',
+        parts: [
+          {
+            type: 'tool-call',
+            toolName: 'write_deck',
+            summary: 'full deck',
+            stepIndex: 0,
+            toolCallId: 'call-1',
+            input: { html: 'x'.repeat(MAX_TRANSCRIPT_VALUE_CHARS + 1) },
+          },
+        ],
+      },
+    ])
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('exceeds the 24000 character replay limit'),
     })
   })
 

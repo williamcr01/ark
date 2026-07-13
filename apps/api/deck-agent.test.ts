@@ -104,6 +104,22 @@ describe('extractAgentSteps', () => {
       },
     ])
   })
+
+  it('includes thrown SDK tool errors in live summary steps', () => {
+    expect(
+      extractAgentSteps([
+        {
+          text: '',
+          toolCalls: [{ toolName: 'list_slides', input: {} }],
+          toolResults: [],
+          content: [{ type: 'tool-error', toolName: 'list_slides', error: new Error('boom') }],
+        },
+      ]),
+    ).toEqual([
+      { type: 'tool-call', toolName: 'list_slides', summary: 'outline' },
+      { type: 'tool-result', toolName: 'list_slides', summary: 'boom', error: true },
+    ])
+  })
 })
 
 describe('extractAgentTranscriptParts', () => {
