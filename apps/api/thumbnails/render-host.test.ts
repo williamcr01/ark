@@ -156,6 +156,8 @@ describe('renderThumbnailPreviewDocument', () => {
     expect(preview.html).toContain('document.images')
     expect(preview.html).toContain('img.decode')
     expect(preview.html).toContain("classList.add('visible')")
+    expect(preview.html).toContain('document.getAnimations')
+    expect(preview.html).toContain('animations[i].finish()')
     expect(preview.html).toContain('document.fonts.ready')
     expect(preview.html).toContain('requestAnimationFrame')
 

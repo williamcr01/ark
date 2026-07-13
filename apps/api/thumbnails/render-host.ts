@@ -138,6 +138,17 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
     } catch (error) {}
   }
 
+  function finishAnimations() {
+    try {
+      var animations = document.getAnimations();
+      for (var i = 0; i < animations.length; i += 1) {
+        try {
+          animations[i].finish();
+        } catch (error) {}
+      }
+    } catch (error) {}
+  }
+
   function waitForImages() {
     var images = Array.prototype.slice.call(document.images || []);
     return Promise.all(images.map(function (img) {
@@ -184,6 +195,7 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
 
   function settle() {
     revealFragments();
+    finishAnimations();
     return waitForImages()
       .then(waitForFonts)
       .then(waitForAnimationFrame);
@@ -242,7 +254,7 @@ function applyThumbnailSettleInstrumentation(
       script.setAttribute('nonce', preview.nonce)
     }
     script.textContent = buildThumbnailSettleResponderScript(options.parentOrigin)
-    body.append(script)
+    body.insertBefore(script, body.firstChild)
 
     return {
       ...preview,
