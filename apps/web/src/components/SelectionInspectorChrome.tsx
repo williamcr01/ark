@@ -18,6 +18,8 @@ const SETTINGS_BUTTON_GAP = 4
 export type SelectionInspectorChromeProps = {
   selection: EditorSelectionInfo | null
   geometry: EditorNormalizedRect | null
+  /** Viewport-normalized slide box for positioning the settings trigger. */
+  slideBounds?: EditorNormalizedRect | null
   zIndex: number | null
   scale: number
   textEditActive: boolean
@@ -62,6 +64,7 @@ function clampSettingsButtonPosition(
 export function SelectionInspectorChrome({
   selection,
   geometry,
+  slideBounds = null,
   zIndex,
   scale,
   textEditActive,
@@ -79,8 +82,11 @@ export function SelectionInspectorChrome({
       return null
     }
 
-    return clampSettingsButtonPosition(normalizedRectToStagePixels(geometry, scale), scale)
-  }, [geometry, scale])
+    return clampSettingsButtonPosition(
+      normalizedRectToStagePixels(geometry, scale, slideBounds ?? undefined),
+      scale,
+    )
+  }, [geometry, scale, slideBounds])
 
   const triggerVisible =
     Boolean(selection && geometry && buttonPosition && scale > 0) &&
