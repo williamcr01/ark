@@ -26,23 +26,15 @@ import {
   PromptInputFooter,
   PromptInputHeader,
   type PromptInputMessage,
-  PromptInputSelect,
-  PromptInputSelectContent,
-  PromptInputSelectItem,
-  PromptInputSelectTrigger,
-  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
+import { ModelSelector } from '@/components/ModelSelector'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  formatModelLabel,
-  type ApiKeyStatus,
-  type AvailableModel,
-} from '@/hooks/useAvailableModels'
+import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
 import type {
   AgentStep,
@@ -246,47 +238,17 @@ export type ChatPanelProps = {
   isLoadingModels: boolean
   modelsError: string
   modelWarnings: string[]
-  apiKeyStatus: ApiKeyStatus
   canGenerate: boolean
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
-  onRefreshModels: () => Promise<void>
   onPromptSubmit: (message: PromptInputMessage) => void
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
   onRetryGeneration: () => void | Promise<void>
   getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
   onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
-}
-
-function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
-  if (apiKeyStatus === 'missing') {
-    return {
-      description:
-        'Copy .env.example to .env, add at least one provider API key (OpenAI, Claude, or Gemini), then restart pnpm dev.',
-      title: 'API key required',
-    }
-  }
-
-  if (apiKeyStatus === 'invalid') {
-    return {
-      description:
-        modelsError ||
-        'A provider API key in .env was rejected. Check your keys and restart pnpm dev.',
-      title: 'Invalid API key',
-    }
-  }
-
-  if (modelsError) {
-    return {
-      description: modelsError,
-      title: 'Could not load models',
-    }
-  }
-
-  return null
 }
 
 export function ChatPanel({
@@ -303,13 +265,11 @@ export function ChatPanel({
   isLoadingModels,
   modelsError,
   modelWarnings,
-  apiKeyStatus,
   canGenerate,
   selectedAssetIds = [],
   assetsSlot,
   onInputChange,
   onModelChange,
-  onRefreshModels,
   onPromptSubmit,
   onAttachmentError,
   onCancelGeneration,
@@ -317,8 +277,7 @@ export function ChatPanel({
   getMessageDeliveryStatus,
   onRetryPersist,
 }: ChatPanelProps) {
-  const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
-  const isInputDisabled = isGenerating || !canGenerate
+  const isSubmitDisabled = isGenerating || !canGenerate
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
@@ -390,7 +349,7 @@ export function ChatPanel({
           <ConversationScrollButton />
         </Conversation>
 
-        <div className="shrink-0 border-t bg-white p-4">
+        <div className="shrink-0 border-t border-[var(--ark-line)] bg-[var(--ark-paper)] p-4">
           {assetsSlot}
           {error ? (
             <Alert className="mb-3" variant="destructive">
@@ -424,24 +383,31 @@ export function ChatPanel({
             </Alert>
           ) : null}
 
-          {apiKeyAlert ? (
+          {modelsError ? (
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />
-              <AlertTitle>{apiKeyAlert.title}</AlertTitle>
-              <AlertDescription>{apiKeyAlert.description}</AlertDescription>
+              <AlertTitle>Could not load models</AlertTitle>
+              <AlertDescription>{modelsError}</AlertDescription>
             </Alert>
           ) : null}
 
           {modelWarnings.length > 0 ? (
             <Alert className="mb-3">
               <AlertCircleIcon />
-              <AlertTitle>Model configuration notice</AlertTitle>
-              <AlertDescription>{modelWarnings.join(' ')}</AlertDescription>
+              <AlertTitle>Model catalog notice</AlertTitle>
+              <AlertDescription>
+                <ul className="flex list-disc flex-col gap-1 pl-4">
+                  {modelWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
             </Alert>
           ) : null}
 
           <PromptInput
             accept="image/*,text/*,application/pdf"
+            className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
             maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
             maxFiles={MAX_CHAT_ATTACHMENTS}
             multiple
@@ -453,21 +419,15 @@ export function ChatPanel({
             </PromptInputHeader>
             <PromptInputBody>
               <PromptInputTextarea
-                className="min-h-24 resize-none"
-                disabled={isInputDisabled}
+                className="min-h-24 resize-none bg-transparent"
+                disabled={isGenerating}
                 onChange={(event) => onInputChange(event.currentTarget.value)}
-                placeholder={
-                  canGenerate
-                    ? 'Describe the deck you want, or ask for an edit…'
-                    : apiKeyStatus === 'checking'
-                      ? 'Checking API key…'
-                      : 'Add a provider API key in .env to start generating decks…'
-                }
+                placeholder="Describe the deck you want, or ask for an edit…"
                 value={input}
               />
             </PromptInputBody>
-            <PromptInputFooter>
-              <PromptInputTools>
+            <PromptInputFooter className="gap-2">
+              <PromptInputTools className="gap-1.5">
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="Add attachments"
@@ -478,47 +438,14 @@ export function ChatPanel({
                     <PromptInputActionAddScreenshot />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
-                <PromptInputSelect
-                  disabled={isGenerating || isLoadingModels}
+                <ModelSelector
+                  canGenerate={canGenerate}
+                  disabled={isGenerating}
+                  isLoading={isLoadingModels}
+                  models={models}
                   onValueChange={onModelChange}
                   value={selectedModel}
-                >
-                  <PromptInputSelectTrigger
-                    className={cn('max-w-[300px]', !canGenerate && 'text-muted-foreground')}
-                  >
-                    <PromptInputSelectValue
-                      placeholder={
-                        apiKeyStatus === 'checking'
-                          ? 'Checking API key…'
-                          : isLoadingModels
-                            ? 'Scanning models…'
-                            : 'Select model'
-                      }
-                    />
-                  </PromptInputSelectTrigger>
-                  <PromptInputSelectContent>
-                    {models.map((model) => (
-                      <PromptInputSelectItem
-                        className={cn(!model.available && 'text-muted-foreground')}
-                        disabled={!model.available}
-                        key={model.id}
-                        value={model.id}
-                      >
-                        {formatModelLabel(model)}
-                      </PromptInputSelectItem>
-                    ))}
-                  </PromptInputSelectContent>
-                </PromptInputSelect>
-                <PromptInputButton
-                  aria-label="Refresh available models"
-                  disabled={isGenerating || isLoadingModels}
-                  onClick={() => {
-                    void onRefreshModels()
-                  }}
-                  tooltip="Refresh models"
-                >
-                  <RefreshCwIcon className={cn('size-4', isLoadingModels && 'animate-spin')} />
-                </PromptInputButton>
+                />
                 {isGenerating ? (
                   <PromptInputButton
                     aria-label="Cancel generation"
@@ -535,7 +462,7 @@ export function ChatPanel({
               <ChatPromptInputSubmit
                 input={input}
                 isGenerating={isGenerating}
-                isInputDisabled={isInputDisabled}
+                isInputDisabled={isSubmitDisabled}
                 selectedAssetIds={selectedAssetIds}
               />
             </PromptInputFooter>

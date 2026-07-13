@@ -20,11 +20,9 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   isLoadingModels: false,
   modelsError: '',
   modelWarnings: [],
-  apiKeyStatus: 'valid',
   canGenerate: true,
   onInputChange: vi.fn(),
   onModelChange: vi.fn(),
-  onRefreshModels: vi.fn().mockResolvedValue(undefined),
   onPromptSubmit: vi.fn(),
   onAttachmentError: vi.fn(),
   onCancelGeneration: vi.fn(),
@@ -78,5 +76,70 @@ describe('ChatPanel submit control', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+  })
+
+  it('keeps the textarea writable when generation is unavailable', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} canGenerate={false} input="draft notes" />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+  })
+
+  it('does not expose a refresh-models control', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} />
+      </TooltipProvider>,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Refresh available models' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows provider catalog warnings without blocking the chat', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          canGenerate
+          modelWarnings={['The Gemini API key in .env is invalid or expired.']}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Model catalog notice')).toBeInTheDocument()
+    expect(
+      screen.getByText('The Gemini API key in .env is invalid or expired.'),
+    ).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
+  })
+
+  it('does not show API key required alerts', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          canGenerate={false}
+          models={[
+            {
+              id: 'openai:gpt-4o-mini',
+              provider: 'openai',
+              modelId: 'gpt-4o-mini',
+              name: 'GPT-4o Mini',
+              available: false,
+              unavailableReason: 'missing_api_key',
+            },
+          ]}
+          selectedModel="openai:gpt-4o-mini"
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('API key required')).not.toBeInTheDocument()
   })
 })
