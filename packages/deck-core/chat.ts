@@ -41,11 +41,33 @@ export type AgentStep = {
   error?: boolean
 }
 
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
+export const MAX_TRANSCRIPT_VALUE_CHARS = 24_000
+export const MAX_TRANSCRIPT_TURN_CHARS = 96_000
+
 /** Rich assistant turn content persisted in chat history. */
 export type ChatMessagePart =
-  | { type: 'text'; content: string }
-  | { type: 'tool-call'; toolName: string; summary: string }
-  | { type: 'tool-result'; toolName: string; summary: string; error?: boolean }
+  | { type: 'text'; content: string; stepIndex?: number }
+  | {
+      type: 'tool-call'
+      toolName: string
+      summary: string
+      stepIndex?: number
+      toolCallId?: string
+      input?: JsonValue
+    }
+  | {
+      type: 'tool-result'
+      toolName: string
+      summary: string
+      error?: boolean
+      stepIndex?: number
+      toolCallId?: string
+      output?: JsonValue
+      isError?: boolean
+    }
 
 /** Client-side chat message with a stable id for React keys. */
 export type ChatMessage = {
@@ -62,6 +84,7 @@ export type ApiChatMessage = {
   role: ChatMessageRole
   content: string
   attachments?: ChatAttachment[]
+  parts?: ChatMessagePart[]
 }
 
 /**
@@ -82,15 +105,96 @@ export type EditorSelectionContext = {
 
 /**
  * Context policy (pi-style): every generation request replays the full visible
- * conversation plus the latest deck HTML. Assistant turns store short status
- * text only — never full HTML — so follow-ups stay affordable while intent is
- * preserved across turns.
+ * conversation. Prior assistant text, tool calls, and tool results are replayed
+ * from bounded semantic projections; omitted deck content is re-read with tools.
+ * The AI SDK owns tool-result continuation within a single generation job.
+ * Compaction, branch summaries, steer queues, and follow-up queues are not implemented.
  */
 export const CHAT_CONTEXT_POLICY = {
   replayFullHistory: true,
   includeCurrentHtml: true,
   assistantMessagesExcludeHtml: true,
+  replayAssistantToolTranscript: true,
 } as const
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  if (!value || typeof value !== 'object') return false
+  return Object.values(value).every(isJsonValue)
+}
+
+function parseChatMessageParts(input: unknown, messageIndex: number) {
+  if (input === undefined) return { ok: true as const, parts: undefined }
+  if (!Array.isArray(input)) {
+    return { ok: false as const, error: `messages[${messageIndex}].parts must be an array.` }
+  }
+  const parts: ChatMessagePart[] = []
+  for (const [partIndex, raw] of input.entries()) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return {
+        ok: false as const,
+        error: `messages[${messageIndex}].parts[${partIndex}] must be an object.`,
+      }
+    }
+    const part = raw as Record<string, unknown>
+    const stepIndex = part.stepIndex
+    if (stepIndex !== undefined && (!Number.isInteger(stepIndex) || (stepIndex as number) < 0)) {
+      return {
+        ok: false as const,
+        error: `messages[${messageIndex}].parts[${partIndex}].stepIndex must be a non-negative integer.`,
+      }
+    }
+    if (part.type === 'text' && typeof part.content === 'string') {
+      parts.push({
+        type: 'text',
+        content: part.content,
+        ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+      })
+      continue
+    }
+    if (
+      (part.type === 'tool-call' || part.type === 'tool-result') &&
+      typeof part.toolName === 'string' &&
+      typeof part.summary === 'string'
+    ) {
+      const valueKey = part.type === 'tool-call' ? 'input' : 'output'
+      if (part[valueKey] !== undefined && !isJsonValue(part[valueKey])) {
+        return {
+          ok: false as const,
+          error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} must be JSON-safe.`,
+        }
+      }
+      const common = {
+        toolName: part.toolName,
+        summary: part.summary,
+        ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+        ...(typeof part.toolCallId === 'string' ? { toolCallId: part.toolCallId } : {}),
+      }
+      if (part.type === 'tool-call')
+        parts.push({
+          type: 'tool-call',
+          ...common,
+          ...(part.input !== undefined ? { input: part.input as JsonValue } : {}),
+        })
+      else
+        parts.push({
+          type: 'tool-result',
+          ...common,
+          ...(typeof part.error === 'boolean' ? { error: part.error } : {}),
+          ...(part.output !== undefined ? { output: part.output as JsonValue } : {}),
+          ...(typeof part.isError === 'boolean' ? { isError: part.isError } : {}),
+        })
+      continue
+    }
+    return {
+      ok: false as const,
+      error: `messages[${messageIndex}].parts[${partIndex}] is invalid.`,
+    }
+  }
+  return { ok: true as const, parts }
+}
 
 export type ParseGenerateMessagesResult =
   { ok: true; messages: ApiChatMessage[] } | { ok: false; error: string }
@@ -256,6 +360,15 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
       return parsedAttachments
     }
 
+    if (role === 'user' && (item as { parts?: unknown }).parts !== undefined) {
+      return {
+        ok: false,
+        error: `messages[${index}].parts is only allowed for assistant messages.`,
+      }
+    }
+    const parsedParts = parseChatMessageParts((item as { parts?: unknown }).parts, index)
+    if (!parsedParts.ok) return parsedParts
+
     const rawId = (item as { id?: unknown }).id
     const id =
       typeof rawId === 'string' && isValidChatMessageId(rawId.trim()) ? rawId.trim() : undefined
@@ -269,6 +382,7 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
         ...(parsedAttachments.attachments.length > 0
           ? { attachments: parsedAttachments.attachments }
           : {}),
+        ...(role === 'assistant' && parsedParts.parts?.length ? { parts: parsedParts.parts } : {}),
       })
     }
   }
@@ -354,14 +468,14 @@ export function wrapUserPromptForAgent(
 User instruction:
 ${effectivePrompt}${attachmentNote}${selectionNote}
 
-Use parse_deck, list_slides, and/or read_deck to inspect the deck. Apply element changes with patch_element (preferred for a selected element), slide changes with patch_deck, small inline tweaks with edit_deck, or write_deck only for a full rewrite.`
+The current deck is available in the job workspace. Inspect it with the available tools before editing.`
   }
 
   return `Create a new complete Ark HTML slide deck from this user request:
 
 ${effectivePrompt}${attachmentNote}
 
-Use write_deck to save the complete HTML document, then summarize what you built.`
+Use the available tools to save the deck, then summarize what you built.`
 }
 
 export function chatAttachmentsToFileParts(attachments: ChatAttachment[]): FilePart[] {
@@ -426,7 +540,7 @@ export function buildAgentModelMessages(
     return []
   }
 
-  const prior = messages.slice(0, -1).map(toModelMessage)
+  const prior = convertChatHistoryToModelMessages(messages.slice(0, -1))
   const last = messages[messages.length - 1]
 
   if (last.role !== 'user') {
@@ -440,6 +554,104 @@ export function buildAgentModelMessages(
       content: buildUserModelContent(last, { wrapForAgent: true, currentHtml, editorSelection }),
     },
   ]
+}
+
+function boundedJson(value: JsonValue): JsonValue | null {
+  const serialized = JSON.stringify(value)
+  if (serialized.length <= MAX_TRANSCRIPT_VALUE_CHARS) return value
+  return {
+    omitted: true,
+    originalCharacters: serialized.length,
+    reason: 'Transcript value exceeded replay limit; re-read the current deck.',
+  }
+}
+
+export function convertChatHistoryToModelMessages(messages: ApiChatMessage[]): ModelMessage[] {
+  const result: ModelMessage[] = []
+  for (const message of messages) {
+    if (message.role === 'user') {
+      result.push({ role: 'user', content: buildUserModelContent(message) })
+      continue
+    }
+    const parts = message.parts
+    const replayable = parts?.length && parts.some((part) => part.type !== 'text')
+    if (!replayable) {
+      result.push({ role: 'assistant', content: message.content })
+      continue
+    }
+    const ids = new Set<string>()
+    const groups = new Map<number, ChatMessagePart[]>()
+    let valid = true
+    let turnChars = 0
+    for (const part of parts) {
+      if (part.stepIndex === undefined) {
+        valid = false
+        break
+      }
+      groups.set(part.stepIndex, [...(groups.get(part.stepIndex) ?? []), part])
+      turnChars += JSON.stringify(part).length
+    }
+    const emitted: ModelMessage[] = []
+    if (turnChars > MAX_TRANSCRIPT_TURN_CHARS) valid = false
+    for (const stepParts of [...groups.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, value]) => value)) {
+      if (!valid) break
+      const calls = stepParts.filter((part) => part.type === 'tool-call')
+      const results = stepParts.filter((part) => part.type === 'tool-result')
+      const byId = new Map(results.map((part) => [part.toolCallId, part]))
+      const assistantContent: Array<Record<string, unknown>> = []
+      for (const part of stepParts) {
+        if (part.type === 'text') assistantContent.push({ type: 'text', text: part.content })
+        if (part.type === 'tool-call') {
+          if (!part.toolCallId || ids.has(part.toolCallId) || part.input === undefined) {
+            valid = false
+            break
+          }
+          ids.add(part.toolCallId)
+          const paired = byId.get(part.toolCallId)
+          if (!paired || paired.toolName !== part.toolName) {
+            valid = false
+            break
+          }
+          assistantContent.push({
+            type: 'tool-call',
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            input: boundedJson(part.input),
+          })
+        }
+      }
+      if (
+        !valid ||
+        calls.length !== results.length ||
+        results.some(
+          (part) => !part.toolCallId || !calls.some((call) => call.toolCallId === part.toolCallId),
+        )
+      ) {
+        valid = false
+        break
+      }
+      if (assistantContent.length)
+        emitted.push({ role: 'assistant', content: assistantContent } as ModelMessage)
+      if (calls.length)
+        emitted.push({
+          role: 'tool',
+          content: calls.map((call) => {
+            const paired = byId.get(call.toolCallId)!
+            const value = boundedJson(paired.output ?? null)
+            return {
+              type: 'tool-result',
+              toolCallId: call.toolCallId!,
+              toolName: call.toolName,
+              output: { type: paired.isError ? 'error-json' : 'json', value },
+            }
+          }),
+        } as ModelMessage)
+    }
+    result.push(...(valid ? emitted : [{ role: 'assistant' as const, content: message.content }]))
+  }
+  return result
 }
 
 export function buildModelMessages(
@@ -470,11 +682,12 @@ export function buildModelMessages(
 }
 
 export function toApiMessages(messages: ChatMessage[]): ApiChatMessage[] {
-  return messages.map(({ id, role, content, attachments }) => ({
+  return messages.map(({ id, role, content, attachments, parts }) => ({
     ...(id ? { id } : {}),
     role,
     content,
     ...(attachments?.length ? { attachments } : {}),
+    ...(role === 'assistant' && parts?.length ? { parts: structuredClone(parts) } : {}),
   }))
 }
 

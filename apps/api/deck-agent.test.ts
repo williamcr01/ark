@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
 
-import { extractAgentSteps, runDeckAgent } from './deck-agent.ts'
+import { extractAgentSteps, extractAgentTranscriptParts, runDeckAgent } from './deck-agent.ts'
+import { createActiveDeckTools } from './deck-tool-catalog.ts'
+import { createDeckWorkspace } from './deck-workspace.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -101,6 +103,47 @@ describe('extractAgentSteps', () => {
         error: false,
       },
     ])
+  })
+})
+
+describe('extractAgentTranscriptParts', () => {
+  it('retains SDK ids and normalizes both tool error channels', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(sampleHtml))
+    const parts = extractAgentTranscriptParts(
+      [
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              toolCallId: 'call-1',
+              input: { slideIndex: 0 },
+            },
+            {
+              type: 'tool-result',
+              toolName: 'read_deck',
+              toolCallId: 'call-1',
+              output: { error: 'missing' },
+            },
+            { type: 'tool-call', toolName: 'list_slides', toolCallId: 'call-2', input: {} },
+            {
+              type: 'tool-error',
+              toolName: 'list_slides',
+              toolCallId: 'call-2',
+              error: new Error('boom'),
+            },
+          ],
+        },
+      ],
+      activeDefinitions,
+    )
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'tool-call', toolCallId: 'call-1', stepIndex: 0 }),
+        expect.objectContaining({ type: 'tool-result', toolCallId: 'call-1', isError: true }),
+        expect.objectContaining({ type: 'tool-result', toolCallId: 'call-2', isError: true }),
+      ]),
+    )
   })
 })
 

@@ -1,5 +1,4 @@
 import {
-  agentStepsToChatParts,
   buildAssistantMessageContent,
   type ApiChatMessage,
   type ChatMessagePart,
@@ -56,6 +55,7 @@ export async function persistAssistantGenerationMessage(
     model: string
     status: GenerationJobStatus
     steps: GenerationJob['progress']['steps']
+    transcriptParts?: ChatMessagePart[]
     assistantText?: string | null
     editingExistingDeck: boolean
     deckVersionId?: string | null
@@ -79,12 +79,17 @@ export async function persistAssistantGenerationMessage(
           ? `Updated the HTML deck and refreshed the preview.${validationNote}`
           : `Generated a complete self-contained HTML slide deck.${validationNote}`
 
-  const assistantParts: ChatMessagePart[] = [
-    ...agentStepsToChatParts(options.steps),
-    ...(assistantContent || validationNote
-      ? [{ type: 'text' as const, content: `${assistantContent}${validationNote}`.trim() }]
-      : []),
-  ]
+  const assistantParts: ChatMessagePart[] = [...(options.transcriptParts ?? [])]
+  const persistedText = assistantParts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.content)
+    .join('\n')
+    .trim()
+  const extraText = `${assistantContent}${validationNote}`.trim()
+  if (extraText && extraText !== persistedText && !persistedText.endsWith(extraText)) {
+    const lastStep = assistantParts.reduce((max, part) => Math.max(max, part.stepIndex ?? -1), -1)
+    assistantParts.push({ type: 'text', content: extraText, stepIndex: lastStep + 1 })
+  }
 
   return chatStore.appendMessage(deckId, {
     id: options.jobId,
@@ -116,6 +121,7 @@ export async function persistInitialDeckChatHistory(
       role: message.role,
       content: message.content,
       attachments: message.attachments,
+      parts: message.role === 'assistant' ? message.parts : undefined,
       deckVersionId,
     })
   }

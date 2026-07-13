@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { deckIdSchema, withRequestId } from './common.ts'
 import { parseChatAttachments } from '@ark/deck-core/chat.ts'
+import type { JsonValue } from '@ark/deck-core/chat.ts'
 
 export const chatThreadStatusSchema = z.enum(['active', 'archived'])
 
@@ -22,14 +23,41 @@ export const chatMessageErrorSchema = z.object({
   code: z.string().nullable().optional(),
 })
 
+const isJsonValue = (value: unknown): value is JsonValue => {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  return !!value && typeof value === 'object' && Object.values(value).every(isJsonValue)
+}
+
+export const jsonValueSchema = z
+  .unknown()
+  .refine(isJsonValue, 'Expected a JSON-safe value')
+  .transform((value) => value as JsonValue)
+
 export const chatMessagePartSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), content: z.string() }),
-  z.object({ type: z.literal('tool-call'), toolName: z.string(), summary: z.string() }),
+  z.object({
+    type: z.literal('text'),
+    content: z.string(),
+    stepIndex: z.number().int().min(0).optional(),
+  }),
+  z.object({
+    type: z.literal('tool-call'),
+    toolName: z.string(),
+    summary: z.string(),
+    stepIndex: z.number().int().min(0).optional(),
+    toolCallId: z.string().optional(),
+    input: jsonValueSchema.optional(),
+  }),
   z.object({
     type: z.literal('tool-result'),
     toolName: z.string(),
     summary: z.string(),
     error: z.boolean().optional(),
+    stepIndex: z.number().int().min(0).optional(),
+    toolCallId: z.string().optional(),
+    output: jsonValueSchema.optional(),
+    isError: z.boolean().optional(),
   }),
 ])
 
@@ -42,12 +70,21 @@ export const chatAttachmentSchema = z.object({
 })
 
 /** API chat turn sent with generation jobs and chat append requests. */
-export const apiChatMessageSchema = z.object({
-  id: z.string().optional(),
-  role: z.enum(['user', 'assistant']),
-  content: z.string(),
-  attachments: z.array(chatAttachmentSchema).optional(),
-})
+export const apiChatMessageSchema = z.discriminatedUnion('role', [
+  z.object({
+    id: z.string().optional(),
+    role: z.literal('user'),
+    content: z.string(),
+    attachments: z.array(chatAttachmentSchema).optional(),
+  }),
+  z.object({
+    id: z.string().optional(),
+    role: z.literal('assistant'),
+    content: z.string(),
+    attachments: z.array(chatAttachmentSchema).optional(),
+    parts: z.array(chatMessagePartSchema).optional(),
+  }),
+])
 
 export type ApiChatMessageWire = z.infer<typeof apiChatMessageSchema>
 
