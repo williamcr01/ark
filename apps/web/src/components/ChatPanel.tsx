@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
 
 import {
@@ -32,7 +32,6 @@ import {
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
 import { ModelSelector } from '@/components/ModelSelector'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
@@ -51,6 +50,62 @@ import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 import { cn } from '@/lib/utils'
 
 export type { ChatMessage } from '@ark/deck-core/chat.ts'
+
+type ChatAlertId = 'generation' | 'attachment' | 'models' | 'model-warnings'
+
+function ChatFloatingAlert({
+  title,
+  variant = 'default',
+  onClose,
+  children,
+}: {
+  title: string
+  variant?: 'default' | 'destructive'
+  onClose: () => void
+  children: ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        'relative rounded-lg border px-3 py-2.5 pr-9 text-sm shadow-md backdrop-blur-sm',
+        variant === 'destructive'
+          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+          : 'border-amber-500/30 bg-amber-50/95 text-amber-950 dark:bg-amber-950/90 dark:text-amber-100',
+      )}
+      role="alert"
+    >
+      <button
+        aria-label={`Dismiss ${title}`}
+        className={cn(
+          'absolute top-2 right-2 rounded-sm p-0.5 transition-colors',
+          variant === 'destructive'
+            ? 'text-destructive/70 hover:text-destructive'
+            : 'text-amber-700/70 hover:text-amber-950 dark:text-amber-200/70 dark:hover:text-amber-50',
+        )}
+        onClick={onClose}
+        type="button"
+      >
+        <XIcon className="size-3.5" />
+      </button>
+      <div className="flex items-start gap-2">
+        <AlertCircleIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+        <div className="min-w-0 space-y-1">
+          <p className="font-medium">{title}</p>
+          <div
+            className={cn(
+              'text-xs leading-relaxed',
+              variant === 'destructive'
+                ? 'text-destructive/90'
+                : 'text-amber-900 dark:text-amber-100/90',
+            )}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function formatAttachmentError(error: { code: string; message: string }) {
   switch (error.code) {
@@ -278,6 +333,57 @@ export function ChatPanel({
   onRetryPersist,
 }: ChatPanelProps) {
   const isSubmitDisabled = isGenerating || !canGenerate
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<ChatAlertId>>(() => new Set())
+  const modelWarningsKey = modelWarnings.join('\n')
+
+  useEffect(() => {
+    setDismissedAlerts((current) => {
+      const next = new Set(current)
+      next.delete('generation')
+      return next
+    })
+  }, [error])
+
+  useEffect(() => {
+    setDismissedAlerts((current) => {
+      const next = new Set(current)
+      next.delete('attachment')
+      return next
+    })
+  }, [attachmentError])
+
+  useEffect(() => {
+    setDismissedAlerts((current) => {
+      const next = new Set(current)
+      next.delete('models')
+      return next
+    })
+  }, [modelsError])
+
+  useEffect(() => {
+    setDismissedAlerts((current) => {
+      const next = new Set(current)
+      next.delete('model-warnings')
+      return next
+    })
+  }, [modelWarningsKey])
+
+  const dismissAlert = (alertId: ChatAlertId) => {
+    setDismissedAlerts((current) => new Set(current).add(alertId))
+  }
+
+  const handleRetryGeneration = () => {
+    dismissAlert('generation')
+    void onRetryGeneration()
+  }
+
+  const showGenerationError = Boolean(error) && !dismissedAlerts.has('generation')
+  const showAttachmentError = Boolean(attachmentError) && !dismissedAlerts.has('attachment')
+  const showModelsError = Boolean(modelsError) && !dismissedAlerts.has('models')
+  const showModelWarnings = modelWarnings.length > 0 && !dismissedAlerts.has('model-warnings')
+  const hasFloatingAlerts =
+    showGenerationError || showAttachmentError || showModelsError || showModelWarnings
+
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
@@ -349,60 +455,68 @@ export function ChatPanel({
           <ConversationScrollButton />
         </Conversation>
 
-        <div className="shrink-0 border-t border-[var(--ark-line)] bg-[var(--ark-paper)] p-4">
+        <div className="relative shrink-0 border-t border-[var(--ark-line)] bg-[var(--ark-paper)] p-4">
           {assetsSlot}
-          {error ? (
-            <Alert className="mb-3" variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>Generation failed</AlertTitle>
-              <AlertDescription className="flex flex-col gap-3">
-                <span>{error}</span>
-                {failedJobId ? (
-                  <div>
-                    <PromptInputButton
-                      aria-label="Retry generation"
-                      onClick={() => {
-                        void onRetryGeneration()
-                      }}
-                      tooltip="Retry generation"
-                    >
-                      <RefreshCwIcon className="size-4" />
-                      Retry
-                    </PromptInputButton>
+
+          {hasFloatingAlerts ? (
+            <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">
+              {showGenerationError ? (
+                <ChatFloatingAlert
+                  onClose={() => dismissAlert('generation')}
+                  title="Generation failed"
+                  variant="destructive"
+                >
+                  <div className="flex flex-col gap-2">
+                    <span>{error}</span>
+                    {failedJobId ? (
+                      <div>
+                        <PromptInputButton
+                          aria-label="Retry generation"
+                          onClick={handleRetryGeneration}
+                          tooltip="Retry generation"
+                        >
+                          <RefreshCwIcon className="size-4" />
+                          Retry
+                        </PromptInputButton>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </AlertDescription>
-            </Alert>
-          ) : null}
+                </ChatFloatingAlert>
+              ) : null}
 
-          {attachmentError ? (
-            <Alert className="mb-3" variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>Attachment error</AlertTitle>
-              <AlertDescription>{attachmentError}</AlertDescription>
-            </Alert>
-          ) : null}
+              {showAttachmentError ? (
+                <ChatFloatingAlert
+                  onClose={() => dismissAlert('attachment')}
+                  title="Attachment error"
+                  variant="destructive"
+                >
+                  {attachmentError}
+                </ChatFloatingAlert>
+              ) : null}
 
-          {modelsError ? (
-            <Alert className="mb-3" variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>Could not load models</AlertTitle>
-              <AlertDescription>{modelsError}</AlertDescription>
-            </Alert>
-          ) : null}
+              {showModelsError ? (
+                <ChatFloatingAlert
+                  onClose={() => dismissAlert('models')}
+                  title="Could not load models"
+                  variant="destructive"
+                >
+                  {modelsError}
+                </ChatFloatingAlert>
+              ) : null}
 
-          {modelWarnings.length > 0 ? (
-            <Alert className="mb-3">
-              <AlertCircleIcon />
-              <AlertTitle>Model catalog notice</AlertTitle>
-              <AlertDescription>
-                <ul className="flex list-disc flex-col gap-1 pl-4">
-                  {modelWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
+              {showModelWarnings ? (
+                <ChatFloatingAlert
+                  onClose={() => dismissAlert('model-warnings')}
+                  title="Model catalog notice"
+                >
+                  <ul className="flex list-disc flex-col gap-1 pl-4">
+                    {modelWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </ChatFloatingAlert>
+              ) : null}
+            </div>
           ) : null}
 
           <PromptInput

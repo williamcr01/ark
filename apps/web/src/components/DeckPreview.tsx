@@ -148,7 +148,6 @@ export function DeckPreview({
   const runtimeMode = runtimeManifest.runtimeMode
   const validation = deckAnalysis.validation
   const usesStaticPreview = deckAnalysis.usesStaticPreview
-  const manifestWarnings = runtimeManifest.warnings
   const networkIssues = validation.issues.filter(
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
@@ -1352,20 +1351,6 @@ export function DeckPreview({
                       <div className="space-y-1">
                         <p className="font-medium">Network access blocked</p>
                         <p>{networkIssues[0]?.message}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {!isPresentOpen &&
-                manifestWarnings.length > 0 &&
-                !usesStaticPreview &&
-                networkIssues.length === 0 ? (
-                  <div className="absolute inset-x-4 top-4 rounded-lg border border-amber-500/30 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm backdrop-blur dark:bg-amber-950/90 dark:text-amber-100">
-                    <div className="flex items-start gap-2">
-                      <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="font-medium">Runtime notice</p>
-                        <p>{manifestWarnings[0]}</p>
                       </div>
                     </div>
                   </div>
