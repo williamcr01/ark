@@ -39,9 +39,11 @@ const editorBridgeMock = vi.hoisted(() => ({
     textPreview: string | null
   } | null,
   geometry: null as EditorNormalizedRect | null,
+  slideBounds: null as EditorNormalizedRect | null,
   selectionZIndex: null,
   hover: null,
   hoverGeometry: null,
+  hoverSlideBounds: null as EditorNormalizedRect | null,
   editorError: null,
   textEditActive: false,
   lastTextCommit: null as {
@@ -135,9 +137,11 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.editorReady = false
     editorBridgeMock.selection = null
     editorBridgeMock.geometry = null
+    editorBridgeMock.slideBounds = null
     editorBridgeMock.selectionZIndex = null
     editorBridgeMock.hover = null
     editorBridgeMock.hoverGeometry = null
+    editorBridgeMock.hoverSlideBounds = null
     editorBridgeMock.editorError = null
     editorBridgeMock.textEditActive = false
     editorBridgeMock.lastTextCommit = null
@@ -184,10 +188,7 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('does not post editor enable after compromise even if onLoad races', async () => {
-    const user = userEvent.setup()
-
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
 
     const iframe = screen.getByTitle('Generated Ark presentation preview')
     fireEvent.load(iframe)
@@ -259,11 +260,9 @@ describe('DeckPreview script divergence UI', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('disables then re-enables the editor when presenting from edit mode', async () => {
+  it('disables then re-enables the editor when presenting', async () => {
     const user = userEvent.setup()
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     editorBridgeMock.editorReady = true
 
@@ -315,56 +314,27 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
   })
 
-  it('can opt into editor bridge controls without enabling edit mode by default', () => {
+  it('enables edit chrome by default when the editor bridge is on', () => {
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 
-    expect(screen.getByRole('button', { name: 'Edit mode' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Edit mode' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
-    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
-  })
-
-  it('toggles edit mode from the preview chrome', async () => {
-    const user = userEvent.setup()
-
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
-    expect(screen.getByRole('button', { name: 'Edit mode' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(screen.getByText('Preview')).toBeInTheDocument()
   })
 
-  it('returns to preview mode without changing the active slide', async () => {
-    const user = userEvent.setup()
-
+  it('keeps slide navigation chrome visible while editing', () => {
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-    await user.click(screen.getByRole('button', { name: 'Preview mode' }))
-
-    expect(screen.getByRole('button', { name: 'Preview mode' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     expect(screen.getByText('Slide 1 of 3')).toBeInTheDocument()
   })
 
-  it('exits edit mode when generation starts', async () => {
-    const user = userEvent.setup()
-
+  it('pauses edit chrome when generation starts', () => {
     const { rerender } = renderDeckPreview({
       ...plainDeckProps,
       editorBridgeEnabled: true,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
 
     rerender(
@@ -377,8 +347,7 @@ describe('DeckPreview script divergence UI', () => {
     expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
   })
 
-  it('reports editor selection to the shell only while edit mode is active', async () => {
-    const user = userEvent.setup()
+  it('reports editor selection to the shell while edit chrome is active', () => {
     const onEditorSelectionChange = vi.fn()
 
     editorBridgeMock.selection = {
@@ -392,30 +361,31 @@ describe('DeckPreview script divergence UI', () => {
       textPreview: 'Headline',
     }
 
-    renderDeckPreview({
+    const { rerender } = renderDeckPreview({
       ...plainDeckProps,
       editorBridgeEnabled: true,
       onEditorSelectionChange,
     })
 
-    // Edit mode is off on mount, so the shell mirror is cleared.
-    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null)
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     expect(onEditorSelectionChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ elementId: 'ark-el-1' }),
     )
 
-    await user.click(screen.getByRole('button', { name: 'Preview mode' }))
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          editorBridgeEnabled
+          isGenerating
+          onEditorSelectionChange={onEditorSelectionChange}
+        />
+      </TooltipProvider>,
+    )
     expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null)
   })
 
   it('enables the editor bridge when the edit-mode iframe loads', async () => {
-    const user = userEvent.setup()
-
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
 
     act(() => {
       window.dispatchEvent(
@@ -478,8 +448,6 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('shows an edit-text action for unlocked text selections', async () => {
-    const user = userEvent.setup()
-
     editorBridgeMock.selection = {
       elementId: 'transient-el-0-0',
       slideIndex: 0,
@@ -492,8 +460,6 @@ describe('DeckPreview script divergence UI', () => {
     }
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
 
     expect(screen.getByRole('button', { name: 'Edit selected text' })).toBeInTheDocument()
   })
@@ -513,16 +479,12 @@ describe('DeckPreview script divergence UI', () => {
     }
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     await user.click(screen.getByRole('button', { name: 'Edit selected text' }))
 
     expect(editorBridgeMock.startTextEdit).toHaveBeenCalledWith('transient-el-0-0', 0)
   })
 
   it('starts text editing when Enter is pressed with a text selection', async () => {
-    const user = userEvent.setup()
-
     editorBridgeMock.selection = {
       elementId: 'transient-el-0-0',
       slideIndex: 0,
@@ -536,16 +498,12 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     fireEvent.keyDown(window, { key: 'Enter' })
 
     expect(editorBridgeMock.startTextEdit).toHaveBeenCalledWith('transient-el-0-0', 0)
   })
 
   it('cancels text editing when Escape is pressed', async () => {
-    const user = userEvent.setup()
-
     editorBridgeMock.selection = {
       elementId: 'transient-el-0-0',
       slideIndex: 0,
@@ -559,8 +517,6 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.textEditActive = true
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(editorBridgeMock.cancelTextEdit).toHaveBeenCalled()
@@ -570,8 +526,6 @@ describe('DeckPreview script divergence UI', () => {
     const user = userEvent.setup()
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     await user.click(screen.getByRole('button', { name: 'Text box' }))
     fireEvent.keyDown(window, { key: 'Escape' })
 
@@ -785,8 +739,6 @@ describe('DeckPreview script divergence UI', () => {
       onUndo,
       onRedo,
     })
-
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     await user.click(screen.getByRole('button', { name: 'Redo' }))
 
@@ -795,7 +747,6 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('undoes and redoes with keyboard shortcuts in edit mode', async () => {
-    const user = userEvent.setup()
     const onUndo = vi.fn()
     const onRedo = vi.fn()
 
@@ -808,8 +759,6 @@ describe('DeckPreview script divergence UI', () => {
       onRedo,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(onUndo).toHaveBeenCalledTimes(1)
 
@@ -821,7 +770,6 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('does not hijack undo shortcut while editing text', async () => {
-    const user = userEvent.setup()
     const onUndo = vi.fn()
 
     editorBridgeMock.textEditActive = true
@@ -833,15 +781,12 @@ describe('DeckPreview script divergence UI', () => {
       onUndo,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
 
     expect(onUndo).not.toHaveBeenCalled()
   })
 
   it('does not undo with keyboard when nothing is undoable', async () => {
-    const user = userEvent.setup()
     const onUndo = vi.fn()
 
     renderDeckPreview({
@@ -851,15 +796,12 @@ describe('DeckPreview script divergence UI', () => {
       onUndo,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
 
     expect(onUndo).not.toHaveBeenCalled()
   })
 
   it('does not undo with keyboard while a patch is saving', async () => {
-    const user = userEvent.setup()
     const onUndo = vi.fn()
 
     renderDeckPreview({
@@ -870,16 +812,12 @@ describe('DeckPreview script divergence UI', () => {
       onUndo,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
 
     expect(onUndo).not.toHaveBeenCalled()
   })
 
   it('shows locked messaging for locked selections', async () => {
-    const user = userEvent.setup()
-
     editorBridgeMock.selection = {
       elementId: 'locked-el',
       slideIndex: 0,
@@ -893,37 +831,83 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     expect(screen.getAllByText('Locked').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Edit selected text' })).not.toBeInTheDocument()
   })
 
-  it('shows the element inspector with an empty state in desktop edit mode only', async () => {
+  it('keeps the floating inspector closed until settings is clicked', async () => {
     const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
 
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 
-    expect(
-      screen.queryByRole('complementary', { name: 'Element inspector' }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Element inspector' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Element settings' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
-    expect(screen.getByRole('complementary', { name: 'Element inspector' })).toBeInTheDocument()
-    expect(screen.getByText(/select an element on the slide/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Element settings' }))
+    expect(screen.getByRole('dialog', { name: 'Element inspector' })).toBeInTheDocument()
   })
 
-  it('does not render the inspector in the mobile layout', async () => {
-    const user = userEvent.setup()
+  it('shows the floating inspector settings trigger on mobile when selected', async () => {
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
 
     renderDeckPreview({ ...plainDeckProps, layout: 'mobile', editorBridgeEnabled: true })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    expect(screen.getByRole('button', { name: 'Element settings' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Element inspector' })).not.toBeInTheDocument()
+  })
 
-    expect(
-      screen.queryByRole('complementary', { name: 'Element inspector' }),
-    ).not.toBeInTheDocument()
+  it('closes the floating inspector when the selection clears', async () => {
+    const user = userEvent.setup()
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+
+    const { rerender } = renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+
+    await user.click(screen.getByRole('button', { name: 'Element settings' }))
+    expect(screen.getByRole('dialog', { name: 'Element inspector' })).toBeInTheDocument()
+
+    editorBridgeMock.selection = null
+    editorBridgeMock.geometry = null
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} editorBridgeEnabled />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Element settings' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Element inspector' })).not.toBeInTheDocument()
   })
 
   it('dispatches inspector geometry edits through the patch callback', async () => {
@@ -948,7 +932,7 @@ describe('DeckPreview script divergence UI', () => {
       onPatchEditorOperations,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    await user.click(screen.getByRole('button', { name: 'Element settings' }))
 
     const xInput = screen.getByRole('textbox', { name: 'X (%)' })
     await user.clear(xInput)
@@ -995,9 +979,9 @@ describe('DeckPreview script divergence UI', () => {
     }
     const { rerender } = renderDeckPreview(props)
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
-
     // Commit an inspector edit; this schedules a reselect for the element.
+    await user.click(screen.getByRole('button', { name: 'Element settings' }))
+
     const xInput = screen.getByRole('textbox', { name: 'X (%)' })
     await user.clear(xInput)
     await user.type(xInput, '50{enter}')
@@ -1043,7 +1027,7 @@ describe('DeckPreview script divergence UI', () => {
     }
     const { rerender } = renderDeckPreview(props)
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    await user.click(screen.getByRole('button', { name: 'Element settings' }))
 
     const xInput = screen.getByRole('textbox', { name: 'X (%)' })
     await user.clear(xInput)
@@ -1092,9 +1076,9 @@ describe('DeckPreview script divergence UI', () => {
       onPatchEditorOperations,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit mode' }))
+    await user.click(screen.getByRole('button', { name: 'Element settings' }))
 
-    const inspector = screen.getByRole('complementary', { name: 'Element inspector' })
+    const inspector = screen.getByRole('dialog', { name: 'Element inspector' })
     const fitSelect = within(inspector).getByRole('combobox', { name: 'Image fit mode' })
     await user.selectOptions(fitSelect, 'cover')
 

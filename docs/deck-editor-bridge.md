@@ -1,6 +1,6 @@
 # Ark manual editor bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). When the user enables **Edit** mode, the shell and deck runtime coordinate selection, geometry, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). When a deck is loaded and interactive (not presenting or generating), the shell enables the editor runtime automatically — there is no Preview/Edit toggle. The shell and deck runtime coordinate selection, geometry, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
 
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
@@ -17,7 +17,7 @@ All message types use the `ark:editor-*` prefix. TypeScript types, validators (`
 
 ## Relationship to the navigation bridge
 
-Preview HTML is built by `buildPreviewHtml` in `packages/deck-core/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). Interactive shell previews also inject the **editor** runtime up front (`editorBridge: true`); Edit mode activates or deactivates that dormant runtime with `ark:editor-enable` / `ark:editor-disable` messages instead of remounting the iframe.
+Preview HTML is built by `buildPreviewHtml` in `packages/deck-core/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). Interactive shell previews also inject the **editor** runtime up front (`editorBridge: true`); the shell activates or deactivates that dormant runtime with `ark:editor-enable` / `ark:editor-disable` messages instead of remounting the iframe.
 
 Load order (before `</body>`):
 
@@ -32,8 +32,8 @@ Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*`
 
 | Step | Actor | Action                                                                                          |
 | ---- | ----- | ----------------------------------------------------------------------------------------------- |
-| 1    | User  | Clicks **Edit** in the preview chrome (`DeckPreview`)                                           |
-| 2    | Shell | Sets `editModeActive`; the existing editor-capable preview frame stays mounted                  |
+| 1    | Shell | Derives edit chrome from a loaded deck that is not presenting or generating (`DeckPreview`)     |
+| 2    | Shell | The existing editor-capable preview frame stays mounted                                         |
 | 3    | Shell | `useDeckEditorBridge` attaches a `message` listener and calls `enableEditor(slideIndex, tool?)` |
 | 4    | Shell | Posts `ark:editor-enable` with the active slide index and optional tool (default `select`)      |
 | 5    | Deck  | Binds pointer/keyboard listeners, sets `enabled = true`, posts `ark:editor-ready`               |
@@ -48,13 +48,13 @@ Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*`
 
 The editor runtime is **dormant** until `ark:editor-enable`. Messages other than enable/disable are ignored while disabled.
 
-**Disable:** the shell posts `ark:editor-disable`. The runtime ends any active text edit (without commit), clears selection/hover, unbinds listeners, and posts `ark:editor-selection-change` with `selection: null`.
+**Disable:** the shell posts `ark:editor-disable` when Present mode opens, generation starts, or the deck becomes empty. The runtime ends any active text edit (without commit), clears selection/hover, unbinds listeners, and posts `ark:editor-selection-change` with `selection: null`.
 
 ### Preview reloads and deck switches
 
 - Each preview session or HTML change produces a new `iframeKey` / `iframeGenerationKey`. `useDeckEditorBridge` increments a generation counter and **ignores** runtime messages whose generation does not match — this rejects stale frames after reload.
 - Incoming messages are also rejected unless `event.source === iframeRef.contentWindow`.
-- When Edit mode is off, present mode is open, or the deck has no slides, the bridge hook is disabled and does not listen.
+- When present mode is open, generation is running, or the deck has no slides, the bridge hook is disabled and does not listen.
 - After a successful text commit, `DeckPreview` preserves the active slide index across the preview HTML refresh triggered by the patch response.
 
 ## Message reference
@@ -63,13 +63,13 @@ The editor runtime is **dormant** until `ark:editor-enable`. Messages other than
 
 | Type                          | Payload fields                            | When sent                                                  | Receiver behavior                                                              |
 | ----------------------------- | ----------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `ark:editor-enable`           | `slideIndex: number`, `tool?: EditorTool` | Enter Edit mode, iframe load, or active slide change       | Bind listeners; set slide index and tool; post `ark:editor-ready`              |
-| `ark:editor-disable`          | _(none)_                                  | Exit Edit mode                                             | Tear down editor state; clear selection                                        |
+| `ark:editor-enable`           | `slideIndex: number`, `tool?: EditorTool` | Edit chrome active, iframe load, or active slide change    | Bind listeners; set slide index and tool; post `ark:editor-ready`              |
+| `ark:editor-disable`          | _(none)_                                  | Present mode, generation, or empty deck                    | Tear down editor state; clear selection                                        |
 | `ark:editor-select`           | `elementId: string`, `slideIndex: number` | Programmatic selection (future toolbar/context flows)      | Resolve element; highlight; post `ark:editor-selection-change`                 |
 | `ark:editor-clear-selection`  | _(none)_                                  | Clear selection programmatically                           | Deselect; post `ark:editor-selection-change` with `null`                       |
 | `ark:editor-start-text-edit`  | `elementId: string`, `slideIndex: number` | **Edit text** button or Enter on a text-editable selection | Enter `contenteditable` on element; post `ark:editor-text-edit-state`          |
 | `ark:editor-cancel-text-edit` | _(none)_                                  | Escape (shell) or cancel flow                              | Revert text; exit edit; post `ark:editor-text-edit-state` with `active: false` |
-| `ark:editor-request-geometry` | `elementId: string`, `slideIndex: number` | Selection changes in Edit mode                             | Measure element; post `ark:editor-geometry`                                    |
+| `ark:editor-request-geometry` | `elementId: string`, `slideIndex: number` | Selection changes while edit chrome is active              | Measure element; post `ark:editor-geometry`                                    |
 | `ark:editor-set-tool`         | `tool: EditorTool`                        | Toolbar tool selection                                     | Set active tool: `select`, `text`, or `insert`                                 |
 
 #### `EditorTool`
@@ -117,9 +117,9 @@ type EditorSelectionInfo = {
 
 #### Geometry
 
-| Type                  | Payload fields                                                                        | When fired                                | Parent behavior                   |
-| --------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- |
-| `ark:editor-geometry` | `elementId`, `slideIndex`, `geometry: EditorNormalizedRect`, `zIndex: number \| null` | Response to `ark:editor-request-geometry` | Position `EditorSelectionOverlay` |
+| Type                  | Payload fields                                                                                                              | When fired                                | Parent behavior                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- |
+| `ark:editor-geometry` | `elementId`, `slideIndex`, `geometry: EditorNormalizedRect`, `zIndex: number \| null`, `slideBounds?: EditorNormalizedRect` | Response to `ark:editor-request-geometry` | Position `EditorSelectionOverlay` |
 
 ```ts
 type EditorNormalizedRect = {
@@ -130,7 +130,9 @@ type EditorNormalizedRect = {
 }
 ```
 
-Coordinates are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `packages/deck-core/deck-metadata.ts` and applied server-side when converting to inline CSS.
+Coordinates in `geometry` are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `packages/deck-core/deck-metadata.ts` and applied server-side when converting to inline CSS.
+
+Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`document.documentElement`). The shell composes `slideBounds` with slide-relative `geometry` when drawing `EditorSelectionOverlay` and the inspector settings trigger, so letterboxed or scaled slides (e.g. Reveal) stay aligned with the parent chrome. When omitted, the shell treats the slide as filling the stage (`{ x: 0, y: 0, width: 1, height: 1 }`). Transform preview/commit messages carry the same optional field for live drag chrome.
 
 #### Text editing
 
@@ -147,10 +149,10 @@ Coordinates are **slide-relative normalized fractions** (0–1), derived from `g
 
 #### Transforms
 
-| Type                           | Payload fields                                   | When fired                          | Semantics                                                                                 |
-| ------------------------------ | ------------------------------------------------ | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?` | During drag/resize (future toolbar) | **Uncommitted** visual update; parent may mirror in chrome but must not persist           |
-| `ark:editor-transform-commit`  | `elementId`, `slideIndex`, `geometry`, `zIndex?` | Transform gesture complete          | **Persistence trigger**; parent should map to `move_element` / `resize_element` patch ops |
+| Type                           | Payload fields                                                   | When fired                          | Semantics                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?` | During drag/resize (future toolbar) | **Uncommitted** visual update; parent may mirror in chrome but must not persist           |
+| `ark:editor-transform-commit`  | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?` | Transform gesture complete          | **Persistence trigger**; parent should map to `move_element` / `resize_element` patch ops |
 
 `useDeckEditorBridge` stores preview and commit messages in separate state fields; a preview clears any pending commit and vice versa. End-to-end transform persistence is tracked in #80.
 
@@ -256,17 +258,18 @@ Transform and delete persistence will follow the same pattern once toolbar/delet
 
 ## Shell integration
 
-| Component / module                                   | Role                                                                     |
-| ---------------------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/web/src/components/DeckPreview.tsx`            | Edit mode toggle, text commit orchestration, overlay, keyboard shortcuts |
-| `apps/web/src/hooks/useDeckEditorBridge.ts`          | `postMessage` listener and shell command helpers                         |
-| `apps/web/src/hooks/useDeckPersistence.ts`           | `patchDeckOperations`, `refreshActiveDeck`                               |
-| `apps/web/src/App.tsx`                               | `handleCommitTextEdit` → `replace_text` patch                            |
-| `apps/web/src/components/EditorSelectionOverlay.tsx` | Selection box from normalized geometry                                   |
-| `apps/web/src/lib/deck-text-edit.ts`                 | `isTextEditableSelection` guard for inline text                          |
-| `packages/deck-core/deck-preview-html.ts`            | Injects editor runtime when `editorBridge: true`                         |
-| `apps/api/deck-element-patch.ts`                     | Server-side patch application and validation                             |
-| `apps/api/deck-editable-elements.ts`                 | Editable metadata parsing (#74)                                          |
+| Component / module                                     | Role                                                                          |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `apps/web/src/components/DeckPreview.tsx`              | Always-on edit chrome, text commit orchestration, overlay, keyboard shortcuts |
+| `apps/web/src/hooks/useDeckEditorBridge.ts`            | `postMessage` listener and shell command helpers                              |
+| `apps/web/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                                    |
+| `apps/web/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                                 |
+| `apps/web/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                                        |
+| `apps/web/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel                 |
+| `apps/web/src/lib/deck-text-edit.ts`                   | `isTextEditableSelection` guard for inline text                               |
+| `packages/deck-core/deck-preview-html.ts`              | Injects editor runtime when `editorBridge: true`                              |
+| `apps/api/deck-element-patch.ts`                       | Server-side patch application and validation                                  |
+| `apps/api/deck-editable-elements.ts`                   | Editable metadata parsing (#74)                                               |
 
 Preview sessions record `editorBridge` so the sandbox host serves HTML with the editor script only when requested (`POST /api/preview-sessions` with `editorBridge: true`).
 

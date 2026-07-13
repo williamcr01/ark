@@ -78,6 +78,13 @@ async function runSmoke() {
 
     browser = await spawnChromium(debugPort, path.join(tempRoot, 'chromium-profile'))
     cdp = await createPage(browser.debugPort)
+    // Desktop layout enables the always-on editor chrome and patch handlers.
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    })
 
     const requestUrls = new Map<string, string>()
     const completedRequestIds = new Set<string>()
@@ -151,8 +158,19 @@ async function runSmoke() {
       `Sandbox render did not include the CSS-only navigation shim.\n${renderedPreviewHtml.slice(0, 800)}`,
     )
     assert(
+      renderedPreviewHtml.includes('data-ark-preview-editor'),
+      `Interactive shell preview should include the dormant editor bridge shim.\n${renderedPreviewHtml.slice(0, 800)}`,
+    )
+    assert(
       !renderedPreviewHtml.includes('data-ark-preview-bridge'),
       'Plain CSS preview should not opt into full-js bridge mode.',
+    )
+
+    await waitFor('always-on edit mode toolbar', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('[aria-label="Edit mode toolbar"]'))`,
+      ),
     )
 
     await waitFor('sandbox preview loading overlay to clear', async () => {
@@ -175,63 +193,15 @@ async function runSmoke() {
       )
     })
 
-    await evaluate<boolean>(
-      cdp,
-      `Boolean(document.querySelector('button[aria-label="Edit mode"]')?.click())`,
-    )
-
-    await waitFor('edit mode toolbar', async () =>
+    await waitFor('editor bridge ready in preview frame', async () =>
       evaluate<boolean>(
         cdp!,
-        `Boolean(document.querySelector('[aria-label="Edit mode toolbar"]'))`,
+        `Boolean(document.querySelector('script[data-ark-preview-editor]'))`,
+        {
+          contextId: mainPreview.id,
+          sessionId: mainPreview.sessionId,
+        },
       ),
-    )
-
-    const editPreviewSrc = await waitFor(
-      'editor-enabled sandbox preview iframe src',
-      async () => {
-        const src = await evaluate<string>(
-          cdp!,
-          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
-        )
-
-        return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
-      },
-      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-    )
-
-    const editRenderedPreviewHtml = await (await fetch(editPreviewSrc)).text()
-    assert(
-      editRenderedPreviewHtml.includes('data-ark-preview-editor'),
-      `Edit mode sandbox render did not include the editor bridge shim.\n${editRenderedPreviewHtml.slice(0, 800)}`,
-    )
-
-    await evaluate<boolean>(
-      cdp,
-      `Boolean(document.querySelector('button[aria-label="Preview mode"]')?.click())`,
-    )
-
-    await waitFor('preview mode after leaving edit mode', async () =>
-      evaluate<boolean>(cdp!, `!document.querySelector('[aria-label="Edit mode toolbar"]')`),
-    )
-
-    const previewSrcAfterEdit = await waitFor(
-      'sandbox preview iframe src after edit mode',
-      async () => {
-        const src = await evaluate<string>(
-          cdp!,
-          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
-        )
-
-        return src.startsWith(`${servers!.sandboxOrigin}/render/`) ? src : ''
-      },
-      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-    )
-
-    const mainPreviewAfterEdit = await waitFor(
-      'main sandbox preview frame context after edit mode',
-      () => findContextByUrl(cdp!, contexts, previewSrcAfterEdit),
-      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
     await evaluate<boolean>(
@@ -247,7 +217,7 @@ async function runSmoke() {
           const active = document.querySelector('section.slide.active, section.slide.is-active');
           return Boolean(active && (active.textContent || '').includes('Metrics that moved'));
         })()`,
-        { contextId: mainPreviewAfterEdit.id, sessionId: mainPreviewAfterEdit.sessionId },
+        { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
       )
 
       return appText.includes('Slide 2 of 3') && frameActive

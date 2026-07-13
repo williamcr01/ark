@@ -191,6 +191,8 @@ export type EditorGeometryMessage = {
   slideIndex: number
   geometry: EditorNormalizedRect
   zIndex: number | null
+  /** Slide box normalized to the iframe viewport (for parent overlay mapping). */
+  slideBounds?: EditorNormalizedRect
 }
 
 export type EditorTextCommitMessage = {
@@ -215,6 +217,7 @@ export type EditorTransformPreviewMessage = {
   slideIndex: number
   geometry: EditorNormalizedRect
   zIndex?: number | null
+  slideBounds?: EditorNormalizedRect
 }
 
 export type EditorTransformCommitMessage = {
@@ -223,6 +226,7 @@ export type EditorTransformCommitMessage = {
   slideIndex: number
   geometry: EditorNormalizedRect
   zIndex?: number | null
+  slideBounds?: EditorNormalizedRect
 }
 
 export type EditorDeleteRequestMessage = {
@@ -451,7 +455,8 @@ export function isEditorGeometryMessage(value: unknown): value is EditorGeometry
     value.type === EDITOR_GEOMETRY_MESSAGE_TYPE &&
     hasElementTarget(value) &&
     isEditorNormalizedRect(value.geometry) &&
-    (value.zIndex === null || isFiniteNumber(value.zIndex))
+    (value.zIndex === null || isFiniteNumber(value.zIndex)) &&
+    (value.slideBounds === undefined || isEditorNormalizedRect(value.slideBounds))
   )
 }
 
@@ -490,7 +495,8 @@ export function isEditorTransformPreviewMessage(
     value.type === EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE &&
     hasElementTarget(value) &&
     isEditorNormalizedRect(value.geometry) &&
-    (value.zIndex === undefined || value.zIndex === null || isFiniteNumber(value.zIndex))
+    (value.zIndex === undefined || value.zIndex === null || isFiniteNumber(value.zIndex)) &&
+    (value.slideBounds === undefined || isEditorNormalizedRect(value.slideBounds))
   )
 }
 
@@ -502,7 +508,8 @@ export function isEditorTransformCommitMessage(
     value.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE &&
     hasElementTarget(value) &&
     isEditorNormalizedRect(value.geometry) &&
-    (value.zIndex === undefined || value.zIndex === null || isFiniteNumber(value.zIndex))
+    (value.zIndex === undefined || value.zIndex === null || isFiniteNumber(value.zIndex)) &&
+    (value.slideBounds === undefined || isEditorNormalizedRect(value.slideBounds))
   )
 }
 
@@ -638,8 +645,16 @@ export function createEditorGeometryMessage(
   slideIndex: number,
   geometry: EditorNormalizedRect,
   zIndex: number | null = null,
+  slideBounds?: EditorNormalizedRect,
 ): EditorGeometryMessage {
-  return { type: EDITOR_GEOMETRY_MESSAGE_TYPE, elementId, slideIndex, geometry, zIndex }
+  return {
+    type: EDITOR_GEOMETRY_MESSAGE_TYPE,
+    elementId,
+    slideIndex,
+    geometry,
+    zIndex,
+    ...(slideBounds ? { slideBounds } : {}),
+  }
 }
 
 export function createEditorTextCommitMessage(
@@ -681,6 +696,7 @@ export function createEditorTransformPreviewMessage(
   slideIndex: number,
   geometry: EditorNormalizedRect,
   zIndex?: number | null,
+  slideBounds?: EditorNormalizedRect,
 ): EditorTransformPreviewMessage {
   return {
     type: EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
@@ -688,6 +704,7 @@ export function createEditorTransformPreviewMessage(
     slideIndex,
     geometry,
     ...(zIndex !== undefined ? { zIndex } : {}),
+    ...(slideBounds ? { slideBounds } : {}),
   }
 }
 
@@ -696,6 +713,7 @@ export function createEditorTransformCommitMessage(
   slideIndex: number,
   geometry: EditorNormalizedRect,
   zIndex?: number | null,
+  slideBounds?: EditorNormalizedRect,
 ): EditorTransformCommitMessage {
   return {
     type: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
@@ -703,6 +721,7 @@ export function createEditorTransformCommitMessage(
     slideIndex,
     geometry,
     ...(zIndex !== undefined ? { zIndex } : {}),
+    ...(slideBounds ? { slideBounds } : {}),
   }
 }
 
@@ -1074,6 +1093,22 @@ export function buildDeckEditorBridgeRuntimeScript(
     };
   }
 
+  function normalizeSlideBounds(slide) {
+    var viewport = document.documentElement.getBoundingClientRect();
+    var slideRect = slide.getBoundingClientRect();
+
+    if (!viewport.width || !viewport.height || !slideRect.width || !slideRect.height) {
+      return { x: 0, y: 0, width: 1, height: 1 };
+    }
+
+    return {
+      x: (slideRect.left - viewport.left) / viewport.width,
+      y: (slideRect.top - viewport.top) / viewport.height,
+      width: slideRect.width / viewport.width,
+      height: slideRect.height / viewport.height,
+    };
+  }
+
   function readZIndex(element) {
     var value = window.getComputedStyle(element).zIndex;
     var parsed = Number.parseInt(value, 10);
@@ -1363,6 +1398,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       slideIndex: slideIndex,
       geometry: normalizeRect(element, slide),
       zIndex: readZIndex(element),
+      slideBounds: normalizeSlideBounds(slide),
     });
   }
 
@@ -1481,6 +1517,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         slideIndex: currentSlideIndex,
         geometry: rect,
         zIndex: readZIndex(element),
+        slideBounds: normalizeSlideBounds(slide),
       });
     } else {
       postToParent({
@@ -1489,6 +1526,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         slideIndex: currentSlideIndex,
         geometry: rect,
         zIndex: readZIndex(element),
+        slideBounds: normalizeSlideBounds(slide),
       });
     }
 
@@ -1720,8 +1758,16 @@ export function buildDeckEditorBridgeRuntimeScript(
     var target = findEditableTarget(event.target, slide);
 
     if (!target) {
+      // Empty slide / non-editable chrome: deselect like PowerPoint.
+      event.preventDefault();
+      event.stopPropagation();
       setSelectedElement(null, slide, currentSlideIndex);
       postSelection(null, slide, currentSlideIndex);
+      postToParent({
+        type: C.HOVER,
+        slideIndex: currentSlideIndex,
+        elementId: null,
+      });
       return;
     }
 
@@ -1937,16 +1983,16 @@ export function buildDeckEditorBridgeRuntimeScript(
         return;
       }
 
-      var slide = getActiveSlide();
-
-      if (!slide) {
-        postError('No active slide found for editor command.', 'missing-slide');
-        return;
-      }
-
       if (data.type === C.CLEAR_SELECTION) {
-        setSelectedElement(null, slide, currentSlideIndex);
-        postSelection(null, slide, currentSlideIndex);
+        var clearSlide = getActiveSlide();
+
+        if (!clearSlide) {
+          postError('No active slide found for editor command.', 'missing-slide');
+          return;
+        }
+
+        setSelectedElement(null, clearSlide, currentSlideIndex);
+        postSelection(null, clearSlide, currentSlideIndex);
         return;
       }
 
@@ -1964,7 +2010,16 @@ export function buildDeckEditorBridgeRuntimeScript(
         typeof data.elementId === 'string' &&
         typeof data.slideIndex === 'number'
       ) {
+        // Update the active slide index before resolving the slide so geometry
+        // and selection target the requested slide during rapid navigation.
         currentSlideIndex = data.slideIndex;
+        var slide = getActiveSlide();
+
+        if (!slide) {
+          postError('No active slide found for editor command.', 'missing-slide');
+          return;
+        }
+
         var element = findElementById(data.elementId, slide, data.slideIndex);
 
         if (!element) {

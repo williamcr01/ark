@@ -173,9 +173,9 @@ function LazyThumbnail({
       aria-current={active ? 'true' : undefined}
       aria-label={`Go to slide ${index + 1}`}
       className={cn(
-        'group relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)] transition-shadow',
+        'group relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)] transition-[box-shadow,transform]',
         'hover:ring-[var(--ark-titlebar-muted)]',
-        active && 'ring-2 ring-[var(--ark-accent)]',
+        active && 'z-10 scale-[1.06] ring-[3px] ring-[var(--ark-accent)]',
         orientation === 'vertical' ? 'w-full' : 'w-[152px]',
       )}
       onClick={() => onSelect(index)}
