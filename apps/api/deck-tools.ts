@@ -150,13 +150,8 @@ export function createDeckTools(
             return { error: slide.error }
           }
 
-          return {
-            mode: 'slide' as const,
-            index: slide.index,
-            title: slide.title,
-            content: slide.content,
-            notes: slide.notes,
-          }
+          const { ok: _ok, ...result } = slide
+          return { mode: 'slide' as const, ...result }
         }
 
         const slice =

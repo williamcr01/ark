@@ -5,13 +5,16 @@ Ark keeps durable chat and provider context as separate representations.
 Durable assistant messages are an append-only logical transcript of assistant text, tool calls,
 and tool results. Tool-specific projectors remove duplicate deck HTML and bound individual values
 while retaining hashes, targets, results, errors, and instructions for re-reading authoritative
-deck state. Completed steps are not deleted to satisfy a model budget.
+deck state. Mutating tools are marked explicitly and are never recommended for replay; recovery
+instead inspects the current deck to verify their effects. Completed steps are not deleted to
+satisfy a model budget. A separate persistence projection compacts values, never logical parts,
+before enforcing the 512KB durable ceiling.
 
 `assembleDeckAgentContext` transforms that durable history immediately before `generateText`. It
 validates tool pairing, retains recent complete steps, and replaces older model-only context with a
-deterministic semantic ledger when the emergency 96KB per-turn ceiling is reached. This projection
-does not mutate or persist markers back into chat. The AI SDK owns continuation between tool steps
-inside one generation job.
+deterministic semantic ledger in a prefixed user-context message when the emergency 96KB per-turn
+ceiling is reached. This projection does not mutate or persist markers back into chat. The AI SDK
+owns continuation between tool steps inside one generation job.
 
 ## Future compaction contract
 

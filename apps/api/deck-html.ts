@@ -26,6 +26,7 @@ export type ReadDeckSlice = {
   shownLineStart: number
   shownLineEnd: number
   nextOffset?: number
+  charOffset?: number
   nextCharOffset?: number
   hint?: string
 }
@@ -123,6 +124,7 @@ export function readDeckCharacterSlice(
     truncated,
     shownLineStart: offset,
     shownLineEnd: offset,
+    charOffset,
     ...(truncated ? { nextCharOffset: page.nextCharacterOffset } : { nextOffset: offset + 1 }),
     hint: truncated
       ? `Call read_deck({ offset: ${offset}, charOffset: ${page.nextCharacterOffset} }) to continue this line.`

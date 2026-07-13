@@ -161,6 +161,44 @@ describe('extractAgentTranscriptParts', () => {
       ]),
     )
   })
+
+  it('persists read recovery metadata for the next job', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(sampleHtml))
+    const parts = extractAgentTranscriptParts(
+      [
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              toolCallId: 'call-read',
+              input: { offset: 1 },
+            },
+            {
+              type: 'tool-result',
+              toolName: 'read_deck',
+              toolCallId: 'call-read',
+              output: {
+                mode: 'lines',
+                content: 'x'.repeat(10_000),
+                offset: 1,
+                totalLines: 2,
+                truncated: true,
+                nextOffset: 2,
+              },
+            },
+          ],
+        },
+      ],
+      activeDefinitions,
+    )
+    expect(parts[1]).toMatchObject({
+      type: 'tool-result',
+      truncated: true,
+      recovery: { toolName: 'read_deck', input: { offset: 2 } },
+      output: { content: 'x'.repeat(10_000), nextOffset: 2 },
+    })
+  })
 })
 
 describe('runDeckAgent', () => {

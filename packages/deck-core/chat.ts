@@ -58,6 +58,9 @@ export type ChatMessagePart =
       stepIndex?: number
       toolCallId?: string
       input?: JsonValue
+      mutating?: boolean
+      truncated?: boolean
+      recovery?: TranscriptRecovery
     }
   | {
       type: 'tool-result'
@@ -68,7 +71,16 @@ export type ChatMessagePart =
       toolCallId?: string
       output?: JsonValue
       isError?: boolean
+      mutating?: boolean
+      truncated?: boolean
+      recovery?: TranscriptRecovery
     }
+
+export type TranscriptRecovery = {
+  toolName: string
+  input: JsonValue
+  instruction: string
+}
 
 /** Client-side chat message with a stable id for React keys. */
 export type ChatMessage = {
@@ -107,8 +119,9 @@ export type EditorSelectionContext = {
 /**
  * Context policy (pi-style): every generation request replays the full visible
  * conversation. Durable assistant turns retain every logical step using bounded,
- * recoverable tool projections. Model context is assembled separately and may
- * summarize older steps without mutating persisted chat.
+ * recoverable tool projections. Mutations are never recommended for replay.
+ * Model context is assembled separately and may summarize older steps in a
+ * prefixed user-context ledger without mutating persisted chat.
  * The AI SDK owns tool-result continuation within a single generation job.
  * Compaction, branch summaries, steer queues, and follow-up queues are not implemented.
  */
@@ -185,6 +198,16 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
         summary: part.summary,
         ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
         ...(typeof part.toolCallId === 'string' ? { toolCallId: part.toolCallId } : {}),
+        ...(typeof part.mutating === 'boolean' ? { mutating: part.mutating } : {}),
+        ...(typeof part.truncated === 'boolean' ? { truncated: part.truncated } : {}),
+        ...(part.recovery &&
+        typeof part.recovery === 'object' &&
+        !Array.isArray(part.recovery) &&
+        typeof (part.recovery as Record<string, unknown>).toolName === 'string' &&
+        typeof (part.recovery as Record<string, unknown>).instruction === 'string' &&
+        isJsonValue((part.recovery as Record<string, unknown>).input)
+          ? { recovery: part.recovery as TranscriptRecovery }
+          : {}),
       }
       if (part.type === 'tool-call')
         parts.push({
@@ -551,13 +574,6 @@ export function toModelMessage(message: ApiChatMessage): ModelMessage {
     content: buildUserModelContent(message),
   }
 }
-
-export {
-  assembleDeckAgentContext,
-  buildAgentModelMessages,
-  convertChatHistoryToModelMessages,
-  projectAssistantTurnForModel,
-} from './chat-context.ts'
 
 export function buildModelMessages(
   messages: ApiChatMessage[],

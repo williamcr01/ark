@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai'
 
 import {
   MAX_MODEL_ASSISTANT_TURN_BYTES,
+  MAX_PERSISTED_ASSISTANT_TURN_BYTES,
   buildUserModelContent,
   type ApiChatMessage,
   type ChatMessagePart,
@@ -18,13 +19,98 @@ export type DeckAgentContextMetadata = {
   bytesAfter: number
 }
 
-const groupParts = (parts: readonly ChatMessagePart[]) => {
+type PartGroup = [number, ChatMessagePart[]]
+
+const groupParts = (parts: readonly ChatMessagePart[]): PartGroup[] | null => {
   const groups = new Map<number, ChatMessagePart[]>()
   for (const part of parts) {
     if (part.stepIndex === undefined) return null
     groups.set(part.stepIndex, [...(groups.get(part.stepIndex) ?? []), part])
   }
   return [...groups.entries()].sort(([a], [b]) => a - b)
+}
+
+const stableHash = (value: string) => {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+const truncateText = (value: string, maxBytes: number, reason: string) => {
+  if (bytes(value) <= maxBytes) return value
+  const marker = `\n[${reason}; ${bytes(value)} bytes; hash:${stableHash(value)}]`
+  const available = Math.max(0, maxBytes - bytes(marker) - 2)
+  let prefix = ''
+  let used = 0
+  for (const character of value) {
+    const size = new TextEncoder().encode(character).byteLength
+    if (used + size > available) break
+    prefix += character
+    used += size
+  }
+  return `${prefix}${marker}`
+}
+
+const compactPart = (part: ChatMessagePart, reason: 'model' | 'persistence'): ChatMessagePart => {
+  if (part.type === 'text') {
+    return {
+      ...part,
+      content: truncateText(
+        part.content,
+        reason === 'model' ? 8 * 1024 : 32 * 1024,
+        `assistant text truncated for ${reason}`,
+      ),
+    }
+  }
+  const instruction =
+    part.recovery?.instruction ??
+    (part.mutating
+      ? `Do not repeat ${part.toolName}; inspect the current deck to verify its effect.`
+      : `Inspect the current deck before continuing; no replay recovery was recorded.`)
+  const compactValue: JsonValue = {
+    [`omittedFor${reason === 'model' ? 'Model' : 'Persistence'}`]: true,
+    summary: part.summary.slice(0, 320),
+    instruction,
+    ...(part.type === 'tool-result' ? { isError: part.isError ?? part.error ?? false } : {}),
+  }
+  return part.type === 'tool-call'
+    ? { ...part, summary: part.summary.slice(0, 320), input: compactValue }
+    : { ...part, summary: part.summary.slice(0, 320), output: compactValue }
+}
+
+export function projectAssistantTurnForPersistence(
+  parts: readonly ChatMessagePart[],
+  maxBytes = MAX_PERSISTED_ASSISTANT_TURN_BYTES,
+): ChatMessagePart[] {
+  const cloned = parts.map((part) => structuredClone(part))
+  if (bytes(cloned) <= maxBytes) return cloned
+
+  let projected = cloned.map((part) =>
+    part.type === 'text' ? part : compactPart(part, 'persistence'),
+  )
+  if (bytes(projected) <= maxBytes) return projected
+
+  const textCount = Math.max(1, projected.filter((part) => part.type === 'text').length)
+  const nonTextBytes = bytes(projected.filter((part) => part.type !== 'text'))
+  const textBudget = Math.max(128, Math.floor((maxBytes - nonTextBytes - 1024) / textCount))
+  projected = projected.map((part) =>
+    part.type === 'text'
+      ? {
+          ...part,
+          content: truncateText(
+            part.content,
+            textBudget,
+            'assistant text truncated for persistence',
+          ),
+        }
+      : part,
+  )
+  if (bytes(projected) > maxBytes)
+    throw new Error('Generated assistant transcript exceeds the durable persistence ceiling.')
+  return projected
 }
 
 const ledgerEntry = (parts: readonly ChatMessagePart[]) => {
@@ -38,95 +124,105 @@ const ledgerEntry = (parts: readonly ChatMessagePart[]) => {
     .map((call) => {
       const result = results.find((item) => item.toolCallId === call.toolCallId)
       const error = result?.isError || result?.error ? 'error: ' : ''
-      return `- ${call.toolName} ${call.summary} -> ${error}${result?.summary ?? 'result unavailable'}`.slice(
+      const mutation = call.mutating ? 'mutation; do not repeat; ' : ''
+      const recovery = result?.recovery?.instruction ?? call.recovery?.instruction
+      return `- ${call.toolName} ${call.summary} -> ${mutation}${error}${result?.summary ?? 'result unavailable'}${recovery ? `; ${recovery}` : ''}`.slice(
         0,
-        320,
+        360,
       )
     })
     .join('\n')
 }
 
-const buildLedger = (groups: Array<[number, ChatMessagePart[]]>, stepIndex: number) => ({
-  type: 'text' as const,
-  stepIndex,
-  content: `[Earlier agent steps summarized for replay]\n${groups
-    .slice(-40)
-    .map(([, parts]) => ledgerEntry(parts))
-    .join(
-      '\n',
-    )}${groups.length > 40 ? `\n- ${groups.length - 40} additional steps omitted` : ''}\n[Current deck state is authoritative; inspect it again before editing.]`,
-})
+const isPriorityGroup = ([, parts]: PartGroup) =>
+  parts.some(
+    (part) =>
+      (part.type !== 'text' && part.mutating) ||
+      (part.type === 'tool-result' && (part.isError === true || part.error === true)),
+  )
 
-const compactStep = (parts: readonly ChatMessagePart[]): ChatMessagePart[] =>
-  parts.map((part) => {
-    if (part.type === 'tool-call') {
-      return {
-        ...part,
-        input: {
-          omittedForModel: true,
-          summary: part.summary,
-          instruction: `Call ${part.toolName} again if its input details are needed.`,
-        },
-      }
-    }
-    if (part.type === 'tool-result') {
-      return {
-        ...part,
-        output: {
-          omittedForModel: true,
-          summary: part.summary,
-          instruction: `Call ${part.toolName} again to recover current data.`,
-        },
-      }
-    }
-    return part
-  })
+const buildLedger = (groups: PartGroup[], maxBytes: number) => {
+  if (!groups.length || maxBytes < 160) return ''
+  const header = '[Earlier agent steps summarized for replay]'
+  const footer = '[Current deck state is authoritative; inspect it again before editing.]'
+  const priority = groups.filter(isPriorityGroup)
+  const recent = groups.filter((group) => !isPriorityGroup(group)).toReversed()
+  const selected: string[] = []
+  let represented = 0
+  for (const group of [...priority, ...recent]) {
+    const entry = ledgerEntry(group[1])
+    const candidate = `${header}\n${[...selected, entry].join('\n')}\n${footer}`
+    if (bytes(candidate) > maxBytes) continue
+    selected.push(entry)
+    represented += 1
+  }
+  const omitted = groups.length - represented
+  const suffix = omitted ? `\n- ${omitted} additional successful read/text step(s) omitted` : ''
+  const ledger = `${header}\n${selected.join('\n')}${suffix}\n${footer}`
+  return bytes(ledger) <= maxBytes ? ledger : `${header}\n${selected.join('\n')}\n${footer}`
+}
+
+export type AssistantTurnModelProjection = {
+  parts: ChatMessagePart[]
+  ledger?: string
+  omittedStepCount: number
+  bytesBefore: number
+  bytesAfter: number
+}
+
+const projectionBytes = (parts: ChatMessagePart[], ledger?: string) => bytes({ parts, ledger })
 
 export function projectAssistantTurnForModel(
   parts: readonly ChatMessagePart[],
   maxBytes = MAX_MODEL_ASSISTANT_TURN_BYTES,
-): { parts: ChatMessagePart[]; omittedStepCount: number; bytesBefore: number; bytesAfter: number } {
+): AssistantTurnModelProjection {
   const bytesBefore = bytes(parts)
-  const groups = groupParts(parts)
-  if (!groups || bytesBefore <= maxBytes)
-    return { parts: [...parts], omittedStepCount: 0, bytesBefore, bytesAfter: bytesBefore }
+  const groups = groupParts(parts.map((part) => structuredClone(part)))
+  const unprojectedBytes = projectionBytes([...parts])
+  if (!groups || unprojectedBytes <= maxBytes)
+    return { parts: [...parts], omittedStepCount: 0, bytesBefore, bytesAfter: unprojectedBytes }
 
-  const kept: Array<[number, ChatMessagePart[]]> = []
+  const kept: PartGroup[] = []
   for (const group of groups.toReversed()) {
     const omitted = groups.slice(0, groups.length - kept.length - 1)
-    const candidateGroup: [number, ChatMessagePart[]] =
-      kept.length === 0 ? [group[0], compactStep(group[1])] : group
-    const marker = omitted.length ? buildLedger(omitted, Math.max(0, candidateGroup[0] - 1)) : null
-    const candidate = [
-      ...(marker ? [marker] : []),
-      ...candidateGroup[1],
-      ...kept.flatMap(([, p]) => p),
-    ]
-    if (bytes(candidate) > maxBytes) break
-    kept.unshift(candidateGroup)
-  }
-
-  if (!kept.length) {
-    const finalText = [...parts].reverse().find((part) => part.type === 'text')
-    const projected = finalText ? [finalText] : [buildLedger(groups, groups.at(-1)?.[0] ?? 0)]
-    return {
-      parts: projected,
-      omittedStepCount: groups.length,
-      bytesBefore,
-      bytesAfter: bytes(projected),
+    const exactParts = [...group[1], ...kept.flatMap(([, value]) => value)]
+    const exactLedger = buildLedger(omitted, Math.max(0, maxBytes - bytes(exactParts) - 32))
+    if (projectionBytes(exactParts, exactLedger || undefined) <= maxBytes) {
+      kept.unshift(group)
+      continue
     }
+    if (!kept.length) {
+      const compacted: PartGroup = [group[0], group[1].map((part) => compactPart(part, 'model'))]
+      const compactedLedger = buildLedger(omitted, Math.max(0, maxBytes - bytes(compacted[1]) - 32))
+      if (projectionBytes(compacted[1], compactedLedger || undefined) <= maxBytes)
+        kept.unshift(compacted)
+    }
+    break
   }
 
   const omitted = groups.slice(0, groups.length - kept.length)
-  const projected = [
-    ...(omitted.length ? [buildLedger(omitted, Math.max(0, kept[0][0] - 1))] : []),
-    ...kept.flatMap(([, stepParts]) => stepParts),
-  ]
+  let projectedParts = kept.flatMap(([, value]) => value)
+  let ledger = buildLedger(omitted, Math.max(0, maxBytes - bytes(projectedParts) - 32))
+  if (!projectedParts.length) {
+    const latest = groups.at(-1)!
+    projectedParts = latest[1].map((part) => compactPart(part, 'model'))
+    ledger = buildLedger(groups.slice(0, -1), Math.max(0, maxBytes - bytes(projectedParts) - 32))
+  }
+  while (projectionBytes(projectedParts, ledger || undefined) > maxBytes) {
+    const text = projectedParts.find((part) => part.type === 'text')
+    if (!text || text.content.length < 2) break
+    text.content = truncateText(
+      text.content,
+      Math.max(64, bytes(text.content) - 256),
+      'assistant text truncated for model context',
+    )
+  }
   return {
-    parts: projected,
+    parts: projectedParts,
+    ...(ledger ? { ledger } : {}),
     omittedStepCount: omitted.length,
     bytesBefore,
-    bytesAfter: bytes(projected),
+    bytesAfter: projectionBytes(projectedParts, ledger || undefined),
   }
 }
 
@@ -174,7 +270,9 @@ function replayAssistant(message: ApiChatMessage, limits?: { maxAssistantTurnByt
     limits?.maxAssistantTurnBytes ?? MAX_MODEL_ASSISTANT_TURN_BYTES,
   )
   const projectedGroups = groupParts(projection.parts) ?? []
-  const emitted: ModelMessage[] = []
+  const emitted: ModelMessage[] = projection.ledger
+    ? [{ role: 'user', content: projection.ledger }]
+    : []
   for (const [, step] of projectedGroups) {
     const calls = step.filter((part) => part.type === 'tool-call')
     const results = step.filter((part) => part.type === 'tool-result')
