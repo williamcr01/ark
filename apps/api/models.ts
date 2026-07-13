@@ -7,53 +7,11 @@ type ModelUnavailableReason = NonNullable<ModelInfo['unavailableReason']>
 
 const OPENAI_CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i
 
-const OPENAI_EXCLUDED_PREFIXES = [
-  'text-embedding',
-  'whisper',
-  'tts',
-  'dall-e',
-  'davinci',
-  'babbage',
-  'gpt-image',
-  'sora',
-  'omni-moderation',
-  'gpt-3.5-turbo-instruct',
-  'ft:',
-  'codex-',
-  'realtime',
-  'audio-',
-  'computer-use',
-]
-
-/** Keep chat/tool-calling OpenAI models; drop embeddings, media, and specialty SKUs. */
-export const isOpenAIChatModel = (id: string) => {
-  const normalized = id.toLowerCase()
-
-  if (OPENAI_EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
-    return false
-  }
-
-  if (/(^|-)(tts|transcribe|realtime)(-|$)/.test(normalized)) {
-    return false
-  }
-
-  return OPENAI_CHAT_MODEL_PATTERN.test(normalized)
-}
-
-const ANTHROPIC_EXCLUDED_SUBSTRINGS = ['embed', 'embedding', 'image', 'tts', 'whisper', 'video']
-
-/** Keep Claude chat models from Anthropic's Models API. */
-export const isAnthropicChatModel = (id: string) => {
-  const normalized = id.toLowerCase()
-
-  if (!normalized.startsWith('claude')) {
-    return false
-  }
-
-  return !ANTHROPIC_EXCLUDED_SUBSTRINGS.some((part) => normalized.includes(part))
-}
-
-const GOOGLE_EXCLUDED_SUBSTRINGS = [
+/**
+ * Shared markers for non-chat / non-agent models across OpenAI, Anthropic, and Google.
+ * Matched as case-insensitive substrings of the provider model id.
+ */
+const NON_CHAT_MODEL_SUBSTRINGS = [
   'embed',
   'embedding',
   'image',
@@ -64,11 +22,52 @@ const GOOGLE_EXCLUDED_SUBSTRINGS = [
   'lyria',
   'robotics',
   'aqa',
-]
+  'whisper',
+  'video',
+  'dall-e',
+  'sora',
+  'realtime',
+  'transcribe',
+  'moderation',
+  'audio',
+  'computer-use',
+] as const
+
+const hasNonChatModelMarker = (normalizedId: string) =>
+  NON_CHAT_MODEL_SUBSTRINGS.some((part) => normalizedId.includes(part))
+
+/** OpenAI-only legacy / specialty prefixes not covered by the shared substring list. */
+const OPENAI_EXCLUDED_PREFIXES = ['davinci', 'babbage', 'gpt-3.5-turbo-instruct', 'ft:', 'codex-']
+
+/** Keep chat/tool-calling OpenAI models; drop embeddings, media, and specialty SKUs. */
+export const isOpenAIChatModel = (id: string) => {
+  const normalized = id.toLowerCase()
+
+  if (hasNonChatModelMarker(normalized)) {
+    return false
+  }
+
+  if (OPENAI_EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    return false
+  }
+
+  return OPENAI_CHAT_MODEL_PATTERN.test(normalized)
+}
+
+/** Keep Claude chat models from Anthropic's Models API. */
+export const isAnthropicChatModel = (id: string) => {
+  const normalized = id.toLowerCase()
+
+  if (!normalized.startsWith('claude')) {
+    return false
+  }
+
+  return !hasNonChatModelMarker(normalized)
+}
 
 /**
  * Keep stable Gemini chat models suitable for generateContent + tools.
- * Drops image/video/embed/TTS SKUs and noisy preview/exp/revision aliases.
+ * Drops shared non-chat markers plus Google preview/exp/revision aliases.
  */
 export const isGoogleChatModel = (id: string) => {
   const normalized = id.toLowerCase()
@@ -77,7 +76,7 @@ export const isGoogleChatModel = (id: string) => {
     return false
   }
 
-  if (GOOGLE_EXCLUDED_SUBSTRINGS.some((part) => normalized.includes(part))) {
+  if (hasNonChatModelMarker(normalized)) {
     return false
   }
 
