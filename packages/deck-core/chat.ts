@@ -131,6 +131,7 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
     return { ok: false as const, error: `messages[${messageIndex}].parts must be an array.` }
   }
   const parts: ChatMessagePart[] = []
+  let totalCharacters = 0
   for (const [partIndex, raw] of input.entries()) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       return {
@@ -166,6 +167,15 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
           error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} must be JSON-safe.`,
         }
       }
+      if (
+        part[valueKey] !== undefined &&
+        JSON.stringify(part[valueKey]).length > MAX_TRANSCRIPT_VALUE_CHARS
+      ) {
+        return {
+          ok: false as const,
+          error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} exceeds the ${MAX_TRANSCRIPT_VALUE_CHARS} character replay limit.`,
+        }
+      }
       const common = {
         toolName: part.toolName,
         summary: part.summary,
@@ -191,6 +201,13 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
     return {
       ok: false as const,
       error: `messages[${messageIndex}].parts[${partIndex}] is invalid.`,
+    }
+  }
+  for (const part of parts) totalCharacters += JSON.stringify(part).length
+  if (totalCharacters > MAX_TRANSCRIPT_TURN_CHARS) {
+    return {
+      ok: false as const,
+      error: `messages[${messageIndex}].parts exceeds the ${MAX_TRANSCRIPT_TURN_CHARS} character replay limit.`,
     }
   }
   return { ok: true as const, parts }
