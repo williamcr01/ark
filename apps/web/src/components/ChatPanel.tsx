@@ -38,11 +38,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  formatModelLabel,
-  type ApiKeyStatus,
-  type AvailableModel,
-} from '@/hooks/useAvailableModels'
+import { formatModelLabel, type AvailableModel } from '@/hooks/useAvailableModels'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
 import type {
   AgentStep,
@@ -245,8 +241,6 @@ export type ChatPanelProps = {
   selectedModel: string
   isLoadingModels: boolean
   modelsError: string
-  modelWarnings: string[]
-  apiKeyStatus: ApiKeyStatus
   canGenerate: boolean
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
@@ -259,34 +253,6 @@ export type ChatPanelProps = {
   onRetryGeneration: () => void | Promise<void>
   getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
   onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
-}
-
-function getApiKeyAlert(apiKeyStatus: ApiKeyStatus, modelsError: string) {
-  if (apiKeyStatus === 'missing') {
-    return {
-      description:
-        'Copy .env.example to .env, add at least one provider API key (OpenAI, Claude, or Gemini), then restart pnpm dev.',
-      title: 'API key required',
-    }
-  }
-
-  if (apiKeyStatus === 'invalid') {
-    return {
-      description:
-        modelsError ||
-        'A provider API key in .env was rejected. Check your keys and restart pnpm dev.',
-      title: 'Invalid API key',
-    }
-  }
-
-  if (modelsError) {
-    return {
-      description: modelsError,
-      title: 'Could not load models',
-    }
-  }
-
-  return null
 }
 
 export function ChatPanel({
@@ -302,8 +268,6 @@ export function ChatPanel({
   selectedModel,
   isLoadingModels,
   modelsError,
-  modelWarnings,
-  apiKeyStatus,
   canGenerate,
   selectedAssetIds = [],
   assetsSlot,
@@ -317,8 +281,7 @@ export function ChatPanel({
   getMessageDeliveryStatus,
   onRetryPersist,
 }: ChatPanelProps) {
-  const apiKeyAlert = getApiKeyAlert(apiKeyStatus, modelsError)
-  const isInputDisabled = isGenerating || !canGenerate
+  const isSubmitDisabled = isGenerating || !canGenerate
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
@@ -424,19 +387,11 @@ export function ChatPanel({
             </Alert>
           ) : null}
 
-          {apiKeyAlert ? (
+          {modelsError ? (
             <Alert className="mb-3" variant="destructive">
               <AlertCircleIcon />
-              <AlertTitle>{apiKeyAlert.title}</AlertTitle>
-              <AlertDescription>{apiKeyAlert.description}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          {modelWarnings.length > 0 ? (
-            <Alert className="mb-3">
-              <AlertCircleIcon />
-              <AlertTitle>Model configuration notice</AlertTitle>
-              <AlertDescription>{modelWarnings.join(' ')}</AlertDescription>
+              <AlertTitle>Could not load models</AlertTitle>
+              <AlertDescription>{modelsError}</AlertDescription>
             </Alert>
           ) : null}
 
@@ -454,15 +409,9 @@ export function ChatPanel({
             <PromptInputBody>
               <PromptInputTextarea
                 className="min-h-24 resize-none"
-                disabled={isInputDisabled}
+                disabled={isGenerating}
                 onChange={(event) => onInputChange(event.currentTarget.value)}
-                placeholder={
-                  canGenerate
-                    ? 'Describe the deck you want, or ask for an edit…'
-                    : apiKeyStatus === 'checking'
-                      ? 'Checking API key…'
-                      : 'Add a provider API key in .env to start generating decks…'
-                }
+                placeholder="Describe the deck you want, or ask for an edit…"
                 value={input}
               />
             </PromptInputBody>
@@ -479,7 +428,7 @@ export function ChatPanel({
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
                 <PromptInputSelect
-                  disabled={isGenerating || isLoadingModels}
+                  disabled={isGenerating}
                   onValueChange={onModelChange}
                   value={selectedModel}
                 >
@@ -487,19 +436,13 @@ export function ChatPanel({
                     className={cn('max-w-[300px]', !canGenerate && 'text-muted-foreground')}
                   >
                     <PromptInputSelectValue
-                      placeholder={
-                        apiKeyStatus === 'checking'
-                          ? 'Checking API key…'
-                          : isLoadingModels
-                            ? 'Scanning models…'
-                            : 'Select model'
-                      }
+                      placeholder={isLoadingModels ? 'Loading models…' : 'Select model'}
                     />
                   </PromptInputSelectTrigger>
                   <PromptInputSelectContent>
                     {models.map((model) => (
                       <PromptInputSelectItem
-                        className={cn(!model.available && 'text-muted-foreground')}
+                        className={cn(!model.available && 'text-muted-foreground opacity-60')}
                         disabled={!model.available}
                         key={model.id}
                         value={model.id}
@@ -535,7 +478,7 @@ export function ChatPanel({
               <ChatPromptInputSubmit
                 input={input}
                 isGenerating={isGenerating}
-                isInputDisabled={isInputDisabled}
+                isInputDisabled={isSubmitDisabled}
                 selectedAssetIds={selectedAssetIds}
               />
             </PromptInputFooter>

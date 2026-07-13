@@ -19,8 +19,6 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   selectedModel: '',
   isLoadingModels: false,
   modelsError: '',
-  modelWarnings: [],
-  apiKeyStatus: 'valid',
   canGenerate: true,
   onInputChange: vi.fn(),
   onModelChange: vi.fn(),
@@ -78,5 +76,41 @@ describe('ChatPanel submit control', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+  })
+
+  it('keeps the textarea writable when generation is unavailable', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} canGenerate={false} input="draft notes" />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
+  })
+
+  it('does not show API key or model configuration alerts', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          canGenerate={false}
+          models={[
+            {
+              id: 'openai:gpt-4o-mini',
+              provider: 'openai',
+              modelId: 'gpt-4o-mini',
+              name: 'GPT-4o Mini',
+              available: false,
+              unavailableReason: 'missing_api_key',
+            },
+          ]}
+          selectedModel="openai:gpt-4o-mini"
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('API key required')).not.toBeInTheDocument()
+    expect(screen.queryByText('Model configuration notice')).not.toBeInTheDocument()
   })
 })

@@ -278,7 +278,11 @@ export async function fetchAllAvailableModels(): Promise<{
         const message =
           error instanceof Error ? error.message : `Could not load ${provider} models.`
         warnings.push(message)
-        models.push(...seedModelsForProvider(provider))
+        models.push(
+          ...PROVIDER_SEED_MODELS[provider].map((entry) =>
+            toModelRef(provider, entry.modelId, entry.name, false, 'not_found'),
+          ),
+        )
       }
     }),
   )
@@ -300,22 +304,4 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
     : 'missing_api_key'
 
   return sortModels([...models, toModelRef(provider, modelId, undefined, false, unavailableReason)])
-}
-
-export function getDefaultModelWarning(
-  models: ModelInfo[],
-  defaultModel: string,
-): string | undefined {
-  const entry = models.find((model) => model.id === defaultModel)
-  if (!entry || entry.available) {
-    return undefined
-  }
-
-  const { provider } = parseModelRef(defaultModel)
-
-  if (entry.unavailableReason === 'missing_api_key') {
-    return `Configured default model "${defaultModel}" requires a ${provider} API key. Add the key to .env and restart the dev server.`
-  }
-
-  return `Configured default model "${defaultModel}" is not available from ${provider}. Update ARK_DEFAULT_MODEL or OPENAI_MODEL in .env and restart the dev server.`
 }
