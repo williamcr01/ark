@@ -3,7 +3,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { listDeckSlides, readDeckHtmlSlice, summarizeDeckHtml } from './deck-html.ts'
+import {
+  DEFAULT_READ_MAX_BYTES,
+  listDeckSlides,
+  readDeckCharacterSlice,
+  readDeckHtmlSlice,
+  readDeckSlideHtml,
+  summarizeDeckHtml,
+} from './deck-html.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
 
@@ -28,6 +35,37 @@ describe('readDeckHtmlSlice', () => {
 
     expect(firstPage.content.split('\n').length).toBeLessThanOrEqual(5)
     expect(secondPage.offset).toBe(6)
+  })
+
+  it('stops at complete lines before the 50KB byte limit', () => {
+    const html = `${'a'.repeat(30_000)}\n${'b'.repeat(30_000)}\nlast`
+    const page = readDeckHtmlSlice(html)
+    expect(page.content).toBe('a'.repeat(30_000))
+    expect(Buffer.byteLength(page.content, 'utf8')).toBeLessThanOrEqual(DEFAULT_READ_MAX_BYTES)
+    expect(page.nextOffset).toBe(2)
+  })
+
+  it('uses UTF-8-safe character paging for one oversized line', () => {
+    const html = 'å'.repeat(30_000)
+    const first = readDeckHtmlSlice(html)
+    expect(first.nextCharOffset).toBeDefined()
+    expect(Buffer.byteLength(first.content, 'utf8')).toBeLessThanOrEqual(DEFAULT_READ_MAX_BYTES)
+    expect(first.content.endsWith('å')).toBe(true)
+    const second = readDeckCharacterSlice(html, {
+      offset: 1,
+      charOffset: first.nextCharOffset,
+    })
+    expect(first.content + second.content).toBe(html)
+  })
+
+  it('bounds a huge slide with a recoverable character offset', () => {
+    const html = `<html><body><section class="slide">${'x'.repeat(80_000)}</section></body></html>`
+    const page = readDeckSlideHtml(html, 0)
+    expect(page.ok).toBe(true)
+    if (!page.ok) return
+    expect(page.truncated).toBe(true)
+    expect(page.nextCharOffset).toBeDefined()
+    expect(page.hint).toContain('slideIndex: 0')
   })
 })
 

@@ -44,8 +44,9 @@ export type AgentStep = {
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
-export const MAX_TRANSCRIPT_VALUE_CHARS = 24_000
-export const MAX_TRANSCRIPT_TURN_CHARS = 96_000
+export const MAX_PERSISTED_TOOL_VALUE_BYTES = 50 * 1024
+export const MAX_PERSISTED_ASSISTANT_TURN_BYTES = 512 * 1024
+export const MAX_MODEL_ASSISTANT_TURN_BYTES = 96 * 1024
 
 /** Rich assistant turn content persisted in chat history. */
 export type ChatMessagePart =
@@ -105,8 +106,9 @@ export type EditorSelectionContext = {
 
 /**
  * Context policy (pi-style): every generation request replays the full visible
- * conversation. Prior assistant text, tool calls, and tool results are replayed
- * from bounded semantic projections; omitted deck content is re-read with tools.
+ * conversation. Durable assistant turns retain every logical step using bounded,
+ * recoverable tool projections. Model context is assembled separately and may
+ * summarize older steps without mutating persisted chat.
  * The AI SDK owns tool-result continuation within a single generation job.
  * Compaction, branch summaries, steer queues, and follow-up queues are not implemented.
  */
@@ -124,6 +126,8 @@ function isJsonValue(value: unknown): value is JsonValue {
   if (!value || typeof value !== 'object') return false
   return Object.values(value).every(isJsonValue)
 }
+
+const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
 
 function parseChatMessageParts(input: unknown, messageIndex: number) {
   if (input === undefined) return { ok: true as const, parts: undefined }
@@ -169,11 +173,11 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
       }
       if (
         part[valueKey] !== undefined &&
-        JSON.stringify(part[valueKey]).length > MAX_TRANSCRIPT_VALUE_CHARS
+        jsonBytes(part[valueKey]) > MAX_PERSISTED_TOOL_VALUE_BYTES
       ) {
         return {
           ok: false as const,
-          error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} exceeds the ${MAX_TRANSCRIPT_VALUE_CHARS} character replay limit.`,
+          error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} exceeds the ${MAX_PERSISTED_TOOL_VALUE_BYTES} byte persistence limit.`,
         }
       }
       const common = {
@@ -203,11 +207,11 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
       error: `messages[${messageIndex}].parts[${partIndex}] is invalid.`,
     }
   }
-  for (const part of parts) totalCharacters += JSON.stringify(part).length
-  if (totalCharacters > MAX_TRANSCRIPT_TURN_CHARS) {
+  for (const part of parts) totalCharacters += jsonBytes(part)
+  if (totalCharacters > MAX_PERSISTED_ASSISTANT_TURN_BYTES) {
     return {
       ok: false as const,
-      error: `messages[${messageIndex}].parts exceeds the ${MAX_TRANSCRIPT_TURN_CHARS} character replay limit.`,
+      error: `messages[${messageIndex}].parts exceeds the ${MAX_PERSISTED_ASSISTANT_TURN_BYTES} byte persistence limit.`,
     }
   }
   return { ok: true as const, parts }
@@ -548,133 +552,12 @@ export function toModelMessage(message: ApiChatMessage): ModelMessage {
   }
 }
 
-export function buildAgentModelMessages(
-  messages: ApiChatMessage[],
-  currentHtml: string,
-  editorSelection?: EditorSelectionContext,
-): ModelMessage[] {
-  if (messages.length === 0) {
-    return []
-  }
-
-  const prior = convertChatHistoryToModelMessages(messages.slice(0, -1))
-  const last = messages[messages.length - 1]
-
-  if (last.role !== 'user') {
-    return prior
-  }
-
-  return [
-    ...prior,
-    {
-      role: 'user' as const,
-      content: buildUserModelContent(last, { wrapForAgent: true, currentHtml, editorSelection }),
-    },
-  ]
-}
-
-function boundedJson(value: JsonValue): JsonValue | null {
-  const serialized = JSON.stringify(value)
-  if (serialized.length <= MAX_TRANSCRIPT_VALUE_CHARS) return value
-  return {
-    omitted: true,
-    originalCharacters: serialized.length,
-    reason: 'Transcript value exceeded replay limit; re-read the current deck.',
-  }
-}
-
-export function convertChatHistoryToModelMessages(messages: ApiChatMessage[]): ModelMessage[] {
-  const result: ModelMessage[] = []
-  for (const message of messages) {
-    if (message.role === 'user') {
-      result.push({ role: 'user', content: buildUserModelContent(message) })
-      continue
-    }
-    const parts = message.parts
-    const replayable = parts?.length && parts.some((part) => part.type !== 'text')
-    if (!replayable) {
-      const replayText = parts?.length
-        ? parts.every((part) => part.type === 'text' && part.stepIndex !== undefined)
-          ? parts.map((part) => (part.type === 'text' ? part.content : '')).join('\n')
-          : null
-        : null
-      result.push({ role: 'assistant', content: replayText ?? message.content })
-      continue
-    }
-    const ids = new Set<string>()
-    const groups = new Map<number, ChatMessagePart[]>()
-    let valid = true
-    let turnChars = 0
-    for (const part of parts) {
-      if (part.stepIndex === undefined) {
-        valid = false
-        break
-      }
-      groups.set(part.stepIndex, [...(groups.get(part.stepIndex) ?? []), part])
-      turnChars += JSON.stringify(part).length
-    }
-    const emitted: ModelMessage[] = []
-    if (turnChars > MAX_TRANSCRIPT_TURN_CHARS) valid = false
-    for (const stepParts of [...groups.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([, value]) => value)) {
-      if (!valid) break
-      const calls = stepParts.filter((part) => part.type === 'tool-call')
-      const results = stepParts.filter((part) => part.type === 'tool-result')
-      const byId = new Map(results.map((part) => [part.toolCallId, part]))
-      const assistantContent: Array<Record<string, unknown>> = []
-      for (const part of stepParts) {
-        if (part.type === 'text') assistantContent.push({ type: 'text', text: part.content })
-        if (part.type === 'tool-call') {
-          if (!part.toolCallId || ids.has(part.toolCallId) || part.input === undefined) {
-            valid = false
-            break
-          }
-          ids.add(part.toolCallId)
-          const paired = byId.get(part.toolCallId)
-          if (!paired || paired.toolName !== part.toolName) {
-            valid = false
-            break
-          }
-          assistantContent.push({
-            type: 'tool-call',
-            toolCallId: part.toolCallId,
-            toolName: part.toolName,
-            input: boundedJson(part.input),
-          })
-        }
-      }
-      if (
-        !valid ||
-        calls.length !== results.length ||
-        results.some(
-          (part) => !part.toolCallId || !calls.some((call) => call.toolCallId === part.toolCallId),
-        )
-      ) {
-        valid = false
-        break
-      }
-      if (assistantContent.length)
-        emitted.push({ role: 'assistant', content: assistantContent } as ModelMessage)
-      if (calls.length)
-        emitted.push({
-          role: 'tool',
-          content: calls.map((call) => {
-            const paired = byId.get(call.toolCallId)!
-            const value = boundedJson(paired.output ?? null)
-            return {
-              type: 'tool-result',
-              toolCallId: call.toolCallId!,
-              toolName: call.toolName,
-              output: { type: paired.isError ? 'error-json' : 'json', value },
-            }
-          }),
-        } as ModelMessage)
-    }
-    result.push(...(valid ? emitted : [{ role: 'assistant' as const, content: message.content }]))
-  }
-  return result
-}
+export {
+  assembleDeckAgentContext,
+  buildAgentModelMessages,
+  convertChatHistoryToModelMessages,
+  projectAssistantTurnForModel,
+} from './chat-context.ts'
 
 export function buildModelMessages(
   messages: ApiChatMessage[],
