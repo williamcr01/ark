@@ -257,6 +257,14 @@ async function gotoSlide(
 }
 
 async function captureSlidePng(cdp: CdpClient, maxPngBytes: number) {
+  // Flush the iframe's latest compositor surface before taking the cached PNG.
+  // A lowest-quality JPEG avoids paying for a second PNG encode.
+  await cdp.send('Page.captureScreenshot', {
+    format: 'jpeg',
+    quality: 0,
+    fromSurface: true,
+    captureBeyondViewport: false,
+  })
   const result = await cdp.send<{ data: string }>('Page.captureScreenshot', {
     format: 'png',
     fromSurface: true,

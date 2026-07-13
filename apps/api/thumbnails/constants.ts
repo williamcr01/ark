@@ -17,7 +17,7 @@ export const THUMBNAIL_SETTLE_MS = 40
 export const THUMBNAIL_MAX_PNG_BYTES = 1_500_000
 export const THUMBNAIL_CACHE_MAX_ENTRIES = 200
 /** Bumped when capture/settle pipeline changes invalidate cached PNGs. */
-export const THUMBNAIL_RENDERER_VERSION = 'thumbnail-renderer-v3'
+export const THUMBNAIL_RENDERER_VERSION = 'thumbnail-renderer-v7'
 export const THUMBNAIL_MAX_RENDER_ATTEMPTS = 3
 export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
 /** Must exceed deck timeout so a live render is not stolen by another process. */

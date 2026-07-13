@@ -62,7 +62,7 @@ function createMockCdp(options: {
   slideIndex?: number
   screenshotData?: string
   onNavigate?: () => void
-  onScreenshot?: () => void
+  onScreenshot?: (params: unknown) => void
   onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
 }): CdpClient {
   const listeners = new Map<string, Array<(params: unknown, sessionId: string | null) => void>>()
@@ -76,7 +76,7 @@ function createMockCdp(options: {
       }
 
       if (method === 'Page.captureScreenshot') {
-        options.onScreenshot?.()
+        options.onScreenshot?.(params)
         return { data: options.screenshotData ?? tinyPngBase64 }
       }
 
@@ -142,7 +142,7 @@ function createMockPool(options: {
   screenshotData?: string
   createPageImpl?: () => Promise<BrowserPage>
   onEvaluate?: (expression: string) => { handled: true; value: unknown } | undefined
-  onScreenshot?: () => void
+  onScreenshot?: (params: unknown) => void
 }): { pool: ChromiumPool; closedPages: { count: number } } {
   const closedPages = { count: 0 }
 
@@ -255,6 +255,7 @@ describe('thumbnail renderer limits (unit)', () => {
     let settleRequested = false
     let settlePolls = 0
     let capturedBeforeSettled = false
+    const screenshotRequests: Array<{ format?: string; quality?: number }> = []
     const mock = createMockPool({
       ready: true,
       onEvaluate: (expression) => {
@@ -276,8 +277,9 @@ describe('thumbnail renderer limits (unit)', () => {
 
         return undefined
       },
-      onScreenshot: () => {
+      onScreenshot: (params) => {
         capturedBeforeSettled = settlePolls < 2
+        screenshotRequests.push(params as { format?: string; quality?: number })
       },
     })
     const previewSessionStore = createPreviewSessionStore()
@@ -302,6 +304,10 @@ describe('thumbnail renderer limits (unit)', () => {
     expect(settleRequested).toBe(true)
     expect(settlePolls).toBeGreaterThanOrEqual(2)
     expect(capturedBeforeSettled).toBe(false)
+    expect(screenshotRequests).toEqual([
+      expect.objectContaining({ format: 'jpeg', quality: 0 }),
+      expect.objectContaining({ format: 'png' }),
+    ])
     expect(mock.closedPages.count).toBe(1)
   })
 

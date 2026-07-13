@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -132,6 +132,44 @@ describe('SlideThumbnailStrip', () => {
     })
   })
 
+  it('reveals a rendered thumbnail only after it decodes', async () => {
+    const originalDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode')
+    const decode = vi.fn(() => Promise.resolve())
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: decode,
+    })
+
+    try {
+      render(
+        <SlideThumbnailStrip
+          activeIndex={0}
+          isOpen
+          onSelect={vi.fn()}
+          orientation="vertical"
+          parsedDeck={createParsedDeck(1)}
+          thumbnailUrls={['/api/decks/d/thumbnails/v/0.png?hash=abc']}
+        />,
+      )
+
+      const image = screen.getByTitle('Slide 1 thumbnail')
+      expect(image).toHaveClass('opacity-0')
+
+      fireEvent.load(image)
+
+      await waitFor(() => {
+        expect(image).toHaveClass('opacity-100')
+      })
+      expect(decode).toHaveBeenCalledOnce()
+    } finally {
+      if (originalDecode) {
+        Object.defineProperty(HTMLImageElement.prototype, 'decode', originalDecode)
+      } else {
+        Reflect.deleteProperty(HTMLImageElement.prototype, 'decode')
+      }
+    }
+  })
+
   it('falls back to srcDoc iframes when a rendered image fails to load', async () => {
     const parsedDeck = parseDeckSlides(plainCssDeck)
     render(
@@ -213,7 +251,7 @@ describe('SlideThumbnailStrip', () => {
     expect(getThumbnailSrcDoc).not.toHaveBeenCalled()
   })
 
-  it('eagerly prioritizes the first thumbnails and active slide', () => {
+  it('loads mounted thumbnails concurrently while prioritizing the first and active slides', () => {
     const parsedDeck = createParsedDeck(7)
     const thumbnailUrls = Array.from(
       { length: 7 },
@@ -239,7 +277,7 @@ describe('SlideThumbnailStrip', () => {
       )
     }
 
-    expect(screen.getByTitle('Slide 6 thumbnail')).toHaveAttribute('loading', 'lazy')
+    expect(screen.getByTitle('Slide 6 thumbnail')).toHaveAttribute('loading', 'eager')
     expect(screen.getByTitle('Slide 7 thumbnail')).toHaveAttribute('loading', 'eager')
   })
 
