@@ -41,6 +41,8 @@ export type DeckEditorBridgeState = {
   selection: EditorSelectionInfo | null
   hover: Pick<EditorHoverMessage, 'elementId' | 'slideIndex'> | null
   geometry: EditorNormalizedRect | null
+  /** Viewport-normalized slide box for composing overlay geometry. */
+  slideBounds: EditorNormalizedRect | null
   selectionZIndex: number | null
   editorError: string | null
   transformPreview: EditorTransformPreviewMessage | null
@@ -49,6 +51,7 @@ export type DeckEditorBridgeState = {
   lastDeleteRequest: EditorDeleteRequestMessage | null
   textEditActive: boolean
   hoverGeometry: EditorNormalizedRect | null
+  hoverSlideBounds: EditorNormalizedRect | null
   lastTextCommit: {
     elementId: string
     slideIndex: number
@@ -77,6 +80,7 @@ const initialState: DeckEditorBridgeState = {
   selection: null,
   hover: null,
   geometry: null,
+  slideBounds: null,
   selectionZIndex: null,
   editorError: null,
   transformPreview: null,
@@ -85,6 +89,7 @@ const initialState: DeckEditorBridgeState = {
   lastDeleteRequest: null,
   textEditActive: false,
   hoverGeometry: null,
+  hoverSlideBounds: null,
   lastTextCommit: null,
 }
 
@@ -251,24 +256,39 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorHoverMessage(data)) {
-        setState((current) => ({
-          ...current,
-          hover: { elementId: data.elementId, slideIndex: data.slideIndex },
-          hoverGeometry: current.hover?.elementId === data.elementId ? current.hoverGeometry : null,
-        }))
+        setState((current) => {
+          const sameHover = current.hover?.elementId === data.elementId
+
+          return {
+            ...current,
+            hover: { elementId: data.elementId, slideIndex: data.slideIndex },
+            // Drop hover overlay when the pointer target changes so a stale
+            // box from the previous element never briefly paints.
+            hoverGeometry: sameHover ? current.hoverGeometry : null,
+            hoverSlideBounds: sameHover ? current.hoverSlideBounds : null,
+          }
+        })
         return
       }
 
       if (isEditorSelectionChangeMessage(data)) {
-        setState((current) => ({
-          ...current,
-          selection: data.selection,
-          // Drop overlay geometry when the runtime clears selection so an
-          // empty-slide click does not leave a stale selection box on the shell.
-          geometry: data.selection ? current.geometry : null,
-          selectionZIndex: data.selection ? current.selectionZIndex : null,
-          transformPreview: data.selection ? current.transformPreview : null,
-        }))
+        setState((current) => {
+          const sameSelection =
+            data.selection !== null &&
+            current.selection?.elementId === data.selection.elementId &&
+            current.selection.slideIndex === data.selection.slideIndex
+
+          return {
+            ...current,
+            selection: data.selection,
+            // Drop overlay geometry whenever selection identity changes so a
+            // previous element's box never flashes on the new selection.
+            geometry: sameSelection ? current.geometry : null,
+            slideBounds: sameSelection ? current.slideBounds : null,
+            selectionZIndex: sameSelection ? current.selectionZIndex : null,
+            transformPreview: sameSelection ? current.transformPreview : null,
+          }
+        })
         onSelectionChange?.(data.selection)
         return
       }
@@ -279,6 +299,7 @@ export function useDeckEditorBridge(
             return {
               ...current,
               geometry: data.geometry,
+              slideBounds: data.slideBounds ?? null,
               selectionZIndex: data.zIndex,
             }
           }
@@ -287,13 +308,13 @@ export function useDeckEditorBridge(
             return {
               ...current,
               hoverGeometry: data.geometry,
+              hoverSlideBounds: data.slideBounds ?? null,
             }
           }
 
-          return {
-            ...current,
-            geometry: data.geometry,
-          }
+          // Ignore late geometry for elements that are no longer selected or
+          // hovered — never poison selection overlay state.
+          return current
         })
         return
       }

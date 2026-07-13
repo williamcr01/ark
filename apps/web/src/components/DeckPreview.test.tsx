@@ -39,9 +39,11 @@ const editorBridgeMock = vi.hoisted(() => ({
     textPreview: string | null
   } | null,
   geometry: null as EditorNormalizedRect | null,
+  slideBounds: null as EditorNormalizedRect | null,
   selectionZIndex: null,
   hover: null,
   hoverGeometry: null,
+  hoverSlideBounds: null as EditorNormalizedRect | null,
   editorError: null,
   textEditActive: false,
   lastTextCommit: null as {
@@ -120,9 +122,11 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.editorReady = false
     editorBridgeMock.selection = null
     editorBridgeMock.geometry = null
+    editorBridgeMock.slideBounds = null
     editorBridgeMock.selectionZIndex = null
     editorBridgeMock.hover = null
     editorBridgeMock.hoverGeometry = null
+    editorBridgeMock.hoverSlideBounds = null
     editorBridgeMock.editorError = null
     editorBridgeMock.textEditActive = false
     editorBridgeMock.lastTextCommit = null
