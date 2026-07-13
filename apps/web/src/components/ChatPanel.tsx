@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
 
 import {
@@ -105,6 +105,10 @@ function ChatFloatingAlert({
       </div>
     </div>
   )
+}
+
+function alertDismissKey(alertId: ChatAlertId, content: string) {
+  return `${alertId}:${content}`
 }
 
 function formatAttachmentError(error: { code: string; message: string }) {
@@ -333,54 +337,27 @@ export function ChatPanel({
   onRetryPersist,
 }: ChatPanelProps) {
   const isSubmitDisabled = isGenerating || !canGenerate
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<ChatAlertId>>(() => new Set())
+  const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const modelWarningsKey = modelWarnings.join('\n')
 
-  useEffect(() => {
-    setDismissedAlerts((current) => {
-      const next = new Set(current)
-      next.delete('generation')
-      return next
-    })
-  }, [error])
+  const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
+    dismissedAlertKeys.has(alertDismissKey(alertId, content))
 
-  useEffect(() => {
-    setDismissedAlerts((current) => {
-      const next = new Set(current)
-      next.delete('attachment')
-      return next
-    })
-  }, [attachmentError])
-
-  useEffect(() => {
-    setDismissedAlerts((current) => {
-      const next = new Set(current)
-      next.delete('models')
-      return next
-    })
-  }, [modelsError])
-
-  useEffect(() => {
-    setDismissedAlerts((current) => {
-      const next = new Set(current)
-      next.delete('model-warnings')
-      return next
-    })
-  }, [modelWarningsKey])
-
-  const dismissAlert = (alertId: ChatAlertId) => {
-    setDismissedAlerts((current) => new Set(current).add(alertId))
+  const dismissAlert = (alertId: ChatAlertId, content: string) => {
+    setDismissedAlertKeys((current) => new Set(current).add(alertDismissKey(alertId, content)))
   }
 
   const handleRetryGeneration = () => {
-    dismissAlert('generation')
+    dismissAlert('generation', error)
     void onRetryGeneration()
   }
 
-  const showGenerationError = Boolean(error) && !dismissedAlerts.has('generation')
-  const showAttachmentError = Boolean(attachmentError) && !dismissedAlerts.has('attachment')
-  const showModelsError = Boolean(modelsError) && !dismissedAlerts.has('models')
-  const showModelWarnings = modelWarnings.length > 0 && !dismissedAlerts.has('model-warnings')
+  const showGenerationError = Boolean(error) && !isAlertDismissed('generation', error)
+  const showAttachmentError =
+    Boolean(attachmentError) && !isAlertDismissed('attachment', attachmentError)
+  const showModelsError = Boolean(modelsError) && !isAlertDismissed('models', modelsError)
+  const showModelWarnings =
+    modelWarnings.length > 0 && !isAlertDismissed('model-warnings', modelWarningsKey)
   const hasFloatingAlerts =
     showGenerationError || showAttachmentError || showModelsError || showModelWarnings
 
@@ -462,7 +439,7 @@ export function ChatPanel({
             <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">
               {showGenerationError ? (
                 <ChatFloatingAlert
-                  onClose={() => dismissAlert('generation')}
+                  onClose={() => dismissAlert('generation', error)}
                   title="Generation failed"
                   variant="destructive"
                 >
@@ -486,7 +463,7 @@ export function ChatPanel({
 
               {showAttachmentError ? (
                 <ChatFloatingAlert
-                  onClose={() => dismissAlert('attachment')}
+                  onClose={() => dismissAlert('attachment', attachmentError)}
                   title="Attachment error"
                   variant="destructive"
                 >
@@ -496,7 +473,7 @@ export function ChatPanel({
 
               {showModelsError ? (
                 <ChatFloatingAlert
-                  onClose={() => dismissAlert('models')}
+                  onClose={() => dismissAlert('models', modelsError)}
                   title="Could not load models"
                   variant="destructive"
                 >
@@ -506,7 +483,7 @@ export function ChatPanel({
 
               {showModelWarnings ? (
                 <ChatFloatingAlert
-                  onClose={() => dismissAlert('model-warnings')}
+                  onClose={() => dismissAlert('model-warnings', modelWarningsKey)}
                   title="Model catalog notice"
                 >
                   <ul className="flex list-disc flex-col gap-1 pl-4">
