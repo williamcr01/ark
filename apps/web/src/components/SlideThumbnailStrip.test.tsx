@@ -171,6 +171,78 @@ describe('SlideThumbnailStrip', () => {
     expect(getThumbnailSrcDoc).not.toHaveBeenCalled()
   })
 
+  it('keeps thumbnail content off the main preview critical path', () => {
+    const getThumbnailSrcDoc = vi.fn((index: number) => `slide-${index}`)
+    const parsedDeck = createParsedDeck(3, getThumbnailSrcDoc)
+    const { rerender } = render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        contentEnabled={false}
+        isOpen
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={parsedDeck}
+        thumbnailUrls={[
+          '/api/decks/d/thumbnails/v/0.png?hash=abc',
+          '/api/decks/d/thumbnails/v/1.png?hash=abc',
+          '/api/decks/d/thumbnails/v/2.png?hash=abc',
+        ]}
+      />,
+    )
+
+    expect(getThumbnailSrcDoc).not.toHaveBeenCalled()
+    expect(screen.queryByTitle(/thumbnail/)).not.toBeInTheDocument()
+
+    rerender(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        contentEnabled
+        isOpen
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={parsedDeck}
+        thumbnailUrls={[
+          '/api/decks/d/thumbnails/v/0.png?hash=abc',
+          '/api/decks/d/thumbnails/v/1.png?hash=abc',
+          '/api/decks/d/thumbnails/v/2.png?hash=abc',
+        ]}
+      />,
+    )
+
+    expect(screen.getByTitle('Slide 1 thumbnail')).toHaveAttribute('src')
+    expect(getThumbnailSrcDoc).not.toHaveBeenCalled()
+  })
+
+  it('eagerly prioritizes the first thumbnails and active slide', () => {
+    const parsedDeck = createParsedDeck(7)
+    const thumbnailUrls = Array.from(
+      { length: 7 },
+      (_, index) => `/api/decks/d/thumbnails/v/${index}.png?hash=abc`,
+    )
+
+    render(
+      <SlideThumbnailStrip
+        activeIndex={6}
+        isOpen
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={parsedDeck}
+        thumbnailUrls={thumbnailUrls}
+      />,
+    )
+
+    for (let index = 0; index < 5; index += 1) {
+      expect(screen.getByTitle(`Slide ${index + 1} thumbnail`)).toHaveAttribute('loading', 'eager')
+      expect(screen.getByTitle(`Slide ${index + 1} thumbnail`)).toHaveAttribute(
+        'fetchpriority',
+        'high',
+      )
+    }
+
+    expect(screen.getByTitle('Slide 6 thumbnail')).toHaveAttribute('loading', 'lazy')
+    expect(screen.getByTitle('Slide 7 thumbnail')).toHaveAttribute('loading', 'eager')
+  })
+
   it('does not build fallback documents when PNG thumbnails are available', () => {
     const getThumbnailSrcDoc = vi.fn((index: number) => `slide-${index}`)
     const parsedDeck = createParsedDeck(3, getThumbnailSrcDoc)

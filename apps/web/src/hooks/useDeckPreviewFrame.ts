@@ -13,6 +13,8 @@ export type DeckPreviewFrameModel = {
   iframeSrcDoc?: string
   sandboxOrigin: string | null
   isLoading: boolean
+  /** True while the iframe still shows an older successful session. */
+  isStale: boolean
   error: string | null
   usesSandboxHost: boolean
   /** Generation-correlation handshake for the bridge session (not a secret). */
@@ -67,6 +69,7 @@ export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreview
         iframeSrcDoc,
         sandboxOrigin: null,
         isLoading: false,
+        isStale: false,
         error: null,
         usesSandboxHost: false,
         handshake,
@@ -78,6 +81,7 @@ export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreview
       iframeSrc: sandboxPreview.previewUrl ?? undefined,
       sandboxOrigin: sandboxPreview.sandboxOrigin,
       isLoading: sandboxPreview.isLoading,
+      isStale: sandboxPreview.isStale,
       error: sandboxPreview.error,
       usesSandboxHost: true,
       handshake: sandboxPreview.handshake,
@@ -91,6 +95,7 @@ export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreview
     sandboxPreview.error,
     sandboxPreview.handshake,
     sandboxPreview.isLoading,
+    sandboxPreview.isStale,
     sandboxPreview.previewUrl,
     sandboxPreview.sandboxOrigin,
     srcDocHandshake,
