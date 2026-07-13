@@ -28,6 +28,16 @@ afterEach(() => {
 })
 
 describe('provider chat model filters', () => {
+  it('applies the shared non-chat markers across providers', () => {
+    expect(isOpenAIChatModel('text-embedding-3-large')).toBe(false)
+    expect(isAnthropicChatModel('claude-embedding-1')).toBe(false)
+    expect(isGoogleChatModel('gemini-embedding-001')).toBe(false)
+
+    expect(isOpenAIChatModel('gpt-image-1')).toBe(false)
+    expect(isAnthropicChatModel('claude-image-1')).toBe(false)
+    expect(isGoogleChatModel('gemini-2.0-flash-preview-image-generation')).toBe(false)
+  })
+
   it('keeps OpenAI chat models and drops media/specialty SKUs', () => {
     expect(isOpenAIChatModel('gpt-4o-mini')).toBe(true)
     expect(isOpenAIChatModel('o3-mini')).toBe(true)
