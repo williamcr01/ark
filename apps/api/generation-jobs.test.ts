@@ -614,7 +614,24 @@ describe('generation job runner', () => {
   })
 
   it('replays the persisted failed attempt transcript when retrying', async () => {
-    const { chatStore, deckStore, runner, jobStore } = await createRunner()
+    const capturedRuns: Parameters<typeof runDeckAgent>[0]['messages'][] = []
+    const { chatStore, deckStore, runner, jobStore } = await createRunner({
+      runAgent: async (options) => {
+        capturedRuns.push(options.messages)
+        return {
+          ok: false,
+          error: 'Provider unavailable',
+          steps: [],
+          transcriptParts: [
+            {
+              type: 'text',
+              content: 'Retry attempt also failed.',
+              stepIndex: 0,
+            },
+          ],
+        }
+      },
+    })
     const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
     const failed = await jobStore.createJob({
       deckId: deck.id,
@@ -668,8 +685,44 @@ describe('generation job runner', () => {
     ])
     expect(retried?.request.messages[1]?.parts).not.toBe(parts)
 
-    if (retried) await runner.cancelJob(retried.id)
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(retried).toBeTruthy()
+    await waitForTerminalJob((id) => runner.getJob(id), retried!.id, { statuses: ['failed'] })
+
+    let persisted = await chatStore.listMessages(deck.id, { limit: 500 })
+    await vi.waitFor(async () => {
+      persisted = await chatStore.listMessages(deck.id, { limit: 500 })
+      expect(persisted.messages).toHaveLength(3)
+    })
+    expect(persisted.messages.map(({ role }) => role)).toEqual(['assistant', 'user', 'assistant'])
+    expect(persisted.messages[1]?.content).toContain('Retry the previous request')
+
+    const nextMessages = [
+      ...persisted.messages.map(({ id, role, content, parts, attachments }) => ({
+        id,
+        role,
+        content,
+        ...(parts ? { parts } : {}),
+        ...(attachments ? { attachments } : {}),
+      })),
+      { role: 'user' as const, content: 'Try a different edit now.' },
+    ]
+    const next = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        currentHtml: deck.html,
+        messages: nextMessages,
+        editingExistingDeck: true,
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+    await waitForTerminalJob((id) => runner.getJob(id), next.id, { statuses: ['failed'] })
+    expect(capturedRuns).toHaveLength(2)
+    expect(capturedRuns[1]?.map(({ role }) => role)).toEqual([
+      'assistant',
+      'user',
+      'assistant',
+      'user',
+    ])
   })
 
   it('refreshes deck snapshot when retrying a failed edit job', async () => {

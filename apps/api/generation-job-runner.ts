@@ -351,6 +351,7 @@ export function createGenerationJobRunner({
             await persistTerminalAssistantMessage(failedJob, {
               status: 'failed',
               steps: agentResult.steps,
+              transcriptParts: agentResult.transcriptParts,
               assistantText: agentResult.assistantText,
               deckId: failedJob.deckId,
               error: failedJob.error,
@@ -796,6 +797,7 @@ export function createGenerationJobRunner({
     const request = cloneGenerationJobRequest(existing.request)
     const deckId = existing.deckId
     let baseVersionId = existing.baseVersionId
+    let retryControlMessage: ApiChatMessage | null = null
 
     if (chatStore && deckId) {
       const chat = await chatStore.listMessages(deckId, { limit: 500 })
@@ -804,6 +806,11 @@ export function createGenerationJobRunner({
         .find((message) => message.role === 'assistant' && message.generationJobId === existing.id)
 
       if (failedAssistant) {
+        retryControlMessage = {
+          role: 'user',
+          content:
+            'Retry the previous request using the current deck state and the prior attempt transcript.',
+        }
         request.messages.push(
           {
             id: failedAssistant.id,
@@ -811,11 +818,7 @@ export function createGenerationJobRunner({
             content: failedAssistant.content,
             ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
           },
-          {
-            role: 'user',
-            content:
-              'Retry the previous request using the current deck state and the prior attempt transcript.',
-          },
+          retryControlMessage,
         )
       }
     }
@@ -829,6 +832,15 @@ export function createGenerationJobRunner({
         request.baseVersionId = baseVersionId
         request.editingExistingDeck = true
       }
+    }
+
+    if (chatStore && deckId && retryControlMessage) {
+      const persisted = await chatStore.appendMessage(deckId, {
+        role: 'user',
+        content: retryControlMessage.content,
+        deckVersionId: baseVersionId,
+      })
+      retryControlMessage.id = persisted.id
     }
 
     const input: CreateGenerationJobInput = {
