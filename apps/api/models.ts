@@ -20,16 +20,77 @@ const OPENAI_EXCLUDED_PREFIXES = [
   'gpt-3.5-turbo-instruct',
   'ft:',
   'codex-',
+  'realtime',
+  'audio-',
+  'computer-use',
 ]
 
-const isOpenAIChatModel = (id: string) => {
+/** Keep chat/tool-calling OpenAI models; drop embeddings, media, and specialty SKUs. */
+export const isOpenAIChatModel = (id: string) => {
   const normalized = id.toLowerCase()
 
   if (OPENAI_EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
     return false
   }
 
+  if (/(^|-)(tts|transcribe|realtime)(-|$)/.test(normalized)) {
+    return false
+  }
+
   return OPENAI_CHAT_MODEL_PATTERN.test(normalized)
+}
+
+const ANTHROPIC_EXCLUDED_SUBSTRINGS = ['embed', 'embedding', 'image', 'tts', 'whisper', 'video']
+
+/** Keep Claude chat models from Anthropic's Models API. */
+export const isAnthropicChatModel = (id: string) => {
+  const normalized = id.toLowerCase()
+
+  if (!normalized.startsWith('claude')) {
+    return false
+  }
+
+  return !ANTHROPIC_EXCLUDED_SUBSTRINGS.some((part) => normalized.includes(part))
+}
+
+const GOOGLE_EXCLUDED_SUBSTRINGS = [
+  'embed',
+  'embedding',
+  'image',
+  'imagen',
+  'veo',
+  'nano-banana',
+  'tts',
+  'lyria',
+  'robotics',
+  'aqa',
+]
+
+/**
+ * Keep stable Gemini chat models suitable for generateContent + tools.
+ * Drops image/video/embed/TTS SKUs and noisy preview/exp/revision aliases.
+ */
+export const isGoogleChatModel = (id: string) => {
+  const normalized = id.toLowerCase()
+
+  if (!normalized.startsWith('gemini')) {
+    return false
+  }
+
+  if (GOOGLE_EXCLUDED_SUBSTRINGS.some((part) => normalized.includes(part))) {
+    return false
+  }
+
+  if (normalized.includes('-preview') || normalized.includes('-exp')) {
+    return false
+  }
+
+  // Drop dated numeric revisions (gemini-1.5-flash-001) when a base SKU exists.
+  if (/-\d{3}$/.test(normalized)) {
+    return false
+  }
+
+  return true
 }
 
 const toModelRef = (
@@ -178,7 +239,7 @@ async function fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
 
     for (const entry of payload.data ?? []) {
       const modelId = entry.id?.trim() ?? ''
-      if (!modelId) {
+      if (!modelId || !isAnthropicChatModel(modelId)) {
         continue
       }
 
@@ -225,7 +286,7 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
       const modelId = rawName.replace(/^models\//, '')
       const supportsGenerate = entry.supportedGenerationMethods?.includes('generateContent')
 
-      if (!modelId || !supportsGenerate || !/^gemini/i.test(modelId)) {
+      if (!modelId || !supportsGenerate || !isGoogleChatModel(modelId)) {
         continue
       }
 
