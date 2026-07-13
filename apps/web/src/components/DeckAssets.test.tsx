@@ -51,7 +51,7 @@ describe('DeckAssets', () => {
     const user = userEvent.setup()
     const props = renderDeckAssets({ assets: [] })
 
-    const input = screen.getByLabelText('Upload deck assets') as HTMLInputElement
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['hello'], 'notes.csv', { type: 'text/csv' })
     await user.upload(input, file)
 

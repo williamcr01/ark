@@ -119,6 +119,20 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
   })
 
+  it('dismisses floating agent warnings with the close button', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} attachmentError="Each attachment must be 5 MB or smaller." />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Attachment error')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Dismiss Attachment error' }))
+    expect(screen.queryByText('Attachment error')).not.toBeInTheDocument()
+  })
+
   it('does not show API key required alerts', () => {
     render(
       <TooltipProvider>
