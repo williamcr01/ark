@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type SyntheticEvent,
+} from 'react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -142,6 +150,23 @@ function LazyThumbnail({
   trackVisibility,
 }: LazyThumbnailProps) {
   const containerRef = useRef<HTMLButtonElement>(null)
+  const [readyThumbnailUrl, setReadyThumbnailUrl] = useState<string | null>(null)
+  const imageReady = thumbnailUrl !== null && readyThumbnailUrl === thumbnailUrl
+
+  const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget
+    const markReady = () => setReadyThumbnailUrl(thumbnailUrl)
+
+    if (typeof image.decode !== 'function') {
+      markReady()
+      return
+    }
+
+    void image
+      .decode()
+      .catch(() => undefined)
+      .then(markReady)
+  }
 
   useEffect(() => {
     if (!trackVisibility) {
@@ -187,34 +212,45 @@ function LazyThumbnail({
         style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
       >
         {mountContent ? (
-          thumbnailUrl ? (
-            <img
-              alt=""
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              decoding="async"
-              fetchPriority={prioritizeLoad ? 'high' : 'auto'}
-              loading={prioritizeLoad ? 'eager' : 'lazy'}
-              onError={() => onThumbnailImageError(index, thumbnailUrl)}
-              src={thumbnailUrl}
-              title={`Slide ${index + 1} thumbnail`}
-            />
-          ) : srcDoc ? (
-            <iframe
-              className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
-              sandbox={getThumbnailSandbox()}
-              srcDoc={srcDoc}
-              style={{
-                width: PREVIEW_FRAME_WIDTH,
-                height: PREVIEW_FRAME_HEIGHT,
-                transform: 'scale(var(--ark-thumb-scale))',
-                transformOrigin: 'top left',
-              }}
-              tabIndex={-1}
-              title={`Slide ${index + 1} thumbnail`}
-            />
-          ) : (
-            <Skeleton className="absolute inset-0 rounded-none" />
-          )
+          <>
+            {!imageReady ? (
+              srcDoc ? (
+                <iframe
+                  className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
+                  sandbox={getThumbnailSandbox()}
+                  srcDoc={srcDoc}
+                  style={{
+                    width: PREVIEW_FRAME_WIDTH,
+                    height: PREVIEW_FRAME_HEIGHT,
+                    transform: 'scale(var(--ark-thumb-scale))',
+                    transformOrigin: 'top left',
+                  }}
+                  tabIndex={-1}
+                  title={
+                    thumbnailUrl ? `Loading slide ${index + 1}` : `Slide ${index + 1} thumbnail`
+                  }
+                />
+              ) : (
+                <Skeleton className="absolute inset-0 rounded-none" />
+              )
+            ) : null}
+            {thumbnailUrl ? (
+              <img
+                alt=""
+                className={cn(
+                  'pointer-events-none absolute inset-0 h-full w-full object-cover',
+                  imageReady ? 'opacity-100' : 'opacity-0',
+                )}
+                decoding="async"
+                fetchPriority={prioritizeLoad ? 'high' : 'auto'}
+                loading="eager"
+                onError={() => onThumbnailImageError(index, thumbnailUrl)}
+                onLoad={handleImageLoad}
+                src={thumbnailUrl}
+                title={`Slide ${index + 1} thumbnail`}
+              />
+            ) : null}
+          </>
         ) : (
           <Skeleton className="absolute inset-0 rounded-none" />
         )}
@@ -459,12 +495,12 @@ export function SlideThumbnailStrip({
           {Array.from({ length: slideCount }, (_, index) => {
             const mountContent = contentEnabled && mountedIndices.has(index)
             const thumbnailUrl = getUsableThumbnailUrl(index)
-            const needsFallback = isOpen && mountContent && !thumbnailUrl
-            const srcDoc = needsFallback
-              ? index === activeIndex
-                ? getCachedThumbnailSrcDoc(index)
-                : getExistingThumbnailSrcDoc(index)
-              : null
+            const srcDoc =
+              isOpen && mountContent
+                ? !thumbnailUrl && index === activeIndex
+                  ? getCachedThumbnailSrcDoc(index)
+                  : getExistingThumbnailSrcDoc(index)
+                : null
 
             return (
               <div key={index} ref={index === activeIndex ? activeItemRef : undefined}>

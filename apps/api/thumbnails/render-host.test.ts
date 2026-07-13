@@ -156,8 +156,13 @@ describe('renderThumbnailPreviewDocument', () => {
     expect(preview.html).toContain('document.images')
     expect(preview.html).toContain('img.decode')
     expect(preview.html).toContain("classList.add('visible')")
+    expect(preview.html).toContain('document.getAnimations')
+    expect(preview.html).toContain('animations[i].finish()')
     expect(preview.html).toContain('document.fonts.ready')
     expect(preview.html).toContain('requestAnimationFrame')
+    expect(preview.html).toContain('window.__arkThumbGoto')
+    expect(preview.html).toContain('window.__arkThumbRequestSettle')
+    expect(preview.html).toContain('window.__arkThumbReady')
 
     const settleScript = preview.html.match(/<script data-ark-thumbnail-settle="" nonce="([^"]+)">/)
     expect(settleScript?.[1]).toBeTruthy()
