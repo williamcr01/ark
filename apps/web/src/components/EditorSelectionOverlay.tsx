@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 export type EditorSelectionOverlayProps = {
   geometry: EditorNormalizedRect | null
   hoverGeometry?: EditorNormalizedRect | null
+  slideBounds?: EditorNormalizedRect | null
+  hoverSlideBounds?: EditorNormalizedRect | null
   scale: number
   locked?: boolean
   isEditing?: boolean
@@ -13,6 +15,8 @@ export type EditorSelectionOverlayProps = {
 export function EditorSelectionOverlay({
   geometry,
   hoverGeometry = null,
+  slideBounds = null,
+  hoverSlideBounds = null,
   scale,
   locked = false,
   isEditing = false,
@@ -35,7 +39,7 @@ export function EditorSelectionOverlay({
         <div
           aria-hidden
           className="pointer-events-none absolute left-0 top-0 rounded-sm border border-[var(--ark-accent)]/40 bg-[var(--ark-accent-soft)]/5"
-          style={normalizedRectToStagePixels(hoverGeometry, scale)}
+          style={normalizedRectToStagePixels(hoverGeometry, scale, hoverSlideBounds ?? undefined)}
         />
       ) : null}
       {geometry ? (
@@ -49,7 +53,7 @@ export function EditorSelectionOverlay({
                 ? 'border-[var(--ark-accent)] bg-[var(--ark-accent-soft)]/20'
                 : 'border-[var(--ark-accent)]/80 bg-[var(--ark-accent-soft)]/10',
           )}
-          style={normalizedRectToStagePixels(geometry, scale)}
+          style={normalizedRectToStagePixels(geometry, scale, slideBounds ?? undefined)}
         />
       ) : null}
     </>
