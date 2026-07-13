@@ -122,6 +122,7 @@ function App() {
     models,
     selectedModel,
     setSelectedModel,
+    warnings: modelWarnings,
   } = useAvailableModels()
 
   const {
@@ -482,12 +483,12 @@ function App() {
       messages={messages}
       models={models}
       modelsError={modelsError}
+      modelWarnings={modelWarnings}
       onAttachmentError={setAttachmentError}
       onCancelGeneration={handleCancelGeneration}
       onInputChange={setInput}
       onModelChange={setSelectedModel}
       onPromptSubmit={handlePromptSubmit}
-      onRefreshModels={loadModels}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}
       selectedAssetIds={selectedAssetIds}

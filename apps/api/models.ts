@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderId } from '@ark/contracts'
-import { getProviderApiKey, parseProviderHttpError } from './credentials.ts'
+import { getProviderApiKey, parseProviderHttpError, PROVIDER_LABELS } from './credentials.ts'
 
 export type { ProviderId, ModelInfo }
 
@@ -55,13 +55,13 @@ const PROVIDER_SEED_MODELS: Record<ProviderId, Array<{ modelId: string; name: st
     { modelId: 'gpt-4.1', name: 'GPT-4.1' },
   ],
   anthropic: [
-    { modelId: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-    { modelId: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
-    { modelId: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku' },
+    { modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+    { modelId: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+    { modelId: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
   ],
   google: [
-    { modelId: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-    { modelId: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { modelId: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
+    { modelId: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
     { modelId: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
   ],
 }
@@ -255,6 +255,32 @@ export async function fetchProviderModels(provider: ProviderId): Promise<ModelIn
 
 const ALL_PROVIDERS: ProviderId[] = ['openai', 'anthropic', 'google']
 
+export const formatModelCatalogWarning = (provider: ProviderId, error: unknown): string => {
+  const label = PROVIDER_LABELS[provider]
+  const message = error instanceof Error ? error.message.trim() : ''
+
+  if (
+    /fetch failed/i.test(message) ||
+    /network/i.test(message) ||
+    /econnreset/i.test(message) ||
+    /enotfound/i.test(message) ||
+    /econnrefused/i.test(message)
+  ) {
+    return `Could not reach ${label} to load models. Showing fallback models until the network is available.`
+  }
+
+  if (!message) {
+    return `Could not load ${label} models.`
+  }
+
+  // HTTP/API errors from parseProviderHttpError already name the provider when relevant.
+  if (message.includes(label) || /api key/i.test(message)) {
+    return message
+  }
+
+  return `Could not load ${label} models: ${message}`
+}
+
 export async function fetchAllAvailableModels(): Promise<{
   models: ModelInfo[]
   warnings: string[]
@@ -275,9 +301,7 @@ export async function fetchAllAvailableModels(): Promise<{
         const providerModels = await PROVIDER_FETCHERS[provider](apiKey)
         models.push(...providerModels)
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : `Could not load ${provider} models.`
-        warnings.push(message)
+        warnings.push(formatModelCatalogWarning(provider, error))
         models.push(
           ...PROVIDER_SEED_MODELS[provider].map((entry) =>
             toModelRef(provider, entry.modelId, entry.name, false, 'not_found'),

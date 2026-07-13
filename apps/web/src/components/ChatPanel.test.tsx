@@ -19,10 +19,10 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   selectedModel: '',
   isLoadingModels: false,
   modelsError: '',
+  modelWarnings: [],
   canGenerate: true,
   onInputChange: vi.fn(),
   onModelChange: vi.fn(),
-  onRefreshModels: vi.fn().mockResolvedValue(undefined),
   onPromptSubmit: vi.fn(),
   onAttachmentError: vi.fn(),
   onCancelGeneration: vi.fn(),
@@ -89,7 +89,37 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
   })
 
-  it('does not show API key or model configuration alerts', () => {
+  it('does not expose a refresh-models control', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} />
+      </TooltipProvider>,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Refresh available models' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows provider catalog warnings without blocking the chat', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          canGenerate
+          modelWarnings={['The Gemini API key in .env is invalid or expired.']}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Model catalog notice')).toBeInTheDocument()
+    expect(
+      screen.getByText('The Gemini API key in .env is invalid or expired.'),
+    ).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
+  })
+
+  it('does not show API key required alerts', () => {
     render(
       <TooltipProvider>
         <ChatPanel
@@ -111,6 +141,5 @@ describe('ChatPanel submit control', () => {
     )
 
     expect(screen.queryByText('API key required')).not.toBeInTheDocument()
-    expect(screen.queryByText('Model configuration notice')).not.toBeInTheDocument()
   })
 })
