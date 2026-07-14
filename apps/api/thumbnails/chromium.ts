@@ -5,6 +5,8 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 
+import { createLogger } from '../observability/logger.ts'
+
 type CdpMessage = {
   id?: number
   method?: string
@@ -16,10 +18,13 @@ type CdpMessage = {
 
 type CdpListener = (params: unknown, sessionId: string | null) => void
 
+export type ChromiumSandboxMode = 'sandboxed' | 'no-sandbox'
+
 export type BrowserProcess = {
   process: ChildProcess
   userDataDir: string
   debugPort: number
+  sandboxMode: ChromiumSandboxMode
   stderr: () => string
 }
 
@@ -104,6 +109,60 @@ export function isThumbnailRendererForcedOn(env: NodeJS.ProcessEnv = process.env
   const value = env.ARK_THUMBNAIL_RENDERER?.trim().toLowerCase()
 
   return value === 'on' || value === '1' || value === 'true' || value === 'enabled'
+}
+
+/**
+ * When true, always launch Chromium with `--no-sandbox` (skip the sandboxed probe).
+ * Accepts the same truthy tokens as other ARK_* toggles (`true` / `1` / `yes` / `on`).
+ */
+export function isChromiumNoSandboxForced(env: NodeJS.ProcessEnv = process.env) {
+  const value = env.ARK_CHROMIUM_NO_SANDBOX?.trim().toLowerCase()
+
+  return value === 'true' || value === '1' || value === 'yes' || value === 'on'
+}
+
+/**
+ * Ordered sandbox modes to try when launching Chromium.
+ * Forced no-sandbox skips the sandboxed attempt entirely.
+ */
+export function chromiumSandboxAttemptOrder(
+  env: NodeJS.ProcessEnv = process.env,
+): ChromiumSandboxMode[] {
+  if (isChromiumNoSandboxForced(env)) {
+    return ['no-sandbox']
+  }
+
+  return ['sandboxed', 'no-sandbox']
+}
+
+export function buildChromiumLaunchArgs(
+  debugPort: number,
+  userDataDir: string,
+  options: { noSandbox: boolean },
+): string[] {
+  const args = [
+    '--headless=new',
+    `--remote-debugging-port=${debugPort}`,
+    '--remote-debugging-address=127.0.0.1',
+    `--user-data-dir=${userDataDir}`,
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-default-browser-check',
+    '--no-first-run',
+  ]
+
+  // Prefer the Chromium sandbox when the host supports it. Containers/CI without
+  // user namespaces typically need `--no-sandbox` (forced via env, or as a
+  // fallback after a failed sandboxed launch). Trade-off when disabled: a
+  // Chromium renderer exploit in hostile deck HTML would escape to the API
+  // process user; mitigated by the strict no-network CSP, the loopback-only
+  // render routes (plus process-local secret), and per-render page disposal.
+  if (options.noSandbox) {
+    args.push('--no-sandbox')
+  }
+
+  args.push('--disable-popup-blocking', '--block-new-web-contents', 'about:blank')
+  return args
 }
 
 export function isThumbnailRendererAvailable(env: NodeJS.ProcessEnv = process.env) {
@@ -324,40 +383,39 @@ export class CdpClient {
   }
 }
 
-export async function spawnChromium(
+async function waitForDevToolsEndpoint(
+  child: ChildProcess,
+  debugPort: number,
+  getStderr: () => string,
+) {
+  // Cold starts on CI runners can exceed the default 15s wait.
+  await waitFor(
+    'Chromium DevTools endpoint',
+    async () => {
+      if (child.exitCode !== null) {
+        throw new Error(`Chromium exited early.\n${getStderr()}`)
+      }
+
+      const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
+      return Boolean(response?.ok)
+    },
+    { timeoutMs: 45_000 },
+  )
+}
+
+async function spawnChromiumOnce(
+  executable: string,
   debugPort: number,
   userDataDir: string,
+  sandboxMode: ChromiumSandboxMode,
 ): Promise<BrowserProcess> {
-  const executable = findChromium()
-
-  if (!executable) {
-    throw new Error(
-      'Chromium was not found. Set ARK_CHROMIUM_PATH to a Chromium-compatible browser binary.',
-    )
-  }
-
   let stderr = ''
   const STDERR_CAP = 64_000
   const child = spawn(
     executable,
-    [
-      '--headless=new',
-      `--remote-debugging-port=${debugPort}`,
-      '--remote-debugging-address=127.0.0.1',
-      `--user-data-dir=${userDataDir}`,
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-default-browser-check',
-      '--no-first-run',
-      // Required in containers/CI without user namespaces. Trade-off: a
-      // Chromium renderer exploit in hostile deck HTML would escape to the API
-      // process user; mitigated by the strict no-network CSP, the loopback-only
-      // render routes (plus process-local secret), and per-render page disposal.
-      '--no-sandbox',
-      '--disable-popup-blocking',
-      '--block-new-web-contents',
-      'about:blank',
-    ],
+    buildChromiumLaunchArgs(debugPort, userDataDir, {
+      noSandbox: sandboxMode === 'no-sandbox',
+    }),
     // Ignore stdout so a chatty Chromium cannot fill the pipe buffer and stall.
     { stdio: ['ignore', 'ignore', 'pipe'] },
   )
@@ -375,24 +433,13 @@ export async function spawnChromium(
   })
 
   try {
-    // Cold starts on CI runners can exceed the default 15s wait.
-    await waitFor(
-      'Chromium DevTools endpoint',
-      async () => {
-        if (child.exitCode !== null) {
-          throw new Error(`Chromium exited early.\n${stderr}`)
-        }
-
-        const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
-        return Boolean(response?.ok)
-      },
-      { timeoutMs: 45_000 },
-    )
+    await waitForDevToolsEndpoint(child, debugPort, () => stderr)
   } catch (error) {
     if (child.exitCode === null) {
       child.kill('SIGKILL')
     }
 
+    await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
     throw error
   }
 
@@ -404,8 +451,60 @@ export async function spawnChromium(
     process: child,
     userDataDir,
     debugPort,
+    sandboxMode,
     stderr: () => stderr,
   }
+}
+
+export async function spawnChromium(
+  debugPort: number,
+  userDataDir: string,
+): Promise<BrowserProcess> {
+  const executable = findChromium()
+
+  if (!executable) {
+    throw new Error(
+      'Chromium was not found. Set ARK_CHROMIUM_PATH to a Chromium-compatible browser binary.',
+    )
+  }
+
+  const logger = createLogger({ service: 'ark-api' })
+  const attempts = chromiumSandboxAttemptOrder()
+  let nextPort = debugPort
+  let nextUserDataDir = userDataDir
+  let lastError: unknown
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    const sandboxMode = attempts[index]!
+    const isFallback = index > 0
+
+    if (isFallback) {
+      nextPort = await getFreePort()
+      nextUserDataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-chrome-'))
+      const reason =
+        lastError instanceof Error ? lastError.message : 'sandboxed Chromium launch failed'
+      logger.warn('thumbnail.chromium.sandbox_fallback', {
+        reason: reason.slice(0, 500),
+        sandboxMode,
+      })
+    }
+
+    try {
+      const browser = await spawnChromiumOnce(executable, nextPort, nextUserDataDir, sandboxMode)
+      logger.info('thumbnail.chromium.started', { sandboxMode })
+      return browser
+    } catch (error) {
+      lastError = error
+
+      // Failed attempt already kills the process and removes userDataDir.
+      // Allocate a fresh port/dir before the next mode (handled above).
+      if (index === attempts.length - 1) {
+        throw error
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Chromium failed to start.')
 }
 
 export async function stopChromium(browser: BrowserProcess | null) {

@@ -87,6 +87,7 @@ Optional env vars (see `.env.example`):
 - `VITE_ARK_PREVIEW_SRCDOC=true` — force legacy inline `srcDoc` preview instead of the sandbox host
 - `ARK_THUMBNAIL_RENDERER=off` — disable sandbox-backed PNG thumbnails (clients keep `srcDoc` fallback)
 - `ARK_CHROMIUM_PATH` — Chromium/Chrome binary for thumbnail rendering and browser smoke
+- `ARK_CHROMIUM_NO_SANDBOX=true` — always launch thumbnail Chromium with `--no-sandbox` (skip sandboxed probe; also `1`/`yes`/`on`)
 - `ARK_THUMBNAIL_CACHE_DIR` — thumbnail PNG cache directory (default `data/thumbnails`)
 
 To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then open the app on port `5173` — not the API port directly.
