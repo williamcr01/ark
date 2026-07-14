@@ -5,7 +5,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { persistedChatMessageSchema } from '@ark/contracts/chat.ts'
+import { persistedChatMessageSchema } from '@ark/contracts'
 import type { ChatMessagePart } from '@ark/deck-core/chat.ts'
 import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
 import { extractAgentTranscriptParts } from './deck-agent.ts'

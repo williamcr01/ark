@@ -163,6 +163,25 @@ describe('agent context assembly', () => {
     })
   })
 
+  it('allocates the model budget across every text part without looping', () => {
+    const parts = Array.from({ length: 15 }, (_, index) => ({
+      type: 'text' as const,
+      content: `${index}:${'x'.repeat(10_000)}`,
+      stepIndex: 0,
+    }))
+    const projected = projectAssistantTurnForModel(parts)
+    expect(projected.bytesAfter).toBeLessThanOrEqual(MAX_MODEL_ASSISTANT_TURN_BYTES)
+  })
+
+  it('falls back to a bounded ledger when compacted tool parts cannot fit', () => {
+    const parts = toolStep(0, 'call-small-limit', 'large tool step')
+    for (const limit of [100, 500]) {
+      const projected = projectAssistantTurnForModel(parts, limit)
+      expect(projected.parts).toEqual([])
+      expect(projected.bytesAfter).toBeLessThanOrEqual(limit)
+    }
+  })
+
   it('prioritizes an early error when more than 40 steps are omitted', () => {
     const parts = Array.from({ length: 50 }, (_, index) =>
       toolStep(index, `call-${index}`, `read ${index}`, index === 0),
@@ -186,5 +205,16 @@ describe('agent context assembly', () => {
     )
     expect(projected.filter((part) => part.type === 'tool-call')).toHaveLength(60)
     expect(projected.filter((part) => part.type === 'tool-result')).toHaveLength(60)
+  })
+
+  it('uses a persistence ledger instead of throwing when compact parts cannot fit', () => {
+    const parts = Array.from({ length: 30 }, (_, index) =>
+      toolStep(index, `call-${index}`, `read ${index}`),
+    ).flat()
+    const projected = projectAssistantTurnForPersistence(parts, 1000)
+    expect(new TextEncoder().encode(JSON.stringify(projected)).byteLength).toBeLessThanOrEqual(1000)
+    expect(projected).toMatchObject([
+      { type: 'text', content: expect.stringContaining('Durable agent transcript compacted') },
+    ])
   })
 })

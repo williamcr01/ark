@@ -78,4 +78,32 @@ describe('deck tool catalog', () => {
     expect(projected.recovery?.instruction).toContain('Do not repeat patch_deck')
     expect(projected.recovery?.toolName).toBe('read_deck')
   })
+
+  it('retains operation names and targets across a large patch projection', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
+    const patchElement = activeDefinitions.find(({ name }) => name === 'patch_element')!
+    const projected = patchElement.projectInputForTranscript({
+      operations: Array.from({ length: 20 }, (_, index) => ({
+        op: 'replace_text',
+        slideId: `slide-${index}`,
+        elementId: `element-${index}`,
+        text: 'x'.repeat(10_000),
+      })),
+    })
+    expect(projected.value).toMatchObject({
+      operations: expect.arrayContaining([
+        expect.objectContaining({
+          op: 'replace_text',
+          slideId: 'slide-0',
+          elementId: 'element-0',
+        }),
+        expect.objectContaining({
+          op: 'replace_text',
+          slideId: 'slide-19',
+          elementId: 'element-19',
+        }),
+      ]),
+    })
+    expect(projected.value).not.toMatchObject({ omitted: true })
+  })
 })

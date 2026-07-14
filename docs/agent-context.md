@@ -7,8 +7,9 @@ and tool results. Tool-specific projectors remove duplicate deck HTML and bound 
 while retaining hashes, targets, results, errors, and instructions for re-reading authoritative
 deck state. Mutating tools are marked explicitly and are never recommended for replay; recovery
 instead inspects the current deck to verify their effects. Completed steps are not deleted to
-satisfy a model budget. A separate persistence projection compacts values, never logical parts,
-before enforcing the 512KB durable ceiling.
+satisfy a model budget. A separate persistence projection first compacts values while retaining
+logical parts; if even that cannot fit the 512KB durable ceiling, it stores a bounded semantic
+ledger instead of throwing after a completed job.
 
 `assembleDeckAgentContext` transforms that durable history immediately before `generateText`. It
 validates tool pairing, retains recent complete steps, and replaces older model-only context with a

@@ -32,7 +32,12 @@ const truncateString = (value: string, limit = 4_000) => {
   return `${value.slice(0, limit)}[... ${value.length - limit} characters omitted; re-read the current deck if needed]`
 }
 
-export function normalizeTranscriptValue(value: unknown, key = '', stringLimit = 4_000): JsonValue {
+export function normalizeTranscriptValue(
+  value: unknown,
+  key = '',
+  stringLimit = 4_000,
+  arrayLimit = Number.POSITIVE_INFINITY,
+): JsonValue {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') {
     if (typeof value === 'string') {
       if (key === 'html' || /<!doctype html|<html[\s>]/i.test(value))
@@ -43,13 +48,19 @@ export function normalizeTranscriptValue(value: unknown, key = '', stringLimit =
   }
   if (typeof value === 'number') return Number.isFinite(value) ? value : String(value)
   if (value instanceof Error) return { name: value.name, message: value.message }
-  if (Array.isArray(value))
-    return value.map((item) => normalizeTranscriptValue(item, '', stringLimit))
+  if (Array.isArray(value)) {
+    const projected = value
+      .slice(0, arrayLimit)
+      .map((item) => normalizeTranscriptValue(item, '', stringLimit, arrayLimit))
+    if (value.length > arrayLimit)
+      projected.push({ omittedItems: value.length - arrayLimit } as JsonValue)
+    return projected
+  }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([entryKey, entryValue]) => [
         entryKey,
-        normalizeTranscriptValue(entryValue, entryKey, stringLimit),
+        normalizeTranscriptValue(entryValue, entryKey, stringLimit, arrayLimit),
       ]),
     )
   }
@@ -162,7 +173,7 @@ function projectReadOutput(value: unknown): TranscriptProjection {
 }
 
 function projectMutation(toolName: string, value: unknown): TranscriptProjection {
-  const projected = capTranscriptValue(normalizeTranscriptValue(value, '', 512))
+  const projected = capTranscriptValue(normalizeTranscriptValue(value, '', 256, 20))
   const recovery = {
     toolName: 'read_deck',
     input: {},
@@ -177,7 +188,7 @@ function projectMutation(toolName: string, value: unknown): TranscriptProjection
 }
 
 function projectReadOnly(toolName: string, value: unknown): TranscriptProjection {
-  const projected = normalizeTranscriptValue(value, '', 1_000)
+  const projected = normalizeTranscriptValue(value, '', 256, 20)
   const capped = capTranscriptValue(projected)
   const truncated = JSON.stringify(capped) !== JSON.stringify(projected)
   const recovery = truncated
@@ -190,21 +201,9 @@ function projectReadOnly(toolName: string, value: unknown): TranscriptProjection
   }
 }
 
-function projectToolValue(
-  toolName: string,
-  value: unknown,
-  output: boolean,
-  policy: 'read' | 'mutation' | 'readonly',
-): TranscriptProjection {
-  if (policy === 'read' && output) return projectReadOutput(value)
-  if (policy === 'mutation') return projectMutation(toolName, value)
-  return projectReadOnly(toolName, value)
-}
-
 const metadata = {
   parse_deck: {
     mutating: false,
-    projection: 'readonly',
     snippet: 'parse_deck()',
     guidelines: [
       'Use parse_deck to understand deck structure and editable element ids before targeted edits.',
@@ -212,47 +211,81 @@ const metadata = {
   },
   list_slides: {
     mutating: false,
-    projection: 'readonly',
     snippet: 'list_slides()',
     guidelines: ['Use list_slides before slide-level changes.'],
   },
   read_deck: {
     mutating: false,
-    projection: 'read',
     snippet: 'read_deck({ slideIndex }) or read_deck({ offset, limit })',
     guidelines: ['Re-read current deck content when transcript markers say content was omitted.'],
   },
   edit_deck: {
     mutating: true,
-    projection: 'mutation',
     snippet: 'edit_deck({ edits })',
     guidelines: ['Use edit_deck only for small exact inline replacements.'],
   },
   patch_deck: {
     mutating: true,
-    projection: 'mutation',
     snippet: 'patch_deck({ operations })',
     guidelines: ['Prefer patch_deck for slide changes.'],
   },
   patch_element: {
     mutating: true,
-    projection: 'mutation',
     snippet: 'patch_element({ operations })',
     guidelines: ['Prefer patch_element for a selected element id.'],
   },
   write_deck: {
     mutating: true,
-    projection: 'mutation',
     snippet: 'write_deck({ html })',
     guidelines: ['Use write_deck only for new decks or explicit full rewrites.'],
   },
   list_versions: {
     mutating: false,
-    projection: 'readonly',
     snippet: 'list_versions({ limit })',
     guidelines: ['Use list_versions before large rewrites or when asked what changed.'],
   },
 } as const
+
+const transcriptProjectors = {
+  parse_deck: {
+    input: (value: unknown) => projectReadOnly('parse_deck', value),
+    output: (value: unknown) => projectReadOnly('parse_deck', value),
+  },
+  list_slides: {
+    input: (value: unknown) => projectReadOnly('list_slides', value),
+    output: (value: unknown) => projectReadOnly('list_slides', value),
+  },
+  read_deck: {
+    input: (value: unknown) => projectReadOnly('read_deck', value),
+    output: projectReadOutput,
+  },
+  edit_deck: {
+    input: (value: unknown) => projectMutation('edit_deck', value),
+    output: (value: unknown) => projectMutation('edit_deck', value),
+  },
+  patch_deck: {
+    input: (value: unknown) => projectMutation('patch_deck', value),
+    output: (value: unknown) => projectMutation('patch_deck', value),
+  },
+  patch_element: {
+    input: (value: unknown) => projectMutation('patch_element', value),
+    output: (value: unknown) => projectMutation('patch_element', value),
+  },
+  write_deck: {
+    input: (value: unknown) => projectMutation('write_deck', value),
+    output: (value: unknown) => projectMutation('write_deck', value),
+  },
+  list_versions: {
+    input: (value: unknown) => projectReadOnly('list_versions', value),
+    output: (value: unknown) => projectReadOnly('list_versions', value),
+  },
+} satisfies Record<
+  keyof typeof metadata,
+  {
+    input: (value: unknown) => TranscriptProjection
+    output: (value: unknown) => TranscriptProjection
+  }
+>
 
 export function createActiveDeckTools(
   workspace: DeckWorkspace,
@@ -261,6 +294,7 @@ export function createActiveDeckTools(
   const rawTools = createDeckTools(workspace, options)
   const activeDefinitions = Object.entries(rawTools).map(([name, registeredTool]) => {
     const info = metadata[name as keyof typeof metadata]
+    const projectors = transcriptProjectors[name as keyof typeof transcriptProjectors]
     return {
       name,
       snippet: info.snippet,
@@ -273,10 +307,8 @@ export function createActiveDeckTools(
         !!output &&
         typeof output === 'object' &&
         ('error' in output || ('ok' in output && output.ok === false)),
-      projectInputForTranscript: (input: unknown) =>
-        projectToolValue(name, input, false, info.projection),
-      projectOutputForTranscript: (output: unknown) =>
-        projectToolValue(name, output, true, info.projection),
+      projectInputForTranscript: projectors.input,
+      projectOutputForTranscript: projectors.output,
     } satisfies DeckToolDefinition
   })
   return { tools: rawTools, activeDefinitions }
