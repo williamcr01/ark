@@ -50,6 +50,7 @@ export function cloneGenerationJobRequest(request: GenerationJobRequest): Genera
     messages: request.messages.map((message) => ({
       ...message,
       ...(message.attachments ? { attachments: [...message.attachments] } : {}),
+      ...(message.parts ? { parts: structuredClone(message.parts) } : {}),
     })),
     currentHtml: request.currentHtml,
     baseVersionId: request.baseVersionId ?? null,

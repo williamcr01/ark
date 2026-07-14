@@ -1,11 +1,13 @@
-import { streamText, type LanguageModel } from 'ai'
+import { stepCountIs, streamText, type LanguageModel } from 'ai'
 
 import {
-  buildAgentModelMessages,
   type AgentStep,
   type ApiChatMessage,
+  type ChatMessagePart,
   type EditorSelectionContext,
+  type JsonValue,
 } from '@ark/deck-core/chat.ts'
+import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
@@ -13,22 +15,38 @@ import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
+import {
+  createActiveDeckTools,
+  findToolDefinition,
+  normalizeTranscriptValue,
+  type DeckToolDefinition,
+} from './deck-tool-catalog.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
-export const deckAgentSystemPrompt = `You are Ark, an expert presentation designer and front-end engineer.
+export const MAX_AGENT_STEPS = 30
+
+export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolDefinition[]) {
+  const available = activeDefinitions
+    .map(
+      (definition) => `- **${definition.name}**: ${definition.snippet} - ${definition.description}`,
+    )
+    .join('\n')
+  const toolGuidelines = [
+    ...new Set(activeDefinitions.flatMap((definition) => definition.guidelines)),
+  ]
+    .map((guideline) => `- ${guideline}`)
+    .join('\n')
+  return `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
 
-Tool workflow:
-- **New deck**: call write_deck with a complete HTML document.
-- **Edit existing deck**: call parse_deck, list_slides, and/or read_deck first.
-- **Version history**: when editing an existing deck, call list_versions to inspect recent sources, summaries, structural diffs, and compact provenance (no HTML snapshots) before large rewrites or when the user asks what changed.
-- **Selected element**: when the user has an element selected (see the selection note in their message), prefer patch_element targeting that elementId. parse_deck lists element ids, kinds, and locked/managed flags.
-- **Slide changes**: prefer patch_deck (add/delete/replace/reorder/title/notes) over edit_deck or write_deck.
-- **Small inline HTML tweaks**: use edit_deck with exact oldText/newText patches.
-- Use write_deck only for brand-new decks or explicit full rewrites.
+Available tools:
+${available}
+
+Guidelines:
+- Inspect the current deck before editing and prefer targeted patches over full rewrites.
 - If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.
-- After edits, you may read_deck again to verify structure before replying.
+${toolGuidelines}
 
 Hard requirements for deck HTML:
 - Include <!DOCTYPE html>, <html>, <head>, and <body>.
@@ -62,6 +80,7 @@ Reveal.js rules (only when requested or clearly needed — see docs/reveal-runti
 - CDN reveal.js URLs are invalid even if the version matches.
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
+}
 
 export type RunDeckAgentOptions = {
   model: LanguageModel
@@ -114,12 +133,14 @@ export type RunDeckAgentResult =
       validation: ReturnType<typeof validateDeckHtmlOnServer>
       steps: AgentStep[]
       assistantText: string
+      transcriptParts: ChatMessagePart[]
       providerMetrics: ProviderCallMetrics
     }
   | {
       ok: false
       error: string
       steps: AgentStep[]
+      transcriptParts: ChatMessagePart[]
       validation?: ReturnType<typeof validateDeckHtmlOnServer>
       providerMetrics?: ProviderCallMetrics | null
     }
@@ -208,7 +229,9 @@ export function extractAgentSteps(
     reasoning?: Array<{ text?: string } | string> | null
     toolCalls: Array<{ toolName: string; input: unknown }>
     toolResults: Array<{ toolName: string; output: unknown }>
+    content?: Array<Record<string, unknown>>
   }>,
+  definitions?: readonly DeckToolDefinition[],
 ): AgentStep[] {
   const events: AgentStep[] = []
 
@@ -223,20 +246,27 @@ export function extractAgentSteps(
     }
 
     for (const toolCall of step.toolCalls) {
+      const definition = definitions && findToolDefinition(definitions, toolCall.toolName)
       events.push({
         type: 'tool-call',
         toolName: toolCall.toolName,
-        summary: summarizeToolInput(toolCall.toolName, toolCall.input),
+        summary:
+          definition?.summarizeInput(toolCall.input) ??
+          summarizeToolInput(toolCall.toolName, toolCall.input),
       })
     }
 
     for (const toolResult of step.toolResults) {
-      const summary = summarizeToolOutput(toolResult.toolName, toolResult.output)
+      const definition = definitions && findToolDefinition(definitions, toolResult.toolName)
+      const summary =
+        definition?.summarizeOutput(toolResult.output) ??
+        summarizeToolOutput(toolResult.toolName, toolResult.output)
       const isError =
-        !!toolResult.output &&
-        typeof toolResult.output === 'object' &&
-        ('error' in toolResult.output ||
-          ('ok' in toolResult.output && toolResult.output.ok === false))
+        definition?.isErrorOutput(toolResult.output) ??
+        (!!toolResult.output &&
+          typeof toolResult.output === 'object' &&
+          ('error' in toolResult.output ||
+            ('ok' in toolResult.output && toolResult.output.ok === false)))
 
       events.push({
         type: 'tool-result',
@@ -245,9 +275,143 @@ export function extractAgentSteps(
         error: isError,
       })
     }
+
+    for (const item of step.content ?? []) {
+      if (item.type !== 'tool-error' || typeof item.toolName !== 'string') continue
+      const error = item.error
+      events.push({
+        type: 'tool-result',
+        toolName: item.toolName,
+        summary:
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : 'Tool execution failed',
+        error: true,
+      })
+    }
   }
 
   return events
+}
+
+const projectionMetadata = (projection: {
+  truncated: boolean
+  recovery?: { toolName: string; input: JsonValue; instruction: string }
+}) => ({
+  ...(projection.truncated ? { truncated: true } : {}),
+  ...(projection.recovery ? { recovery: projection.recovery } : {}),
+})
+
+export function extractAgentTranscriptParts(
+  steps: Array<{
+    content?: Array<Record<string, unknown>>
+    text?: string
+    reasoningText?: string | null
+    reasoning?: Array<{ text?: string } | string> | null
+    toolCalls?: Array<Record<string, unknown>>
+    toolResults?: Array<Record<string, unknown>>
+  }>,
+  definitions: readonly DeckToolDefinition[],
+): ChatMessagePart[] {
+  const parts: ChatMessagePart[] = []
+  for (const [stepIndex, step] of steps.entries()) {
+    const thinking = extractThinkingText(step)
+    if (thinking) parts.push({ type: 'thinking', content: thinking, stepIndex })
+
+    const content = step.content ?? []
+    for (const item of content) {
+      if (item.type === 'text' && typeof item.text === 'string' && item.text.trim())
+        parts.push({ type: 'text', content: item.text.trim(), stepIndex })
+      if (
+        item.type === 'tool-call' &&
+        typeof item.toolCallId === 'string' &&
+        typeof item.toolName === 'string'
+      ) {
+        const definition = findToolDefinition(definitions, item.toolName)
+        if (!definition) continue
+        const projection = definition.projectInputForTranscript(item.input)
+        parts.push({
+          type: 'tool-call',
+          toolName: item.toolName,
+          toolCallId: item.toolCallId,
+          stepIndex,
+          summary: definition.summarizeInput(item.input),
+          input: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
+        })
+      }
+      if (
+        (item.type === 'tool-result' || item.type === 'tool-error') &&
+        typeof item.toolCallId === 'string' &&
+        typeof item.toolName === 'string'
+      ) {
+        const definition = findToolDefinition(definitions, item.toolName)
+        if (!definition) continue
+        const projection =
+          item.type === 'tool-error'
+            ? { value: normalizeTranscriptValue(item.error), truncated: false }
+            : definition.projectOutputForTranscript(item.output)
+        parts.push({
+          type: 'tool-result',
+          toolName: item.toolName,
+          toolCallId: item.toolCallId,
+          stepIndex,
+          summary:
+            item.type === 'tool-error'
+              ? item.error instanceof Error
+                ? item.error.message
+                : 'Tool execution failed'
+              : definition.summarizeOutput(item.output),
+          output: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
+          isError: item.type === 'tool-error' || definition.isErrorOutput(item.output),
+          error: item.type === 'tool-error' || definition.isErrorOutput(item.output),
+        })
+      }
+    }
+    if (!content.length) {
+      if (step.text?.trim()) parts.push({ type: 'text', content: step.text.trim(), stepIndex })
+      for (const call of step.toolCalls ?? []) {
+        if (typeof call.toolCallId !== 'string' || typeof call.toolName !== 'string') continue
+        const definition = findToolDefinition(definitions, call.toolName)
+        if (!definition) continue
+        const projection = definition.projectInputForTranscript(call.input)
+        parts.push({
+          type: 'tool-call',
+          toolName: call.toolName,
+          toolCallId: call.toolCallId,
+          stepIndex,
+          summary: definition.summarizeInput(call.input),
+          input: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
+        })
+      }
+      for (const result of step.toolResults ?? []) {
+        if (typeof result.toolCallId !== 'string' || typeof result.toolName !== 'string') continue
+        const definition = findToolDefinition(definitions, result.toolName)
+        if (!definition) continue
+        const projection = definition.projectOutputForTranscript(result.output)
+        parts.push({
+          type: 'tool-result',
+          toolName: result.toolName,
+          toolCallId: result.toolCallId,
+          stepIndex,
+          summary: definition.summarizeOutput(result.output),
+          output: projection.value,
+          mutating: definition.mutating,
+          ...projectionMetadata(projection),
+          isError: definition.isErrorOutput(result.output),
+          error: definition.isErrorOutput(result.output),
+        })
+      }
+    }
+  }
+  return parts
 }
 
 export function extractThinkingText(step: {
@@ -388,11 +552,17 @@ export async function runDeckAgent({
   throwIfAborted(abortSignal)
 
   const workspace = createDeckWorkspace(currentHtml)
-  const { createDeckTools } = await import('./deck-tools.ts')
-  const tools = createDeckTools(workspace, { logger, versionInspector })
+  const { tools, activeDefinitions } = createActiveDeckTools(workspace, {
+    logger,
+    versionInspector,
+  })
   const accumulatedSteps: AgentStep[] = []
+  const transcriptParts: ChatMessagePart[] = []
+  let transcriptStepIndex = 0
   const thinkingProgress = createThinkingProgressReporter(accumulatedSteps, onStepProgress)
   const startedAt = performance.now()
+  const context = assembleDeckAgentContext({ messages, currentHtml, editorSelection })
+  logger?.info('generation.context.assembled', context.metadata)
   const providerOptions = reasoningEffort
     ? buildReasoningProviderOptions(provider, reasoningEffort)
     : undefined
@@ -402,10 +572,10 @@ export async function runDeckAgent({
   try {
     const stream = streamText({
       model,
-      system: deckAgentSystemPrompt,
-      messages: buildAgentModelMessages(messages, currentHtml, editorSelection),
+      system: buildDeckAgentSystemPrompt(activeDefinitions),
+      messages: context.modelMessages,
       tools,
-      stopWhen: () => false,
+      stopWhen: stepCountIs(MAX_AGENT_STEPS),
       ...(reasoningEffort ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,
@@ -417,12 +587,35 @@ export async function runDeckAgent({
       },
       onStepFinish: async (step) => {
         throwIfAborted(abortSignal)
+        const thinkingBeforeCount = accumulatedSteps.length
         await thinkingProgress.commitThinkingStep(extractThinkingText(step as ExtractableAgentStep))
+        const committedThinking =
+          accumulatedSteps.length > thinkingBeforeCount &&
+          accumulatedSteps[thinkingBeforeCount]?.type === 'thinking'
+            ? accumulatedSteps[thinkingBeforeCount]
+            : null
 
-        const withoutThinking = extractAgentSteps([step as ExtractableAgentStep]).filter(
-          (event) => event.type !== 'thinking',
-        )
+        const withoutThinking = extractAgentSteps(
+          [step as ExtractableAgentStep],
+          activeDefinitions,
+        ).filter((event) => event.type !== 'thinking')
         accumulatedSteps.push(...withoutThinking)
+
+        const extracted: ChatMessagePart[] = extractAgentTranscriptParts(
+          [step as never],
+          activeDefinitions,
+        )
+          .filter((part) => part.type !== 'thinking')
+          .map((part) => ({ ...part, stepIndex: transcriptStepIndex }))
+        if (committedThinking) {
+          extracted.unshift({
+            type: 'thinking',
+            content: committedThinking.summary,
+            stepIndex: transcriptStepIndex,
+          })
+        }
+        transcriptParts.push(...extracted)
+        transcriptStepIndex += 1
         await onStepProgress?.(accumulatedSteps)
       },
     })
@@ -435,7 +628,18 @@ export async function runDeckAgent({
       totalUsage: await stream.totalUsage,
       finishReason: await stream.finishReason,
     }
+    const trailingThinkingBefore = accumulatedSteps.length
     await thinkingProgress.commitThinkingStep()
+    if (
+      accumulatedSteps.length > trailingThinkingBefore &&
+      accumulatedSteps[trailingThinkingBefore]?.type === 'thinking'
+    ) {
+      transcriptParts.push({
+        type: 'thinking',
+        content: accumulatedSteps[trailingThinkingBefore].summary,
+        stepIndex: transcriptStepIndex,
+      })
+    }
   } catch (error) {
     const { categorizeProviderError } = await import('./observability/provider-errors.ts')
     const details = categorizeProviderError(error)
@@ -444,6 +648,7 @@ export async function runDeckAgent({
       ok: false,
       error: error instanceof Error ? error.message : 'Model provider request failed.',
       steps: accumulatedSteps,
+      transcriptParts,
       providerMetrics: buildProviderMetrics({
         provider,
         modelRef,
@@ -470,8 +675,12 @@ export async function runDeckAgent({
   const steps =
     accumulatedSteps.length > 0
       ? accumulatedSteps
-      : extractAgentSteps(result.steps as ExtractableAgentStep[])
+      : extractAgentSteps(result.steps as ExtractableAgentStep[], activeDefinitions)
   const assistantText = result.text.trim()
+  const finalTranscriptParts =
+    transcriptParts.length > 0
+      ? transcriptParts
+      : extractAgentTranscriptParts(result.steps as never, activeDefinitions)
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
@@ -485,6 +694,7 @@ export async function runDeckAgent({
           primaryIssue?.message ??
           'The agent produced an invalid deck. Try a more specific edit request.',
         steps,
+        transcriptParts: finalTranscriptParts,
         validation,
         providerMetrics,
       }
@@ -496,6 +706,7 @@ export async function runDeckAgent({
       changed: true,
       validation,
       steps,
+      transcriptParts: finalTranscriptParts,
       assistantText,
       providerMetrics,
     }
@@ -510,6 +721,7 @@ export async function runDeckAgent({
       changed: true,
       validation: fallback.validation,
       steps,
+      transcriptParts: finalTranscriptParts,
       assistantText,
       providerMetrics,
     }
@@ -527,6 +739,7 @@ export async function runDeckAgent({
         changed: true,
         validation: extractedFinal.validation,
         steps,
+        transcriptParts: finalTranscriptParts,
         assistantText,
         providerMetrics,
       }
@@ -550,6 +763,7 @@ export async function runDeckAgent({
         changed: false,
         validation,
         steps,
+        transcriptParts: finalTranscriptParts,
         assistantText,
         providerMetrics,
       }
@@ -562,6 +776,7 @@ export async function runDeckAgent({
       fallback.error ??
       'The agent did not update the deck. Ask for a specific change or try again.',
     steps,
+    transcriptParts: finalTranscriptParts,
     validation: fallback.validation,
     providerMetrics,
   }

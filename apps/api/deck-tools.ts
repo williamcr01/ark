@@ -9,6 +9,7 @@ import {
 import {
   listDeckSlides,
   parseDeckStructure,
+  readDeckCharacterSlice,
   readDeckHtmlSlice,
   readDeckSlideHtml,
 } from './deck-html.ts'
@@ -128,8 +129,14 @@ export function createDeckTools(
           .min(0)
           .optional()
           .describe('Zero-based slide index. When set, returns that slide HTML only.'),
+        charOffset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Character offset for continuing one oversized line or slide.'),
       }),
-      execute: async ({ offset, limit, slideIndex }) => {
+      execute: async ({ offset, limit, slideIndex, charOffset }) => {
         if (!workspace.html.trim()) {
           return {
             error: 'No deck HTML is loaded yet. Use write_deck to create one.',
@@ -137,22 +144,20 @@ export function createDeckTools(
         }
 
         if (slideIndex !== undefined) {
-          const slide = readDeckSlideHtml(workspace.html, slideIndex)
+          const slide = readDeckSlideHtml(workspace.html, slideIndex, charOffset)
 
           if (!slide.ok) {
             return { error: slide.error }
           }
 
-          return {
-            mode: 'slide' as const,
-            index: slide.index,
-            title: slide.title,
-            content: slide.content,
-            notes: slide.notes,
-          }
+          const { ok: _ok, ...result } = slide
+          return { mode: 'slide' as const, ...result }
         }
 
-        const slice = readDeckHtmlSlice(workspace.html, { offset, limit })
+        const slice =
+          charOffset !== undefined
+            ? readDeckCharacterSlice(workspace.html, { offset, charOffset })
+            : readDeckHtmlSlice(workspace.html, { offset, limit })
 
         return {
           mode: 'lines' as const,

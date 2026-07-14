@@ -87,6 +87,23 @@ describe('patch_element tool', () => {
   })
 })
 
+describe('read_deck tool', () => {
+  it('returns continuation metadata for a large slide', async () => {
+    const html = `<html><body><section class="slide">${'x'.repeat(80_000)}</section></body></html>`
+    const tools = createDeckTools(createDeckWorkspace(html))
+    const execute = tools.read_deck.execute as unknown as ToolExecute
+    const output = await execute({ slideIndex: 0 }, {})
+    expect(output).toMatchObject({
+      mode: 'slide',
+      index: 0,
+      truncated: true,
+      charOffset: 0,
+      nextCharOffset: expect.any(Number),
+      hint: expect.stringContaining('charOffset'),
+    })
+  })
+})
+
 describe('list_versions tool', () => {
   it('returns compact version metadata without HTML', async () => {
     const workspace = createDeckWorkspace(managedDeck)

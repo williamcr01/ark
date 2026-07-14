@@ -5,6 +5,13 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { persistedChatMessageSchema } from '@ark/contracts'
+import type { ChatMessagePart } from '@ark/deck-core/chat.ts'
+import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
+import { extractAgentTranscriptParts } from './deck-agent.ts'
+import { createActiveDeckTools } from './deck-tool-catalog.ts'
+import { createDeckWorkspace } from './deck-workspace.ts'
+import { persistAssistantGenerationMessage } from './chat-persistence.ts'
 import { createChatStore } from './chat-store.ts'
 
 describe('createChatStore', () => {
@@ -72,6 +79,99 @@ describe('createChatStore', () => {
       generationStatus: 'succeeded',
       model: 'openai:gpt-4.1-mini',
     })
+  })
+
+  it('persists and reloads a generated transcript within its durable ceiling', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-chat-'))
+    const store = createChatStore(dataDir)
+    const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
+    const parts = [
+      ...Array.from({ length: 30 }, (_, stepIndex) => [
+        {
+          type: 'tool-call' as const,
+          toolName: 'read_deck',
+          summary: `read ${stepIndex}`,
+          stepIndex,
+          toolCallId: `call-${stepIndex}`,
+          input: { offset: stepIndex + 1, padding: 'x'.repeat(20_000) },
+        },
+        {
+          type: 'tool-result' as const,
+          toolName: 'read_deck',
+          summary: `result ${stepIndex}`,
+          stepIndex,
+          toolCallId: `call-${stepIndex}`,
+          output: { content: 'y'.repeat(20_000) },
+        },
+      ]).flat(),
+      { type: 'text' as const, content: 'z'.repeat(600_000), stepIndex: 30 },
+    ] satisfies ChatMessagePart[]
+
+    await persistAssistantGenerationMessage(store, deckId, {
+      jobId: '00000000-0000-4000-8000-000000000301',
+      model: 'mock:model',
+      status: 'failed',
+      steps: [],
+      transcriptParts: parts,
+      assistantText: 'z'.repeat(600_000),
+      editingExistingDeck: true,
+    })
+    const message = (await store.listMessages(deckId)).messages[0]
+    expect(message.parts).toHaveLength(parts.length)
+    expect(persistedChatMessageSchema.safeParse(message).success).toBe(true)
+  })
+
+  it('replays persisted recovery metadata in the next job context', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-chat-'))
+    const store = createChatStore(dataDir)
+    const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace('<html></html>'))
+    const transcriptParts = extractAgentTranscriptParts(
+      [
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              toolCallId: 'call-read',
+              input: { offset: 1 },
+            },
+            {
+              type: 'tool-result',
+              toolName: 'read_deck',
+              toolCallId: 'call-read',
+              output: {
+                mode: 'lines',
+                content: 'x'.repeat(10_000),
+                offset: 1,
+                totalLines: 2,
+                truncated: true,
+                nextOffset: 2,
+              },
+            },
+          ],
+        },
+      ],
+      activeDefinitions,
+    )
+    await persistAssistantGenerationMessage(store, deckId, {
+      jobId: '00000000-0000-4000-8000-000000000302',
+      model: 'mock:model',
+      status: 'failed',
+      steps: [],
+      transcriptParts,
+      editingExistingDeck: true,
+    })
+    const stored = (await store.listMessages(deckId)).messages[0]
+    const context = assembleDeckAgentContext({
+      messages: [
+        { role: 'assistant', content: stored.content, parts: stored.parts },
+        { role: 'user', content: 'Continue' },
+      ],
+      currentHtml: '<html></html>',
+    })
+    expect(JSON.stringify(context.modelMessages)).toContain('nextOffset')
+    expect(JSON.stringify(context.modelMessages)).toContain('Call read_deck')
   })
 
   it('returns empty history for decks without chat files', async () => {
