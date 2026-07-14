@@ -28,9 +28,7 @@ describe('isChromiumNoSandboxForced', () => {
 
 describe('chromiumSandboxAttemptOrder', () => {
   it('forces no-sandbox only when the env override is set', () => {
-    expect(chromiumSandboxAttemptOrder({ ARK_CHROMIUM_NO_SANDBOX: 'true' })).toEqual([
-      'no-sandbox',
-    ])
+    expect(chromiumSandboxAttemptOrder({ ARK_CHROMIUM_NO_SANDBOX: 'true' })).toEqual(['no-sandbox'])
     expect(chromiumSandboxAttemptOrder({ ARK_CHROMIUM_NO_SANDBOX: '1' })).toEqual(['no-sandbox'])
   })
 
