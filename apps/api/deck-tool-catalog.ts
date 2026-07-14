@@ -9,7 +9,6 @@ export type DeckToolDefinition = {
   name: string
   snippet: string
   description: string
-  guidelines: readonly string[]
   summarizeInput: (input: unknown) => string
   summarizeOutput: (output: unknown) => string
   isErrorOutput: (output: unknown) => boolean
@@ -72,10 +71,10 @@ export function capTranscriptValue(value: JsonValue): JsonValue {
   return Buffer.byteLength(serialized, 'utf8') <= MAX_PERSISTED_TOOL_VALUE_BYTES
     ? value
     : {
-        omitted: true,
-        originalBytes: Buffer.byteLength(serialized, 'utf8'),
-        reason: 'Transcript value exceeded limit; re-read the current deck.',
-      }
+      omitted: true,
+      originalBytes: Buffer.byteLength(serialized, 'utf8'),
+      reason: 'Transcript value exceeded limit; re-read the current deck.',
+    }
 }
 
 const summarizeInput = (toolName: string, input: unknown) => {
@@ -163,10 +162,10 @@ function projectReadOutput(value: unknown): TranscriptProjection {
         : undefined
   const recovery = recoveryInput
     ? {
-        toolName: 'read_deck',
-        input: recoveryInput,
-        instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
-      }
+      toolName: 'read_deck',
+      input: recoveryInput,
+      instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
+    }
     : undefined
   const truncated = contentWasProjected || source.truncated === true
   return { value: capTranscriptValue(recoveryValue(record, recovery)), truncated, recovery }
@@ -205,44 +204,34 @@ const metadata = {
   parse_deck: {
     mutating: false,
     snippet: 'parse_deck()',
-    guidelines: [
-      'Use parse_deck to understand deck structure and editable element ids before targeted edits.',
-    ],
   },
   list_slides: {
     mutating: false,
     snippet: 'list_slides()',
-    guidelines: ['Use list_slides before slide-level changes.'],
   },
   read_deck: {
     mutating: false,
     snippet: 'read_deck({ slideIndex }) or read_deck({ offset, limit })',
-    guidelines: ['Re-read current deck content when transcript markers say content was omitted.'],
   },
   edit_deck: {
     mutating: true,
     snippet: 'edit_deck({ edits })',
-    guidelines: ['Use edit_deck only for small exact inline replacements.'],
   },
   patch_deck: {
     mutating: true,
     snippet: 'patch_deck({ operations })',
-    guidelines: ['Prefer patch_deck for slide changes.'],
   },
   patch_element: {
     mutating: true,
     snippet: 'patch_element({ operations })',
-    guidelines: ['Prefer patch_element for a selected element id.'],
   },
   write_deck: {
     mutating: true,
     snippet: 'write_deck({ html })',
-    guidelines: ['Use write_deck only for new decks or explicit full rewrites.'],
   },
   list_versions: {
     mutating: false,
     snippet: 'list_versions({ limit })',
-    guidelines: ['Use list_versions before large rewrites or when asked what changed.'],
   },
 } as const
 
@@ -299,7 +288,6 @@ export function createActiveDeckTools(
       name,
       snippet: info.snippet,
       description: registeredTool.description ?? '',
-      guidelines: info.guidelines,
       mutating: info.mutating,
       summarizeInput: (input: unknown) => summarizeInput(name, input),
       summarizeOutput: (output: unknown) => summarizeOutput(name, output),
