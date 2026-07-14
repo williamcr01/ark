@@ -214,6 +214,7 @@ export function createGenerationJobRunner({
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
         editorSelection: currentJob.request.editorSelection,
+        reasoningEffort: currentJob.request.reasoningEffort,
         abortSignal: abortController.signal,
         logger: jobLogger,
         versionInspector:
@@ -763,6 +764,7 @@ export function createGenerationJobRunner({
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
         ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
+        ...(body.reasoningEffort ? { reasoningEffort: body.reasoningEffort } : {}),
       },
     }
 

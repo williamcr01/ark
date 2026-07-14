@@ -24,6 +24,7 @@ export const chatMessageErrorSchema = z.object({
 
 export const chatMessagePartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), content: z.string() }),
+  z.object({ type: z.literal('thinking'), content: z.string() }),
   z.object({ type: z.literal('tool-call'), toolName: z.string(), summary: z.string() }),
   z.object({
     type: z.literal('tool-result'),
