@@ -71,10 +71,10 @@ export function capTranscriptValue(value: JsonValue): JsonValue {
   return Buffer.byteLength(serialized, 'utf8') <= MAX_PERSISTED_TOOL_VALUE_BYTES
     ? value
     : {
-      omitted: true,
-      originalBytes: Buffer.byteLength(serialized, 'utf8'),
-      reason: 'Transcript value exceeded limit; re-read the current deck.',
-    }
+        omitted: true,
+        originalBytes: Buffer.byteLength(serialized, 'utf8'),
+        reason: 'Transcript value exceeded limit; re-read the current deck.',
+      }
 }
 
 const summarizeInput = (toolName: string, input: unknown) => {
@@ -162,10 +162,10 @@ function projectReadOutput(value: unknown): TranscriptProjection {
         : undefined
   const recovery = recoveryInput
     ? {
-      toolName: 'read_deck',
-      input: recoveryInput,
-      instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
-    }
+        toolName: 'read_deck',
+        input: recoveryInput,
+        instruction: `Call read_deck(${JSON.stringify(recoveryInput)}) to continue.`,
+      }
     : undefined
   const truncated = contentWasProjected || source.truncated === true
   return { value: capTranscriptValue(recoveryValue(record, recovery)), truncated, recovery }

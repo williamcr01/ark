@@ -72,10 +72,10 @@ function buildProviderMetrics(input: {
     provider: input.provider,
     tokenUsage: input.usage
       ? {
-        inputTokens: input.usage.inputTokens,
-        outputTokens: input.usage.outputTokens,
-        totalTokens: input.usage.totalTokens,
-      }
+          inputTokens: input.usage.inputTokens,
+          outputTokens: input.usage.outputTokens,
+          totalTokens: input.usage.totalTokens,
+        }
       : null,
     finishReason: input.finishReason ?? null,
     retryCount: 0,
@@ -85,23 +85,23 @@ function buildProviderMetrics(input: {
 
 export type RunDeckAgentResult =
   | {
-    ok: true
-    html: string
-    changed?: boolean
-    validation: ReturnType<typeof validateDeckHtmlOnServer>
-    steps: AgentStep[]
-    assistantText: string
-    transcriptParts: ChatMessagePart[]
-    providerMetrics: ProviderCallMetrics
-  }
+      ok: true
+      html: string
+      changed?: boolean
+      validation: ReturnType<typeof validateDeckHtmlOnServer>
+      steps: AgentStep[]
+      assistantText: string
+      transcriptParts: ChatMessagePart[]
+      providerMetrics: ProviderCallMetrics
+    }
   | {
-    ok: false
-    error: string
-    steps: AgentStep[]
-    transcriptParts: ChatMessagePart[]
-    validation?: ReturnType<typeof validateDeckHtmlOnServer>
-    providerMetrics?: ProviderCallMetrics | null
-  }
+      ok: false
+      error: string
+      steps: AgentStep[]
+      transcriptParts: ChatMessagePart[]
+      validation?: ReturnType<typeof validateDeckHtmlOnServer>
+      providerMetrics?: ProviderCallMetrics | null
+    }
 
 function summarizeToolInput(toolName: string, input: unknown) {
   if (!input || typeof input !== 'object') {
@@ -553,7 +553,7 @@ export async function runDeckAgent({
         await thinkingProgress.commitThinkingStep(extractThinkingText(step as ExtractableAgentStep))
         const committedThinking =
           accumulatedSteps.length > thinkingBeforeCount &&
-            accumulatedSteps[thinkingBeforeCount]?.type === 'thinking'
+          accumulatedSteps[thinkingBeforeCount]?.type === 'thinking'
             ? accumulatedSteps[thinkingBeforeCount]
             : null
 

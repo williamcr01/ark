@@ -9,8 +9,8 @@ They are for longer reference material (runtime authoring patterns, examples, be
 | Rule    | Behavior                                                                                                 |
 | ------- | -------------------------------------------------------------------------------------------------------- |
 | Include | All `*.md` files directly in this directory (non-recursive)                                              |
-| Order   | Lexicographic by filename — use numeric prefixes (`00-base-rules.md`, `10-reveal-js.md`) |
-| Exclude | This `README.md`, and files starting with `_`                                           |
+| Order   | Lexicographic by filename — use numeric prefixes (`00-base-rules.md`, `10-reveal-js.md`)                 |
+| Exclude | This `README.md`, and files starting with `_`                                                            |
 | Content | Plain markdown. Optional YAML frontmatter is reserved for later; treat the whole file as content for now |
 
 Server-side validators still enforce hard constraints (self-contained HTML, no external URLs, required markers). Agent-facing copies of those rules live in guides such as `00-base-rules.md` so they can be edited without changing code.

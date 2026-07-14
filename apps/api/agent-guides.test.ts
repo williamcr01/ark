@@ -93,7 +93,7 @@ describe('loadAgentGuides', () => {
   })
 
   it('truncates when ARK_AGENT_GUIDES_MAX_BYTES is exceeded', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const dir = writeGuideDir({
       '10-long.md': 'x'.repeat(500),
     })
