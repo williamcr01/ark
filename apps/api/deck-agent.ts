@@ -10,6 +10,7 @@ import {
 import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
+import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
@@ -23,61 +24,18 @@ import {
 } from './deck-tool-catalog.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
-export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolDefinition[]) {
-  const available = activeDefinitions
-    .map(
-      (definition) => `- **${definition.name}**: ${definition.snippet} - ${definition.description}`,
-    )
-    .join('\n')
-  const toolGuidelines = [
-    ...new Set(activeDefinitions.flatMap((definition) => definition.guidelines)),
-  ]
-    .map((guideline) => `- ${guideline}`)
-    .join('\n')
-  return `You are Ark, an expert presentation designer and front-end engineer.
+export function buildDeckAgentSystemPrompt() {
+  const core = `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
-
-Available tools:
-${available}
-
-Guidelines:
-- Inspect the current deck before editing and prefer targeted patches over full rewrites.
-- If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.
-${toolGuidelines}
-
-Hard requirements for deck HTML:
-- Include <!DOCTYPE html>, <html>, <head>, and <body>.
-- Use inline CSS inside a <style> tag. No Tailwind, npm packages, or build tooling.
-- Decks must be fully self-contained: no http(s) URLs for scripts, stylesheets, fonts, or images.
-- Use inline CSS, system fonts, inline SVG, or data: URIs instead of external assets.
-- Design for 16:9: html/body width 100%, height 100%, margin 0, overflow hidden; active slide fills 100vw × 100vh.
-- Keep copy concise and presentation-grade. Avoid lorem ipsum and generic filler.
-
-Plain deck structure (default — prefer unless reveal.js is requested):
-- Each slide is a top-level <section class="slide">. All slides in the DOM at once.
-- No runtime markers required; Ark injects CSS-only navigation.
-
-Preview modes:
-- Plain CSS (default): no marker — Ark injects navigation; deck scripts are stripped.
-- Custom full-JS: set data-ark-deck="nav" on <html> when the deck owns navigation.
-- When using data-ark-deck="nav", follow the Ark deck bridge protocol in docs/deck-bridge.md.
-- Listen for CustomEvent "ark:deck-goto" with detail.index from the Ark bridge.
-- Dispatch CustomEvent "ark:deck-slide-change" with detail.index on every slide change. Do not call window.parent.postMessage.
-- External JavaScript libraries are only acceptable if inlined in the HTML or served via approved runtime URLs below; never use CDN script URLs.
 
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
 
-Reveal.js rules (only when requested or clearly needed — see docs/reveal-runtime.md):
-- Set data-ark-runtime="reveal", data-ark-runtime-lib="reveal.js", and data-ark-runtime-version="5.1.0" on <html>.
-- Use .reveal > .slides > section structure; do not use section.slide for reveal decks.
-- Include all required runtime CSS and JS URLs from the registry list above.
-- Do not add deck-authored bridge scripts, Reveal.initialize(), or reveal plugins — Ark injects the reveal adapter in preview.
-- Do not promise fragment step-through, speaker-notes UI, or reveal themes other than theme/white.css.
-- CDN reveal.js URLs are invalid even if the version matches.
-
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
+  const guides = buildAgentGuidesPromptSection()
+  if (!guides) return core
+  return `${core}\n\n---\n\n# Reference guides\n\n${guides}`
 }
 
 export type RunDeckAgentOptions = {
@@ -560,7 +518,11 @@ export async function runDeckAgent({
   const thinkingProgress = createThinkingProgressReporter(accumulatedSteps, onStepProgress)
   const startedAt = performance.now()
   const context = assembleDeckAgentContext({ messages, currentHtml, editorSelection })
-  logger?.info('generation.context.assembled', context.metadata)
+  const guideMetadata = getAgentGuidesMetadata()
+  logger?.info('generation.context.assembled', {
+    ...context.metadata,
+    ...guideMetadata,
+  })
   const providerOptions = reasoningEffort
     ? buildReasoningProviderOptions(provider, reasoningEffort)
     : undefined
@@ -570,7 +532,7 @@ export async function runDeckAgent({
   try {
     const stream = streamText({
       model,
-      system: buildDeckAgentSystemPrompt(activeDefinitions),
+      system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).

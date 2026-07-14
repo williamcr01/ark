@@ -74,7 +74,7 @@ export function createDeckTools(
   const baseTools = {
     parse_deck: tool({
       description:
-        'Parse the deck into structured metadata: title, runtime, slides, notes, styles, scripts, and asset references. Use before edits to understand deck shape.',
+        'Parse the deck into structured metadata: title, runtime, slides, notes, styles, scripts, asset references, and editable element ids. Use before edits to understand deck shape.',
       inputSchema: z.object({}),
       execute: async () => {
         if (!workspace.html.trim()) {
@@ -114,7 +114,7 @@ export function createDeckTools(
 
     read_deck: tool({
       description:
-        'Read deck HTML. Use offset/limit for line-based paging on large files, or slideIndex for one slide outerHTML.',
+        'Read deck HTML. Use offset/limit for line-based paging on large files, or slideIndex for one slide outerHTML. Re-read when transcript markers say content was omitted.',
       inputSchema: z.object({
         offset: z
           .number()
@@ -298,7 +298,7 @@ export function createDeckTools(
 
     patch_element: tool({
       description:
-        'Apply element-level patch operations targeting elements by id (replace_text, set_attrs, set_inline_style, move_element, resize_element, reorder_element, duplicate_element, delete_element, insert_element, lock_element, unlock_element). Use this to edit the element the user selected. Call parse_deck first to get element ids, kinds, and locked/managed flags. Locked elements cannot be changed.',
+        'Apply element-level patch operations targeting elements by id (replace_text, set_attrs, set_inline_style, move_element, resize_element, reorder_element, duplicate_element, delete_element, insert_element, lock_element, unlock_element). Prefer this for the element the user selected. Call parse_deck first to get element ids, kinds, and locked/managed flags. Locked elements cannot be changed. If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.',
       inputSchema: z.object({
         operations: z.array(deckElementPatchOperationSchema).min(1).max(20),
         activeSlideIndex: z
@@ -361,7 +361,7 @@ export function createDeckTools(
     ...baseTools,
     list_versions: tool({
       description:
-        'List recent deck versions with source, summary, model, structural diff, and compact provenance metadata. Never returns full HTML snapshots.',
+        'List recent deck versions with source, summary, model, structural diff, and compact provenance metadata. Never returns full HTML snapshots. Use before large rewrites or when the user asks what changed.',
       inputSchema: z.object({
         limit: z
           .number()
