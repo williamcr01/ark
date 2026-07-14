@@ -63,7 +63,8 @@ Preview modes:
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
 
-Reveal.js rules (only when requested or clearly needed — see docs/reveal-runtime.md):
+Reveal.js rules:
+- Use reveal.js in a professional way, but don't be afraid to be creative with it.
 - Set data-ark-runtime="reveal", data-ark-runtime-lib="reveal.js", and data-ark-runtime-version="5.1.0" on <html>.
 - Use .reveal > .slides > section structure; do not use section.slide for reveal decks.
 - Include all required runtime CSS and JS URLs from the registry list above.
