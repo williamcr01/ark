@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 
-import { extractAgentSteps, runDeckAgent } from './deck-agent.ts'
+import { extractAgentSteps, extractAgentTranscriptParts, runDeckAgent } from './deck-agent.ts'
+import { createActiveDeckTools } from './deck-tool-catalog.ts'
+import { createDeckWorkspace } from './deck-workspace.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -133,6 +135,101 @@ describe('extractAgentSteps', () => {
         error: false,
       },
     ])
+  })
+
+  it('includes thrown SDK tool errors in live summary steps', () => {
+    expect(
+      extractAgentSteps([
+        {
+          text: '',
+          toolCalls: [{ toolName: 'list_slides', input: {} }],
+          toolResults: [],
+          content: [{ type: 'tool-error', toolName: 'list_slides', error: new Error('boom') }],
+        },
+      ]),
+    ).toEqual([
+      { type: 'tool-call', toolName: 'list_slides', summary: 'outline' },
+      { type: 'tool-result', toolName: 'list_slides', summary: 'boom', error: true },
+    ])
+  })
+})
+
+describe('extractAgentTranscriptParts', () => {
+  it('retains SDK ids and normalizes both tool error channels', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(sampleHtml))
+    const parts = extractAgentTranscriptParts(
+      [
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              toolCallId: 'call-1',
+              input: { slideIndex: 0 },
+            },
+            {
+              type: 'tool-result',
+              toolName: 'read_deck',
+              toolCallId: 'call-1',
+              output: { error: 'missing' },
+            },
+            { type: 'tool-call', toolName: 'list_slides', toolCallId: 'call-2', input: {} },
+            {
+              type: 'tool-error',
+              toolName: 'list_slides',
+              toolCallId: 'call-2',
+              error: new Error('boom'),
+            },
+          ],
+        },
+      ],
+      activeDefinitions,
+    )
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'tool-call', toolCallId: 'call-1', stepIndex: 0 }),
+        expect.objectContaining({ type: 'tool-result', toolCallId: 'call-1', isError: true }),
+        expect.objectContaining({ type: 'tool-result', toolCallId: 'call-2', isError: true }),
+      ]),
+    )
+  })
+
+  it('persists read recovery metadata for the next job', () => {
+    const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(sampleHtml))
+    const parts = extractAgentTranscriptParts(
+      [
+        {
+          content: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              toolCallId: 'call-read',
+              input: { offset: 1 },
+            },
+            {
+              type: 'tool-result',
+              toolName: 'read_deck',
+              toolCallId: 'call-read',
+              output: {
+                mode: 'lines',
+                content: 'x'.repeat(10_000),
+                offset: 1,
+                totalLines: 2,
+                truncated: true,
+                nextOffset: 2,
+              },
+            },
+          ],
+        },
+      ],
+      activeDefinitions,
+    )
+    expect(parts[1]).toMatchObject({
+      type: 'tool-result',
+      truncated: true,
+      recovery: { toolName: 'read_deck', input: { offset: 2 } },
+      output: { content: 'x'.repeat(10_000), nextOffset: 2 },
+    })
   })
 })
 

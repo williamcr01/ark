@@ -3,15 +3,16 @@ import { describe, expect, it } from 'vitest'
 import {
   agentStepsToChatParts,
   applyResolvedAssetAttachments,
-  buildAgentModelMessages,
   buildAssistantMessageContent,
   buildModelMessages,
   chatAttachmentsToFileParts,
   collectAssetIds,
   collectAssetIdsFromMessages,
   parseGenerateMessages,
+  MAX_PERSISTED_TOOL_VALUE_BYTES,
   wrapUserPromptForGeneration,
 } from './chat.ts'
+import { buildAgentModelMessages, convertChatHistoryToModelMessages } from './chat-context.ts'
 
 const ASSET_ID = '00000000-0000-4000-8000-000000000901'
 
@@ -68,6 +69,29 @@ describe('parseGenerateMessages', () => {
     expect(parseGenerateMessages([{ role: 'user', content: 42 }])).toEqual({
       ok: false,
       error: 'messages[0].content must be a string.',
+    })
+  })
+
+  it('rejects oversized replay values with a clear validation error', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'assistant',
+        content: 'Large replay',
+        parts: [
+          {
+            type: 'tool-call',
+            toolName: 'write_deck',
+            summary: 'full deck',
+            stepIndex: 0,
+            toolCallId: 'call-1',
+            input: { html: 'x'.repeat(MAX_PERSISTED_TOOL_VALUE_BYTES + 1) },
+          },
+        ],
+      },
+    ])
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('exceeds the 51200 byte persistence limit'),
     })
   })
 
@@ -230,6 +254,91 @@ describe('buildModelMessages', () => {
 })
 
 describe('buildAgentModelMessages', () => {
+  it('replays bounded transcript omission text instead of the legacy summary', () => {
+    expect(
+      convertChatHistoryToModelMessages([
+        {
+          role: 'assistant',
+          content: 'Legacy summary',
+          parts: [{ type: 'text', content: '[earlier steps omitted]', stepIndex: 0 }],
+        },
+      ]),
+    ).toEqual([{ role: 'assistant', content: '[earlier steps omitted]' }])
+  })
+
+  it('replays paired tool calls and results with original ids', () => {
+    const messages = convertChatHistoryToModelMessages([
+      {
+        role: 'assistant',
+        content: 'Updated.',
+        parts: [
+          { type: 'text', content: 'Inspecting.', stepIndex: 0 },
+          {
+            type: 'tool-call',
+            toolName: 'list_slides',
+            summary: 'outline',
+            stepIndex: 0,
+            toolCallId: 'call-1',
+            input: {},
+          },
+          {
+            type: 'tool-result',
+            toolName: 'list_slides',
+            summary: '2 slides',
+            stepIndex: 0,
+            toolCallId: 'call-1',
+            output: { slideCount: 2 },
+            isError: false,
+          },
+          { type: 'text', content: 'Updated.', stepIndex: 1 },
+        ],
+      },
+    ])
+    expect(messages).toHaveLength(3)
+    expect(messages[0]).toMatchObject({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Inspecting.' },
+        { type: 'tool-call', toolCallId: 'call-1' },
+      ],
+    })
+    expect(messages[1]).toMatchObject({
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: 'call-1',
+          output: { type: 'json', value: { slideCount: 2 } },
+        },
+      ],
+    })
+    expect(messages[2]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Updated.' }],
+    })
+  })
+
+  it('falls back to assistant content for an incomplete replay turn', () => {
+    expect(
+      convertChatHistoryToModelMessages([
+        {
+          role: 'assistant',
+          content: 'Legacy summary',
+          parts: [
+            {
+              type: 'tool-call',
+              toolName: 'read_deck',
+              summary: 'slide',
+              stepIndex: 0,
+              toolCallId: 'call-1',
+              input: {},
+            },
+          ],
+        },
+      ]),
+    ).toEqual([{ role: 'assistant', content: 'Legacy summary' }])
+  })
+
   it('does not embed full HTML in the latest user turn', () => {
     const messages = buildAgentModelMessages(
       [{ role: 'user', content: 'Make the title larger' }],
@@ -238,7 +347,7 @@ describe('buildAgentModelMessages', () => {
 
     expect(messages[0]?.role).toBe('user')
     expect(messages[0]?.content).toContain('Make the title larger')
-    expect(messages[0]?.content).toContain('read_deck')
+    expect(messages[0]?.content).toContain('available tools')
     expect(JSON.stringify(messages[0]?.content)).not.toContain('<section class="slide">')
   })
 

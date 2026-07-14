@@ -136,6 +136,7 @@ export function createGenerationJobRunner({
     options: {
       status: GenerationJobStatus
       steps: GenerationJob['progress']['steps']
+      transcriptParts?: import('@ark/deck-core/chat.ts').ChatMessagePart[]
       assistantText?: string | null
       deckId: string
       deckVersionId?: string | null
@@ -151,6 +152,7 @@ export function createGenerationJobRunner({
       model: job.model,
       status: options.status,
       steps: options.steps,
+      transcriptParts: options.transcriptParts,
       assistantText: options.assistantText,
       editingExistingDeck: job.request.editingExistingDeck ?? false,
       deckVersionId: options.deckVersionId ?? null,
@@ -277,6 +279,7 @@ export function createGenerationJobRunner({
           await persistTerminalAssistantMessage(canceledJob, {
             status: 'canceled',
             steps: canceledJob.progress.steps,
+            transcriptParts: agentResult.transcriptParts,
             assistantText: canceledJob.progress.assistantText,
             deckId: canceledJob.deckId,
             error: { message: 'Generation was canceled.', code: 'canceled' },
@@ -314,6 +317,7 @@ export function createGenerationJobRunner({
           await persistTerminalAssistantMessage(failedJob, {
             status: 'failed',
             steps: agentResult.steps,
+            transcriptParts: agentResult.transcriptParts,
             deckId: failedJob.deckId,
             error: failedJob.error,
           })
@@ -348,6 +352,7 @@ export function createGenerationJobRunner({
             await persistTerminalAssistantMessage(failedJob, {
               status: 'failed',
               steps: agentResult.steps,
+              transcriptParts: agentResult.transcriptParts,
               assistantText: agentResult.assistantText,
               deckId: failedJob.deckId,
               error: failedJob.error,
@@ -380,6 +385,7 @@ export function createGenerationJobRunner({
             await persistTerminalAssistantMessage(failedJob, {
               status: 'failed',
               steps: agentResult.steps,
+              transcriptParts: agentResult.transcriptParts,
               assistantText: agentResult.assistantText,
               deckId: failedJob.deckId,
               error: failedJob.error,
@@ -420,6 +426,7 @@ export function createGenerationJobRunner({
             await persistTerminalAssistantMessage(succeededJob, {
               status: 'succeeded',
               steps: agentResult.steps,
+              transcriptParts: agentResult.transcriptParts,
               assistantText: agentResult.assistantText,
               deckId: existingDeck.id,
               deckVersionId: existingDeck.activeVersionId ?? null,
@@ -460,6 +467,7 @@ export function createGenerationJobRunner({
             await persistTerminalAssistantMessage(failedJob, {
               status: 'failed',
               steps: agentResult.steps,
+              transcriptParts: agentResult.transcriptParts,
               deckId: failedJob.deckId,
               error: failedJob.error,
             })
@@ -497,6 +505,7 @@ export function createGenerationJobRunner({
           await persistTerminalAssistantMessage(succeededJob, {
             status: 'succeeded',
             steps: agentResult.steps,
+            transcriptParts: agentResult.transcriptParts,
             assistantText: agentResult.assistantText,
             deckId: updatedDeck.id,
             deckVersionId: updatedDeck.activeVersionId ?? null,
@@ -560,6 +569,7 @@ export function createGenerationJobRunner({
         await persistTerminalAssistantMessage(succeededJob, {
           status: 'succeeded',
           steps: agentResult.steps,
+          transcriptParts: agentResult.transcriptParts,
           assistantText: agentResult.assistantText,
           deckId: createdDeck.id,
           deckVersionId: createdDeck.activeVersionId ?? null,
@@ -789,6 +799,30 @@ export function createGenerationJobRunner({
     const request = cloneGenerationJobRequest(existing.request)
     const deckId = existing.deckId
     let baseVersionId = existing.baseVersionId
+    let retryControlMessage: ApiChatMessage | null = null
+
+    if (chatStore && deckId) {
+      const chat = await chatStore.listMessages(deckId, { limit: 500 })
+      const failedAssistant = [...chat.messages]
+        .reverse()
+        .find((message) => message.role === 'assistant' && message.generationJobId === existing.id)
+
+      if (failedAssistant) {
+        retryControlMessage = {
+          role: 'user',
+          content: 'Retry previous request',
+        }
+        request.messages.push(
+          {
+            id: failedAssistant.id,
+            role: 'assistant',
+            content: failedAssistant.content,
+            ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
+          },
+          retryControlMessage,
+        )
+      }
+    }
 
     if (deckId) {
       const deck = await deckStore.getDeck(deckId)
@@ -799,6 +833,15 @@ export function createGenerationJobRunner({
         request.baseVersionId = baseVersionId
         request.editingExistingDeck = true
       }
+    }
+
+    if (chatStore && deckId && retryControlMessage) {
+      const persisted = await chatStore.appendMessage(deckId, {
+        role: 'user',
+        content: retryControlMessage.content,
+        deckVersionId: baseVersionId,
+      })
+      retryControlMessage.id = persisted.id
     }
 
     const input: CreateGenerationJobInput = {

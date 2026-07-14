@@ -142,11 +142,11 @@ When acting as the presentation agent (side chat):
 
 ### Conversation context (issue #17)
 
-Ark replays the **full visible chat history** on every generation job request (pi-style). Assistant turns store short status text plus optional tool-call parts — never full HTML.
+Ark replays the **full visible chat history** on every generation job request (pi-style), including prior user turns, assistant text, tool calls, and paired tool results. Vercel AI SDK owns tool-result continuation within a single job.
 
 - **Persisted with the deck**: Deck HTML is saved server-side (#10). Chat messages are also persisted server-side per deck (`GET/POST/DELETE /api/decks/:id/chat`, JSON files under `data/chat/` or Postgres); `localStorage` (`ark:chat-session:{deckId|new}`) acts as a client-side cache/fallback so refresh restores the conversation even when the API is briefly unavailable. Chat for a not-yet-saved deck lives only in `localStorage` until the deck is created.
-- **Assistant messages**: Store summary text and tool activity (`list_slides`, `read_deck`, `patch_deck`, `edit_deck`, `write_deck`). The model reads the deck via tools instead of receiving the full HTML on every turn.
-- **Token/cost**: Follow-up edits use `patch_deck`/`edit_deck` patches instead of re-emitting the entire document. Long chats still replay prior text linearly; compaction is not implemented yet.
+- **Assistant messages**: Durable chat keeps every logical step using recoverable, tool-specific projections, never repeated full deck HTML. Model-only context projection may summarize older steps and tells the model to re-read authoritative deck state.
+- **Token/cost**: Follow-up edits use patches instead of re-emitting the document. Context assembly is separate from append-only persistence; future compaction is documented in `docs/agent-context.md` but is not implemented.
 
 ### Deck parser (issue #37)
 
@@ -154,7 +154,7 @@ Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml`
 
 ### Agent tool loop (issue #58)
 
-Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools`; unbounded until the model stops calling tools or the user aborts), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
+Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools`; stops naturally, when the user aborts, or at the 30-step safety limit), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
 
 | Tool          | Purpose                                                                                                           |
 | ------------- | ----------------------------------------------------------------------------------------------------------------- |

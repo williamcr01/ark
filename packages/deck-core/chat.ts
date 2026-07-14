@@ -41,12 +41,47 @@ export type AgentStep = {
   error?: boolean
 }
 
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
+export const MAX_PERSISTED_TOOL_VALUE_BYTES = 50 * 1024
+export const MAX_PERSISTED_ASSISTANT_TURN_BYTES = 512 * 1024
+export const MAX_MODEL_ASSISTANT_TURN_BYTES = 96 * 1024
+
 /** Rich assistant turn content persisted in chat history. */
 export type ChatMessagePart =
-  | { type: 'text'; content: string }
-  | { type: 'thinking'; content: string }
-  | { type: 'tool-call'; toolName: string; summary: string }
-  | { type: 'tool-result'; toolName: string; summary: string; error?: boolean }
+  | { type: 'text'; content: string; stepIndex?: number }
+  | { type: 'thinking'; content: string; stepIndex?: number }
+  | {
+      type: 'tool-call'
+      toolName: string
+      summary: string
+      stepIndex?: number
+      toolCallId?: string
+      input?: JsonValue
+      mutating?: boolean
+      truncated?: boolean
+      recovery?: TranscriptRecovery
+    }
+  | {
+      type: 'tool-result'
+      toolName: string
+      summary: string
+      error?: boolean
+      stepIndex?: number
+      toolCallId?: string
+      output?: JsonValue
+      isError?: boolean
+      mutating?: boolean
+      truncated?: boolean
+      recovery?: TranscriptRecovery
+    }
+
+export type TranscriptRecovery = {
+  toolName: string
+  input: JsonValue
+  instruction: string
+}
 
 /** Client-side chat message with a stable id for React keys. */
 export type ChatMessage = {
@@ -63,6 +98,7 @@ export type ApiChatMessage = {
   role: ChatMessageRole
   content: string
   attachments?: ChatAttachment[]
+  parts?: ChatMessagePart[]
 }
 
 /**
@@ -83,15 +119,135 @@ export type EditorSelectionContext = {
 
 /**
  * Context policy (pi-style): every generation request replays the full visible
- * conversation plus the latest deck HTML. Assistant turns store short status
- * text only — never full HTML — so follow-ups stay affordable while intent is
- * preserved across turns.
+ * conversation. Durable assistant turns retain every logical step using bounded,
+ * recoverable tool projections. Mutations are never recommended for replay.
+ * Model context is assembled separately and may summarize older steps in a
+ * prefixed user-context ledger without mutating persisted chat.
+ * The AI SDK owns tool-result continuation within a single generation job.
+ * Compaction, branch summaries, steer queues, and follow-up queues are not implemented.
  */
 export const CHAT_CONTEXT_POLICY = {
   replayFullHistory: true,
   includeCurrentHtml: true,
   assistantMessagesExcludeHtml: true,
+  replayAssistantToolTranscript: true,
 } as const
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  if (!value || typeof value !== 'object') return false
+  return Object.values(value).every(isJsonValue)
+}
+
+const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
+
+function parseChatMessageParts(input: unknown, messageIndex: number) {
+  if (input === undefined) return { ok: true as const, parts: undefined }
+  if (!Array.isArray(input)) {
+    return { ok: false as const, error: `messages[${messageIndex}].parts must be an array.` }
+  }
+  const parts: ChatMessagePart[] = []
+  let totalCharacters = 0
+  for (const [partIndex, raw] of input.entries()) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return {
+        ok: false as const,
+        error: `messages[${messageIndex}].parts[${partIndex}] must be an object.`,
+      }
+    }
+    const part = raw as Record<string, unknown>
+    const stepIndex = part.stepIndex
+    if (stepIndex !== undefined && (!Number.isInteger(stepIndex) || (stepIndex as number) < 0)) {
+      return {
+        ok: false as const,
+        error: `messages[${messageIndex}].parts[${partIndex}].stepIndex must be a non-negative integer.`,
+      }
+    }
+    if (part.type === 'text' && typeof part.content === 'string') {
+      parts.push({
+        type: 'text',
+        content: part.content,
+        ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+      })
+      continue
+    }
+    if (part.type === 'thinking' && typeof part.content === 'string') {
+      parts.push({
+        type: 'thinking',
+        content: part.content,
+        ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+      })
+      continue
+    }
+    if (
+      (part.type === 'tool-call' || part.type === 'tool-result') &&
+      typeof part.toolName === 'string' &&
+      typeof part.summary === 'string'
+    ) {
+      const valueKey = part.type === 'tool-call' ? 'input' : 'output'
+      if (part[valueKey] !== undefined && !isJsonValue(part[valueKey])) {
+        return {
+          ok: false as const,
+          error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} must be JSON-safe.`,
+        }
+      }
+      if (
+        part[valueKey] !== undefined &&
+        jsonBytes(part[valueKey]) > MAX_PERSISTED_TOOL_VALUE_BYTES
+      ) {
+        return {
+          ok: false as const,
+          error: `messages[${messageIndex}].parts[${partIndex}].${valueKey} exceeds the ${MAX_PERSISTED_TOOL_VALUE_BYTES} byte persistence limit.`,
+        }
+      }
+      const common = {
+        toolName: part.toolName,
+        summary: part.summary,
+        ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+        ...(typeof part.toolCallId === 'string' ? { toolCallId: part.toolCallId } : {}),
+        ...(typeof part.mutating === 'boolean' ? { mutating: part.mutating } : {}),
+        ...(typeof part.truncated === 'boolean' ? { truncated: part.truncated } : {}),
+        ...(part.recovery &&
+        typeof part.recovery === 'object' &&
+        !Array.isArray(part.recovery) &&
+        typeof (part.recovery as Record<string, unknown>).toolName === 'string' &&
+        typeof (part.recovery as Record<string, unknown>).instruction === 'string' &&
+        isJsonValue((part.recovery as Record<string, unknown>).input)
+          ? { recovery: part.recovery as TranscriptRecovery }
+          : {}),
+      }
+      if (part.type === 'tool-call')
+        parts.push({
+          type: 'tool-call',
+          ...common,
+          ...(part.input !== undefined ? { input: part.input as JsonValue } : {}),
+        })
+      else
+        parts.push({
+          type: 'tool-result',
+          ...common,
+          ...(typeof part.error === 'boolean' ? { error: part.error } : {}),
+          ...(part.output !== undefined ? { output: part.output as JsonValue } : {}),
+          ...(typeof part.isError === 'boolean' ? { isError: part.isError } : {}),
+        })
+      continue
+    }
+    return {
+      ok: false as const,
+      error: `messages[${messageIndex}].parts[${partIndex}] is invalid.`,
+    }
+  }
+  for (const part of parts) totalCharacters += jsonBytes(part)
+  if (totalCharacters > MAX_PERSISTED_ASSISTANT_TURN_BYTES) {
+    return {
+      ok: false as const,
+      error: `messages[${messageIndex}].parts exceeds the ${MAX_PERSISTED_ASSISTANT_TURN_BYTES} byte persistence limit.`,
+    }
+  }
+  return { ok: true as const, parts }
+}
 
 export type ParseGenerateMessagesResult =
   { ok: true; messages: ApiChatMessage[] } | { ok: false; error: string }
@@ -257,6 +413,15 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
       return parsedAttachments
     }
 
+    if (role === 'user' && (item as { parts?: unknown }).parts !== undefined) {
+      return {
+        ok: false,
+        error: `messages[${index}].parts is only allowed for assistant messages.`,
+      }
+    }
+    const parsedParts = parseChatMessageParts((item as { parts?: unknown }).parts, index)
+    if (!parsedParts.ok) return parsedParts
+
     const rawId = (item as { id?: unknown }).id
     const id =
       typeof rawId === 'string' && isValidChatMessageId(rawId.trim()) ? rawId.trim() : undefined
@@ -270,6 +435,7 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
         ...(parsedAttachments.attachments.length > 0
           ? { attachments: parsedAttachments.attachments }
           : {}),
+        ...(role === 'assistant' && parsedParts.parts?.length ? { parts: parsedParts.parts } : {}),
       })
     }
   }
@@ -355,14 +521,14 @@ export function wrapUserPromptForAgent(
 User instruction:
 ${effectivePrompt}${attachmentNote}${selectionNote}
 
-Use parse_deck, list_slides, and/or read_deck to inspect the deck. Apply element changes with patch_element (preferred for a selected element), slide changes with patch_deck, small inline tweaks with edit_deck, or write_deck only for a full rewrite.`
+The current deck is available in the job workspace. Inspect it with the available tools before editing.`
   }
 
   return `Create a new complete Ark HTML slide deck from this user request:
 
 ${effectivePrompt}${attachmentNote}
 
-Use write_deck to save the complete HTML document, then summarize what you built.`
+Use the available tools to save the deck, then summarize what you built.`
 }
 
 export function chatAttachmentsToFileParts(attachments: ChatAttachment[]): FilePart[] {
@@ -418,31 +584,6 @@ export function toModelMessage(message: ApiChatMessage): ModelMessage {
   }
 }
 
-export function buildAgentModelMessages(
-  messages: ApiChatMessage[],
-  currentHtml: string,
-  editorSelection?: EditorSelectionContext,
-): ModelMessage[] {
-  if (messages.length === 0) {
-    return []
-  }
-
-  const prior = messages.slice(0, -1).map(toModelMessage)
-  const last = messages[messages.length - 1]
-
-  if (last.role !== 'user') {
-    return prior
-  }
-
-  return [
-    ...prior,
-    {
-      role: 'user' as const,
-      content: buildUserModelContent(last, { wrapForAgent: true, currentHtml, editorSelection }),
-    },
-  ]
-}
-
 export function buildModelMessages(
   messages: ApiChatMessage[],
   currentHtml: string,
@@ -471,11 +612,12 @@ export function buildModelMessages(
 }
 
 export function toApiMessages(messages: ChatMessage[]): ApiChatMessage[] {
-  return messages.map(({ id, role, content, attachments }) => ({
+  return messages.map(({ id, role, content, attachments, parts }) => ({
     ...(id ? { id } : {}),
     role,
     content,
     ...(attachments?.length ? { attachments } : {}),
+    ...(role === 'assistant' && parts?.length ? { parts: structuredClone(parts) } : {}),
   }))
 }
 
