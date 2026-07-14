@@ -159,7 +159,7 @@ Markdown files under `agent-guides/` are automatically loaded and appended to th
 
 ### Agent tool loop (issue #58)
 
-Deck generation uses a **multi-step agent loop** (Vercel AI SDK `generateText` + `tools`; stops naturally, when the user aborts, or at the 30-step safety limit), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
+Deck generation uses a **multi-step agent loop** (Vercel AI SDK `streamText` + `tools`; stops naturally or when the user aborts), similar to [pi's coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
 
 | Tool          | Purpose                                                                                                           |
 | ------------- | ----------------------------------------------------------------------------------------------------------------- |
