@@ -26,25 +26,13 @@ import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
 export const MAX_AGENT_STEPS = 30
 
-export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolDefinition[]) {
-  const toolGuidelines = [
-    ...new Set(activeDefinitions.flatMap((definition) => definition.guidelines)),
-  ]
-    .map((guideline) => `- ${guideline}`)
-    .join('\n')
+export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
 
-Guidelines:
-- Inspect the current deck before editing and prefer targeted patches over full rewrites.
-- If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.
-${toolGuidelines}
-
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
-
-For hard deck HTML requirements, plain-deck structure, preview modes, and runtime authoring, follow the Reference guides appended below.
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message — the tools already updated the deck.`
   const guides = buildAgentGuidesPromptSection()
@@ -546,7 +534,7 @@ export async function runDeckAgent({
   try {
     const stream = streamText({
       model,
-      system: buildDeckAgentSystemPrompt(activeDefinitions),
+      system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
       stopWhen: stepCountIs(MAX_AGENT_STEPS),

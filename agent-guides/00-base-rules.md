@@ -2,8 +2,6 @@
 
 Hard requirements and defaults for every deck.
 
-## Hard requirements for deck HTML
-
 - Include `<!DOCTYPE html>`, `<html>`, `<head>`, and `<body>`.
 - Use inline CSS inside a `<style>` tag. No Tailwind, npm packages, or build tooling.
 - Decks must be fully self-contained: no http(s) URLs for scripts, stylesheets, fonts, or images.
@@ -36,12 +34,6 @@ When the user wants a plain deck (or a simple static sequence):
   </body>
 </html>
 ```
-
-## Preview modes
-
-- **Plain CSS (default):** no marker — Ark injects navigation; deck scripts are stripped.
-- **Custom full-JS:** set `data-ark-deck="nav"` on `<html>` when the deck owns navigation.
-- **Reveal:** use the reveal.js guide + registry markers/assets; Ark injects the reveal adapter (do not add a custom bridge).
 
 ### Custom full-JS bridge protocol
 

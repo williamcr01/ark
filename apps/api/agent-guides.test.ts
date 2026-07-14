@@ -11,8 +11,6 @@ import {
   resetAgentGuidesCache,
 } from './agent-guides.ts'
 import { buildDeckAgentSystemPrompt } from './deck-agent.ts'
-import { createActiveDeckTools } from './deck-tool-catalog.ts'
-import { createDeckWorkspace } from './deck-workspace.ts'
 
 function writeGuideDir(files: Record<string, string>): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'ark-agent-guides-'))
@@ -149,8 +147,7 @@ describe('buildDeckAgentSystemPrompt with agent guides', () => {
     const previous = process.env.ARK_AGENT_GUIDES_DIR
     process.env.ARK_AGENT_GUIDES_DIR = dir
     try {
-      const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
-      const prompt = buildDeckAgentSystemPrompt(activeDefinitions)
+      const prompt = buildDeckAgentSystemPrompt()
       expect(prompt).toContain('# Reference guides')
       expect(prompt).toContain('## Guide: reveal-js')
       expect(prompt).toContain('UNIQUE_GUIDE_MARKER_reveal_stacks.')
