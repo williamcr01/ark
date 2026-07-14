@@ -11,6 +11,7 @@ import {
 } from './chat.ts'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
+const stringBytes = (value: string) => new TextEncoder().encode(value).byteLength
 
 export type DeckAgentContextMetadata = {
   transformVersion: 1
@@ -39,19 +40,23 @@ const stableHash = (value: string) => {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-const truncateText = (value: string, maxBytes: number, reason: string) => {
-  if (bytes(value) <= maxBytes) return value
-  const marker = `\n[${reason}; ${bytes(value)} bytes; hash:${stableHash(value)}]`
-  const available = Math.max(0, maxBytes - bytes(marker) - 2)
+const utf8Prefix = (value: string, maxBytes: number) => {
   let prefix = ''
   let used = 0
   for (const character of value) {
-    const size = new TextEncoder().encode(character).byteLength
-    if (used + size > available) break
+    const size = stringBytes(character)
+    if (used + size > Math.max(0, maxBytes)) break
     prefix += character
     used += size
   }
-  return `${prefix}${marker}`
+  return prefix
+}
+
+const truncateText = (value: string, maxBytes: number, reason: string) => {
+  if (stringBytes(value) <= maxBytes) return value
+  const marker = `\n[${reason}; ${stringBytes(value)} bytes; hash:${stableHash(value)}]`
+  if (stringBytes(marker) >= maxBytes) return utf8Prefix(marker.trimStart(), maxBytes)
+  return `${utf8Prefix(value, maxBytes - stringBytes(marker))}${marker}`
 }
 
 const compactPart = (part: ChatMessagePart, reason: 'model' | 'persistence'): ChatMessagePart => {
@@ -108,9 +113,19 @@ export function projectAssistantTurnForPersistence(
         }
       : part,
   )
-  if (bytes(projected) > maxBytes)
-    throw new Error('Generated assistant transcript exceeds the durable persistence ceiling.')
-  return projected
+  if (bytes(projected) <= maxBytes) return projected
+
+  const groups = groupParts(cloned) ?? []
+  const ledgerBudget = Math.max(0, maxBytes - 128)
+  const ledger = truncateText(
+    `[Durable agent transcript compacted; logical details follow]\n${buildLedger(groups, ledgerBudget)}`,
+    ledgerBudget,
+    'durable transcript ledger truncated',
+  )
+  const fallback: ChatMessagePart[] = [
+    { type: 'text', stepIndex: groups.at(-1)?.[0] ?? 0, content: ledger },
+  ]
+  return bytes(fallback) <= maxBytes ? fallback : []
 }
 
 const ledgerEntry = (parts: readonly ChatMessagePart[]) => {
@@ -159,7 +174,12 @@ const buildLedger = (groups: PartGroup[], maxBytes: number) => {
   const omitted = groups.length - represented
   const suffix = omitted ? `\n- ${omitted} additional successful read/text step(s) omitted` : ''
   const ledger = `${header}\n${selected.join('\n')}${suffix}\n${footer}`
-  return bytes(ledger) <= maxBytes ? ledger : `${header}\n${selected.join('\n')}\n${footer}`
+  const withoutSuffix = `${header}\n${selected.join('\n')}\n${footer}`
+  return truncateText(
+    bytes(ledger) <= maxBytes ? ledger : withoutSuffix,
+    maxBytes,
+    'semantic ledger truncated',
+  )
 }
 
 export type AssistantTurnModelProjection = {
@@ -208,21 +228,46 @@ export function projectAssistantTurnForModel(
     projectedParts = latest[1].map((part) => compactPart(part, 'model'))
     ledger = buildLedger(groups.slice(0, -1), Math.max(0, maxBytes - bytes(projectedParts) - 32))
   }
-  while (projectionBytes(projectedParts, ledger || undefined) > maxBytes) {
-    const text = projectedParts.find((part) => part.type === 'text')
-    if (!text || text.content.length < 2) break
-    text.content = truncateText(
-      text.content,
-      Math.max(64, bytes(text.content) - 256),
-      'assistant text truncated for model context',
+  if (projectionBytes(projectedParts, ledger || undefined) > maxBytes) {
+    const textParts = projectedParts.filter((part) => part.type === 'text')
+    const withoutText = projectedParts.map((part) =>
+      part.type === 'text' ? { ...part, content: '' } : part,
     )
+    const totalTextBudget = Math.max(
+      0,
+      maxBytes - projectionBytes(withoutText, ledger || undefined) - 32,
+    )
+    const perTextBudget = Math.floor(totalTextBudget / Math.max(1, textParts.length))
+    projectedParts = projectedParts.map((part) =>
+      part.type === 'text'
+        ? {
+            ...part,
+            content: truncateText(
+              part.content,
+              perTextBudget,
+              'assistant text truncated for model context',
+            ),
+          }
+        : part,
+    )
+  }
+  if (projectionBytes(projectedParts, ledger || undefined) > maxBytes) {
+    projectedParts = []
+    ledger = buildLedger(groups, Math.max(0, maxBytes - projectionBytes([]) - 16))
+  }
+  if (projectionBytes(projectedParts, ledger || undefined) > maxBytes) {
+    ledger = ''
+  }
+  const bytesAfter = projectionBytes(projectedParts, ledger || undefined)
+  if (bytesAfter > maxBytes) {
+    throw new Error('Assistant model projection exceeded its configured ceiling.')
   }
   return {
     parts: projectedParts,
     ...(ledger ? { ledger } : {}),
-    omittedStepCount: omitted.length,
+    omittedStepCount: projectedParts.length ? omitted.length : groups.length,
     bytesBefore,
-    bytesAfter: projectionBytes(projectedParts, ledger || undefined),
+    bytesAfter,
   }
 }
 
