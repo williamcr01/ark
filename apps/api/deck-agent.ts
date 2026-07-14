@@ -601,7 +601,10 @@ export async function runDeckAgent({
         ).filter((event) => event.type !== 'thinking')
         accumulatedSteps.push(...withoutThinking)
 
-        const extracted = extractAgentTranscriptParts([step as never], activeDefinitions)
+        const extracted: ChatMessagePart[] = extractAgentTranscriptParts(
+          [step as never],
+          activeDefinitions,
+        )
           .filter((part) => part.type !== 'thinking')
           .map((part) => ({ ...part, stepIndex: transcriptStepIndex }))
         if (committedThinking) {
