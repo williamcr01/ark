@@ -1,9 +1,20 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, IframeHTMLAttributes } from 'react'
 
 import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-core/deck-preview-html.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import { detectRuntimeMode } from '@/lib/deck-runtime'
+
+/**
+ * Defense-in-depth attrs for main/version preview iframes (not thumbnails):
+ * empty Permissions-Policy allowlist + credentialless storage isolation.
+ * `credentialless` is not yet in React's iframe attribute typings, so it is
+ * passed as an empty string (boolean-attribute presence in the DOM).
+ */
+export const PREVIEW_IFRAME_SECURITY_PROPS = {
+  allow: '',
+  ...({ credentialless: '' } as IframeHTMLAttributes<HTMLIFrameElement>),
+}
 
 export {
   DECK_GOTO_EVENT,
