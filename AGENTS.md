@@ -46,6 +46,7 @@ ark/
 │   └── runtime-registry/   # Runtime manifest + validation (`@ark/runtime-registry`)
 ├── test/                   # cross-layer HTML fixtures (`test/fixtures/`) for tests and smoke scripts
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
+├── agent-guides/           # always-on markdown appended to the deck agent system prompt
 ├── docs/                   # runtime/preview/bridge + backend architecture notes
 ├── scripts/                # runtime sync + smoke tests
 ├── data/                   # local dev persistence (gitignored): decks, chat
@@ -151,6 +152,10 @@ Ark replays the **full visible chat history** on every generation job request (p
 ### Deck parser (issue #37)
 
 Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml` extracts title, runtime markers, slide structure (plain vs reveal), per-slide notes, style blocks, scripts, and asset references. Generation/editing services consume it via `server/deck-html.ts` and the `parse_deck` agent tool.
+
+### Always-on agent guides
+
+Markdown files under `agent-guides/` are automatically loaded and appended to the deck agent system prompt on every generation job (alongside tool definitions and chat history). Use numeric prefixes for ordering (`10-reveal-js.md`); `README.md` and `_*.md` are excluded. Hard validation rules stay in the core prompt; guides hold longer authoring patterns. Override the directory with `ARK_AGENT_GUIDES_DIR` and cap size with `ARK_AGENT_GUIDES_MAX_BYTES` (see `.env.example`).
 
 ### Agent tool loop (issue #58)
 
