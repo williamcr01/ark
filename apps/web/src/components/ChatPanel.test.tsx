@@ -103,6 +103,17 @@ describe('ChatPanel submit control', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('keeps a single add-attachments control next to the model picker', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getAllByRole('button', { name: 'Add attachments' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
+  })
+
   it('shows provider catalog warnings without blocking the chat', () => {
     render(
       <TooltipProvider>

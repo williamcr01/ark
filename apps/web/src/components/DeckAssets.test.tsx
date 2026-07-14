@@ -28,7 +28,6 @@ function renderDeckAssets(overrides: Partial<DeckAssetsProps> = {}) {
     uploads: [],
     selectedAssetIds: [asset.id],
     error: '',
-    onUploadFiles: vi.fn(),
     onRemoveAsset: vi.fn(),
     onToggleSelected: vi.fn(),
     onDismissUpload: vi.fn(),
@@ -47,16 +46,21 @@ describe('DeckAssets', () => {
     expect(screen.getByText(/image\/png · 2.0 KB/)).toBeInTheDocument()
   })
 
-  it('uploads picked files', async () => {
-    const user = userEvent.setup()
-    const props = renderDeckAssets({ assets: [] })
+  it('renders nothing when there are no assets, uploads, or errors', () => {
+    const { container } = render(
+      <DeckAssets
+        assets={[]}
+        error=""
+        onDismissUpload={vi.fn()}
+        onRemoveAsset={vi.fn()}
+        onToggleSelected={vi.fn()}
+        selectedAssetIds={[]}
+        uploads={[]}
+      />,
+    )
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const file = new File(['hello'], 'notes.csv', { type: 'text/csv' })
-    await user.upload(input, file)
-
-    expect(props.onUploadFiles).toHaveBeenCalledTimes(1)
-    expect(props.onUploadFiles).toHaveBeenCalledWith([file])
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByLabelText('Upload deck assets')).not.toBeInTheDocument()
   })
 
   it('toggles asset selection', async () => {
