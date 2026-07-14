@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import chartRegistryDeck from '@fixtures/chart-registry-deck.html?raw'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@fixtures/malformed-deck.html?raw'
@@ -44,6 +45,34 @@ describe('validateDeckHtmlInBrowser', () => {
     expect(report.runtimeMarkers.approvedRuntimeVersion).toBe('5.1.0')
     expect(report.externalUrls).toEqual([])
     expect(report.issues).toEqual([])
+  })
+
+  it('accepts chart.js decks that use approved Ark runtime assets', () => {
+    const report = validateDeckHtmlInBrowser(chartRegistryDeck)
+
+    expect(report.valid).toBe(true)
+    expect(report.runtimeMarkers.runtimeMode).toBe('custom-js')
+    expect(report.runtimeMarkers.arkPreview).toBe('full-js')
+    expect(report.runtimeMarkers.arkRuntime).toBe('chart')
+    expect(report.runtimeMarkers.approvedRuntimeId).toBe('chart.js')
+    expect(report.runtimeMarkers.approvedRuntimeVersion).toBe('4.5.1')
+    expect(report.externalUrls).toEqual([])
+    expect(report.issues).toEqual([])
+  })
+
+  it('rejects Chart.js CDN URLs even when the version matches', () => {
+    const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
+<html lang="en" data-ark-preview="full-js" data-ark-runtime-lib="chart.js" data-ark-runtime-version="4.5.1">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <section class="slide"><canvas id="c"></canvas></section>
+</body>
+</html>`)
+
+    expect(report.valid).toBe(false)
+    expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
   })
 
   it('rejects unapproved external script URLs even for reveal decks', () => {

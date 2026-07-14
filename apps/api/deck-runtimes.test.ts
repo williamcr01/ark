@@ -51,7 +51,7 @@ describe('handleRuntimeRoutes', () => {
     expect(response.status).toBe(200)
     expect(response.body).toMatchObject({
       schemaVersion: 1,
-      runtimes: [
+      runtimes: expect.arrayContaining([
         expect.objectContaining({
           id: 'reveal.js',
           version: '5.1.0',
@@ -62,8 +62,32 @@ describe('handleRuntimeRoutes', () => {
             }),
           ]),
         }),
-      ],
+        expect.objectContaining({
+          id: 'chart.js',
+          version: '4.5.1',
+          runtimeMode: 'custom-js',
+          previewMode: 'full-js',
+          allowsDeckScripts: true,
+          assets: expect.arrayContaining([
+            expect.objectContaining({
+              path: 'chart.umd.min.js',
+              url: '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+            }),
+          ]),
+        }),
+      ]),
     })
+    expect((response.body as { runtimes: unknown[] }).runtimes).toHaveLength(2)
+  })
+
+  it('serves approved chart.js runtime assets with checksum metadata', async () => {
+    const response = await requestRuntime('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('javascript')
+    expect(response.headers.get('x-checksum-sha256')).toMatch(/^[a-f0-9]{64}$/)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(String(response.body)).toContain('Chart')
   })
 
   it('serves approved runtime assets with checksum metadata', async () => {

@@ -2,7 +2,7 @@
 
 Ark decks are single HTML files. Most decks use plain CSS and optional inline scripts. When a deck needs a presentation library, it must use an **approved runtime** — a pinned, vendored library that Ark serves from its own origin.
 
-This document describes the registry model, security rules, validation, and how to add future runtimes. For reveal.js authoring details, see [reveal-runtime.md](./reveal-runtime.md).
+This document describes the registry model, security rules, validation, and how to add future runtimes. For reveal.js authoring details, see [reveal-runtime.md](./reveal-runtime.md). For Chart.js, see [chart-runtime.md](./chart-runtime.md).
 
 ## What is an approved runtime?
 
@@ -14,7 +14,7 @@ An approved runtime is a library version listed in `runtimes/manifest.json` with
 - Required asset paths that decks must reference
 - Preview policy (`previewMode`, `allowsDeckScripts`, `allowedGlobals`)
 
-Today the registry contains one runtime: **reveal.js 5.1.0**. The same model is intended for future libraries (charts, animation, etc.) without reopening arbitrary CDN access.
+Today the registry contains **reveal.js 5.1.0** and **chart.js 4.5.1**. The same model is intended for future libraries (animation, etc.) without reopening arbitrary CDN access.
 
 ## Why are arbitrary CDNs still blocked?
 
@@ -80,11 +80,11 @@ Unknown runtime IDs, versions, or asset paths return **404**.
 
 Runtime library markers go on `<html>` (or `<body>`):
 
-| Attribute                  | Purpose                                 |
-| -------------------------- | --------------------------------------- |
-| `data-ark-runtime`         | Runtime family (`reveal` for reveal.js) |
-| `data-ark-runtime-lib`     | Registry library id (`reveal.js`)       |
-| `data-ark-runtime-version` | Pinned version (`5.1.0`)                |
+| Attribute                  | Purpose                                         |
+| -------------------------- | ----------------------------------------------- |
+| `data-ark-runtime`         | Runtime family (`reveal`, `chart`, `custom-js`) |
+| `data-ark-runtime-lib`     | Registry library id (`reveal.js`, `chart.js`)   |
+| `data-ark-runtime-version` | Pinned version (`5.1.0`, `4.5.1`)               |
 
 For reveal.js, `data-ark-deck="reveal"` is also accepted as an alternate marker. All three library markers should be set together for validation and agent generation.
 
@@ -112,13 +112,14 @@ Example:
 /api/runtimes/reveal.js/5.1.0/reveal.js
 /api/runtimes/reveal.js/5.1.0/reveal.css
 /api/runtimes/reveal.js/5.1.0/theme/white.css
+/api/runtimes/chart.js/4.5.1/chart.umd.min.js
 ```
 
 Validation checks:
 
 1. Every `/api/runtimes/...` reference must match an entry in `runtimes/manifest.json`.
 2. When `data-ark-runtime-lib` and `data-ark-runtime-version` are set, every runtime asset URL must use that exact id and version.
-3. Required assets from the manifest must all be referenced (for reveal.js: `reveal.css`, `theme/white.css`, `reveal.js`).
+3. Required assets from the manifest must all be referenced (for reveal.js: `reveal.css`, `theme/white.css`, `reveal.js`; for chart.js: `chart.umd.min.js`).
 
 Optional assets (e.g. `reset.css`, theme fonts) may be referenced when listed in the manifest.
 
@@ -130,6 +131,7 @@ Preview processing lives in `packages/deck-core/deck-preview-html.ts` and `apps/
 | ---------------------------------------- | ------------------------ | --------------------------------------------------------- |
 | Plain CSS (`section.slide`)              | CSS-only                 | Scripts stripped; Ark injects CSS nav shim                |
 | Custom full-JS (`data-ark-deck="nav"`)   | Full-JS                  | Deck scripts kept; Ark injects bridge                     |
+| Chart.js with approved assets + markers  | Full-JS                  | Chart.js + inline init kept; Ark injects bridge           |
 | Reveal with approved assets + markers    | Full-JS (reveal adapter) | Approved `reveal.js` kept; Ark injects reveal nav adapter |
 | Reveal structure without approved assets | CSS-only                 | Scripts stripped; CSS shim navigates static sections      |
 
@@ -151,19 +153,20 @@ Main preview and Present mode load processed HTML from the sandbox host (default
 - **Strict CSP** injected into preview and thumbnail fallbacks: `connect-src 'none'`, no external `default-src`.
 - **Thumbnail fallback**: scriptless (`sandbox=""`); inline handlers stripped. Preferred path is server-rendered PNGs ([thumbnails.md](./thumbnails.md)).
 - **Approved runtime scripts** load only from `/api/runtimes/...`; the registry is the allowlist.
-- **User deck scripts** run only with explicit full-JS markers; reveal runtime decks do not allow additional deck scripts (`allowsDeckScripts: false` in manifest).
+- **User deck scripts** run only with explicit full-JS markers; reveal runtime decks do not allow additional deck scripts (`allowsDeckScripts: false` in manifest). Chart.js decks set `allowsDeckScripts: true` and require `data-ark-preview="full-js"`.
 
 ## Agent generation
 
-The deck agent system prompt in `apps/api/deck-agent.ts` includes a registry summary built from `buildRuntimeRegistryPromptSection()`. Agents must:
+The deck agent system prompt in `apps/api/deck-agent.ts` includes a registry summary built from `buildRuntimeRegistryPromptSection()`, then appends always-on markdown from `agent-guides/` (including `10-reveal-js.md` and `20-chart-js.md`). Agents must:
 
-- Prefer plain Ark decks unless reveal.js is requested or clearly needed
+- Prefer plain Ark decks unless reveal.js / Chart.js is requested or clearly needed
+- Prefer inline SVG for simple static charts; use Chart.js only when interactivity or multi-series data warrants it
 - Use exact markers and `/api/runtimes/...` URLs from the registry
 - Never emit CDN URLs for runtime libraries
 - Avoid reveal plugins unless they are added to the registry
 - Keep deck-specific CSS inline in `<style>` tags
 
-See [reveal-runtime.md](./reveal-runtime.md) for reveal-specific agent rules.
+See [reveal-runtime.md](./reveal-runtime.md), [chart-runtime.md](./chart-runtime.md), and the matching files under `agent-guides/` for runtime-specific agent rules.
 
 ## Adding a future runtime
 
@@ -177,7 +180,7 @@ Minimum checklist for contributors:
 6. **Preview tests** — Asset preservation, CSP, adapter injection (`apps/sandbox/render-preview-html.test.ts`, `apps/web/src/lib/deck-preview.test.ts`).
 7. **Thumbnail tests** — server renderer coverage under `apps/api/thumbnails/*.test.ts`, plus CSS inlining / slide selection for the `srcDoc` fallback (`apps/web/src/lib/deck-slides.test.ts`).
 8. **Smoke test** — Add or extend `scripts/smoke-reveal-runtime.ts` / `scripts/smoke-thumbnails.ts` for end-to-end preview and rendered thumbnails when the runtime runs scripts.
-9. **Agent prompt** — Registry section updates automatically from manifest; add runtime-specific guidance if needed.
+9. **Agent prompt** — Registry section updates automatically from manifest; add a numbered guide under `agent-guides/` (e.g. `20-chart-js.md`) for runtime-specific authoring rules.
 10. **Documentation** — Add or update a runtime guide under `docs/` and link from this file.
 
 ## Related issues and PRs
@@ -189,6 +192,11 @@ Staged reveal.js support:
 - [#94](https://github.com/williamcr01/ark/issues/94) — First-class reveal.js navigation
 - [#95](https://github.com/williamcr01/ark/issues/95) — Reveal.js thumbnail rendering (srcDoc CSS fidelity; superseded for runtime accuracy by [#33](https://github.com/williamcr01/ark/issues/33) / [thumbnails.md](./thumbnails.md))
 - [#33](https://github.com/williamcr01/ark/issues/33) — Sandbox-backed thumbnail renderer
+
+Chart runtime:
+
+- [#92](https://github.com/williamcr01/ark/issues/92) — Chart.js approved chart runtime
+- [#34](https://github.com/williamcr01/ark/issues/34) — Zip export (packages runtime assets when referenced; interim: original HTML keeps `/api/runtimes/...` URLs)
 
 Implementation references:
 
