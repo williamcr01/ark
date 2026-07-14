@@ -36,7 +36,7 @@ import {
   injectRuntimeCsp,
   runtimeModeAllowsDeckScripts,
 } from '@/lib/deck-runtime'
-import { getPreviewHtml } from '@/lib/deck-preview'
+import { getPreviewHtml, PREVIEW_IFRAME_SECURITY_PROPS } from '@/lib/deck-preview'
 import { parseDeckSlides, stripDeckScriptsForPreview } from '@/lib/deck-slides'
 import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
 
@@ -183,6 +183,11 @@ describe('sandbox security fixtures', () => {
       expect(getPreviewSandbox(fixture.runtimeMode)).toBe('allow-scripts')
       expect(getPreviewSandbox(fixture.runtimeMode)).not.toContain('allow-same-origin')
     }
+  })
+
+  it('uses empty Permissions-Policy allowlist and credentialless for preview iframes', () => {
+    expect(PREVIEW_IFRAME_SECURITY_PROPS.allow).toBe('')
+    expect(PREVIEW_IFRAME_SECURITY_PROPS).toHaveProperty('credentialless', '')
   })
 
   it('blocks risky sandbox features across all fixtures', () => {

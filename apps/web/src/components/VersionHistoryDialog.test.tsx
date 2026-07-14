@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { DeckVersionSummary } from '@/lib/deck-api'
+import type { DeckVersionDetail, DeckVersionSummary } from '@/lib/deck-api'
 
 import { VersionHistoryDialog } from './VersionHistoryDialog'
 
@@ -22,6 +22,14 @@ function summary(overrides: Partial<DeckVersionSummary> = {}): DeckVersionSummar
     isActive: false,
     provenance: null,
     diff: null,
+    ...overrides,
+  }
+}
+
+function detail(overrides: Partial<DeckVersionDetail> = {}): DeckVersionDetail {
+  return {
+    ...summary(),
+    html: '<!DOCTYPE html><html><head><title>Deck</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>',
     ...overrides,
   }
 }
@@ -163,5 +171,29 @@ describe('VersionHistoryDialog', () => {
     expect(screen.getAllByText('Uploaded HTML').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('Operations')).not.toBeInTheDocument()
     expect(screen.queryByText('Generation job')).not.toBeInTheDocument()
+  })
+
+  it('sets empty allow and credentialless on the version preview iframe', async () => {
+    const user = userEvent.setup()
+    const preview = detail({
+      id: 'a0000000-0000-4000-8000-000000000003',
+      versionNumber: 3,
+      source: 'agent',
+      summary: 'Generated slides',
+    })
+
+    renderDialog({
+      previewVersion: preview,
+      onInspectVersion: vi.fn().mockResolvedValue(preview),
+    })
+
+    await user.click(screen.getByRole('button', { name: /Version 3/i }))
+
+    const iframe = await screen.findByTitle('Version 3 preview')
+
+    expect(iframe).toHaveAttribute('allow', '')
+    expect(iframe).toHaveAttribute('credentialless')
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(iframe).toHaveAttribute('referrerPolicy', 'no-referrer')
   })
 })

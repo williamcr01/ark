@@ -19,7 +19,12 @@ import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import revealVerticalDeck from '@fixtures/reveal-vertical-deck.html?raw'
 
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
-import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from './deck-preview'
+import {
+  detectRuntimeMode,
+  getPreviewHtml,
+  getPreviewSandbox,
+  PREVIEW_IFRAME_SECURITY_PROPS,
+} from './deck-preview'
 
 function loadExecutablePreview(html: string) {
   return new Promise<JSDOM>((resolve) => {
@@ -485,5 +490,12 @@ describe('getPreviewSandbox', () => {
     expect(getPreviewSandbox('reveal')).toBe('allow-scripts')
     expect(getPreviewSandbox('custom-js')).toBe('allow-scripts')
     expect(getPreviewSandbox('custom-js')).not.toContain('allow-same-origin')
+  })
+})
+
+describe('PREVIEW_IFRAME_SECURITY_PROPS', () => {
+  it('sets an empty Permissions-Policy allowlist and credentialless', () => {
+    expect(PREVIEW_IFRAME_SECURITY_PROPS.allow).toBe('')
+    expect(PREVIEW_IFRAME_SECURITY_PROPS).toHaveProperty('credentialless', '')
   })
 })
