@@ -1,4 +1,4 @@
-import { stepCountIs, streamText, type LanguageModel } from 'ai'
+import { streamText, type LanguageModel } from 'ai'
 
 import {
   type AgentStep,
@@ -22,8 +22,6 @@ import {
   type DeckToolDefinition,
 } from './deck-tool-catalog.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
-
-export const MAX_AGENT_STEPS = 30
 
 export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolDefinition[]) {
   const available = activeDefinitions
@@ -575,7 +573,7 @@ export async function runDeckAgent({
       system: buildDeckAgentSystemPrompt(activeDefinitions),
       messages: context.modelMessages,
       tools,
-      stopWhen: stepCountIs(MAX_AGENT_STEPS),
+      // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
       ...(reasoningEffort ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,
