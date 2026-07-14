@@ -60,13 +60,13 @@ const truncateText = (value: string, maxBytes: number, reason: string) => {
 }
 
 const compactPart = (part: ChatMessagePart, reason: 'model' | 'persistence'): ChatMessagePart => {
-  if (part.type === 'text') {
+  if (part.type === 'text' || part.type === 'thinking') {
     return {
       ...part,
       content: truncateText(
         part.content,
         reason === 'model' ? 8 * 1024 : 32 * 1024,
-        `assistant text truncated for ${reason}`,
+        `assistant ${part.type} truncated for ${reason}`,
       ),
     }
   }
@@ -94,21 +94,26 @@ export function projectAssistantTurnForPersistence(
   if (bytes(cloned) <= maxBytes) return cloned
 
   let projected = cloned.map((part) =>
-    part.type === 'text' ? part : compactPart(part, 'persistence'),
+    part.type === 'text' || part.type === 'thinking' ? part : compactPart(part, 'persistence'),
   )
   if (bytes(projected) <= maxBytes) return projected
 
-  const textCount = Math.max(1, projected.filter((part) => part.type === 'text').length)
-  const nonTextBytes = bytes(projected.filter((part) => part.type !== 'text'))
+  const textCount = Math.max(
+    1,
+    projected.filter((part) => part.type === 'text' || part.type === 'thinking').length,
+  )
+  const nonTextBytes = bytes(
+    projected.filter((part) => part.type !== 'text' && part.type !== 'thinking'),
+  )
   const textBudget = Math.max(128, Math.floor((maxBytes - nonTextBytes - 1024) / textCount))
   projected = projected.map((part) =>
-    part.type === 'text'
+    part.type === 'text' || part.type === 'thinking'
       ? {
           ...part,
           content: truncateText(
             part.content,
             textBudget,
-            'assistant text truncated for persistence',
+            `assistant ${part.type} truncated for persistence`,
           ),
         }
       : part,
@@ -152,7 +157,7 @@ const ledgerEntry = (parts: readonly ChatMessagePart[]) => {
 const isPriorityGroup = ([, parts]: PartGroup) =>
   parts.some(
     (part) =>
-      (part.type !== 'text' && part.mutating) ||
+      ((part.type === 'tool-call' || part.type === 'tool-result') && part.mutating) ||
       (part.type === 'tool-result' && (part.isError === true || part.error === true)),
   )
 
@@ -275,15 +280,21 @@ function replayAssistant(message: ApiChatMessage, limits?: { maxAssistantTurnByt
   const parts = message.parts
   if (!parts?.length)
     return { messages: [{ role: 'assistant' as const, content: message.content }], metadata: null }
-  const replayable = parts.some((part) => part.type !== 'text')
+  // Thinking is UI-only; strip it before model replay so tool transcripts stay valid.
+  const modelParts = parts.filter((part) => part.type !== 'thinking')
+  if (!modelParts.length)
+    return { messages: [{ role: 'assistant' as const, content: message.content }], metadata: null }
+  const replayable = modelParts.some(
+    (part) => part.type === 'tool-call' || part.type === 'tool-result',
+  )
   if (!replayable) {
-    const text = parts.every((part) => part.type === 'text' && part.stepIndex !== undefined)
-      ? parts.map((part) => (part.type === 'text' ? part.content : '')).join('\n')
+    const text = modelParts.every((part) => part.type === 'text' && part.stepIndex !== undefined)
+      ? modelParts.map((part) => (part.type === 'text' ? part.content : '')).join('\n')
       : message.content
     return { messages: [{ role: 'assistant' as const, content: text }], metadata: null }
   }
 
-  const groups = groupParts(parts)
+  const groups = groupParts(modelParts)
   if (!groups)
     return { messages: [{ role: 'assistant' as const, content: message.content }], metadata: null }
   const ids = new Set<string>()
@@ -311,7 +322,7 @@ function replayAssistant(message: ApiChatMessage, limits?: { maxAssistantTurnByt
   }
 
   const projection = projectAssistantTurnForModel(
-    parts,
+    modelParts,
     limits?.maxAssistantTurnBytes ?? MAX_MODEL_ASSISTANT_TURN_BYTES,
   )
   const projectedGroups = groupParts(projection.parts) ?? []

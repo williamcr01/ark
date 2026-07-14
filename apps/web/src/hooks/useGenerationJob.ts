@@ -8,7 +8,7 @@ import {
   type ChatMessage,
   type EditorSelectionContext,
 } from '@ark/deck-core/chat.ts'
-import type { GenerationJobApi, GenerationJobStatus } from '@ark/contracts'
+import type { GenerationJobApi, GenerationJobStatus, ReasoningEffort } from '@ark/contracts'
 import {
   cancelGenerationJob,
   fetchGenerationJob,
@@ -73,6 +73,7 @@ export type UseGenerationJobOptions = {
   deckId: string | null
   baseVersionId: string | null
   selectedModel: string
+  reasoningEffort?: ReasoningEffort
   canGenerate: boolean
   onReloadModels?: () => Promise<void>
 }
@@ -83,6 +84,7 @@ export function useGenerationJob({
   deckId,
   baseVersionId,
   selectedModel,
+  reasoningEffort,
   canGenerate,
   onReloadModels,
 }: UseGenerationJobOptions) {
@@ -225,6 +227,7 @@ export function useGenerationJob({
           messages: toApiMessages(messages),
           currentHtml: currentHtml || null,
           model: selectedModel || undefined,
+          ...(reasoningEffort ? { reasoningEffort } : {}),
           deckId,
           baseVersionId,
           ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
@@ -254,7 +257,16 @@ export function useGenerationJob({
         throw startError
       }
     },
-    [baseVersionId, canGenerate, deckId, isGenerating, onReloadModels, runJob, selectedModel],
+    [
+      baseVersionId,
+      canGenerate,
+      deckId,
+      isGenerating,
+      onReloadModels,
+      reasoningEffort,
+      runJob,
+      selectedModel,
+    ],
   )
 
   const cancelGeneration = useCallback(async () => {

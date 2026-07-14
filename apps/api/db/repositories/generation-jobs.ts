@@ -55,6 +55,13 @@ function toIsoString(value: Date | string) {
 function readRequestMetadata(metadata: Record<string, unknown> | null): GenerationJobRequest {
   const messages = Array.isArray(metadata?.messages) ? metadata.messages : []
   const currentHtml = typeof metadata?.currentHtml === 'string' ? metadata.currentHtml : ''
+  const reasoningEffort =
+    metadata?.reasoningEffort === 'low' ||
+    metadata?.reasoningEffort === 'medium' ||
+    metadata?.reasoningEffort === 'high' ||
+    metadata?.reasoningEffort === 'xhigh'
+      ? metadata.reasoningEffort
+      : undefined
 
   return {
     messages: messages as GenerationJobRequest['messages'],
@@ -64,6 +71,7 @@ function readRequestMetadata(metadata: Record<string, unknown> | null): Generati
     ...(metadata?.editorSelection && typeof metadata.editorSelection === 'object'
       ? { editorSelection: metadata.editorSelection as GenerationJobRequest['editorSelection'] }
       : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }
 

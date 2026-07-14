@@ -2,7 +2,13 @@ import { z } from 'zod'
 
 import { MAX_CHAT_ATTACHMENTS } from '@ark/deck-core/chat.ts'
 import { apiChatMessageSchema } from './chat.ts'
-import { deckIdSchema, generationJobIdSchema, UUID_V4_PATTERN, withRequestId } from './common.ts'
+import {
+  deckIdSchema,
+  generationJobIdSchema,
+  reasoningEffortSchema,
+  UUID_V4_PATTERN,
+  withRequestId,
+} from './common.ts'
 import { deckValidationReportSchema } from './decks.ts'
 
 export const generationJobStatusSchema = z.enum([
@@ -17,7 +23,7 @@ export const generationJobStatusSchema = z.enum([
 export type GenerationJobStatus = z.infer<typeof generationJobStatusSchema>
 
 export const agentStepSchema = z.object({
-  type: z.enum(['text', 'tool-call', 'tool-result']),
+  type: z.enum(['text', 'thinking', 'tool-call', 'tool-result']),
   toolName: z.string().optional(),
   summary: z.string(),
   error: z.boolean().optional(),
@@ -119,6 +125,8 @@ export const startGenerationJobRequestSchema = z.object({
   messages: z.array(apiChatMessageSchema).optional(),
   currentHtml: z.string().nullable().optional(),
   model: z.string().optional(),
+  /** Reasoning effort for models that support thinking (Cursor-style levels). */
+  reasoningEffort: reasoningEffortSchema.optional(),
   deckId: deckIdSchema.nullable().optional(),
   baseVersionId: deckIdSchema.nullable().optional(),
   /** Current manual-editor selection so the agent can target the selected element. */

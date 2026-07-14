@@ -32,8 +32,10 @@ import {
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
 import { ModelSelector } from '@/components/ModelSelector'
+import { ReasoningEffortSelector } from '@/components/ReasoningEffortSelector'
 import { Card, CardContent } from '@/components/ui/card'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
+import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
 import type {
   AgentStep,
@@ -233,12 +235,35 @@ function ChatMessageDeliveryStatus({
   )
 }
 
-function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
+function ChatMessageParts({
+  parts,
+  thinkingDefaultOpen = false,
+}: {
+  parts: ChatMessagePart[]
+  thinkingDefaultOpen?: boolean
+}) {
   return (
     <div className="flex flex-col gap-2">
       {parts.map((part, index) => {
         if (part.type === 'text') {
           return <MessageResponse key={`text-${index}`}>{part.content}</MessageResponse>
+        }
+
+        if (part.type === 'thinking') {
+          return (
+            <details
+              className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs"
+              key={`thinking-${index}`}
+              open={thinkingDefaultOpen || undefined}
+            >
+              <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+                Thinking
+              </summary>
+              <div className="mt-2 whitespace-pre-wrap text-muted-foreground/80 opacity-80">
+                {part.content}
+              </div>
+            </details>
+          )
         }
 
         if (part.type === 'tool-call') {
@@ -294,6 +319,7 @@ export type ChatPanelProps = {
   attachmentError: string
   models: AvailableModel[]
   selectedModel: string
+  reasoningEffort: ReasoningEffort
   isLoadingModels: boolean
   modelsError: string
   modelWarnings: string[]
@@ -302,6 +328,7 @@ export type ChatPanelProps = {
   assetsSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelChange: (modelId: string) => void
+  onReasoningEffortChange: (effort: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
@@ -321,6 +348,7 @@ export function ChatPanel({
   attachmentError,
   models,
   selectedModel,
+  reasoningEffort,
   isLoadingModels,
   modelsError,
   modelWarnings,
@@ -329,6 +357,7 @@ export function ChatPanel({
   assetsSlot,
   onInputChange,
   onModelChange,
+  onReasoningEffortChange,
   onPromptSubmit,
   onAttachmentError,
   onCancelGeneration,
@@ -339,6 +368,8 @@ export function ChatPanel({
   const isSubmitDisabled = isGenerating || !canGenerate
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const modelWarningsKey = modelWarnings.join('\n')
+  const selectedModelInfo = models.find((model) => model.id === selectedModel)
+  const showReasoningEffort = Boolean(selectedModelInfo?.supportsReasoning)
 
   const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
     dismissedAlertKeys.has(alertDismissKey(alertId, content))
@@ -422,7 +453,10 @@ export function ChatPanel({
                           : 'Designing the deck and running agent tools…'}
                     </div>
                     {activeSteps.length > 0 ? (
-                      <ChatMessageParts parts={agentStepsToChatParts(activeSteps)} />
+                      <ChatMessageParts
+                        parts={agentStepsToChatParts(activeSteps)}
+                        thinkingDefaultOpen
+                      />
                     ) : null}
                   </div>
                 </MessageContent>
@@ -537,6 +571,13 @@ export function ChatPanel({
                   onValueChange={onModelChange}
                   value={selectedModel}
                 />
+                {showReasoningEffort ? (
+                  <ReasoningEffortSelector
+                    disabled={isGenerating}
+                    onValueChange={onReasoningEffortChange}
+                    value={reasoningEffort}
+                  />
+                ) : null}
                 {isGenerating ? (
                   <PromptInputButton
                     aria-label="Cancel generation"

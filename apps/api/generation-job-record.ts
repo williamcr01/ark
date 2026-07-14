@@ -56,5 +56,6 @@ export function cloneGenerationJobRequest(request: GenerationJobRequest): Genera
     baseVersionId: request.baseVersionId ?? null,
     editingExistingDeck: request.editingExistingDeck ?? false,
     ...(request.editorSelection ? { editorSelection: { ...request.editorSelection } } : {}),
+    ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
   }
 }
