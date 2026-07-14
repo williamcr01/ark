@@ -99,7 +99,6 @@ function App() {
     uploads: assetUploads,
     selectedAssetIds,
     error: assetError,
-    uploadFiles: uploadAssetFiles,
     removeAsset,
     dismissUpload,
     toggleAssetSelected,
@@ -225,12 +224,10 @@ function App() {
   const deckAssetsSlot = deckId ? (
     <DeckAssets
       assets={deckAssets}
-      disabled={isGenerating}
       error={assetError}
       onDismissUpload={dismissUpload}
       onRemoveAsset={removeAsset}
       onToggleSelected={toggleAssetSelected}
-      onUploadFiles={uploadAssetFiles}
       selectedAssetIds={selectedAssetIds}
       uploads={assetUploads}
     />
