@@ -119,7 +119,27 @@ const toModelRef = (
   name,
   available,
   unavailableReason: available ? undefined : unavailableReason,
+  supportsReasoning: modelSupportsReasoning(provider, modelId),
 })
+
+/** Heuristic: models that accept reasoning effort / return thinking text. */
+export const modelSupportsReasoning = (provider: ProviderId, modelId: string) => {
+  const id = modelId.toLowerCase()
+
+  if (provider === 'openai') {
+    return /^(o[0-9]|gpt-5)/i.test(id)
+  }
+
+  if (provider === 'anthropic') {
+    return id.startsWith('claude')
+  }
+
+  if (provider === 'google') {
+    return /^gemini-(2\.5|3)/i.test(id)
+  }
+
+  return false
+}
 
 const PROVIDER_SEED_MODELS: Record<ProviderId, Array<{ modelId: string; name: string }>> = {
   openai: [

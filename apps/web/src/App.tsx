@@ -16,6 +16,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
+import { useReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useChatSession } from '@/hooks/useChatSession'
 import { useDeckAssets } from '@/hooks/useDeckAssets'
 import { useDeckActions } from '@/hooks/useDeckActions'
@@ -124,6 +125,7 @@ function App() {
     setSelectedModel,
     warnings: modelWarnings,
   } = useAvailableModels()
+  const { reasoningEffort, setReasoningEffort } = useReasoningEffort()
 
   const {
     canRedo,
@@ -161,6 +163,7 @@ function App() {
       setMessages,
     },
     selectedModel,
+    reasoningEffort,
     canGenerate,
     loadModels,
     onError: setError,
@@ -488,9 +491,11 @@ function App() {
       onCancelGeneration={handleCancelGeneration}
       onInputChange={setInput}
       onModelChange={setSelectedModel}
+      onReasoningEffortChange={setReasoningEffort}
       onPromptSubmit={handlePromptSubmit}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}
+      reasoningEffort={reasoningEffort}
       selectedAssetIds={selectedAssetIds}
       selectedModel={selectedModel}
     />

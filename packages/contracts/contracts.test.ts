@@ -150,6 +150,22 @@ describe('shared API contracts', () => {
       startGenerationJobRequestSchema.safeParse({
         messages: [{ role: 'user', content: 'Hello' }],
         deckId,
+        reasoningEffort: 'high',
+      }).success,
+    ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'Hello' }],
+        deckId,
+        reasoningEffort: 'extra-high',
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'Hello' }],
+        deckId,
       }).success,
     ).toBe(true)
 

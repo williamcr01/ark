@@ -52,6 +52,11 @@ export const chatMessagePartSchema = z.discriminatedUnion('type', [
     stepIndex: z.number().int().min(0).optional(),
   }),
   z.object({
+    type: z.literal('thinking'),
+    content: z.string(),
+    stepIndex: z.number().int().min(0).optional(),
+  }),
+  z.object({
     type: z.literal('tool-call'),
     toolName: z.string(),
     summary: z.string(),

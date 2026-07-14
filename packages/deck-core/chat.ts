@@ -31,9 +31,9 @@ export function isValidChatMessageId(id: string) {
   return CHAT_MESSAGE_ID_PATTERN.test(id)
 }
 
-export type AgentStepType = 'text' | 'tool-call' | 'tool-result'
+export type AgentStepType = 'text' | 'thinking' | 'tool-call' | 'tool-result'
 
-/** One visible agent loop event (tool call, result, or assistant text chunk). */
+/** One visible agent loop event (tool call, result, thinking, or assistant text chunk). */
 export type AgentStep = {
   type: AgentStepType
   toolName?: string
@@ -51,6 +51,7 @@ export const MAX_MODEL_ASSISTANT_TURN_BYTES = 96 * 1024
 /** Rich assistant turn content persisted in chat history. */
 export type ChatMessagePart =
   | { type: 'text'; content: string; stepIndex?: number }
+  | { type: 'thinking'; content: string; stepIndex?: number }
   | {
       type: 'tool-call'
       toolName: string
@@ -167,6 +168,14 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
     if (part.type === 'text' && typeof part.content === 'string') {
       parts.push({
         type: 'text',
+        content: part.content,
+        ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+      })
+      continue
+    }
+    if (part.type === 'thinking' && typeof part.content === 'string') {
+      parts.push({
+        type: 'thinking',
         content: part.content,
         ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
       })
@@ -697,6 +706,11 @@ export function agentStepsToChatParts(steps: AgentStep[]): ChatMessagePart[] {
   for (const step of steps) {
     if (step.type === 'text') {
       parts.push({ type: 'text', content: step.summary })
+      continue
+    }
+
+    if (step.type === 'thinking') {
+      parts.push({ type: 'thinking', content: step.summary })
       continue
     }
 

@@ -31,6 +31,8 @@ export const modelInfoSchema = z.object({
   name: z.string().optional(),
   available: z.boolean(),
   unavailableReason: modelUnavailableReasonSchema.optional(),
+  /** Heuristic: model can accept reasoning effort / return thinking text. */
+  supportsReasoning: z.boolean().optional(),
 })
 
 export type ModelInfo = z.infer<typeof modelInfoSchema>
