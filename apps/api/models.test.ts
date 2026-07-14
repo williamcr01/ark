@@ -8,6 +8,7 @@ import {
   isAnthropicChatModel,
   isGoogleChatModel,
   isOpenAIChatModel,
+  modelSupportsReasoning,
   refreshModelCatalog,
 } from './models.ts'
 
@@ -36,6 +37,15 @@ describe('provider chat model filters', () => {
     expect(isOpenAIChatModel('gpt-image-1')).toBe(false)
     expect(isAnthropicChatModel('claude-image-1')).toBe(false)
     expect(isGoogleChatModel('gemini-2.0-flash-preview-image-generation')).toBe(false)
+  })
+
+  it('flags reasoning-capable model ids', () => {
+    expect(modelSupportsReasoning('openai', 'gpt-5.4')).toBe(true)
+    expect(modelSupportsReasoning('openai', 'o3-mini')).toBe(true)
+    expect(modelSupportsReasoning('openai', 'gpt-4o-mini')).toBe(false)
+    expect(modelSupportsReasoning('anthropic', 'claude-sonnet-5')).toBe(true)
+    expect(modelSupportsReasoning('google', 'gemini-2.5-flash')).toBe(true)
+    expect(modelSupportsReasoning('google', 'gemini-2.0-flash')).toBe(false)
   })
 
   it('keeps OpenAI chat models and drops media/specialty SKUs', () => {

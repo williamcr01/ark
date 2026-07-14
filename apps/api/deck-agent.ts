@@ -1,4 +1,4 @@
-import { generateText, type LanguageModel } from 'ai'
+import { streamText, type LanguageModel } from 'ai'
 
 import {
   buildAgentModelMessages,
@@ -6,13 +6,14 @@ import {
   type ApiChatMessage,
   type EditorSelectionContext,
 } from '@ark/deck-core/chat.ts'
-import type { ProviderCallMetrics } from '@ark/deck-core/generation-job.ts'
+import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
+import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
 export const deckAgentSystemPrompt = `You are Ark, an expert presentation designer and front-end engineer.
 
@@ -69,6 +70,7 @@ export type RunDeckAgentOptions = {
   messages: ApiChatMessage[]
   currentHtml: string
   editorSelection?: EditorSelectionContext
+  reasoningEffort?: ReasoningEffort
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
@@ -202,6 +204,8 @@ function summarizeToolOutput(toolName: string, output: unknown) {
 export function extractAgentSteps(
   steps: Array<{
     text: string
+    reasoningText?: string | null
+    reasoning?: Array<{ text?: string } | string> | null
     toolCalls: Array<{ toolName: string; input: unknown }>
     toolResults: Array<{ toolName: string; output: unknown }>
   }>,
@@ -209,6 +213,11 @@ export function extractAgentSteps(
   const events: AgentStep[] = []
 
   for (const step of steps) {
+    const thinking = extractThinkingText(step)
+    if (thinking) {
+      events.push({ type: 'thinking', summary: thinking })
+    }
+
     if (step.text.trim()) {
       events.push({ type: 'text', summary: step.text.trim() })
     }
@@ -239,6 +248,102 @@ export function extractAgentSteps(
   }
 
   return events
+}
+
+export function extractThinkingText(step: {
+  reasoningText?: string | null
+  reasoning?: Array<{ text?: string } | string> | null
+}): string {
+  const fromText = step.reasoningText?.trim()
+  if (fromText) {
+    return fromText
+  }
+
+  if (!step.reasoning?.length) {
+    return ''
+  }
+
+  return step.reasoning
+    .map((part) => (typeof part === 'string' ? part : (part.text ?? '')))
+    .join('')
+    .trim()
+}
+
+const THINKING_PROGRESS_THROTTLE_MS = 200
+
+function createThinkingProgressReporter(
+  accumulatedSteps: AgentStep[],
+  onStepProgress?: (steps: AgentStep[]) => void | Promise<void>,
+) {
+  let thinkingBuffer = ''
+  let lastFlushAt = 0
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingFlush: Promise<void> = Promise.resolve()
+
+  const withThinking = () => {
+    const steps = [...accumulatedSteps]
+    if (thinkingBuffer) {
+      steps.push({ type: 'thinking', summary: thinkingBuffer })
+    }
+    return steps
+  }
+
+  const flush = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+
+    lastFlushAt = Date.now()
+    pendingFlush = pendingFlush.then(async () => {
+      await onStepProgress?.(withThinking())
+    })
+    return pendingFlush
+  }
+
+  const scheduleFlush = () => {
+    const elapsed = Date.now() - lastFlushAt
+    if (elapsed >= THINKING_PROGRESS_THROTTLE_MS) {
+      void flush()
+      return
+    }
+
+    if (flushTimer) {
+      return
+    }
+
+    flushTimer = setTimeout(() => {
+      flushTimer = null
+      void flush()
+    }, THINKING_PROGRESS_THROTTLE_MS - elapsed)
+  }
+
+  return {
+    appendDelta(text: string) {
+      if (!text) {
+        return
+      }
+
+      thinkingBuffer += text
+      scheduleFlush()
+    },
+    /** Finalize in-progress thinking (from deltas or finished-step text) into accumulatedSteps. */
+    async commitThinkingStep(fallbackText?: string) {
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+
+      await pendingFlush
+
+      const summary = (thinkingBuffer || fallbackText || '').trim()
+      thinkingBuffer = ''
+
+      if (summary) {
+        accumulatedSteps.push({ type: 'thinking', summary })
+      }
+    },
+  }
 }
 
 function throwIfAborted(abortSignal?: AbortSignal) {
@@ -272,6 +377,7 @@ export async function runDeckAgent({
   messages,
   currentHtml,
   editorSelection,
+  reasoningEffort,
   abortSignal,
   onStepProgress,
   logger,
@@ -285,25 +391,51 @@ export async function runDeckAgent({
   const { createDeckTools } = await import('./deck-tools.ts')
   const tools = createDeckTools(workspace, { logger, versionInspector })
   const accumulatedSteps: AgentStep[] = []
+  const thinkingProgress = createThinkingProgressReporter(accumulatedSteps, onStepProgress)
   const startedAt = performance.now()
+  const providerOptions = reasoningEffort
+    ? buildReasoningProviderOptions(provider, reasoningEffort)
+    : undefined
 
   let result
 
   try {
-    result = await generateText({
+    const stream = streamText({
       model,
       system: deckAgentSystemPrompt,
       messages: buildAgentModelMessages(messages, currentHtml, editorSelection),
       tools,
       stopWhen: () => false,
-      temperature: 0.4,
+      ...(reasoningEffort ? {} : { temperature: 0.4 }),
+      ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,
+      onChunk: async ({ chunk }) => {
+        throwIfAborted(abortSignal)
+        if (chunk.type === 'reasoning-delta') {
+          thinkingProgress.appendDelta(chunk.text)
+        }
+      },
       onStepFinish: async (step) => {
         throwIfAborted(abortSignal)
-        accumulatedSteps.push(...extractAgentSteps([step as ExtractableAgentStep]))
+        await thinkingProgress.commitThinkingStep(extractThinkingText(step as ExtractableAgentStep))
+
+        const withoutThinking = extractAgentSteps([step as ExtractableAgentStep]).filter(
+          (event) => event.type !== 'thinking',
+        )
+        accumulatedSteps.push(...withoutThinking)
         await onStepProgress?.(accumulatedSteps)
       },
     })
+
+    // Drain the stream so tool loops and progress callbacks run to completion.
+    await stream.consumeStream()
+    result = {
+      text: await stream.text,
+      steps: await stream.steps,
+      totalUsage: await stream.totalUsage,
+      finishReason: await stream.finishReason,
+    }
+    await thinkingProgress.commitThinkingStep()
   } catch (error) {
     const { categorizeProviderError } = await import('./observability/provider-errors.ts')
     const details = categorizeProviderError(error)

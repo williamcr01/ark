@@ -17,12 +17,14 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   attachmentError: '',
   models: [],
   selectedModel: '',
+  reasoningEffort: 'medium',
   isLoadingModels: false,
   modelsError: '',
   modelWarnings: [],
   canGenerate: true,
   onInputChange: vi.fn(),
   onModelChange: vi.fn(),
+  onReasoningEffortChange: vi.fn(),
   onPromptSubmit: vi.fn(),
   onAttachmentError: vi.fn(),
   onCancelGeneration: vi.fn(),
@@ -155,5 +157,88 @@ describe('ChatPanel submit control', () => {
     )
 
     expect(screen.queryByText('API key required')).not.toBeInTheDocument()
+  })
+
+  it('shows reasoning effort only for reasoning-capable models', async () => {
+    const user = userEvent.setup()
+    const onReasoningEffortChange = vi.fn()
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          models={[
+            {
+              id: 'openai:gpt-4o-mini',
+              provider: 'openai',
+              modelId: 'gpt-4o-mini',
+              name: 'GPT-4o Mini',
+              available: true,
+            },
+          ]}
+          onReasoningEffortChange={onReasoningEffortChange}
+          selectedModel="openai:gpt-4o-mini"
+        />
+      </TooltipProvider>,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Select reasoning effort' }),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          models={[
+            {
+              id: 'openai:gpt-5',
+              provider: 'openai',
+              modelId: 'gpt-5',
+              name: 'GPT-5',
+              available: true,
+              supportsReasoning: true,
+            },
+          ]}
+          onReasoningEffortChange={onReasoningEffortChange}
+          selectedModel="openai:gpt-5"
+        />
+      </TooltipProvider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select reasoning effort' }))
+    await user.click(screen.getByText('Extra High'))
+    expect(onReasoningEffortChange).toHaveBeenCalledWith('xhigh')
+  })
+
+  it('renders collapsible muted thinking parts', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'Updated the title.',
+              parts: [
+                { type: 'thinking', content: 'I will patch the title.' },
+                { type: 'text', content: 'Updated the title.' },
+              ],
+            },
+          ]}
+        />
+      </TooltipProvider>,
+    )
+
+    const summary = screen.getByText('Thinking')
+    expect(summary.closest('details')).not.toHaveAttribute('open')
+    expect(screen.queryByText('I will patch the title.')).not.toBeVisible()
+
+    await user.click(summary)
+    expect(screen.getByText('I will patch the title.')).toBeVisible()
+    expect(screen.getByText('I will patch the title.')).toHaveClass('text-muted-foreground/80')
   })
 })

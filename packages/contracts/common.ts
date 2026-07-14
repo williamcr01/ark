@@ -25,6 +25,11 @@ export const providerIdSchema = z.enum(['openai', 'anthropic', 'google'])
 
 export type ProviderId = z.infer<typeof providerIdSchema>
 
+/** Cursor-style reasoning effort levels (Extra High → xhigh). */
+export const reasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
+
+export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>
+
 export const apiErrorCodeSchema = z.enum(['missing_api_key', 'invalid_api_key', 'provider_error'])
 
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>
