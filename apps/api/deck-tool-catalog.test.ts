@@ -5,13 +5,14 @@ import { createActiveDeckTools } from './deck-tool-catalog.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 
 describe('deck tool catalog', () => {
-  it('keeps registered tools and prompt availability in sync', () => {
+  it('keeps registered tools in sync and omits tool list from system prompt', () => {
     const withoutVersions = createActiveDeckTools(createDeckWorkspace(''))
     const prompt = buildDeckAgentSystemPrompt(withoutVersions.activeDefinitions)
     expect(withoutVersions.activeDefinitions.map(({ name }) => name)).toEqual(
       Object.keys(withoutVersions.tools),
     )
-    expect(prompt).not.toContain('**list_versions**')
+    expect(prompt).not.toContain('Available tools:')
+    expect(prompt).not.toContain('list_versions')
     expect(prompt).toContain('self-contained')
     expect(prompt).toContain('16:9')
 
@@ -19,7 +20,7 @@ describe('deck tool catalog', () => {
       versionInspector: { listVersions: async () => [] },
     })
     expect(buildDeckAgentSystemPrompt(withVersions.activeDefinitions)).toContain(
-      '**list_versions**',
+      'Use list_versions before large rewrites or when asked what changed.',
     )
   })
 

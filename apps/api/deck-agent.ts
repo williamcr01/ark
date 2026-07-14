@@ -26,11 +26,6 @@ import { buildReasoningProviderOptions } from './reasoning-options.ts'
 export const MAX_AGENT_STEPS = 30
 
 export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolDefinition[]) {
-  const available = activeDefinitions
-    .map(
-      (definition) => `- **${definition.name}**: ${definition.snippet} - ${definition.description}`,
-    )
-    .join('\n')
   const toolGuidelines = [
     ...new Set(activeDefinitions.flatMap((definition) => definition.guidelines)),
   ]
@@ -39,9 +34,6 @@ export function buildDeckAgentSystemPrompt(activeDefinitions: readonly DeckToolD
   return `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
-
-Available tools:
-${available}
 
 Guidelines:
 - Inspect the current deck before editing and prefer targeted patches over full rewrites.
