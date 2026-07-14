@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'
+import express, { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody, createPreviewSessionRequestSchema } from '@ark/contracts'
 import {
@@ -10,42 +10,51 @@ import { type PreviewSessionStore } from '../preview-sessions.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { logTimedEvent, measureSync } from '../observability/timing.ts'
 
+// Preview sessions only need deck HTML (typically well under 1 MB). Use a
+// tighter limit than the global 12mb JSON parser so abusive POST bodies are
+// rejected before they enter the in-memory session store.
+export const PREVIEW_SESSION_JSON_LIMIT = '2mb'
+
 export function createPreviewSessionsRouter(deps: {
   previewSessionStore: PreviewSessionStore
 }): Router {
   const { previewSessionStore } = deps
   const router = Router()
 
-  router.post('/api/preview-sessions', async (request: Request, response: Response) => {
-    const parsed = parseRequestBody(createPreviewSessionRequestSchema, request.body)
+  router.post(
+    '/api/preview-sessions',
+    express.json({ limit: PREVIEW_SESSION_JSON_LIMIT }),
+    async (request: Request, response: Response) => {
+      const parsed = parseRequestBody(createPreviewSessionRequestSchema, request.body)
 
-    if (!parsed.ok) {
-      response.status(400).json({ error: parsed.error })
-      return
-    }
+      if (!parsed.ok) {
+        response.status(400).json({ error: parsed.error })
+        return
+      }
 
-    const { result: session, durationMs } = measureSync(() =>
-      previewSessionStore.createSession(parsed.data.html, {
+      const { result: session, durationMs } = measureSync(() =>
+        previewSessionStore.createSession(parsed.data.html, {
+          editorBridge: parsed.data.editorBridge === true,
+        }),
+      )
+
+      logTimedEvent(getRequestLogger(request), 'preview.session.created', durationMs, {
+        htmlBytes: Buffer.byteLength(parsed.data.html, 'utf8'),
         editorBridge: parsed.data.editorBridge === true,
-      }),
-    )
+      })
 
-    logTimedEvent(getRequestLogger(request), 'preview.session.created', durationMs, {
-      htmlBytes: Buffer.byteLength(parsed.data.html, 'utf8'),
-      editorBridge: parsed.data.editorBridge === true,
-    })
-
-    response.status(201).json({
-      token: session.token,
-      handshake: session.handshake,
-      expiresAt: session.expiresAt,
-      sandboxOrigin: resolveSandboxOrigin(),
-      renderUrl: buildSandboxRenderUrl(session.token, {
+      response.status(201).json({
+        token: session.token,
+        handshake: session.handshake,
+        expiresAt: session.expiresAt,
         sandboxOrigin: resolveSandboxOrigin(),
-        appOrigin: resolveAppOrigin(),
-      }),
-    })
-  })
+        renderUrl: buildSandboxRenderUrl(session.token, {
+          sandboxOrigin: resolveSandboxOrigin(),
+          appOrigin: resolveAppOrigin(),
+        }),
+      })
+    },
+  )
 
   router.get(
     '/api/preview-sessions/:token',

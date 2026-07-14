@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { createLogger, type StructuredLogEntry } from './observability/logger.ts'
 import { createPreviewSessionStore } from './preview-sessions.ts'
 
 describe('preview session store', () => {
@@ -72,5 +73,98 @@ describe('preview session store', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('evicts oldest sessions first when maxSessions is exceeded', () => {
+    vi.useFakeTimers()
+
+    try {
+      const entries: StructuredLogEntry[] = []
+      const logger = createLogger({
+        write: (entry) => {
+          entries.push(entry)
+        },
+      })
+      const store = createPreviewSessionStore({
+        ttlMs: 60_000,
+        maxSessions: 2,
+        maxTotalHtmlBytes: 10_000_000,
+        logger,
+      })
+
+      const first = store.createSession('<html>one</html>')
+      vi.advanceTimersByTime(10)
+      const second = store.createSession('<html>two</html>')
+      vi.advanceTimersByTime(10)
+      const third = store.createSession('<html>three</html>')
+
+      expect(store.getSession(first.token)).toBeNull()
+      expect(store.getSession(second.token)?.html).toContain('two')
+      expect(store.getSession(third.token)?.html).toContain('three')
+
+      const eviction = entries.find((entry) => entry.event === 'preview.session.evicted')
+      expect(eviction?.level).toBe('warn')
+      expect(eviction?.fields).toMatchObject({
+        reason: 'max_sessions',
+        token: first.token,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('evicts oldest sessions when maxTotalHtmlBytes is exceeded', () => {
+    vi.useFakeTimers()
+
+    try {
+      const entries: StructuredLogEntry[] = []
+      const logger = createLogger({
+        write: (entry) => {
+          entries.push(entry)
+        },
+      })
+      const small = 'x'.repeat(80)
+      const large = 'y'.repeat(200)
+      const store = createPreviewSessionStore({
+        ttlMs: 60_000,
+        maxSessions: 100,
+        maxTotalHtmlBytes: 250,
+        logger,
+      })
+
+      const first = store.createSession(`<html>${small}</html>`)
+      vi.advanceTimersByTime(10)
+      const second = store.createSession(`<html>${small}-2</html>`)
+      vi.advanceTimersByTime(10)
+      // Large payload cannot fit alongside either prior session, so both are
+      // evicted oldest-first before the new session is stored.
+      const third = store.createSession(`<html>${large}</html>`)
+
+      expect(store.getSession(first.token)).toBeNull()
+      expect(store.getSession(second.token)).toBeNull()
+      expect(store.getSession(third.token)?.html).toContain(large)
+
+      const evictions = entries.filter((entry) => entry.event === 'preview.session.evicted')
+      expect(evictions).toHaveLength(2)
+      expect(evictions.every((entry) => entry.fields?.reason === 'max_total_html_bytes')).toBe(true)
+      expect(evictions[0]?.fields?.token).toBe(first.token)
+      expect(evictions[1]?.fields?.token).toBe(second.token)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('still reuses identical sessions under a tight maxSessions cap', () => {
+    const store = createPreviewSessionStore({
+      ttlMs: 60_000,
+      maxSessions: 1,
+      maxTotalHtmlBytes: 10_000_000,
+    })
+    const html = '<html><body>reuse me</body></html>'
+    const first = store.createSession(html)
+    const second = store.createSession(html)
+
+    expect(second.token).toBe(first.token)
+    expect(store.getSession(first.token)?.html).toContain('reuse me')
   })
 })

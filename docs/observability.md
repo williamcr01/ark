@@ -62,8 +62,9 @@ Emitted when `validateDeckHtmlOnServer` runs with a logger (deck create/update, 
 | Event                     | Level | Key `fields`                              |
 | ------------------------- | ----- | ----------------------------------------- |
 | `preview.session.created` | debug | `durationMs`, `htmlBytes`, `editorBridge` |
+| `preview.session.evicted` | warn  | `reason` (`max_sessions`                  | `max_total_html_bytes`), `token`, `htmlBytes`, `sessionCount`, store caps |
 
-Preview session creation is usually cheap (in-memory token + HTML store). Large `htmlBytes` with high `durationMs` may indicate upstream validation or client payload cost.
+Preview session creation is usually cheap (in-memory token + HTML store). Large `htmlBytes` with high `durationMs` may indicate upstream validation or client payload cost. `preview.session.evicted` means the store hit its memory caps and dropped the oldest live session(s).
 
 ## Thumbnails
 

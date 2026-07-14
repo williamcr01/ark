@@ -609,6 +609,20 @@ describe('shared API route contracts', () => {
     assertApiContract(previewSessionResponseSchema, created)
   })
 
+  it('rejects oversized preview session bodies before the global JSON limit', async () => {
+    const baseUrl = await startApi()
+    // Preview-sessions uses a 2mb JSON limit; a ~3mb body must be rejected.
+    const oversizedHtml = `<html><body>${'x'.repeat(3 * 1024 * 1024)}</body></html>`
+
+    const response = await fetch(`${baseUrl}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: oversizedHtml }),
+    })
+
+    expect(response.status).toBe(413)
+  })
+
   it('returns generation job error payloads that match shared contracts', async () => {
     const baseUrl = await startApi()
 

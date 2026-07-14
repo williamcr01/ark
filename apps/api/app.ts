@@ -120,11 +120,14 @@ export function createApp(options: CreateAppOptions = {}) {
   // apply its own larger body limit for base64-encoded files.
   app.use(createAssetsRouter({ assetStore, assetStorage, deckStore }))
 
+  // Preview sessions parse JSON with a smaller limit (2mb) before the global
+  // 12mb parser so oversized deck HTML cannot inflate the in-memory store.
+  app.use(createPreviewSessionsRouter({ previewSessionStore }))
+
   app.use(express.json({ limit: '12mb' }))
 
   app.use(createRuntimesAndAssetsRouter())
   app.use(createMiscRouter({ defaultModel, runtimeErrorStore }))
-  app.use(createPreviewSessionsRouter({ previewSessionStore }))
   app.use(
     createThumbnailRenderRouter({
       previewSessionStore,
