@@ -65,25 +65,28 @@ scale. Timeouts always dispose the Chromium page target.
 
 ## Configuration
 
-| Variable                          | Purpose                                                     |
-| --------------------------------- | ----------------------------------------------------------- |
-| `ARK_THUMBNAIL_RENDERER=off`      | Disable the renderer; clients keep `srcDoc` fallback        |
-| `ARK_CHROMIUM_PATH`               | Chromium/Chrome binary for rendering and browser smoke      |
-| `ARK_THUMBNAIL_CACHE_DIR`         | PNG cache root (default `data/thumbnails`)                  |
-| `ARK_THUMBNAIL_QUEUE_CONCURRENCY` | Renderer queue concurrency (positive integer, default `1`)  |
-| `ARK_THUMBNAIL_SETTLE_MS`         | Per-slide settle delay (non-negative integer, default `40`) |
+| Variable                          | Purpose                                                                                                                                                                    |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ARK_THUMBNAIL_RENDERER=off`      | Disable the renderer; clients keep `srcDoc` fallback                                                                                                                       |
+| `ARK_CHROMIUM_PATH`               | Chromium/Chrome binary for rendering and browser smoke                                                                                                                     |
+| `ARK_CHROMIUM_NO_SANDBOX=true`    | Always launch with `--no-sandbox` (skip sandboxed probe); also accepts `1` / `yes` / `on`. When unset, try sandboxed first and fall back to `--no-sandbox` if launch fails |
+| `ARK_THUMBNAIL_CACHE_DIR`         | PNG cache root (default `data/thumbnails`)                                                                                                                                 |
+| `ARK_THUMBNAIL_QUEUE_CONCURRENCY` | Renderer queue concurrency (positive integer, default `1`)                                                                                                                 |
+| `ARK_THUMBNAIL_SETTLE_MS`         | Per-slide settle delay (non-negative integer, default `40`)                                                                                                                |
 
 ## Observability
 
-| Event                        | When                             |
-| ---------------------------- | -------------------------------- |
-| `thumbnail.status`           | Status poll response             |
-| `thumbnail.render.succeeded` | Deck render completed            |
-| `thumbnail.render.failed`    | Deck render failed / timed out   |
-| `thumbnail.render.aborted`   | In-flight render superseded      |
-| `thumbnail.queue.saturated`  | Pending queue hit its bound      |
-| `thumbnail.queue.failed`     | Unexpected queue exception       |
-| `thumbnail.queue.aborted`    | Running warm aborted as obsolete |
+| Event                                 | When                                                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `thumbnail.status`                    | Status poll response                                                                                   |
+| `thumbnail.render.succeeded`          | Deck render completed                                                                                  |
+| `thumbnail.render.failed`             | Deck render failed / timed out                                                                         |
+| `thumbnail.render.aborted`            | In-flight render superseded                                                                            |
+| `thumbnail.queue.saturated`           | Pending queue hit its bound                                                                            |
+| `thumbnail.queue.failed`              | Unexpected queue exception                                                                             |
+| `thumbnail.queue.aborted`             | Running warm aborted as obsolete                                                                       |
+| `thumbnail.chromium.started`          | Chromium pool process ready (`sandboxMode`)                                                            |
+| `thumbnail.chromium.sandbox_fallback` | Sandboxed launch failed with a recognized sandbox error; retrying with `--no-sandbox` (`failureClass`) |
 
 ## Related code
 

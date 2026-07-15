@@ -448,7 +448,7 @@ export function createThumbnailRenderer(options: {
         const result = await withTimeout(
           (async (): Promise<ThumbnailRenderSuccess> => {
             throwIfAborted(signal)
-            const page = await chromiumPool.createPage()
+            const page = await chromiumPool.createPage(signal)
             pageRef.current = page
             throwIfAborted(signal)
             const { cdp } = page
