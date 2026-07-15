@@ -79,13 +79,15 @@ export function createSandboxHost(options: CreateSandboxHostOptions) {
           }
 
           if (payload.html?.trim()) {
+            const now = Date.now()
             session = {
               token,
               handshake: typeof payload.handshake === 'string' ? payload.handshake : token,
               html: payload.html,
               editorBridge: payload.editorBridge === true,
-              createdAt: Date.now(),
-              expiresAt: Date.now() + 60_000,
+              createdAt: now,
+              lastAccessedAt: now,
+              expiresAt: now + 60_000,
             }
           }
         }
