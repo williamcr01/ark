@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { nanoid } from 'nanoid'
 
+import { createLogger, type Logger } from './observability/logger.ts'
+
 export type ThumbnailPreviewCache = {
   html: string
   runtimeMode: 'static' | 'reveal' | 'custom-js'
@@ -19,7 +21,18 @@ export type PreviewSession = {
    */
   thumbnailPreview?: ThumbnailPreviewCache
   createdAt: number
+  /** Updated on create, reuse, and getSession — drives LRU eviction. */
+  lastAccessedAt: number
   expiresAt: number
+}
+
+export class PreviewSessionCapacityError extends Error {
+  readonly code = 'preview_session_capacity' as const
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'PreviewSessionCapacityError'
+  }
 }
 
 export type PreviewSessionOptions = {
@@ -35,13 +48,47 @@ export type PreviewSessionStore = {
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000
 
+/** Default session count cap — well above normal editor + thumbnail traffic. */
+export const DEFAULT_PREVIEW_SESSION_MAX_SESSIONS = 500
+
+/** Default total HTML byte cap across all live sessions (~64 MiB). */
+export const DEFAULT_PREVIEW_SESSION_MAX_TOTAL_HTML_BYTES = 64 * 1024 * 1024
+
+/** Bounded extra slots reserved for in-flight thumbnail renders. */
+export const DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM = 16
+
+export type PreviewSessionStoreOptions = {
+  ttlMs?: number
+  maxSessions?: number
+  maxTotalHtmlBytes?: number
+  logger?: Logger
+}
+
 function previewSessionContentKey(html: string, editorBridge: boolean) {
   const hash = createHash('sha256').update(html).digest('hex')
   return `${editorBridge ? '1' : '0'}:${hash}`
 }
 
-export function createPreviewSessionStore(options: { ttlMs?: number } = {}): PreviewSessionStore {
+function previewSessionTokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex').slice(0, 12)
+}
+
+function sessionHtmlBytes(session: Pick<PreviewSession, 'html' | 'thumbnailPreview'>): number {
+  let bytes = Buffer.byteLength(session.html, 'utf8')
+  if (session.thumbnailPreview) {
+    bytes += Buffer.byteLength(session.thumbnailPreview.html, 'utf8')
+  }
+  return bytes
+}
+
+export function createPreviewSessionStore(
+  options: PreviewSessionStoreOptions = {},
+): PreviewSessionStore {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
+  const maxSessions = options.maxSessions ?? DEFAULT_PREVIEW_SESSION_MAX_SESSIONS
+  const maxTotalHtmlBytes =
+    options.maxTotalHtmlBytes ?? DEFAULT_PREVIEW_SESSION_MAX_TOTAL_HTML_BYTES
+  const logger = options.logger ?? createLogger({ service: 'ark-api' })
   const sessions = new Map<string, PreviewSession>()
   /**
    * Reuse identical interactive (html, editorBridge) sessions within TTL.
@@ -49,29 +96,110 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
    * token in `finally` and must not invalidate shared interactive previews.
    */
   const tokensByContentKey = new Map<string, string>()
+  let totalHtmlBytes = 0
+
+  const removeContentKeyIfOwned = (session: PreviewSession) => {
+    if (session.thumbnailPreview) {
+      return
+    }
+
+    const contentKey = previewSessionContentKey(session.html, session.editorBridge)
+    if (tokensByContentKey.get(contentKey) === session.token) {
+      tokensByContentKey.delete(contentKey)
+    }
+  }
+
+  const removeSession = (session: PreviewSession) => {
+    if (!sessions.delete(session.token)) {
+      return false
+    }
+
+    totalHtmlBytes = Math.max(0, totalHtmlBytes - sessionHtmlBytes(session))
+    removeContentKeyIfOwned(session)
+    return true
+  }
 
   const purgeExpired = () => {
     const now = Date.now()
 
-    for (const [token, session] of sessions) {
+    for (const session of sessions.values()) {
       if (session.expiresAt <= now) {
-        sessions.delete(token)
-        if (!session.thumbnailPreview) {
-          const contentKey = previewSessionContentKey(session.html, session.editorBridge)
-          if (tokensByContentKey.get(contentKey) === token) {
-            tokensByContentKey.delete(contentKey)
-          }
-        }
+        removeSession(session)
       }
     }
   }
 
+  const touchSessionAccess = (session: PreviewSession, now = Date.now()) => {
+    session.lastAccessedAt = now
+  }
+
+  const refreshSessionTtl = (session: PreviewSession, now = Date.now()) => {
+    touchSessionAccess(session, now)
+    session.expiresAt = now + ttlMs
+  }
+
+  const findLeastRecentlyUsedEvictableSession = (): PreviewSession | null => {
+    let lru: PreviewSession | null = null
+
+    for (const session of sessions.values()) {
+      // In-flight thumbnail renders must survive until the renderer deletes them.
+      if (session.thumbnailPreview) {
+        continue
+      }
+
+      if (!lru || session.lastAccessedAt < lru.lastAccessedAt) {
+        lru = session
+      }
+    }
+
+    return lru
+  }
+
+  const evictUntilUnderCap = (
+    incomingBytes: number,
+    options?: { allowThumbnailOverflow?: boolean },
+  ) => {
+    const thumbnailSessionCeiling = maxSessions + DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM
+
+    while (sessions.size > 0) {
+      const overSessionCap = sessions.size >= maxSessions
+      const overByteCap = totalHtmlBytes + incomingBytes > maxTotalHtmlBytes
+
+      if (!overSessionCap && !overByteCap) {
+        return true
+      }
+
+      const victim = findLeastRecentlyUsedEvictableSession()
+      if (!victim) {
+        return (
+          options?.allowThumbnailOverflow === true &&
+          !overByteCap &&
+          sessions.size < thumbnailSessionCeiling
+        )
+      }
+
+      const reason = overSessionCap ? 'max_sessions' : 'max_total_html_bytes'
+      removeSession(victim)
+      logger.warn('preview.session.evicted', {
+        reason,
+        tokenHash: previewSessionTokenHash(victim.token),
+        htmlBytes: sessionHtmlBytes(victim),
+        sessionCount: sessions.size,
+        totalHtmlBytes,
+        maxSessions,
+        maxTotalHtmlBytes,
+      })
+    }
+
+    return incomingBytes <= maxTotalHtmlBytes
+  }
+
   return {
-    createSession(html, options = {}) {
+    createSession(html, sessionOptions = {}) {
       purgeExpired()
 
-      const editorBridge = options.editorBridge === true
-      const isThumbnailSession = Boolean(options.thumbnailPreview)
+      const editorBridge = sessionOptions.editorBridge === true
+      const isThumbnailSession = Boolean(sessionOptions.thumbnailPreview)
 
       // Thumbnail sessions own a unique token lifecycle (create → Chromium GET
       // → delete in renderer finally). Never share them with interactive
@@ -84,7 +212,7 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
           const existing = sessions.get(existingToken)
 
           if (existing && !existing.thumbnailPreview && existing.expiresAt > Date.now()) {
-            existing.expiresAt = Date.now() + ttlMs
+            refreshSessionTtl(existing)
             return existing
           }
 
@@ -100,12 +228,34 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
         handshake,
         html,
         editorBridge,
-        ...(options.thumbnailPreview ? { thumbnailPreview: options.thumbnailPreview } : {}),
+        ...(sessionOptions.thumbnailPreview
+          ? { thumbnailPreview: sessionOptions.thumbnailPreview }
+          : {}),
         createdAt: now,
+        lastAccessedAt: now,
         expiresAt: now + ttlMs,
       }
 
+      const incomingBytes = sessionHtmlBytes(session)
+
+      if (incomingBytes > maxTotalHtmlBytes) {
+        throw new PreviewSessionCapacityError(
+          `Preview session HTML (${incomingBytes} bytes) exceeds the store cap (${maxTotalHtmlBytes} bytes).`,
+        )
+      }
+
+      const hasRoom = evictUntilUnderCap(incomingBytes, {
+        allowThumbnailOverflow: isThumbnailSession,
+      })
+
+      if (!hasRoom) {
+        throw new PreviewSessionCapacityError(
+          'Preview session store is at capacity; retry after other sessions expire.',
+        )
+      }
+
       sessions.set(token, session)
+      totalHtmlBytes += incomingBytes
 
       if (!isThumbnailSession) {
         tokensByContentKey.set(previewSessionContentKey(html, editorBridge), token)
@@ -124,16 +274,11 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
       }
 
       if (session.expiresAt <= Date.now()) {
-        sessions.delete(token)
-        if (!session.thumbnailPreview) {
-          const contentKey = previewSessionContentKey(session.html, session.editorBridge)
-          if (tokensByContentKey.get(contentKey) === token) {
-            tokensByContentKey.delete(contentKey)
-          }
-        }
+        removeSession(session)
         return null
       }
 
+      touchSessionAccess(session)
       return session
     },
 
@@ -144,14 +289,7 @@ export function createPreviewSessionStore(options: { ttlMs?: number } = {}): Pre
         return false
       }
 
-      sessions.delete(token)
-      if (!session.thumbnailPreview) {
-        const contentKey = previewSessionContentKey(session.html, session.editorBridge)
-        if (tokensByContentKey.get(contentKey) === token) {
-          tokensByContentKey.delete(contentKey)
-        }
-      }
-      return true
+      return removeSession(session)
     },
   }
 }

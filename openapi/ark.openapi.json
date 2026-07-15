@@ -4587,7 +4587,37 @@
               }
             }
           },
+          "413": {
+            "description": "Request body exceeds the preview session JSON size limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
           "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "503": {
             "description": "Error response",
             "content": {
               "application/json": {

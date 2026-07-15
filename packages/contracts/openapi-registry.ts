@@ -488,7 +488,16 @@ export function createArkOpenApiRegistry() {
         content: { 'application/json': { schema: previewSessionResponseSchema } },
       },
       400: jsonError,
+      413: {
+        description: 'Request body exceeds the preview session JSON size limit',
+        content: {
+          'application/json': {
+            schema: simpleErrorResponseSchema,
+          },
+        },
+      },
       500: jsonError,
+      503: jsonError,
     },
   })
 
