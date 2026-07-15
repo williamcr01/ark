@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createLogger, type StructuredLogEntry } from './observability/logger.ts'
-import { createPreviewSessionStore } from './preview-sessions.ts'
+import { createPreviewSessionStore, PreviewSessionCapacityError } from './preview-sessions.ts'
 
 describe('preview session store', () => {
   it('creates and retrieves preview sessions until they expire', () => {
@@ -75,7 +75,7 @@ describe('preview session store', () => {
     }
   })
 
-  it('evicts oldest sessions first when maxSessions is exceeded', () => {
+  it('evicts least recently used sessions when maxSessions is exceeded', () => {
     vi.useFakeTimers()
 
     try {
@@ -96,17 +96,19 @@ describe('preview session store', () => {
       vi.advanceTimersByTime(10)
       const second = store.createSession('<html>two</html>')
       vi.advanceTimersByTime(10)
+      store.getSession(first.token)
+      vi.advanceTimersByTime(10)
       const third = store.createSession('<html>three</html>')
 
-      expect(store.getSession(first.token)).toBeNull()
-      expect(store.getSession(second.token)?.html).toContain('two')
+      expect(store.getSession(second.token)).toBeNull()
+      expect(store.getSession(first.token)?.html).toContain('one')
       expect(store.getSession(third.token)?.html).toContain('three')
 
       const eviction = entries.find((entry) => entry.event === 'preview.session.evicted')
       expect(eviction?.level).toBe('warn')
       expect(eviction?.fields).toMatchObject({
         reason: 'max_sessions',
-        token: first.token,
+        token: second.token,
       })
     } finally {
       vi.useRealTimers()
@@ -166,5 +168,68 @@ describe('preview session store', () => {
 
     expect(second.token).toBe(first.token)
     expect(store.getSession(first.token)?.html).toContain('reuse me')
+  })
+
+  it('does not evict in-flight thumbnail sessions under store pressure', () => {
+    const store = createPreviewSessionStore({
+      ttlMs: 60_000,
+      maxSessions: 2,
+      maxTotalHtmlBytes: 10_000_000,
+    })
+    const html = '<html><body>deck</body></html>'
+
+    store.createSession('<html>one</html>')
+    store.createSession('<html>two</html>')
+    const thumbnail = store.createSession(html, {
+      thumbnailPreview: {
+        html: '<html><body>thumb</body></html>',
+        runtimeMode: 'static',
+        nonce: 'nonce',
+      },
+    })
+
+    expect(store.getSession(thumbnail.token)?.thumbnailPreview?.nonce).toBe('nonce')
+
+    store.createSession('<html>three</html>')
+
+    expect(store.getSession(thumbnail.token)?.thumbnailPreview?.nonce).toBe('nonce')
+  })
+
+  it('rejects a single session larger than maxTotalHtmlBytes', () => {
+    const store = createPreviewSessionStore({
+      ttlMs: 60_000,
+      maxSessions: 10,
+      maxTotalHtmlBytes: 250,
+    })
+    const oversized = 'x'.repeat(300)
+
+    expect(() => store.createSession(`<html>${oversized}</html>`)).toThrow(
+      PreviewSessionCapacityError,
+    )
+  })
+
+  it('reuses identical sessions by bumping lastAccessedAt so they survive eviction', () => {
+    vi.useFakeTimers()
+
+    try {
+      const store = createPreviewSessionStore({
+        ttlMs: 60_000,
+        maxSessions: 2,
+        maxTotalHtmlBytes: 10_000_000,
+      })
+      const sharedHtml = '<html><body>active deck</body></html>'
+
+      const active = store.createSession(sharedHtml)
+      vi.advanceTimersByTime(10)
+      store.createSession('<html>idle</html>')
+      vi.advanceTimersByTime(10)
+      store.createSession(sharedHtml)
+      vi.advanceTimersByTime(10)
+      store.createSession('<html>newest</html>')
+
+      expect(store.getSession(active.token)?.html).toContain('active deck')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

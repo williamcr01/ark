@@ -21,7 +21,18 @@ export type PreviewSession = {
    */
   thumbnailPreview?: ThumbnailPreviewCache
   createdAt: number
+  /** Updated on create, reuse, and getSession — drives LRU eviction. */
+  lastAccessedAt: number
   expiresAt: number
+}
+
+export class PreviewSessionCapacityError extends Error {
+  readonly code = 'preview_session_capacity' as const
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'PreviewSessionCapacityError'
+  }
 }
 
 export type PreviewSessionOptions = {
@@ -111,44 +122,59 @@ export function createPreviewSessionStore(
     }
   }
 
-  const findOldestSession = (): PreviewSession | null => {
-    let oldest: PreviewSession | null = null
+  const touchSession = (session: PreviewSession, now = Date.now()) => {
+    session.lastAccessedAt = now
+    session.expiresAt = now + ttlMs
+  }
+
+  const findLeastRecentlyUsedEvictableSession = (): PreviewSession | null => {
+    let lru: PreviewSession | null = null
 
     for (const session of sessions.values()) {
-      if (!oldest || session.createdAt < oldest.createdAt) {
-        oldest = session
+      // In-flight thumbnail renders must survive until the renderer deletes them.
+      if (session.thumbnailPreview) {
+        continue
+      }
+
+      if (!lru || session.lastAccessedAt < lru.lastAccessedAt) {
+        lru = session
       }
     }
 
-    return oldest
+    return lru
   }
 
-  const evictUntilUnderCap = (incomingBytes: number) => {
+  const evictUntilUnderCap = (
+    incomingBytes: number,
+    options?: { allowThumbnailOverflow?: boolean },
+  ) => {
     while (sessions.size > 0) {
       const overSessionCap = sessions.size >= maxSessions
       const overByteCap = totalHtmlBytes + incomingBytes > maxTotalHtmlBytes
 
       if (!overSessionCap && !overByteCap) {
-        return
+        return true
       }
 
-      const oldest = findOldestSession()
-      if (!oldest) {
-        return
+      const victim = findLeastRecentlyUsedEvictableSession()
+      if (!victim) {
+        return options?.allowThumbnailOverflow === true
       }
 
       const reason = overSessionCap ? 'max_sessions' : 'max_total_html_bytes'
-      removeSession(oldest)
+      removeSession(victim)
       logger.warn('preview.session.evicted', {
         reason,
-        token: oldest.token,
-        htmlBytes: sessionHtmlBytes(oldest),
+        token: victim.token,
+        htmlBytes: sessionHtmlBytes(victim),
         sessionCount: sessions.size,
         totalHtmlBytes,
         maxSessions,
         maxTotalHtmlBytes,
       })
     }
+
+    return incomingBytes <= maxTotalHtmlBytes
   }
 
   return {
@@ -169,7 +195,7 @@ export function createPreviewSessionStore(
           const existing = sessions.get(existingToken)
 
           if (existing && !existing.thumbnailPreview && existing.expiresAt > Date.now()) {
-            existing.expiresAt = Date.now() + ttlMs
+            touchSession(existing)
             return existing
           }
 
@@ -189,13 +215,30 @@ export function createPreviewSessionStore(
           ? { thumbnailPreview: sessionOptions.thumbnailPreview }
           : {}),
         createdAt: now,
+        lastAccessedAt: now,
         expiresAt: now + ttlMs,
       }
 
-      evictUntilUnderCap(sessionHtmlBytes(session))
+      const incomingBytes = sessionHtmlBytes(session)
+
+      if (incomingBytes > maxTotalHtmlBytes) {
+        throw new PreviewSessionCapacityError(
+          `Preview session HTML (${incomingBytes} bytes) exceeds the store cap (${maxTotalHtmlBytes} bytes).`,
+        )
+      }
+
+      const hasRoom = evictUntilUnderCap(incomingBytes, {
+        allowThumbnailOverflow: isThumbnailSession,
+      })
+
+      if (!hasRoom) {
+        throw new PreviewSessionCapacityError(
+          'Preview session store is at capacity; retry after other sessions expire.',
+        )
+      }
 
       sessions.set(token, session)
-      totalHtmlBytes += sessionHtmlBytes(session)
+      totalHtmlBytes += incomingBytes
 
       if (!isThumbnailSession) {
         tokensByContentKey.set(previewSessionContentKey(html, editorBridge), token)
@@ -218,6 +261,7 @@ export function createPreviewSessionStore(
         return null
       }
 
+      touchSession(session)
       return session
     },
 

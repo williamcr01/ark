@@ -353,6 +353,19 @@ describe('HTTP API contract drift prevention', () => {
     assertApiContract(simpleErrorResponseSchema, missingBody)
   })
 
+  it('matches preview session payload-too-large contract', async () => {
+    const { baseUrl } = await startContractApi()
+    const oversizedHtml = `<html><body>${'x'.repeat(13 * 1024 * 1024)}</body></html>`
+
+    const response = await fetch(`${baseUrl}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: oversizedHtml }),
+    })
+
+    expect(response.status).toBe(413)
+  })
+
   it('matches generation job success and validation-error contracts', async () => {
     const { baseUrl } = await startContractApi()
     const previousKey = process.env.OPENAI_API_KEY

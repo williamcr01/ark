@@ -6,14 +6,13 @@ import {
   resolveAppOrigin,
   resolveSandboxOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
-import { type PreviewSessionStore } from '../preview-sessions.ts'
+import { PreviewSessionCapacityError, type PreviewSessionStore } from '../preview-sessions.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { logTimedEvent, measureSync } from '../observability/timing.ts'
 
-// Preview sessions only need deck HTML (typically well under 1 MB). Use a
-// tighter limit than the global 12mb JSON parser so abusive POST bodies are
-// rejected before they enter the in-memory session store.
-export const PREVIEW_SESSION_JSON_LIMIT = '2mb'
+// Preview sessions carry full deck HTML — align with the global 12mb JSON parser
+// used for deck create/update. The in-memory store still enforces its own caps.
+export const PREVIEW_SESSION_JSON_LIMIT = '12mb'
 
 export function createPreviewSessionsRouter(deps: {
   previewSessionStore: PreviewSessionStore
@@ -32,11 +31,25 @@ export function createPreviewSessionsRouter(deps: {
         return
       }
 
-      const { result: session, durationMs } = measureSync(() =>
-        previewSessionStore.createSession(parsed.data.html, {
-          editorBridge: parsed.data.editorBridge === true,
-        }),
-      )
+      let session
+      let durationMs
+
+      try {
+        const timed = measureSync(() =>
+          previewSessionStore.createSession(parsed.data.html, {
+            editorBridge: parsed.data.editorBridge === true,
+          }),
+        )
+        session = timed.result
+        durationMs = timed.durationMs
+      } catch (error) {
+        if (error instanceof PreviewSessionCapacityError) {
+          response.status(503).json({ error: error.message })
+          return
+        }
+
+        throw error
+      }
 
       logTimedEvent(getRequestLogger(request), 'preview.session.created', durationMs, {
         htmlBytes: Buffer.byteLength(parsed.data.html, 'utf8'),
