@@ -7,6 +7,8 @@ export const THUMBNAIL_OUTPUT_HEIGHT = Math.round(
 
 export const THUMBNAIL_MAX_SLIDES = 40
 export const THUMBNAIL_DECK_TIMEOUT_MS = 45_000
+/** Per-attempt Chromium startup budget; two attempts must finish well under deck timeout. */
+export const CHROMIUM_STARTUP_TIMEOUT_MS = 10_000
 export const THUMBNAIL_SLIDE_TIMEOUT_MS = 3_000
 export const THUMBNAIL_READY_TIMEOUT_MS = 12_000
 /**

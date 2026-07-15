@@ -76,17 +76,17 @@ scale. Timeouts always dispose the Chromium page target.
 
 ## Observability
 
-| Event                                 | When                                                  |
-| ------------------------------------- | ----------------------------------------------------- |
-| `thumbnail.status`                    | Status poll response                                  |
-| `thumbnail.render.succeeded`          | Deck render completed                                 |
-| `thumbnail.render.failed`             | Deck render failed / timed out                        |
-| `thumbnail.render.aborted`            | In-flight render superseded                           |
-| `thumbnail.queue.saturated`           | Pending queue hit its bound                           |
-| `thumbnail.queue.failed`              | Unexpected queue exception                            |
-| `thumbnail.queue.aborted`             | Running warm aborted as obsolete                      |
-| `thumbnail.chromium.started`          | Chromium pool process ready (`sandboxMode`)           |
-| `thumbnail.chromium.sandbox_fallback` | Sandboxed launch failed; retrying with `--no-sandbox` |
+| Event                                 | When                                                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `thumbnail.status`                    | Status poll response                                                                                   |
+| `thumbnail.render.succeeded`          | Deck render completed                                                                                  |
+| `thumbnail.render.failed`             | Deck render failed / timed out                                                                         |
+| `thumbnail.render.aborted`            | In-flight render superseded                                                                            |
+| `thumbnail.queue.saturated`           | Pending queue hit its bound                                                                            |
+| `thumbnail.queue.failed`              | Unexpected queue exception                                                                             |
+| `thumbnail.queue.aborted`             | Running warm aborted as obsolete                                                                       |
+| `thumbnail.chromium.started`          | Chromium pool process ready (`sandboxMode`)                                                            |
+| `thumbnail.chromium.sandbox_fallback` | Sandboxed launch failed with a recognized sandbox error; retrying with `--no-sandbox` (`failureClass`) |
 
 ## Related code
 

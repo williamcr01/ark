@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { createLogger } from '../observability/logger.ts'
+import { CHROMIUM_STARTUP_TIMEOUT_MS } from './constants.ts'
 
 type CdpMessage = {
   id?: number
@@ -20,6 +21,49 @@ type CdpListener = (params: unknown, sessionId: string | null) => void
 
 export type ChromiumSandboxMode = 'sandboxed' | 'no-sandbox'
 
+export type ChromiumSandboxFailureClass = 'sandbox' | 'non-sandbox'
+
+const CHROMIUM_SANDBOX_FAILURE_PATTERNS = [
+  /no usable sandbox/i,
+  /running as root without --no-sandbox/i,
+  /sandbox.*not.*configured/i,
+  /failed to move to new namespace/i,
+  /namespace sandbox/i,
+  /sandbox cannot be enabled/i,
+  /zygote cannot be disabled if sandbox is enabled/i,
+] as const
+
+class ChromiumLaunchError extends Error {
+  readonly stderr: string
+  readonly sandboxMode: ChromiumSandboxMode
+
+  constructor(message: string, options: { stderr: string; sandboxMode: ChromiumSandboxMode }) {
+    super(message)
+    this.name = 'ChromiumLaunchError'
+    this.stderr = options.stderr
+    this.sandboxMode = options.sandboxMode
+  }
+}
+
+/**
+ * True when Chromium stderr/error text indicates the host cannot run a sandboxed
+ * renderer (the only case where `--no-sandbox` fallback is appropriate).
+ */
+export function isChromiumSandboxLaunchFailure(stderr: string, error?: unknown): boolean {
+  const message = [stderr, error instanceof Error ? error.message : String(error ?? '')]
+    .filter(Boolean)
+    .join('\n')
+
+  return CHROMIUM_SANDBOX_FAILURE_PATTERNS.some((pattern) => pattern.test(message))
+}
+
+export function classifyChromiumLaunchFailure(
+  stderr: string,
+  error?: unknown,
+): ChromiumSandboxFailureClass {
+  return isChromiumSandboxLaunchFailure(stderr, error) ? 'sandbox' : 'non-sandbox'
+}
+
 export type BrowserProcess = {
   process: ChildProcess
   userDataDir: string
@@ -30,34 +74,6 @@ export type BrowserProcess = {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function waitFor(
-  label: string,
-  callback: () => Promise<unknown> | unknown,
-  options: { timeoutMs?: number; intervalMs?: number } = {},
-) {
-  const timeoutMs = options.timeoutMs ?? 15_000
-  const intervalMs = options.intervalMs ?? 100
-  const startedAt = Date.now()
-  let lastError: unknown
-
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const value = await callback()
-
-      if (value) {
-        return value
-      }
-    } catch (error) {
-      lastError = error
-    }
-
-    await sleep(intervalMs)
-  }
-
-  const suffix = lastError instanceof Error ? ` Last error: ${lastError.message}` : ''
-  throw new Error(`Timed out waiting for ${label}.${suffix}`)
 }
 
 export function getFreePort() {
@@ -387,20 +403,68 @@ async function waitForDevToolsEndpoint(
   child: ChildProcess,
   debugPort: number,
   getStderr: () => string,
+  options: { timeoutMs?: number; signal?: AbortSignal; sandboxMode: ChromiumSandboxMode },
 ) {
-  // Cold starts on CI runners can exceed the default 15s wait.
-  await waitFor(
-    'Chromium DevTools endpoint',
-    async () => {
+  const timeoutMs = options.timeoutMs ?? CHROMIUM_STARTUP_TIMEOUT_MS
+  const intervalMs = 100
+  const startedAt = Date.now()
+  let exitError: Error | null = null
+  let aborted = false
+
+  const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    if (aborted) {
+      return
+    }
+
+    const suffix = signal ? ` (signal ${signal})` : code === null ? '' : ` (code ${code})`
+    exitError = new ChromiumLaunchError(`Chromium exited early${suffix}.\n${getStderr()}`, {
+      stderr: getStderr(),
+      sandboxMode: options.sandboxMode,
+    })
+  }
+
+  const onAbort = () => {
+    aborted = true
+    exitError = new Error('Chromium startup aborted.')
+    if (child.exitCode === null) {
+      child.kill('SIGKILL')
+    }
+  }
+
+  child.on('exit', onExit)
+  options.signal?.addEventListener('abort', onAbort, { once: true })
+
+  try {
+    while (Date.now() - startedAt < timeoutMs) {
+      if (exitError) {
+        throw exitError
+      }
+
+      if (options.signal?.aborted) {
+        throw new Error('Chromium startup aborted.')
+      }
+
       if (child.exitCode !== null) {
-        throw new Error(`Chromium exited early.\n${getStderr()}`)
+        throw new ChromiumLaunchError(`Chromium exited early.\n${getStderr()}`, {
+          stderr: getStderr(),
+          sandboxMode: options.sandboxMode,
+        })
       }
 
       const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`).catch(() => null)
-      return Boolean(response?.ok)
-    },
-    { timeoutMs: 45_000 },
-  )
+
+      if (response?.ok) {
+        return
+      }
+
+      await sleep(intervalMs)
+    }
+
+    throw new Error(`Timed out waiting for Chromium DevTools endpoint.\n${getStderr()}`)
+  } finally {
+    child.off('exit', onExit)
+    options.signal?.removeEventListener('abort', onAbort)
+  }
 }
 
 async function spawnChromiumOnce(
@@ -408,6 +472,7 @@ async function spawnChromiumOnce(
   debugPort: number,
   userDataDir: string,
   sandboxMode: ChromiumSandboxMode,
+  options: { signal?: AbortSignal } = {},
 ): Promise<BrowserProcess> {
   let stderr = ''
   const STDERR_CAP = 64_000
@@ -433,14 +498,25 @@ async function spawnChromiumOnce(
   })
 
   try {
-    await waitForDevToolsEndpoint(child, debugPort, () => stderr)
+    await waitForDevToolsEndpoint(child, debugPort, () => stderr, {
+      signal: options.signal,
+      sandboxMode,
+    })
   } catch (error) {
     if (child.exitCode === null) {
       child.kill('SIGKILL')
     }
 
     await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
-    throw error
+
+    if (error instanceof ChromiumLaunchError) {
+      throw error
+    }
+
+    throw new ChromiumLaunchError(
+      error instanceof Error ? error.message : 'Chromium failed to start.',
+      { stderr, sandboxMode },
+    )
   }
 
   // Do not keep the parent Node process alive solely for the shared Chromium pool.
@@ -459,6 +535,7 @@ async function spawnChromiumOnce(
 export async function spawnChromium(
   debugPort: number,
   userDataDir: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<BrowserProcess> {
   const executable = findChromium()
 
@@ -478,27 +555,49 @@ export async function spawnChromium(
     const sandboxMode = attempts[index]!
     const isFallback = index > 0
 
+    if (options.signal?.aborted) {
+      throw new Error('Chromium startup aborted.')
+    }
+
     if (isFallback) {
       nextPort = await getFreePort()
       nextUserDataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-chrome-'))
+      const stderr =
+        lastError instanceof ChromiumLaunchError
+          ? lastError.stderr
+          : lastError instanceof Error
+            ? lastError.message
+            : 'sandboxed Chromium launch failed'
+      const failureClass = classifyChromiumLaunchFailure(stderr, lastError)
       const reason =
         lastError instanceof Error ? lastError.message : 'sandboxed Chromium launch failed'
       logger.warn('thumbnail.chromium.sandbox_fallback', {
         reason: reason.slice(0, 500),
         sandboxMode,
+        failureClass,
       })
     }
 
     try {
-      const browser = await spawnChromiumOnce(executable, nextPort, nextUserDataDir, sandboxMode)
+      const browser = await spawnChromiumOnce(
+        executable,
+        nextPort,
+        nextUserDataDir,
+        sandboxMode,
+        options,
+      )
       logger.info('thumbnail.chromium.started', { sandboxMode })
       return browser
     } catch (error) {
       lastError = error
 
-      // Failed attempt already kills the process and removes userDataDir.
-      // Allocate a fresh port/dir before the next mode (handled above).
-      if (index === attempts.length - 1) {
+      const stderr = error instanceof ChromiumLaunchError ? error.stderr : ''
+      const canFallback =
+        sandboxMode === 'sandboxed' &&
+        index < attempts.length - 1 &&
+        isChromiumSandboxLaunchFailure(stderr, error)
+
+      if (!canFallback) {
         throw error
       }
     }
@@ -607,8 +706,8 @@ export async function evaluate<T>(cdp: CdpClient, expression: string) {
 }
 
 export type ChromiumPool = {
-  ensureBrowser: () => Promise<BrowserProcess>
-  createPage: () => Promise<BrowserPage>
+  ensureBrowser: (signal?: AbortSignal) => Promise<BrowserProcess>
+  createPage: (signal?: AbortSignal) => Promise<BrowserPage>
   /**
    * Return a page to the pool for reuse, or destroy it after errors/aborts.
    * When omitted (tests), callers should fall back to `page.close()`.
@@ -626,9 +725,13 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
   /** True while a successful page is resetting into the idle slot. */
   let reservingIdleSlot = false
 
-  const ensureBrowser = async () => {
+  const ensureBrowser = async (signal?: AbortSignal) => {
     if (!enabled) {
       throw new Error('Thumbnail renderer is disabled.')
+    }
+
+    if (signal?.aborted) {
+      throw new Error('Chromium startup aborted.')
     }
 
     if (browser && browser.process.exitCode === null) {
@@ -639,7 +742,7 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
       browserPromise = (async () => {
         const debugPort = await getFreePort()
         const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-chrome-'))
-        const nextBrowser = await spawnChromium(debugPort, userDataDir)
+        const nextBrowser = await spawnChromium(debugPort, userDataDir, { signal })
 
         nextBrowser.process.once('exit', () => {
           if (browser === nextBrowser) {
@@ -679,8 +782,8 @@ export function createChromiumPool(options: { enabled?: boolean } = {}): Chromiu
   return {
     isAvailable: () => enabled && Boolean(findChromium()),
     ensureBrowser,
-    async createPage() {
-      const current = await ensureBrowser()
+    async createPage(signal?: AbortSignal) {
+      const current = await ensureBrowser(signal)
       const reusable = idlePage
       idlePage = null
 
