@@ -11,7 +11,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { DeckVersionDetail, DeckVersionSource, DeckVersionSummary } from '@/lib/deck-api'
-import { detectRuntimeMode, getPreviewHtml, getPreviewSandbox } from '@/lib/deck-preview'
+import {
+  detectRuntimeMode,
+  getPreviewHtml,
+  getPreviewSandbox,
+  PREVIEW_IFRAME_SECURITY_PROPS,
+} from '@/lib/deck-preview'
 import {
   findRestoredVersion,
   getVersionHistoryChips,
@@ -344,6 +349,7 @@ export function VersionHistoryDialog({
                         sandbox={getPreviewSandbox(runtimeMode)}
                         srcDoc={sanitizedPreviewHtml}
                         title={`Version ${selectedVersion.versionNumber} preview`}
+                        {...PREVIEW_IFRAME_SECURITY_PROPS}
                       />
                     </div>
                   ) : (
