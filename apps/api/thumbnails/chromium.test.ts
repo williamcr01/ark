@@ -1,11 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CHROMIUM_STARTUP_TIMEOUT_MS } from './constants.ts'
+import { CHROMIUM_STARTUP_FALLBACK_TIMEOUT_MS, CHROMIUM_STARTUP_TIMEOUT_MS } from './constants.ts'
 import {
   buildChromiumLaunchArgs,
   chromiumSandboxAttemptOrder,
   classifyChromiumLaunchFailure,
+  createChromiumPool,
   isChromiumNoSandboxForced,
   isChromiumSandboxLaunchFailure,
   spawnChromium,
@@ -151,6 +152,7 @@ describe('spawnChromium startup behavior', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -196,6 +198,117 @@ describe('spawnChromium startup behavior', () => {
     expect(spawnMock.mock.calls[1]?.[1]).toContain('--no-sandbox')
   })
 
+  it('falls back when the sandboxed DevTools probe times out', async () => {
+    vi.useFakeTimers()
+    let attempt = 0
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        const lastArgs = spawnMock.mock.calls.at(-1)?.[1] as string[] | undefined
+
+        if (url.includes('/json/version') && lastArgs?.includes('--no-sandbox')) {
+          return new Response(JSON.stringify({ Browser: 'mock' }), { status: 200 })
+        }
+
+        return new Response(null, { status: 404 })
+      }),
+    )
+
+    spawnMock.mockImplementation(() => {
+      attempt += 1
+      return createMockChild({})
+    })
+
+    const pending = spawnChromium(9222, '/tmp/ark-thumb-chrome-test')
+    await vi.advanceTimersByTimeAsync(CHROMIUM_STARTUP_TIMEOUT_MS + 100)
+    const browser = await pending
+
+    expect(attempt).toBe(2)
+    expect(browser.sandboxMode).toBe('no-sandbox')
+    expect(spawnMock.mock.calls[0]?.[1]).not.toContain('--no-sandbox')
+    expect(spawnMock.mock.calls[1]?.[1]).toContain('--no-sandbox')
+  })
+
+  it('uses the longer startup timeout when no-sandbox is forced', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('ARK_CHROMIUM_NO_SANDBOX', 'true')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 404 })),
+    )
+    spawnMock.mockImplementation(() => createMockChild({}))
+
+    let settled = false
+    const observed = spawnChromium(9222, '/tmp/ark-thumb-chrome-test').then(
+      (browser) => {
+        settled = true
+        return browser
+      },
+      (error: unknown) => {
+        settled = true
+        return error
+      },
+    )
+
+    await vi.advanceTimersByTimeAsync(CHROMIUM_STARTUP_TIMEOUT_MS + 1_000)
+    expect(settled).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(
+      CHROMIUM_STARTUP_FALLBACK_TIMEOUT_MS - CHROMIUM_STARTUP_TIMEOUT_MS,
+    )
+    const error = await observed
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toMatch(/Timed out waiting for Chromium DevTools endpoint/)
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    expect(spawnMock.mock.calls[0]?.[1]).toContain('--no-sandbox')
+  })
+
+  it('uses stderr that drains after exit when deciding sandbox fallback', async () => {
+    let attempt = 0
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        const lastArgs = spawnMock.mock.calls.at(-1)?.[1] as string[] | undefined
+
+        if (url.includes('/json/version') && lastArgs?.includes('--no-sandbox')) {
+          return new Response(JSON.stringify({ Browser: 'mock' }), { status: 200 })
+        }
+
+        return new Response(null, { status: 404 })
+      }),
+    )
+
+    spawnMock.mockImplementation(() => {
+      attempt += 1
+
+      if (attempt === 1) {
+        const child = createMockChild({})
+
+        queueMicrotask(() => {
+          child.exitCode = 1
+          child.emit('exit', 1, null)
+          setTimeout(() => {
+            child.stderr.emit('data', Buffer.from('No usable sandbox!\n'))
+          }, 10)
+        })
+
+        return child
+      }
+
+      return createMockChild({})
+    })
+
+    const browser = await spawnChromium(9222, '/tmp/ark-thumb-chrome-test')
+
+    expect(attempt).toBe(2)
+    expect(browser.sandboxMode).toBe('no-sandbox')
+  })
+
   it('does not fall back for non-sandbox launch failures', async () => {
     spawnMock.mockImplementation(() =>
       createMockChild({
@@ -226,5 +339,41 @@ describe('spawnChromium startup behavior', () => {
 
     await expect(pending).rejects.toThrow(/aborted/i)
     expect(child.kill).toHaveBeenCalled()
+  })
+
+  it('does not let an aborted pool waiter kill shared Chromium startup', async () => {
+    const controller = new AbortController()
+    const child = createMockChild({})
+    const chromiumPool = createChromiumPool({ enabled: true })
+    let ready = false
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+
+        if (url.includes('/json/version') && ready) {
+          return new Response(JSON.stringify({ Browser: 'mock' }), { status: 200 })
+        }
+
+        return new Response(null, { status: 404 })
+      }),
+    )
+    spawnMock.mockImplementation(() => child)
+
+    const abortedPage = chromiumPool.createPage(controller.signal)
+    controller.abort()
+
+    await expect(abortedPage).rejects.toThrow(/aborted/i)
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1))
+    expect(child.kill).not.toHaveBeenCalled()
+
+    ready = true
+    const browser = await chromiumPool.ensureBrowser()
+
+    expect(browser.process).toBe(child)
+    expect(child.kill).not.toHaveBeenCalled()
+
+    await chromiumPool.close()
   })
 })
