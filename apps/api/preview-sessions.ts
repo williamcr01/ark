@@ -54,6 +54,9 @@ export const DEFAULT_PREVIEW_SESSION_MAX_SESSIONS = 500
 /** Default total HTML byte cap across all live sessions (~64 MiB). */
 export const DEFAULT_PREVIEW_SESSION_MAX_TOTAL_HTML_BYTES = 64 * 1024 * 1024
 
+/** Bounded extra slots reserved for in-flight thumbnail renders. */
+export const DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM = 16
+
 export type PreviewSessionStoreOptions = {
   ttlMs?: number
   maxSessions?: number
@@ -64,6 +67,10 @@ export type PreviewSessionStoreOptions = {
 function previewSessionContentKey(html: string, editorBridge: boolean) {
   const hash = createHash('sha256').update(html).digest('hex')
   return `${editorBridge ? '1' : '0'}:${hash}`
+}
+
+function previewSessionTokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex').slice(0, 12)
 }
 
 function sessionHtmlBytes(session: Pick<PreviewSession, 'html' | 'thumbnailPreview'>): number {
@@ -122,8 +129,12 @@ export function createPreviewSessionStore(
     }
   }
 
-  const touchSession = (session: PreviewSession, now = Date.now()) => {
+  const touchSessionAccess = (session: PreviewSession, now = Date.now()) => {
     session.lastAccessedAt = now
+  }
+
+  const refreshSessionTtl = (session: PreviewSession, now = Date.now()) => {
+    touchSessionAccess(session, now)
     session.expiresAt = now + ttlMs
   }
 
@@ -148,6 +159,8 @@ export function createPreviewSessionStore(
     incomingBytes: number,
     options?: { allowThumbnailOverflow?: boolean },
   ) => {
+    const thumbnailSessionCeiling = maxSessions + DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM
+
     while (sessions.size > 0) {
       const overSessionCap = sessions.size >= maxSessions
       const overByteCap = totalHtmlBytes + incomingBytes > maxTotalHtmlBytes
@@ -158,14 +171,18 @@ export function createPreviewSessionStore(
 
       const victim = findLeastRecentlyUsedEvictableSession()
       if (!victim) {
-        return options?.allowThumbnailOverflow === true
+        return (
+          options?.allowThumbnailOverflow === true &&
+          !overByteCap &&
+          sessions.size < thumbnailSessionCeiling
+        )
       }
 
       const reason = overSessionCap ? 'max_sessions' : 'max_total_html_bytes'
       removeSession(victim)
       logger.warn('preview.session.evicted', {
         reason,
-        token: victim.token,
+        tokenHash: previewSessionTokenHash(victim.token),
         htmlBytes: sessionHtmlBytes(victim),
         sessionCount: sessions.size,
         totalHtmlBytes,
@@ -195,7 +212,7 @@ export function createPreviewSessionStore(
           const existing = sessions.get(existingToken)
 
           if (existing && !existing.thumbnailPreview && existing.expiresAt > Date.now()) {
-            touchSession(existing)
+            refreshSessionTtl(existing)
             return existing
           }
 
@@ -261,7 +278,7 @@ export function createPreviewSessionStore(
         return null
       }
 
-      touchSession(session)
+      touchSessionAccess(session)
       return session
     },
 

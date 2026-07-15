@@ -1,7 +1,17 @@
+import { createHash } from 'node:crypto'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { createLogger, type StructuredLogEntry } from './observability/logger.ts'
-import { createPreviewSessionStore, PreviewSessionCapacityError } from './preview-sessions.ts'
+import {
+  createPreviewSessionStore,
+  DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM,
+  PreviewSessionCapacityError,
+} from './preview-sessions.ts'
+
+function previewSessionTokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex').slice(0, 12)
+}
 
 describe('preview session store', () => {
   it('creates and retrieves preview sessions until they expire', () => {
@@ -75,6 +85,23 @@ describe('preview session store', () => {
     }
   })
 
+  it('does not extend ttl when a session is read', () => {
+    vi.useFakeTimers()
+
+    try {
+      const store = createPreviewSessionStore({ ttlMs: 1_000 })
+      const session = store.createSession('<html><body>ttl</body></html>')
+
+      vi.advanceTimersByTime(900)
+      expect(store.getSession(session.token)?.html).toContain('ttl')
+
+      vi.advanceTimersByTime(101)
+      expect(store.getSession(session.token)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('evicts least recently used sessions when maxSessions is exceeded', () => {
     vi.useFakeTimers()
 
@@ -108,14 +135,15 @@ describe('preview session store', () => {
       expect(eviction?.level).toBe('warn')
       expect(eviction?.fields).toMatchObject({
         reason: 'max_sessions',
-        token: second.token,
+        tokenHash: previewSessionTokenHash(second.token),
       })
+      expect(eviction?.fields).not.toHaveProperty('token')
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('evicts oldest sessions when maxTotalHtmlBytes is exceeded', () => {
+  it('evicts least recently used sessions when maxTotalHtmlBytes is exceeded', () => {
     vi.useFakeTimers()
 
     try {
@@ -139,7 +167,7 @@ describe('preview session store', () => {
       const second = store.createSession(`<html>${small}-2</html>`)
       vi.advanceTimersByTime(10)
       // Large payload cannot fit alongside either prior session, so both are
-      // evicted oldest-first before the new session is stored.
+      // evicted least-recently-used-first before the new session is stored.
       const third = store.createSession(`<html>${large}</html>`)
 
       expect(store.getSession(first.token)).toBeNull()
@@ -149,8 +177,10 @@ describe('preview session store', () => {
       const evictions = entries.filter((entry) => entry.event === 'preview.session.evicted')
       expect(evictions).toHaveLength(2)
       expect(evictions.every((entry) => entry.fields?.reason === 'max_total_html_bytes')).toBe(true)
-      expect(evictions[0]?.fields?.token).toBe(first.token)
-      expect(evictions[1]?.fields?.token).toBe(second.token)
+      expect(evictions[0]?.fields?.tokenHash).toBe(previewSessionTokenHash(first.token))
+      expect(evictions[1]?.fields?.tokenHash).toBe(previewSessionTokenHash(second.token))
+      expect(evictions[0]?.fields).not.toHaveProperty('token')
+      expect(evictions[1]?.fields).not.toHaveProperty('token')
     } finally {
       vi.useRealTimers()
     }
@@ -204,6 +234,31 @@ describe('preview session store', () => {
     const oversized = 'x'.repeat(300)
 
     expect(() => store.createSession(`<html>${oversized}</html>`)).toThrow(
+      PreviewSessionCapacityError,
+    )
+  })
+
+  it('rejects thumbnail sessions beyond the bounded overflow headroom', () => {
+    const store = createPreviewSessionStore({
+      ttlMs: 60_000,
+      maxSessions: 1,
+      maxTotalHtmlBytes: 10_000_000,
+    })
+
+    const createThumbnailSession = (index: number) =>
+      store.createSession(`<html><body>deck ${index}</body></html>`, {
+        thumbnailPreview: {
+          html: `<html><body>thumb ${index}</body></html>`,
+          runtimeMode: 'static',
+          nonce: `nonce-${index}`,
+        },
+      })
+
+    for (let index = 0; index < 1 + DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM; index += 1) {
+      createThumbnailSession(index)
+    }
+
+    expect(() => createThumbnailSession(1 + DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM)).toThrow(
       PreviewSessionCapacityError,
     )
   })
