@@ -187,6 +187,17 @@ describe('DeckPreview script divergence UI', () => {
     )
   })
 
+  it('sets empty allow and credentialless on the preview iframe', () => {
+    renderDeckPreview(plainDeckProps)
+
+    const iframe = screen.getByTitle('Generated Ark presentation preview')
+
+    expect(iframe).toHaveAttribute('allow', '')
+    expect(iframe).toHaveAttribute('credentialless')
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(iframe).toHaveAttribute('referrerPolicy', 'no-referrer')
+  })
+
   it('does not post editor enable after compromise even if onLoad races', async () => {
     renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
 

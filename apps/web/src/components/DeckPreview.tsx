@@ -36,6 +36,7 @@ import {
   getPreviewFrameStyle,
   getPreviewSandbox,
   getPreviewStageStyle,
+  PREVIEW_IFRAME_SECURITY_PROPS,
 } from '@/lib/deck-preview'
 import type { DeckBrowserAnalysis } from '@/lib/deck-analysis'
 import {
@@ -1261,6 +1262,7 @@ export function DeckPreview({
                     srcDoc={previewFrame.iframeSrcDoc}
                     style={previewFrameStyle}
                     title="Generated Ark presentation preview"
+                    {...PREVIEW_IFRAME_SECURITY_PROPS}
                   />
                 )}
                 {previewCompromised && !isPresentOpen ? (
