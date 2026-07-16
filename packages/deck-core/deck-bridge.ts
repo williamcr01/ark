@@ -6,6 +6,8 @@
  * bridge translates between postMessage and those events.
  */
 
+import { ARK_SLIDE_REFERENCE_HEIGHT, ARK_SLIDE_REFERENCE_WIDTH } from './deck-metadata.ts'
+
 export const DECK_BRIDGE_PROTOCOL_VERSION = 1 as const
 
 export const DECK_GOTO_MESSAGE_TYPE = 'ark:deck-goto' as const
@@ -730,7 +732,10 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
   }
 
   function handleNavKey(event) {
-    if (isTypingTarget(event.target) || document.querySelector('[data-ark-editor-text-edit]')) {
+    if (
+      isTypingTarget(event.target) ||
+      document.querySelector('[data-ark-editor-text-edit], [data-ark-editor-selected]')
+    ) {
       return;
     }
 
@@ -801,6 +806,8 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
     ERROR: DECK_RUNTIME_ERROR_MESSAGE_TYPE,
     PREVIEW_MODE: options.previewMode,
     PARENT_ORIGIN: options.parentOrigin?.trim() || '',
+    SLIDE_WIDTH: ARK_SLIDE_REFERENCE_WIDTH,
+    SLIDE_HEIGHT: ARK_SLIDE_REFERENCE_HEIGHT,
   }
 
   return `
@@ -936,6 +943,8 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
     }
 
     var initResult = window.Reveal.initialize({
+      width: C.SLIDE_WIDTH,
+      height: C.SLIDE_HEIGHT,
       hash: false,
       history: false,
       keyboard: false,

@@ -20,21 +20,37 @@
         height: 100vh;
         align-items: center;
         justify-content: center;
-        background: white;
-        color: #172033;
+        background: #111827;
+        color: white;
       }
 
       section.slide.active,
       section.slide.is-active {
         display: flex;
       }
+
+      .positioned-title {
+        position: relative;
+        width: 800px;
+        height: 240px;
+        margin-left: 160px;
+        padding: 1px;
+        box-sizing: border-box;
+      }
+
+      .positioned-title > h1 {
+        color: rgb(244, 63, 94);
+        font-size: 48px;
+      }
     </style>
   </head>
   <body data-kind="plain">
     <section class="slide" data-ark-slide-id="ark-slide-opening" data-title="Opening">
-      <h1 data-ark-id="ark-el-title" data-ark-editable="true" data-ark-role="title">
-        Quarterly planning
-      </h1>
+      <div class="positioned-title">
+        <h1 data-ark-id="ark-el-title" data-ark-editable="true" data-ark-role="title">
+          Quarterly planning
+        </h1>
+      </div>
     </section>
     <section class="slide" data-ark-slide-id="ark-slide-metrics" data-title="Metrics">
       <h2 data-ark-id="ark-el-metrics" data-ark-editable="true">Metrics that moved</h2>

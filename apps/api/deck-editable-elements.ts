@@ -87,6 +87,19 @@ const BLOCK_TEXT_TAGS = new Set([
 
 const IMAGE_TAGS = new Set(['img', 'svg', 'picture'])
 
+const CONTAINER_TAGS = new Set([
+  'div',
+  'section',
+  'ul',
+  'ol',
+  'table',
+  'blockquote',
+  'pre',
+  'figure',
+  'a',
+  'hr',
+])
+
 const RUNTIME_CONTROL_IDS = new Set([
   'prevslide',
   'nextslide',
@@ -382,6 +395,10 @@ function readKind(element: Element): EditableElementKind {
     return 'runtime-control'
   }
 
+  if (CONTAINER_TAGS.has(tag)) {
+    return 'container'
+  }
+
   if (TEXT_TAGS.has(tag)) {
     return 'text'
   }
@@ -477,6 +494,10 @@ function isCandidateElement(element: Element, slide: Element) {
     return true
   }
 
+  if (CONTAINER_TAGS.has(tag)) {
+    return true
+  }
+
   if (isRuntimeControl(element, slide)) {
     return true
   }
@@ -560,7 +581,11 @@ function classifyElement(
   // Ark-managed wrappers (text boxes and other managed containers) stay
   // recognized editable targets even though their inner text elements are
   // candidates too — move/resize/style patches address the wrapper (#84).
-  if (!isManagedWrapper(element) && hasHigherPriorityDescendant(element, slide)) {
+  if (
+    !CONTAINER_TAGS.has(element.tagName.toLowerCase()) &&
+    !isManagedWrapper(element) &&
+    hasHigherPriorityDescendant(element, slide)
+  ) {
     return null
   }
 
@@ -590,8 +615,6 @@ function classifyElement(
     lockReason = 'hidden'
   } else if (kind === 'text' && !textPreview) {
     lockReason = 'no-text-content'
-  } else if (!nativeId && !isManagedElement(element, style)) {
-    lockReason = 'layout-not-managed'
   }
 
   const managed = isManagedElement(element, style)
@@ -702,7 +725,7 @@ export function parseEditableElements(
   return grouped
 }
 
-const STAMP_TAGS = new Set([...TEXT_TAGS, ...IMAGE_TAGS])
+const STAMP_TAGS = new Set([...TEXT_TAGS, ...IMAGE_TAGS].filter((tag) => !CONTAINER_TAGS.has(tag)))
 
 export function stampEditableElementIds(root: ParentNode) {
   const stamped: string[] = []

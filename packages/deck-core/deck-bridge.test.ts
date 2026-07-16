@@ -11,6 +11,7 @@ import {
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
   buildDeckCssNavRuntimeScript,
   buildDeckHandshakeSentinelScript,
+  buildRevealNavRuntimeScript,
   clampDeckSlideIndex,
   createDeckGotoMessage,
   createDeckHandshakeMessage,
@@ -32,6 +33,7 @@ import {
   isDeckSlideCountMessage,
   parseDeckBridgeMessage,
 } from './deck-bridge'
+import { ARK_SLIDE_REFERENCE_HEIGHT, ARK_SLIDE_REFERENCE_WIDTH } from './deck-metadata.ts'
 
 describe('deck bridge protocol', () => {
   const metadata = createDeckMetadata({
@@ -134,5 +136,17 @@ describe('deck bridge protocol', () => {
 
     expect(script).toContain('isTypingTarget')
     expect(script).toContain('data-ark-editor-text-edit')
+    expect(script).toContain('data-ark-editor-selected')
+  })
+})
+
+describe('Reveal adapter', () => {
+  it('initializes Reveal with Ark canonical slide dimensions', () => {
+    const script = buildRevealNavRuntimeScript({ previewMode: 'full-js' })
+
+    expect(script).toContain(`"SLIDE_WIDTH":${ARK_SLIDE_REFERENCE_WIDTH}`)
+    expect(script).toContain(`"SLIDE_HEIGHT":${ARK_SLIDE_REFERENCE_HEIGHT}`)
+    expect(script).toContain('width: C.SLIDE_WIDTH')
+    expect(script).toContain('height: C.SLIDE_HEIGHT')
   })
 })

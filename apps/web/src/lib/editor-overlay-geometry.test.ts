@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
 import { FULL_STAGE_SLIDE_BOUNDS, normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
 
 describe('normalizedRectToStagePixels', () => {
@@ -7,33 +8,36 @@ describe('normalizedRectToStagePixels', () => {
 
   it('maps slide-relative geometry onto the full stage when bounds fill the viewport', () => {
     expect(normalizedRectToStagePixels(geometry, 1)).toEqual({
-      left: 160,
-      top: 180,
-      width: 800,
-      height: 225,
+      left: geometry.x * PREVIEW_FRAME_WIDTH,
+      top: geometry.y * PREVIEW_FRAME_HEIGHT,
+      width: geometry.width * PREVIEW_FRAME_WIDTH,
+      height: geometry.height * PREVIEW_FRAME_HEIGHT,
     })
     expect(normalizedRectToStagePixels(geometry, 1, FULL_STAGE_SLIDE_BOUNDS)).toEqual({
-      left: 160,
-      top: 180,
-      width: 800,
-      height: 225,
+      left: geometry.x * PREVIEW_FRAME_WIDTH,
+      top: geometry.y * PREVIEW_FRAME_HEIGHT,
+      width: geometry.width * PREVIEW_FRAME_WIDTH,
+      height: geometry.height * PREVIEW_FRAME_HEIGHT,
     })
   })
 
   it('composes letterboxed slideBounds into stage pixels', () => {
-    // Slide centered at 1280×720 inside 1600×900 → offset (160, 90).
+    const insetX = PREVIEW_FRAME_WIDTH * 0.1
+    const insetY = PREVIEW_FRAME_HEIGHT * 0.1
+    const slideWidth = PREVIEW_FRAME_WIDTH * 0.8
+    const slideHeight = PREVIEW_FRAME_HEIGHT * 0.8
     const slideBounds = {
-      x: 160 / 1600,
-      y: 90 / 900,
-      width: 1280 / 1600,
-      height: 720 / 900,
+      x: insetX / PREVIEW_FRAME_WIDTH,
+      y: insetY / PREVIEW_FRAME_HEIGHT,
+      width: slideWidth / PREVIEW_FRAME_WIDTH,
+      height: slideHeight / PREVIEW_FRAME_HEIGHT,
     }
     const result = normalizedRectToStagePixels(geometry, 1, slideBounds)
 
-    expect(result.left).toBeCloseTo(160 + 0.1 * 1280)
-    expect(result.top).toBeCloseTo(90 + 0.2 * 720)
-    expect(result.width).toBeCloseTo(0.5 * 1280)
-    expect(result.height).toBeCloseTo(0.25 * 720)
+    expect(result.left).toBeCloseTo(insetX + geometry.x * slideWidth)
+    expect(result.top).toBeCloseTo(insetY + geometry.y * slideHeight)
+    expect(result.width).toBeCloseTo(geometry.width * slideWidth)
+    expect(result.height).toBeCloseTo(geometry.height * slideHeight)
   })
 
   it('scales composed geometry with the preview frame scale', () => {
@@ -41,10 +45,10 @@ describe('normalizedRectToStagePixels', () => {
     const scale = 0.5
 
     expect(normalizedRectToStagePixels(geometry, scale, slideBounds)).toEqual({
-      left: (0.1 + 0.1 * 0.8) * 1600 * scale,
-      top: (0.1 + 0.2 * 0.8) * 900 * scale,
-      width: 0.5 * 0.8 * 1600 * scale,
-      height: 0.25 * 0.8 * 900 * scale,
+      left: (0.1 + geometry.x * 0.8) * PREVIEW_FRAME_WIDTH * scale,
+      top: (0.1 + geometry.y * 0.8) * PREVIEW_FRAME_HEIGHT * scale,
+      width: geometry.width * 0.8 * PREVIEW_FRAME_WIDTH * scale,
+      height: geometry.height * 0.8 * PREVIEW_FRAME_HEIGHT * scale,
     })
   })
 

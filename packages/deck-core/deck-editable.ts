@@ -1,7 +1,7 @@
 /** Editable element metadata model (issue #74). */
 
 export type EditableElementKind =
-  'text' | 'image' | 'shape' | 'group' | 'runtime-control' | 'unknown'
+  'text' | 'image' | 'shape' | 'group' | 'container' | 'runtime-control' | 'unknown'
 
 export type EditableElementRole =
   | 'title'

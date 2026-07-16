@@ -10,6 +10,10 @@ import {
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
 } from '@ark/deck-core/deck-bridge.ts'
+import {
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+} from '@ark/deck-core/deck-metadata.ts'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@fixtures/malformed-deck.html?raw'
@@ -23,8 +27,19 @@ import {
   detectRuntimeMode,
   getPreviewHtml,
   getPreviewSandbox,
+  PREVIEW_FRAME_HEIGHT,
+  PREVIEW_FRAME_WIDTH,
   PREVIEW_IFRAME_SECURITY_PROPS,
 } from './deck-preview'
+
+describe('preview geometry', () => {
+  it('uses the same pixel dimensions as persisted normalized geometry', () => {
+    expect([PREVIEW_FRAME_WIDTH, PREVIEW_FRAME_HEIGHT]).toEqual([
+      ARK_SLIDE_REFERENCE_WIDTH,
+      ARK_SLIDE_REFERENCE_HEIGHT,
+    ])
+  })
+})
 
 function loadExecutablePreview(html: string) {
   return new Promise<JSDOM>((resolve) => {

@@ -56,6 +56,7 @@ import { cn } from '@/lib/utils'
 import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
 import { isRemoteImageUrl } from '@ark/deck-core/deck-image.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
+import type { PatchDeckResponse } from '@/lib/deck-api'
 
 export type DeckTextEditCommit = {
   elementId: string
@@ -88,7 +89,7 @@ export type DeckPreviewProps = {
     operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
     activeSlideIndex: number,
     summary: string,
-  ) => Promise<void>
+  ) => Promise<Pick<PatchDeckResponse, 'patch'> | undefined>
 }
 
 export function DeckPreview({
@@ -125,6 +126,11 @@ export function DeckPreview({
     elementId: string
     fit: ImageFitMode
   } | null>(null)
+  const effectivePreviewViewportSize =
+    isPresentOpen && presentViewportSize.width > 0 && presentViewportSize.height > 0
+      ? presentViewportSize
+      : previewViewportSize
+  const previewFrameScale = getPreviewFrameScale(effectivePreviewViewportSize)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
   const preserveSlideIndexRef = useRef<number | null>(null)
   const pendingReselectRef = useRef<{
@@ -135,7 +141,11 @@ export function DeckPreview({
   const processedTextCommitRef = useRef<string | null>(null)
   const processedInsertRequestRef = useRef<string | null>(null)
   const processedDeleteRequestRef = useRef<string | null>(null)
+  const processedShortcutRequestRef = useRef<string | null>(null)
   const processedTransformCommitRef = useRef<string | null>(null)
+  const pendingTransformPatchRef = useRef<Promise<
+    Pick<PatchDeckResponse, 'patch'> | undefined
+  > | null>(null)
   const committedGeometryRef = useRef<
     import('@ark/deck-core/deck-editor-bridge.ts').EditorNormalizedRect | null
   >(null)
@@ -268,10 +278,13 @@ export function DeckPreview({
     lastTextCommit,
     lastInsertRequest,
     lastDeleteRequest,
+    lastShortcutRequest,
     transformPreview,
     transformCommit,
+    transformCancelSequence,
     textEditActive,
     enableEditor,
+    configureEditor,
     disableEditor,
     selectElement,
     clearSelection,
@@ -301,9 +314,9 @@ export function DeckPreview({
     goToSlide(activeSlideIndexRef.current)
 
     if (editorBridgeActive) {
-      enableEditor(activeSlideIndexRef.current, activeTool)
+      enableEditor(activeSlideIndexRef.current, activeTool, previewFrameScale || undefined)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTool is initial enable payload only
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tool/scale are initial enable payloads; their dedicated messages own later updates
   }, [
     bridgeSession.armed,
     editorBridgeActive,
@@ -392,24 +405,36 @@ export function DeckPreview({
     )
   }, [canModifySelection, onPatchEditorOperations, selection])
 
+  const duplicateElement = useCallback(
+    (elementId: string, slideIndex: number, slideId: string | null) =>
+      onPatchEditorOperations?.(
+        [
+          {
+            op: 'duplicate_element',
+            elementId,
+            slideIndex,
+            ...(slideId ? { slideId } : {}),
+          },
+        ],
+        slideIndex,
+        'Duplicated element in preview',
+      ),
+    [onPatchEditorOperations],
+  )
+
   const handleDuplicateSelection = useCallback(() => {
-    if (!selection || !canModifySelection || !onPatchEditorOperations) {
+    if (
+      !selection ||
+      selection.locked ||
+      !editChromeActive ||
+      textEditActive ||
+      !onPatchEditorOperations
+    ) {
       return
     }
 
-    void onPatchEditorOperations(
-      [
-        {
-          op: 'duplicate_element',
-          elementId: selection.elementId,
-          slideIndex: selection.slideIndex,
-          ...(selection.slideId ? { slideId: selection.slideId } : {}),
-        },
-      ],
-      selection.slideIndex,
-      'Duplicated element in preview',
-    )
-  }, [canModifySelection, onPatchEditorOperations, selection])
+    void duplicateElement(selection.elementId, selection.slideIndex, selection.slideId)
+  }, [duplicateElement, editChromeActive, onPatchEditorOperations, selection, textEditActive])
 
   const handleReorderSelection = useCallback(
     (direction: 'front' | 'back') => {
@@ -480,6 +505,15 @@ export function DeckPreview({
     isTransformingRef.current = true
     transformStartGeometryRef.current = committedGeometryRef.current
   }, [transformPreview])
+
+  useEffect(() => {
+    if (transformCancelSequence === 0) {
+      return
+    }
+
+    isTransformingRef.current = false
+    transformStartGeometryRef.current = null
+  }, [transformCancelSequence])
 
   const beginTextEdit = useCallback(() => {
     if (!selection || !canEditSelectedText || textEditActive) {
@@ -719,7 +753,7 @@ export function DeckPreview({
       return
     }
 
-    const commitKey = `${transformCommit.elementId}:${transformCommit.slideIndex}:${transformCommit.geometry.x}:${transformCommit.geometry.y}:${transformCommit.geometry.width}:${transformCommit.geometry.height}`
+    const commitKey = `${transformCommit.elementId}:${transformCommit.slideIndex}:${transformCommit.geometry.x}:${transformCommit.geometry.y}:${transformCommit.geometry.width}:${transformCommit.geometry.height}:${transformCommit.adopted ? 'adopted' : 'managed'}`
 
     if (processedTransformCommitRef.current === commitKey) {
       return
@@ -747,21 +781,120 @@ export function DeckPreview({
     preserveSlideIndexRef.current = activeSlideIndex
     scheduleReselect()
 
-    void onPatchEditorOperations(
+    const patchPromise = onPatchEditorOperations(
       operations,
       transformCommit.slideIndex,
       'Updated element layout in preview',
-    ).catch(() => {
-      processedTransformCommitRef.current = null
-      preserveSlideIndexRef.current = null
-      pendingReselectRef.current = null
-    })
+    )
+    pendingTransformPatchRef.current = patchPromise
+
+    void patchPromise
+      .then((result) => {
+        if (!transformCommit.adopted) {
+          return
+        }
+
+        const stableId = result?.patch.changedElementIds[0]
+        const pending = pendingReselectRef.current
+
+        if (stableId && pending?.elementId === transformCommit.elementId) {
+          pending.elementId = stableId
+        }
+      })
+      .catch(() => {
+        processedTransformCommitRef.current = null
+        preserveSlideIndexRef.current = null
+        pendingReselectRef.current = null
+      })
+      .finally(() => {
+        if (pendingTransformPatchRef.current === patchPromise) {
+          pendingTransformPatchRef.current = null
+        }
+      })
   }, [
     activeSlideIndex,
     onPatchEditorOperations,
     scheduleReselect,
     selection?.slideId,
     transformCommit,
+  ])
+
+  useEffect(() => {
+    if (!lastShortcutRequest) {
+      return
+    }
+
+    const requestKey = `${previewFrame.iframeKey}:${lastShortcutRequest.sequence}`
+
+    if (processedShortcutRequestRef.current === requestKey) {
+      return
+    }
+
+    processedShortcutRequestRef.current = requestKey
+
+    if (lastShortcutRequest.action === 'duplicate') {
+      if (
+        !selection ||
+        selection.locked ||
+        !editChromeActive ||
+        textEditActive ||
+        !onPatchEditorOperations
+      ) {
+        return
+      }
+
+      const pendingTransform = pendingTransformPatchRef.current
+
+      if (pendingTransform) {
+        const { elementId, slideIndex, slideId } = selection
+        void pendingTransform
+          .then((result) =>
+            duplicateElement(result?.patch.changedElementIds[0] ?? elementId, slideIndex, slideId),
+          )
+          .catch(() => undefined)
+        return
+      }
+
+      if (transformPreview || isTextEditSaving) {
+        return
+      }
+
+      if (transformCommit) {
+        void duplicateElement(
+          pendingReselectRef.current?.elementId ?? selection.elementId,
+          selection.slideIndex,
+          selection.slideId,
+        )
+        return
+      }
+
+      handleDuplicateSelection()
+      return
+    }
+
+    if (transformPreview || pendingTransformPatchRef.current || isTextEditSaving) {
+      return
+    }
+
+    if (lastShortcutRequest.action === 'undo') {
+      handleUndo()
+    } else {
+      handleRedo()
+    }
+  }, [
+    duplicateElement,
+    editChromeActive,
+    handleDuplicateSelection,
+    handleRedo,
+    handleUndo,
+    isTextEditSaving,
+    lastShortcutRequest,
+    onPatchEditorOperations,
+    previewFrame.iframeKey,
+    selection,
+    textEditActive,
+    transformCommit,
+    transformPreview,
   ])
 
   useEffect(() => {
@@ -943,9 +1076,15 @@ export function DeckPreview({
     // Tool changes are pushed via setTool; re-enable only when the slide or
     // iframe generation changes so we do not clear pending insert/transform
     // requests on every toolbar click.
-    enableEditor(activeSlideIndex, activeTool)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeTool is initial enable payload only; setTool owns later updates
+    enableEditor(activeSlideIndex, activeTool, previewFrameScale || undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tool/scale are initial enable payloads; their dedicated messages own later updates
   }, [activeSlideIndex, editorBridgeActive, editorReady, enableEditor, previewFrame.iframeKey])
+
+  useEffect(() => {
+    if (editorBridgeActive && editorReady && previewFrameScale > 0) {
+      configureEditor(previewFrameScale)
+    }
+  }, [configureEditor, editorBridgeActive, editorReady, previewFrameScale])
 
   useEffect(() => {
     if (!editChromeActive || !selection?.elementId) {
@@ -1015,7 +1154,7 @@ export function DeckPreview({
   }, [editChromeActive, onEditorSelectionChange, selection])
 
   useEffect(() => {
-    if (!editChromeActive || !hover?.elementId) {
+    if (!editChromeActive || !hover?.elementId || hoverGeometry) {
       return
     }
 
@@ -1024,7 +1163,7 @@ export function DeckPreview({
     }
 
     requestGeometry(hover.elementId, hover.slideIndex)
-  }, [editChromeActive, hover, requestGeometry, selection?.elementId])
+  }, [editChromeActive, hover, hoverGeometry, requestGeometry, selection?.elementId])
 
   useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
@@ -1055,11 +1194,6 @@ export function DeckPreview({
     })
     setIsPresentOpen(true)
   }, [])
-  const effectivePreviewViewportSize =
-    isPresentOpen && presentViewportSize.width > 0 && presentViewportSize.height > 0
-      ? presentViewportSize
-      : previewViewportSize
-  const previewFrameScale = getPreviewFrameScale(effectivePreviewViewportSize)
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const hasStrip = hasSlides
@@ -1252,7 +1386,11 @@ export function DeckPreview({
                       goToSlide(activeSlideIndexRef.current)
 
                       if (editorBridgeActive) {
-                        enableEditor(activeSlideIndexRef.current, activeTool)
+                        enableEditor(
+                          activeSlideIndexRef.current,
+                          activeTool,
+                          previewFrameScale || undefined,
+                        )
                       }
                     }}
                     ref={iframeRef}
@@ -1296,10 +1434,12 @@ export function DeckPreview({
                     geometry={selection ? geometry : null}
                     hoverGeometry={hoverGeometry}
                     hoverSlideBounds={hoverSlideBounds}
+                    hoverSurface={hover?.surface}
                     isEditing={textEditActive}
                     locked={selection?.locked ?? false}
                     scale={previewFrameScale}
                     slideBounds={slideBounds}
+                    surface={selection?.surface}
                   />
                 ) : null}
                 {editorBridgeEnabled && editChromeActive ? (

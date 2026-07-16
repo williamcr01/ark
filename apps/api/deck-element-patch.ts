@@ -75,6 +75,7 @@ const PATCHABLE_ATTRS = new Set([
 
 const PATCHABLE_STYLE_PROPS = new Set([
   'background-color',
+  'box-sizing',
   'color',
   'display',
   'font-size',
@@ -82,6 +83,7 @@ const PATCHABLE_STYLE_PROPS = new Set([
   'height',
   'left',
   'line-height',
+  'margin',
   'object-fit',
   'opacity',
   'position',
@@ -372,17 +374,6 @@ function assertElementPatchable(
     }
   }
 
-  if (
-    (operation.op === 'move_element' ||
-      operation.op === 'resize_element' ||
-      operation.op === 'reorder_element') &&
-    !meta.managed
-  ) {
-    return {
-      error: `${operation.op}: element "${elementId}" is not Ark-managed and cannot be repositioned.`,
-    }
-  }
-
   return null
 }
 
@@ -443,7 +434,7 @@ function parseElementHtml(doc: Document, html: string) {
   return { element }
 }
 
-function mergeInlineStyle(element: HTMLElement, updates: Record<string, string>) {
+function mergeInlineStyle(element: Element, updates: Record<string, string>) {
   const declarations = new Map<string, string>()
 
   for (const chunk of element.getAttribute('style')?.split(';') ?? []) {
@@ -840,17 +831,24 @@ function applyMoveElement(
     return patchable
   }
 
-  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
-    return { error: 'move_element requires an HTML element target.' }
-  }
-
-  const left = formatPixelValue(operation.x, ARK_SLIDE_REFERENCE_WIDTH)
-  const top = formatPixelValue(operation.y, ARK_SLIDE_REFERENCE_HEIGHT)
-  const merged = mergeInlineStyle(resolved.element, {
+  const left = formatPixelValue(operation.cssX ?? operation.x, ARK_SLIDE_REFERENCE_WIDTH)
+  const top = formatPixelValue(operation.cssY ?? operation.y, ARK_SLIDE_REFERENCE_HEIGHT)
+  const adopted = operation.width !== undefined || operation.height !== undefined
+  const style = {
     position: 'absolute',
     left,
     top,
-  })
+    ...(adopted ? { margin: '0', 'box-sizing': 'border-box' } : {}),
+    ...(operation.width === undefined
+      ? {}
+      : {
+          width: formatPixelValue(operation.cssWidth ?? operation.width, ARK_SLIDE_REFERENCE_WIDTH),
+        }),
+    ...(operation.height === undefined
+      ? {}
+      : { height: formatPixelValue(operation.height, ARK_SLIDE_REFERENCE_HEIGHT) }),
+  }
+  const merged = mergeInlineStyle(resolved.element, style)
 
   if ('error' in merged) {
     return merged
@@ -884,8 +882,11 @@ function applyResizeElement(
     return { error: 'resize_element requires an HTML element target.' }
   }
 
-  const width = formatPixelValue(operation.width, ARK_SLIDE_REFERENCE_WIDTH)
-  const height = formatPixelValue(operation.height, ARK_SLIDE_REFERENCE_HEIGHT)
+  const width = formatPixelValue(operation.cssWidth ?? operation.width, ARK_SLIDE_REFERENCE_WIDTH)
+  const height = formatPixelValue(
+    operation.cssHeight ?? operation.height,
+    ARK_SLIDE_REFERENCE_HEIGHT,
+  )
   const merged = mergeInlineStyle(resolved.element, {
     position: 'absolute',
     width,

@@ -40,6 +40,29 @@ describe('deck patch schema', () => {
     expect(deckPatchOperationSchema.safeParse(operation).success).toBe(true)
     expect(isElementPatchOperation(operation)).toBe(true)
     expect(isSlidePatchOperation(operation)).toBe(false)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: 0.1,
+        y: 0.2,
+        width: 0.4,
+        height: 0.3,
+      }).success,
+    ).toBe(true)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: 0.1,
+        y: 0.2,
+        cssX: -0.3,
+        cssY: 1.2,
+        cssWidth: 0.4,
+      }).success,
+    ).toBe(true)
   })
 
   it('rejects out-of-range normalized element geometry', () => {
@@ -58,6 +81,16 @@ describe('deck patch schema', () => {
         elementId: 'ark-el-1',
         width: 1.2,
         height: 0.5,
+      }).success,
+    ).toBe(false)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: 0.1,
+        y: 0.2,
+        width: 1.2,
       }).success,
     ).toBe(false)
   })

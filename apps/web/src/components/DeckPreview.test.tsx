@@ -55,9 +55,12 @@ const editorBridgeMock = vi.hoisted(() => ({
   } | null,
   lastInsertRequest: null,
   lastDeleteRequest: null,
+  lastShortcutRequest: null as { action: 'undo' | 'redo' | 'duplicate'; sequence: number } | null,
   transformPreview: null as EditorTransformPreviewMessage | null,
   transformCommit: null as EditorTransformCommitMessage | null,
+  transformCancelSequence: 0,
   enableEditor: vi.fn(),
+  configureEditor: vi.fn(),
   disableEditor: vi.fn(),
   selectElement: vi.fn(),
   clearSelection: vi.fn(),
@@ -121,7 +124,7 @@ vi.mock('@/lib/runtime-error-api', () => ({
 }))
 
 vi.mock('@/hooks/useElementSize', () => ({
-  useElementSize: () => [vi.fn(), { width: 1600, height: 900 }],
+  useElementSize: () => [vi.fn(), { width: 1280, height: 720 }],
 }))
 
 const plainDeckProps = {
@@ -147,9 +150,12 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.lastTextCommit = null
     editorBridgeMock.lastInsertRequest = null
     editorBridgeMock.lastDeleteRequest = null
+    editorBridgeMock.lastShortcutRequest = null
     editorBridgeMock.transformPreview = null
     editorBridgeMock.transformCommit = null
+    editorBridgeMock.transformCancelSequence = 0
     editorBridgeMock.enableEditor.mockClear()
+    editorBridgeMock.configureEditor.mockClear()
     editorBridgeMock.disableEditor.mockClear()
     editorBridgeMock.selectElement.mockClear()
     editorBridgeMock.clearSelection.mockClear()
@@ -413,7 +419,15 @@ describe('DeckPreview script divergence UI', () => {
 
     fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
 
-    expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0, 'select')
+    expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0, 'select', 1)
+  })
+
+  it('configures runtime chrome with the preview scale', () => {
+    editorBridgeMock.editorReady = true
+
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+
+    expect(editorBridgeMock.configureEditor).toHaveBeenCalledWith(1)
   })
 
   it('starts thumbnail work only after the current main preview is ready', async () => {
@@ -737,6 +751,68 @@ describe('DeckPreview script divergence UI', () => {
     ])
   })
 
+  it('drops the drag baseline after a runtime transform cancellation', () => {
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+    const startGeometry: EditorNormalizedRect = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+    const endGeometry: EditorNormalizedRect = { x: 0.4, y: 0.35, width: 0.3, height: 0.1 }
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = startGeometry
+    const props = { ...plainDeckProps, editorBridgeEnabled: true, onPatchEditorOperations }
+    const { rerender } = renderDeckPreview(props)
+    const renderProps = () =>
+      rerender(
+        <TooltipProvider>
+          <DeckPreview {...props} />
+        </TooltipProvider>,
+      )
+
+    editorBridgeMock.transformPreview = createEditorTransformPreviewMessage(
+      'ark-el-box',
+      0,
+      endGeometry,
+    )
+    renderProps()
+
+    editorBridgeMock.transformPreview = null
+    editorBridgeMock.transformCancelSequence = 1
+    renderProps()
+
+    editorBridgeMock.transformCommit = createEditorTransformCommitMessage(
+      'ark-el-box',
+      0,
+      endGeometry,
+    )
+    renderProps()
+
+    expect(onPatchEditorOperations.mock.calls[0]?.[0]).toEqual([
+      {
+        op: 'move_element',
+        elementId: 'ark-el-box',
+        slideIndex: 0,
+        slideId: 'slide-1',
+        x: endGeometry.x,
+        y: endGeometry.y,
+      },
+      {
+        op: 'resize_element',
+        elementId: 'ark-el-box',
+        slideIndex: 0,
+        slideId: 'slide-1',
+        width: endGeometry.width,
+        height: endGeometry.height,
+      },
+    ])
+  })
+
   it('triggers undo and redo from the toolbar history buttons', async () => {
     const user = userEvent.setup()
     const onUndo = vi.fn()
@@ -779,6 +855,200 @@ describe('DeckPreview script divergence UI', () => {
     fireEvent.keyDown(window, { key: 'y', ctrlKey: true })
     expect(onRedo).toHaveBeenCalledTimes(2)
   })
+
+  it('handles shortcuts forwarded by the editor runtime', () => {
+    const onUndo = vi.fn()
+    const onRedo = vi.fn()
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: false,
+      editableKind: 'text-box',
+      textPreview: 'Text',
+    }
+    editorBridgeMock.lastShortcutRequest = { action: 'undo', sequence: 1 }
+    const props = {
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      canRedo: true,
+      onUndo,
+      onRedo,
+      onPatchEditorOperations,
+    }
+    const { rerender } = renderDeckPreview(props)
+
+    expect(onUndo).toHaveBeenCalledTimes(1)
+
+    editorBridgeMock.lastShortcutRequest = { action: 'redo', sequence: 2 }
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+    expect(onRedo).toHaveBeenCalledTimes(1)
+
+    editorBridgeMock.lastShortcutRequest = { action: 'duplicate', sequence: 3 }
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+    expect(onPatchEditorOperations).toHaveBeenCalledWith(
+      [
+        {
+          op: 'duplicate_element',
+          elementId: 'ark-el-box',
+          slideIndex: 0,
+          slideId: 'slide-1',
+        },
+      ],
+      0,
+      'Duplicated element in preview',
+    )
+  })
+
+  it.each(['undo', 'redo'] as const)(
+    'drops forwarded %s while a transform commit is pending',
+    (action) => {
+      const onUndo = vi.fn()
+      const onRedo = vi.fn()
+      const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+      editorBridgeMock.selection = {
+        elementId: 'ark-el-box',
+        slideIndex: 0,
+        slideId: 'slide-1',
+        tagName: 'div',
+        locked: false,
+        managed: true,
+        editableKind: 'text-box',
+        textPreview: 'Text',
+      }
+      editorBridgeMock.lastShortcutRequest = { action, sequence: 1 }
+      editorBridgeMock.transformCommit = createEditorTransformCommitMessage('ark-el-box', 0, {
+        x: 0.2,
+        y: 0.2,
+        width: 0.3,
+        height: 0.1,
+      })
+
+      renderDeckPreview({
+        ...plainDeckProps,
+        editorBridgeEnabled: true,
+        canUndo: true,
+        canRedo: true,
+        onUndo,
+        onRedo,
+        onPatchEditorOperations,
+      })
+
+      expect(onUndo).not.toHaveBeenCalled()
+      expect(onRedo).not.toHaveBeenCalled()
+      expect(onPatchEditorOperations.mock.calls.flatMap(([operations]) => operations)).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ op: 'duplicate_element' })]),
+      )
+    },
+  )
+
+  it('serializes duplicate after an adopted transform and uses its stable id', async () => {
+    let resolveTransform!: (result: { patch: { changedElementIds: string[] } }) => void
+    const transformPromise = new Promise<{ patch: { changedElementIds: string[] } }>((resolve) => {
+      resolveTransform = resolve
+    })
+    const onPatchEditorOperations = vi
+      .fn()
+      .mockImplementationOnce(() => transformPromise)
+      .mockResolvedValueOnce(undefined)
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'h1',
+      locked: false,
+      managed: false,
+      editableKind: 'text',
+      textPreview: 'Title',
+    }
+    editorBridgeMock.lastShortcutRequest = { action: 'duplicate', sequence: 1 }
+    editorBridgeMock.transformCommit = createEditorTransformCommitMessage(
+      'transient-el-0-0',
+      0,
+      { x: 0.2, y: 0.2, width: 0.3, height: 0.1 },
+      undefined,
+      undefined,
+      true,
+    )
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    })
+
+    expect(onPatchEditorOperations).toHaveBeenCalledTimes(1)
+    expect(onPatchEditorOperations.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({
+        op: 'move_element',
+        elementId: 'transient-el-0-0',
+      }),
+    ])
+
+    await act(async () => {
+      resolveTransform({ patch: { changedElementIds: ['ark-el-stable'] } })
+      await transformPromise
+    })
+
+    expect(onPatchEditorOperations).toHaveBeenCalledTimes(2)
+    expect(onPatchEditorOperations.mock.calls[1]).toEqual([
+      [
+        {
+          op: 'duplicate_element',
+          elementId: 'ark-el-stable',
+          slideIndex: 0,
+          slideId: 'slide-1',
+        },
+      ],
+      0,
+      'Duplicated element in preview',
+    ])
+  })
+
+  it.each([false, true])(
+    'cancels a transform without undo or persistence when canUndo is %s',
+    (canUndo) => {
+      const onUndo = vi.fn()
+      const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+      editorBridgeMock.transformPreview = createEditorTransformPreviewMessage('ark-el-box', 0, {
+        x: 0.2,
+        y: 0.2,
+        width: 0.3,
+        height: 0.1,
+      })
+      const props = {
+        ...plainDeckProps,
+        editorBridgeEnabled: true,
+        canUndo,
+        onUndo,
+        onPatchEditorOperations,
+      }
+      const { rerender } = renderDeckPreview(props)
+
+      editorBridgeMock.transformPreview = null
+      editorBridgeMock.transformCancelSequence = 1
+      rerender(
+        <TooltipProvider>
+          <DeckPreview {...props} />
+        </TooltipProvider>,
+      )
+
+      expect(onUndo).not.toHaveBeenCalled()
+      expect(onPatchEditorOperations).not.toHaveBeenCalled()
+    },
+  )
 
   it('does not hijack undo shortcut while editing text', async () => {
     const onUndo = vi.fn()
@@ -1012,6 +1282,54 @@ describe('DeckPreview script divergence UI', () => {
     )
 
     expect(editorBridgeMock.selectElement).toHaveBeenCalledWith('ark-el-box', 0)
+  })
+
+  it('reselects an adopted element by its server-assigned stable id', async () => {
+    const onPatchEditorOperations = vi.fn().mockResolvedValue({
+      patch: { changedElementIds: ['ark-el-stable'] },
+    })
+    const geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+    editorBridgeMock.editorReady = true
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'h1',
+      locked: false,
+      managed: false,
+      editableKind: 'text',
+      textPreview: 'Title',
+    }
+    editorBridgeMock.geometry = geometry
+    const props = { ...plainDeckProps, editorBridgeEnabled: true, onPatchEditorOperations }
+    const { rerender } = renderDeckPreview(props)
+
+    editorBridgeMock.transformCommit = createEditorTransformCommitMessage(
+      'transient-el-0-0',
+      0,
+      geometry,
+      undefined,
+      undefined,
+      true,
+    )
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+    await act(async () => undefined)
+
+    previewFrameMock.iframeKey = 'adopted-preview'
+    editorBridgeMock.selection = null
+    editorBridgeMock.geometry = null
+    editorBridgeMock.transformCommit = null
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} />
+      </TooltipProvider>,
+    )
+
+    expect(editorBridgeMock.selectElement).toHaveBeenCalledWith('ark-el-stable', 0)
   })
 
   it('does not reselect when the user already selected another element', async () => {

@@ -27,24 +27,34 @@ export function buildTransformPatchOperations(
     ...(slideId ? { slideId } : {}),
   }
 
-  if (!previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['x', 'y'])) {
+  if (
+    commit.adopted ||
+    !previousGeometry ||
+    geometryChanged(previousGeometry, commit.geometry, ['x', 'y'])
+  ) {
     operations.push({
       op: 'move_element',
       ...target,
       x: commit.geometry.x,
       y: commit.geometry.y,
+      ...(commit.cssX !== undefined ? { cssX: commit.cssX } : {}),
+      ...(commit.cssY !== undefined ? { cssY: commit.cssY } : {}),
+      ...(commit.adopted ? { width: commit.geometry.width } : {}),
+      ...(commit.adopted && commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
     })
   }
 
   if (
-    !previousGeometry ||
-    geometryChanged(previousGeometry, commit.geometry, ['width', 'height'])
+    !commit.adopted &&
+    (!previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['width', 'height']))
   ) {
     operations.push({
       op: 'resize_element',
       ...target,
       width: commit.geometry.width,
       height: commit.geometry.height,
+      ...(commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
+      ...(commit.cssHeight !== undefined ? { cssHeight: commit.cssHeight } : {}),
     })
   }
 

@@ -114,11 +114,43 @@ describe('parseEditableElements', () => {
           textPreview: 'Quarterly planning',
           idTransient: true,
           managed: false,
-          locked: true,
-          lockReason: 'layout-not-managed',
+          locked: false,
+          lockReason: null,
         }),
       ]),
     )
+  })
+
+  it('exposes containers alongside their editable descendants without stamping them', () => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Containers</title></head>
+<body>
+  <section class="slide">
+    <div class="card"><h2>Card title</h2><p>Card copy</p></div>
+  </section>
+</body>
+</html>`
+    const parsed = parseDeckHtml(html)
+    const elements = parsed.editableElements[0]?.elements ?? []
+
+    expect(elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'container',
+          tagName: 'div',
+          idTransient: true,
+          locked: false,
+        }),
+        expect.objectContaining({ kind: 'text', tagName: 'h2', textPreview: 'Card title' }),
+        expect.objectContaining({ kind: 'text', tagName: 'p', textPreview: 'Card copy' }),
+      ]),
+    )
+
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const slide = doc.querySelector('section')!
+    stampEditableElementIds(slide)
+    expect(slide.querySelector('.card')?.hasAttribute('data-ark-id')).toBe(false)
   })
 
   it('handles inline svg image candidates without crashing', () => {

@@ -386,6 +386,7 @@ function App() {
       try {
         const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
         recordManualEdit(beforeHtml, result, operations, summary, activeSlideIndex)
+        return result
       } catch (patchError) {
         toast.error(patchError instanceof Error ? patchError.message : 'Could not save the edit')
         try {
