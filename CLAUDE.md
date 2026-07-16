@@ -28,7 +28,7 @@ pnpm install    # install dependencies
 pnpm dev        # start dev server
 pnpm build      # typecheck + production build
 pnpm lint       # run ESLint
-pnpm test       # run unit tests (Vitest)
+pnpm test       # Vitest: packages in parallel, apps serial
 pnpm preview    # preview production build
 ```
 

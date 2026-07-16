@@ -18,7 +18,7 @@
     "format:check": "prettier --check .",
     "audit": "pnpm audit --audit-level=high",
     "preview": "pnpm --filter @ark/web preview",
-    "test": "pnpm -r --workspace-concurrency=1 test",
+    "test": "pnpm --parallel --filter './packages/**' test && pnpm -r --workspace-concurrency=1 --filter './apps/**' test",
     "test:live-chromium": "pnpm --filter @ark/api test:live-chromium",
     "lockfile:check": "pnpm install --frozen-lockfile",
     "smoke:plain-css": "tsx scripts/smoke-plain-css.ts",
