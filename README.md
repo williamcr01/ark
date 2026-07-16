@@ -113,12 +113,16 @@ pnpm format:check
 pnpm audit
 pnpm build
 pnpm test
-pnpm smoke:browser
+pnpm smoke:plain-css   # PR-blocking browser smoke (CI gate)
+# Optional fuller local suites:
+# pnpm smoke:browser           # plain + Reveal + full-JS + manual-edit
+# pnpm smoke:browser:extended  # Reveal + full-JS + manual-edit + thumbnails
+# pnpm test:live-chromium      # API-level Chromium thumbnail renderer
 ```
 
 Import boundaries between `apps/*` and `packages/*` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
 
-`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. `pnpm smoke:thumbnails` separately exercises sandbox-rendered PNG thumbnails with the renderer enabled. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+`pnpm test` runs Vitest in two phases: **packages in parallel** (`pnpm --parallel --filter './packages/**' test`, ignoring the package dependency graph so suites overlap), then **apps serially** (`--workspace-concurrency=1`). Running `apps/api` and `apps/web` together overloads a single runner and causes Vitest timeouts — keep apps serial unless those suites get much lighter. Live Chromium thumbnail coverage is separate (`pnpm test:live-chromium`, main-push CI only). Coverage includes hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP. **Pull requests** gate on `quality` (lockfile/lint/format/audit/openapi), `build`, `test`, and `smoke:plain-css`. **Main pushes** also run `test:live-chromium`, Reveal, full-JS bridge, manual-edit, and `smoke:thumbnails`. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
 
 Format before pushing substantive changes:
 
@@ -126,4 +130,4 @@ Format before pushing substantive changes:
 pnpm format
 ```
 
-Pull requests and pushes to `main` run the same checks in GitHub Actions on an `ubuntu-latest` runner (see `.github/workflows/ci.yml`). No API keys or `.env` file are required for CI.
+GitHub Actions (`.github/workflows/ci.yml`) consolidates cheap static checks into one `quality` job to cut billed install minutes; wall clock stays gated by `test` (~3–4 min). Extended Chromium/browser suites run on `main` pushes only. No API keys or `.env` file are required for CI.
