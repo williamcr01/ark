@@ -118,8 +118,9 @@ Example:
 Validation checks:
 
 1. Every `/api/runtimes/...` reference must match an entry in `runtimes/manifest.json`.
-2. When `data-ark-runtime-lib` and `data-ark-runtime-version` are set, every runtime asset URL must use that exact id and version.
-3. Required assets from the manifest must all be referenced (for reveal.js: `reveal.css`, `theme/white.css`, `reveal.js`; for chart.js: `chart.umd.min.js`).
+2. Primary and addon marker pairs must be complete: lib and version together, or neither. A lib without a version (or the reverse) is a `runtime_version_mismatch`.
+3. When `data-ark-runtime-lib` and `data-ark-runtime-version` are set, every runtime asset URL must use that exact id and version.
+4. Required assets from the manifest must all be referenced (for reveal.js: `reveal.css`, `theme/white.css`, `reveal.js`; for chart.js: `chart.umd.min.js`).
 
 Optional assets (e.g. `reset.css`, theme fonts) may be referenced when listed in the manifest.
 

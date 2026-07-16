@@ -124,6 +124,7 @@ Copy-paste starting point (also available as `test/fixtures/chart-registry-deck.
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
         },
       })
     </script>
@@ -135,7 +136,7 @@ Guidance:
 
 - One `<canvas>` per chart (or per chart region).
 - Inline `labels` / `datasets` JSON from user-provided data — no CSV parsing pipeline.
-- Use `responsive: true` and `maintainAspectRatio: false` so charts fill 16:9 slide regions.
+- Use `responsive: true`, `maintainAspectRatio: false`, and `animation: false` so charts fill 16:9 slide regions and thumbnail PNGs capture fully drawn canvases.
 - Prefer `addEventListener` / deferred init over inline HTML event handlers.
 
 ## Preview behavior
@@ -179,14 +180,14 @@ Model-facing Chart.js instructions live in [`agent-guides/20-chart-js.md`](../ag
 
 ## Validation errors
 
-| Code                       | Cause                                                    |
-| -------------------------- | -------------------------------------------------------- |
-| `external_url`             | Any `http://` or `https://` asset URL (including CDNs)   |
-| `unapproved_runtime_asset` | `/api/runtimes/...` path not in manifest                 |
-| `runtime_version_mismatch` | Asset URL version ≠ `data-ark-runtime-version`           |
-| `missing_runtime_assets`   | Required `chart.umd.min.js` not referenced               |
-| `invalid_runtime_marker`   | Unknown `data-ark-*` marker value                        |
-| `script_without_marker`    | Inline/init scripts without `data-ark-preview="full-js"` |
+| Code                       | Cause                                                                       |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `external_url`             | Any `http://` or `https://` asset URL (including CDNs)                      |
+| `unapproved_runtime_asset` | `/api/runtimes/...` path not in manifest                                    |
+| `runtime_version_mismatch` | Asset URL version ≠ declared version, or incomplete lib/version marker pair |
+| `missing_runtime_assets`   | Required `chart.umd.min.js` not referenced                                  |
+| `invalid_runtime_marker`   | Unknown `data-ark-*` marker value                                           |
+| `script_without_marker`    | Inline/init scripts without `data-ark-preview="full-js"`                    |
 
 ## Related
 

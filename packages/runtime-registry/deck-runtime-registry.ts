@@ -480,6 +480,10 @@ function runtimeMatchesDeclaredVersion(
   return declaredRuntimes.some((runtime) => runtime.id === runtimeId && runtime.version === version)
 }
 
+function isIncompleteRuntimeMarkerPair(library: string | null, version: string | null) {
+  return Boolean(library) !== Boolean(version)
+}
+
 export function validateRuntimeAssetReferences(
   references: string[],
   libraryMarkers: DeckRuntimeLibraryMarkers,
@@ -493,6 +497,31 @@ export function validateRuntimeAssetReferences(
     message: string
     severity: 'error'
   }> = []
+
+  if (
+    isIncompleteRuntimeMarkerPair(libraryMarkers.arkRuntimeLib, libraryMarkers.arkRuntimeVersion)
+  ) {
+    issues.push({
+      code: 'runtime_version_mismatch',
+      message:
+        'Runtime library markers must include both data-ark-runtime-lib and data-ark-runtime-version.',
+      severity: 'error',
+    })
+  }
+
+  if (
+    isIncompleteRuntimeMarkerPair(
+      addonMarkers.arkRuntimeAddonLib,
+      addonMarkers.arkRuntimeAddonVersion,
+    )
+  ) {
+    issues.push({
+      code: 'runtime_version_mismatch',
+      message:
+        'Addon runtime markers must include both data-ark-runtime-addon-lib and data-ark-runtime-addon-version.',
+      severity: 'error',
+    })
+  }
 
   const referencedAssets = new Map<string, Set<string>>()
   const declaredRuntimes = collectDeclaredDeckRuntimes(libraryMarkers, addonMarkers)

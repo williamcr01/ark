@@ -8,6 +8,7 @@ Use **Chart.js** when interactivity, tooltips, legends, or multi-series data war
 - Include the pinned registry script from the system prompt list: `/api/runtimes/chart.js/4.5.1/chart.umd.min.js`. CDN Chart.js URLs are invalid even if the version matches.
 - Keep plain `section.slide` structure (not reveal). Do **not** set `data-ark-deck="nav"` unless the deck also owns slide navigation via the bridge protocol.
 - Initialize with inline scripts: `new Chart(canvas, { ... })`. Keep `labels` / `datasets` inline as JSON from user data — never fetch remote datasets (`connect-src 'none'`).
+- Always set `animation: false` in chart `options` so thumbnail capture is not mid-draw (Chart.js canvas animation is not covered by `document.getAnimations()`).
 - Supported types for v1: `bar`, `line`, `pie`, `doughnut`, `radar`, `scatter`. No custom partial bundles.
 - Size canvases for 16:9 slides: `responsive: true` and `maintainAspectRatio: false` inside a flex `.chart-wrap` that fills the slide.
 - Plain chart decks use the markers above. **Reveal + Chart.js** decks keep reveal markers and add `data-ark-runtime-addon-lib="chart.js"` and `data-ark-runtime-addon-version="4.5.1"` on `<html>` (do **not** set `data-ark-preview="full-js"` on reveal decks).
@@ -73,6 +74,7 @@ Use **Chart.js** when interactivity, tooltips, legends, or multi-series data war
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
         },
       })
     </script>
@@ -92,7 +94,7 @@ Use this when the deck is already reveal-based and only some slides need interac
 - Declare the Chart.js addon: `data-ark-runtime-addon-lib="chart.js"`, `data-ark-runtime-addon-version="4.5.1"`.
 - Include both registry scripts: reveal.js + `/api/runtimes/chart.js/4.5.1/chart.umd.min.js`.
 - Inline `new Chart(...)` init is allowed **only** with the addon markers. Do **not** call `Reveal.initialize()` — Ark's reveal adapter owns navigation.
-- Put `<canvas>` elements inside reveal `<section>` slides. Use `responsive: true`, `maintainAspectRatio: false`, and call `chart.resize()` on `ark:deck-slide-change` so hidden slides measure correctly.
+- Put `<canvas>` elements inside reveal `<section>` slides. Use `responsive: true`, `maintainAspectRatio: false`, `animation: false`, and call `chart.resize()` on `ark:deck-slide-change` so hidden slides measure correctly.
 
 ```html
 <html
@@ -147,6 +149,7 @@ Chart decks are plain `section.slide` documents. For shell-driven navigation, li
 ## Chart config tips
 
 - One `<canvas>` per chart region; give each an id and `role="img"` + `aria-label`.
+- Always include `animation: false` (thumbnails settle too quickly for Chart.js's default 1s draw).
 - Share common `options` (colors, legends, scales) across charts in one IIFE.
 - Prefer deferred init / `addEventListener` over inline HTML event handlers.
 - Match legend/tick colors to the deck theme (dark slides need light tick/label colors).

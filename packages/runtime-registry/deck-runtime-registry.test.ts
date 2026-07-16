@@ -262,6 +262,57 @@ describe('approved runtime registry', () => {
     expect(incompleteAddon.some((issue) => issue.code === 'runtime_version_mismatch')).toBe(true)
   })
 
+  it('rejects incomplete primary and addon runtime marker pairs', () => {
+    const incompletePrimary = validateRuntimeAssetReferences(
+      ['/api/runtimes/chart.js/4.5.1/chart.umd.min.js'],
+      {
+        arkRuntimeLib: 'chart.js',
+        arkRuntimeVersion: null,
+      },
+    )
+
+    expect(incompletePrimary.some((issue) => issue.code === 'runtime_version_mismatch')).toBe(true)
+    expect(
+      incompletePrimary.some((issue) =>
+        issue.message.includes('data-ark-runtime-lib and data-ark-runtime-version'),
+      ),
+    ).toBe(true)
+
+    const incompletePrimaryVersionOnly = validateRuntimeAssetReferences(
+      ['/api/runtimes/chart.js/4.5.1/chart.umd.min.js'],
+      {
+        arkRuntimeLib: null,
+        arkRuntimeVersion: '4.5.1',
+      },
+    )
+
+    expect(
+      incompletePrimaryVersionOnly.some((issue) => issue.code === 'runtime_version_mismatch'),
+    ).toBe(true)
+
+    const incompleteAddonVersionOnly = validateRuntimeAssetReferences(
+      [
+        '/api/runtimes/reveal.js/5.1.0/reveal.css',
+        '/api/runtimes/reveal.js/5.1.0/theme/white.css',
+        '/api/runtimes/reveal.js/5.1.0/reveal.js',
+      ],
+      {
+        arkRuntimeLib: 'reveal.js',
+        arkRuntimeVersion: '5.1.0',
+      },
+      {
+        arkRuntimeAddonLib: null,
+        arkRuntimeAddonVersion: '4.5.1',
+      },
+    )
+
+    expect(
+      incompleteAddonVersionOnly.some((issue) =>
+        issue.message.includes('data-ark-runtime-addon-lib and data-ark-runtime-addon-version'),
+      ),
+    ).toBe(true)
+  })
+
   it('includes approved runtimes in generation guidance', () => {
     const prompt = buildRuntimeRegistryPromptSection()
 
