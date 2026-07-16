@@ -57,16 +57,12 @@ export function showImageSection(selection: EditorSelectionInfo): boolean {
 
 /**
  * Reason why mutating inspector controls are disabled, or null when the
- * selection is editable. Mirrors the server-side patch rules: locked elements
- * reject every mutation and non-managed elements reject layout/style edits.
+ * selection is editable. Mirrors the server-side patch rule that locked
+ * elements reject mutations.
  */
 export function getInspectorDisabledReason(selection: EditorSelectionInfo): string | null {
   if (selection.locked) {
     return 'This element is locked. Unlock it to edit properties.'
-  }
-
-  if (!selection.managed) {
-    return 'This element is part of the original deck layout and is not Ark-managed, so its properties cannot be edited here.'
   }
 
   return null

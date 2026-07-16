@@ -290,24 +290,16 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorHoverMessage(data)) {
-        setState((current) => {
-          const sameHover =
-            current.hover?.elementId === data.elementId &&
-            current.hover.slideIndex === data.slideIndex
-
-          return {
-            ...current,
-            hover: {
-              elementId: data.elementId,
-              slideIndex: data.slideIndex,
-              ...(data.surface ? { surface: data.surface } : {}),
-            },
-            // Drop hover overlay when the pointer target changes so a stale
-            // box from the previous element never briefly paints.
-            hoverGeometry: data.geometry ?? (sameHover ? current.hoverGeometry : null),
-            hoverSlideBounds: data.slideBounds ?? (sameHover ? current.hoverSlideBounds : null),
-          }
-        })
+        setState((current) => ({
+          ...current,
+          hover: {
+            elementId: data.elementId,
+            slideIndex: data.slideIndex,
+            ...(data.surface ? { surface: data.surface } : {}),
+          },
+          hoverGeometry: data.geometry ?? null,
+          hoverSlideBounds: data.slideBounds ?? null,
+        }))
         return
       }
 
@@ -347,17 +339,7 @@ export function useDeckEditorBridge(
             }
           }
 
-          if (current.hover?.elementId === data.elementId) {
-            return {
-              ...current,
-              hover: data.surface ? { ...current.hover, surface: data.surface } : current.hover,
-              hoverGeometry: data.geometry,
-              hoverSlideBounds: data.slideBounds ?? null,
-            }
-          }
-
-          // Ignore late geometry for elements that are no longer selected or
-          // hovered — never poison selection overlay state.
+          // Ignore late geometry for elements that are no longer selected.
           return current
         })
         return

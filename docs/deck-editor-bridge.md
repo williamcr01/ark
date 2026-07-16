@@ -1,6 +1,6 @@
 # Ark manual editor bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). When a deck is loaded and interactive (not presenting or generating), the shell enables the editor runtime automatically — there is no Preview/Edit toggle. The shell and deck runtime coordinate selection, geometry, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). For CSS-only and approved Reveal decks, the shell enables the editor runtime automatically whenever the deck is interactive (not presenting or generating) — there is no Preview/Edit toggle. Persistent manual editing is disabled for custom-JS decks because deck-authored scripts share the iframe execution realm and could forge editor messages. The shell and deck runtime coordinate selection, geometry, transforms, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
 
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
@@ -30,14 +30,14 @@ Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*`
 
 ### Enable / disable
 
-| Step | Actor | Action                                                                                          |
-| ---- | ----- | ----------------------------------------------------------------------------------------------- |
-| 1    | Shell | Derives edit chrome from a loaded deck that is not presenting or generating (`DeckPreview`)     |
-| 2    | Shell | The existing editor-capable preview frame stays mounted                                         |
-| 3    | Shell | `useDeckEditorBridge` attaches a `message` listener and calls `enableEditor(slideIndex, tool?)` |
-| 4    | Shell | Posts `ark:editor-enable` with the active slide index and optional tool (default `select`)      |
-| 5    | Deck  | Binds pointer/keyboard listeners, sets `enabled = true`, posts `ark:editor-ready`               |
-| 6    | Shell | Marks `editorReady: true`; re-sends `ark:editor-enable` when the active slide changes           |
+| Step | Actor | Action                                                                                                  |
+| ---- | ----- | ------------------------------------------------------------------------------------------------------- |
+| 1    | Shell | Derives edit chrome from a loaded deck that is not presenting or generating (`DeckPreview`)             |
+| 2    | Shell | The existing editor-capable preview frame stays mounted                                                 |
+| 3    | Shell | `useDeckEditorBridge` attaches a `message` listener and calls `enableEditor(slideIndex, tool?, scale?)` |
+| 4    | Shell | Posts `ark:editor-enable` with the active slide index, tool, and preview scale                          |
+| 5    | Deck  | Binds pointer/keyboard listeners, sets `enabled = true`, posts `ark:editor-ready`                       |
+| 6    | Shell | Marks `editorReady: true`; re-sends `ark:editor-enable` when the active slide changes                   |
 
 `ark:editor-ready` guarantees:
 
@@ -45,6 +45,8 @@ Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*`
 - Pointer and keyboard listeners are bound
 - `slideIndex` in the ready message matches the editor's active slide
 - `protocolVersion` is `1`
+
+The shell posts `ark:editor-configure` when the preview scale changes. The runtime divides handle, guide, and hit-target sizes by this scale so editor chrome stays usable at any zoom.
 
 The editor runtime is **dormant** until `ark:editor-enable`. Messages other than enable/disable are ignored while disabled.
 
@@ -61,16 +63,18 @@ The editor runtime is **dormant** until `ark:editor-enable`. Messages other than
 
 ### Parent → iframe (shell messages)
 
-| Type                          | Payload fields                            | When sent                                                  | Receiver behavior                                                              |
-| ----------------------------- | ----------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `ark:editor-enable`           | `slideIndex: number`, `tool?: EditorTool` | Edit chrome active, iframe load, or active slide change    | Bind listeners; set slide index and tool; post `ark:editor-ready`              |
-| `ark:editor-disable`          | _(none)_                                  | Present mode, generation, or empty deck                    | Tear down editor state; clear selection                                        |
-| `ark:editor-select`           | `elementId: string`, `slideIndex: number` | Programmatic selection (future toolbar/context flows)      | Resolve element; highlight; post `ark:editor-selection-change`                 |
-| `ark:editor-clear-selection`  | _(none)_                                  | Clear selection programmatically                           | Deselect; post `ark:editor-selection-change` with `null`                       |
-| `ark:editor-start-text-edit`  | `elementId: string`, `slideIndex: number` | **Edit text** button or Enter on a text-editable selection | Enter `contenteditable` on element; post `ark:editor-text-edit-state`          |
-| `ark:editor-cancel-text-edit` | _(none)_                                  | Escape (shell) or cancel flow                              | Revert text; exit edit; post `ark:editor-text-edit-state` with `active: false` |
-| `ark:editor-request-geometry` | `elementId: string`, `slideIndex: number` | Selection changes while edit chrome is active              | Measure element; post `ark:editor-geometry`                                    |
-| `ark:editor-set-tool`         | `tool: EditorTool`                        | Toolbar tool selection                                     | Set active tool: `select`, `text`, or `insert`                                 |
+| Type                          | Payload fields                                      | When sent                                                   | Receiver behavior                                                              |
+| ----------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ark:editor-enable`           | `slideIndex`, `tool?: EditorTool`, `scale?: number` | Edit chrome active, iframe load, or active slide change     | Bind listeners; set slide index, tool, and scale; post `ark:editor-ready`      |
+| `ark:editor-configure`        | `scale: number`                                     | Preview scale changes                                       | Resize editor chrome without re-enabling the runtime                           |
+| `ark:editor-disable`          | _(none)_                                            | Present mode, generation, or empty deck                     | Tear down editor state; clear selection                                        |
+| `ark:editor-select`           | `elementId: string`, `slideIndex: number`           | Restore selection after a persisted patch and iframe reload | Resolve element; highlight; post `ark:editor-selection-change`                 |
+| `ark:editor-clear-selection`  | _(none)_                                            | Clear selection programmatically                            | Deselect; post `ark:editor-selection-change` with `null`                       |
+| `ark:editor-start-text-edit`  | `elementId: string`, `slideIndex: number`           | **Edit text** button or Enter on a text-editable selection  | Enter `contenteditable` on element; post `ark:editor-text-edit-state`          |
+| `ark:editor-cancel-text-edit` | _(none)_                                            | Escape (shell) or cancel flow                               | Revert text; exit edit; post `ark:editor-text-edit-state` with `active: false` |
+| `ark:editor-request-geometry` | `elementId: string`, `slideIndex: number`           | Selection changes while edit chrome is active               | Measure element; post `ark:editor-geometry`                                    |
+| `ark:editor-set-tool`         | `tool: EditorTool`                                  | Toolbar tool selection                                      | Set active tool: `select`, `text`, or `insert`                                 |
+| `ark:editor-transform-cancel` | _(none)_                                            | Pointer release/cancel is observed by the parent shell      | Restore the pre-gesture inline style and clear transient transform chrome      |
 
 #### `EditorTool`
 
@@ -86,10 +90,10 @@ type EditorTool = 'select' | 'text' | 'insert'
 
 #### Selection
 
-| Type                          | Payload fields                                    | When fired                                                       | Parent behavior                                              |
-| ----------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------ |
-| `ark:editor-hover`            | `elementId: string \| null`, `slideIndex: number` | Pointer move over the active slide (suppressed during text edit) | Update hover state                                           |
-| `ark:editor-selection-change` | `selection: EditorSelectionInfo \| null`          | Click select/deselect, disable, or programmatic select           | Update selection; drive overlay and **Edit text** affordance |
+| Type                          | Payload fields                                                     | When fired                                                       | Parent behavior                                              |
+| ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------ |
+| `ark:editor-hover`            | `elementId`, `slideIndex`, `geometry?`, `slideBounds?`, `surface?` | Pointer move over the active slide (suppressed during text edit) | Draw hover chrome from the inline geometry                   |
+| `ark:editor-selection-change` | `selection: EditorSelectionInfo \| null`                           | Click select/deselect, disable, or programmatic select           | Update selection; drive overlay and **Edit text** affordance |
 
 ```ts
 type EditorSelectionInfo = {
@@ -102,6 +106,7 @@ type EditorSelectionInfo = {
   editableKind: string | null // data-ark-editable (e.g. "text-box", "image")
   textPreview: string | null // collapsed whitespace text or alt text
   imageFit?: 'contain' | 'cover' | 'fill' | null // images only
+  surface?: 'light' | 'dark' // local background tone for adaptive chrome
   // Inspector metadata (issue #84); optional for protocol compatibility.
   role?: string | null // data-ark-role
   textStyle?: {
@@ -115,11 +120,13 @@ type EditorSelectionInfo = {
 }
 ```
 
+Selection candidates include text, images/SVG, links, and layout containers (`div`, non-slide `section`, lists, tables, blockquotes, `pre`, `figure`, and `hr`) with non-zero geometry. Hit-testing keeps the innermost candidate unless it belongs to a managed wrapper. Escape selects the next editable parent, then clears selection at the slide root.
+
 #### Geometry
 
-| Type                  | Payload fields                                                                                                              | When fired                                | Parent behavior                   |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- |
-| `ark:editor-geometry` | `elementId`, `slideIndex`, `geometry: EditorNormalizedRect`, `zIndex: number \| null`, `slideBounds?: EditorNormalizedRect` | Response to `ark:editor-request-geometry` | Position `EditorSelectionOverlay` |
+| Type                  | Payload fields                                                                                                    | When fired                                | Parent behavior                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------- |
+| `ark:editor-geometry` | `elementId`, `slideIndex`, `geometry: EditorNormalizedRect`, `zIndex: number \| null`, `slideBounds?`, `surface?` | Response to `ark:editor-request-geometry` | Position `EditorSelectionOverlay` |
 
 ```ts
 type EditorNormalizedRect = {
@@ -130,9 +137,9 @@ type EditorNormalizedRect = {
 }
 ```
 
-Coordinates in `geometry` are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. The reference slide size for persisting layout (`1280×720`) is defined in `packages/deck-core/deck-metadata.ts` and applied server-side when converting to inline CSS.
+Coordinates in `geometry` are **slide-relative normalized fractions** (0–1), derived from `getBoundingClientRect()` of the element and its containing slide. They are not document pixels. Transform commits also carry optional normalized CSS offsets and the slide's actual logical width/height, so plain and Reveal decks round-trip in their native coordinate space.
 
-Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`document.documentElement`). The shell composes `slideBounds` with slide-relative `geometry` when drawing `EditorSelectionOverlay` and the inspector settings trigger, so letterboxed or scaled slides (e.g. Reveal) stay aligned with the parent chrome. When omitted, the shell treats the slide as filling the stage (`{ x: 0, y: 0, width: 1, height: 1 }`). Transform preview/commit messages carry the same optional field for live drag chrome.
+Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`document.documentElement`). The shell composes `slideBounds` with slide-relative `geometry` when drawing `EditorSelectionOverlay` and the inspector settings trigger, so letterboxed or scaled slides (e.g. Reveal) stay aligned with the parent chrome. When omitted, the shell treats the slide as filling the stage (`{ x: 0, y: 0, width: 1, height: 1 }`). Transform preview/commit messages carry the same optional field for live drag chrome. `surface` is detected from the nearest composited background color or a gradient-stop average; the shell uses white chrome on dark surfaces and black chrome on light surfaces.
 
 #### Text editing
 
@@ -149,20 +156,33 @@ Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`
 
 #### Transforms
 
-| Type                           | Payload fields                                                   | When fired                          | Semantics                                                                                 |
-| ------------------------------ | ---------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?` | During drag/resize (future toolbar) | **Uncommitted** visual update; parent may mirror in chrome but must not persist           |
-| `ark:editor-transform-commit`  | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?` | Transform gesture complete          | **Persistence trigger**; parent should map to `move_element` / `resize_element` patch ops |
+| Type                           | Payload fields                                                                                             | When fired                | Semantics                                                                           |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
+| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?`                                           | During drag/resize/nudge  | **Uncommitted** visual update; parent may mirror in chrome but must not persist     |
+| `ark:editor-transform-commit`  | Preview fields plus `adopted?`, `cssX?`, `cssY?`, `cssWidth?`, `cssHeight?`, `slideWidth?`, `slideHeight?` | Gesture or nudge complete | **Persistence trigger**; parent maps to `move_element` / `resize_element` patch ops |
+| `ark:editor-transform-cancel`  | _(none)_                                                                                                   | Gesture canceled          | Clear uncommitted preview state                                                     |
 
-`useDeckEditorBridge` stores preview and commit messages in separate state fields; a preview clears any pending commit and vice versa. End-to-end transform persistence is tracked in #80.
+Dragging any unlocked selection moves it. A non-absolute element is adopted on first move by preserving its parent, freezing its measured width, and switching it to absolute positioning in the same containing-block coordinate system. Existing absolute descendants use that same coordinate conversion. Commits include logical slide dimensions so Reveal's native canvas size is preserved.
+
+Move gestures snap to slide and nearby element edges/centers; Alt disables snapping. Shift constrains move axes and preserves aspect ratio on corner resize. Escape restores the pre-gesture inline styles. Arrow keys nudge by one logical pixel (Shift: ten) and debounce into one commit. Pointer capture plus parent-window cancellation prevents a released-outside gesture from remaining active.
+
+`useDeckEditorBridge` stores preview and commit messages separately; a preview clears any pending commit and vice versa. The shell serializes manual mutations, records undo/redo snapshots, and restores the stable element ID returned by the patch response after the iframe reloads.
+
+#### Shortcuts
+
+| Type                  | Payload fields                            | When fired                           | Parent behavior                    |
+| --------------------- | ----------------------------------------- | ------------------------------------ | ---------------------------------- |
+| `ark:editor-shortcut` | `action: 'undo' \| 'redo' \| 'duplicate'` | Cmd/Ctrl+Z, Shift+Z/Y, or Cmd/Ctrl+D | Run the corresponding shell action |
+
+Undo during an uncommitted nudge cancels the local nudge and sends neither a transform commit nor an undo request. Other mutating actions are serialized after pending transforms.
 
 #### Deletion and errors
 
-| Type                        | Payload fields                               | When fired                                                              | Semantics                                                               |
-| --------------------------- | -------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes an **Ark-managed** selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch op after server validation  |
-| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                                                | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)` |
-| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)                         | Surface in preview chrome; optional `onEditorError` callback            |
+| Type                        | Payload fields                               | When fired                                                       | Semantics                                                               |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes an unlocked selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch op after server validation  |
+| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                                         | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)` |
+| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)                  | Surface in preview chrome; optional `onEditorError` callback            |
 
 Known error codes from the injected runtime: `locked-element`, `non-text-element`, `missing-element`, `missing-slide`, `editor-runtime`.
 
@@ -192,6 +212,7 @@ Iframe → parent posts use `PARENT_ORIGIN` (embedded in the injected script) or
 - **Generation guard:** `useDeckEditorBridge` tags each iframe load with `iframeGenerationKey`; runtime messages from a previous generation are dropped.
 - **Source guard:** messages not originating from the current preview `contentWindow` are dropped.
 - **Shape guard:** only payloads passing `isEditorRuntimeMessage` / `isEditorShellMessage` are handled; unknown `ark:editor-*` types are ignored.
+- **Execution-realm guard:** custom-JS decks never activate the persistent editor bridge; a nonce cannot distinguish deck code from injected runtime code in the same window.
 - **Hostile fixtures (#81):** security tests should assert that forged origins, wrong `event.source`, malformed payloads, and out-of-protocol types never mutate shell state or reach the patch API.
 
 ### Element identity
@@ -208,21 +229,21 @@ Iframe → parent posts use `PARENT_ORIGIN` (embedded in the injected script) or
 
 Parsed by `apps/api/deck-editable-elements.ts` and enforced again in `apps/api/deck-element-patch.ts` on every patch:
 
-| State                                                                                                                             | Meaning                                             | Editor behavior                                           | Patch behavior                                                         |
-| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Locked** (`data-ark-locked="true"` or derived lock reason)                                                                      | Selectable for inspection; not editable or movable  | Shown with **Locked** badge; text edit blocked at runtime | All mutating ops rejected                                              |
-| **Managed** (`data-ark-managed="true"`, or `data-ark-editable="true"` with `data-ark-id`, or absolutely positioned with top/left) | Ark-owned layout safe to move/resize                | Move/resize when toolbar ships (#80)                      | `move_element`, `resize_element`, `reorder_element` allowed            |
-| **Unmanaged uploaded content**                                                                                                    | Recognized text/image candidates without stable ids | Selectable; inline text may work for inline tags          | `replace_text` allowed; reposition ops rejected (`layout-not-managed`) |
+| State                                                                                                                             | Meaning                                            | Editor behavior                                                   | Patch behavior                                        |
+| --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------- |
+| **Locked** (`data-ark-locked="true"` or derived lock reason)                                                                      | Selectable for inspection; not editable or movable | Shown with **Locked** badge; all mutation controls disabled       | All mutating ops rejected                             |
+| **Managed** (`data-ark-managed="true"`, or `data-ark-editable="true"` with `data-ark-id`, or absolutely positioned with top/left) | Already owned by Ark's manual layout system        | Move, resize, duplicate, delete, reorder, and inspect             | Mutations allowed after normal target validation      |
+| **Unmanaged deck content**                                                                                                        | Recognized deck-authored element not yet adopted   | Same unlocked controls; first move adopts and assigns a stable id | Mutations allowed; patched targets receive stable ids |
 
-Lock reasons include: `explicit-lock`, `unsafe-tag`, `runtime-control`, `speaker-notes`, `hidden`, `no-text-content`, `layout-not-managed`.
+Lock reasons include `explicit-lock`, `unsafe-tag`, `runtime-control`, `speaker-notes`, `hidden`, and `no-text-content`. `managed` is metadata, not a permission gate.
 
-Keyboard **Delete/Backspace** in the runtime only fires `ark:editor-delete-request` for Ark-managed selections, matching the toolbar. Selecting a deck-authored heading or paragraph and pressing Backspace does nothing, so authored content cannot be destroyed with a stray keystroke.
+Keyboard **Delete/Backspace**, the toolbar, and the inspector operate on any unlocked recognized selection. The server still rejects locked, unsafe, unrecognized, and ambiguous targets.
 
 `reorder_element` accepts either an absolute `zIndex` or a `direction` (`'front'` / `'back'`). The manual editor sends `direction`; the server resolves it against the sibling z-index range (top sibling + 1 for front, floored at 0 for back) so layering is predictable even when the element and its siblings sit at the default `auto`/`0` level.
 
 ### What the parent must not trust
 
-- Commit text, geometry, or delete requests are **hints**. The shell forwards them to `POST /api/decks/:id/patch`, where `assertElementPatchable` re-validates against parsed editable metadata, unsafe tags, and lock/managed rules.
+- Commit text, geometry, or delete requests are **hints**. The shell forwards them to `POST /api/decks/:id/patch`, where `assertElementPatchable` re-validates parsed editable metadata, unsafe tags, and locks.
 - Never apply iframe-reported HTML directly to deck state without a successful patch response.
 - Never skip origin/source/generation checks when adding new handlers.
 
@@ -254,7 +275,7 @@ If `patchDeckOperations` throws (network error, validation failure, locked eleme
 
 While saving, `isPatching` drives the **Saving edit** indicator in the preview chrome.
 
-Transform and delete persistence will follow the same pattern once toolbar/delete flows land (#80): runtime message → hook state → `patchDeckOperations` → server validation → preview refresh.
+Transforms, inserts, duplicates, deletes, inspector changes, and layer changes follow the same validated patch path. Manual mutations are queued per active deck session so concurrent gestures cannot overwrite each other or leak a stale response across a deck switch.
 
 ## Shell integration
 

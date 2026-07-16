@@ -21,7 +21,6 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>
         isSaving={false}
         onToolChange={onToolChange}
         selectionLocked={false}
-        selectionManaged={false}
         textEditActive={false}
         {...overrides}
       />
@@ -82,9 +81,9 @@ describe('EditModeToolbar', () => {
     expect(screen.getByRole('button', { name: 'Delete selected element (locked)' })).toBeDisabled()
   })
 
-  it('enables managed selection actions when available', () => {
+  it('enables unlocked selection actions when available', () => {
     const onDuplicate = vi.fn()
-    renderToolbar({ hasSelection: true, selectionManaged: true, onDuplicate })
+    renderToolbar({ hasSelection: true, onDuplicate })
 
     expect(screen.getByRole('button', { name: 'Duplicate selected element' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Bring forward' })).toBeEnabled()
@@ -96,9 +95,7 @@ describe('EditModeToolbar', () => {
 
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
-    expect(
-      screen.getByRole('button', { name: 'Duplicate selected element (not managed)' }),
-    ).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Duplicate selected element' })).toBeEnabled()
   })
 
   it('enables and triggers undo and redo when available', async () => {

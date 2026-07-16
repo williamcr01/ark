@@ -921,6 +921,8 @@ async function runSmoke() {
     const persistedHeadingState = await evaluate<{
       color: string
       fontSize: string
+      position: string
+      width: string
       parentClass: string
       selected: boolean
     }>(
@@ -931,6 +933,8 @@ async function runSmoke() {
         return {
           color: style.color,
           fontSize: style.fontSize,
+          position: heading?.style.position || '',
+          width: heading?.style.width || '',
           parentClass: heading?.parentElement?.className || '',
           selected: Boolean(heading?.hasAttribute('data-ark-editor-selected')),
         };
@@ -945,6 +949,10 @@ async function runSmoke() {
     assert(
       persistedHeadingState.parentClass.includes('positioned-title'),
       'Nested adoption changed the heading parent',
+    )
+    assert(
+      persistedHeadingState.position === 'absolute' && persistedHeadingState.width.endsWith('px'),
+      'Adoption did not persist absolute positioning and measured width',
     )
     assert(
       persistedHeadingState.selected,

@@ -84,18 +84,13 @@ describe('section visibility', () => {
 })
 
 describe('getInspectorDisabledReason', () => {
-  it('returns null for editable managed selections', () => {
+  it('returns null for unlocked managed and unmanaged selections', () => {
     expect(getInspectorDisabledReason(makeSelection())).toBeNull()
+    expect(getInspectorDisabledReason(makeSelection({ managed: false }))).toBeNull()
   })
 
-  it('explains locked and unmanaged selections', () => {
+  it('explains locked selections', () => {
     expect(getInspectorDisabledReason(makeSelection({ locked: true }))).toMatch(/locked/i)
-    expect(getInspectorDisabledReason(makeSelection({ managed: false }))).toMatch(
-      /not ark-managed/i,
-    )
-  })
-
-  it('prefers the locked reason when both apply', () => {
     expect(getInspectorDisabledReason(makeSelection({ locked: true, managed: false }))).toMatch(
       /locked/i,
     )

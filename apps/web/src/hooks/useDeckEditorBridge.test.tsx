@@ -471,6 +471,30 @@ describe('useDeckEditorBridge', () => {
     expect(screen.getByLabelText('Hover geometry')).toHaveTextContent('geometry')
     expect(screen.getByLabelText('Hover surface')).toHaveTextContent('dark')
     expect(screen.getByLabelText('Shortcut')).toHaveTextContent('undo:2')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorHoverMessage(0, 'ark-el-body'),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('ark-el-body', 0, {
+            x: 0.2,
+            y: 0.3,
+            width: 0.4,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Hover geometry')).toHaveTextContent('none')
   })
 
   it('clears transform state when the runtime cancels a gesture', async () => {

@@ -1137,6 +1137,35 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByRole('button', { name: 'Edit selected text' })).not.toBeInTheDocument()
   })
 
+  it('allows toolbar mutations for unlocked unmanaged selections', async () => {
+    const user = userEvent.setup()
+    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      managed: false,
+      editableKind: null,
+      textPreview: 'Quarterly planning',
+    }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      onPatchEditorOperations,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Delete selected element' }))
+    await user.click(screen.getByRole('button', { name: 'Bring forward' }))
+
+    expect(onPatchEditorOperations.mock.calls.map(([operations]) => operations[0]?.op)).toEqual([
+      'delete_element',
+      'reorder_element',
+    ])
+  })
+
   it('keeps the floating inspector closed until settings is clicked', async () => {
     const user = userEvent.setup()
 
@@ -1414,7 +1443,7 @@ describe('DeckPreview script divergence UI', () => {
       slideId: 'slide-1',
       tagName: 'img',
       locked: false,
-      managed: true,
+      managed: false,
       editableKind: 'image',
       textPreview: 'A chart',
     }

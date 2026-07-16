@@ -666,7 +666,7 @@ export function ElementInspector({
               'hover:bg-[var(--ark-titlebar-hover)]',
               'disabled:cursor-not-allowed disabled:text-[var(--ark-titlebar-muted)]/50',
             )}
-            disabled={busy || (!selection.locked && !selection.managed)}
+            disabled={busy}
             onClick={commitLockToggle}
             type="button"
           >

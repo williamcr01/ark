@@ -154,15 +154,15 @@ describe('ElementInspector', () => {
     expect(screen.getByRole('button', { name: 'Unlock element' })).toBeEnabled()
   })
 
-  it('explains unmanaged uploaded-deck elements and disables edits', () => {
+  it('enables edits for unlocked unmanaged deck elements', () => {
     renderInspector({
       selection: makeSelection({ managed: false, editableKind: null, tagName: 'h1' }),
     })
 
-    expect(screen.getByRole('note')).toHaveTextContent(/not ark-managed/i)
-    expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Send backward' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Lock element' })).toBeDisabled()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Send backward' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Lock element' })).toBeEnabled()
   })
 
   it('disables controls while saving', () => {

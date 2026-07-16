@@ -337,12 +337,11 @@ export function DeckPreview({
   )
 
   const canModifySelection =
-    Boolean(selection?.managed) && !selection?.locked && editChromeActive && !textEditActive
+    selection !== null && !selection.locked && editChromeActive && !textEditActive
 
   const selectedImage = Boolean(
     selection &&
     !selection.locked &&
-    selection.managed &&
     (selection.editableKind === 'image' || selection.tagName === 'img'),
   )
 
@@ -1155,18 +1154,6 @@ export function DeckPreview({
   }, [editChromeActive, onEditorSelectionChange, selection])
 
   useEffect(() => {
-    if (!editChromeActive || !hover?.elementId || hoverGeometry) {
-      return
-    }
-
-    if (hover.elementId === selection?.elementId) {
-      return
-    }
-
-    requestGeometry(hover.elementId, hover.slideIndex)
-  }, [editChromeActive, hover, hoverGeometry, requestGeometry, selection?.elementId])
-
-  useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
       return
     }
@@ -1283,7 +1270,6 @@ export function DeckPreview({
           onUndo={handleUndo}
           selectedImage={selectedImage}
           selectionLocked={selection?.locked ?? false}
-          selectionManaged={selection?.managed ?? false}
           textEditActive={textEditActive}
         />
       ) : null}
