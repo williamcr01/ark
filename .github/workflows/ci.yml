@@ -5,9 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Nightly extended browser coverage (UTC).
-    - cron: '0 6 * * *'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -62,13 +59,13 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      # Live Chromium thumbnail coverage runs in test-live-chromium (main/nightly).
+      # Live Chromium thumbnail coverage runs in test-live-chromium (main only).
       - run: pnpm test
 
   test-live-chromium:
-    # API-level Chromium renderer coverage: main pushes and nightly only (not PRs).
-    # UI e2e thumbnail smoke stays in smoke-extended on the same schedule.
-    if: github.event_name == 'push' || github.event_name == 'schedule'
+    # API-level Chromium renderer coverage: main pushes only (not PRs).
+    # UI e2e thumbnail smoke stays in smoke-extended on the same trigger.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     # Budget for up to 3 attempts of the live Chromium suite.
     timeout-minutes: 35
@@ -154,8 +151,8 @@ jobs:
           retention-days: 7
 
   smoke-extended:
-    # Heavier browser suites: main pushes and nightly schedule only (not PRs).
-    if: github.event_name == 'push' || github.event_name == 'schedule'
+    # Heavier browser suites: main pushes only (not PRs).
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     # Budget for 4 suites with up to 5 attempts each on flaky runners.
     timeout-minutes: 90
@@ -209,7 +206,7 @@ jobs:
           command: pnpm smoke:manual-edit
 
       # UI e2e for rendered PNG thumbnails. API renderer coverage is
-      # test-live-chromium on main/nightly; both stay off the PR critical path.
+      # test-live-chromium on main pushes; both stay off the PR critical path.
       - name: Smoke - thumbnails
         uses: nick-fields/retry@v3
         with:
