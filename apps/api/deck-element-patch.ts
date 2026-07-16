@@ -631,13 +631,14 @@ function applyDuplicateElement(
 
   const clone = resolved.element.cloneNode(true) as Element
   clearStableElementIds(clone)
-  clone.setAttribute(ARK_MANAGED_ATTR, 'true')
+  clone.removeAttribute(ARK_MANAGED_ATTR)
 
   // Only nudge the clone when the source is already absolutely positioned. For a
   // flow-positioned element, forcing `position: absolute` at a small offset would
   // rip the duplicate out of flow to the top-left of the slide; instead let it
   // sit inline right after the original.
   if (isAbsolutelyPositioned(resolved.element)) {
+    clone.setAttribute(ARK_MANAGED_ATTR, 'true')
     const offsetX = operation.offsetX ?? 0.02
     const offsetY = operation.offsetY ?? 0.02
     const currentLeft =
@@ -797,7 +798,6 @@ function applySetInlineStyle(
     return merged
   }
 
-  resolved.element.setAttribute(ARK_MANAGED_ATTR, 'true')
   const elementId = ensureStableElementId(resolved.element)
   markElementChanged(context, resolved.slideIndex, elementId)
   context.summaries.push(`Updated style on ${elementId}.`)
@@ -909,7 +909,11 @@ function applyReorderElement(
   }
 
   const targetZIndex = resolveReorderZIndex(resolved.element, operation)
-  const merged = mergeInlineStyle(resolved.element, { 'z-index': String(targetZIndex) })
+  const position = context.doc.defaultView?.getComputedStyle(resolved.element).position
+  const merged = mergeInlineStyle(resolved.element, {
+    ...(!position || position === 'static' ? { position: 'relative' } : {}),
+    'z-index': String(targetZIndex),
+  })
 
   if ('error' in merged) {
     return merged

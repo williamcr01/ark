@@ -57,6 +57,16 @@ const arkManagedLinkDeck = `<!DOCTYPE html>
 </body>
 </html>`
 
+const inlineSvgDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>SVG</title></head>
+<body>
+  <section class="slide">
+    <svg data-ark-id="ark-el-svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /></svg>
+  </section>
+</body>
+</html>`
+
 function expectValidDeck(html: string) {
   const validation = validateDeckHtmlOnServer(html)
   expect(validation.valid).toBe(true)
@@ -294,8 +304,10 @@ describe('applyDeckPatches element operations', () => {
 
     expect(duplicated.html.match(/Opening/g)?.length).toBe(2)
     // Only the pre-existing managed body copy stays absolutely positioned; the
-    // flow-positioned heading clone must not be ripped out of flow.
+    // flow-positioned heading clone must not be ripped out of flow or marked as
+    // adopted layout.
     expect(duplicated.html.match(/position: absolute/g)?.length).toBe(1)
+    expect(duplicated.html.match(/data-ark-managed="true"/g)?.length).toBe(1)
   })
 
   it('moves, resizes, and reorders managed elements using normalized geometry', () => {
@@ -384,28 +396,37 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain('box-sizing: border-box')
   })
 
-  it('moves, resizes, duplicates, and reorders an inline SVG element', () => {
-    const moved = applyDeckPatches(
-      `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><title>SVG</title></head>
-<body>
-  <section class="slide">
-    <svg data-ark-id="ark-el-svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /></svg>
-  </section>
-</body>
-</html>`,
-      [
-        {
-          op: 'move_element',
-          slideIndex: 0,
-          elementId: 'ark-el-svg',
-          x: 0.25,
-          y: 0.1,
-          width: 0.4,
-        },
-      ],
-    )
+  it('reorders a static inline SVG element without removing it from flow', () => {
+    const reordered = applyDeckPatches(inlineSvgDeck, [
+      {
+        op: 'reorder_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        direction: 'front',
+      },
+    ])
+
+    expect(reordered.ok).toBe(true)
+    if (!reordered.ok) {
+      return
+    }
+
+    expect(reordered.html).toMatch(/<svg[^>]*position: relative/)
+    expect(reordered.html).toMatch(/<svg[^>]*z-index: 1/)
+    expect(reordered.html).not.toContain('data-ark-managed="true"')
+  })
+
+  it('moves, resizes, and duplicates an inline SVG element', () => {
+    const moved = applyDeckPatches(inlineSvgDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        x: 0.25,
+        y: 0.1,
+        width: 0.4,
+      },
+    ])
 
     expect(moved.ok).toBe(true)
     if (!moved.ok) {
@@ -449,22 +470,6 @@ describe('applyDeckPatches element operations', () => {
     }
 
     expect(duplicated.html.match(/<svg/g)).toHaveLength(2)
-
-    const reordered = applyDeckPatches(duplicated.html, [
-      {
-        op: 'reorder_element',
-        slideIndex: 0,
-        elementId: 'ark-el-svg',
-        direction: 'front',
-      },
-    ])
-
-    expect(reordered.ok).toBe(true)
-    if (!reordered.ok) {
-      return
-    }
-
-    expect(reordered.html).toContain('z-index: 1')
   })
 
   it('uses the runtime logical slide size for Reveal transforms', () => {
@@ -609,6 +614,23 @@ describe('applyDeckPatches element operations', () => {
   })
 
   it('applies inline style updates and lock management', () => {
+    const flowStyled = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'set_inline_style',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        style: { 'font-size': '32px' },
+      },
+    ])
+
+    expect(flowStyled.ok).toBe(true)
+    if (!flowStyled.ok) {
+      return
+    }
+
+    expect(flowStyled.html).toMatch(/<h1[^>]*font-size: 32px/)
+    expect(flowStyled.html).not.toMatch(/<h1[^>]*data-ark-managed/)
+
     const styled = applyDeckPatches(arkManagedDeck, [
       {
         op: 'set_inline_style',
