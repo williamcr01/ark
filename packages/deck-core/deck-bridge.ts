@@ -870,6 +870,11 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
     lastReportedIndex = clamped;
     currentLinearIndex = clamped;
     postToParent({ type: C.CHANGE, index: clamped });
+    // Deck-authored Chart.js (and similar) init listens for this DOM event to
+    // resize canvases after Reveal shows a previously hidden slide.
+    document.dispatchEvent(new CustomEvent(C.CHANGE, {
+      detail: { index: clamped },
+    }));
   }
 
   function postReady(index, slideCount) {

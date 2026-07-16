@@ -85,7 +85,7 @@ When creating or editing deck HTML (through the agent tools or upload):
 3. **Agent-friendly structure**: Use clear section/slide boundaries (e.g. `<section class="slide">` for plain decks, or `.reveal > .slides > section` for reveal.js — see [docs/reveal-runtime.md](docs/reveal-runtime.md)).
 4. **Safe preview**: Prefer `addEventListener` over inline handlers; use inline CSS, data URIs, and SVG — no external http(s) resource URLs.
 5. **Incremental edits**: Prefer patching specific slides over rewriting the entire file when the user asks for small changes.
-6. **Approved runtimes**: Use pinned `/api/runtimes/...` assets from the registry — never CDNs. See [docs/runtimes.md](docs/runtimes.md) and [docs/reveal-runtime.md](docs/reveal-runtime.md).
+6. **Approved runtimes**: Use pinned `/api/runtimes/...` assets from the registry — never CDNs. See [docs/runtimes.md](docs/runtimes.md), [docs/reveal-runtime.md](docs/reveal-runtime.md), and [docs/chart-runtime.md](docs/chart-runtime.md).
 
 ### Preview network isolation
 
@@ -155,7 +155,7 @@ Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml`
 
 ### Always-on agent guides
 
-Markdown files under `agent-guides/` are automatically loaded and appended to the deck agent system prompt on every generation job (alongside tool definitions and chat history). Use numeric prefixes for ordering (`10-reveal-js.md`); `README.md` and `_*.md` are excluded. Hard validation rules stay in the core prompt; guides hold longer authoring patterns. Override the directory with `ARK_AGENT_GUIDES_DIR` and cap size with `ARK_AGENT_GUIDES_MAX_BYTES` (see `.env.example`).
+Markdown files under `agent-guides/` are automatically loaded and appended to the deck agent system prompt on every generation job (alongside tool definitions and chat history). Use numeric prefixes for ordering (`10-reveal-js.md`, `20-chart-js.md`); `README.md` and `_*.md` are excluded. Hard validation rules stay in the core prompt; guides hold longer authoring patterns. Override the directory with `ARK_AGENT_GUIDES_DIR` and cap size with `ARK_AGENT_GUIDES_MAX_BYTES` (see `.env.example`).
 
 ### Agent tool loop (issue #58)
 
@@ -197,7 +197,7 @@ Fully working editor, not a scaffold. Implemented today:
 - **Server-persisted chat** per deck with `localStorage` caching.
 - **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
 - **Sandboxed preview** on a separate origin with CSP isolation, CSS-only and full-JS modes, sandbox-backed PNG thumbnails with `srcDoc` fallback, and Present mode.
-- **Approved runtime registry** with vendored reveal.js 5.1.0 served from `/api/runtimes/...`.
+- **Approved runtime registry** with vendored reveal.js 5.1.0 and chart.js 4.5.1 served from `/api/runtimes/...`.
 - **Manual editing (in progress)**: editable element metadata, sandbox-safe editor bridge protocol ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `packages/deck-core/deck-editor-bridge.ts`), and a structured element patch API (`POST /api/decks/:id/patch`) are in place; inline text editing, toolbar, and text boxes ship today. Client-side undo/redo with manual-edit provenance (#82) is implemented via `apps/web/src/hooks/useDeckEditHistory.ts` and `packages/deck-core/deck-edit-provenance.ts` — each committed manual edit records before/after HTML snapshots plus structured provenance (source, operation, slide indexes, element ids, summary), and AI generation/upload/rollback act as history boundaries. A selected element properties inspector (#84, `apps/web/src/components/ElementInspector.tsx` + `src/lib/element-inspector.ts`) shows identity/geometry/layer/text/image/lock controls in desktop edit mode and applies changes through the same patch API, restoring the selection after each preview reload. Remaining manual-editing work is tracked in issues #76 and #78–#83.
 
 Typed API contracts shared by client and server live in `packages/contracts/` (`@ark/contracts`).

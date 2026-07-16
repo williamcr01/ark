@@ -11,6 +11,7 @@ const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 
 const revealDeck = readFileSync(path.join(fixtureDir, 'reveal-deck.html'), 'utf8')
 const revealVerticalDeck = readFileSync(path.join(fixtureDir, 'reveal-vertical-deck.html'), 'utf8')
 const fullJsDeck = readFileSync(path.join(fixtureDir, 'full-js-deck.html'), 'utf8')
+const chartRegistryDeck = readFileSync(path.join(fixtureDir, 'chart-registry-deck.html'), 'utf8')
 const hostileScriptsDeck = readFileSync(path.join(fixtureDir, 'hostile-scripts-deck.html'), 'utf8')
 
 const deckWithNotes = `<!DOCTYPE html>
@@ -90,11 +91,43 @@ describe('parseDeckHtml', () => {
 
     expect(parsed.runtime.previewMode).toBe('full-js')
     expect(parsed.runtime.arkDeck).toBe('nav')
+    expect(parsed.runtime.arkRuntime).toBeNull()
+    expect(parsed.runtime.arkRuntimeLib).toBeNull()
     expect(parsed.scripts).toHaveLength(1)
     expect(parsed.scripts[0]).toMatchObject({
       inline: true,
       contentLength: expect.any(Number),
     })
+  })
+
+  it('reports Chart.js runtime markers and asset references', () => {
+    const parsed = parseDeckHtml(chartRegistryDeck)
+
+    expect(parsed.structure).toBe('plain')
+    expect(parsed.runtime).toMatchObject({
+      previewMode: 'full-js',
+      arkPreview: 'full-js',
+      arkRuntime: 'chart',
+      arkRuntimeLib: 'chart.js',
+      arkRuntimeVersion: '4.5.1',
+    })
+    expect(parsed.scripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          inline: false,
+          src: '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+        }),
+        expect.objectContaining({ inline: true }),
+      ]),
+    )
+    expect(parsed.assets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'script',
+          url: '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+        }),
+      ]),
+    )
   })
 
   it('collects asset references from slides', () => {

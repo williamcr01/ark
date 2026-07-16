@@ -1,0 +1,114 @@
+<!doctype html>
+<html
+  lang="en"
+  data-ark-runtime="reveal"
+  data-ark-runtime-lib="reveal.js"
+  data-ark-runtime-version="5.1.0"
+  data-ark-runtime-addon-lib="chart.js"
+  data-ark-runtime-addon-version="4.5.1"
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reveal + Chart Deck</title>
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/reveal.css" />
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/theme/white.css" />
+    <style>
+      .chart-wrap {
+        width: min(72vw, 960px);
+        height: min(52vh, 520px);
+        margin: 2rem auto 0;
+        position: relative;
+      }
+
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h1>Quarterly revenue</h1>
+          <div class="chart-wrap">
+            <canvas
+              id="revenueChart"
+              role="img"
+              aria-label="Bar chart of quarterly revenue"
+            ></canvas>
+          </div>
+        </section>
+        <section>
+          <h2>Pipeline mix</h2>
+          <div class="chart-wrap">
+            <canvas
+              id="pipelineChart"
+              role="img"
+              aria-label="Doughnut chart of pipeline mix"
+            ></canvas>
+          </div>
+        </section>
+      </div>
+    </div>
+    <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
+    <script src="/api/runtimes/chart.js/4.5.1/chart.umd.min.js"></script>
+    <script>
+      ;(() => {
+        const charts = []
+        const commonOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+        }
+
+        function resizeCharts() {
+          charts.forEach((chart) => chart.resize())
+        }
+
+        charts.push(
+          new Chart(document.getElementById('revenueChart'), {
+            type: 'bar',
+            data: {
+              labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+              datasets: [
+                {
+                  label: 'Revenue ($M)',
+                  data: [4.2, 5.1, 4.8, 6.3],
+                  backgroundColor: ['#38bdf8', '#34d399', '#fbbf24', '#f472b6'],
+                },
+              ],
+            },
+            options: {
+              ...commonOptions,
+              scales: {
+                x: { ticks: { color: '#334155' } },
+                y: { ticks: { color: '#334155' } },
+              },
+            },
+          }),
+        )
+
+        charts.push(
+          new Chart(document.getElementById('pipelineChart'), {
+            type: 'doughnut',
+            data: {
+              labels: ['New', 'Expansion', 'Renewal'],
+              datasets: [
+                {
+                  data: [42, 33, 25],
+                  backgroundColor: ['#38bdf8', '#a78bfa', '#34d399'],
+                },
+              ],
+            },
+            options: commonOptions,
+          }),
+        )
+
+        document.addEventListener('ark:deck-slide-change', () => resizeCharts())
+        window.revealChartDeckBooted = true
+      })()
+    </script>
+  </body>
+</html>

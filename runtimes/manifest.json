@@ -124,6 +124,31 @@
           "size": 1457
         }
       ]
+    },
+    {
+      "id": "chart.js",
+      "version": "4.5.1",
+      "runtimeMode": "custom-js",
+      "license": "MIT",
+      "source": "https://github.com/chartjs/Chart.js",
+      "previewMode": "full-js",
+      "allowsDeckScripts": true,
+      "allowedGlobals": ["Chart"],
+      "markers": {
+        "arkRuntime": ["chart"],
+        "arkRuntimeLib": ["chart.js"]
+      },
+      "requiredAssets": {
+        "js": ["chart.umd.min.js"]
+      },
+      "assets": [
+        {
+          "path": "chart.umd.min.js",
+          "kind": "script",
+          "sha256": "48444a82d4edcb5bec0f1965faacdde18d9c17db3063d042abada2f705c9f54a",
+          "size": 208522
+        }
+      ]
     }
   ]
 }
