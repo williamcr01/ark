@@ -516,10 +516,16 @@ export function useDeckPersistence() {
   }, [])
 
   const restoreHtmlSnapshot = useCallback(
-    (nextHtml: string, options: DeckVersionOptions = {}) =>
-      enqueueManualMutation(async () => {
+    (nextHtml: string, options: DeckVersionOptions = {}) => {
+      const sessionId = saveRequestIdRef.current
+
+      return enqueueManualMutation(async () => {
         if (!deckId) {
           throw new Error('Save the deck before editing.')
+        }
+
+        if (sessionId !== saveRequestIdRef.current) {
+          return undefined
         }
 
         const requestId = ++patchRequestIdRef.current
@@ -532,7 +538,7 @@ export function useDeckPersistence() {
           // accidentally drop client provenance (accepted only for manual).
           const deck = await updateDeck(deckId, nextHtml, { ...options, source: 'manual' })
 
-          if (requestId !== patchRequestIdRef.current) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
             return undefined
           }
 
@@ -545,7 +551,7 @@ export function useDeckPersistence() {
           void refreshVersions(deck.id)
           return deck
         } catch (error) {
-          if (requestId !== patchRequestIdRef.current) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
             return undefined
           }
 
@@ -558,7 +564,8 @@ export function useDeckPersistence() {
             setIsPatching(false)
           }
         }
-      }),
+      })
+    },
     [deckId, enqueueManualMutation, refreshVersions],
   )
 
@@ -567,10 +574,16 @@ export function useDeckPersistence() {
       operations: DeckPatchOperation[],
       activeSlideIndex?: number,
       options: DeckVersionOptions = {},
-    ) =>
-      enqueueManualMutation(async () => {
+    ) => {
+      const sessionId = saveRequestIdRef.current
+
+      return enqueueManualMutation(async () => {
         if (!deckId) {
           throw new Error('Save the deck before editing.')
+        }
+
+        if (sessionId !== saveRequestIdRef.current) {
+          return undefined
         }
 
         const requestId = ++patchRequestIdRef.current
@@ -588,14 +601,14 @@ export function useDeckPersistence() {
             modelName: options.modelName,
           })
 
-          if (requestId !== patchRequestIdRef.current) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
             return undefined
           }
 
           const suggestedSlideIndex = applyPatchedDeck(patchResult)
           return { ...patchResult, suggestedSlideIndex }
         } catch (error) {
-          if (requestId !== patchRequestIdRef.current) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
             return undefined
           }
 
@@ -608,7 +621,8 @@ export function useDeckPersistence() {
             setIsPatching(false)
           }
         }
-      }),
+      })
+    },
     [applyPatchedDeck, deckId, enqueueManualMutation],
   )
 

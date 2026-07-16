@@ -641,6 +641,92 @@ describe('useDeckPersistence', () => {
     expect(result.current.html).toBe(secondDeck.html)
   })
 
+  it('does not apply a completed patch after switching decks', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    let resolvePatch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
+    const patchGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolvePatch = resolve
+    })
+    const patchedDeck = {
+      ...deck,
+      html: sampleHtml.replace('One', 'Patched A'),
+      activeVersionId: 'a0000000-0000-4000-8000-000000000002',
+      versionNumber: 2,
+    }
+    const activeSecondDeck = {
+      ...secondDeck,
+      activeVersionId: 'b0000000-0000-4000-8000-000000000007',
+      versionNumber: 7,
+    }
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo) => {
+      const url = String(input)
+
+      if (url === '/api/decks') {
+        return Promise.resolve(
+          jsonResponse({ decks: [toSummary(deck), toSummary(activeSecondDeck)] }),
+        )
+      }
+      if (url === `/api/decks/${deck.id}/patch`) {
+        return patchGate
+      }
+      if (url === `/api/decks/${deck.id}`) {
+        return Promise.resolve(jsonResponse({ deck }))
+      }
+      if (url === `/api/decks/${activeSecondDeck.id}`) {
+        return Promise.resolve(jsonResponse({ deck: activeSecondDeck }))
+      }
+      if (url.includes('/versions')) {
+        return Promise.resolve(
+          versionsResponse(url.includes(activeSecondDeck.id) ? activeSecondDeck.id : deck.id),
+        )
+      }
+
+      return Promise.resolve(jsonResponse({ error: 'Not found' }, { status: 404 }))
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => expect(result.current.deckId).toBe(deck.id))
+
+    let patchPromise: Promise<unknown> | undefined
+    act(() => {
+      patchPromise = result.current.patchDeckOperations([
+        { op: 'replace_text', elementId: 'ark-el-a', slideIndex: 0, text: 'Patched A' },
+      ])
+    })
+    await waitFor(() => expect(result.current.isPatching).toBe(true))
+
+    await act(async () => {
+      await result.current.selectDeck(activeSecondDeck.id)
+    })
+
+    resolvePatch!(
+      jsonResponse({
+        deck: patchedDeck,
+        validation: validValidation,
+        patch: {
+          appliedCount: 1,
+          changedSlideIndexes: [0],
+          changedElementIds: ['ark-el-a'],
+          summary: 'Patched A',
+          suggestedActiveSlideIndex: 0,
+        },
+      }),
+    )
+    await act(async () => {
+      await patchPromise
+    })
+
+    expect(result.current.deckId).toBe(activeSecondDeck.id)
+    expect(result.current.deckTitle).toBe(activeSecondDeck.title)
+    expect(result.current.html).toBe(activeSecondDeck.html)
+    expect(result.current.activeVersionId).toBe(activeSecondDeck.activeVersionId)
+    expect(result.current.versionNumber).toBe(activeSecondDeck.versionNumber)
+    expect(result.current.isPatching).toBe(false)
+  })
+
   it('forwards provenance on restoreHtmlSnapshot PUT requests', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 
