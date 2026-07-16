@@ -205,6 +205,63 @@ describe('approved runtime registry', () => {
     expect(missingChartAssets.some((issue) => issue.code === 'missing_runtime_assets')).toBe(true)
   })
 
+  it('validates reveal decks with a Chart.js addon', () => {
+    const approved = validateRuntimeAssetReferences(
+      [
+        '/api/runtimes/reveal.js/5.1.0/reveal.css',
+        '/api/runtimes/reveal.js/5.1.0/theme/white.css',
+        '/api/runtimes/reveal.js/5.1.0/reveal.js',
+        '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+      ],
+      {
+        arkRuntimeLib: 'reveal.js',
+        arkRuntimeVersion: '5.1.0',
+      },
+      {
+        arkRuntimeAddonLib: 'chart.js',
+        arkRuntimeAddonVersion: '4.5.1',
+      },
+    )
+
+    expect(approved).toEqual([])
+  })
+
+  it('rejects Chart.js assets on reveal decks without a complete addon declaration', () => {
+    const withoutAddon = validateRuntimeAssetReferences(
+      [
+        '/api/runtimes/reveal.js/5.1.0/reveal.css',
+        '/api/runtimes/reveal.js/5.1.0/theme/white.css',
+        '/api/runtimes/reveal.js/5.1.0/reveal.js',
+        '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+      ],
+      {
+        arkRuntimeLib: 'reveal.js',
+        arkRuntimeVersion: '5.1.0',
+      },
+    )
+
+    expect(withoutAddon.some((issue) => issue.code === 'runtime_version_mismatch')).toBe(true)
+
+    const incompleteAddon = validateRuntimeAssetReferences(
+      [
+        '/api/runtimes/reveal.js/5.1.0/reveal.css',
+        '/api/runtimes/reveal.js/5.1.0/theme/white.css',
+        '/api/runtimes/reveal.js/5.1.0/reveal.js',
+        '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+      ],
+      {
+        arkRuntimeLib: 'reveal.js',
+        arkRuntimeVersion: '5.1.0',
+      },
+      {
+        arkRuntimeAddonLib: 'chart.js',
+        arkRuntimeAddonVersion: null,
+      },
+    )
+
+    expect(incompleteAddon.some((issue) => issue.code === 'runtime_version_mismatch')).toBe(true)
+  })
+
   it('includes approved runtimes in generation guidance', () => {
     const prompt = buildRuntimeRegistryPromptSection()
 

@@ -175,7 +175,7 @@ Model-facing Chart.js instructions live in [`agent-guides/20-chart-js.md`](../ag
 4. Never emit CDN Chart.js URLs.
 5. Keep chart data inline; do not fetch remote datasets (`connect-src 'none'`).
 6. Stick to supported types: bar, line, pie, doughnut, radar, scatter.
-7. Do not combine Chart.js with reveal.js in the same deck unless both runtimes are deliberately declared and tested.
+7. Reveal decks may add Chart.js via `data-ark-runtime-addon-lib="chart.js"` and `data-ark-runtime-addon-version="4.5.1"`; see `agent-guides/20-chart-js.md`.
 
 ## Validation errors
 

@@ -1,6 +1,6 @@
 # Chart.js
 
-Prefer **inline SVG** for simple static charts (single-series bar comparisons, sparklines, icons, small callouts). Use **Chart.js** when interactivity, tooltips, legends, or multi-series data warrant a library. Do **not** make Chart.js the default for every deck.
+Use **Chart.js** when interactivity, tooltips, legends, or multi-series data warrant a library. Do **not** make Chart.js the default for every deck. Prefer **inline SVG** for simple static charts (single-series bar comparisons, sparklines, icons, small callouts).
 
 ## Hard rules
 
@@ -10,7 +10,7 @@ Prefer **inline SVG** for simple static charts (single-series bar comparisons, s
 - Initialize with inline scripts: `new Chart(canvas, { ... })`. Keep `labels` / `datasets` inline as JSON from user data — never fetch remote datasets (`connect-src 'none'`).
 - Supported types for v1: `bar`, `line`, `pie`, `doughnut`, `radar`, `scatter`. No custom partial bundles.
 - Size canvases for 16:9 slides: `responsive: true` and `maintainAspectRatio: false` inside a flex `.chart-wrap` that fills the slide.
-- Do not combine Chart.js with reveal.js in the same deck unless both runtimes are deliberately declared and tested.
+- Plain chart decks use the markers above. **Reveal + Chart.js** decks keep reveal markers and add `data-ark-runtime-addon-lib="chart.js"` and `data-ark-runtime-addon-version="4.5.1"` on `<html>` (do **not** set `data-ark-preview="full-js"` on reveal decks).
 
 ```html
 <!doctype html>
@@ -84,12 +84,39 @@ Prefer **inline SVG** for simple static charts (single-series bar comparisons, s
 
 **You author:** four markers, registry `<script>` tag, `<canvas>` + `new Chart(...)` init, optional slide nav listeners.
 
+## Reveal.js + Chart.js
+
+Use this when the deck is already reveal-based and only some slides need interactive charts.
+
+- Keep `.reveal > .slides > section` structure and reveal markers (`data-ark-runtime="reveal"`, `data-ark-runtime-lib="reveal.js"`, `data-ark-runtime-version="5.1.0"`).
+- Declare the Chart.js addon: `data-ark-runtime-addon-lib="chart.js"`, `data-ark-runtime-addon-version="4.5.1"`.
+- Include both registry scripts: reveal.js + `/api/runtimes/chart.js/4.5.1/chart.umd.min.js`.
+- Inline `new Chart(...)` init is allowed **only** with the addon markers. Do **not** call `Reveal.initialize()` — Ark's reveal adapter owns navigation.
+- Put `<canvas>` elements inside reveal `<section>` slides. Use `responsive: true`, `maintainAspectRatio: false`, and call `chart.resize()` on `ark:deck-slide-change` so hidden slides measure correctly.
+
+```html
+<html
+  lang="en"
+  data-ark-runtime="reveal"
+  data-ark-runtime-lib="reveal.js"
+  data-ark-runtime-version="5.1.0"
+  data-ark-runtime-addon-lib="chart.js"
+  data-ark-runtime-addon-version="4.5.1"
+>
+  <!-- reveal CSS, .reveal > .slides > section, reveal.js + chart.umd.min.js -->
+  <script>
+    const charts = []
+    charts.push(new Chart(document.getElementById('revenueChart'), {/* ... */}))
+    document.addEventListener('ark:deck-slide-change', () => charts.forEach((c) => c.resize()))
+  </script>
+</html>
+```
+
 ## When to use SVG instead
 
 Use inline SVG when:
 
 - A single static comparison or sparkline is enough
-- Thumbnails / script-stripped fallbacks must show the chart without JS
 - The edit is a small visual callout, not an interactive chart
 
 ## Multi-slide charts + navigation

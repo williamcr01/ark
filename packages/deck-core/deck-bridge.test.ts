@@ -11,6 +11,7 @@ import {
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
   buildDeckCssNavRuntimeScript,
   buildDeckHandshakeSentinelScript,
+  buildRevealNavRuntimeScript,
   clampDeckSlideIndex,
   createDeckGotoMessage,
   createDeckHandshakeMessage,
@@ -134,5 +135,15 @@ describe('deck bridge protocol', () => {
 
     expect(script).toContain('isTypingTarget')
     expect(script).toContain('data-ark-editor-text-edit')
+  })
+
+  it('dispatches ark:deck-slide-change DOM events from the reveal adapter', () => {
+    const script = buildRevealNavRuntimeScript({
+      slideSelectors: ['.reveal .slides > section'],
+      previewMode: 'full-js',
+    })
+
+    expect(script).toContain('document.dispatchEvent(new CustomEvent(C.CHANGE')
+    expect(script).toContain('detail: { index: clamped }')
   })
 })

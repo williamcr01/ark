@@ -5,6 +5,7 @@ import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
 import revealDeck from '@fixtures/reveal-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
@@ -120,6 +121,42 @@ describe('validateDeckHtmlInBrowser', () => {
 
     expect(report.valid).toBe(false)
     expect(report.issues.some((issue) => issue.code === 'invalid_runtime_marker')).toBe(true)
+  })
+
+  it('accepts reveal decks with a Chart.js addon and inline chart init', () => {
+    const report = validateDeckHtmlInBrowser(revealChartDeck)
+
+    expect(report.valid).toBe(true)
+    expect(report.runtimeMarkers.runtimeMode).toBe('reveal')
+    expect(report.runtimeMarkers.approvedRuntimeId).toBe('reveal.js')
+    expect(report.scripts.some((script) => script.inline)).toBe(true)
+    expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(false)
+    expect(report.issues).toEqual([])
+  })
+
+  it('rejects reveal decks that reference Chart.js without a complete addon declaration', () => {
+    const report = validateDeckHtmlInBrowser(`<!DOCTYPE html>
+<html
+  lang="en"
+  data-ark-runtime="reveal"
+  data-ark-runtime-lib="reveal.js"
+  data-ark-runtime-version="5.1.0"
+  data-ark-runtime-addon-lib="chart.js"
+>
+<head>
+  <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/reveal.css" />
+  <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/theme/white.css" />
+</head>
+<body>
+  <div class="reveal"><div class="slides"><section><canvas id="c"></canvas></section></div></div>
+  <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
+  <script src="/api/runtimes/chart.js/4.5.1/chart.umd.min.js"></script>
+  <script>new Chart(document.getElementById('c'), { type: 'bar', data: { labels: [], datasets: [] } })</script>
+</body>
+</html>`)
+
+    expect(report.valid).toBe(false)
+    expect(report.issues.some((issue) => issue.code === 'runtime_version_mismatch')).toBe(true)
   })
 
   it('detects reveal decks from structure', () => {

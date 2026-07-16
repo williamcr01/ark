@@ -7,7 +7,7 @@ Prefer reveal.js for new decks unless the user asks for a plain deck or the cont
 - Markers on `<html>`: `data-ark-runtime="reveal"`, `data-ark-runtime-lib="reveal.js"`, `data-ark-runtime-version="5.1.0"`. Do **not** set `data-ark-deck="nav"` — Ark’s reveal adapter owns navigation.
 - Structure: `.reveal > .slides > section` only — never `section.slide`. No `data-markdown` / `<textarea data-template>` (Markdown plugin unavailable).
 - Include all required runtime CSS/JS URLs from the system prompt registry list. CDN reveal.js URLs are invalid even if the version matches.
-- No deck-authored bridge/`postMessage` scripts, `Reveal.initialize(...)`, reveal plugins (Markdown, Highlight, Notes), or extra inline `<script>` blocks (registry reveal decks disallow deck scripts).
+- No deck-authored bridge/`postMessage` scripts, `Reveal.initialize(...)`, or reveal plugins (Markdown, Highlight, Notes). Inline `<script>` blocks are disallowed **except** Chart.js init when `data-ark-runtime-addon-lib="chart.js"` is set.
 - Only `theme/white.css` is vendored — override look in the deck’s inline `<style>`; do not link other reveal themes (`black`, `night`, `moon`, etc.).
 - Do not promise: shell-controlled fragment step-through, speaker-notes UI / `S` key overlay, timer / `autoSlide`, PDF export, or custom keyboard / hash / controls (adapter disables that surface).
 - Transitions / controls / hash: rely on adapter defaults — do not configure via `Reveal.initialize()`.
