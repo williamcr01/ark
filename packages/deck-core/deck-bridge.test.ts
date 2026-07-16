@@ -145,4 +145,14 @@ describe('Reveal adapter', () => {
     expect(script).not.toContain('width: C.SLIDE_WIDTH')
     expect(script).not.toContain('height: C.SLIDE_HEIGHT')
   })
+
+  it('dispatches ark:deck-slide-change DOM events from the reveal adapter', () => {
+    const script = buildRevealNavRuntimeScript({
+      slideSelectors: ['.reveal .slides > section'],
+      previewMode: 'full-js',
+    })
+
+    expect(script).toContain('document.dispatchEvent(new CustomEvent(C.CHANGE')
+    expect(script).toContain('detail: { index: clamped }')
+  })
 })

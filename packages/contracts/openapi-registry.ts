@@ -576,7 +576,7 @@ export function createArkOpenApiRegistry() {
     path: '/api/runtimes',
     summary: 'List approved presentation runtimes',
     description:
-      'Returns pinned runtime libraries (for example reveal.js) and their `/api/runtimes/...` asset URLs. Deck HTML must reference only approved registry paths.',
+      'Returns pinned runtime libraries (for example reveal.js, chart.js) and their `/api/runtimes/...` asset URLs. Deck HTML must reference only approved registry paths.',
     responses: {
       200: {
         description: 'Approved runtime registry summary',

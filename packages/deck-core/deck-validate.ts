@@ -3,6 +3,7 @@ import {
   collectInvalidRuntimeMarkers,
   collectRuntimeAssetReferences,
   isApprovedRuntimeAssetUrl,
+  readDeckRuntimeAddonMarkers,
   readDeckRuntimeLibraryMarkers,
   resolveDeckApprovedRuntime,
   validateRuntimeAssetReferences,
@@ -11,6 +12,7 @@ import {
 import { findSlideElements } from './deck-preview-slides.ts'
 import {
   detectRuntimeModeFromDocument,
+  documentAllowsDeckInitScripts,
   runtimeModeAllowsDeckScripts,
   type DeckRuntimeMode,
 } from '@ark/runtime-registry/deck-runtime.ts'
@@ -246,7 +248,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
   const scripts = collectScripts(doc)
   const runtimeMarkers = readRuntimeMarkers(doc)
 
-  if (scripts.length > 0 && !runtimeModeAllowsDeckScripts(runtimeMarkers.runtimeMode)) {
+  if (scripts.length > 0 && !documentAllowsDeckInitScripts(doc)) {
     const usesOnlyApprovedRuntimeScripts = scripts.every((script) => {
       if (script.inline) {
         return false
@@ -276,6 +278,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
   const externalUrls = collectExternalUrls(doc)
   const runtimeAssetReferences = collectRuntimeAssetReferences(doc)
   const libraryMarkers = readDeckRuntimeLibraryMarkers(doc)
+  const addonMarkers = readDeckRuntimeAddonMarkers(doc)
 
   for (const invalidMarker of collectInvalidRuntimeMarkers(doc)) {
     pushIssue(issues, {
@@ -288,6 +291,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
   for (const runtimeIssue of validateRuntimeAssetReferences(
     runtimeAssetReferences,
     libraryMarkers,
+    addonMarkers,
   )) {
     pushIssue(issues, runtimeIssue)
   }

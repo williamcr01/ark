@@ -13,6 +13,13 @@ Copyright (C) Hakim El Hattab and contributors
 License: MIT
 Location: runtimes/reveal.js/
 
+Chart.js
+--------
+Copyright (c) 2014-2022 Chart.js Contributors
+License: MIT
+Location: runtimes/chart.js/
+License file: runtimes/chart.js/*/LICENSE.md
+
 Source Sans Pro
 ---------------
 Copyright 2010, 2012 Adobe Systems Incorporated

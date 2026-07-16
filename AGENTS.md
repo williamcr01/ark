@@ -28,7 +28,7 @@ pnpm install    # install dependencies
 pnpm dev        # start dev server
 pnpm build      # typecheck + production build
 pnpm lint       # run ESLint
-pnpm test       # run unit tests (Vitest)
+pnpm test       # Vitest: packages in parallel, apps serial
 pnpm preview    # preview production build
 ```
 
@@ -74,7 +74,7 @@ ark/
 - Prefer extracting reusable logic into hooks under `src/hooks/`.
 - Run `pnpm lint` after substantive changes.
 - Always run `pnpm format` before committing; CI enforces `pnpm format:check`.
-- CI runs `pnpm lint`, `pnpm format:check`, `pnpm audit`, `pnpm build`, and `pnpm test` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
+- CI runs `quality` (lockfile/lint/format/audit/openapi), `build`, `test`, and `smoke` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
 
 ## Presentation HTML conventions
 
@@ -85,7 +85,7 @@ When creating or editing deck HTML (through the agent tools or upload):
 3. **Agent-friendly structure**: Use clear section/slide boundaries (e.g. `<section class="slide">` for plain decks, or `.reveal > .slides > section` for reveal.js — see [docs/reveal-runtime.md](docs/reveal-runtime.md)).
 4. **Safe preview**: Prefer `addEventListener` over inline handlers; use inline CSS, data URIs, and SVG — no external http(s) resource URLs.
 5. **Incremental edits**: Prefer patching specific slides over rewriting the entire file when the user asks for small changes.
-6. **Approved runtimes**: Use pinned `/api/runtimes/...` assets from the registry — never CDNs. See [docs/runtimes.md](docs/runtimes.md) and [docs/reveal-runtime.md](docs/reveal-runtime.md).
+6. **Approved runtimes**: Use pinned `/api/runtimes/...` assets from the registry — never CDNs. See [docs/runtimes.md](docs/runtimes.md), [docs/reveal-runtime.md](docs/reveal-runtime.md), and [docs/chart-runtime.md](docs/chart-runtime.md).
 
 ### Preview network isolation
 
@@ -155,7 +155,7 @@ Server-side structured parsing lives in `server/deck-parser.ts`. `parseDeckHtml`
 
 ### Always-on agent guides
 
-Markdown files under `agent-guides/` are automatically loaded and appended to the deck agent system prompt on every generation job (alongside tool definitions and chat history). Use numeric prefixes for ordering (`10-reveal-js.md`); `README.md` and `_*.md` are excluded. Hard validation rules stay in the core prompt; guides hold longer authoring patterns. Override the directory with `ARK_AGENT_GUIDES_DIR` and cap size with `ARK_AGENT_GUIDES_MAX_BYTES` (see `.env.example`).
+Markdown files under `agent-guides/` are automatically loaded and appended to the deck agent system prompt on every generation job (alongside tool definitions and chat history). Use numeric prefixes for ordering (`10-reveal-js.md`, `20-chart-js.md`); `README.md` and `_*.md` are excluded. Hard validation rules stay in the core prompt; guides hold longer authoring patterns. Override the directory with `ARK_AGENT_GUIDES_DIR` and cap size with `ARK_AGENT_GUIDES_MAX_BYTES` (see `.env.example`).
 
 ### Agent tool loop (issue #58)
 
@@ -197,7 +197,7 @@ Fully working editor, not a scaffold. Implemented today:
 - **Server-persisted chat** per deck with `localStorage` caching.
 - **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
 - **Sandboxed preview** on a separate origin with CSP isolation, CSS-only and full-JS modes, sandbox-backed PNG thumbnails with `srcDoc` fallback, and Present mode.
-- **Approved runtime registry** with vendored reveal.js 5.1.0 served from `/api/runtimes/...`.
+- **Approved runtime registry** with vendored reveal.js 5.1.0 and chart.js 4.5.1 served from `/api/runtimes/...`.
 - **Manual editing**: CSS-only and approved Reveal decks support PowerPoint-style selection and movement through the sandbox-safe editor bridge ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `packages/deck-core/deck-editor-bridge.ts`) and structured element patch API (`POST /api/decks/:id/patch`). Users can select deck-authored text, images, SVG, and containers; move or resize unlocked elements with snapping and keyboard nudge; insert text boxes/images; edit text and properties; duplicate, delete, reorder; and undo/redo. Moving unmanaged content adopts it into Ark's absolute layout while preserving its containing block and measured width. Selection chrome adapts to light/dark surfaces and preview scale. Custom-JS decks intentionally disable persistent manual editing because deck scripts share the iframe execution realm.
 
 Typed API contracts shared by client and server live in `packages/contracts/` (`@ark/contracts`).
@@ -210,4 +210,4 @@ Standard commands live in the `## Commands` section above and in `README.md`. No
 - **API server endpoints:** `GET /api/health`, `GET /api/models`, deck CRUD (`GET/POST /api/decks`, `GET/PUT/PATCH/DELETE /api/decks/:id`), element patches (`POST /api/decks/:id/patch`), versions (`GET /api/decks/:id/versions`, `GET /api/decks/:id/versions/:versionId`, `POST /api/decks/:id/rollback`), chat (`GET /api/decks/:id/chat`, `POST /api/decks/:id/chat/messages`, `DELETE /api/decks/:id/chat`), generation jobs (`POST /api/generation-jobs`, `GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry`), preview sessions (`POST /api/preview-sessions`, `GET /api/preview-sessions/:token`), thumbnails (`GET /api/decks/:id/thumbnails`, `GET /api/decks/:id/thumbnails/:versionId/:slideIndex.png?hash=…`), `POST /api/runtime-errors`, and `GET /api/deck-assets`. Health check is a quick liveness probe: `curl -s localhost:${PORT:-8787}/api/health`.
 - **AI deck generation needs a provider key.** Add at least one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (in `.env` or the environment). Without a key, the chat shows an "API key required" alert and generation is disabled — but the rest of the app (uploading an `.html` deck, preview, slide navigation, thumbnails, Present mode) works fully. Restart `pnpm dev` after changing keys.
 - **`.env` is gitignored and optional.** Copy it from `.env.example` if you want to set keys there; the app still boots without it (generation just stays disabled). Provider keys are read from `process.env`, so secrets injected into the environment work too.
-- **No API keys required for CI.** Verification is `pnpm lockfile:check`, `pnpm lint`, `pnpm format:check`, `pnpm audit`, `pnpm build`, `pnpm test`, and `pnpm smoke:browser` (also enforced in GitHub Actions). CI pins `ARK_CHROMIUM_PATH=/usr/bin/google-chrome` so the headless browser smoke tests use the preinstalled Chrome on `ubuntu-latest`. Always run `pnpm format` before committing. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.
+- **No API keys required for CI.** PR-blocking gates: `quality` (lockfile + lint + format + audit + openapi), `build`, `test`, and `smoke:plain-css`. `test:live-chromium` and extended browser smokes (Reveal / full-JS / manual-edit / thumbnails) run on `main` pushes only. CI pins `ARK_CHROMIUM_PATH=/usr/bin/google-chrome` so headless browser tests use the preinstalled Chrome on `ubuntu-latest`. Always run `pnpm format` before committing. The fastest no-key smoke test of core functionality is the toolbar "Upload HTML" button to load a self-contained deck, then navigate slides and use Present mode.

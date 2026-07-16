@@ -8,7 +8,10 @@ import {
   type PreviewHtmlOptions,
 } from '@ark/deck-core/deck-preview-html.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
-import { detectRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
+import {
+  detectRuntimeMode,
+  documentAllowsDeckInitScripts,
+} from '@ark/runtime-registry/deck-runtime.ts'
 import { hasApprovedRevealRuntimeInHtml } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import {
   createPreviewHtmlCacheKey,
@@ -81,8 +84,22 @@ export type CachedPreviewDocumentResult = PreviewDocumentResult & {
   cacheStatus: 'hit' | 'miss' | 'bypass'
 }
 
-function createFreshPreviewNonce(runtimeMode: PreviewDocumentResult['runtimeMode']) {
-  return runtimeMode === 'custom-js' ? null : generateCspNonce()
+function createFreshPreviewNonce(
+  runtimeMode: PreviewDocumentResult['runtimeMode'],
+  html: string,
+  baseNonce: string | null,
+) {
+  if (runtimeMode === 'custom-js' || documentAllowsDeckInitScriptsFromHtml(html)) {
+    return null
+  }
+
+  return baseNonce === null ? null : generateCspNonce()
+}
+
+function documentAllowsDeckInitScriptsFromHtml(html: string) {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  return documentAllowsDeckInitScripts(doc)
 }
 
 export function renderCachedPreviewDocument(
@@ -113,7 +130,7 @@ export function renderCachedPreviewDocument(
     const cached = cache.get(cacheKey)
 
     if (cached) {
-      const nonce = createFreshPreviewNonce(cached.runtimeMode)
+      const nonce = createFreshPreviewNonce(cached.runtimeMode, html, cached.noncePlaceholder)
 
       return {
         html: injectPreviewHandshake(cached.html, {
@@ -129,7 +146,10 @@ export function renderCachedPreviewDocument(
       }
     }
 
-    const baseNonce = runtimeMode === 'custom-js' ? null : PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER
+    const baseNonce =
+      runtimeMode === 'custom-js' || documentAllowsDeckInitScriptsFromHtml(html)
+        ? null
+        : PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER
     const base = buildPreviewDocument(html, {
       parentOrigin: options.parentOrigin,
       manifest: options.manifest,
@@ -141,7 +161,7 @@ export function renderCachedPreviewDocument(
       runtimeMode: base.runtimeMode,
       noncePlaceholder: base.nonce ? PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER : null,
     })
-    const nonce = createFreshPreviewNonce(base.runtimeMode)
+    const nonce = createFreshPreviewNonce(base.runtimeMode, html, base.nonce)
     const handshakeHtml = injectPreviewHandshake(entry?.html ?? base.html, {
       parentOrigin: options.parentOrigin,
       handshake: options.handshake,

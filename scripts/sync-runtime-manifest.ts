@@ -39,7 +39,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const RUNTIMES_DIR = path.join(ROOT, 'runtimes')
 const MANIFEST_PATH = path.join(RUNTIMES_DIR, 'manifest.json')
 const REVEAL_SOURCE = path.join(ROOT, 'node_modules', 'reveal.js', 'dist')
+const CHART_SOURCE = path.join(ROOT, 'node_modules', 'chart.js', 'dist')
 const REVEAL_THEME_FONT_FAMILY = 'source-sans-pro'
+const CHART_UMD_ASSET = 'chart.umd.min.js'
 
 function inferAssetKind(filePath: string): RuntimeAssetKind {
   if (filePath.endsWith('.js')) {
@@ -133,6 +135,49 @@ async function syncRevealRuntime(manifest: RuntimeManifest) {
   )
 }
 
+async function assertChartJsLicense(versionDir: string) {
+  const licensePath = path.join(versionDir, 'LICENSE.md')
+
+  try {
+    await fs.access(licensePath)
+  } catch {
+    throw new Error(`Missing chart.js license at ${path.relative(ROOT, licensePath)}`)
+  }
+}
+
+async function syncChartJsRuntime(manifest: RuntimeManifest) {
+  const entry = manifest.runtimes.find((runtime) => runtime.id === 'chart.js')
+
+  if (!entry) {
+    throw new Error('chart.js runtime entry is missing from manifest.json')
+  }
+
+  const versionDir = path.join(RUNTIMES_DIR, entry.id, entry.version)
+  await fs.mkdir(versionDir, { recursive: true })
+
+  try {
+    await fs.access(CHART_SOURCE)
+    await fs.copyFile(
+      path.join(CHART_SOURCE, CHART_UMD_ASSET),
+      path.join(versionDir, CHART_UMD_ASSET),
+    )
+    await fs.copyFile(
+      path.join(ROOT, 'node_modules', 'chart.js', 'LICENSE.md'),
+      path.join(versionDir, 'LICENSE.md'),
+    )
+    console.log(`Copied chart.js@${entry.version} UMD bundle from node_modules`)
+  } catch {
+    console.log(`Using committed chart.js@${entry.version} assets in ${versionDir}`)
+  }
+
+  await assertChartJsLicense(versionDir)
+
+  const assetPaths = [...(entry.requiredAssets.js ?? []), ...(entry.requiredAssets.css ?? [])]
+  entry.assets = await Promise.all(
+    assetPaths.map((assetPath) => buildAssetMetadata(versionDir, assetPath)),
+  )
+}
+
 async function listRuntimeAssetFiles(rootDir: string, currentDir: string): Promise<string[]> {
   const entries = await fs.readdir(currentDir, { withFileTypes: true })
   const files = await Promise.all(
@@ -158,6 +203,7 @@ async function main() {
   const manifest = JSON.parse(await fs.readFile(MANIFEST_PATH, 'utf8')) as RuntimeManifest
 
   await syncRevealRuntime(manifest)
+  await syncChartJsRuntime(manifest)
 
   await fs.writeFile(`${MANIFEST_PATH}`, `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Updated ${MANIFEST_PATH}`)

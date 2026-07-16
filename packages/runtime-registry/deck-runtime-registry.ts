@@ -47,6 +47,13 @@ export type DeckRuntimeLibraryMarkers = {
   arkRuntimeVersion: string | null
 }
 
+export type DeckRuntimeAddonMarkers = {
+  arkRuntimeAddonLib: string | null
+  arkRuntimeAddonVersion: string | null
+}
+
+export type DeckRuntimeMarkers = DeckRuntimeLibraryMarkers & DeckRuntimeAddonMarkers
+
 export const RUNTIME_ASSET_API_PREFIX = '/api/runtimes'
 
 /** Built-in custom-js markers managed by Ark (not tied to a vendored library). */
@@ -155,9 +162,17 @@ export function isApprovedRuntimeAssetUrl(url: string | null | undefined, kind?:
 }
 
 export function hasApprovedRevealRuntimeInDocument(doc: Document) {
-  return [...doc.querySelectorAll('script[src]')].some((script) =>
-    isApprovedRuntimeAssetUrl(script.getAttribute('src'), 'script'),
-  )
+  return [...doc.querySelectorAll('script[src]')].some((script) => {
+    const ref = parseRuntimeAssetUrl(script.getAttribute('src'))
+
+    if (!ref || ref.runtimeId !== 'reveal.js') {
+      return false
+    }
+
+    const lookup = lookupRuntimeAsset(ref)
+
+    return lookup?.asset.kind === 'script'
+  })
 }
 
 export function hasApprovedRevealRuntimeInHtml(html: string) {
@@ -212,6 +227,64 @@ export function readDeckRuntimeLibraryMarkers(doc: Document): DeckRuntimeLibrary
       body?.getAttribute('data-ark-runtime-version') ??
       null,
   }
+}
+
+export function readDeckRuntimeAddonMarkers(doc: Document): DeckRuntimeAddonMarkers {
+  const html = doc.documentElement
+  const body = doc.body
+
+  return {
+    arkRuntimeAddonLib:
+      html?.getAttribute('data-ark-runtime-addon-lib') ??
+      body?.getAttribute('data-ark-runtime-addon-lib') ??
+      null,
+    arkRuntimeAddonVersion:
+      html?.getAttribute('data-ark-runtime-addon-version') ??
+      body?.getAttribute('data-ark-runtime-addon-version') ??
+      null,
+  }
+}
+
+export function readDeckRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
+  return {
+    ...readDeckRuntimeLibraryMarkers(doc),
+    ...readDeckRuntimeAddonMarkers(doc),
+  }
+}
+
+export function deckUsesChartJsAddon(doc: Document) {
+  const addonMarkers = readDeckRuntimeAddonMarkers(doc)
+
+  if (!addonMarkers.arkRuntimeAddonLib || !addonMarkers.arkRuntimeAddonVersion) {
+    return false
+  }
+
+  if (addonMarkers.arkRuntimeAddonLib !== 'chart.js') {
+    return false
+  }
+
+  return (
+    getApprovedRuntime(addonMarkers.arkRuntimeAddonLib, addonMarkers.arkRuntimeAddonVersion) !==
+    null
+  )
+}
+
+export function resolveDeckRuntimeAddons(doc: Document): ApprovedRuntimeEntry[] {
+  const addons: ApprovedRuntimeEntry[] = []
+  const addonMarkers = readDeckRuntimeAddonMarkers(doc)
+
+  if (addonMarkers.arkRuntimeAddonLib && addonMarkers.arkRuntimeAddonVersion) {
+    const runtime = getApprovedRuntime(
+      addonMarkers.arkRuntimeAddonLib,
+      addonMarkers.arkRuntimeAddonVersion,
+    )
+
+    if (runtime) {
+      addons.push(runtime)
+    }
+  }
+
+  return addons
 }
 
 export function readArkMarkerAttributes(doc: Document) {
@@ -365,9 +438,59 @@ export function collectRuntimeAssetReferences(doc: Document) {
   return [...refs].sort()
 }
 
+function collectDeclaredDeckRuntimes(
+  libraryMarkers: DeckRuntimeLibraryMarkers,
+  addonMarkers: DeckRuntimeAddonMarkers = {
+    arkRuntimeAddonLib: null,
+    arkRuntimeAddonVersion: null,
+  },
+) {
+  const runtimes: ApprovedRuntimeEntry[] = []
+
+  if (libraryMarkers.arkRuntimeLib && libraryMarkers.arkRuntimeVersion) {
+    const runtime = getApprovedRuntime(
+      libraryMarkers.arkRuntimeLib,
+      libraryMarkers.arkRuntimeVersion,
+    )
+
+    if (runtime) {
+      runtimes.push(runtime)
+    }
+  }
+
+  if (addonMarkers.arkRuntimeAddonLib && addonMarkers.arkRuntimeAddonVersion) {
+    const runtime = getApprovedRuntime(
+      addonMarkers.arkRuntimeAddonLib,
+      addonMarkers.arkRuntimeAddonVersion,
+    )
+
+    if (runtime && !runtimes.some((entry) => entry.id === runtime.id)) {
+      runtimes.push(runtime)
+    }
+  }
+
+  return runtimes
+}
+
+function runtimeMatchesDeclaredVersion(
+  runtimeId: string,
+  version: string,
+  declaredRuntimes: ApprovedRuntimeEntry[],
+) {
+  return declaredRuntimes.some((runtime) => runtime.id === runtimeId && runtime.version === version)
+}
+
+function isIncompleteRuntimeMarkerPair(library: string | null, version: string | null) {
+  return Boolean(library) !== Boolean(version)
+}
+
 export function validateRuntimeAssetReferences(
   references: string[],
   libraryMarkers: DeckRuntimeLibraryMarkers,
+  addonMarkers: DeckRuntimeAddonMarkers = {
+    arkRuntimeAddonLib: null,
+    arkRuntimeAddonVersion: null,
+  },
 ) {
   const issues: Array<{
     code: 'unapproved_runtime_asset' | 'runtime_version_mismatch' | 'missing_runtime_assets'
@@ -375,7 +498,33 @@ export function validateRuntimeAssetReferences(
     severity: 'error'
   }> = []
 
+  if (
+    isIncompleteRuntimeMarkerPair(libraryMarkers.arkRuntimeLib, libraryMarkers.arkRuntimeVersion)
+  ) {
+    issues.push({
+      code: 'runtime_version_mismatch',
+      message:
+        'Runtime library markers must include both data-ark-runtime-lib and data-ark-runtime-version.',
+      severity: 'error',
+    })
+  }
+
+  if (
+    isIncompleteRuntimeMarkerPair(
+      addonMarkers.arkRuntimeAddonLib,
+      addonMarkers.arkRuntimeAddonVersion,
+    )
+  ) {
+    issues.push({
+      code: 'runtime_version_mismatch',
+      message:
+        'Addon runtime markers must include both data-ark-runtime-addon-lib and data-ark-runtime-addon-version.',
+      severity: 'error',
+    })
+  }
+
   const referencedAssets = new Map<string, Set<string>>()
+  const declaredRuntimes = collectDeclaredDeckRuntimes(libraryMarkers, addonMarkers)
 
   for (const reference of references) {
     const ref = parseRuntimeAssetUrl(reference)
@@ -393,14 +542,13 @@ export function validateRuntimeAssetReferences(
 
     if (!lookup) {
       if (
-        libraryMarkers.arkRuntimeLib &&
-        libraryMarkers.arkRuntimeVersion &&
-        libraryMarkers.arkRuntimeLib === ref.runtimeId &&
-        libraryMarkers.arkRuntimeVersion !== ref.version
+        declaredRuntimes.some(
+          (runtime) => runtime.id === ref.runtimeId && runtime.version !== ref.version,
+        )
       ) {
         issues.push({
           code: 'runtime_version_mismatch',
-          message: `Runtime asset ${reference} does not match declared library ${libraryMarkers.arkRuntimeLib}@${libraryMarkers.arkRuntimeVersion}.`,
+          message: `Runtime asset ${reference} does not match a declared runtime version for ${ref.runtimeId}.`,
           severity: 'error',
         })
         continue
@@ -420,14 +568,27 @@ export function validateRuntimeAssetReferences(
     referencedAssets.set(key, paths)
 
     if (
-      libraryMarkers.arkRuntimeLib &&
-      libraryMarkers.arkRuntimeVersion &&
-      (libraryMarkers.arkRuntimeLib !== ref.runtimeId ||
-        libraryMarkers.arkRuntimeVersion !== ref.version)
+      declaredRuntimes.length > 0 &&
+      !runtimeMatchesDeclaredVersion(ref.runtimeId, ref.version, declaredRuntimes)
     ) {
       issues.push({
         code: 'runtime_version_mismatch',
-        message: `Runtime asset ${reference} does not match declared library ${libraryMarkers.arkRuntimeLib}@${libraryMarkers.arkRuntimeVersion}.`,
+        message: `Runtime asset ${reference} does not match any declared runtime library version.`,
+        severity: 'error',
+      })
+    }
+  }
+
+  for (const runtime of declaredRuntimes) {
+    const key = `${runtime.id}@${runtime.version}`
+    const paths = referencedAssets.get(key) ?? new Set<string>()
+    const required = [...(runtime.requiredAssets.css ?? []), ...(runtime.requiredAssets.js ?? [])]
+    const missing = required.filter((assetPath) => !paths.has(assetPath))
+
+    if (missing.length > 0) {
+      issues.push({
+        code: 'missing_runtime_assets',
+        message: `Missing required runtime assets for ${runtime.id}@${runtime.version}: ${missing.join(', ')}.`,
         severity: 'error',
       })
     }
@@ -445,18 +606,19 @@ export function validateRuntimeAssetReferences(
         message: `Declared runtime library ${libraryMarkers.arkRuntimeLib}@${libraryMarkers.arkRuntimeVersion} is not in the approved registry.`,
         severity: 'error',
       })
-      return issues
     }
+  }
 
-    const key = `${runtime.id}@${runtime.version}`
-    const paths = referencedAssets.get(key) ?? new Set<string>()
-    const required = [...(runtime.requiredAssets.css ?? []), ...(runtime.requiredAssets.js ?? [])]
-    const missing = required.filter((assetPath) => !paths.has(assetPath))
+  if (addonMarkers.arkRuntimeAddonLib && addonMarkers.arkRuntimeAddonVersion) {
+    const runtime = getApprovedRuntime(
+      addonMarkers.arkRuntimeAddonLib,
+      addonMarkers.arkRuntimeAddonVersion,
+    )
 
-    if (missing.length > 0) {
+    if (!runtime) {
       issues.push({
-        code: 'missing_runtime_assets',
-        message: `Missing required runtime assets for ${runtime.id}@${runtime.version}: ${missing.join(', ')}.`,
+        code: 'unapproved_runtime_asset',
+        message: `Declared addon runtime ${addonMarkers.arkRuntimeAddonLib}@${addonMarkers.arkRuntimeAddonVersion} is not in the approved registry.`,
         severity: 'error',
       })
     }
@@ -484,6 +646,12 @@ export function buildRuntimeRegistryPromptSection() {
     lines.push(
       `- ${runtime.id}@${runtime.version} (${runtime.runtimeMode}): set ${markerParts.join(', ')} on <html>.`,
     )
+
+    if (runtime.id === 'chart.js') {
+      lines.push(
+        `  - Reveal decks: also set data-ark-runtime-addon-lib="${runtime.id}" and data-ark-runtime-addon-version="${runtime.version}" on <html>.`,
+      )
+    }
 
     for (const assetPath of [...cssAssets, ...jsAssets]) {
       lines.push(`  - ${buildRuntimeAssetUrl(runtime.id, runtime.version, assetPath)}`)

@@ -36,6 +36,7 @@ describe('agent guide filename rules', () => {
 
   it('derives guide ids from numeric prefixes', () => {
     expect(agentGuidesTestUtils.guideIdFromFilename('10-reveal-js.md')).toBe('reveal-js')
+    expect(agentGuidesTestUtils.guideIdFromFilename('20-chart-js.md')).toBe('chart-js')
     expect(agentGuidesTestUtils.guideIdFromFilename('00_plain.md')).toBe('plain')
     expect(agentGuidesTestUtils.guideIdFromFilename('bridge.md')).toBe('bridge')
   })
@@ -152,6 +153,27 @@ describe('buildDeckAgentSystemPrompt with agent guides', () => {
       expect(prompt).toContain('## Guide: reveal-js')
       expect(prompt).toContain('UNIQUE_GUIDE_MARKER_reveal_stacks.')
       expect(prompt).toContain('self-contained')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ARK_AGENT_GUIDES_DIR
+      } else {
+        process.env.ARK_AGENT_GUIDES_DIR = previous
+      }
+      resetAgentGuidesCache()
+    }
+  })
+
+  it('includes the repo Chart.js agent guide in the default system prompt', () => {
+    resetAgentGuidesCache()
+    const previous = process.env.ARK_AGENT_GUIDES_DIR
+    delete process.env.ARK_AGENT_GUIDES_DIR
+    try {
+      const prompt = buildDeckAgentSystemPrompt()
+      expect(prompt).toContain('## Guide: chart-js')
+      expect(prompt).toContain('data-ark-runtime-lib="chart.js"')
+      expect(prompt).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
+      expect(prompt).toContain('Prefer **inline SVG**')
+      expect(prompt).not.toContain('Charts (prefer the lightest option that fits)')
     } finally {
       if (previous === undefined) {
         delete process.env.ARK_AGENT_GUIDES_DIR

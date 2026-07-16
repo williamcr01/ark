@@ -105,6 +105,15 @@ describe('runtime policies', () => {
     expect(csp).toContain("connect-src 'none'")
   })
 
+  it('includes approved chart.js asset sources for custom-js CSP', () => {
+    const csp = getRuntimeCsp('custom-js')
+
+    expect(csp).toMatch(/script-src[^;]*'unsafe-inline'/)
+    expect(csp).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
+    expect(csp).toContain("connect-src 'none'")
+    expect(csp).not.toContain('/api/runtimes/reveal.js/')
+  })
+
   it('keeps static CSP closed to runtime asset URLs', () => {
     expect(getRuntimeCsp('static')).toBe(STRICT_DECK_CSP)
     expect(getRuntimeCsp('static')).not.toContain('/api/runtimes/')

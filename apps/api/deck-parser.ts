@@ -15,6 +15,9 @@ export type DeckRuntime = {
   previewMode: DeckPreviewMode
   arkDeck: string | null
   arkPreview: string | null
+  arkRuntime: string | null
+  arkRuntimeLib: string | null
+  arkRuntimeVersion: string | null
 }
 
 export type DeckStyleBlock = {
@@ -76,6 +79,14 @@ function readRuntimeMarkers(doc: Document): DeckRuntime {
   const arkDeck = html?.getAttribute('data-ark-deck') ?? body?.getAttribute('data-ark-deck') ?? null
   const arkPreview =
     html?.getAttribute('data-ark-preview') ?? body?.getAttribute('data-ark-preview') ?? null
+  const arkRuntime =
+    html?.getAttribute('data-ark-runtime') ?? body?.getAttribute('data-ark-runtime') ?? null
+  const arkRuntimeLib =
+    html?.getAttribute('data-ark-runtime-lib') ?? body?.getAttribute('data-ark-runtime-lib') ?? null
+  const arkRuntimeVersion =
+    html?.getAttribute('data-ark-runtime-version') ??
+    body?.getAttribute('data-ark-runtime-version') ??
+    null
   const previewMode: DeckPreviewMode =
     arkDeck === 'nav' || arkPreview === 'full-js' ? 'full-js' : 'css-only'
 
@@ -83,6 +94,9 @@ function readRuntimeMarkers(doc: Document): DeckRuntime {
     previewMode,
     arkDeck,
     arkPreview,
+    arkRuntime,
+    arkRuntimeLib,
+    arkRuntimeVersion,
   }
 }
 
@@ -261,6 +275,9 @@ const emptyParseResult: DeckParseResult = {
     previewMode: 'css-only',
     arkDeck: null,
     arkPreview: null,
+    arkRuntime: null,
+    arkRuntimeLib: null,
+    arkRuntimeVersion: null,
   },
   slideSelector: null,
   slideCount: 0,
