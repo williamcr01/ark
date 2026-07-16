@@ -1246,6 +1246,16 @@
                               "minimum": 0,
                               "exclusiveMinimum": true
                             },
+                            "slideWidth": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
                             "width": { "type": "number", "minimum": 0, "maximum": 1 },
                             "height": { "type": "number", "minimum": 0, "maximum": 1 }
                           },
@@ -1266,6 +1276,16 @@
                               "exclusiveMinimum": true
                             },
                             "cssHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideWidth": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideHeight": {
                               "type": "number",
                               "minimum": 0,
                               "exclusiveMinimum": true

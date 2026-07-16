@@ -33,8 +33,6 @@ import {
   isDeckSlideCountMessage,
   parseDeckBridgeMessage,
 } from './deck-bridge'
-import { ARK_SLIDE_REFERENCE_HEIGHT, ARK_SLIDE_REFERENCE_WIDTH } from './deck-metadata.ts'
-
 describe('deck bridge protocol', () => {
   const metadata = createDeckMetadata({
     runtime: 'plain',
@@ -141,12 +139,10 @@ describe('deck bridge protocol', () => {
 })
 
 describe('Reveal adapter', () => {
-  it('initializes Reveal with Ark canonical slide dimensions', () => {
+  it('preserves Reveal deck dimensions', () => {
     const script = buildRevealNavRuntimeScript({ previewMode: 'full-js' })
 
-    expect(script).toContain(`"SLIDE_WIDTH":${ARK_SLIDE_REFERENCE_WIDTH}`)
-    expect(script).toContain(`"SLIDE_HEIGHT":${ARK_SLIDE_REFERENCE_HEIGHT}`)
-    expect(script).toContain('width: C.SLIDE_WIDTH')
-    expect(script).toContain('height: C.SLIDE_HEIGHT')
+    expect(script).not.toContain('width: C.SLIDE_WIDTH')
+    expect(script).not.toContain('height: C.SLIDE_HEIGHT')
   })
 })

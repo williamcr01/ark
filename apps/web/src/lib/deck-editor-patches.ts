@@ -39,6 +39,8 @@ export function buildTransformPatchOperations(
       y: commit.geometry.y,
       ...(commit.cssX !== undefined ? { cssX: commit.cssX } : {}),
       ...(commit.cssY !== undefined ? { cssY: commit.cssY } : {}),
+      ...(commit.slideWidth !== undefined ? { slideWidth: commit.slideWidth } : {}),
+      ...(commit.slideHeight !== undefined ? { slideHeight: commit.slideHeight } : {}),
       ...(commit.adopted ? { width: commit.geometry.width } : {}),
       ...(commit.adopted && commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
     })
@@ -55,6 +57,8 @@ export function buildTransformPatchOperations(
       height: commit.geometry.height,
       ...(commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
       ...(commit.cssHeight !== undefined ? { cssHeight: commit.cssHeight } : {}),
+      ...(commit.slideWidth !== undefined ? { slideWidth: commit.slideWidth } : {}),
+      ...(commit.slideHeight !== undefined ? { slideHeight: commit.slideHeight } : {}),
     })
   }
 

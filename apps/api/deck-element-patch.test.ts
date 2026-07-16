@@ -416,6 +416,51 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain(`left: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
     expect(moved.html).toContain(`top: ${Math.round(0.1 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
     expect(moved.html).toContain(`width: ${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+
+    const resized = applyDeckPatches(moved.html, [
+      {
+        op: 'resize_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        width: 0.5,
+        height: 0.25,
+      },
+    ])
+
+    expect(resized.ok).toBe(true)
+    if (!resized.ok) {
+      return
+    }
+
+    expect(resized.html).toContain(`width: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(resized.html).toContain(`height: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+  })
+
+  it('uses the runtime logical slide size for Reveal transforms', () => {
+    const moved = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        x: 0.25,
+        y: 0.1,
+        cssX: 0.25,
+        cssY: 0.1,
+        cssWidth: 0.4,
+        width: 0.4,
+        slideWidth: 960,
+        slideHeight: 700,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.html).toContain('left: 240px')
+    expect(moved.html).toContain('top: 70px')
+    expect(moved.html).toContain('width: 384px')
   })
 
   it('preserves an adopted element parent and applies containing-block coordinates', () => {

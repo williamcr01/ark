@@ -54,6 +54,8 @@ describe('deck-editor-patches', () => {
       0.1,
       0.35,
       0.12,
+      960,
+      700,
     )
 
     expect(
@@ -76,6 +78,8 @@ describe('deck-editor-patches', () => {
         y: 0.25,
         cssX: -0.05,
         cssY: 0.1,
+        slideWidth: 960,
+        slideHeight: 700,
       },
       {
         op: 'resize_element',
@@ -85,6 +89,8 @@ describe('deck-editor-patches', () => {
         height: 0.15,
         cssWidth: 0.35,
         cssHeight: 0.12,
+        slideWidth: 960,
+        slideHeight: 700,
       },
     ])
   })
@@ -100,6 +106,9 @@ describe('deck-editor-patches', () => {
       -0.05,
       0.1,
       0.35,
+      undefined,
+      960,
+      700,
     )
 
     expect(
@@ -114,6 +123,8 @@ describe('deck-editor-patches', () => {
         cssX: -0.05,
         cssY: 0.1,
         cssWidth: 0.35,
+        slideWidth: 960,
+        slideHeight: 700,
         width: 0.4,
       },
     ])

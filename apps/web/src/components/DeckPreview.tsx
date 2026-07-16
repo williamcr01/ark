@@ -164,7 +164,8 @@ export function DeckPreview({
   )
   const hasSlides = parsedDeck.slideCount > 0
   const previewEnabled = html.length > 0 && hasSlides
-  const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
+  const editChromeActive =
+    previewEnabled && runtimeMode !== 'custom-js' && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
   const previewFrame = useDeckPreviewFrame(html, previewEnabled)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())

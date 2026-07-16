@@ -25,7 +25,7 @@ import {
 } from './lib/browser-smoke.ts'
 
 const manualEditFixturePath = path.join(repoRoot, 'test/fixtures/manual-edit-deck.html')
-const revealFixturePath = path.join(repoRoot, 'test/fixtures/reveal-registry-deck.html')
+const revealFixturePath = path.join(repoRoot, 'test/fixtures/reveal-vertical-deck.html')
 
 type DeckVersionSummary = {
   id: string
@@ -1360,20 +1360,42 @@ async function runSmoke() {
     await setUploadFile(cdp, revealFixturePath)
     await waitFor('uploaded Reveal manual-edit deck in shell', async () => {
       const text = await evaluate<string>(cdp!, 'document.body.innerText')
-      return text.includes('Reveal Registry Deck') && text.includes('Slide 1 of 2')
+      return text.includes('Reveal Vertical Deck') && text.includes('Slide 1 of 4')
     })
     const revealDeck = await waitFor('uploaded Reveal deck in API', async () => {
       const listed = await listDecks(apiPort)
-      return listed.find((deck) => deck.title.includes('Reveal Registry Deck')) ?? null
+      return listed.find((deck) => deck.title.includes('Reveal Vertical Deck')) ?? null
     })
-    const revealHeadingSelector = '.reveal .slides section.present h1'
     let revealPreview = await getCurrentEditPreview(
       cdp,
       servers,
       contexts,
-      revealHeadingSelector,
+      'script[data-ark-preview-editor]',
       editPreviewSrc,
     )
+    const revealHeadingSelector = '.reveal .slides > section.present > section.present > h2'
+    for (const [expectedSlide, expectedHeading] of [
+      [2, 'Vertical one'],
+      [3, 'Vertical two'],
+    ] as const) {
+      await evaluate(
+        cdp,
+        `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
+      )
+      await waitFor(`Reveal navigated to linear slide ${expectedSlide}`, async () => {
+        const text = await evaluate<string>(cdp!, 'document.body.innerText')
+        const activeHeading = await evaluate<string>(
+          cdp!,
+          `document.querySelector(${JSON.stringify(revealHeadingSelector)})?.textContent?.trim() || ''`,
+          {
+            contextId: revealPreview.editPreview.id,
+            sessionId: revealPreview.editPreview.sessionId,
+          },
+        ).catch(() => '')
+        return text.includes(`Slide ${expectedSlide} of 4`) && activeHeading === expectedHeading
+      })
+      await new Promise((resolve) => setTimeout(resolve, 900))
+    }
     await waitFor('Reveal editor ready for selection', async () =>
       evaluate<boolean>(
         cdp!,
@@ -1447,6 +1469,7 @@ async function runSmoke() {
       revealHeadingSelector,
       revealPreview.editPreviewSrc,
     )
+    await new Promise((resolve) => setTimeout(resolve, 900))
     const revealPersisted = await getElementRect(
       cdp,
       revealPreview.editPreview,

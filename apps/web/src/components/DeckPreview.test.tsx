@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
@@ -99,9 +100,13 @@ const useDeckThumbnailsMock = vi.hoisted(() =>
     isLoading: false,
   })),
 )
+const editorBridgeOptionsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
-  useDeckEditorBridge: () => editorBridgeMock,
+  useDeckEditorBridge: (...args: unknown[]) => {
+    editorBridgeOptionsMock(...args)
+    return editorBridgeMock
+  },
 }))
 
 vi.mock('@/hooks/useDeckSlideNavigation', () => ({
@@ -170,6 +175,7 @@ describe('DeckPreview script divergence UI', () => {
     useDeckPreviewFrameMock.mockClear()
     useDeckThumbnailsMock.mockClear()
     reportRuntimeErrorMock.mockClear()
+    editorBridgeOptionsMock.mockClear()
   })
 
   it('tears down the preview and reports when the iframe self-navigates', async () => {
@@ -337,6 +343,21 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     expect(screen.getByText('Preview')).toBeInTheDocument()
+  })
+
+  it('disables persistent manual editing for custom-JS decks', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      html: fullJsDeck,
+      deckAnalysis: analyzeDeckInBrowser(fullJsDeck),
+      editorBridgeEnabled: true,
+    })
+
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ enabled: false }),
+    )
   })
 
   it('keeps slide navigation chrome visible while editing', () => {

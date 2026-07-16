@@ -317,6 +317,7 @@ function App() {
         return
       }
 
+      generatedHtmlRef.current = result.deck.html
       recordEditHistory({
         beforeHtml,
         afterHtml: result.deck.html,

@@ -831,8 +831,10 @@ function applyMoveElement(
     return patchable
   }
 
-  const left = formatPixelValue(operation.cssX ?? operation.x, ARK_SLIDE_REFERENCE_WIDTH)
-  const top = formatPixelValue(operation.cssY ?? operation.y, ARK_SLIDE_REFERENCE_HEIGHT)
+  const slideWidth = operation.slideWidth ?? ARK_SLIDE_REFERENCE_WIDTH
+  const slideHeight = operation.slideHeight ?? ARK_SLIDE_REFERENCE_HEIGHT
+  const left = formatPixelValue(operation.cssX ?? operation.x, slideWidth)
+  const top = formatPixelValue(operation.cssY ?? operation.y, slideHeight)
   const adopted = operation.width !== undefined || operation.height !== undefined
   const style = {
     position: 'absolute',
@@ -842,11 +844,11 @@ function applyMoveElement(
     ...(operation.width === undefined
       ? {}
       : {
-          width: formatPixelValue(operation.cssWidth ?? operation.width, ARK_SLIDE_REFERENCE_WIDTH),
+          width: formatPixelValue(operation.cssWidth ?? operation.width, slideWidth),
         }),
     ...(operation.height === undefined
       ? {}
-      : { height: formatPixelValue(operation.height, ARK_SLIDE_REFERENCE_HEIGHT) }),
+      : { height: formatPixelValue(operation.height, slideHeight) }),
   }
   const merged = mergeInlineStyle(resolved.element, style)
 
@@ -878,15 +880,10 @@ function applyResizeElement(
     return patchable
   }
 
-  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
-    return { error: 'resize_element requires an HTML element target.' }
-  }
-
-  const width = formatPixelValue(operation.cssWidth ?? operation.width, ARK_SLIDE_REFERENCE_WIDTH)
-  const height = formatPixelValue(
-    operation.cssHeight ?? operation.height,
-    ARK_SLIDE_REFERENCE_HEIGHT,
-  )
+  const slideWidth = operation.slideWidth ?? ARK_SLIDE_REFERENCE_WIDTH
+  const slideHeight = operation.slideHeight ?? ARK_SLIDE_REFERENCE_HEIGHT
+  const width = formatPixelValue(operation.cssWidth ?? operation.width, slideWidth)
+  const height = formatPixelValue(operation.cssHeight ?? operation.height, slideHeight)
   const merged = mergeInlineStyle(resolved.element, {
     position: 'absolute',
     width,

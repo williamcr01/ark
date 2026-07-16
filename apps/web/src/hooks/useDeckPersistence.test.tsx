@@ -570,6 +570,77 @@ describe('useDeckPersistence', () => {
     expect(result.current.isSaving).toBe(false)
   })
 
+  it('serializes manual patches before issuing the next request', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    let resolveFirstPatch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
+    const firstPatchGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolveFirstPatch = resolve
+    })
+    const firstDeck = { ...deck, html: sampleHtml.replace('One', 'First'), versionNumber: 2 }
+    const secondDeck = { ...deck, html: sampleHtml.replace('One', 'Second'), versionNumber: 3 }
+    let patchCalls = 0
+    const patchResponse = (patchedDeck: typeof deck, elementId: string) =>
+      jsonResponse({
+        deck: patchedDeck,
+        validation: validValidation,
+        patch: {
+          appliedCount: 1,
+          changedSlideIndexes: [0],
+          changedElementIds: [elementId],
+          summary: 'Patched',
+          suggestedActiveSlideIndex: 0,
+        },
+      })
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url === '/api/decks') {
+        return Promise.resolve(jsonResponse({ decks: [toSummary(deck)] }))
+      }
+      if (url === `/api/decks/${deck.id}` && init?.method !== 'POST') {
+        return Promise.resolve(jsonResponse({ deck }))
+      }
+      if (url.includes('/versions')) {
+        return Promise.resolve(versionsResponse(deck.id))
+      }
+      if (url === `/api/decks/${deck.id}/patch`) {
+        patchCalls += 1
+        return patchCalls === 1
+          ? firstPatchGate
+          : Promise.resolve(patchResponse(secondDeck, 'ark-el-second'))
+      }
+
+      return Promise.resolve(jsonResponse({ error: 'Not found' }, { status: 404 }))
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    let firstPromise: Promise<unknown>
+    let secondPromise: Promise<unknown>
+    act(() => {
+      firstPromise = result.current.patchDeckOperations([
+        { op: 'replace_text', elementId: 'ark-el-first', slideIndex: 0, text: 'First' },
+      ])
+      secondPromise = result.current.patchDeckOperations([
+        { op: 'replace_text', elementId: 'ark-el-second', slideIndex: 0, text: 'Second' },
+      ])
+    })
+
+    expect(patchCalls).toBe(1)
+    resolveFirstPatch!(patchResponse(firstDeck, 'ark-el-first'))
+
+    await waitFor(() => expect(patchCalls).toBe(2))
+    await act(async () => {
+      await Promise.all([firstPromise, secondPromise])
+    })
+
+    expect(result.current.html).toBe(secondDeck.html)
+  })
+
   it('forwards provenance on restoreHtmlSnapshot PUT requests', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 

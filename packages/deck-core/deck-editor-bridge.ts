@@ -256,6 +256,10 @@ export type EditorTransformCommitMessage = {
   cssWidth?: number
   /** Resized border-box height normalized by the slide's logical height. */
   cssHeight?: number
+  /** Logical slide width used to convert normalized CSS values to pixels. */
+  slideWidth?: number
+  /** Logical slide height used to convert normalized CSS values to pixels. */
+  slideHeight?: number
 }
 
 export type EditorTransformCancelMessage = {
@@ -589,7 +593,11 @@ export function isEditorTransformCommitMessage(
     (value.cssX === undefined || isFiniteNumber(value.cssX)) &&
     (value.cssY === undefined || isFiniteNumber(value.cssY)) &&
     (value.cssWidth === undefined || isFiniteNumber(value.cssWidth)) &&
-    (value.cssHeight === undefined || isFiniteNumber(value.cssHeight))
+    (value.cssHeight === undefined || isFiniteNumber(value.cssHeight)) &&
+    (value.slideWidth === undefined ||
+      (isFiniteNumber(value.slideWidth) && value.slideWidth > 0)) &&
+    (value.slideHeight === undefined ||
+      (isFiniteNumber(value.slideHeight) && value.slideHeight > 0))
   )
 }
 
@@ -835,6 +843,8 @@ export function createEditorTransformCommitMessage(
   cssY?: number,
   cssWidth?: number,
   cssHeight?: number,
+  slideWidth?: number,
+  slideHeight?: number,
 ): EditorTransformCommitMessage {
   return {
     type: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
@@ -848,6 +858,8 @@ export function createEditorTransformCommitMessage(
     ...(cssY !== undefined ? { cssY } : {}),
     ...(cssWidth !== undefined ? { cssWidth } : {}),
     ...(cssHeight !== undefined ? { cssHeight } : {}),
+    ...(slideWidth !== undefined ? { slideWidth } : {}),
+    ...(slideHeight !== undefined ? { slideHeight } : {}),
   }
 }
 
@@ -980,6 +992,26 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function findSlides() {
+    var revealSlides = document.querySelector('.reveal .slides');
+
+    if (revealSlides) {
+      var flattened = [];
+      var horizontal = Array.prototype.filter.call(revealSlides.children, function (element) {
+        return element.tagName && element.tagName.toLowerCase() === 'section';
+      });
+
+      horizontal.forEach(function (section) {
+        var vertical = Array.prototype.filter.call(section.children, function (element) {
+          return element.tagName && element.tagName.toLowerCase() === 'section';
+        });
+        Array.prototype.push.apply(flattened, vertical.length ? vertical : [section]);
+      });
+
+      if (flattened.length) {
+        return flattened;
+      }
+    }
+
     for (var i = 0; i < C.SELECTORS.length; i++) {
       var found = document.querySelectorAll(C.SELECTORS[i]);
 
@@ -1431,8 +1463,12 @@ export function buildDeckEditorBridgeRuntimeScript(
       return false;
     }
 
+    var tag = element.tagName.toLowerCase();
+
     return (
-      element.tagName.toLowerCase() === 'img' ||
+      tag === 'img' ||
+      tag === 'svg' ||
+      tag === 'picture' ||
       element.getAttribute(C.EDITABLE_ATTR) === 'image'
     );
   }
@@ -1877,6 +1913,8 @@ export function buildDeckEditorBridgeRuntimeScript(
         cssHeight: mode !== 'move'
           ? readLogicalHeight(element, slide) / logicalSlideHeight
           : undefined,
+        slideWidth: logicalSlideWidth,
+        slideHeight: logicalSlideHeight,
       });
     }
 

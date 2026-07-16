@@ -48,10 +48,15 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
   }
 }
 
-async function loadEditorRuntime(markup: string) {
+async function loadEditorRuntime(
+  markup: string,
+  options: { slideIndex?: number; slideSelectors?: string[] } = {},
+) {
   const messages: RuntimeMessage[] = []
   let parentWindow: { postMessage: (message: RuntimeMessage) => void }
-  const script = buildDeckEditorBridgeRuntimeScript({ slideSelectors: ['section.slide'] })
+  const script = buildDeckEditorBridgeRuntimeScript({
+    slideSelectors: options.slideSelectors ?? ['section.slide'],
+  })
   const dom = new JSDOM(`<!doctype html><body>${markup}<script>${script}</script></body>`, {
     pretendToBeVisual: true,
     runScripts: 'dangerously',
@@ -65,7 +70,11 @@ async function loadEditorRuntime(markup: string) {
   await new Promise<void>((resolve) => dom.window.addEventListener('load', () => resolve()))
   dom.window.dispatchEvent(
     new dom.window.MessageEvent('message', {
-      data: { type: EDITOR_ENABLE_MESSAGE_TYPE, slideIndex: 0, tool: 'select' },
+      data: {
+        type: EDITOR_ENABLE_MESSAGE_TYPE,
+        slideIndex: options.slideIndex ?? 0,
+        tool: 'select',
+      },
       source: parentWindow! as unknown as Window,
     }),
   )
@@ -213,6 +222,8 @@ describe('deck editor bridge protocol', () => {
           0.2,
           0.5,
           0.25,
+          960,
+          700,
         ),
       ),
     ).toBe(true)
@@ -234,6 +245,7 @@ describe('deck editor bridge protocol', () => {
       { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), adopted: false },
       { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), cssX: Number.NaN },
       { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), cssHeight: Number.NaN },
+      { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), slideWidth: 0 },
       { type: EDITOR_SHORTCUT_MESSAGE_TYPE, action: 'paste' },
     ]
 
@@ -399,6 +411,52 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain('function selectParent(slide)')
   })
 
+  it('flattens vertical Reveal slides to Ark linear indexes', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<div class="reveal"><div class="slides"><section><section><h2 id="a">A</h2></section><section><h2 id="b">B</h2></section></section><section><h2 id="c">C</h2></section></div></div>',
+      {
+        slideIndex: 1,
+        slideSelectors: ['.slides > section', '.reveal .slides > section'],
+      },
+    )
+    const canvas = dom.window.document.querySelector<HTMLElement>('.slides')!
+    const heading = dom.window.document.querySelector<HTMLElement>('#b')!
+    const slide = heading.parentElement!
+
+    canvas.getBoundingClientRect = () => rect(0, 0, 960, 700)
+    slide.getBoundingClientRect = () => rect(0, 0, 960, 700)
+    heading.getBoundingClientRect = () =>
+      heading.style.position === 'absolute'
+        ? rect(
+            Number.parseFloat(heading.style.left),
+            Number.parseFloat(heading.style.top),
+            Number.parseFloat(heading.style.width),
+            60,
+          )
+        : rect(100, 100, 300, 60)
+    Object.defineProperties(canvas, {
+      offsetWidth: { configurable: true, value: 960 },
+      offsetHeight: { configurable: true, value: 700 },
+    })
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 300 })
+
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 12, 110, 110))
+    heading.dispatchEvent(pointerEvent(dom, 'pointerup', 12, 110, 110))
+    dom.window.document.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    )
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 450))
+
+    const selection = messages.find(
+      (message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+    )
+    const commit = messages.find((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)
+    expect(selection?.selection).toMatchObject({ slideIndex: 1, textPreview: 'B' })
+    expect(commit).toMatchObject({ slideIndex: 1, slideWidth: 960, slideHeight: 700 })
+    dom.window.close()
+  })
+
   it('deselects on empty-slide pointerdown in the runtime script', () => {
     const script = buildDeckEditorBridgeRuntimeScript({
       slideSelectors: ['section.slide'],
@@ -432,6 +490,8 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain('handle.style.cursor = cursors[handles[i]]')
     expect(script).toContain('data-ark-editor-movable')
     expect(script).toContain('data.type === C.CONFIGURE')
+    expect(script).toContain("tag === 'svg'")
+    expect(script).toContain("tag === 'picture'")
   })
 
   it('supports adopt-on-move, snapping, modifiers, nudge, shortcuts, and unlocked delete', () => {
@@ -632,6 +692,7 @@ describe('deck editor bridge protocol', () => {
     expect(heading.style.top).toBe('-260px')
     expect(commit.geometry).toMatchObject({ x: 200 / 1280, y: 100 / 720, width: 400 / 1280 })
     expect(commit).toMatchObject({ cssX: 200 / 1280, cssY: -260 / 720, cssWidth: 400 / 1280 })
+    expect(commit).toMatchObject({ slideWidth: 1280, slideHeight: 720 })
     dom.window.close()
   })
 
