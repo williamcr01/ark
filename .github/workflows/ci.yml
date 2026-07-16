@@ -14,7 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lockfile:
+  # Cheap static checks share one install so PRs stay gated by `test` (~3–4 min),
+  # not by N parallel setup tax.
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,51 +29,10 @@ jobs:
           cache: pnpm
 
       - run: pnpm lockfile:check
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
-
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
       - run: pnpm audit
+      - run: pnpm openapi:check
 
   build:
     runs-on: ubuntu-latest
@@ -101,13 +62,14 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      # Live Chromium thumbnail coverage runs in test-live-chromium.
+      # Live Chromium thumbnail coverage runs in test-live-chromium (main/nightly).
       - run: pnpm test
 
   test-live-chromium:
+    # API-level Chromium renderer coverage: main pushes and nightly only (not PRs).
+    # UI e2e thumbnail smoke stays in smoke-extended on the same schedule.
+    if: github.event_name == 'push' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    # PR-blocking renderer coverage (API-level). UI e2e thumbnail smoke lives in
-    # smoke-extended on main/nightly to avoid duplicating Chromium renderer paths.
     # Budget for up to 3 attempts of the live Chromium suite.
     timeout-minutes: 35
     steps:
@@ -141,21 +103,6 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 15
           command: pnpm test:live-chromium
-
-  openapi:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm openapi:check
 
   smoke:
     runs-on: ubuntu-latest
@@ -261,8 +208,8 @@ jobs:
           retry_wait_seconds: 15
           command: pnpm smoke:manual-edit
 
-      # UI e2e for rendered PNG thumbnails. API renderer coverage stays on every
-      # PR via test-live-chromium; keep this off the PR critical path.
+      # UI e2e for rendered PNG thumbnails. API renderer coverage is
+      # test-live-chromium on main/nightly; both stay off the PR critical path.
       - name: Smoke - thumbnails
         uses: nick-fields/retry@v3
         with:
