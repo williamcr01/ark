@@ -154,13 +154,14 @@ describe('ElementInspector', () => {
     expect(screen.getByRole('button', { name: 'Unlock element' })).toBeEnabled()
   })
 
-  it('enables edits for unlocked unmanaged deck elements', () => {
+  it('keeps geometry disabled until an unlocked unmanaged element is adopted', () => {
     renderInspector({
       selection: makeSelection({ managed: false, editableKind: null, tagName: 'h1' }),
     })
 
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeEnabled()
+    expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: 'Font weight' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Send backward' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Lock element' })).toBeEnabled()
   })

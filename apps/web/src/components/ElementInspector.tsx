@@ -325,6 +325,7 @@ export function ElementInspector({
   const disabledReason = getInspectorDisabledReason(selection)
   const busy = isSaving || textEditActive || !onApplyOperations
   const canModify = disabledReason === null && !busy
+  const canModifyGeometry = canModify && selection.managed
   const textStyle = selection.textStyle ?? null
   const textAlign = textStyle ? normalizeTextAlign(textStyle.textAlign) : 'left'
   const colorValue =
@@ -481,7 +482,7 @@ export function ElementInspector({
             <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
               {GEOMETRY_FIELDS.map(({ field, label, summary }) => (
                 <CommitNumberField
-                  disabled={!canModify}
+                  disabled={!canModifyGeometry}
                   key={field}
                   label={label}
                   onCommit={(raw) => commitGeometryField(field, raw, summary)}

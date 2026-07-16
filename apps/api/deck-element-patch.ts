@@ -629,17 +629,7 @@ function applyDuplicateElement(
     return patchable
   }
 
-  const view = context.doc.defaultView
-
-  if (!view) {
-    return { error: 'duplicate_element requires a live document view.' }
-  }
-
-  if (!(resolved.element instanceof view.HTMLElement)) {
-    return { error: 'duplicate_element requires an HTML element target.' }
-  }
-
-  const clone = resolved.element.cloneNode(true) as HTMLElement
+  const clone = resolved.element.cloneNode(true) as Element
   clearStableElementIds(clone)
   clone.setAttribute(ARK_MANAGED_ATTR, 'true')
 
@@ -715,7 +705,7 @@ function isAbsolutelyPositioned(element: Element) {
   return position === 'absolute' || position === 'fixed'
 }
 
-function parsePixelValueFromStyle(element: HTMLElement, property: string) {
+function parsePixelValueFromStyle(element: Element, property: string) {
   const value = readInlineStyleValue(element, property)
 
   if (!value) {
@@ -916,10 +906,6 @@ function applyReorderElement(
 
   if (patchable) {
     return patchable
-  }
-
-  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
-    return { error: 'reorder_element requires an HTML element target.' }
   }
 
   const targetZIndex = resolveReorderZIndex(resolved.element, operation)

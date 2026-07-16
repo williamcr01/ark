@@ -384,7 +384,7 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain('box-sizing: border-box')
   })
 
-  it('moves an unmanaged inline SVG element', () => {
+  it('moves, resizes, duplicates, and reorders an inline SVG element', () => {
     const moved = applyDeckPatches(
       `<!DOCTYPE html>
 <html lang="en">
@@ -434,6 +434,37 @@ describe('applyDeckPatches element operations', () => {
 
     expect(resized.html).toContain(`width: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
     expect(resized.html).toContain(`height: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+
+    const duplicated = applyDeckPatches(resized.html, [
+      {
+        op: 'duplicate_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+      },
+    ])
+
+    expect(duplicated.ok).toBe(true)
+    if (!duplicated.ok) {
+      return
+    }
+
+    expect(duplicated.html.match(/<svg/g)).toHaveLength(2)
+
+    const reordered = applyDeckPatches(duplicated.html, [
+      {
+        op: 'reorder_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        direction: 'front',
+      },
+    ])
+
+    expect(reordered.ok).toBe(true)
+    if (!reordered.ok) {
+      return
+    }
+
+    expect(reordered.html).toContain('z-index: 1')
   })
 
   it('uses the runtime logical slide size for Reveal transforms', () => {
