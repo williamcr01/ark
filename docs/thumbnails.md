@@ -94,4 +94,4 @@ scale. Timeouts always dispose the Chromium page target.
 - `apps/api/routes/thumbnails.ts` — public status + PNG routes
 - `apps/web/src/hooks/useDeckThumbnails.ts` — client polling
 - `apps/web/src/components/SlideThumbnailStrip.tsx` — image / `srcDoc` strip
-- `scripts/smoke-thumbnails.ts` — renderer-enabled browser smoke
+- `scripts/smoke-thumbnails.ts` — renderer-enabled UI browser smoke (CI `smoke-extended` on main/nightly; PRs use `test:live-chromium` for API renderer coverage)

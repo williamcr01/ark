@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Nightly extended browser coverage (UTC).
+    - cron: '0 6 * * *'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -103,6 +106,8 @@ jobs:
 
   test-live-chromium:
     runs-on: ubuntu-latest
+    # PR-blocking renderer coverage (API-level). UI e2e thumbnail smoke lives in
+    # smoke-extended on main/nightly to avoid duplicating Chromium renderer paths.
     # Budget for up to 3 attempts of the live Chromium suite.
     timeout-minutes: 35
     steps:
@@ -154,8 +159,9 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
-    # Budget for 4 smoke suites with up to 5 attempts each on flaky runners.
-    timeout-minutes: 90
+    # PR-blocking smoke only: plain CSS upload / nav / Present.
+    # Reveal, full-JS, manual-edit, and thumbnail e2e run in smoke-extended.
+    timeout-minutes: 20
     env:
       ARK_CHROMIUM_PATH: /usr/bin/google-chrome
       ARK_CHROMIUM_NO_SANDBOX: 'true'
@@ -182,8 +188,7 @@ jobs:
           df -h / /tmp
           free -h || true
 
-      # Browser smokes are flaky under shared CI runners; retry each suite up to
-      # 5 times before failing the job. Artifacts from the final failure still upload.
+      # Browser smokes are flaky under shared CI runners; retry before failing.
       - name: Smoke - plain CSS
         uses: nick-fields/retry@v3
         with:
@@ -191,6 +196,46 @@ jobs:
           max_attempts: 5
           retry_wait_seconds: 15
           command: pnpm smoke:plain-css
+
+      - name: Upload browser smoke artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-artifacts-${{ github.run_id }}
+          path: ${{ runner.temp }}/ark-smoke-artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+  smoke-extended:
+    # Heavier browser suites: main pushes and nightly schedule only (not PRs).
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    # Budget for 4 suites with up to 5 attempts each on flaky runners.
+    timeout-minutes: 90
+    env:
+      ARK_CHROMIUM_PATH: /usr/bin/google-chrome
+      ARK_CHROMIUM_NO_SANDBOX: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Browser smoke diagnostics
+        run: |
+          echo "ARK_SMOKE_ARTIFACTS_DIR=${{ runner.temp }}/ark-smoke-artifacts" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/ark-smoke-artifacts"
+          node --version
+          google-chrome --version || /usr/bin/google-chrome --version
+          test -x /usr/bin/google-chrome
+          df -h / /tmp
+          free -h || true
 
       - name: Smoke - Reveal runtime
         uses: nick-fields/retry@v3
@@ -216,14 +261,21 @@ jobs:
           retry_wait_seconds: 15
           command: pnpm smoke:manual-edit
 
+      # UI e2e for rendered PNG thumbnails. API renderer coverage stays on every
+      # PR via test-live-chromium; keep this off the PR critical path.
       - name: Smoke - thumbnails
-        run: pnpm smoke:thumbnails
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: pnpm smoke:thumbnails
 
       - name: Upload browser smoke artifacts (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-smoke-artifacts-${{ github.run_id }}
+          name: browser-smoke-extended-artifacts-${{ github.run_id }}
           path: ${{ runner.temp }}/ark-smoke-artifacts
           if-no-files-found: warn
           retention-days: 7

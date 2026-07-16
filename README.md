@@ -113,12 +113,16 @@ pnpm format:check
 pnpm audit
 pnpm build
 pnpm test
-pnpm smoke:browser
+pnpm smoke:plain-css   # PR-blocking browser smoke (CI gate)
+# Optional fuller local suites:
+# pnpm smoke:browser           # plain + Reveal + full-JS + manual-edit
+# pnpm smoke:browser:extended  # Reveal + full-JS + manual-edit + thumbnails
+# pnpm test:live-chromium      # API-level Chromium thumbnail renderer
 ```
 
 Import boundaries between `apps/*` and `packages/*` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
 
-`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP and cover the no-key core workflow: upload HTML, slide navigation, thumbnail strip, and Present mode for both plain CSS and approved Reveal decks. `pnpm smoke:thumbnails` separately exercises sandbox-rendered PNG thumbnails with the renderer enabled. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+`pnpm test` includes Vitest unit/integration coverage plus hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP. **Pull requests** gate on `pnpm smoke:plain-css` (upload / nav / Present) plus `pnpm test:live-chromium` for the thumbnail renderer. **Main pushes and a nightly schedule** also run Reveal, full-JS bridge, manual-edit, and `pnpm smoke:thumbnails` (UI e2e for rendered PNGs). Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
 
 Format before pushing substantive changes:
 
@@ -126,4 +130,4 @@ Format before pushing substantive changes:
 pnpm format
 ```
 
-Pull requests and pushes to `main` run the same checks in GitHub Actions on an `ubuntu-latest` runner (see `.github/workflows/ci.yml`). No API keys or `.env` file are required for CI.
+GitHub Actions (`.github/workflows/ci.yml`) runs the shared gates on every PR and push to `main`. Extended browser smokes run on `main` pushes and nightly; they are not PR-blocking. No API keys or `.env` file are required for CI.

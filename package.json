@@ -27,6 +27,7 @@
     "smoke:manual-edit": "tsx scripts/smoke-manual-edit.ts",
     "smoke:thumbnails": "tsx scripts/smoke-thumbnails.ts",
     "smoke:browser": "pnpm smoke:plain-css && pnpm smoke:reveal-runtime && pnpm smoke:full-js-bridge && pnpm smoke:manual-edit",
+    "smoke:browser:extended": "pnpm smoke:reveal-runtime && pnpm smoke:full-js-bridge && pnpm smoke:manual-edit && pnpm smoke:thumbnails",
     "benchmark:renderer": "tsx scripts/benchmark-renderer.ts",
     "benchmark:settle-delta": "tsx scripts/benchmark-settle-delta.ts",
     "test:benchmark-renderer": "tsx --test scripts/lib/renderer-benchmark.test.ts",
