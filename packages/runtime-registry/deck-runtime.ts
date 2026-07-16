@@ -1,9 +1,12 @@
 import {
+  buildRuntimeAssetUrl,
   getApprovedRuntimeAssetUrls,
   hasApprovedRevealRuntimeInHtml,
   hasCustomJsMarker,
   hasRevealMarker,
   hasRevealStructure,
+  deckUsesChartJsAddon,
+  resolveDeckRuntimeAddons,
   type ApprovedRuntimeEntry,
   type RuntimeAssetKind,
 } from './deck-runtime-registry.ts'
@@ -99,6 +102,18 @@ export function detectRuntimeModeFromDocument(doc: Document): DeckRuntimeMode {
   return 'static'
 }
 
+export function documentAllowsDeckInitScripts(doc: Document) {
+  if (hasCustomJsMarker(doc)) {
+    return true
+  }
+
+  if ((hasRevealMarker(doc) || hasRevealStructure(doc)) && deckUsesChartJsAddon(doc)) {
+    return true
+  }
+
+  return false
+}
+
 export function detectRuntimeMode(html: string): DeckRuntimeMode {
   if (!html.trim()) {
     return 'static'
@@ -111,6 +126,21 @@ export function detectRuntimeMode(html: string): DeckRuntimeMode {
 
 export function runtimeModeAllowsDeckScripts(mode: DeckRuntimeMode) {
   return mode === 'custom-js'
+}
+
+function getApprovedRuntimeAssetCspSourcesForEntries(
+  runtimes: ApprovedRuntimeEntry[],
+  kind: RuntimeAssetKind,
+  options: RuntimeCspOptions = {},
+) {
+  return runtimes
+    .flatMap((runtime) =>
+      runtime.assets
+        .filter((asset) => asset.kind === kind)
+        .map((asset) => buildRuntimeAssetUrl(runtime.id, runtime.version, asset.path)),
+    )
+    .map((source) => toAbsoluteRuntimeAssetSource(source, options))
+    .filter((source): source is string => Boolean(source))
 }
 
 export function runtimeModeToBridgePreviewMode(
@@ -184,6 +214,18 @@ export function getRuntimeAssetCspSources(
     .filter((source): source is string => Boolean(source))
 }
 
+export function getDeckRuntimeCsp(
+  doc: Document,
+  mode: DeckRuntimeMode,
+  options: RuntimeCspOptions = {},
+) {
+  return getRuntimeCsp(mode, {
+    ...options,
+    addonRuntimes: resolveDeckRuntimeAddons(doc),
+    allowDeckInlineScripts: documentAllowsDeckInitScripts(doc),
+  })
+}
+
 export function getRuntimePolicy(
   mode: DeckRuntimeMode,
   options: RuntimeCspOptions = {},
@@ -205,15 +247,34 @@ export function getThumbnailSandbox() {
   return THUMBNAIL_SANDBOX
 }
 
-function shouldUseScriptNonce(mode: DeckRuntimeMode, nonce?: string | null) {
-  return Boolean(nonce) && mode !== 'custom-js'
+export type RuntimeCspBuildOptions = RuntimeCspOptions & {
+  addonRuntimes?: ApprovedRuntimeEntry[]
+  allowDeckInlineScripts?: boolean
 }
 
-export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspOptions = {}) {
-  const scriptSources = getRuntimeAssetCspSources(mode, 'script', options)
-  const styleSources = getRuntimeAssetCspSources(mode, 'stylesheet', options)
-  const fontSources = getRuntimeAssetCspSources(mode, 'font', options)
-  const useNonce = shouldUseScriptNonce(mode, options.nonce)
+function shouldUseScriptNonce(mode: DeckRuntimeMode, options: RuntimeCspBuildOptions = {}) {
+  if (options.allowDeckInlineScripts) {
+    return false
+  }
+
+  return Boolean(options.nonce) && mode !== 'custom-js'
+}
+
+export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspBuildOptions = {}) {
+  const addonRuntimes = options.addonRuntimes ?? []
+  const scriptSources = [
+    ...getRuntimeAssetCspSources(mode, 'script', options),
+    ...getApprovedRuntimeAssetCspSourcesForEntries(addonRuntimes, 'script', options),
+  ]
+  const styleSources = [
+    ...getRuntimeAssetCspSources(mode, 'stylesheet', options),
+    ...getApprovedRuntimeAssetCspSourcesForEntries(addonRuntimes, 'stylesheet', options),
+  ]
+  const fontSources = [
+    ...getRuntimeAssetCspSources(mode, 'font', options),
+    ...getApprovedRuntimeAssetCspSourcesForEntries(addonRuntimes, 'font', options),
+  ]
+  const useNonce = shouldUseScriptNonce(mode, options)
   const nonceSource = useNonce && options.nonce ? [`'nonce-${options.nonce}'`] : []
 
   if (

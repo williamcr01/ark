@@ -2,3 +2,8 @@ dist
 node_modules
 pnpm-lock.yaml
 presentations
+runtimes/**/*.js
+runtimes/**/*.css
+runtimes/**/*.min.js
+runtimes/**/LICENSE*
+runtimes/**/fonts/**

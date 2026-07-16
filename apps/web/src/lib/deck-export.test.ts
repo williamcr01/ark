@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import chartRegistryDeck from '@fixtures/chart-registry-deck.html?raw'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
@@ -47,6 +48,17 @@ describe('deck-export', () => {
   it('keeps full-js decks executable in preview', () => {
     expect(deckHasExecutableContent(fullJsDeck)).toBe(true)
     expect(previewStripsDeckScripts(fullJsDeck)).toBe(false)
+  })
+
+  it('keeps chart.js decks executable in original download and strips them when sanitized', () => {
+    expect(deckHasExecutableContent(chartRegistryDeck)).toBe(true)
+    expect(previewStripsDeckScripts(chartRegistryDeck)).toBe(false)
+    expect(resolveDownloadHtml(chartRegistryDeck, 'original')).toContain(
+      '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+    )
+    const sanitized = resolveDownloadHtml(chartRegistryDeck, 'sanitized')
+    expect(sanitized).not.toContain('<script')
+    expect(sanitized).toContain('Quarterly revenue')
   })
 
   it('builds sanitized HTML without scripts or inline handlers', () => {

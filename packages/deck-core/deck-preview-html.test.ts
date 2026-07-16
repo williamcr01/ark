@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
+import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
+
+import {
+  deckUsesChartJsAddon,
+  hasApprovedRevealRuntimeInDocument,
+} from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildPreviewDocument, injectPreviewHandshake } from './deck-preview-html.ts'
 
 function countMetaRefresh(doc: Document) {
@@ -161,5 +167,84 @@ describe('buildPreviewDocument', () => {
     expect(html.toLowerCase()).not.toContain('http-equiv="refresh"')
     expect(html).toContain('data-ark-preview-bridge')
     expect(previewDoc.documentElement.getAttribute('data-ark-deck')).toBe('nav')
+  })
+
+  it('preserves chart init scripts and allows chart.js CSP for reveal addon decks', () => {
+    const { html, runtimeMode, nonce } = buildPreviewDocument(revealChartDeck, {
+      parentOrigin: 'http://localhost:5173',
+    })
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const csp = doc
+      .querySelector('meta[http-equiv="Content-Security-Policy"]')
+      ?.getAttribute('content')
+
+    expect(runtimeMode).toBe('reveal')
+    expect(nonce).toBeNull()
+    expect(html).toContain('data-ark-preview-reveal')
+    expect(html).toContain('new Chart(')
+    expect(html).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
+    expect(html).toContain('document.dispatchEvent(new CustomEvent(C.CHANGE')
+    expect(csp).toContain("'unsafe-inline'")
+    expect(csp).toContain('chart.js/4.5.1/chart.umd.min.js')
+  })
+
+  it('strips deck scripts when Chart.js addon markers are incomplete', () => {
+    const incomplete = `<!DOCTYPE html>
+<html
+  lang="en"
+  data-ark-runtime="reveal"
+  data-ark-runtime-lib="reveal.js"
+  data-ark-runtime-version="5.1.0"
+  data-ark-runtime-addon-lib="chart.js"
+>
+  <head>
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/reveal.css" />
+    <link rel="stylesheet" href="/api/runtimes/reveal.js/5.1.0/theme/white.css" />
+  </head>
+  <body>
+    <div class="reveal"><div class="slides"><section><h1>One</h1></section></div></div>
+    <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
+    <script src="/api/runtimes/chart.js/4.5.1/chart.umd.min.js"></script>
+    <script>new Chart(document.getElementById('c'), {})</script>
+  </body>
+</html>`
+    const incompleteDoc = new DOMParser().parseFromString(incomplete, 'text/html')
+    const { html, nonce } = buildPreviewDocument(incomplete, {
+      parentOrigin: 'http://localhost:5173',
+    })
+
+    expect(deckUsesChartJsAddon(incompleteDoc)).toBe(false)
+    expect(nonce).not.toBeNull()
+    expect(html).toContain('/api/runtimes/reveal.js/5.1.0/reveal.js')
+    expect(html).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
+    expect(html).not.toContain('new Chart(')
+  })
+
+  it('detects approved Reveal scripts only when the asset kind is script', () => {
+    const bogus = new DOMParser().parseFromString(
+      `<!DOCTYPE html>
+<html lang="en">
+<body>
+  <div class="reveal"><div class="slides"><section>One</section></div></div>
+  <script src="/api/runtimes/reveal.js/5.1.0/reveal.css"></script>
+</body>
+</html>`,
+      'text/html',
+    )
+    const valid = new DOMParser().parseFromString(
+      `<!DOCTYPE html>
+<html lang="en">
+<body>
+  <div class="reveal"><div class="slides"><section>One</section></div></div>
+  <script src="/api/runtimes/reveal.js/5.1.0/reveal.js"></script>
+</body>
+</html>`,
+      'text/html',
+    )
+    const completeAddon = new DOMParser().parseFromString(revealChartDeck, 'text/html')
+
+    expect(hasApprovedRevealRuntimeInDocument(bogus)).toBe(false)
+    expect(hasApprovedRevealRuntimeInDocument(valid)).toBe(true)
+    expect(deckUsesChartJsAddon(completeAddon)).toBe(true)
   })
 })

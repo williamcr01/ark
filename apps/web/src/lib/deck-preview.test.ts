@@ -11,6 +11,7 @@ import {
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
 } from '@ark/deck-core/deck-bridge.ts'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
+import chartRegistryDeck from '@fixtures/chart-registry-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import malformedDeck from '@fixtures/malformed-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
@@ -259,6 +260,22 @@ describe('getPreviewHtml', () => {
     expect(previewHtml).toContain('data-ark-preview-bridge')
     expect(previewHtml).not.toContain('data-ark-preview-nav')
     expect(previewHtml).toContain('window.fullJsDeckBooted = true')
+  })
+
+  it('preserves Chart.js runtime assets and injects the full-js bridge', () => {
+    const previewHtml = getPreviewHtml(chartRegistryDeck, {
+      parentOrigin: 'http://localhost:5173',
+    })
+
+    expect(detectRuntimeMode(chartRegistryDeck)).toBe('custom-js')
+    expect(previewHtml).toContain('data-ark-preview-bridge')
+    expect(previewHtml).not.toContain('data-ark-preview-nav')
+    expect(previewHtml).toContain(
+      'http://localhost:5173/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
+    )
+    expect(previewHtml).toContain('new Chart(')
+    expect(previewHtml).toContain("connect-src 'none'")
+    expect(previewHtml).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
   })
 
   it('runs the static navigation shim for keyboard navigation', async () => {

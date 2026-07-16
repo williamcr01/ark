@@ -135,7 +135,9 @@ function buildManifestWarnings(
 
   if (validation.scripts.length > 0 && !runtimeModeAllowsDeckScripts(runtimeMode)) {
     if (runtimeMode === 'reveal' && usesRevealAdapter) {
-      warnings.push('Reveal runtime scripts run in preview; unapproved scripts are stripped.')
+      warnings.push(
+        'Reveal runtime scripts run in preview; deck-authored scripts are only kept when a Chart.js addon is declared.',
+      )
     } else {
       warnings.push('Deck scripts are stripped in preview unless custom-JS mode is enabled.')
     }

@@ -8,6 +8,8 @@ import { buildDeckEditorBridgeRuntimeScript } from './deck-editor-bridge.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import {
   detectRuntimeModeFromDocument,
+  documentAllowsDeckInitScripts,
+  getDeckRuntimeCsp,
   getRuntimeCsp,
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
@@ -22,6 +24,7 @@ import {
   stripHostileNavigationVectors,
 } from './deck-preview-slides.ts'
 import {
+  deckUsesChartJsAddon,
   getApprovedRuntimeAssetUrls,
   hasApprovedRevealRuntimeInDocument,
   isApprovedRuntimeAssetUrl,
@@ -190,9 +193,12 @@ function injectRuntimeCspMeta(
 ) {
   const head = ensureHead(doc)
   const meta = doc.createElement('meta')
+  const csp = documentAllowsDeckInitScripts(doc)
+    ? getDeckRuntimeCsp(doc, mode, options)
+    : getRuntimeCsp(mode, options)
 
   meta.setAttribute('http-equiv', 'Content-Security-Policy')
-  meta.setAttribute('content', getRuntimeCsp(mode, options))
+  meta.setAttribute('content', csp)
   head.insertBefore(meta, head.firstChild)
 }
 
@@ -443,13 +449,15 @@ export function buildPreviewDocument(
 
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const mode = options.manifest?.runtimeMode ?? detectRuntimeModeFromDocument(doc)
+  const chartAddon = deckUsesChartJsAddon(doc)
+  const allowsDeckInitScripts = documentAllowsDeckInitScripts(doc)
   const usesRevealAdapter =
     options.manifest?.usesRevealAdapter ??
     (mode === 'reveal' && hasApprovedRevealRuntimeInDocument(doc))
   const assetOrigin = options.parentOrigin
   // Nonces neutralize javascript: URLs and slipped-past inline handlers in
-  // CSS-only / reveal-adapter modes. custom-js must keep 'unsafe-inline'.
-  const nonce = mode === 'custom-js' ? null : options.nonce?.trim() || generateCspNonce()
+  // CSS-only / reveal-adapter modes. custom-js and reveal+chart need inline scripts.
+  const nonce = allowsDeckInitScripts ? null : options.nonce?.trim() || generateCspNonce()
   // Meta refresh / javascript: URLs have no legitimate use in any preview mode.
   stripHostileNavigationVectors(doc.documentElement)
   const runtimeOptions = {
@@ -481,7 +489,11 @@ export function buildPreviewDocument(
   }
 
   if (usesRevealAdapter) {
-    stripDeckScriptsAndHandlers(doc, { preserveApprovedRuntimeScripts: true })
+    if (chartAddon) {
+      stripInlineHandlers(doc.documentElement)
+    } else {
+      stripDeckScriptsAndHandlers(doc, { preserveApprovedRuntimeScripts: true })
+    }
     absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
     appendPreviewFill(doc, { historyShim: true, nonce })
