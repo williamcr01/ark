@@ -31,6 +31,7 @@ export type EditModeToolbarProps = {
   isSaving: boolean
   selectedImage?: boolean
   selectionLocked: boolean
+  selectionManaged: boolean
   textEditActive: boolean
   onBringForward?: () => void
   onDelete?: () => void
@@ -102,6 +103,7 @@ export function EditModeToolbar({
   isSaving,
   selectedImage = false,
   selectionLocked,
+  selectionManaged,
   textEditActive,
   onBringForward,
   onDelete,
@@ -117,6 +119,7 @@ export function EditModeToolbar({
 }: EditModeToolbarProps) {
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
   const canModifySelection = hasSelection && !selectionLocked && !toolbarDisabled && !textEditActive
+  const canReorderSelection = canModifySelection && selectionManaged
   const canUseTools = hasDeck && !isGenerating && !isSaving
   const undoDisabled = !canUndo || toolbarDisabled || textEditActive
   const redoDisabled = !canRedo || toolbarDisabled || textEditActive
@@ -250,14 +253,14 @@ export function EditModeToolbar({
 
       <ButtonGroup aria-label="Layer order" className="hidden shrink-0 sm:flex">
         <ToolbarButton
-          disabled={!canModifySelection}
+          disabled={!canReorderSelection}
           label={hasSelection ? 'Bring forward' : 'Bring forward (no selection)'}
           onClick={onBringForward}
         >
           <ArrowUpIcon className="size-3.5" />
         </ToolbarButton>
         <ToolbarButton
-          disabled={!canModifySelection}
+          disabled={!canReorderSelection}
           label={hasSelection ? 'Send backward' : 'Send backward (no selection)'}
           onClick={onSendBackward}
         >

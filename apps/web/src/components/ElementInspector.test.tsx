@@ -162,7 +162,7 @@ describe('ElementInspector', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeDisabled()
     expect(screen.getByRole('combobox', { name: 'Font weight' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Send backward' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Send backward' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Lock element' })).toBeEnabled()
   })
 

@@ -1137,7 +1137,7 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByRole('button', { name: 'Edit selected text' })).not.toBeInTheDocument()
   })
 
-  it('allows toolbar mutations for unlocked unmanaged selections', async () => {
+  it('keeps layer actions disabled until an unlocked selection is adopted', async () => {
     const user = userEvent.setup()
     const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
     editorBridgeMock.selection = {
@@ -1158,11 +1158,10 @@ describe('DeckPreview script divergence UI', () => {
     })
 
     await user.click(screen.getByRole('button', { name: 'Delete selected element' }))
-    await user.click(screen.getByRole('button', { name: 'Bring forward' }))
+    expect(screen.getByRole('button', { name: 'Bring forward' })).toBeDisabled()
 
     expect(onPatchEditorOperations.mock.calls.map(([operations]) => operations[0]?.op)).toEqual([
       'delete_element',
-      'reorder_element',
     ])
   })
 

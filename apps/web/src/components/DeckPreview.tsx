@@ -438,7 +438,7 @@ export function DeckPreview({
 
   const handleReorderSelection = useCallback(
     (direction: 'front' | 'back') => {
-      if (!selection || !canModifySelection || !onPatchEditorOperations) {
+      if (!selection || !selection.managed || !canModifySelection || !onPatchEditorOperations) {
         return
       }
 
@@ -1270,6 +1270,7 @@ export function DeckPreview({
           onUndo={handleUndo}
           selectedImage={selectedImage}
           selectionLocked={selection?.locked ?? false}
+          selectionManaged={selection?.managed ?? false}
           textEditActive={textEditActive}
         />
       ) : null}

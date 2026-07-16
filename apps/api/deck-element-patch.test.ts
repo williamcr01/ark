@@ -62,7 +62,7 @@ const inlineSvgDeck = `<!DOCTYPE html>
 <head><meta charset="UTF-8" /><title>SVG</title></head>
 <body>
   <section class="slide">
-    <svg data-ark-id="ark-el-svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /></svg>
+    <svg data-ark-id="ark-el-svg" style="left: 200px" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /></svg>
   </section>
 </body>
 </html>`
@@ -396,7 +396,7 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain('box-sizing: border-box')
   })
 
-  it('reorders a static inline SVG element without removing it from flow', () => {
+  it('rejects reordering a static inline SVG without changing its positioning', () => {
     const reordered = applyDeckPatches(inlineSvgDeck, [
       {
         op: 'reorder_element',
@@ -406,14 +406,11 @@ describe('applyDeckPatches element operations', () => {
       },
     ])
 
-    expect(reordered.ok).toBe(true)
-    if (!reordered.ok) {
-      return
-    }
-
-    expect(reordered.html).toMatch(/<svg[^>]*position: relative/)
-    expect(reordered.html).toMatch(/<svg[^>]*z-index: 1/)
-    expect(reordered.html).not.toContain('data-ark-managed="true"')
+    expect(reordered).toEqual({
+      ok: false,
+      error: 'reorder_element requires a positioned element target.',
+      operationIndex: 0,
+    })
   })
 
   it('moves, resizes, and duplicates an inline SVG element', () => {

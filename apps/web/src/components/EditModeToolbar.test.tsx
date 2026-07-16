@@ -21,6 +21,7 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>
         isSaving={false}
         onToolChange={onToolChange}
         selectionLocked={false}
+        selectionManaged={false}
         textEditActive={false}
         {...overrides}
       />
@@ -83,7 +84,7 @@ describe('EditModeToolbar', () => {
 
   it('enables unlocked selection actions when available', () => {
     const onDuplicate = vi.fn()
-    renderToolbar({ hasSelection: true, onDuplicate })
+    renderToolbar({ hasSelection: true, onDuplicate, selectionManaged: true })
 
     expect(screen.getByRole('button', { name: 'Duplicate selected element' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Bring forward' })).toBeEnabled()

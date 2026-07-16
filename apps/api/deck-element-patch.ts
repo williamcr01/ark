@@ -908,12 +908,14 @@ function applyReorderElement(
     return patchable
   }
 
-  const targetZIndex = resolveReorderZIndex(resolved.element, operation)
   const position = context.doc.defaultView?.getComputedStyle(resolved.element).position
-  const merged = mergeInlineStyle(resolved.element, {
-    ...(!position || position === 'static' ? { position: 'relative' } : {}),
-    'z-index': String(targetZIndex),
-  })
+
+  if (!position || position === 'static') {
+    return { error: 'reorder_element requires a positioned element target.' }
+  }
+
+  const targetZIndex = resolveReorderZIndex(resolved.element, operation)
+  const merged = mergeInlineStyle(resolved.element, { 'z-index': String(targetZIndex) })
 
   if ('error' in merged) {
     return merged

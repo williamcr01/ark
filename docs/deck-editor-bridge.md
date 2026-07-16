@@ -237,11 +237,11 @@ Parsed by `apps/api/deck-editable-elements.ts` and enforced again in `apps/api/d
 
 Lock reasons include `explicit-lock`, `unsafe-tag`, `runtime-control`, `speaker-notes`, `hidden`, and `no-text-content`. `managed` is metadata, not a permission gate.
 
-Keyboard **Delete/Backspace**, the toolbar, and non-geometry inspector controls operate on any unlocked recognized selection. Inspector geometry fields remain disabled until canvas movement adopts the element, because only the runtime knows its measured size and containing-block coordinates. The server still rejects locked, unsafe, unrecognized, and ambiguous targets.
+Keyboard **Delete/Backspace** and non-layout controls operate on any unlocked recognized selection. Inspector geometry and layer controls remain disabled until canvas movement adopts the element, because only the runtime knows its measured size and containing-block coordinates. The server still rejects locked, unsafe, unrecognized, and ambiguous targets.
 
 Style edits and flow-positioned duplicates retain unmanaged flow layout; only an operation that establishes absolute layout stamps `data-ark-managed="true"`.
 
-`reorder_element` accepts either an absolute `zIndex` or a `direction` (`'front'` / `'back'`). The manual editor sends `direction`; the server resolves it against the sibling z-index range (top sibling + 1 for front, floored at 0 for back) so layering is predictable even when the element and its siblings sit at the default `auto`/`0` level. Static targets receive `position: relative` so z-index takes effect without removing them from document flow.
+`reorder_element` accepts either an absolute `zIndex` or a `direction` (`'front'` / `'back'`). The manual editor sends `direction`; the server resolves it against the sibling z-index range (top sibling + 1 for front, floored at 0 for back) so layering is predictable even when siblings use the default `auto`/`0` level. Layer controls remain disabled until canvas movement adopts an element; the server rejects static targets rather than changing their layout to activate z-index.
 
 ### What the parent must not trust
 

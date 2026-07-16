@@ -326,6 +326,7 @@ export function ElementInspector({
   const busy = isSaving || textEditActive || !onApplyOperations
   const canModify = disabledReason === null && !busy
   const canModifyGeometry = canModify && selection.managed
+  const canModifyLayer = canModify && selection.managed
   const textStyle = selection.textStyle ?? null
   const textAlign = textStyle ? normalizeTextAlign(textStyle.textAlign) : 'left'
   const colorValue =
@@ -505,14 +506,14 @@ export function ElementInspector({
             </span>
             <ButtonGroup aria-label="Layer order">
               <InspectorIconButton
-                disabled={!canModify}
+                disabled={!canModifyLayer}
                 label="Bring forward"
                 onClick={() => commitReorder('front')}
               >
                 <ArrowUpIcon className="size-3.5" />
               </InspectorIconButton>
               <InspectorIconButton
-                disabled={!canModify}
+                disabled={!canModifyLayer}
                 label="Send backward"
                 onClick={() => commitReorder('back')}
               >
