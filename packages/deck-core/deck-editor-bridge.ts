@@ -1170,7 +1170,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         // one object because their child stores the editable text.
         var drilled =
           managedAncestor === selectedElement ||
-          (selectedElement && managedAncestor.contains(selectedElement));
+          (selectedElement && managedAncestor && managedAncestor.contains(selectedElement));
 
         return managedAncestor && (isTextBox(managedAncestor) || !drilled)
           ? managedAncestor

@@ -411,8 +411,41 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain('if (!bounds.width || !bounds.height)')
     const ancestorPreferenceIndex = script.indexOf('managedAncestor === selectedElement ||')
     expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
-    expect(script).toContain('managedAncestor.contains(selectedElement)')
+    expect(script).toContain(
+      'selectedElement && managedAncestor && managedAncestor.contains(selectedElement)',
+    )
     expect(script).toContain('function selectParent(slide)')
+  })
+
+  it('keeps pointer hit-testing alive after selecting a plain flow element', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title">Opening</h1><p data-ark-id="copy">Body</p></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    title.getBoundingClientRect = () => rect(100, 80, 400, 60)
+    copy.getBoundingClientRect = () => rect(100, 180, 400, 40)
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    messages.length = 0
+
+    // Previously threw when selectedElement was set and managedAncestor was null.
+    expect(() => {
+      title.dispatchEvent(pointerEvent(dom, 'pointermove', 1, 130, 105))
+      copy.dispatchEvent(pointerEvent(dom, 'pointermove', 1, 120, 190))
+      copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 190))
+      copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 190))
+    }).not.toThrow()
+
+    const selections = messages
+      .filter((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE)
+      .map((message) => (message.selection as { elementId: string }).elementId)
+    expect(selections).toEqual(['copy'])
+    dom.window.close()
   })
 
   it('drills into an already-selected managed container', async () => {
