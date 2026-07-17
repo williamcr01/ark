@@ -129,4 +129,28 @@ describe('deck-editor-patches', () => {
       },
     ])
   })
+
+  it('persists adopted resizes as move plus resize operations', () => {
+    const commit = createEditorTransformCommitMessage(
+      'ark-el-heading',
+      0,
+      { x: 0.1, y: 0.2, width: 0.5, height: 0.2 },
+      undefined,
+      undefined,
+      true,
+      0.1,
+      0.2,
+      0.5,
+      0.2,
+      1280,
+      720,
+    )
+
+    expect(
+      buildTransformPatchOperations(commit, { x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, null),
+    ).toEqual([
+      expect.objectContaining({ op: 'move_element', width: 0.5 }),
+      expect.objectContaining({ op: 'resize_element', width: 0.5, height: 0.2 }),
+    ])
+  })
 })

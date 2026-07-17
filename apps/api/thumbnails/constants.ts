@@ -1,5 +1,10 @@
-export const THUMBNAIL_VIEWPORT_WIDTH = 1600
-export const THUMBNAIL_VIEWPORT_HEIGHT = 900
+import {
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+} from '@ark/deck-core/deck-metadata.ts'
+
+export const THUMBNAIL_VIEWPORT_WIDTH = ARK_SLIDE_REFERENCE_WIDTH
+export const THUMBNAIL_VIEWPORT_HEIGHT = ARK_SLIDE_REFERENCE_HEIGHT
 export const THUMBNAIL_OUTPUT_WIDTH = 480
 export const THUMBNAIL_OUTPUT_HEIGHT = Math.round(
   (THUMBNAIL_OUTPUT_WIDTH * THUMBNAIL_VIEWPORT_HEIGHT) / THUMBNAIL_VIEWPORT_WIDTH,
@@ -21,7 +26,7 @@ export const THUMBNAIL_SETTLE_MS = 40
 export const THUMBNAIL_MAX_PNG_BYTES = 1_500_000
 export const THUMBNAIL_CACHE_MAX_ENTRIES = 200
 /** Bumped when capture/settle pipeline changes invalidate cached PNGs. */
-export const THUMBNAIL_RENDERER_VERSION = 'thumbnail-renderer-v10'
+export const THUMBNAIL_RENDERER_VERSION = 'thumbnail-renderer-v11'
 export const THUMBNAIL_MAX_RENDER_ATTEMPTS = 3
 export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
 /** Must exceed deck timeout so a live render is not stolen by another process. */

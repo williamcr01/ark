@@ -153,6 +153,20 @@ describe('parseEditableElements', () => {
     expect(slide.querySelector('.card')?.hasAttribute('data-ark-id')).toBe(false)
   })
 
+  it('stamps text-like elements that are also selectable containers', () => {
+    const doc = new DOMParser().parseFromString(
+      '<section><blockquote>Quote</blockquote><pre>Code</pre><a href="#">Link</a></section>',
+      'text/html',
+    )
+    const slide = doc.querySelector('section')!
+
+    stampEditableElementIds(slide)
+
+    for (const tag of ['blockquote', 'pre', 'a']) {
+      expect(slide.querySelector(tag)?.hasAttribute('data-ark-id')).toBe(true)
+    }
+  })
+
   it('handles inline svg image candidates without crashing', () => {
     const parsed = parseDeckHtml(`<!DOCTYPE html>
 <html lang="en">

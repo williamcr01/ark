@@ -96,8 +96,10 @@ export function useDeckPersistence() {
   const patchRequestIdRef = useRef(0)
   const manualMutationQueueRef = useRef<Promise<void> | null>(null)
   const inspectRequestIdRef = useRef(0)
+  const htmlRef = useRef('')
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
+    htmlRef.current = deck.html
     setDeckId(deck.id)
     setDeckTitle(deck.title)
     setHtml(deck.html)
@@ -109,6 +111,7 @@ export function useDeckPersistence() {
   }, [])
 
   const clearActiveDeck = useCallback(() => {
+    htmlRef.current = ''
     clearActiveDeckId()
     setDeckId(null)
     setDeckTitle('')
@@ -239,6 +242,7 @@ export function useDeckPersistence() {
     async (nextHtml: string, options: DeckVersionOptions = {}) => {
       const requestId = ++saveRequestIdRef.current
 
+      htmlRef.current = nextHtml
       setHtml(nextHtml)
       // Unlock shell chrome before the save round-trip when the title is still
       // auto-derived from HTML (new decks or unsaved renames).
@@ -486,6 +490,7 @@ export function useDeckPersistence() {
     (patchResult: PatchDeckResponse) => {
       const { deck, patch } = patchResult
 
+      htmlRef.current = deck.html
       setHtml(deck.html)
       setSavedHtml(deck.html)
       setActiveVersionId(deck.activeVersionId ?? null)
@@ -542,6 +547,7 @@ export function useDeckPersistence() {
             return undefined
           }
 
+          htmlRef.current = deck.html
           setHtml(deck.html)
           setSavedHtml(deck.html)
           setActiveVersionId(deck.activeVersionId ?? null)
@@ -587,6 +593,7 @@ export function useDeckPersistence() {
         }
 
         const requestId = ++patchRequestIdRef.current
+        const beforeHtml = htmlRef.current
 
         setIsPatching(true)
         setSaveError('')
@@ -606,7 +613,7 @@ export function useDeckPersistence() {
           }
 
           const suggestedSlideIndex = applyPatchedDeck(patchResult)
-          return { ...patchResult, suggestedSlideIndex }
+          return { ...patchResult, suggestedSlideIndex, beforeHtml }
         } catch (error) {
           if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
             return undefined

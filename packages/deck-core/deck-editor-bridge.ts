@@ -18,6 +18,8 @@ import {
 import {
   ARK_ELEMENT_ID_ATTR,
   ARK_LOCKED_ATTR,
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
   TRANSIENT_ELEMENT_ID_PREFIX,
 } from './deck-metadata.ts'
 import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
@@ -129,6 +131,8 @@ export type EditorSelectionInfo = {
   textPreview: string | null
   imageFit?: EditorImageFitMode | null
   surface?: EditorSurface
+  /** Inspector geometry is safe to persist without runtime coordinate conversion. */
+  geometryEditable?: boolean
   /** Semantic role from data-ark-role, when present (issue #84). */
   role?: string | null
   /** Computed text styles for text-like selections (issue #84). */
@@ -405,6 +409,7 @@ export function isEditorSelectionInfo(value: unknown): value is EditorSelectionI
     (value.editableKind === null || typeof value.editableKind === 'string') &&
     (value.textPreview === null || typeof value.textPreview === 'string') &&
     (value.surface === undefined || isEditorSurface(value.surface)) &&
+    (value.geometryEditable === undefined || typeof value.geometryEditable === 'boolean') &&
     (value.imageFit === undefined ||
       value.imageFit === null ||
       value.imageFit === 'contain' ||
@@ -590,8 +595,8 @@ export function isEditorTransformCommitMessage(
     (value.zIndex === undefined || value.zIndex === null || isFiniteNumber(value.zIndex)) &&
     (value.slideBounds === undefined || isEditorNormalizedRect(value.slideBounds)) &&
     (value.adopted === undefined || value.adopted === true) &&
-    (value.cssX === undefined || isFiniteNumber(value.cssX)) &&
-    (value.cssY === undefined || isFiniteNumber(value.cssY)) &&
+    (value.cssX === undefined || (isFiniteNumber(value.cssX) && Math.abs(value.cssX) <= 10)) &&
+    (value.cssY === undefined || (isFiniteNumber(value.cssY) && Math.abs(value.cssY) <= 10)) &&
     (value.cssWidth === undefined || isFiniteNumber(value.cssWidth)) &&
     (value.cssHeight === undefined || isFiniteNumber(value.cssHeight)) &&
     (value.slideWidth === undefined ||
@@ -944,6 +949,8 @@ export function buildDeckEditorBridgeRuntimeScript(
     MIN_BOX_SIZE: MIN_TEXT_BOX_NORMALIZED_SIZE,
     DEFAULT_BOX_WIDTH: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.width,
     DEFAULT_BOX_HEIGHT: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.height,
+    SLIDE_REFERENCE_WIDTH: ARK_SLIDE_REFERENCE_WIDTH,
+    SLIDE_REFERENCE_HEIGHT: ARK_SLIDE_REFERENCE_HEIGHT,
   }
 
   return `
@@ -1156,8 +1163,13 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     while (current && current !== slide) {
       if (current.nodeType === 1 && isEditableCandidate(current, slide)) {
-        // Managed wrappers are edited as one object, even when a child wins hit-testing.
-        return findManagedAncestor(current, slide) || current;
+        var managedAncestor = findManagedAncestor(current, slide);
+
+        // First click selects a managed group; a second click drills into it.
+        // Text boxes remain one object because their child stores the editable text.
+        return managedAncestor && (isTextBox(managedAncestor) || managedAncestor !== selectedElement)
+          ? managedAncestor
+          : current;
       }
 
       current = current.parentElement;
@@ -1261,6 +1273,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       textPreview: readTextPreview(element),
       imageFit: readImageFit(element),
       surface: detectSurface(element, slide),
+      geometryEditable: canEditInspectorGeometry(element, slide),
       role: element.getAttribute(C.ROLE_ATTR) || null,
       textStyle: readTextStyle(element),
       imageNaturalSize: readImageNaturalSize(element),
@@ -1271,7 +1284,31 @@ export function buildDeckEditorBridgeRuntimeScript(
     var match = String(value || '').match(/rgba?\\(([^)]+)\\)/i);
 
     if (!match) {
-      return null;
+      try {
+        var canvas = parseColor.canvas || (parseColor.canvas = document.createElement('canvas'));
+        canvas.width = 1;
+        canvas.height = 1;
+        var context = canvas.getContext && canvas.getContext('2d');
+
+        if (!context) {
+          return null;
+        }
+
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = '#010203';
+        var sentinel = context.fillStyle;
+        context.fillStyle = String(value || '');
+
+        if (context.fillStyle === sentinel) {
+          return null;
+        }
+
+        context.fillRect(0, 0, 1, 1);
+        var pixel = context.getImageData(0, 0, 1, 1).data;
+        return { r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] / 255 };
+      } catch (error) {
+        return null;
+      }
     }
 
     var parts = match[1].split(/[\\s,\\/]+/).filter(Boolean).map(Number);
@@ -1309,7 +1346,13 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function averageGradient(image) {
-    var matches = String(image || '').match(/rgba?\\([^)]+\\)/gi) || [];
+    var value = String(image || '');
+
+    if (!/gradient\\(/i.test(value)) {
+      return null;
+    }
+
+    var matches = value.replace(/url\\([^)]*\\)/gi, '').match(/rgba?\\([^)]+\\)/gi) || [];
     var colors = matches.map(parseColor).filter(Boolean);
 
     if (!colors.length) {
@@ -1371,6 +1414,16 @@ export function buildDeckEditorBridgeRuntimeScript(
   function getSlideLogicalHeight(slide) {
     var coordinateElement = getSlideCoordinateElement(slide);
     return coordinateElement.offsetHeight || getSlideCoordinateRect(slide).height;
+  }
+
+  function canEditInspectorGeometry(element, slide) {
+    var context = readPositionContext(element, slide);
+
+    return (
+      context.containingBlock === slide &&
+      Math.abs(getSlideLogicalWidth(slide) - C.SLIDE_REFERENCE_WIDTH) < 0.5 &&
+      Math.abs(getSlideLogicalHeight(slide) - C.SLIDE_REFERENCE_HEIGHT) < 0.5
+    );
   }
 
   function normalizeRect(element, slide) {
@@ -1519,7 +1572,12 @@ export function buildDeckEditorBridgeRuntimeScript(
       return false;
     }
 
-    return element.getAttribute(C.MANAGED_ATTR) === 'true' || isTextBox(element);
+    if (element.getAttribute(C.MANAGED_ATTR) === 'true' || isTextBox(element)) {
+      return true;
+    }
+
+    var style = window.getComputedStyle(element);
+    return style.position === 'absolute' && style.left !== 'auto' && style.top !== 'auto';
   }
 
   function getTextEditTarget(element) {
@@ -1574,15 +1632,17 @@ export function buildDeckEditorBridgeRuntimeScript(
 
   function setHoverCursor(element) {
     if (hoveredElement === element) {
-      return;
+      return false;
     }
 
     clearHoverCursor();
+    hoveredElement = element;
 
-    if (element && element.getAttribute(C.LOCKED_ATTR) !== 'true') {
-      hoveredElement = element;
+    if (hoveredElement && hoveredElement.getAttribute(C.LOCKED_ATTR) !== 'true') {
       hoveredElement.setAttribute('data-ark-editor-movable', 'true');
     }
+
+    return true;
   }
 
   function ensureEditorStyle() {
@@ -1603,7 +1663,7 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function updateResizeHandles(element, slide) {
-    if (!element || !slide || !isManagedElement(element) || element.getAttribute(C.LOCKED_ATTR) === 'true') {
+    if (!element || !slide || element.getAttribute(C.LOCKED_ATTR) === 'true') {
       clearResizeHandles();
       return;
     }
@@ -1827,6 +1887,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     }
 
     endTextEdit(false);
+    clearHoverCursor();
     clearEditorOverlays();
     textEditElement = target;
     originalTextBeforeEdit = target.textContent || '';
@@ -2158,17 +2219,24 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function collectSnapRects(slide, element) {
-    var candidates = Array.prototype.slice.call(slide.querySelectorAll('*')).filter(function (candidate) {
-      return (
+    var descendants = slide.querySelectorAll('*');
+    var candidates = [];
+
+    for (var i = 0; i < descendants.length && candidates.length < 60; i++) {
+      var candidate = descendants[i];
+
+      if (
         candidate !== element &&
         !element.contains(candidate) &&
         !candidate.contains(element) &&
         isEditableCandidate(candidate, slide)
-      );
-    });
+      ) {
+        candidates.push(candidate);
+      }
+    }
 
     // ponytail: measure at most 60 objects per gesture; spatial indexing can replace this if large decks need it.
-    return candidates.slice(0, 60).map(function (candidate) { return normalizeRect(candidate, slide); });
+    return candidates.map(function (candidate) { return normalizeRect(candidate, slide); });
   }
 
   function closestSnap(moving, targets, threshold) {
@@ -2432,7 +2500,7 @@ export function buildDeckEditorBridgeRuntimeScript(
           resized,
           true,
           'resize',
-          false,
+          transformState.adopted,
           transformState.positionContext,
         );
         return;
@@ -2444,7 +2512,10 @@ export function buildDeckEditorBridgeRuntimeScript(
     }
 
     var target = findEditableTarget(event.target, slide);
-    setHoverCursor(target);
+
+    if (!setHoverCursor(target)) {
+      return;
+    }
 
     postToParent({
       type: C.HOVER,
@@ -2503,17 +2574,19 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     var handle = findResizeHandle(event.target);
 
-    if (handle && selectedElement && isManagedElement(selectedElement) && selectedElement.getAttribute(C.LOCKED_ATTR) !== 'true') {
+    if (handle && selectedElement && selectedElement.getAttribute(C.LOCKED_ATTR) !== 'true') {
       event.preventDefault();
       event.stopPropagation();
+      var preparedResize = prepareMove(selectedElement, slide);
       transformState = {
         kind: 'resize',
         pointerId: event.pointerId,
         handle: handle,
         element: selectedElement,
-        startGeometry: normalizeRect(selectedElement, slide),
-        snapshot: snapshotInlineStyle(selectedElement),
-        positionContext: readPositionContext(selectedElement, slide),
+        startGeometry: preparedResize.geometry,
+        snapshot: preparedResize.snapshot,
+        adopted: preparedResize.adopted,
+        positionContext: preparedResize.positionContext,
       };
       captureTransformPointer(slide, event.pointerId);
       return;
@@ -2656,6 +2729,17 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (!target) {
       return;
+    }
+
+    var directTarget = event.target;
+
+    if (
+      !isTextBox(target) &&
+      directTarget &&
+      directTarget.nodeType === 1 &&
+      isEditableCandidate(directTarget, slide)
+    ) {
+      target = directTarget;
     }
 
     var editableTarget = getTextEditTarget(target);
@@ -2864,7 +2948,10 @@ export function buildDeckEditorBridgeRuntimeScript(
     if (event.key === 'Escape' && slide) {
       event.preventDefault();
       event.stopPropagation();
-      finishNudge();
+
+      if (cancelNudge(slide)) {
+        return;
+      }
 
       if (!cancelTransform(slide)) {
         selectParent(slide);

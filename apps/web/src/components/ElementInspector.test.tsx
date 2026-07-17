@@ -16,6 +16,7 @@ function makeSelection(overrides: Partial<EditorSelectionInfo> = {}): EditorSele
     tagName: 'div',
     locked: false,
     managed: true,
+    geometryEditable: true,
     editableKind: 'text-box',
     textPreview: 'Hello world',
     imageFit: null,
@@ -164,6 +165,13 @@ describe('ElementInspector', () => {
     expect(screen.getByRole('combobox', { name: 'Font weight' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Send backward' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Lock element' })).toBeEnabled()
+  })
+
+  it('disables geometry outside the runtime-safe coordinate context', () => {
+    renderInspector({ selection: makeSelection({ geometryEditable: false }) })
+
+    expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Bring forward' })).toBeEnabled()
   })
 
   it('disables controls while saving', () => {

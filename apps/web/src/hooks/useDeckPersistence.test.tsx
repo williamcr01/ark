@@ -619,8 +619,8 @@ describe('useDeckPersistence', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    let firstPromise: Promise<unknown>
-    let secondPromise: Promise<unknown>
+    let firstPromise: ReturnType<typeof result.current.patchDeckOperations>
+    let secondPromise: ReturnType<typeof result.current.patchDeckOperations>
     act(() => {
       firstPromise = result.current.patchDeckOperations([
         { op: 'replace_text', elementId: 'ark-el-first', slideIndex: 0, text: 'First' },
@@ -634,11 +634,14 @@ describe('useDeckPersistence', () => {
     resolveFirstPatch!(patchResponse(firstDeck, 'ark-el-first'))
 
     await waitFor(() => expect(patchCalls).toBe(2))
+    let patchResults: Awaited<typeof firstPromise>[] = []
     await act(async () => {
-      await Promise.all([firstPromise, secondPromise])
+      patchResults = await Promise.all([firstPromise, secondPromise])
     })
 
     expect(result.current.html).toBe(secondDeck.html)
+    expect(patchResults[0]?.beforeHtml).toBe(deck.html)
+    expect(patchResults[1]?.beforeHtml).toBe(firstDeck.html)
   })
 
   it('does not apply a completed patch after switching decks', async () => {

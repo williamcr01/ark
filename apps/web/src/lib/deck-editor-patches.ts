@@ -47,7 +47,7 @@ export function buildTransformPatchOperations(
   }
 
   if (
-    !commit.adopted &&
+    (!commit.adopted || commit.cssHeight !== undefined) &&
     (!previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['width', 'height']))
   ) {
     operations.push({

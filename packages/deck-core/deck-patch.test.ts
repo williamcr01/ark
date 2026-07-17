@@ -95,6 +95,16 @@ describe('deck patch schema', () => {
         width: 1.2,
       }).success,
     ).toBe(false)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: 0.1,
+        y: 0.2,
+        cssX: 11,
+      }).success,
+    ).toBe(false)
   })
 
   it('accepts reorder_element with an absolute z-index or a direction', () => {

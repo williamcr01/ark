@@ -1,6 +1,6 @@
 # Ark manual editor bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). For CSS-only and approved Reveal decks, the shell enables the editor runtime automatically whenever the deck is interactive (not presenting or generating) — there is no Preview/Edit toggle. Persistent manual editing is disabled for custom-JS decks because deck-authored scripts share the iframe execution realm and could forge editor messages. The shell and deck runtime coordinate selection, geometry, transforms, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). For CSS-only and approved Reveal decks without deck-authored init scripts, the shell enables the editor runtime automatically whenever the deck is interactive (not presenting or generating) — there is no Preview/Edit toggle. Persistent manual editing is disabled whenever deck-authored scripts execute, including custom-JS and Reveal+Chart.js decks, because code in the shared iframe realm could forge editor messages. The shell and deck runtime coordinate selection, geometry, transforms, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
 
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
@@ -162,11 +162,13 @@ Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`
 | `ark:editor-transform-commit`  | Preview fields plus `adopted?`, `cssX?`, `cssY?`, `cssWidth?`, `cssHeight?`, `slideWidth?`, `slideHeight?` | Gesture or nudge complete | **Persistence trigger**; parent maps to `move_element` / `resize_element` patch ops |
 | `ark:editor-transform-cancel`  | _(none)_                                                                                                   | Gesture canceled          | Clear uncommitted preview state                                                     |
 
-Dragging any unlocked selection moves it. A non-absolute element is adopted on first move by preserving its parent, freezing its measured width, and switching it to absolute positioning in the same containing-block coordinate system. Existing absolute descendants use that same coordinate conversion. Commits include logical slide dimensions so Reveal's native canvas size is preserved.
+Dragging or resizing any unlocked selection adopts non-absolute content by preserving its parent, freezing its measured width, and switching it to absolute positioning in the same containing-block coordinate system. Existing absolute descendants use that same coordinate conversion. Commits include logical slide dimensions so Reveal's native canvas size is preserved.
 
 Move gestures snap to slide and nearby element edges/centers; Alt disables snapping. Shift constrains move axes and preserves aspect ratio on corner resize. Escape restores the pre-gesture inline styles. Arrow keys nudge by one logical pixel (Shift: ten) and debounce into one commit. Pointer capture plus parent-window cancellation prevents a released-outside gesture from remaining active.
 
 `useDeckEditorBridge` stores preview and commit messages separately; a preview clears any pending commit and vice versa. The shell serializes manual mutations, records undo/redo snapshots, and restores the stable element ID returned by the patch response after the iframe reloads.
+
+Inspector geometry fields stay disabled when the runtime reports a nested containing block or a non-reference logical canvas; drag/resize remains available because the runtime owns those coordinate conversions.
 
 #### Shortcuts
 
@@ -212,7 +214,7 @@ Iframe → parent posts use `PARENT_ORIGIN` (embedded in the injected script) or
 - **Generation guard:** `useDeckEditorBridge` tags each iframe load with `iframeGenerationKey`; runtime messages from a previous generation are dropped.
 - **Source guard:** messages not originating from the current preview `contentWindow` are dropped.
 - **Shape guard:** only payloads passing `isEditorRuntimeMessage` / `isEditorShellMessage` are handled; unknown `ark:editor-*` types are ignored.
-- **Execution-realm guard:** custom-JS decks never activate the persistent editor bridge; a nonce cannot distinguish deck code from injected runtime code in the same window.
+- **Execution-realm guard:** decks with executing deck-authored scripts never activate the persistent editor bridge; a nonce cannot distinguish deck code from injected runtime code in the same window.
 - **Hostile fixtures (#81):** security tests should assert that forged origins, wrong `event.source`, malformed payloads, and out-of-protocol types never mutate shell state or reach the patch API.
 
 ### Element identity

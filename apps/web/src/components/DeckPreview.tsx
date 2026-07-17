@@ -165,7 +165,7 @@ export function DeckPreview({
   const hasSlides = parsedDeck.slideCount > 0
   const previewEnabled = html.length > 0 && hasSlides
   const editChromeActive =
-    previewEnabled && runtimeMode !== 'custom-js' && !isGenerating && !isPresentOpen
+    previewEnabled && !deckAnalysis.allowsDeckInitScripts && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
   const previewFrame = useDeckPreviewFrame(html, previewEnabled)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
@@ -1223,9 +1223,9 @@ export function DeckPreview({
               Saving edit
             </span>
           ) : null}
-          {!isPresentOpen && runtimeMode === 'custom-js' ? (
+          {!isPresentOpen && deckAnalysis.allowsDeckInitScripts ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-              Scripts running
+              Scripts running · editing off
             </span>
           ) : !isPresentOpen && runtimeMode === 'reveal' && !usesStaticPreview ? (
             <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">

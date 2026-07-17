@@ -1239,8 +1239,8 @@
                             "elementId": { "type": "string", "minLength": 1 },
                             "x": { "type": "number", "minimum": 0, "maximum": 1 },
                             "y": { "type": "number", "minimum": 0, "maximum": 1 },
-                            "cssX": { "type": "number" },
-                            "cssY": { "type": "number" },
+                            "cssX": { "type": "number", "minimum": -10, "maximum": 10 },
+                            "cssY": { "type": "number", "minimum": -10, "maximum": 10 },
                             "cssWidth": {
                               "type": "number",
                               "minimum": 0,

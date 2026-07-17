@@ -38,7 +38,7 @@ id or the runtime manifest produces a new cache key.
 
 | Control           | Default  | Notes                                    |
 | ----------------- | -------- | ---------------------------------------- |
-| Viewport          | 1600×900 | Matches preview aspect ratio             |
+| Viewport          | 1280×720 | Matches the preview reference canvas     |
 | Output PNG        | 480×270  | Scaled from the viewport                 |
 | Max slides        | 40       | Rejected before Chromium opens a page    |
 | Deck timeout      | 45s      | Page + session disposed on failure       |
@@ -54,6 +54,10 @@ path. It was lowered from 120ms → 80ms → 40ms after byte-identical PNG compa
 on plain/reveal fixtures (see `benchmarks/TUNING.md`); that is not a broad visual
 QA pass across arbitrary decks. Adaptive settle uses a single
 `requestAnimationFrame` after fonts/images.
+
+The preview and thumbnail viewport changed from 1600×900 to 1280×720 with the
+manual-editing coordinate model. Fixed-pixel decks may wrap or trigger media
+queries differently; use proportional sizing for viewport-independent layout.
 
 Network access during render is blocked by the same sandbox CSP (`connect-src
 'none'`, `form-action 'none'`, `object-src 'none'`). Render routes are

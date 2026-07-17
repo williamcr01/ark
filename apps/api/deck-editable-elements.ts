@@ -52,6 +52,7 @@ const TEXT_TAGS = new Set([
   'figcaption',
   'span',
   'a',
+  'pre',
   'label',
   'blockquote',
   'cite',
@@ -78,6 +79,7 @@ const BLOCK_TEXT_TAGS = new Set([
   'button',
   'figcaption',
   'blockquote',
+  'pre',
   'label',
   'td',
   'th',
@@ -725,7 +727,7 @@ export function parseEditableElements(
   return grouped
 }
 
-const STAMP_TAGS = new Set([...TEXT_TAGS, ...IMAGE_TAGS].filter((tag) => !CONTAINER_TAGS.has(tag)))
+const STAMP_TAGS = new Set([...TEXT_TAGS, ...IMAGE_TAGS])
 
 export function stampEditableElementIds(root: ParentNode) {
   const stamped: string[] = []

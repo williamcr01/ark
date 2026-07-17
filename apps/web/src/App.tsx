@@ -355,11 +355,16 @@ function App() {
         },
       ]
       const summary = 'Edited text in preview'
-      const beforeHtml = generatedHtmlRef.current
 
       try {
         const result = await patchDeckOperations(operations, commit.slideIndex, { summary })
-        recordManualEdit(beforeHtml, result, operations, summary, commit.slideIndex)
+        recordManualEdit(
+          result?.beforeHtml ?? generatedHtmlRef.current,
+          result,
+          operations,
+          summary,
+          commit.slideIndex,
+        )
       } catch (patchError) {
         toast.error(
           patchError instanceof Error ? patchError.message : 'Could not save the text edit',
@@ -382,11 +387,15 @@ function App() {
         throw new Error('Deck is not saved')
       }
 
-      const beforeHtml = generatedHtmlRef.current
-
       try {
         const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
-        recordManualEdit(beforeHtml, result, operations, summary, activeSlideIndex)
+        recordManualEdit(
+          result?.beforeHtml ?? generatedHtmlRef.current,
+          result,
+          operations,
+          summary,
+          activeSlideIndex,
+        )
         return result
       } catch (patchError) {
         toast.error(patchError instanceof Error ? patchError.message : 'Could not save the edit')

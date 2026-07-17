@@ -25,6 +25,7 @@ function makeSelection(overrides: Partial<EditorSelectionInfo> = {}): EditorSele
     tagName: 'div',
     locked: false,
     managed: true,
+    geometryEditable: true,
     editableKind: 'text-box',
     textPreview: 'Hello',
     imageFit: null,

@@ -8,6 +8,7 @@ import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
+import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
 import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import {
   createEditorTransformCommitMessage,
@@ -36,6 +37,7 @@ const editorBridgeMock = vi.hoisted(() => ({
     tagName: string
     locked: boolean
     managed: boolean
+    geometryEditable?: boolean
     editableKind: string | null
     textPreview: string | null
   } | null,
@@ -354,6 +356,22 @@ describe('DeckPreview script divergence UI', () => {
     })
 
     expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ enabled: false }),
+    )
+  })
+
+  it('disables persistent editing when approved runtime decks execute init scripts', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      html: revealChartDeck,
+      deckAnalysis: analyzeDeckInBrowser(revealChartDeck),
+      editorBridgeEnabled: true,
+    })
+
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(screen.getByText('Scripts running · editing off')).toBeInTheDocument()
     expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ enabled: false }),
@@ -1251,6 +1269,7 @@ describe('DeckPreview script divergence UI', () => {
       tagName: 'div',
       locked: false,
       managed: true,
+      geometryEditable: true,
       editableKind: 'text-box',
       textPreview: 'New text',
     }
@@ -1297,6 +1316,7 @@ describe('DeckPreview script divergence UI', () => {
       tagName: 'div',
       locked: false,
       managed: true,
+      geometryEditable: true,
       editableKind: 'text-box',
       textPreview: 'New text',
     }
@@ -1393,6 +1413,7 @@ describe('DeckPreview script divergence UI', () => {
       tagName: 'div',
       locked: false,
       managed: true,
+      geometryEditable: true,
       editableKind: 'text-box',
       textPreview: 'New text',
     }

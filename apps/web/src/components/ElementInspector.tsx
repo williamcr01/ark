@@ -325,7 +325,7 @@ export function ElementInspector({
   const disabledReason = getInspectorDisabledReason(selection)
   const busy = isSaving || textEditActive || !onApplyOperations
   const canModify = disabledReason === null && !busy
-  const canModifyGeometry = canModify && selection.managed
+  const canModifyGeometry = canModify && selection.managed && selection.geometryEditable === true
   const canModifyLayer = canModify && selection.managed
   const textStyle = selection.textStyle ?? null
   const textAlign = textStyle ? normalizeTextAlign(textStyle.textAlign) : 'left'
