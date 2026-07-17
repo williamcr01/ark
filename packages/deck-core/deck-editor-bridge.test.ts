@@ -409,8 +409,9 @@ describe('deck editor bridge protocol', () => {
     }
 
     expect(script).toContain('if (!bounds.width || !bounds.height)')
-    const ancestorPreferenceIndex = script.indexOf('managedAncestor !== selectedElement')
+    const ancestorPreferenceIndex = script.indexOf('managedAncestor === selectedElement ||')
     expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
+    expect(script).toContain('managedAncestor.contains(selectedElement)')
     expect(script).toContain('function selectParent(slide)')
   })
 
@@ -431,6 +432,92 @@ describe('deck editor bridge protocol', () => {
     copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 130, 130))
     copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 130, 130))
     copy.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+
+    const selections = messages
+      .filter((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE)
+      .map((message) => (message.selection as { elementId: string }).elementId)
+    expect(selections).toEqual(['group', 'copy', 'copy'])
+    expect(copy.getAttribute('contenteditable')).toBe('true')
+    dom.window.close()
+  })
+
+  it('keeps a drilled child selected on re-click and lets it drag', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><div data-ark-id="group" data-ark-managed="true"><p data-ark-id="copy">Copy</p></div></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const group = dom.window.document.querySelector<HTMLElement>('div')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    group.getBoundingClientRect = () => rect(100, 100, 400, 200)
+    copy.getBoundingClientRect = () =>
+      copy.style.position === 'absolute'
+        ? rect(
+            Number.parseFloat(copy.style.left),
+            Number.parseFloat(copy.style.top),
+            Number.parseFloat(copy.style.width) || 300,
+            60,
+          )
+        : rect(120, 120, 300, 60)
+    Object.defineProperty(copy, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(copy, 'offsetWidth', { configurable: true, value: 300 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    // First click selects the group; second drills into the child.
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 130, 130))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 130, 130))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 130, 130))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 130, 130))
+    messages.length = 0
+
+    // Third click must stay on the drilled child (not bounce back to the group).
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 3, 130, 130))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 3, 130, 130))
+
+    const reclickSelections = messages
+      .filter((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE)
+      .map((message) => (message.selection as { elementId: string }).elementId)
+    expect(reclickSelections).toEqual(['copy'])
+    messages.length = 0
+
+    // Click-drag after drill must move the child, not the container.
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 4, 130, 130))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 4, 230, 130))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 4, 230, 130))
+
+    const commit = messages.find((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)
+    expect(commit).toMatchObject({
+      elementId: 'copy',
+      adopted: true,
+    })
+    expect(copy.style.position).toBe('absolute')
+    expect(group.style.position).not.toBe('absolute')
+    dom.window.close()
+  })
+
+  it('double-clicks nested inline markup inside a drilled group into text edit', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><div data-ark-id="group" data-ark-managed="true"><p data-ark-id="copy"><strong>Bold</strong></p></div></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const group = dom.window.document.querySelector<HTMLElement>('div')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+    const strong = dom.window.document.querySelector<HTMLElement>('strong')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    group.getBoundingClientRect = () => rect(100, 100, 400, 200)
+    copy.getBoundingClientRect = () => rect(120, 120, 300, 60)
+    strong.getBoundingClientRect = () => rect(120, 120, 80, 60)
+
+    strong.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 130, 130))
+    strong.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 130, 130))
+    strong.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 130, 130))
+    strong.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 130, 130))
+    strong.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
 
     const selections = messages
       .filter((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE)
@@ -914,6 +1001,33 @@ describe('deck editor bridge protocol', () => {
     expect(heading.style.position).toBe('absolute')
     expect(commit).toMatchObject({ adopted: true })
     expect((commit?.geometry as { width: number }).width).toBeGreaterThan(400 / 1280)
+    dom.window.close()
+  })
+
+  it('does not adopt on a no-drag resize handle click', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 id="heading">Title</h1></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const heading = dom.window.document.querySelector<HTMLElement>('h1')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    heading.getBoundingClientRect = () => rect(100, 100, 400, 80)
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 400 })
+
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 6, 110, 110))
+    heading.dispatchEvent(pointerEvent(dom, 'pointerup', 6, 110, 110))
+    const handle = slide.querySelector<HTMLElement>('[data-ark-editor-handle="se"]')!
+    messages.length = 0
+    handle.dispatchEvent(pointerEvent(dom, 'pointerdown', 7, 500, 180))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 7, 500, 180))
+
+    expect(heading.style.position).not.toBe('absolute')
+    expect(heading.hasAttribute('style')).toBe(false)
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
+      false,
+    )
     dom.window.close()
   })
 

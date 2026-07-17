@@ -1165,9 +1165,14 @@ export function buildDeckEditorBridgeRuntimeScript(
       if (current.nodeType === 1 && isEditableCandidate(current, slide)) {
         var managedAncestor = findManagedAncestor(current, slide);
 
-        // First click selects a managed group; a second click drills into it.
-        // Text boxes remain one object because their child stores the editable text.
-        return managedAncestor && (isTextBox(managedAncestor) || managedAncestor !== selectedElement)
+        // First click selects a managed group; later clicks stay drilled into it
+        // (or deepen) while selection remains inside the group. Text boxes stay
+        // one object because their child stores the editable text.
+        var drilled =
+          managedAncestor === selectedElement ||
+          (selectedElement && managedAncestor.contains(selectedElement));
+
+        return managedAncestor && (isTextBox(managedAncestor) || !drilled)
           ? managedAncestor
           : current;
       }
@@ -2487,6 +2492,32 @@ export function buildDeckEditorBridgeRuntimeScript(
       }
 
       if (transformState.kind === 'resize' && transformState.element && transformState.handle) {
+        if (!transformState.started) {
+          var resizePoint = pointerToNormalized(event.clientX, event.clientY, slide);
+          var resizeDeltaX = resizePoint.x - transformState.startPoint.x;
+          var resizeDeltaY = resizePoint.y - transformState.startPoint.y;
+          var resizeSlideRect = getSlideCoordinateRect(slide);
+
+          if (
+            Math.abs(resizeDeltaX * resizeSlideRect.width) < 2 / editorScale &&
+            Math.abs(resizeDeltaY * resizeSlideRect.height) < 2 / editorScale
+          ) {
+            return;
+          }
+
+          if (transformState.adopted) {
+            adoptMove(
+              transformState.element,
+              slide,
+              transformState.startGeometry,
+              transformState.logicalWidth,
+              transformState.positionContext,
+            );
+          }
+
+          transformState.started = true;
+        }
+
         var resized = resizeRectWithHandle(
           transformState.startGeometry,
           transformState.handle,
@@ -2577,16 +2608,21 @@ export function buildDeckEditorBridgeRuntimeScript(
     if (handle && selectedElement && selectedElement.getAttribute(C.LOCKED_ATTR) !== 'true') {
       event.preventDefault();
       event.stopPropagation();
-      var preparedResize = prepareMove(selectedElement, slide);
+      // Defer adoption until the pointer moves past the click threshold so a
+      // press-and-release on a handle does not persist position:absolute.
+      var preparedResize = prepareMove(selectedElement, slide, false);
       transformState = {
         kind: 'resize',
         pointerId: event.pointerId,
         handle: handle,
         element: selectedElement,
+        startPoint: pointerToNormalized(event.clientX, event.clientY, slide),
         startGeometry: preparedResize.geometry,
         snapshot: preparedResize.snapshot,
         adopted: preparedResize.adopted,
+        logicalWidth: preparedResize.logicalWidth,
         positionContext: preparedResize.positionContext,
+        started: false,
       };
       captureTransformPointer(slide, event.pointerId);
       return;
@@ -2661,7 +2697,10 @@ export function buildDeckEditorBridgeRuntimeScript(
       (transformState.kind === 'move' || transformState.kind === 'resize') &&
       transformState.element
     ) {
-      if (transformState.kind === 'move' && !transformState.started) {
+      if (
+        (transformState.kind === 'move' || transformState.kind === 'resize') &&
+        !transformState.started
+      ) {
         transformState = null;
         return;
       }
