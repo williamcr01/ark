@@ -301,6 +301,14 @@ function App() {
       return
     }
 
+    const selectedModelInfo = models.find((model) => model.id === selectedModel)
+    if (selectedModelInfo?.supportsAttachments === false && attachments.length > 0) {
+      setAttachmentError(
+        `${selectedModelInfo.name ?? selectedModelInfo.modelId} is text-only and does not support attachments.`,
+      )
+      return
+    }
+
     if (attachments.length > MAX_CHAT_ATTACHMENTS) {
       setAttachmentError(`You can attach up to ${MAX_CHAT_ATTACHMENTS} files per message.`)
       return

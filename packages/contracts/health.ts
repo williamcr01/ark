@@ -27,7 +27,11 @@ export const healthResponseSchema = withRequestId({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>
 
-export const modelUnavailableReasonSchema = z.enum(['missing_api_key', 'not_found'])
+export const modelUnavailableReasonSchema = z.enum([
+  'missing_api_key',
+  'not_found',
+  'limited_access',
+])
 
 export const modelInfoSchema = z.object({
   id: z.string(),
@@ -45,6 +49,11 @@ export const modelInfoSchema = z.object({
    * Prefer reasoningEfforts for new clients.
    */
   supportsReasoning: z.boolean().optional(),
+  /**
+   * Whether chat attachments / deck assets may be sent to this model.
+   * Defaults to true when omitted (older servers).
+   */
+  supportsAttachments: z.boolean().optional(),
 })
 
 export type ModelInfo = z.infer<typeof modelInfoSchema>

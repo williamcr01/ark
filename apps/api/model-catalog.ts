@@ -19,7 +19,27 @@ export type ModelCatalogEntry = {
   reasoningEfforts: readonly ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
   reasoningTransport: ReasoningTransport
+  /**
+   * Whether chat attachments / deck assets may be sent to this model.
+   * Defaults to true when omitted.
+   */
+  supportsAttachments?: boolean
+  /**
+   * When set, the model stays unavailable unless this env flag is truthy
+   * (`true` / `1` / `yes` / `on`), in addition to a provider API key.
+   * Used for limited-access / design-partner models such as Codex Spark.
+   */
+  entitlementEnv?: string
 }
+
+/** Accepts the same truthy tokens as other ARK_* toggles (`true` / `1` / `yes` / `on`). */
+export const isEnvFlagEnabled = (name: string, env: NodeJS.ProcessEnv = process.env): boolean => {
+  const value = env[name]?.trim().toLowerCase()
+  return value === 'true' || value === '1' || value === 'yes' || value === 'on'
+}
+
+export const catalogSupportsAttachments = (entry: ModelCatalogEntry | undefined): boolean =>
+  entry?.supportsAttachments !== false
 
 const OPENAI_GPT56_EFFORTS = [
   'none',
@@ -111,6 +131,9 @@ export const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
     name: 'Code 5.3 Spark',
     reasoningEfforts: [],
     reasoningTransport: 'none',
+    // Text-only research preview; API access is design-partner limited.
+    supportsAttachments: false,
+    entitlementEnv: 'ARK_ENABLE_CODEX_SPARK',
   },
   {
     provider: 'anthropic',

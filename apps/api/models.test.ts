@@ -56,6 +56,10 @@ describe('curated model catalog', () => {
       'max',
     ])
     expect(findCatalogEntryByRef('openai:gpt-5.3-codex-spark')?.reasoningEfforts).toEqual([])
+    expect(findCatalogEntryByRef('openai:gpt-5.3-codex-spark')?.supportsAttachments).toBe(false)
+    expect(findCatalogEntryByRef('openai:gpt-5.3-codex-spark')?.entitlementEnv).toBe(
+      'ARK_ENABLE_CODEX_SPARK',
+    )
     expect(findCatalogEntryByRef('anthropic:claude-fable-5')?.reasoningEfforts).toContain('max')
     expect(findCatalogEntryByRef('google:gemini-3.6-flash')?.reasoningEfforts).toEqual([
       'minimal',
@@ -105,19 +109,45 @@ describe('fetchAllAvailableModels', () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.ARK_ENABLE_CODEX_SPARK
 
     const { models } = await getModelCatalog()
     const openaiModels = models.filter((model) => model.provider === 'openai')
     const otherModels = models.filter((model) => model.provider !== 'openai')
+    const spark = openaiModels.find((model) => model.id === 'openai:gpt-5.3-codex-spark')
+    const readyOpenAi = openaiModels.filter((model) => model.id !== 'openai:gpt-5.3-codex-spark')
 
-    expect(openaiModels.every((model) => model.available)).toBe(true)
+    expect(readyOpenAi.every((model) => model.available)).toBe(true)
+    expect(spark).toMatchObject({
+      available: false,
+      unavailableReason: 'limited_access',
+      supportsAttachments: false,
+      supportsReasoning: false,
+    })
     expect(otherModels.every((model) => !model.available)).toBe(true)
     expect(
       openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsReasoning,
     ).toBe(true)
     expect(
-      openaiModels.find((model) => model.id === 'openai:gpt-5.3-codex-spark')?.supportsReasoning,
-    ).toBe(false)
+      openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsAttachments,
+    ).toBe(true)
+  })
+
+  it('marks Codex Spark ready only when entitlement is enabled', async () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    process.env.ARK_ENABLE_CODEX_SPARK = 'true'
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    const { models } = await getModelCatalog()
+    const spark = models.find((model) => model.id === 'openai:gpt-5.3-codex-spark')
+
+    expect(spark).toMatchObject({
+      available: true,
+      supportsAttachments: false,
+      supportsReasoning: false,
+    })
+    expect(spark?.unavailableReason).toBeUndefined()
   })
 })
 

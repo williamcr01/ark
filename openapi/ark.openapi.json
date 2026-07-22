@@ -91,7 +91,7 @@
                           "available": { "type": "boolean" },
                           "unavailableReason": {
                             "type": "string",
-                            "enum": ["missing_api_key", "not_found"]
+                            "enum": ["missing_api_key", "not_found", "limited_access"]
                           },
                           "reasoningEfforts": {
                             "type": "array",
@@ -104,7 +104,8 @@
                             "type": "string",
                             "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
                           },
-                          "supportsReasoning": { "type": "boolean" }
+                          "supportsReasoning": { "type": "boolean" },
+                          "supportsAttachments": { "type": "boolean" }
                         },
                         "required": ["id", "provider", "modelId", "available"]
                       }

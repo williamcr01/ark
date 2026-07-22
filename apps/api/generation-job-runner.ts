@@ -33,7 +33,11 @@ import { cloneGenerationJobRequest, type GenerationJobStore } from './generation
 import { createLanguageModel } from './provider-runtime.ts'
 import { categorizeProviderError } from './observability/provider-errors.ts'
 import { createLogger } from './observability/logger.ts'
-import { findCatalogEntryByRef, resolveCatalogReasoningEffort } from './model-catalog.ts'
+import {
+  catalogSupportsAttachments,
+  findCatalogEntryByRef,
+  resolveCatalogReasoningEffort,
+} from './model-catalog.ts'
 
 export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
@@ -707,6 +711,23 @@ export function createGenerationJobRunner({
     const currentHtml = body.currentHtml ?? ''
     const deckId = typeof body.deckId === 'string' && body.deckId.trim() ? body.deckId.trim() : null
     const assetIds = body.assetIds?.map((id) => id.trim()).filter(Boolean) ?? []
+    const messagesHaveAttachments = messages.some(
+      (message) => (message.attachments?.length ?? 0) > 0,
+    )
+
+    if (
+      !catalogSupportsAttachments(catalogEntry) &&
+      (messagesHaveAttachments || assetIds.length > 0)
+    ) {
+      const modelName = catalogEntry?.name ?? modelRef
+      const error = `${modelName} is text-only and does not support attachments.`
+      throw Object.assign(new Error(error), {
+        apiError: {
+          code: 'provider_error',
+          error,
+        },
+      })
+    }
 
     if (assetIds.length > 0 && !deckId) {
       throw Object.assign(new Error('assetIds require a saved deck id.'), {

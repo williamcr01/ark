@@ -363,6 +363,8 @@ export function ChatPanel({
   onRetryPersist,
 }: ChatPanelProps) {
   const isSubmitDisabled = isGenerating || !canGenerate
+  const selectedModelInfo = models.find((model) => model.id === selectedModel)
+  const supportsAttachments = selectedModelInfo?.supportsAttachments !== false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const modelWarningsKey = modelWarnings.join('\n')
 
@@ -551,12 +553,19 @@ export function ChatPanel({
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="Add attachments"
-                    tooltip="Add attachments"
+                    disabled={!supportsAttachments || isGenerating}
+                    tooltip={
+                      supportsAttachments
+                        ? 'Add attachments'
+                        : 'This model is text-only and does not support attachments'
+                    }
                   />
-                  <PromptInputActionMenuContent>
-                    <PromptInputActionAddAttachments />
-                    <PromptInputActionAddScreenshot />
-                  </PromptInputActionMenuContent>
+                  {supportsAttachments ? (
+                    <PromptInputActionMenuContent>
+                      <PromptInputActionAddAttachments />
+                      <PromptInputActionAddScreenshot />
+                    </PromptInputActionMenuContent>
+                  ) : null}
                 </PromptInputActionMenu>
                 <ModelSelector
                   canGenerate={canGenerate}

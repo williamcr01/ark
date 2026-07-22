@@ -187,5 +187,14 @@ describe('model selector display helpers', () => {
         }),
       ),
     ).toBe('Unavailable')
+    expect(
+      formatUnavailableBadge(
+        model({
+          ...available,
+          available: false,
+          unavailableReason: 'limited_access',
+        }),
+      ),
+    ).toBe('Limited access')
   })
 })
