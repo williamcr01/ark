@@ -187,6 +187,9 @@ describe('useChatSession', () => {
 
     expect(result.current.messages).toEqual([])
     expect(readChatSession(null)?.messages).toEqual([])
+    expect(readChatSession('deck-1')?.messages).toEqual([
+      { id: 'm1', role: 'user', content: 'saved deck prompt' },
+    ])
     expect(fetchMock).not.toHaveBeenCalledWith(
       expect.stringContaining('/api/decks/deck-1/chat'),
       expect.objectContaining({ method: 'DELETE' }),

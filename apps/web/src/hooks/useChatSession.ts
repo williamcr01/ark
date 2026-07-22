@@ -317,6 +317,7 @@ export function useChatSession({
 
   const resetChat = useCallback(
     async (targetDeckId?: string | null) => {
+      // Use === undefined (not ??) so explicit null targets the unsaved session.
       const activeDeckId = targetDeckId === undefined ? deckIdRef.current : targetDeckId
 
       clearChatSession(activeDeckId)
