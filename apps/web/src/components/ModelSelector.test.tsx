@@ -49,12 +49,12 @@ const models: AvailableModel[] = [
     supportsReasoning: true,
   },
   {
-    id: 'google:gemini-2.5-flash',
+    id: 'google:gemini-3.5-flash',
     provider: 'google',
-    modelId: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
+    modelId: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
     available: true,
-    reasoningEfforts: ['low', 'medium', 'high'],
+    reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     defaultReasoningEffort: 'medium',
     supportsReasoning: true,
   },
@@ -91,14 +91,14 @@ describe('ModelSelector', () => {
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
     expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
 
-    const geminiTrigger = screen.getByRole('menuitem', { name: /Gemini 2\.5 Flash/i })
+    const geminiTrigger = screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash/i })
     geminiTrigger.focus()
     await user.keyboard('{ArrowRight}')
 
     const effortOption = await screen.findByRole('menuitem', { name: 'Medium' })
     await user.click(effortOption)
 
-    expect(onSelect).toHaveBeenCalledWith('google:gemini-2.5-flash', 'medium')
+    expect(onSelect).toHaveBeenCalledWith('google:gemini-3.5-flash', 'medium')
   })
 
   it('does not select a model when activating the submenu trigger alone', async () => {

@@ -61,7 +61,11 @@ const resolveStoredModel = (models: AvailableModel[], storedModel: string | null
 const fallbackPreferenceScore = (model: AvailableModel): number => {
   const id = model.modelId.toLowerCase()
 
-  if (/luna|mini|flash|haiku|spark|nano/.test(id)) {
+  if (id.includes('flash-lite')) {
+    return -1
+  }
+
+  if (/luna|mini|flash|haiku|nano/.test(id)) {
     return 0
   }
 

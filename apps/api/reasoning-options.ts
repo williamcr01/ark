@@ -16,15 +16,6 @@ const ANTHROPIC_THINKING_BUDGET: Record<
   xhigh: 32_768,
 }
 
-const GOOGLE_THINKING_BUDGET: Record<
-  Extract<ReasoningEffort, 'low' | 'medium' | 'high'>,
-  number
-> = {
-  low: 2048,
-  medium: 8192,
-  high: 16_384,
-}
-
 type JsonPrimitive = string | number | boolean | null
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 type ProviderOptions = Record<string, { [key: string]: JsonValue }>
@@ -104,20 +95,6 @@ export const buildReasoningProviderOptions = (
           thinkingConfig: {
             includeThoughts: true,
             thinkingLevel: effort,
-          },
-        },
-      }
-    }
-    case 'google-thinking-budget': {
-      if (effort !== 'low' && effort !== 'medium' && effort !== 'high') {
-        return {}
-      }
-
-      return {
-        google: {
-          thinkingConfig: {
-            includeThoughts: true,
-            thinkingBudget: GOOGLE_THINKING_BUDGET[effort],
           },
         },
       }
