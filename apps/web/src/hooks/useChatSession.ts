@@ -315,27 +315,30 @@ export function useChatSession({
     [applyReconciledMessages, onReloadFallback],
   )
 
-  const resetChat = useCallback(async () => {
-    const activeDeckId = deckIdRef.current
+  const resetChat = useCallback(
+    async (targetDeckId?: string | null) => {
+      const activeDeckId = targetDeckId === undefined ? deckIdRef.current : targetDeckId
 
-    clearChatSession(activeDeckId)
-    setMessages([])
-    setFailedPersistIds(new Set())
-    setDeliveryStatus(new Map())
-    setIsReloadStale(false)
+      clearChatSession(activeDeckId)
+      setMessages([])
+      setFailedPersistIds(new Set())
+      setDeliveryStatus(new Map())
+      setIsReloadStale(false)
 
-    if (!activeDeckId) {
-      return true
-    }
+      if (!activeDeckId) {
+        return true
+      }
 
-    try {
-      await clearDeckChat(activeDeckId)
-      return true
-    } catch {
-      onResetFailure?.()
-      return false
-    }
-  }, [onResetFailure])
+      try {
+        await clearDeckChat(activeDeckId)
+        return true
+      } catch {
+        onResetFailure?.()
+        return false
+      }
+    },
+    [onResetFailure],
+  )
 
   const getMessageDeliveryStatus = useCallback(
     (messageId: string): MessageDeliveryStatus | undefined => {
