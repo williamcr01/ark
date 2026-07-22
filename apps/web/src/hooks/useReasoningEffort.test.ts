@@ -26,10 +26,20 @@ const models: AvailableModel[] = [
     supportsReasoning: true,
   },
   {
-    id: 'openai:gpt-5.3-codex-spark',
+    id: 'openai:gpt-5.4-mini',
     provider: 'openai',
-    modelId: 'gpt-5.3-codex-spark',
-    name: 'Code 5.3 Spark',
+    modelId: 'gpt-5.4-mini',
+    name: 'GPT-5.4 Mini',
+    available: true,
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
+    defaultReasoningEffort: 'none',
+    supportsReasoning: true,
+  },
+  {
+    id: 'openai:text-only-fixture',
+    provider: 'openai',
+    modelId: 'text-only-fixture',
+    name: 'Text Only Fixture',
     available: true,
     reasoningEfforts: [],
     supportsReasoning: false,
@@ -48,7 +58,7 @@ describe('resolveEffortForModel', () => {
     expect(resolveEffortForModel(models[1], { 'google:gemini-3.1-pro-preview': 'max' }, null)).toBe(
       'high',
     )
-    expect(resolveEffortForModel(models[2], {}, 'high')).toBeUndefined()
+    expect(resolveEffortForModel(models[3], {}, 'high')).toBeUndefined()
   })
 
   it('migrates a legacy global effort when valid for the model', () => {
@@ -77,7 +87,7 @@ describe('useReasoningEffort', () => {
     rerender({ selectedModel: 'openai:gpt-5.6-luna' })
     expect(result.current.reasoningEffort).toBe('max')
 
-    rerender({ selectedModel: 'openai:gpt-5.3-codex-spark' })
+    rerender({ selectedModel: 'openai:text-only-fixture' })
     expect(result.current.reasoningEffort).toBeUndefined()
   })
 })

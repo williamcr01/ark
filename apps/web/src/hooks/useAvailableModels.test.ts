@@ -20,7 +20,7 @@ const model = (
 })
 
 describe('pickAvailableFallbackModel', () => {
-  it('prefers luna/flash/haiku/spark models over larger ones', () => {
+  it('prefers luna/flash/haiku/mini models over larger ones', () => {
     const models: AvailableModel[] = [
       model({
         id: 'openai:gpt-5.6-sol',
@@ -187,14 +187,5 @@ describe('model selector display helpers', () => {
         }),
       ),
     ).toBe('Unavailable')
-    expect(
-      formatUnavailableBadge(
-        model({
-          ...available,
-          available: false,
-          unavailableReason: 'limited_access',
-        }),
-      ),
-    ).toBe('Limited access')
   })
 })

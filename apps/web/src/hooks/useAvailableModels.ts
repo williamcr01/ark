@@ -311,9 +311,5 @@ export const formatUnavailableBadge = (model: AvailableModel) => {
     return 'No API key'
   }
 
-  if (model.unavailableReason === 'limited_access') {
-    return 'Limited access'
-  }
-
   return 'Unavailable'
 }

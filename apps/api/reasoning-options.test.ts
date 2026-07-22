@@ -47,10 +47,7 @@ describe('buildReasoningProviderOptions', () => {
     })
   })
 
-  it('returns empty options for Codex Spark and unknown providers', () => {
-    expect(buildReasoningProviderOptions('openai', 'high', 'openai:gpt-5.3-codex-spark')).toEqual(
-      {},
-    )
+  it('returns empty options for unknown providers', () => {
     expect(buildReasoningProviderOptions('unknown', 'low')).toEqual({})
   })
 })

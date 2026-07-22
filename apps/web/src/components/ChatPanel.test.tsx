@@ -120,17 +120,17 @@ describe('ChatPanel submit control', () => {
           {...baseProps}
           models={[
             {
-              id: 'openai:gpt-5.3-codex-spark',
+              id: 'openai:text-only-fixture',
               provider: 'openai',
-              modelId: 'gpt-5.3-codex-spark',
-              name: 'Code 5.3 Spark',
+              modelId: 'text-only-fixture',
+              name: 'Text Only Fixture',
               available: true,
               reasoningEfforts: [],
               supportsReasoning: false,
               supportsAttachments: false,
             },
           ]}
-          selectedModel="openai:gpt-5.3-codex-spark"
+          selectedModel="openai:text-only-fixture"
         />
       </TooltipProvider>,
     )

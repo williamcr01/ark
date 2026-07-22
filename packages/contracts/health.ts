@@ -27,11 +27,7 @@ export const healthResponseSchema = withRequestId({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>
 
-export const modelUnavailableReasonSchema = z.enum([
-  'missing_api_key',
-  'not_found',
-  'limited_access',
-])
+export const modelUnavailableReasonSchema = z.enum(['missing_api_key', 'not_found'])
 
 export const modelInfoSchema = z.object({
   id: z.string(),

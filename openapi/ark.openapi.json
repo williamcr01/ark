@@ -91,7 +91,7 @@
                           "available": { "type": "boolean" },
                           "unavailableReason": {
                             "type": "string",
-                            "enum": ["missing_api_key", "not_found", "limited_access"]
+                            "enum": ["missing_api_key", "not_found"]
                           },
                           "reasoningEfforts": {
                             "type": "array",

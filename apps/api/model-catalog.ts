@@ -24,18 +24,6 @@ export type ModelCatalogEntry = {
    * Defaults to true when omitted.
    */
   supportsAttachments?: boolean
-  /**
-   * When set, the model stays unavailable unless this env flag is truthy
-   * (`true` / `1` / `yes` / `on`), in addition to a provider API key.
-   * Used for limited-access / design-partner models such as Codex Spark.
-   */
-  entitlementEnv?: string
-}
-
-/** Accepts the same truthy tokens as other ARK_* toggles (`true` / `1` / `yes` / `on`). */
-export const isEnvFlagEnabled = (name: string, env: NodeJS.ProcessEnv = process.env): boolean => {
-  const value = env[name]?.trim().toLowerCase()
-  return value === 'true' || value === '1' || value === 'yes' || value === 'on'
 }
 
 export const catalogSupportsAttachments = (entry: ModelCatalogEntry | undefined): boolean =>
@@ -50,7 +38,7 @@ const OPENAI_GPT56_EFFORTS = [
   'max',
 ] as const satisfies readonly ReasoningEffort[]
 
-const OPENAI_GPT55_EFFORTS = [
+const OPENAI_STANDARD_EFFORTS = [
   'none',
   'low',
   'medium',
@@ -121,19 +109,17 @@ export const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
     provider: 'openai',
     modelId: 'gpt-5.5',
     name: 'GPT-5.5',
-    reasoningEfforts: OPENAI_GPT55_EFFORTS,
+    reasoningEfforts: OPENAI_STANDARD_EFFORTS,
     defaultReasoningEffort: 'medium',
     reasoningTransport: 'openai-effort',
   },
   {
     provider: 'openai',
-    modelId: 'gpt-5.3-codex-spark',
-    name: 'Code 5.3 Spark',
-    reasoningEfforts: [],
-    reasoningTransport: 'none',
-    // Text-only research preview; API access is design-partner limited.
-    supportsAttachments: false,
-    entitlementEnv: 'ARK_ENABLE_CODEX_SPARK',
+    modelId: 'gpt-5.4-mini',
+    name: 'GPT-5.4 Mini',
+    reasoningEfforts: OPENAI_STANDARD_EFFORTS,
+    defaultReasoningEffort: 'none',
+    reasoningTransport: 'openai-effort',
   },
   {
     provider: 'anthropic',
