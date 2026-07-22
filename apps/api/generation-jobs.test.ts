@@ -553,46 +553,6 @@ describe('generation job runner', () => {
     ).rejects.toThrow('One or more asset ids could not be resolved.')
   })
 
-  it('rejects startJob attachments for text-only Codex Spark', async () => {
-    const { runner, deckStore } = await createRunner()
-    const deck = await deckStore.createDeck(sampleHtml)
-
-    await expect(
-      runner.startJob({
-        body: {
-          messages: [{ role: 'user', content: 'Use the chart' }],
-          deckId: deck.id,
-          assetIds: ['00000000-0000-4000-8000-000000000099'],
-          model: 'openai:gpt-5.3-codex-spark',
-        },
-        defaultModel: 'openai:gpt-5.6-luna',
-      }),
-    ).rejects.toThrow('Code 5.3 Spark is text-only and does not support attachments.')
-
-    await expect(
-      runner.startJob({
-        body: {
-          messages: [
-            {
-              role: 'user',
-              content: 'Look at this',
-              attachments: [
-                {
-                  type: 'file',
-                  mediaType: 'image/png',
-                  filename: 'pixel.png',
-                  url: 'data:image/png;base64,iVBORw0KGgo=',
-                },
-              ],
-            },
-          ],
-          model: 'openai:gpt-5.3-codex-spark',
-        },
-        defaultModel: 'openai:gpt-5.6-luna',
-      }),
-    ).rejects.toThrow('Code 5.3 Spark is text-only and does not support attachments.')
-  })
-
   it('does not overwrite a canceled queued job with running', async () => {
     const { jobStore } = await createRunner()
 

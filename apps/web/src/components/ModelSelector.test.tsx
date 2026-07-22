@@ -17,13 +17,14 @@ const models: AvailableModel[] = [
     supportsReasoning: true,
   },
   {
-    id: 'openai:gpt-5.3-codex-spark',
+    id: 'openai:gpt-5.4-mini',
     provider: 'openai',
-    modelId: 'gpt-5.3-codex-spark',
-    name: 'Code 5.3 Spark',
+    modelId: 'gpt-5.4-mini',
+    name: 'GPT-5.4 Mini',
     available: true,
-    reasoningEfforts: [],
-    supportsReasoning: false,
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
+    defaultReasoningEffort: 'none',
+    supportsReasoning: true,
   },
   {
     id: 'openai:gpt-5.5',
@@ -57,6 +58,16 @@ const models: AvailableModel[] = [
     defaultReasoningEffort: 'medium',
     supportsReasoning: true,
   },
+  {
+    id: 'openai:text-only-fixture',
+    provider: 'openai',
+    modelId: 'text-only-fixture',
+    name: 'Text Only Fixture',
+    available: true,
+    reasoningEfforts: [],
+    supportsReasoning: false,
+    supportsAttachments: false,
+  },
 ]
 
 describe('ModelSelector', () => {
@@ -75,7 +86,7 @@ describe('ModelSelector', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    expect(screen.getByText('OpenAI · 2 ready')).toBeInTheDocument()
+    expect(screen.getByText('OpenAI · 3 ready')).toBeInTheDocument()
     expect(screen.getByText('Anthropic · 0 ready')).toBeInTheDocument()
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
     expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
@@ -148,9 +159,9 @@ describe('ModelSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
-    await user.click(screen.getByText('Code 5.3 Spark'))
+    await user.click(screen.getByText('Text Only Fixture'))
 
-    expect(onSelect).toHaveBeenCalledWith('openai:gpt-5.3-codex-spark')
+    expect(onSelect).toHaveBeenCalledWith('openai:text-only-fixture')
   })
 
   it('does not select unavailable models', async () => {

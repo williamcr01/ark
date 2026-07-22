@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  catalogSupportsAttachments,
   DEFAULT_MODEL_REF,
   findCatalogEntryByRef,
   MODEL_CATALOG,
@@ -34,7 +35,7 @@ describe('curated model catalog', () => {
       'openai:gpt-5.6-terra',
       'openai:gpt-5.6-luna',
       'openai:gpt-5.5',
-      'openai:gpt-5.3-codex-spark',
+      'openai:gpt-5.4-mini',
       'anthropic:claude-fable-5',
       'anthropic:claude-opus-4-8',
       'anthropic:claude-sonnet-5',
@@ -55,11 +56,14 @@ describe('curated model catalog', () => {
       'xhigh',
       'max',
     ])
-    expect(findCatalogEntryByRef('openai:gpt-5.3-codex-spark')?.reasoningEfforts).toEqual([])
-    expect(findCatalogEntryByRef('openai:gpt-5.3-codex-spark')?.supportsAttachments).toBe(false)
-    expect(findCatalogEntryByRef('openai:gpt-5.3-codex-spark')?.entitlementEnv).toBe(
-      'ARK_ENABLE_CODEX_SPARK',
-    )
+    expect(findCatalogEntryByRef('openai:gpt-5.4-mini')?.reasoningEfforts).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+    expect(findCatalogEntryByRef('openai:gpt-5.4-mini')?.defaultReasoningEffort).toBe('none')
     expect(findCatalogEntryByRef('anthropic:claude-fable-5')?.reasoningEfforts).toContain('max')
     expect(findCatalogEntryByRef('google:gemini-3.6-flash')?.reasoningEfforts).toEqual([
       'minimal',
@@ -80,9 +84,16 @@ describe('curated model catalog', () => {
     expect(resolveCatalogReasoningEffort(sol, 'max')).toEqual({ ok: true, effort: 'max' })
     expect(resolveCatalogReasoningEffort(sol, 'minimal').ok).toBe(false)
 
-    const spark = findCatalogEntryByRef('openai:gpt-5.3-codex-spark')
-    expect(resolveCatalogReasoningEffort(spark, null)).toEqual({ ok: true })
-    expect(resolveCatalogReasoningEffort(spark, 'high').ok).toBe(false)
+    const mini = findCatalogEntryByRef('openai:gpt-5.4-mini')
+    expect(resolveCatalogReasoningEffort(mini, null)).toEqual({ ok: true, effort: 'none' })
+    expect(resolveCatalogReasoningEffort(mini, 'xhigh')).toEqual({ ok: true, effort: 'xhigh' })
+    expect(resolveCatalogReasoningEffort(mini, 'max').ok).toBe(false)
+  })
+
+  it('defaults attachment support to true', () => {
+    expect(catalogSupportsAttachments(findCatalogEntryByRef('openai:gpt-5.4-mini'))).toBe(true)
+    expect(catalogSupportsAttachments(undefined)).toBe(true)
+    expect(catalogSupportsAttachments({ supportsAttachments: false } as never)).toBe(false)
   })
 })
 
@@ -109,45 +120,25 @@ describe('fetchAllAvailableModels', () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    delete process.env.ARK_ENABLE_CODEX_SPARK
 
     const { models } = await getModelCatalog()
     const openaiModels = models.filter((model) => model.provider === 'openai')
     const otherModels = models.filter((model) => model.provider !== 'openai')
-    const spark = openaiModels.find((model) => model.id === 'openai:gpt-5.3-codex-spark')
-    const readyOpenAi = openaiModels.filter((model) => model.id !== 'openai:gpt-5.3-codex-spark')
 
-    expect(readyOpenAi.every((model) => model.available)).toBe(true)
-    expect(spark).toMatchObject({
-      available: false,
-      unavailableReason: 'limited_access',
-      supportsAttachments: false,
-      supportsReasoning: false,
-    })
+    expect(openaiModels.every((model) => model.available)).toBe(true)
     expect(otherModels.every((model) => !model.available)).toBe(true)
     expect(
       openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsReasoning,
     ).toBe(true)
     expect(
-      openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsAttachments,
+      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.supportsReasoning,
     ).toBe(true)
-  })
-
-  it('marks Codex Spark ready only when entitlement is enabled', async () => {
-    process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.ARK_ENABLE_CODEX_SPARK = 'true'
-    delete process.env.ANTHROPIC_API_KEY
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
-
-    const { models } = await getModelCatalog()
-    const spark = models.find((model) => model.id === 'openai:gpt-5.3-codex-spark')
-
-    expect(spark).toMatchObject({
-      available: true,
-      supportsAttachments: false,
-      supportsReasoning: false,
-    })
-    expect(spark?.unavailableReason).toBeUndefined()
+    expect(
+      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.supportsAttachments,
+    ).toBe(true)
+    expect(
+      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.defaultReasoningEffort,
+    ).toBe('none')
   })
 })
 
