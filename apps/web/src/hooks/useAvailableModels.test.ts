@@ -20,6 +20,25 @@ const model = (
 })
 
 describe('pickAvailableFallbackModel', () => {
+  it('prefers Flash-Lite over other Gemini Flash models', () => {
+    const models: AvailableModel[] = [
+      model({
+        id: 'google:gemini-3.6-flash',
+        provider: 'google',
+        modelId: 'gemini-3.6-flash',
+        available: true,
+      }),
+      model({
+        id: 'google:gemini-3.5-flash-lite',
+        provider: 'google',
+        modelId: 'gemini-3.5-flash-lite',
+        available: true,
+      }),
+    ]
+
+    expect(pickAvailableFallbackModel(models)).toBe('google:gemini-3.5-flash-lite')
+  })
+
   it('prefers luna/flash/haiku/mini models over larger ones', () => {
     const models: AvailableModel[] = [
       model({

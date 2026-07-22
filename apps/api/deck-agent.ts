@@ -23,7 +23,6 @@ import {
   type DeckToolDefinition,
 } from './deck-tool-catalog.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
-import { findCatalogEntryByRef } from './model-catalog.ts'
 
 export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
@@ -467,20 +466,6 @@ function createThinkingProgressReporter(
   }
 }
 
-function modelSupportsTemperatureFallback(modelRef?: string | null) {
-  if (!modelRef) {
-    return true
-  }
-
-  const entry = findCatalogEntryByRef(modelRef)
-  if (!entry) {
-    return true
-  }
-
-  // Models with no reasoning control (e.g. Codex Spark) use provider defaults.
-  return entry.reasoningTransport !== 'none'
-}
-
 function throwIfAborted(abortSignal?: AbortSignal) {
   if (abortSignal?.aborted) {
     throw new DOMException('Generation canceled.', 'AbortError')
@@ -545,19 +530,19 @@ export async function runDeckAgent({
   let result
 
   try {
+    let streamError: unknown
     const stream = streamText({
       model,
       system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
-      // Models with no effort control (e.g. Codex Spark) also omit temperature so the
-      // provider default applies.
-      ...(reasoningEffort || !modelSupportsTemperatureFallback(modelRef)
-        ? {}
-        : { temperature: 0.4 }),
+      ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,
+      onError: ({ error }) => {
+        streamError ??= error
+      },
       onChunk: async ({ chunk }) => {
         throwIfAborted(abortSignal)
         if (chunk.type === 'reasoning-delta') {
@@ -601,6 +586,9 @@ export async function runDeckAgent({
 
     // Drain the stream so tool loops and progress callbacks run to completion.
     await stream.consumeStream()
+    if (streamError) {
+      throw streamError
+    }
     result = {
       text: await stream.text,
       steps: await stream.steps,

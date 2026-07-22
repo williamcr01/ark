@@ -60,7 +60,7 @@ pnpm db:migrate
 | -------- | ------------------------------ | --------------------------------------------------------------- |
 | OpenAI   | `OPENAI_API_KEY`               | Curated catalog (GPT-5.6 Sol/Terra/Luna, GPT-5.5, GPT-5.4 Mini) |
 | Claude   | `ANTHROPIC_API_KEY`            | Curated catalog (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5)        |
-| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Curated catalog (3.6 Flash, 3.5 Flash, 3.1 Pro, 2.5 Flash)      |
+| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Curated catalog (3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Pro) |
 
 ### API key errors
 
