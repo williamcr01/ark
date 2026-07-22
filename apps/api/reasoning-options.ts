@@ -1,37 +1,90 @@
 import type { ReasoningEffort } from '@ark/contracts'
 
-const ANTHROPIC_THINKING_BUDGET: Record<ReasoningEffort, number> = {
+import {
+  findCatalogEntryByRef,
+  type ModelCatalogEntry,
+  type ReasoningTransport,
+} from './model-catalog.ts'
+
+const ANTHROPIC_THINKING_BUDGET: Record<
+  Extract<ReasoningEffort, 'low' | 'medium' | 'high' | 'xhigh'>,
+  number
+> = {
   low: 2048,
   medium: 8192,
   high: 16_384,
   xhigh: 32_768,
 }
 
-const GOOGLE_THINKING_LEVEL: Record<ReasoningEffort, 'low' | 'medium' | 'high'> = {
-  low: 'low',
-  medium: 'medium',
-  high: 'high',
-  xhigh: 'high',
+const GOOGLE_THINKING_BUDGET: Record<
+  Extract<ReasoningEffort, 'low' | 'medium' | 'high'>,
+  number
+> = {
+  low: 2048,
+  medium: 8192,
+  high: 16_384,
 }
 
 type JsonPrimitive = string | number | boolean | null
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 type ProviderOptions = Record<string, { [key: string]: JsonValue }>
 
+const resolveTransport = (
+  provider: string,
+  modelRef?: string | null,
+): { transport: ReasoningTransport; entry?: ModelCatalogEntry } => {
+  if (modelRef) {
+    const entry = findCatalogEntryByRef(modelRef)
+    if (entry) {
+      return { transport: entry.reasoningTransport, entry }
+    }
+  }
+
+  // Legacy fallback when only the provider is known (tests / older callers).
+  if (provider === 'openai') {
+    return { transport: 'openai-effort' }
+  }
+  if (provider === 'anthropic') {
+    return { transport: 'anthropic-adaptive' }
+  }
+  if (provider === 'google') {
+    return { transport: 'google-thinking-level' }
+  }
+
+  return { transport: 'none' }
+}
+
 /** Build AI SDK providerOptions for reasoning effort (ai@6 has no portable `reasoning` param). */
 export const buildReasoningProviderOptions = (
   provider: string,
   effort: ReasoningEffort,
+  modelRef?: string | null,
 ): ProviderOptions => {
-  switch (provider) {
-    case 'openai':
+  const { transport } = resolveTransport(provider, modelRef)
+
+  switch (transport) {
+    case 'openai-effort':
       return {
         openai: {
           reasoningEffort: effort,
-          reasoningSummary: 'auto',
+          ...(effort === 'none' ? {} : { reasoningSummary: 'auto' }),
         },
       }
-    case 'anthropic':
+    case 'anthropic-adaptive':
+      return {
+        anthropic: {
+          thinking: {
+            type: 'adaptive',
+            display: 'summarized',
+          },
+          effort,
+        },
+      }
+    case 'anthropic-budget': {
+      if (effort !== 'low' && effort !== 'medium' && effort !== 'high' && effort !== 'xhigh') {
+        return {}
+      }
+
       return {
         anthropic: {
           thinking: {
@@ -40,15 +93,36 @@ export const buildReasoningProviderOptions = (
           },
         },
       }
-    case 'google':
+    }
+    case 'google-thinking-level': {
+      if (effort !== 'minimal' && effort !== 'low' && effort !== 'medium' && effort !== 'high') {
+        return {}
+      }
+
       return {
         google: {
           thinkingConfig: {
             includeThoughts: true,
-            thinkingLevel: GOOGLE_THINKING_LEVEL[effort],
+            thinkingLevel: effort,
           },
         },
       }
+    }
+    case 'google-thinking-budget': {
+      if (effort !== 'low' && effort !== 'medium' && effort !== 'high') {
+        return {}
+      }
+
+      return {
+        google: {
+          thinkingConfig: {
+            includeThoughts: true,
+            thinkingBudget: GOOGLE_THINKING_BUDGET[effort],
+          },
+        },
+      }
+    }
+    case 'none':
     default:
       return {}
   }

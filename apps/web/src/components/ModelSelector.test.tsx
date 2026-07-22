@@ -7,27 +7,45 @@ import type { AvailableModel } from '@/hooks/useAvailableModels'
 
 const models: AvailableModel[] = [
   {
-    id: 'openai:gpt-4o-mini',
+    id: 'openai:gpt-5.6-luna',
     provider: 'openai',
-    modelId: 'gpt-4o-mini',
-    name: 'GPT-4o Mini',
+    modelId: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
     available: true,
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    defaultReasoningEffort: 'medium',
+    supportsReasoning: true,
   },
   {
-    id: 'openai:gpt-4o',
+    id: 'openai:gpt-5.3-codex-spark',
     provider: 'openai',
-    modelId: 'gpt-4o',
-    name: 'GPT-4o',
-    available: false,
-    unavailableReason: 'missing_api_key',
+    modelId: 'gpt-5.3-codex-spark',
+    name: 'Code 5.3 Spark',
+    available: true,
+    reasoningEfforts: [],
+    supportsReasoning: false,
   },
   {
-    id: 'anthropic:claude-sonnet-4-5',
-    provider: 'anthropic',
-    modelId: 'claude-sonnet-4-5',
-    name: 'Claude Sonnet 4.5',
+    id: 'openai:gpt-5.5',
+    provider: 'openai',
+    modelId: 'gpt-5.5',
+    name: 'GPT-5.5',
     available: false,
     unavailableReason: 'missing_api_key',
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
+    defaultReasoningEffort: 'medium',
+    supportsReasoning: true,
+  },
+  {
+    id: 'anthropic:claude-sonnet-5',
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    available: false,
+    unavailableReason: 'missing_api_key',
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultReasoningEffort: 'high',
+    supportsReasoning: true,
   },
   {
     id: 'google:gemini-2.5-flash',
@@ -35,60 +53,137 @@ const models: AvailableModel[] = [
     modelId: 'gemini-2.5-flash',
     name: 'Gemini 2.5 Flash',
     available: true,
+    reasoningEfforts: ['low', 'medium', 'high'],
+    defaultReasoningEffort: 'medium',
+    supportsReasoning: true,
   },
 ]
 
 describe('ModelSelector', () => {
-  it('groups models by provider and selects an available model', async () => {
-    const onValueChange = vi.fn()
+  it('groups models by provider and selects an available model with default effort', async () => {
+    const onSelect = vi.fn()
     const user = userEvent.setup()
 
     render(
-      <ModelSelector models={models} onValueChange={onValueChange} value="openai:gpt-4o-mini" />,
+      <ModelSelector
+        models={models}
+        onSelect={onSelect}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    expect(screen.getByText('OpenAI · 1 ready')).toBeInTheDocument()
+    expect(screen.getByText('OpenAI · 2 ready')).toBeInTheDocument()
     expect(screen.getByText('Anthropic · 0 ready')).toBeInTheDocument()
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
     expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
 
     await user.click(screen.getByText('Gemini 2.5 Flash'))
 
-    expect(onValueChange).toHaveBeenCalledWith('google:gemini-2.5-flash')
+    expect(onSelect).toHaveBeenCalledWith('google:gemini-2.5-flash', 'medium')
   })
 
-  it('does not select unavailable models', async () => {
-    const onValueChange = vi.fn()
+  it('selects effort from the hover submenu', async () => {
+    const onSelect = vi.fn()
     const user = userEvent.setup()
 
     render(
-      <ModelSelector models={models} onValueChange={onValueChange} value="openai:gpt-4o-mini" />,
+      <ModelSelector
+        models={models}
+        onSelect={onSelect}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    const unavailable = screen.getByText('Claude Sonnet 4.5').closest('[data-slot="command-item"]')
-    expect(unavailable).toHaveAttribute('data-disabled', 'true')
+    const lunaTrigger = screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i })
+    lunaTrigger.focus()
+    await user.keyboard('{ArrowRight}')
 
-    await user.click(screen.getByText('Claude Sonnet 4.5'))
-    expect(onValueChange).not.toHaveBeenCalled()
+    const effortOption = await screen.findByRole('menuitem', { name: 'Extra High' })
+    await user.click(effortOption)
+
+    expect(onSelect).toHaveBeenCalledWith('openai:gpt-5.6-luna', 'xhigh')
   })
 
-  it('shows a loading placeholder and disables the trigger', () => {
-    render(<ModelSelector isLoading models={[]} onValueChange={vi.fn()} value="" />)
+  it('selects no-effort models directly', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={onSelect}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select model' }))
+    await user.click(screen.getByText('Code 5.3 Spark'))
+
+    expect(onSelect).toHaveBeenCalledWith('openai:gpt-5.3-codex-spark')
+  })
+
+  it('does not select unavailable models', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={onSelect}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select model' }))
+
+    const unavailable = screen.getByText('Claude Sonnet 5').closest('[data-disabled]')
+    expect(unavailable).toBeTruthy()
+
+    await user.click(screen.getByText('Claude Sonnet 5'))
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('shows loading placeholder and model · effort on the trigger', () => {
+    const { rerender } = render(<ModelSelector isLoading models={[]} onSelect={vi.fn()} value="" />)
 
     expect(screen.getByRole('button', { name: 'Select model' })).toBeDisabled()
+
+    rerender(
+      <ModelSelector
+        models={models}
+        onSelect={vi.fn()}
+        reasoningEffort="high"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent(
+      'GPT-5.6 Luna · High',
+    )
   })
 
   it('filters models via search', async () => {
     const user = userEvent.setup()
 
-    render(<ModelSelector models={models} onValueChange={vi.fn()} value="openai:gpt-4o-mini" />)
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={vi.fn()}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
-    await user.type(screen.getByPlaceholderText('Search models…'), 'zzzz-no-match')
+    await user.type(screen.getByLabelText('Search models'), 'zzzz-no-match')
 
     expect(screen.getByText('No models match your search.')).toBeInTheDocument()
   })

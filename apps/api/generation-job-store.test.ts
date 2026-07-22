@@ -23,17 +23,22 @@ describe('file generation job store', () => {
     const created = await store.createJob({
       deckId: null,
       baseVersionId: null,
-      model: 'openai:gpt-4.1-mini',
+      model: 'openai:gpt-5.6-luna',
       provider: 'openai',
       request: {
         messages: [{ role: 'user', content: 'Make a deck' }],
         currentHtml: '',
         editingExistingDeck: false,
+        reasoningEffort: 'high',
       },
     })
 
     expect(created.status).toBe('queued')
     expect(created.progress.steps).toEqual([])
+    expect(created.request.reasoningEffort).toBe('high')
+
+    const reloaded = await store.getJob(created.id)
+    expect(reloaded?.request.reasoningEffort).toBe('high')
 
     const updated = await store.updateJob(created.id, {
       status: 'running',
@@ -46,6 +51,7 @@ describe('file generation job store', () => {
 
     expect(updated?.status).toBe('running')
     expect(updated?.progress.steps).toHaveLength(1)
+    expect(updated?.request.reasoningEffort).toBe('high')
 
     const claimed = await store.claimQueuedJob(created.id, new Date().toISOString())
     expect(claimed).toBeNull()
@@ -55,8 +61,10 @@ describe('file generation job store', () => {
       completedAt: new Date().toISOString(),
     })
     expect(canceled?.status).toBe('canceled')
+    expect(canceled?.request.reasoningEffort).toBe('high')
 
     const loaded = await store.getJob(created.id)
     expect(loaded?.status).toBe('canceled')
+    expect(loaded?.request.reasoningEffort).toBe('high')
   })
 })

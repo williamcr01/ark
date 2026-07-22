@@ -23,6 +23,7 @@ import {
   type DeckToolDefinition,
 } from './deck-tool-catalog.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
+import { findCatalogEntryByRef } from './model-catalog.ts'
 
 export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
@@ -466,6 +467,20 @@ function createThinkingProgressReporter(
   }
 }
 
+function modelSupportsTemperatureFallback(modelRef?: string | null) {
+  if (!modelRef) {
+    return true
+  }
+
+  const entry = findCatalogEntryByRef(modelRef)
+  if (!entry) {
+    return true
+  }
+
+  // Models with no reasoning control (e.g. Codex Spark) use provider defaults.
+  return entry.reasoningTransport !== 'none'
+}
+
 function throwIfAborted(abortSignal?: AbortSignal) {
   if (abortSignal?.aborted) {
     throw new DOMException('Generation canceled.', 'AbortError')
@@ -524,7 +539,7 @@ export async function runDeckAgent({
     ...guideMetadata,
   })
   const providerOptions = reasoningEffort
-    ? buildReasoningProviderOptions(provider, reasoningEffort)
+    ? buildReasoningProviderOptions(provider, reasoningEffort, modelRef)
     : undefined
 
   let result
@@ -536,7 +551,11 @@ export async function runDeckAgent({
       messages: context.modelMessages,
       tools,
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
-      ...(reasoningEffort ? {} : { temperature: 0.4 }),
+      // Models with no effort control (e.g. Codex Spark) also omit temperature so the
+      // provider default applies.
+      ...(reasoningEffort || !modelSupportsTemperatureFallback(modelRef)
+        ? {}
+        : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,
       onChunk: async ({ chunk }) => {

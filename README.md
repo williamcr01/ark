@@ -23,15 +23,15 @@ You only need one key to get started. Add more providers to unlock their models 
 
 You can pick the model in two ways:
 
-1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark scans each configured provider for available models on load; use the refresh button to re-scan. Your choice is saved in the browser.
+1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark shows a curated catalog of OpenAI, Claude, and Gemini models. Hover a reasoning model to pick thinking effort from that model's supported levels. Your model and effort choices are saved in the browser.
 
 2. **In `.env` (default fallback)** — Set `ARK_DEFAULT_MODEL` using `provider:model-id` syntax when no model is saved in the UI yet:
 
 ```env
-ARK_DEFAULT_MODEL=anthropic:claude-sonnet-4-20250514
+ARK_DEFAULT_MODEL=anthropic:claude-sonnet-5
 ```
 
-`OPENAI_MODEL` is still supported as a legacy OpenAI-only default.
+`OPENAI_MODEL` is still supported as a legacy OpenAI-only default. Defaults should reference a curated catalog entry (for example `openai:gpt-5.6-luna`).
 
 Optional API port (default `8787`). Both the Express API and Vite's `/api` proxy read `PORT` from `.env` or your shell environment — keep them in sync by setting it once and restarting `pnpm dev`:
 
@@ -56,15 +56,15 @@ pnpm db:migrate
 
 ### Supported providers
 
-| Provider | Env var                        | Model scan source              |
-| -------- | ------------------------------ | ------------------------------ |
-| OpenAI   | `OPENAI_API_KEY`               | OpenAI `/v1/models`            |
-| Claude   | `ANTHROPIC_API_KEY`            | Anthropic `/v1/models`         |
-| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Google Generative Language API |
+| Provider | Env var                        | Models source                                                     |
+| -------- | ------------------------------ | ----------------------------------------------------------------- |
+| OpenAI   | `OPENAI_API_KEY`               | Curated catalog (GPT-5.6 Sol/Terra/Luna, GPT-5.5, Code 5.3 Spark) |
+| Claude   | `ANTHROPIC_API_KEY`            | Curated catalog (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5)          |
+| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Curated catalog (3.6 Flash, 3.5 Flash, 3.1 Pro, 2.5 Flash)        |
 
 ### API key errors
 
-If `.env` has no provider keys, still has placeholder values, or a key is rejected, the chat panel shows a clear error and disables generation until you fix it. If one provider fails to scan but others succeed, Ark still lists the working models and shows a warning for the failed provider. After updating `.env`, restart `pnpm dev` and use the model refresh button in chat if needed.
+If `.env` has no provider keys, still has placeholder values, or a key is rejected, generation stays disabled for that provider's models until you fix it. Models for providers without a key appear in the picker as unavailable. After updating `.env`, restart `pnpm dev`.
 
 ## Development
 
