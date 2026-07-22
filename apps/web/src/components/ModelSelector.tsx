@@ -245,16 +245,6 @@ export function ModelSelector({
                             isSelected && 'bg-accent text-accent-foreground',
                           )}
                           disabled={!model.available}
-                          onClick={(event) => {
-                            // Tap/click the model row selects with the current/default effort.
-                            // Prevents requiring the submenu on touch devices.
-                            if (!model.available) {
-                              return
-                            }
-
-                            event.preventDefault()
-                            selectModel(model)
-                          }}
                         >
                           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                             <span className="truncate font-medium text-[var(--ark-ink)]">

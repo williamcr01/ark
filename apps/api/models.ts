@@ -3,6 +3,7 @@ import { getProviderApiKey } from './credentials.ts'
 import {
   DEFAULT_MODEL_REF,
   findCatalogEntry,
+  isEnvFlagEnabled,
   MODEL_CATALOG,
   toModelRef,
   type ModelCatalogEntry,
@@ -11,6 +12,21 @@ import {
 export type { ProviderId, ModelInfo }
 
 type ModelUnavailableReason = NonNullable<ModelInfo['unavailableReason']>
+
+const resolveCatalogAvailability = (
+  entry: ModelCatalogEntry,
+): { available: boolean; unavailableReason?: ModelUnavailableReason } => {
+  const hasKey = Boolean(getProviderApiKey(entry.provider))
+  if (!hasKey) {
+    return { available: false, unavailableReason: 'missing_api_key' }
+  }
+
+  if (entry.entitlementEnv && !isEnvFlagEnabled(entry.entitlementEnv)) {
+    return { available: false, unavailableReason: 'limited_access' }
+  }
+
+  return { available: true }
+}
 
 const catalogEntryToModelInfo = (
   entry: ModelCatalogEntry,
@@ -32,6 +48,7 @@ const catalogEntryToModelInfo = (
       ? { defaultReasoningEffort: entry.defaultReasoningEffort }
       : {}),
     supportsReasoning,
+    supportsAttachments: entry.supportsAttachments !== false,
   }
 }
 
@@ -80,11 +97,11 @@ export type ModelCatalog = {
   warnings: string[]
 }
 
-/** Build the curated model catalog; availability is keyed only on configured API keys. */
+/** Build the curated model catalog; availability is keyed on API keys (+ optional entitlements). */
 export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
   const models = MODEL_CATALOG.map((entry) => {
-    const hasKey = Boolean(getProviderApiKey(entry.provider))
-    return catalogEntryToModelInfo(entry, hasKey, hasKey ? undefined : 'missing_api_key')
+    const { available, unavailableReason } = resolveCatalogAvailability(entry)
+    return catalogEntryToModelInfo(entry, available, unavailableReason)
   })
 
   return {
@@ -106,11 +123,8 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
   const catalogEntry = findCatalogEntry(provider, modelId)
 
   if (catalogEntry) {
-    const hasKey = Boolean(getProviderApiKey(provider))
-    return [
-      ...models,
-      catalogEntryToModelInfo(catalogEntry, hasKey, hasKey ? undefined : 'missing_api_key'),
-    ]
+    const { available, unavailableReason } = resolveCatalogAvailability(catalogEntry)
+    return [...models, catalogEntryToModelInfo(catalogEntry, available, unavailableReason)]
   }
 
   const unavailableReason: ModelUnavailableReason = getProviderApiKey(provider)
@@ -127,6 +141,7 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
       unavailableReason,
       reasoningEfforts: [],
       supportsReasoning: false,
+      supportsAttachments: true,
     },
   ]
 }

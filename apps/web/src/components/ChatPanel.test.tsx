@@ -113,6 +113,31 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
   })
 
+  it('disables attachments for text-only models', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          models={[
+            {
+              id: 'openai:gpt-5.3-codex-spark',
+              provider: 'openai',
+              modelId: 'gpt-5.3-codex-spark',
+              name: 'Code 5.3 Spark',
+              available: true,
+              reasoningEfforts: [],
+              supportsReasoning: false,
+              supportsAttachments: false,
+            },
+          ]}
+          selectedModel="openai:gpt-5.3-codex-spark"
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Add attachments' })).toBeDisabled()
+  })
+
   it('shows provider catalog warnings without blocking the chat', () => {
     render(
       <TooltipProvider>
