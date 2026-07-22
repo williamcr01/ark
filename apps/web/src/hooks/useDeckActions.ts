@@ -171,7 +171,7 @@ export function useDeckActions({
 
   const handleNewDeck = useCallback(() => {
     startNewDeck()
-    void resetChat()
+    void resetChat(null)
     setInput('')
     setError('')
     toast.info('Started a fresh deck')
