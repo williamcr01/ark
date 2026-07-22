@@ -28,7 +28,8 @@ jobs:
       - run: pnpm lockfile:check
       - run: pnpm lint
       - run: pnpm format:check
-      - run: pnpm audit
+      # High/critical only; see package.json "audit" script. Moderate/low are reviewed separately.
+      - run: pnpm run audit
       - run: pnpm openapi:check
 
   build:
