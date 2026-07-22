@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { apiErrorPayloadSchema, providerIdSchema, withRequestId } from './common.ts'
+import {
+  apiErrorPayloadSchema,
+  providerIdSchema,
+  reasoningEffortSchema,
+  withRequestId,
+} from './common.ts'
 
 export const healthResponseSchema = withRequestId({
   ok: z.literal(true),
@@ -31,7 +36,14 @@ export const modelInfoSchema = z.object({
   name: z.string().optional(),
   available: z.boolean(),
   unavailableReason: modelUnavailableReasonSchema.optional(),
-  /** Heuristic: model can accept reasoning effort / return thinking text. */
+  /** Supported thinking-effort levels for this model (empty/omitted = no effort control). */
+  reasoningEfforts: z.array(reasoningEffortSchema).optional(),
+  /** Default effort when the model supports reasoning and the client has no preference. */
+  defaultReasoningEffort: reasoningEffortSchema.optional(),
+  /**
+   * Compatibility flag derived from reasoningEfforts.length > 0.
+   * Prefer reasoningEfforts for new clients.
+   */
   supportsReasoning: z.boolean().optional(),
 })
 
