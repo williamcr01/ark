@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { clearChatSession, writeChatSession } from '@/lib/chat-session'
+import { clearChatSession, readChatSession, writeChatSession } from '@/lib/chat-session'
 import { useChatSession } from '@/hooks/useChatSession'
 
 describe('useChatSession', () => {
@@ -143,6 +143,57 @@ describe('useChatSession', () => {
 
     const { result: freshResult } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
     expect(freshResult.current.messages).toEqual([])
+  })
+
+  it('starts a fresh unsaved chat without clearing the previous deck chat', async () => {
+    writeChatSession(null, {
+      messages: [{ id: 'stale', role: 'user', content: 'old unsaved prompt' }],
+      updatedAt: new Date().toISOString(),
+    })
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        thread: null,
+        messages: [
+          {
+            id: 'm1',
+            role: 'user',
+            content: 'saved deck prompt',
+            threadId: 'thread-1',
+            deckId: 'deck-1',
+            deckVersionId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+        hasMore: false,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, rerender } = renderHook(
+      ({ deckId }: { deckId: string | null }) => useChatSession({ deckId }),
+      { initialProps: { deckId: 'deck-1' as string | null } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.messages[0]?.content).toBe('saved deck prompt')
+    })
+
+    await act(async () => {
+      await result.current.resetChat(null)
+      rerender({ deckId: null })
+    })
+
+    expect(result.current.messages).toEqual([])
+    expect(readChatSession(null)?.messages).toEqual([])
+    expect(readChatSession('deck-1')?.messages).toEqual([
+      { id: 'm1', role: 'user', content: 'saved deck prompt' },
+    ])
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/api/decks/deck-1/chat'),
+      expect.objectContaining({ method: 'DELETE' }),
+    )
   })
 
   it('reloads chat for an explicit deck id before the hook ref updates', async () => {
