@@ -315,6 +315,7 @@ export type ChatPanelProps = {
   activeSteps: AgentStep[]
   failedJobId: string | null
   error: string
+  showGenerationErrorAlert?: boolean
   attachmentError: string
   models: AvailableModel[]
   selectedModel: string
@@ -339,10 +340,10 @@ export function ChatPanel({
   messages,
   input,
   isGenerating,
-  generationStatus,
   activeSteps,
   failedJobId,
   error,
+  showGenerationErrorAlert = true,
   attachmentError,
   models,
   selectedModel,
@@ -380,7 +381,8 @@ export function ChatPanel({
     void onRetryGeneration()
   }
 
-  const showGenerationError = Boolean(error) && !isAlertDismissed('generation', error)
+  const showGenerationError =
+    showGenerationErrorAlert && Boolean(error) && !isAlertDismissed('generation', error)
   const showAttachmentError =
     Boolean(attachmentError) && !isAlertDismissed('attachment', attachmentError)
   const showModelsError = Boolean(modelsError) && !isAlertDismissed('models', modelsError)
@@ -442,12 +444,8 @@ export function ChatPanel({
                 <MessageContent>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2Icon className="size-4 animate-spin" />
-                      {generationStatus === 'queued'
-                        ? 'Queued for generation…'
-                        : generationStatus === 'canceling'
-                          ? 'Canceling generation…'
-                          : 'Designing the deck and running agent tools…'}
+                      <Loader2Icon aria-hidden className="size-4 animate-spin" />
+                      <span>Working…</span>
                     </div>
                     {activeSteps.length > 0 ? (
                       <ChatMessageParts

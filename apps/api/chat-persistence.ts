@@ -9,6 +9,10 @@ import type {
   GenerationJobError,
   GenerationJobStatus,
 } from '@ark/deck-core/generation-job.ts'
+import {
+  formatModelGenerationFailure,
+  isModelGenerationError,
+} from '@ark/deck-core/generation-job.ts'
 import type { ChatStore } from './chat-record.ts'
 import type { DeckStore } from './deck-record.ts'
 
@@ -64,18 +68,23 @@ export async function persistAssistantGenerationMessage(
     validationNote?: string
   },
 ) {
-  const assistantContent = buildAssistantMessageContent(
-    options.assistantText ?? '',
-    options.steps,
-    options.editingExistingDeck,
-  )
+  const assistantContent =
+    options.status === 'succeeded'
+      ? buildAssistantMessageContent(
+          options.assistantText ?? '',
+          options.steps,
+          options.editingExistingDeck,
+        )
+      : ''
   const validationNote = options.validationNote ?? ''
   const content = assistantContent
     ? `${assistantContent}${validationNote}`
     : options.status === 'canceled'
       ? `Generation canceled. ${options.error?.message ?? 'Generation was canceled.'}`
       : options.status === 'failed'
-        ? `I could not generate the deck yet. ${options.error?.message ?? 'Generation failed.'}`
+        ? isModelGenerationError(options.error)
+          ? formatModelGenerationFailure(options.error?.message ?? 'Generation failed.')
+          : `I could not generate the deck yet. ${options.error?.message ?? 'Generation failed.'}`
         : options.editingExistingDeck
           ? `Updated the HTML deck and refreshed the preview.${validationNote}`
           : `Generated a complete self-contained HTML slide deck.${validationNote}`
@@ -86,7 +95,7 @@ export async function persistAssistantGenerationMessage(
     .map((part) => part.content)
     .join('\n')
     .trim()
-  const extraText = `${assistantContent}${validationNote}`.trim()
+  const extraText = content.trim()
   if (extraText && extraText !== persistedText && !persistedText.endsWith(extraText)) {
     const lastStep = assistantParts.reduce((max, part) => Math.max(max, part.stepIndex ?? -1), -1)
     assistantParts.push({ type: 'text', content: extraText, stepIndex: lastStep + 1 })

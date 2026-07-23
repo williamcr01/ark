@@ -155,6 +155,8 @@ function App() {
     generateDeck,
     generationError,
     generationStatus,
+    isModelFailure,
+    isPreviewUpdating,
     isGenerating,
     retryGeneration: handleRetryGeneration,
   } = useDeckGenerationFlow({
@@ -512,6 +514,7 @@ function App() {
       reasoningEffort={reasoningEffort}
       selectedAssetIds={selectedAssetIds}
       selectedModel={selectedModel}
+      showGenerationErrorAlert={!isModelFailure}
     />
   )
 
@@ -564,6 +567,7 @@ function App() {
                   editorBridgeEnabled
                   html={generatedHtml}
                   isGenerating={isGenerating}
+                  isPreviewUpdating={isPreviewUpdating}
                   isStripOpen={isStripOpen}
                   isTextEditSaving={isDeckPatching || isDeckSaving}
                   layout="desktop"
@@ -607,6 +611,7 @@ function App() {
                   editorBridgeEnabled
                   html={generatedHtml}
                   isGenerating={isGenerating}
+                  isPreviewUpdating={isPreviewUpdating}
                   isStripOpen={isStripOpen}
                   isTextEditSaving={isDeckPatching || isDeckSaving}
                   layout="mobile"
