@@ -137,7 +137,7 @@ export function useDeckAssets(deckId: string | null) {
         setIsLoading(false)
       }
     }
-  }, [deckId])
+  }, [deckId, setError])
 
   useEffect(() => {
     const load = async () => {
@@ -147,19 +147,34 @@ export function useDeckAssets(deckId: string | null) {
     void load()
   }, [reload])
 
-  const uploadFiles = useCallback(async (files: File[]) => {
-    const targetDeckId = deckIdRef.current
+  const uploadFiles = useCallback(
+    async (files: File[]) => {
+      const targetDeckId = deckIdRef.current
 
-    if (!targetDeckId) {
-      setError('Save the deck before uploading assets.')
-      return
-    }
+      if (!targetDeckId) {
+        setError('Save the deck before uploading assets.')
+        return
+      }
 
-    for (const file of files) {
-      const uploadId = nextUploadId()
-      const validationError = validateFile(file)
+      for (const file of files) {
+        const uploadId = nextUploadId()
+        const validationError = validateFile(file)
 
-      if (validationError) {
+        if (validationError) {
+          setUploads((current) => [
+            ...current,
+            {
+              id: uploadId,
+              filename: file.name,
+              byteSize: file.size,
+              mediaType: file.type,
+              status: 'error',
+              error: validationError,
+            },
+          ])
+          continue
+        }
+
         setUploads((current) => [
           ...current,
           {
@@ -167,71 +182,62 @@ export function useDeckAssets(deckId: string | null) {
             filename: file.name,
             byteSize: file.size,
             mediaType: file.type,
-            status: 'error',
-            error: validationError,
+            status: 'uploading',
           },
         ])
-        continue
-      }
 
-      setUploads((current) => [
-        ...current,
-        {
-          id: uploadId,
-          filename: file.name,
-          byteSize: file.size,
-          mediaType: file.type,
-          status: 'uploading',
-        },
-      ])
+        try {
+          const dataUrl = await readFileAsDataUrl(file)
+          const asset = await uploadDeckAsset(targetDeckId, {
+            filename: file.name,
+            mediaType: file.type,
+            data: dataUrl,
+          })
+
+          if (deckIdRef.current !== targetDeckId) {
+            return
+          }
+
+          setUploads((current) => current.filter((upload) => upload.id !== uploadId))
+          setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
+          dispatchSelection({ type: 'add', assetId: asset.id })
+        } catch (uploadError) {
+          if (deckIdRef.current !== targetDeckId) {
+            return
+          }
+
+          const message =
+            uploadError instanceof Error ? uploadError.message : 'Could not upload the file.'
+          setUploads((current) =>
+            current.map((upload) =>
+              upload.id === uploadId ? { ...upload, status: 'error', error: message } : upload,
+            ),
+          )
+        }
+      }
+    },
+    [setError],
+  )
+
+  const removeAsset = useCallback(
+    async (assetId: string) => {
+      const targetDeckId = deckIdRef.current
+
+      if (!targetDeckId) {
+        setError('Save the deck before removing assets.')
+        return
+      }
 
       try {
-        const dataUrl = await readFileAsDataUrl(file)
-        const asset = await uploadDeckAsset(targetDeckId, {
-          filename: file.name,
-          mediaType: file.type,
-          data: dataUrl,
-        })
-
-        if (deckIdRef.current !== targetDeckId) {
-          return
-        }
-
-        setUploads((current) => current.filter((upload) => upload.id !== uploadId))
-        setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
-        dispatchSelection({ type: 'add', assetId: asset.id })
-      } catch (uploadError) {
-        if (deckIdRef.current !== targetDeckId) {
-          return
-        }
-
-        const message =
-          uploadError instanceof Error ? uploadError.message : 'Could not upload the file.'
-        setUploads((current) =>
-          current.map((upload) =>
-            upload.id === uploadId ? { ...upload, status: 'error', error: message } : upload,
-          ),
-        )
+        await deleteAssetRequest(targetDeckId, assetId)
+        setAssets((current) => current.filter((asset) => asset.id !== assetId))
+        dispatchSelection({ type: 'remove', assetId })
+      } catch (deleteError) {
+        setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the asset.')
       }
-    }
-  }, [])
-
-  const removeAsset = useCallback(async (assetId: string) => {
-    const targetDeckId = deckIdRef.current
-
-    if (!targetDeckId) {
-      setError('Save the deck before removing assets.')
-      return
-    }
-
-    try {
-      await deleteAssetRequest(targetDeckId, assetId)
-      setAssets((current) => current.filter((asset) => asset.id !== assetId))
-      dispatchSelection({ type: 'remove', assetId })
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the asset.')
-    }
-  }, [])
+    },
+    [setError],
+  )
 
   const dismissUpload = useCallback((uploadId: string) => {
     setUploads((current) => current.filter((upload) => upload.id !== uploadId))
