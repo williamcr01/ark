@@ -154,6 +154,8 @@ test('diff extraction includes deletions and both sides of renames', () => {
     mkdirSync(join(repository, 'docs'))
     renameSync(join(repository, 'apps/web/src/App.tsx'), join(repository, 'docs/App.md'))
     rmSync(join(repository, 'apps/web/src/deleted.ts'))
+    execFileSync('git', ['add', '--all'], { cwd: repository })
+    execFileSync('git', ['commit', '--quiet', '-m', 'rename and delete'], { cwd: repository })
 
     assert.deepEqual(changedPathsSince(base, repository).sort(), [
       'apps/web/src/App.tsx',
