@@ -23,15 +23,15 @@ You only need one key to get started. Add more providers to unlock their models 
 
 You can pick the model in two ways:
 
-1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark scans each configured provider for available models on load; use the refresh button to re-scan. Your choice is saved in the browser.
+1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark shows a curated catalog of OpenAI, Claude, and Gemini models. Hover a reasoning model to pick thinking effort from that model's supported levels. Your model and effort choices are saved in the browser.
 
 2. **In `.env` (default fallback)** — Set `ARK_DEFAULT_MODEL` using `provider:model-id` syntax when no model is saved in the UI yet:
 
 ```env
-ARK_DEFAULT_MODEL=anthropic:claude-sonnet-4-20250514
+ARK_DEFAULT_MODEL=anthropic:claude-sonnet-5
 ```
 
-`OPENAI_MODEL` is still supported as a legacy OpenAI-only default.
+`OPENAI_MODEL` is still supported as a legacy OpenAI-only default. Defaults should reference a curated catalog entry (for example `openai:gpt-5.6-luna`).
 
 Optional API port (default `8787`). Both the Express API and Vite's `/api` proxy read `PORT` from `.env` or your shell environment — keep them in sync by setting it once and restarting `pnpm dev`:
 
@@ -56,15 +56,15 @@ pnpm db:migrate
 
 ### Supported providers
 
-| Provider | Env var                        | Model scan source              |
-| -------- | ------------------------------ | ------------------------------ |
-| OpenAI   | `OPENAI_API_KEY`               | OpenAI `/v1/models`            |
-| Claude   | `ANTHROPIC_API_KEY`            | Anthropic `/v1/models`         |
-| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Google Generative Language API |
+| Provider | Env var                        | Models source                                                   |
+| -------- | ------------------------------ | --------------------------------------------------------------- |
+| OpenAI   | `OPENAI_API_KEY`               | Curated catalog (GPT-5.6 Sol/Terra/Luna, GPT-5.5, GPT-5.4 Mini) |
+| Claude   | `ANTHROPIC_API_KEY`            | Curated catalog (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5)        |
+| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Curated catalog (3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Pro) |
 
 ### API key errors
 
-If `.env` has no provider keys, still has placeholder values, or a key is rejected, the chat panel shows a clear error and disables generation until you fix it. If one provider fails to scan but others succeed, Ark still lists the working models and shows a warning for the failed provider. After updating `.env`, restart `pnpm dev` and use the model refresh button in chat if needed.
+If `.env` has no provider keys, still has placeholder values, or a key is rejected, generation stays disabled for that provider's models until you fix it. Models for providers without a key appear in the picker as unavailable. After updating `.env`, restart `pnpm dev`.
 
 ## Development
 
@@ -113,7 +113,7 @@ pnpm format:check
 pnpm audit
 pnpm build
 pnpm test
-pnpm smoke:plain-css   # PR-blocking browser smoke (CI gate)
+pnpm smoke:plain-css   # Browser smoke selected for runtime-affecting PRs
 # Optional fuller local suites:
 # pnpm smoke:browser           # plain + Reveal + full-JS + manual-edit
 # pnpm smoke:browser:extended  # Reveal + full-JS + manual-edit + thumbnails
@@ -122,7 +122,22 @@ pnpm smoke:plain-css   # PR-blocking browser smoke (CI gate)
 
 Import boundaries between `apps/*` and `packages/*` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
 
-`pnpm test` runs Vitest in two phases: **packages in parallel** (`pnpm --parallel --filter './packages/**' test`, ignoring the package dependency graph so suites overlap), then **apps serially** (`--workspace-concurrency=1`). Running `apps/api` and `apps/web` together overloads a single runner and causes Vitest timeouts — keep apps serial unless those suites get much lighter. Live Chromium thumbnail coverage is separate (`pnpm test:live-chromium`, main-push CI only). Coverage includes hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP. **Pull requests** gate on `quality` (lockfile/lint/format/audit/openapi), `build`, `test`, and `smoke:plain-css`. **Main pushes** also run `test:live-chromium`, Reveal, full-JS bridge, manual-edit, and `smoke:thumbnails`. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+`pnpm test` runs Vitest in two phases: **packages in parallel** (`pnpm --parallel --filter './packages/**' test`, ignoring the package dependency graph so suites overlap), then **apps serially** (`--workspace-concurrency=1`). Running `apps/api` and `apps/web` together overloads a single runner and causes Vitest timeouts — keep apps serial unless those suites get much lighter. `pnpm test:affected --base <sha>` uses pnpm's workspace dependency graph to run changed workspaces and all downstream dependents with the same package/app concurrency policy. Live Chromium thumbnail coverage remains separate (`pnpm test:live-chromium`). Coverage includes hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+
+### CI selection policy
+
+The required `quality`, `build`, `test`, and `smoke` checks always report a result, but ordinary pull requests only perform work relevant to their complete base-to-head diff:
+
+| Change                                                                         | Build                | Unit tests                      | Plain CSS smoke |
+| ------------------------------------------------------------------------------ | -------------------- | ------------------------------- | --------------- |
+| Documentation, agent guides, benchmarks                                        | Skip                 | Skip                            | Skip            |
+| Workspace test files only                                                      | Full typecheck/build | Changed workspaces + dependents | Skip            |
+| Runtime workspace code                                                         | Full typecheck/build | Changed workspaces + dependents | Run             |
+| Fixtures, runtimes, dependency manifests, CI/test configuration, unknown paths | Full                 | Full                            | Run             |
+
+`quality` always runs for normal PR updates. Scope decisions and selected workspaces are written to the Actions job summary. Unknown paths fall back to full validation; classifier test or execution failures fail the required checks closed.
+
+Every `main` push and manual workflow dispatch runs comprehensive validation: the full unit suite, live Chromium renderer tests, plain-CSS smoke, Reveal, full-JS bridge, manual-edit, and thumbnail smokes. Pull requests never run the non-required live-Chromium or extended browser jobs; high-risk PR inputs still select the full unit suite and required plain-CSS smoke. Because this repository cannot use GitHub Merge Queue, comprehensive browser coverage is a post-merge guarantee and may temporarily make `main` red when it catches a regression.
 
 Format before pushing substantive changes:
 
@@ -130,4 +145,4 @@ Format before pushing substantive changes:
 pnpm format
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) consolidates cheap static checks into one `quality` job to cut billed install minutes; wall clock stays gated by `test` (~3–4 min). Extended Chromium/browser suites run on `main` pushes only. No API keys or `.env` file are required for CI.
+GitHub Actions (`.github/workflows/ci.yml`) consolidates cheap static checks into one `quality` job and skips setup for irrelevant PR gates. Superseded runs are cancelled, browser retries are capped at three attempts, and all third-party actions are commit-pinned. No API keys or `.env` file are required for CI.

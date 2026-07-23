@@ -59,6 +59,7 @@ export type GenerationJobOutcome =
   | {
       status: 'succeeded'
       job: GenerationJobApi
+      deckChanged: boolean
       assistantParts: ReturnType<typeof agentStepsToChatParts>
       assistantContent: string
     }
@@ -132,36 +133,40 @@ export function useGenerationJob({
     [stopPolling],
   )
 
-  const buildOutcome = useCallback((job: GenerationJobApi): GenerationJobOutcome => {
-    if (job.status === 'succeeded' && job.result) {
-      const steps = job.progress.steps
-      const assistantContent = buildAssistantMessageContent(
-        job.result.assistantText,
-        steps,
-        job.editingExistingDeck ?? false,
-      )
+  const buildOutcome = useCallback(
+    (job: GenerationJobApi): GenerationJobOutcome => {
+      if (job.status === 'succeeded' && job.result) {
+        const steps = job.progress.steps
+        const assistantContent = buildAssistantMessageContent(
+          job.result.assistantText,
+          steps,
+          job.editingExistingDeck ?? false,
+        )
+
+        return {
+          status: 'succeeded',
+          job,
+          deckChanged: Boolean(job.result.versionId) && job.result.versionId !== baseVersionId,
+          assistantParts: agentStepsToChatParts(steps),
+          assistantContent,
+        }
+      }
+
+      const message =
+        job.error?.message ??
+        (job.status === 'canceled'
+          ? 'Generation was canceled.'
+          : 'Something went wrong while generating the deck.')
 
       return {
-        status: 'succeeded',
+        status: job.status === 'canceled' ? 'canceled' : 'failed',
         job,
-        assistantParts: agentStepsToChatParts(steps),
-        assistantContent,
+        message,
+        retryable: job.status === 'failed' || job.status === 'canceled',
       }
-    }
-
-    const message =
-      job.error?.message ??
-      (job.status === 'canceled'
-        ? 'Generation was canceled.'
-        : 'Something went wrong while generating the deck.')
-
-    return {
-      status: job.status === 'canceled' ? 'canceled' : 'failed',
-      job,
-      message,
-      retryable: job.status === 'failed' || job.status === 'canceled',
-    }
-  }, [])
+    },
+    [baseVersionId],
+  )
 
   const finalizeJob = useCallback(
     (job: GenerationJobApi) => {
@@ -172,12 +177,23 @@ export function useGenerationJob({
       if (job.status === 'failed' || job.status === 'canceled') {
         setFailedJob(job)
         setError(job.error?.message ?? '')
+
+        const code = job.error?.code
+        const category = job.error?.errorCategory
+        if (
+          code === 'missing_api_key' ||
+          code === 'invalid_api_key' ||
+          category === 'missing_api_key' ||
+          category === 'invalid_api_key'
+        ) {
+          void onReloadModels?.()
+        }
       } else {
         setFailedJob(null)
         setError('')
       }
     },
-    [deckKey],
+    [deckKey, onReloadModels],
   )
 
   const runJob = useCallback(

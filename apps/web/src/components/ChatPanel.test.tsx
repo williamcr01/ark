@@ -23,8 +23,7 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   modelWarnings: [],
   canGenerate: true,
   onInputChange: vi.fn(),
-  onModelChange: vi.fn(),
-  onReasoningEffortChange: vi.fn(),
+  onModelSelect: vi.fn(),
   onPromptSubmit: vi.fn(),
   onAttachmentError: vi.fn(),
   onCancelGeneration: vi.fn(),
@@ -56,6 +55,17 @@ describe('ChatPanel delivery status', () => {
 })
 
 describe('ChatPanel submit control', () => {
+  it('shows a concise working status while generating', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} generationStatus="running" isGenerating />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Working…')).toBeInTheDocument()
+    expect(screen.queryByText(/Designing the deck/i)).not.toBeInTheDocument()
+  })
+
   it('enables submit when only deck assets are selected', () => {
     render(
       <TooltipProvider>
@@ -114,6 +124,31 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
   })
 
+  it('disables attachments for text-only models', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          models={[
+            {
+              id: 'openai:text-only-fixture',
+              provider: 'openai',
+              modelId: 'text-only-fixture',
+              name: 'Text Only Fixture',
+              available: true,
+              reasoningEfforts: [],
+              supportsReasoning: false,
+              supportsAttachments: false,
+            },
+          ]}
+          selectedModel="openai:text-only-fixture"
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Add attachments' })).toBeDisabled()
+  })
+
   it('shows provider catalog warnings without blocking the chat', () => {
     render(
       <TooltipProvider>
@@ -130,6 +165,43 @@ describe('ChatPanel submit control', () => {
       screen.getByText('The Gemini API key in .env is invalid or expired.'),
     ).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
+  })
+
+  it('keeps model failures in the chat instead of showing a generation popup', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          error="The provider rejected the request."
+          messages={[
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'The model failed to generate the deck. The provider rejected the request.',
+            },
+          ]}
+          showGenerationErrorAlert={false}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText(/The model failed to generate the deck/)).toBeInTheDocument()
+    expect(screen.queryByText('Generation failed')).not.toBeInTheDocument()
+  })
+
+  it('keeps the generation popup for non-model errors', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          error="The deck changed while generation was running."
+          showGenerationErrorAlert
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Generation failed')).toBeInTheDocument()
+    expect(screen.getByText('The deck changed while generation was running.')).toBeInTheDocument()
   })
 
   it('dismisses floating agent warnings with the close button', async () => {
@@ -154,15 +226,18 @@ describe('ChatPanel submit control', () => {
           canGenerate={false}
           models={[
             {
-              id: 'openai:gpt-4o-mini',
+              id: 'openai:gpt-5.6-luna',
               provider: 'openai',
-              modelId: 'gpt-4o-mini',
-              name: 'GPT-4o Mini',
+              modelId: 'gpt-5.6-luna',
+              name: 'GPT-5.6 Luna',
               available: false,
               unavailableReason: 'missing_api_key',
+              reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+              defaultReasoningEffort: 'medium',
+              supportsReasoning: true,
             },
           ]}
-          selectedModel="openai:gpt-4o-mini"
+          selectedModel="openai:gpt-5.6-luna"
         />
       </TooltipProvider>,
     )
@@ -170,25 +245,25 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByText('API key required')).not.toBeInTheDocument()
   })
 
-  it('shows reasoning effort only for reasoning-capable models', async () => {
-    const user = userEvent.setup()
-    const onReasoningEffortChange = vi.fn()
-
-    const { rerender } = render(
+  it('keeps reasoning effort inside the model picker', () => {
+    render(
       <TooltipProvider>
         <ChatPanel
           {...baseProps}
           models={[
             {
-              id: 'openai:gpt-4o-mini',
+              id: 'openai:gpt-5.6-luna',
               provider: 'openai',
-              modelId: 'gpt-4o-mini',
-              name: 'GPT-4o Mini',
+              modelId: 'gpt-5.6-luna',
+              name: 'GPT-5.6 Luna',
               available: true,
+              reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+              defaultReasoningEffort: 'medium',
+              supportsReasoning: true,
             },
           ]}
-          onReasoningEffortChange={onReasoningEffortChange}
-          selectedModel="openai:gpt-4o-mini"
+          reasoningEffort="high"
+          selectedModel="openai:gpt-5.6-luna"
         />
       </TooltipProvider>,
     )
@@ -196,30 +271,9 @@ describe('ChatPanel submit control', () => {
     expect(
       screen.queryByRole('button', { name: 'Select reasoning effort' }),
     ).not.toBeInTheDocument()
-
-    rerender(
-      <TooltipProvider>
-        <ChatPanel
-          {...baseProps}
-          models={[
-            {
-              id: 'openai:gpt-5',
-              provider: 'openai',
-              modelId: 'gpt-5',
-              name: 'GPT-5',
-              available: true,
-              supportsReasoning: true,
-            },
-          ]}
-          onReasoningEffortChange={onReasoningEffortChange}
-          selectedModel="openai:gpt-5"
-        />
-      </TooltipProvider>,
+    expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent(
+      'GPT-5.6 Luna · High',
     )
-
-    await user.click(screen.getByRole('button', { name: 'Select reasoning effort' }))
-    await user.click(screen.getByText('Extra High'))
-    expect(onReasoningEffortChange).toHaveBeenCalledWith('xhigh')
   })
 
   it('renders collapsible muted thinking parts', async () => {

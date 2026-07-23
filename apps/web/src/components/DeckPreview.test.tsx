@@ -410,6 +410,28 @@ describe('DeckPreview script divergence UI', () => {
     expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
   })
 
+  it('shows the preview update indicator only while a changed deck is refreshing', () => {
+    const { rerender } = renderDeckPreview({ ...plainDeckProps, isGenerating: true })
+
+    expect(screen.queryByText('Updating preview')).not.toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} isPreviewUpdating />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Updating preview')).toBeVisible()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('Updating preview')).not.toBeInTheDocument()
+  })
+
   it('reports editor selection to the shell while edit chrome is active', () => {
     const onEditorSelectionChange = vi.fn()
 

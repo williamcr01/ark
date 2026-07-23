@@ -77,6 +77,7 @@ export type DeckPreviewProps = {
   deckId?: string | null
   versionId?: string | null
   isGenerating: boolean
+  isPreviewUpdating?: boolean
   isStripOpen: boolean
   layout: 'desktop' | 'mobile'
   deckAnalysis: DeckBrowserAnalysis
@@ -103,6 +104,7 @@ export function DeckPreview({
   deckId = null,
   versionId = null,
   isGenerating,
+  isPreviewUpdating = false,
   isStripOpen,
   layout,
   deckAnalysis,
@@ -1615,14 +1617,14 @@ export function DeckPreview({
                     </div>
                   </div>
                 ) : null}
-                {!isPresentOpen && isGenerating ? (
+                {!isPresentOpen && isPreviewUpdating ? (
                   <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-                    <Loader2Icon className="size-3.5 animate-spin" />
+                    <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
                     Updating preview
                   </div>
                 ) : null}
               </div>
-            ) : isGenerating ? (
+            ) : isGenerating || isPreviewUpdating ? (
               <PreviewSkeleton scale={previewFrameScale} />
             ) : (
               <EmptyPreview />

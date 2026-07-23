@@ -25,6 +25,7 @@ import { type AssetStorage } from './asset-storage.ts'
 import { type AssetStore } from './asset-record.ts'
 import {
   ensureChatThreadForJob,
+  formatTerminalGenerationChatContent,
   persistAssistantGenerationMessage,
   persistInitialDeckChatHistory,
   persistLatestUserMessage,
@@ -33,6 +34,18 @@ import { cloneGenerationJobRequest, type GenerationJobStore } from './generation
 import { createLanguageModel } from './provider-runtime.ts'
 import { categorizeProviderError } from './observability/provider-errors.ts'
 import { createLogger } from './observability/logger.ts'
+import {
+  catalogSupportsAttachments,
+  findCatalogEntryByRef,
+  resolveCatalogReasoningEffort,
+} from './model-catalog.ts'
+import { clearModelCatalogCache } from './models.ts'
+
+function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | undefined) {
+  if (errorCategory === 'invalid_api_key' || errorCategory === 'missing_api_key') {
+    clearModelCatalogCache()
+  }
+}
 
 export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
@@ -290,6 +303,9 @@ export function createGenerationJobRunner({
       }
 
       if (!agentResult.ok) {
+        const errorCategory = agentResult.providerMetrics?.errorCategory ?? 'provider_error'
+        invalidateModelCatalogOnAuthFailure(errorCategory)
+
         const failedJob = await jobStore.updateJob(jobId, {
           status: 'failed',
           progress: {
@@ -301,7 +317,7 @@ export function createGenerationJobRunner({
             message: agentResult.error,
             code: 'provider_error',
             validation: agentResult.validation,
-            errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+            errorCategory,
           },
           observability,
           completedAt: now().toISOString(),
@@ -309,7 +325,7 @@ export function createGenerationJobRunner({
 
         jobLogger.warn('generation.job.failed', {
           durationMs: observability.durationMs,
-          errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+          errorCategory,
           stepCount: agentResult.steps.length,
         })
 
@@ -613,6 +629,7 @@ export function createGenerationJobRunner({
       }
 
       const message = error instanceof Error ? error.message : 'Generation failed.'
+      invalidateModelCatalogOnAuthFailure(errorDetails.category)
 
       const failedJob = await jobStore.updateJob(jobId, {
         status: 'failed',
@@ -691,9 +708,38 @@ export function createGenerationJobRunner({
 
     const modelRef = body.model?.trim() || defaultModel
     const { provider } = createModel(modelRef)
+    const catalogEntry = findCatalogEntryByRef(modelRef)
+    const resolvedEffort = resolveCatalogReasoningEffort(catalogEntry, body.reasoningEffort ?? null)
+
+    if (!resolvedEffort.ok) {
+      throw Object.assign(new Error(resolvedEffort.error), {
+        apiError: {
+          code: 'provider_error',
+          error: resolvedEffort.error,
+        },
+      })
+    }
+
     const currentHtml = body.currentHtml ?? ''
     const deckId = typeof body.deckId === 'string' && body.deckId.trim() ? body.deckId.trim() : null
     const assetIds = body.assetIds?.map((id) => id.trim()).filter(Boolean) ?? []
+    const messagesHaveAttachments = messages.some(
+      (message) => (message.attachments?.length ?? 0) > 0,
+    )
+
+    if (
+      !catalogSupportsAttachments(catalogEntry) &&
+      (messagesHaveAttachments || assetIds.length > 0)
+    ) {
+      const modelName = catalogEntry?.name ?? modelRef
+      const error = `${modelName} is text-only and does not support attachments.`
+      throw Object.assign(new Error(error), {
+        apiError: {
+          code: 'provider_error',
+          error,
+        },
+      })
+    }
 
     if (assetIds.length > 0 && !deckId) {
       throw Object.assign(new Error('assetIds require a saved deck id.'), {
@@ -774,7 +820,7 @@ export function createGenerationJobRunner({
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
         ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
-        ...(body.reasoningEffort ? { reasoningEffort: body.reasoningEffort } : {}),
+        ...(resolvedEffort.effort ? { reasoningEffort: resolvedEffort.effort } : {}),
       },
     }
 
@@ -801,6 +847,27 @@ export function createGenerationJobRunner({
     let baseVersionId = existing.baseVersionId
     let retryControlMessage: ApiChatMessage | null = null
 
+    const appendRetryTurn = (failedAssistant: {
+      id: string
+      content: string
+      parts?: ApiChatMessage['parts']
+    }): ApiChatMessage => {
+      const controlMessage: ApiChatMessage = {
+        role: 'user',
+        content: 'Retry previous request',
+      }
+      request.messages.push(
+        {
+          id: failedAssistant.id,
+          role: 'assistant',
+          content: failedAssistant.content,
+          ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
+        },
+        controlMessage,
+      )
+      return controlMessage
+    }
+
     if (chatStore && deckId) {
       const chat = await chatStore.listMessages(deckId, { limit: 500 })
       const failedAssistant = [...chat.messages]
@@ -808,20 +875,24 @@ export function createGenerationJobRunner({
         .find((message) => message.role === 'assistant' && message.generationJobId === existing.id)
 
       if (failedAssistant) {
-        retryControlMessage = {
-          role: 'user',
-          content: 'Retry previous request',
-        }
-        request.messages.push(
-          {
-            id: failedAssistant.id,
-            role: 'assistant',
-            content: failedAssistant.content,
-            ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
-          },
-          retryControlMessage,
-        )
+        retryControlMessage = appendRetryTurn({
+          id: failedAssistant.id,
+          content: failedAssistant.content,
+          parts: failedAssistant.parts,
+        })
       }
+    } else if (!deckId) {
+      // New-deck failures never hit chat persistence; keep the failure turn on the
+      // cloned request so a later successful retry still records it.
+      retryControlMessage = appendRetryTurn({
+        id: existing.id,
+        content: formatTerminalGenerationChatContent({
+          status: existing.status === 'canceled' ? 'canceled' : 'failed',
+          steps: existing.progress.steps,
+          editingExistingDeck: false,
+          error: existing.error,
+        }),
+      })
     }
 
     if (deckId) {

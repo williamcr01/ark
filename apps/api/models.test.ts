@@ -1,21 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  catalogSupportsAttachments,
+  DEFAULT_MODEL_REF,
+  findCatalogEntryByRef,
+  MODEL_CATALOG,
+  resolveCatalogReasoningEffort,
+} from './model-catalog.ts'
+import {
+  catalogModelAccessible,
   clearModelCatalogCache,
+  ensureModelInList,
   fetchAllAvailableModels,
-  fetchProviderModels,
+  getDefaultModel,
   getModelCatalog,
-  isAnthropicChatModel,
-  isGoogleChatModel,
-  isOpenAIChatModel,
-  modelSupportsReasoning,
-  refreshModelCatalog,
 } from './models.ts'
 
 const ORIGINAL_ENV = { ...process.env }
 
 afterEach(() => {
-  vi.unstubAllGlobals()
   vi.restoreAllMocks()
   clearModelCatalogCache()
 
@@ -28,289 +31,176 @@ afterEach(() => {
   Object.assign(process.env, ORIGINAL_ENV)
 })
 
-describe('provider chat model filters', () => {
-  it('applies the shared non-chat markers across providers', () => {
-    expect(isOpenAIChatModel('text-embedding-3-large')).toBe(false)
-    expect(isAnthropicChatModel('claude-embedding-1')).toBe(false)
-    expect(isGoogleChatModel('gemini-embedding-001')).toBe(false)
-
-    expect(isOpenAIChatModel('gpt-image-1')).toBe(false)
-    expect(isAnthropicChatModel('claude-image-1')).toBe(false)
-    expect(isGoogleChatModel('gemini-2.0-flash-preview-image-generation')).toBe(false)
-  })
-
-  it('flags reasoning-capable model ids', () => {
-    expect(modelSupportsReasoning('openai', 'gpt-5.4')).toBe(true)
-    expect(modelSupportsReasoning('openai', 'o3-mini')).toBe(true)
-    expect(modelSupportsReasoning('openai', 'gpt-4o-mini')).toBe(false)
-    expect(modelSupportsReasoning('anthropic', 'claude-sonnet-5')).toBe(true)
-    expect(modelSupportsReasoning('google', 'gemini-2.5-flash')).toBe(true)
-    expect(modelSupportsReasoning('google', 'gemini-2.0-flash')).toBe(false)
-  })
-
-  it('keeps OpenAI chat models and drops media/specialty SKUs', () => {
-    expect(isOpenAIChatModel('gpt-4o-mini')).toBe(true)
-    expect(isOpenAIChatModel('o3-mini')).toBe(true)
-    expect(isOpenAIChatModel('chatgpt-4o-latest')).toBe(true)
-
-    expect(isOpenAIChatModel('dall-e-3')).toBe(false)
-    expect(isOpenAIChatModel('gpt-image-1')).toBe(false)
-    expect(isOpenAIChatModel('text-embedding-3-large')).toBe(false)
-    expect(isOpenAIChatModel('whisper-1')).toBe(false)
-    expect(isOpenAIChatModel('tts-1')).toBe(false)
-    expect(isOpenAIChatModel('sora-2')).toBe(false)
-    expect(isOpenAIChatModel('gpt-4o-realtime-preview')).toBe(false)
-  })
-
-  it('keeps Anthropic Claude chat models and drops non-chat names', () => {
-    expect(isAnthropicChatModel('claude-sonnet-5')).toBe(true)
-    expect(isAnthropicChatModel('claude-haiku-4-5-20251001')).toBe(true)
-
-    expect(isAnthropicChatModel('claude-embedding-1')).toBe(false)
-    expect(isAnthropicChatModel('not-claude')).toBe(false)
-  })
-
-  it('keeps stable Gemini chat models and drops image/preview/revision SKUs', () => {
-    expect(isGoogleChatModel('gemini-2.5-flash')).toBe(true)
-    expect(isGoogleChatModel('gemini-2.5-flash-lite')).toBe(true)
-    expect(isGoogleChatModel('gemini-2.5-pro')).toBe(true)
-    expect(isGoogleChatModel('gemini-3.5-flash')).toBe(true)
-    expect(isGoogleChatModel('gemini-2.0-flash')).toBe(true)
-
-    expect(isGoogleChatModel('gemini-2.0-flash-preview-image-generation')).toBe(false)
-    expect(isGoogleChatModel('gemini-embedding-001')).toBe(false)
-    expect(isGoogleChatModel('gemini-2.5-flash-preview-05-20')).toBe(false)
-    expect(isGoogleChatModel('gemini-exp-1206')).toBe(false)
-    expect(isGoogleChatModel('gemini-1.5-flash-001')).toBe(false)
-    expect(isGoogleChatModel('imagen-3.0-generate-002')).toBe(false)
-  })
-})
-
-describe('fetchProviderModels filtering', () => {
-  it('filters Google list models through isGoogleChatModel', async () => {
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key'
-    delete process.env.OPENAI_API_KEY
-    delete process.env.ANTHROPIC_API_KEY
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json({
-          models: [
-            {
-              name: 'models/gemini-2.5-flash',
-              displayName: 'Gemini 2.5 Flash',
-              supportedGenerationMethods: ['generateContent'],
-            },
-            {
-              name: 'models/gemini-2.5-flash-lite',
-              displayName: 'Gemini 2.5 Flash Lite',
-              supportedGenerationMethods: ['generateContent'],
-            },
-            {
-              name: 'models/gemini-2.0-flash-preview-image-generation',
-              displayName: 'Image Gen',
-              supportedGenerationMethods: ['generateContent'],
-            },
-            {
-              name: 'models/gemini-embedding-001',
-              displayName: 'Embedding',
-              supportedGenerationMethods: ['embedContent', 'generateContent'],
-            },
-            {
-              name: 'models/gemini-2.5-flash-preview-05-20',
-              displayName: 'Preview',
-              supportedGenerationMethods: ['generateContent'],
-            },
-            {
-              name: 'models/imagen-3.0-generate-002',
-              displayName: 'Imagen',
-              supportedGenerationMethods: ['generateContent'],
-            },
-          ],
-        }),
-      ),
-    )
-
-    const models = await fetchProviderModels('google')
-    expect(models.map((model) => model.modelId).sort()).toEqual([
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
+describe('curated model catalog', () => {
+  it('contains the curated models in provider order', () => {
+    expect(MODEL_CATALOG.map((entry) => `${entry.provider}:${entry.modelId}`)).toEqual([
+      'openai:gpt-5.6-sol',
+      'openai:gpt-5.6-terra',
+      'openai:gpt-5.6-luna',
+      'openai:gpt-5.5',
+      'openai:gpt-5.4-mini',
+      'anthropic:claude-fable-5',
+      'anthropic:claude-opus-4-8',
+      'anthropic:claude-sonnet-5',
+      'anthropic:claude-haiku-4-5',
+      'google:gemini-3.6-flash',
+      'google:gemini-3.5-flash',
+      'google:gemini-3.5-flash-lite',
+      'google:gemini-3.1-pro-preview',
     ])
   })
 
-  it('filters Anthropic list models through isAnthropicChatModel', async () => {
-    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
-    delete process.env.OPENAI_API_KEY
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json({
-          data: [
-            { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5' },
-            { id: 'claude-embedding-1', display_name: 'Claude Embedding' },
-            { id: 'some-other-model', display_name: 'Other' },
-          ],
-          has_more: false,
-        }),
-      ),
-    )
-
-    const models = await fetchProviderModels('anthropic')
-    expect(models.map((model) => model.modelId)).toEqual(['claude-sonnet-5'])
+  it('advertises per-model reasoning efforts', () => {
+    expect(findCatalogEntryByRef('openai:gpt-5.6-sol')?.reasoningEfforts).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ])
+    expect(findCatalogEntryByRef('openai:gpt-5.4-mini')?.reasoningEfforts).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+    expect(findCatalogEntryByRef('openai:gpt-5.4-mini')?.defaultReasoningEffort).toBe('none')
+    expect(findCatalogEntryByRef('anthropic:claude-fable-5')?.reasoningEfforts).toContain('max')
+    expect(findCatalogEntryByRef('google:gemini-3.6-flash')?.reasoningEfforts).toEqual([
+      'medium',
+      'high',
+    ])
+    expect(findCatalogEntryByRef('google:gemini-3.5-flash-lite')).toMatchObject({
+      reasoningEfforts: ['minimal', 'medium', 'high'],
+      defaultReasoningEffort: 'minimal',
+    })
+    expect(findCatalogEntryByRef('google:gemini-3.1-pro-preview')?.reasoningEfforts).toEqual([
+      'low',
+      'medium',
+      'high',
+    ])
   })
 
-  it('filters OpenAI list models through isOpenAIChatModel', async () => {
-    process.env.OPENAI_API_KEY = 'test-openai-key'
-    delete process.env.ANTHROPIC_API_KEY
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  it('resolves defaults and rejects unsupported efforts', () => {
+    const sol = findCatalogEntryByRef('openai:gpt-5.6-sol')
+    expect(resolveCatalogReasoningEffort(sol, null)).toEqual({ ok: true, effort: 'medium' })
+    expect(resolveCatalogReasoningEffort(sol, 'max')).toEqual({ ok: true, effort: 'max' })
+    expect(resolveCatalogReasoningEffort(sol, 'minimal').ok).toBe(false)
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json({
-          data: [
-            { id: 'gpt-4o-mini' },
-            { id: 'dall-e-3' },
-            { id: 'gpt-image-1' },
-            { id: 'text-embedding-3-small' },
-            { id: 'o3-mini' },
-          ],
-        }),
-      ),
+    const mini = findCatalogEntryByRef('openai:gpt-5.4-mini')
+    expect(resolveCatalogReasoningEffort(mini, null)).toEqual({ ok: true, effort: 'none' })
+    expect(resolveCatalogReasoningEffort(mini, 'xhigh')).toEqual({ ok: true, effort: 'xhigh' })
+    expect(resolveCatalogReasoningEffort(mini, 'max').ok).toBe(false)
+  })
+
+  it('defaults attachment support to true', () => {
+    expect(catalogSupportsAttachments(findCatalogEntryByRef('openai:gpt-5.4-mini'))).toBe(true)
+    expect(catalogSupportsAttachments(undefined)).toBe(true)
+    expect(catalogSupportsAttachments({ supportsAttachments: false } as never)).toBe(false)
+  })
+})
+
+describe('catalogModelAccessible', () => {
+  it('matches exact ids and versioned aliases', () => {
+    expect(catalogModelAccessible('claude-sonnet-5', new Set(['claude-sonnet-5-20250514']))).toBe(
+      true,
     )
-
-    const models = await fetchProviderModels('openai')
-    expect(models.map((model) => model.modelId).sort()).toEqual(['gpt-4o-mini', 'o3-mini'])
+    expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-5.4-mini']))).toBe(true)
+    expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-4o']))).toBe(false)
   })
 })
 
 describe('fetchAllAvailableModels', () => {
-  it('seeds missing-key providers as unavailable with missing_api_key', async () => {
+  it('marks providers without keys as missing_api_key and does not fetch', async () => {
     delete process.env.OPENAI_API_KEY
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
 
     const { models, warnings } = await fetchAllAvailableModels()
 
     expect(warnings).toEqual([])
+    expect(models).toHaveLength(MODEL_CATALOG.length)
     expect(models.every((model) => model.available === false)).toBe(true)
     expect(models.every((model) => model.unavailableReason === 'missing_api_key')).toBe(true)
-    expect(models.some((model) => model.id === 'google:gemini-3.5-flash')).toBe(true)
-    expect(models.some((model) => model.id === 'anthropic:claude-sonnet-5')).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('marks seed models not_found and records a warning when a provider list fails', async () => {
-    delete process.env.OPENAI_API_KEY
+  it('marks a provider unavailable when its API key is rejected', async () => {
+    process.env.OPENAI_API_KEY = 'sk-bad-key'
     delete process.env.ANTHROPIC_API_KEY
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key'
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
 
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        Response.json(
-          { error: { message: 'API key not valid. Please pass a valid API key.' } },
-          { status: 400 },
-        ),
+        Response.json({ error: { message: 'Incorrect API key provided' } }, { status: 401 }),
       ),
     )
 
     const { models, warnings } = await fetchAllAvailableModels()
+    const openaiModels = models.filter((model) => model.provider === 'openai')
 
-    const googleModels = models.filter((model) => model.provider === 'google')
-    expect(googleModels.length).toBeGreaterThan(0)
-    expect(googleModels.every((model) => model.available === false)).toBe(true)
-    expect(googleModels.every((model) => model.unavailableReason === 'not_found')).toBe(true)
-    expect(warnings.some((warning) => /invalid or expired|api key/i.test(warning))).toBe(true)
+    expect(openaiModels.every((model) => model.available === false)).toBe(true)
+    expect(openaiModels.every((model) => model.unavailableReason === 'not_found')).toBe(true)
+    expect(warnings.some((warning) => /invalid|expired|Incorrect API key/i.test(warning))).toBe(
+      true,
+    )
   })
 
-  it('turns raw network fetch failures into provider-scoped catalog warnings', async () => {
-    delete process.env.ANTHROPIC_API_KEY
-    process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key'
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new TypeError('fetch failed')
-      }),
-    )
-
-    const { models, warnings } = await fetchAllAvailableModels()
-
-    expect(warnings.sort()).toEqual(
-      [
-        'Could not reach Gemini to load models. Showing fallback models until the network is available.',
-        'Could not reach OpenAI to load models. Showing fallback models until the network is available.',
-      ].sort(),
-    )
-    expect(
-      models.filter((model) => model.provider === 'openai').every((model) => !model.available),
-    ).toBe(true)
-    expect(
-      models.filter((model) => model.provider === 'google').every((model) => !model.available),
-    ).toBe(true)
-  })
-})
-
-describe('model catalog cache', () => {
-  it('serves the warmed catalog without re-fetching providers', async () => {
-    delete process.env.OPENAI_API_KEY
+  it('marks only accessible catalog SKUs available when the key works', async () => {
+    process.env.OPENAI_API_KEY = 'sk-good-key'
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
 
-    const fetchMock = vi.fn(async () => {
-      throw new Error('provider fetch should not run without API keys')
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const warmed = await refreshModelCatalog()
-    const cached = await getModelCatalog()
-
-    expect(cached).toBe(warmed)
-    expect(cached.models.length).toBeGreaterThan(0)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('shares one in-flight refresh when the cache is cold', async () => {
-    delete process.env.OPENAI_API_KEY
-    delete process.env.ANTHROPIC_API_KEY
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key'
-
-    let resolveFetch: ((value: Response) => void) | undefined
-    const fetchStarted = new Promise<void>((resolve) => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(
-          () =>
-            new Promise<Response>((resolveResponse) => {
-              resolve()
-              resolveFetch = resolveResponse
-            }),
-        ),
-      )
-    })
-
-    const first = getModelCatalog()
-    const second = getModelCatalog()
-
-    await fetchStarted
-    resolveFetch?.(
-      Response.json({
-        models: [
-          {
-            name: 'models/gemini-2.5-flash',
-            displayName: 'Gemini 2.5 Flash',
-            supportedGenerationMethods: ['generateContent'],
-          },
-        ],
-      }),
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: [{ id: 'gpt-5.6-luna' }, { id: 'gpt-5.4-mini' }, { id: 'gpt-4o' }],
+        }),
+      ),
     )
 
-    const [a, b] = await Promise.all([first, second])
-    expect(a).toBe(b)
-    expect(a.models.some((model) => model.id === 'google:gemini-2.5-flash')).toBe(true)
+    const { models } = await getModelCatalog()
+    const openaiModels = models.filter((model) => model.provider === 'openai')
+    const otherModels = models.filter((model) => model.provider !== 'openai')
+
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.available).toBe(true)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.available).toBe(true)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-sol')?.available).toBe(false)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-sol')?.unavailableReason).toBe(
+      'not_found',
+    )
+    expect(otherModels.every((model) => !model.available)).toBe(true)
+    expect(
+      openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsReasoning,
+    ).toBe(true)
+    expect(
+      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.defaultReasoningEffort,
+    ).toBe('none')
+  })
+})
+
+describe('default model helpers', () => {
+  it('defaults to GPT-5.6 Luna', () => {
+    delete process.env.ARK_DEFAULT_MODEL
+    delete process.env.OPENAI_MODEL
+    expect(getDefaultModel()).toBe(DEFAULT_MODEL_REF)
+  })
+
+  it('ensures unknown defaults appear as unavailable not_found entries', () => {
+    process.env.OPENAI_API_KEY = 'test-openai-key'
+    const models = ensureModelInList([], 'openai:not-a-real-model')
+    expect(models[0]).toMatchObject({
+      id: 'openai:not-a-real-model',
+      available: false,
+      unavailableReason: 'not_found',
+      supportsReasoning: false,
+    })
   })
 })

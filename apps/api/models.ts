@@ -1,179 +1,42 @@
-import type { ModelInfo, ProviderId } from '@ark/contracts'
+import type { ModelInfo, ProviderId, ReasoningEffort } from '@ark/contracts'
 import { getProviderApiKey, parseProviderHttpError, PROVIDER_LABELS } from './credentials.ts'
+import {
+  DEFAULT_MODEL_REF,
+  findCatalogEntry,
+  MODEL_CATALOG,
+  toModelRef,
+  type ModelCatalogEntry,
+} from './model-catalog.ts'
 
 export type { ProviderId, ModelInfo }
 
 type ModelUnavailableReason = NonNullable<ModelInfo['unavailableReason']>
 
-const OPENAI_CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i
+const ALL_PROVIDERS: ProviderId[] = ['openai', 'anthropic', 'google']
 
-/**
- * Cross-provider exclusions for non-chat / non-agent model ids.
- * Matched as case-insensitive substrings.
- */
-const GLOBAL_EXCLUDED_SUBSTRINGS = [
-  'embed',
-  'embedding',
-  'image',
-  'tts',
-  'whisper',
-  'video',
-  'audio',
-  'realtime',
-  'transcribe',
-  'moderation',
-  'computer-use',
-] as const
-
-/** OpenAI-only media / legacy naming. */
-const OPENAI_EXCLUDED_SUBSTRINGS = ['dall-e', 'sora', 'davinci', 'babbage', 'instruct'] as const
-
-/** OpenAI-only prefixes (fine-tunes, codex, etc.). */
-const OPENAI_EXCLUDED_PREFIXES = ['ft:', 'codex-'] as const
-
-/** Anthropic-only exclusions (shared list covers most non-chat SKUs today). */
-const ANTHROPIC_EXCLUDED_SUBSTRINGS = [] as const
-
-/** Google-only media / specialty naming and noisy aliases. */
-const GOOGLE_EXCLUDED_SUBSTRINGS = [
-  'imagen',
-  'veo',
-  'nano-banana',
-  'lyria',
-  'robotics',
-  'aqa',
-  '-preview',
-  '-exp',
-] as const
-
-const includesAnySubstring = (normalizedId: string, parts: readonly string[]) =>
-  parts.some((part) => normalizedId.includes(part))
-
-const startsWithAnyPrefix = (normalizedId: string, prefixes: readonly string[]) =>
-  prefixes.some((prefix) => normalizedId.startsWith(prefix))
-
-const isExcludedModelId = (
-  normalizedId: string,
-  providerExcludedSubstrings: readonly string[],
-  providerExcludedPrefixes: readonly string[] = [],
-) =>
-  includesAnySubstring(normalizedId, GLOBAL_EXCLUDED_SUBSTRINGS) ||
-  includesAnySubstring(normalizedId, providerExcludedSubstrings) ||
-  startsWithAnyPrefix(normalizedId, providerExcludedPrefixes)
-
-/** Keep chat/tool-calling OpenAI models; drop embeddings, media, and specialty SKUs. */
-export const isOpenAIChatModel = (id: string) => {
-  const normalized = id.toLowerCase()
-
-  if (isExcludedModelId(normalized, OPENAI_EXCLUDED_SUBSTRINGS, OPENAI_EXCLUDED_PREFIXES)) {
-    return false
-  }
-
-  return OPENAI_CHAT_MODEL_PATTERN.test(normalized)
-}
-
-/** Keep Claude chat models from Anthropic's Models API. */
-export const isAnthropicChatModel = (id: string) => {
-  const normalized = id.toLowerCase()
-
-  if (!normalized.startsWith('claude')) {
-    return false
-  }
-
-  return !isExcludedModelId(normalized, ANTHROPIC_EXCLUDED_SUBSTRINGS)
-}
-
-/**
- * Keep stable Gemini chat models suitable for generateContent + tools.
- * Applies global + Google exclusions, then drops numbered revision aliases.
- */
-export const isGoogleChatModel = (id: string) => {
-  const normalized = id.toLowerCase()
-
-  if (!normalized.startsWith('gemini')) {
-    return false
-  }
-
-  if (isExcludedModelId(normalized, GOOGLE_EXCLUDED_SUBSTRINGS)) {
-    return false
-  }
-
-  // Drop dated numeric revisions (gemini-1.5-flash-001) when a base SKU exists.
-  if (/-\d{3}$/.test(normalized)) {
-    return false
-  }
-
-  return true
-}
-
-const toModelRef = (
-  provider: ProviderId,
-  modelId: string,
-  name?: string,
-  available = true,
+const catalogEntryToModelInfo = (
+  entry: ModelCatalogEntry,
+  available: boolean,
   unavailableReason?: ModelUnavailableReason,
-): ModelInfo => ({
-  id: `${provider}:${modelId}`,
-  provider,
-  modelId,
-  name,
-  available,
-  unavailableReason: available ? undefined : unavailableReason,
-  supportsReasoning: modelSupportsReasoning(provider, modelId),
-})
+): ModelInfo => {
+  const reasoningEfforts = [...entry.reasoningEfforts] as ReasoningEffort[]
+  const supportsReasoning = reasoningEfforts.length > 0
 
-/** Heuristic: models that accept reasoning effort / return thinking text. */
-export const modelSupportsReasoning = (provider: ProviderId, modelId: string) => {
-  const id = modelId.toLowerCase()
-
-  if (provider === 'openai') {
-    return /^(o[0-9]|gpt-5)/i.test(id)
+  return {
+    id: toModelRef(entry.provider, entry.modelId),
+    provider: entry.provider,
+    modelId: entry.modelId,
+    name: entry.name,
+    available,
+    unavailableReason: available ? undefined : unavailableReason,
+    reasoningEfforts,
+    ...(entry.defaultReasoningEffort
+      ? { defaultReasoningEffort: entry.defaultReasoningEffort }
+      : {}),
+    supportsReasoning,
+    supportsAttachments: entry.supportsAttachments !== false,
   }
-
-  if (provider === 'anthropic') {
-    return id.startsWith('claude')
-  }
-
-  if (provider === 'google') {
-    return /^gemini-(2\.5|3)/i.test(id)
-  }
-
-  return false
 }
-
-const PROVIDER_SEED_MODELS: Record<ProviderId, Array<{ modelId: string; name: string }>> = {
-  openai: [
-    { modelId: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-    { modelId: 'gpt-4o', name: 'GPT-4o' },
-    { modelId: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-    { modelId: 'gpt-4.1', name: 'GPT-4.1' },
-  ],
-  anthropic: [
-    { modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
-    { modelId: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-    { modelId: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
-  ],
-  google: [
-    { modelId: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
-    { modelId: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
-    { modelId: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  ],
-}
-
-const seedModelsForProvider = (provider: ProviderId) =>
-  PROVIDER_SEED_MODELS[provider].map((entry) =>
-    toModelRef(provider, entry.modelId, entry.name, false, 'missing_api_key'),
-  )
-
-const sortModels = (models: ModelInfo[]) =>
-  [...models].sort((left, right) => {
-    const providerOrder = left.provider.localeCompare(right.provider)
-    if (providerOrder !== 0) {
-      return providerOrder
-    }
-
-    return left.modelId.localeCompare(right.modelId)
-  })
 
 export const parseModelRef = (
   value: string,
@@ -212,10 +75,30 @@ export const getDefaultModel = () => {
     return `openai:${openaiModel}`
   }
 
-  return 'openai:gpt-4o-mini'
+  return DEFAULT_MODEL_REF
 }
 
-async function fetchOpenAIModels(apiKey: string): Promise<ModelInfo[]> {
+export type ModelCatalog = {
+  models: ModelInfo[]
+  warnings: string[]
+}
+
+/** True when a catalog SKU is present in a provider list (exact or versioned alias). */
+export function catalogModelAccessible(modelId: string, accessibleIds: ReadonlySet<string>) {
+  if (accessibleIds.has(modelId)) {
+    return true
+  }
+
+  for (const id of accessibleIds) {
+    if (id.startsWith(`${modelId}-`) || modelId.startsWith(`${id}-`)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+async function listOpenAIModelIds(apiKey: string): Promise<Set<string>> {
   const response = await fetch('https://api.openai.com/v1/models', {
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -228,20 +111,14 @@ async function fetchOpenAIModels(apiKey: string): Promise<ModelInfo[]> {
     throw Object.assign(new Error(apiError.error), { apiError })
   }
 
-  const payload = (await response.json()) as {
-    data?: Array<{ id?: string }>
-  }
-
-  return sortModels(
-    (payload.data ?? [])
-      .map((entry) => entry.id?.trim() ?? '')
-      .filter((id) => id.length > 0 && isOpenAIChatModel(id))
-      .map((modelId) => toModelRef('openai', modelId, undefined, true)),
+  const payload = (await response.json()) as { data?: Array<{ id?: string }> }
+  return new Set(
+    (payload.data ?? []).map((entry) => entry.id?.trim() ?? '').filter((id) => id.length > 0),
   )
 }
 
-async function fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
-  const models: ModelInfo[] = []
+async function listAnthropicModelIds(apiKey: string): Promise<Set<string>> {
+  const ids = new Set<string>()
   let afterId: string | undefined
 
   do {
@@ -265,28 +142,26 @@ async function fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
     }
 
     const payload = (await response.json()) as {
-      data?: Array<{ id?: string; display_name?: string }>
+      data?: Array<{ id?: string }>
       has_more?: boolean
       last_id?: string
     }
 
     for (const entry of payload.data ?? []) {
       const modelId = entry.id?.trim() ?? ''
-      if (!modelId || !isAnthropicChatModel(modelId)) {
-        continue
+      if (modelId) {
+        ids.add(modelId)
       }
-
-      models.push(toModelRef('anthropic', modelId, entry.display_name?.trim(), true))
     }
 
     afterId = payload.has_more ? payload.last_id : undefined
   } while (afterId)
 
-  return sortModels(models)
+  return ids
 }
 
-async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
-  const models: ModelInfo[] = []
+async function listGoogleModelIds(apiKey: string): Promise<Set<string>> {
+  const ids = new Set<string>()
   let pageToken: string | undefined
 
   do {
@@ -306,11 +181,7 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
     }
 
     const payload = (await response.json()) as {
-      models?: Array<{
-        name?: string
-        displayName?: string
-        supportedGenerationMethods?: string[]
-      }>
+      models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>
       nextPageToken?: string
     }
 
@@ -319,35 +190,22 @@ async function fetchGoogleModels(apiKey: string): Promise<ModelInfo[]> {
       const modelId = rawName.replace(/^models\//, '')
       const supportsGenerate = entry.supportedGenerationMethods?.includes('generateContent')
 
-      if (!modelId || !supportsGenerate || !isGoogleChatModel(modelId)) {
-        continue
+      if (modelId && supportsGenerate) {
+        ids.add(modelId)
       }
-
-      models.push(toModelRef('google', modelId, entry.displayName?.trim() || undefined, true))
     }
 
     pageToken = payload.nextPageToken
   } while (pageToken)
 
-  return sortModels(models)
+  return ids
 }
 
-const PROVIDER_FETCHERS: Record<ProviderId, (apiKey: string) => Promise<ModelInfo[]>> = {
-  openai: fetchOpenAIModels,
-  anthropic: fetchAnthropicModels,
-  google: fetchGoogleModels,
+const PROVIDER_LISTERS: Record<ProviderId, (apiKey: string) => Promise<Set<string>>> = {
+  openai: listOpenAIModelIds,
+  anthropic: listAnthropicModelIds,
+  google: listGoogleModelIds,
 }
-
-export async function fetchProviderModels(provider: ProviderId): Promise<ModelInfo[]> {
-  const apiKey = getProviderApiKey(provider)
-  if (!apiKey) {
-    return []
-  }
-
-  return PROVIDER_FETCHERS[provider](apiKey)
-}
-
-const ALL_PROVIDERS: ProviderId[] = ['openai', 'anthropic', 'google']
 
 export const formatModelCatalogWarning = (provider: ProviderId, error: unknown): string => {
   const label = PROVIDER_LABELS[provider]
@@ -360,24 +218,18 @@ export const formatModelCatalogWarning = (provider: ProviderId, error: unknown):
     /enotfound/i.test(message) ||
     /econnrefused/i.test(message)
   ) {
-    return `Could not reach ${label} to load models. Showing fallback models until the network is available.`
+    return `Could not reach ${label} to verify models. Showing them as unavailable until the network is available.`
   }
 
   if (!message) {
-    return `Could not load ${label} models.`
+    return `Could not verify ${label} models.`
   }
 
-  // HTTP/API errors from parseProviderHttpError already name the provider when relevant.
   if (message.includes(label) || /api key/i.test(message)) {
     return message
   }
 
-  return `Could not load ${label} models: ${message}`
-}
-
-export type ModelCatalog = {
-  models: ModelInfo[]
-  warnings: string[]
+  return `Could not verify ${label} models: ${message}`
 }
 
 let modelCatalogCache: ModelCatalog | null = null
@@ -388,40 +240,54 @@ export const clearModelCatalogCache = () => {
   modelCatalogInflight = null
 }
 
+/**
+ * Build the curated model catalog. Availability requires a configured key and a
+ * successful provider probe that includes the catalog SKU (or a versioned alias).
+ */
 export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
   const warnings: string[] = []
-  const models: ModelInfo[] = []
+  const accessByProvider = new Map<ProviderId, { ok: true; ids: Set<string> } | { ok: false }>()
 
   await Promise.all(
     ALL_PROVIDERS.map(async (provider) => {
       const apiKey = getProviderApiKey(provider)
 
       if (!apiKey) {
-        models.push(...seedModelsForProvider(provider))
         return
       }
 
       try {
-        const providerModels = await PROVIDER_FETCHERS[provider](apiKey)
-        models.push(...providerModels)
+        const ids = await PROVIDER_LISTERS[provider](apiKey)
+        accessByProvider.set(provider, { ok: true, ids })
       } catch (error) {
         warnings.push(formatModelCatalogWarning(provider, error))
-        models.push(
-          ...PROVIDER_SEED_MODELS[provider].map((entry) =>
-            toModelRef(provider, entry.modelId, entry.name, false, 'not_found'),
-          ),
-        )
+        accessByProvider.set(provider, { ok: false })
       }
     }),
   )
 
+  const models = MODEL_CATALOG.map((entry) => {
+    const access = accessByProvider.get(entry.provider)
+
+    if (!access) {
+      return catalogEntryToModelInfo(entry, false, 'missing_api_key')
+    }
+
+    if (!access.ok) {
+      return catalogEntryToModelInfo(entry, false, 'not_found')
+    }
+
+    const available = catalogModelAccessible(entry.modelId, access.ids)
+    return catalogEntryToModelInfo(entry, available, available ? undefined : 'not_found')
+  })
+
   return {
-    models: sortModels(models),
+    models,
     warnings,
   }
 }
 
-/** Fetch provider catalogs and replace the process-local cache. */
+/** Fetch provider access and replace the process-local cache. */
 export async function refreshModelCatalog(): Promise<ModelCatalog> {
   const catalog = await fetchAllAvailableModels()
   modelCatalogCache = catalog
@@ -450,9 +316,8 @@ export async function getModelCatalog(): Promise<ModelCatalog> {
 export async function warmModelCatalog(): Promise<void> {
   try {
     await refreshModelCatalog()
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown model catalog error.'
-    console.warn(`Model catalog warm failed: ${message}`)
+  } catch {
+    // Boot continues; the next /api/models request retries.
   }
 }
 
@@ -462,9 +327,31 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
   }
 
   const { provider, modelId } = parseModelRef(modelRef)
+  const catalogEntry = findCatalogEntry(provider, modelId)
+
+  if (catalogEntry) {
+    const hasKey = Boolean(getProviderApiKey(provider))
+    return [
+      ...models,
+      catalogEntryToModelInfo(catalogEntry, false, hasKey ? 'not_found' : 'missing_api_key'),
+    ]
+  }
+
   const unavailableReason: ModelUnavailableReason = getProviderApiKey(provider)
     ? 'not_found'
     : 'missing_api_key'
 
-  return sortModels([...models, toModelRef(provider, modelId, undefined, false, unavailableReason)])
+  return [
+    ...models,
+    {
+      id: `${provider}:${modelId}`,
+      provider,
+      modelId,
+      available: false,
+      unavailableReason,
+      reasoningEfforts: [],
+      supportsReasoning: false,
+      supportsAttachments: true,
+    },
+  ]
 }
