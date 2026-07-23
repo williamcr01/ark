@@ -46,6 +46,25 @@ const streamTextReply = (text: string) => ({
   }),
 })
 
+const streamToolCallReply = (toolCallId: string, toolName: string, input: unknown) => ({
+  stream: simulateReadableStream({
+    chunks: [
+      { type: 'stream-start' as const, warnings: [] },
+      {
+        type: 'tool-call' as const,
+        toolCallId,
+        toolName,
+        input: JSON.stringify(input),
+      },
+      {
+        type: 'finish' as const,
+        finishReason: 'tool-calls' as const,
+        usage: mockUsage,
+      },
+    ],
+  }),
+})
+
 describe('extractAgentSteps', () => {
   it('maps tool calls and results into chat-friendly steps', () => {
     const steps = extractAgentSteps([
@@ -234,6 +253,34 @@ describe('extractAgentTranscriptParts', () => {
 })
 
 describe('runDeckAgent', () => {
+  it('continues after parse_deck so a later step can update the deck', async () => {
+    const replies = [
+      streamToolCallReply('call-parse', 'parse_deck', {}),
+      streamToolCallReply('call-edit', 'edit_deck', {
+        edits: [{ oldText: 'Hello', newText: 'Updated' }],
+      }),
+      streamTextReply('Updated the title.'),
+    ]
+    const model = new MockLanguageModelV3({
+      doStream: async () => replies.shift()!,
+    })
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'mock',
+      modelRef: 'mock:model',
+      messages: [{ role: 'user', content: 'Inspect, then update the title' }],
+      currentHtml: sampleHtml,
+    })
+
+    expect(model.doStreamCalls).toHaveLength(3)
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+    expect(result.html).toContain('Updated')
+  })
+
   it('accepts selected-element explanation replies as unchanged success', async () => {
     const assistantText =
       'That selected element is locked, so I cannot change it directly. I can edit nearby unlocked content instead.'
