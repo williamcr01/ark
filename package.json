@@ -35,7 +35,8 @@
     "test:benchmark-renderer": "tsx --test scripts/lib/renderer-benchmark.test.ts",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
-    "openapi:check": "tsx scripts/generate-openapi.ts --check"
+    "openapi:check": "tsx scripts/generate-openapi.ts --check",
+    "doctor": "npx react-doctor@latest"
   },
   "engines": {
     "node": ">=22"
@@ -53,6 +54,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "prettier": "^3.9.3",
+    "react-doctor": "^0.8.3",
     "reveal.js": "5.1.0",
     "tsx": "^4.22.4",
     "typescript": "~6.0.2",
