@@ -838,7 +838,9 @@ function applyMoveElement(
         }),
     ...(operation.height === undefined
       ? {}
-      : { height: formatPixelValue(operation.height, slideHeight) }),
+      : {
+          height: formatPixelValue(operation.cssHeight ?? operation.height, slideHeight),
+        }),
   }
   const merged = mergeInlineStyle(resolved.element, style)
 

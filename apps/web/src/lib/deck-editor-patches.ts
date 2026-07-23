@@ -27,11 +27,16 @@ export function buildTransformPatchOperations(
     ...(slideId ? { slideId } : {}),
   }
 
+  const sizeChanged =
+    !previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['width', 'height'])
+
   if (
     commit.adopted ||
     !previousGeometry ||
     geometryChanged(previousGeometry, commit.geometry, ['x', 'y'])
   ) {
+    // Adopted transforms must stay one operation: move stamps a stable data-ark-id,
+    // so a follow-up resize under the same transient id fails patchability checks.
     operations.push({
       op: 'move_element',
       ...target,
@@ -43,13 +48,16 @@ export function buildTransformPatchOperations(
       ...(commit.slideHeight !== undefined ? { slideHeight: commit.slideHeight } : {}),
       ...(commit.adopted ? { width: commit.geometry.width } : {}),
       ...(commit.adopted && commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
+      ...(commit.adopted && commit.cssHeight !== undefined && sizeChanged
+        ? {
+            height: commit.geometry.height,
+            cssHeight: commit.cssHeight,
+          }
+        : {}),
     })
   }
 
-  if (
-    (!commit.adopted || commit.cssHeight !== undefined) &&
-    (!previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['width', 'height']))
-  ) {
+  if (!commit.adopted && (!previousGeometry || sizeChanged)) {
     operations.push({
       op: 'resize_element',
       ...target,

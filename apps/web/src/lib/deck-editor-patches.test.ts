@@ -130,7 +130,7 @@ describe('deck-editor-patches', () => {
     ])
   })
 
-  it('persists adopted resizes as move plus resize operations', () => {
+  it('persists adopted resizes as a single move operation', () => {
     const commit = createEditorTransformCommitMessage(
       'ark-el-heading',
       0,
@@ -149,8 +149,21 @@ describe('deck-editor-patches', () => {
     expect(
       buildTransformPatchOperations(commit, { x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, null),
     ).toEqual([
-      expect.objectContaining({ op: 'move_element', width: 0.5 }),
-      expect.objectContaining({ op: 'resize_element', width: 0.5, height: 0.2 }),
+      {
+        op: 'move_element',
+        elementId: 'ark-el-heading',
+        slideIndex: 0,
+        x: 0.1,
+        y: 0.2,
+        cssX: 0.1,
+        cssY: 0.2,
+        cssWidth: 0.5,
+        cssHeight: 0.2,
+        slideWidth: 1280,
+        slideHeight: 720,
+        width: 0.5,
+        height: 0.2,
+      },
     ])
   })
 })

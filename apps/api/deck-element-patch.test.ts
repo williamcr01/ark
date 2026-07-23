@@ -396,6 +396,76 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain('box-sizing: border-box')
   })
 
+  it('adopts and resizes a transient element in one move_element', () => {
+    const transientDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Transient</title></head>
+<body>
+  <section class="slide">
+    <h1>Opening</h1>
+  </section>
+</body>
+</html>`
+    const elementId = parseDeckHtml(transientDeck).editableElements[0]?.elements.find(
+      (element) => element.tagName === 'h1',
+    )?.id
+
+    expect(elementId).toMatch(/^transient-el-/)
+
+    // move stamps a stable id; a follow-up resize under the same transient id would
+    // fail assertElementPatchable — adopted resize must stay one operation.
+    const moved = applyDeckPatches(transientDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: elementId!,
+        x: 0.1,
+        y: 0.2,
+        width: 0.5,
+        height: 0.2,
+        cssWidth: 0.5,
+        cssHeight: 0.2,
+        slideWidth: 1280,
+        slideHeight: 720,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.changedElementIds.some((id) => id.startsWith('ark-el-'))).toBe(true)
+    expect(moved.html).toContain('data-ark-managed="true"')
+    expect(moved.html).toContain(`width: ${Math.round(0.5 * 1280)}px`)
+    expect(moved.html).toContain(`height: ${Math.round(0.2 * 720)}px`)
+
+    const split = applyDeckPatches(transientDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: elementId!,
+        x: 0.1,
+        y: 0.2,
+        width: 0.5,
+      },
+      {
+        op: 'resize_element',
+        slideIndex: 0,
+        elementId: elementId!,
+        width: 0.5,
+        height: 0.2,
+      },
+    ])
+
+    expect(split.ok).toBe(false)
+    if (split.ok) {
+      return
+    }
+
+    expect(split.error).toContain('not a recognized editable target')
+  })
+
   it('rejects reordering a static inline SVG without changing its positioning', () => {
     const reordered = applyDeckPatches(inlineSvgDeck, [
       {

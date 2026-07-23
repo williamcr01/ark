@@ -61,8 +61,11 @@ describe('deck patch schema', () => {
         cssX: -0.3,
         cssY: 1.2,
         cssWidth: 0.4,
+        cssHeight: 0.2,
         slideWidth: 960,
         slideHeight: 700,
+        width: 0.4,
+        height: 0.3,
       }).success,
     ).toBe(true)
   })
