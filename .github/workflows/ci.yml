@@ -5,77 +5,187 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Cheap static checks share one install so PRs stay gated by `test` (~3–4 min),
-  # not by N parallel setup tax.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: ${{ steps.scope.outputs.run_ci }}
+      full: ${{ steps.scope.outputs.full }}
+      build: ${{ steps.scope.outputs.build }}
+      test: ${{ steps.scope.outputs.test }}
+      smoke: ${{ steps.scope.outputs.smoke }}
+      reason: ${{ steps.scope.outputs.reason }}
+      base_sha: ${{ steps.scope.outputs.base_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Test CI scope classifier
+        run: node --test scripts/ci-test-scope.test.mjs
+
+      - name: Select CI scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FORCE_FULL: ${{ github.event_name != 'pull_request' }}
+        run: |
+          echo "run_ci=true" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          if [[ "$FORCE_FULL" == "true" ]]; then
+            case "$EVENT_NAME" in
+              push) reason="Full validation for push to main." ;;
+              workflow_dispatch) reason="Full validation requested manually." ;;
+              *) reason="Full validation for $EVENT_NAME event." ;;
+            esac
+            node scripts/ci-test-scope.mjs \
+              --full-reason "$reason" \
+              --github-output "$GITHUB_OUTPUT" \
+              --github-summary "$GITHUB_STEP_SUMMARY"
+          else
+            node scripts/ci-test-scope.mjs \
+              --base "$BASE_SHA" \
+              --github-output "$GITHUB_OUTPUT" \
+              --github-summary "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # Cheap static checks share one install and remain the broad PR safety net.
   quality:
+    needs: changes
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Require successful change classification
+        if: needs.changes.result != 'success'
+        run: exit 1
 
-      - uses: pnpm/action-setup@v4
+      - name: No CI work required
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci != 'true'
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
         with:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm lockfile:check
-      - run: pnpm lint
-      - run: pnpm format:check
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+        run: pnpm lockfile:check
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+        run: pnpm lint
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+        run: pnpm format:check
       # High/critical only; see package.json "audit" script. Moderate/low are reviewed separately.
-      - run: pnpm run audit
-      - run: pnpm openapi:check
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+        run: pnpm run audit
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+        run: pnpm openapi:check
 
   build:
+    needs: changes
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Require successful change classification
+        if: needs.changes.result != 'success'
+        run: exit 1
 
-      - uses: pnpm/action-setup@v4
+      - name: Build not required
+        if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.build != 'true')
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.build == 'true'
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.build == 'true'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.build == 'true'
         with:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.build == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.build == 'true'
+        run: pnpm build
 
   test:
+    needs: changes
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Require successful change classification
+        if: needs.changes.result != 'success'
+        run: exit 1
 
-      - uses: pnpm/action-setup@v4
+      - name: Unit tests not required
+        if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.test != 'true')
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
         with:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
-      # Live Chromium thumbnail coverage runs in test-live-chromium (main only).
-      - run: pnpm test
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Full unit test suite
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true' && needs.changes.outputs.full == 'true'
+        run: pnpm test
+
+      - name: Affected unit test suites
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true' && needs.changes.outputs.full != 'true'
+        env:
+          BASE_SHA: ${{ needs.changes.outputs.base_sha }}
+        run: pnpm test:affected --base "$BASE_SHA" --github-summary "$GITHUB_STEP_SUMMARY"
 
   test-live-chromium:
-    # API-level Chromium renderer coverage: main pushes only (not PRs).
-    # UI e2e thumbnail smoke stays in smoke-extended on the same trigger.
-    if: github.event_name == 'push'
+    needs: changes
+    # Non-blocking comprehensive coverage runs after merge or by manual dispatch.
+    if: needs.changes.result == 'success' && needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    # Budget for up to 3 attempts of the live Chromium suite.
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -91,7 +201,7 @@ jobs:
           free -h || true
 
       - name: Live Chromium thumbnail renderer tests
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         env:
           ARK_CHROMIUM_PATH: /usr/bin/google-chrome
           ARK_CHROMIUM_NO_SANDBOX: 'true'
@@ -103,26 +213,41 @@ jobs:
           command: pnpm test:live-chromium
 
   smoke:
+    needs: changes
+    if: always()
     runs-on: ubuntu-latest
-    # PR-blocking smoke only: plain CSS upload / nav / Present.
-    # Reveal, full-JS, manual-edit, and thumbnail e2e run in smoke-extended.
     timeout-minutes: 20
     env:
       ARK_CHROMIUM_PATH: /usr/bin/google-chrome
       ARK_CHROMIUM_NO_SANDBOX: 'true'
     steps:
-      - uses: actions/checkout@v4
+      - name: Require successful change classification
+        if: needs.changes.result != 'success'
+        run: exit 1
 
-      - uses: pnpm/action-setup@v4
+      - name: Browser smoke not required
+        if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.smoke != 'true')
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
         with:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
+        run: pnpm install --frozen-lockfile
 
       - name: Browser smoke diagnostics
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
         run: |
           # runner.temp is only valid in step contexts, not job-level env.
           echo "ARK_SMOKE_ARTIFACTS_DIR=${{ runner.temp }}/ark-smoke-artifacts" >> "$GITHUB_ENV"
@@ -133,18 +258,18 @@ jobs:
           df -h / /tmp
           free -h || true
 
-      # Browser smokes are flaky under shared CI runners; retry before failing.
       - name: Smoke - plain CSS
-        uses: nick-fields/retry@v3
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 8
-          max_attempts: 5
+          max_attempts: 3
           retry_wait_seconds: 15
           command: pnpm smoke:plain-css
 
       - name: Upload browser smoke artifacts (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: failure() && needs.changes.result == 'success' && needs.changes.outputs.smoke == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-smoke-artifacts-${{ github.run_id }}
           path: ${{ runner.temp }}/ark-smoke-artifacts
@@ -152,20 +277,20 @@ jobs:
           retention-days: 7
 
   smoke-extended:
-    # Heavier browser suites: main pushes only (not PRs).
-    if: github.event_name == 'push'
+    needs: changes
+    # Non-blocking comprehensive coverage runs after merge or by manual dispatch.
+    if: needs.changes.result == 'success' && needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    # Budget for 4 suites with up to 5 attempts each on flaky runners.
     timeout-minutes: 90
     env:
       ARK_CHROMIUM_PATH: /usr/bin/google-chrome
       ARK_CHROMIUM_NO_SANDBOX: 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -183,33 +308,31 @@ jobs:
           free -h || true
 
       - name: Smoke - Reveal runtime
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 8
-          max_attempts: 5
+          max_attempts: 3
           retry_wait_seconds: 15
           command: pnpm smoke:reveal-runtime
 
       - name: Smoke - full-JS bridge
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 8
-          max_attempts: 5
+          max_attempts: 3
           retry_wait_seconds: 15
           command: pnpm smoke:full-js-bridge
 
       - name: Smoke - manual edit
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 10
-          max_attempts: 5
+          max_attempts: 3
           retry_wait_seconds: 15
           command: pnpm smoke:manual-edit
 
-      # UI e2e for rendered PNG thumbnails. API renderer coverage is
-      # test-live-chromium on main pushes; both stay off the PR critical path.
       - name: Smoke - thumbnails
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 10
           max_attempts: 3
@@ -218,7 +341,7 @@ jobs:
 
       - name: Upload browser smoke artifacts (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-smoke-extended-artifacts-${{ github.run_id }}
           path: ${{ runner.temp }}/ark-smoke-artifacts
