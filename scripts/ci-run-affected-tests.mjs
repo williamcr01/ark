@@ -49,6 +49,8 @@ function resolveAffectedWorkspaces(base) {
   return projects
     .map((project) => {
       const workspace = relative(process.cwd(), project.path).replaceAll('\\', '/')
+      if (!workspace) return null
+
       const kind = workspaceKinds.get(workspace)
 
       if (!kind || !project.name) {
@@ -57,6 +59,7 @@ function resolveAffectedWorkspaces(base) {
 
       return { name: project.name, workspace, kind }
     })
+    .filter(Boolean)
     .sort((left, right) => left.workspace.localeCompare(right.workspace))
 }
 
