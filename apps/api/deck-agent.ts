@@ -1,4 +1,4 @@
-import { streamText, type LanguageModel } from 'ai'
+import { isLoopFinished, streamText, type LanguageModel } from 'ai'
 
 import {
   type AgentStep,
@@ -536,6 +536,7 @@ export async function runDeckAgent({
       system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
+      stopWhen: isLoopFinished(),
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
       ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
