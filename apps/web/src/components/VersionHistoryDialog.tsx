@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { HistoryIcon, RotateCcwIcon } from 'lucide-react'
+import { RotateCcwIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -402,25 +402,5 @@ export function VersionHistoryDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-export function VersionHistoryButton({
-  disabled,
-  onClick,
-}: {
-  disabled?: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      aria-label="Version history"
-      className="inline-flex size-[26px] items-center justify-center rounded-sm text-[var(--ark-titlebar-fg)] hover:bg-[var(--ark-titlebar-hover)] disabled:text-[var(--ark-titlebar-muted)]/50"
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      <HistoryIcon aria-hidden className="size-4" />
-    </button>
   )
 }

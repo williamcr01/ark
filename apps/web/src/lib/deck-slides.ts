@@ -1,6 +1,5 @@
 import {
   findSlideElements,
-  SLIDE_SELECTOR_CHAIN,
   stripDeckScriptsForPreview,
   stripHostileNavigationVectors,
 } from '@ark/deck-core/deck-preview-slides.ts'
@@ -11,7 +10,7 @@ import {
 import { startRevealThumbnailStylesPreload } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 import { detectRuntimeModeFromDocument } from './deck-runtime'
 
-export { SLIDE_SELECTOR_CHAIN, findSlideElements, stripDeckScriptsForPreview }
+export { findSlideElements, stripDeckScriptsForPreview }
 
 export type ParsedDeck = {
   slideCount: number
