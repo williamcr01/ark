@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import {
   ALLOWED_ASSET_MEDIA_TYPES,
@@ -28,6 +28,51 @@ export type AssetUploadState = {
 let uploadCounter = 0
 const nextUploadId = () => `upload-${Date.now()}-${(uploadCounter += 1)}`
 
+type AssetSelectionState = {
+  ids: string[]
+  error: string
+}
+
+type AssetSelectionAction =
+  | { type: 'add'; assetId: string }
+  | { type: 'clear' }
+  | { type: 'remove'; assetId: string }
+  | { type: 'reset' }
+  | { type: 'set-error'; error: string }
+  | { type: 'toggle'; assetId: string }
+
+function reduceAssetSelection(
+  state: AssetSelectionState,
+  action: AssetSelectionAction,
+): AssetSelectionState {
+  switch (action.type) {
+    case 'add':
+      return state.ids.includes(action.assetId) || state.ids.length >= MAX_CHAT_ATTACHMENTS
+        ? state
+        : { ...state, ids: [...state.ids, action.assetId] }
+    case 'clear':
+    case 'reset':
+      return { ...state, ids: [] }
+    case 'remove':
+      return { ...state, ids: state.ids.filter((id) => id !== action.assetId) }
+    case 'set-error':
+      return { ...state, error: action.error }
+    case 'toggle':
+      if (state.ids.includes(action.assetId)) {
+        return { ids: state.ids.filter((id) => id !== action.assetId), error: '' }
+      }
+
+      if (state.ids.length >= MAX_CHAT_ATTACHMENTS) {
+        return {
+          ...state,
+          error: `You can include up to ${MAX_CHAT_ATTACHMENTS} deck assets per message.`,
+        }
+      }
+
+      return { ids: [...state.ids, action.assetId], error: '' }
+  }
+}
+
 function validateFile(file: File): string | null {
   if (!isAllowedAssetMediaType(file.type)) {
     return `${file.name}: unsupported type (${file.type || 'unknown'}). Allowed: ${Object.keys(
@@ -45,20 +90,24 @@ function validateFile(file: File): string | null {
 export function useDeckAssets(deckId: string | null) {
   const [assets, setAssets] = useState<AssetMetadataResponse[]>([])
   const [uploads, setUploads] = useState<AssetUploadState[]>([])
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
+  const [{ ids: selectedAssetIds, error }, dispatchSelection] = useReducer(reduceAssetSelection, {
+    ids: [],
+    error: '',
+  })
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
   const [trackedDeckId, setTrackedDeckId] = useState(deckId)
   const deckIdRef = useRef(deckId)
-  const selectedAssetIdsRef = useRef<string[]>([])
+  const setError = useCallback(
+    (nextError: string) => dispatchSelection({ type: 'set-error', error: nextError }),
+    [],
+  )
 
   // Reset transient state synchronously when the active deck changes
   // (React's "adjust state during render" pattern, not an effect).
   if (trackedDeckId !== deckId) {
     setTrackedDeckId(deckId)
     setUploads([])
-    selectedAssetIdsRef.current = []
-    setSelectedAssetIds([])
+    dispatchSelection({ type: 'reset' })
   }
 
   useEffect(() => {
@@ -150,15 +199,7 @@ export function useDeckAssets(deckId: string | null) {
 
         setUploads((current) => current.filter((upload) => upload.id !== uploadId))
         setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
-        const currentSelection = selectedAssetIdsRef.current
-        if (
-          !currentSelection.includes(asset.id) &&
-          currentSelection.length < MAX_CHAT_ATTACHMENTS
-        ) {
-          const nextSelection = [...currentSelection, asset.id]
-          selectedAssetIdsRef.current = nextSelection
-          setSelectedAssetIds(nextSelection)
-        }
+        dispatchSelection({ type: 'add', assetId: asset.id })
       } catch (uploadError) {
         if (deckIdRef.current !== targetDeckId) {
           return
@@ -186,9 +227,7 @@ export function useDeckAssets(deckId: string | null) {
     try {
       await deleteAssetRequest(targetDeckId, assetId)
       setAssets((current) => current.filter((asset) => asset.id !== assetId))
-      const nextSelection = selectedAssetIdsRef.current.filter((id) => id !== assetId)
-      selectedAssetIdsRef.current = nextSelection
-      setSelectedAssetIds(nextSelection)
+      dispatchSelection({ type: 'remove', assetId })
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the asset.')
     }
@@ -199,29 +238,11 @@ export function useDeckAssets(deckId: string | null) {
   }, [])
 
   const toggleAssetSelected = useCallback((assetId: string) => {
-    const currentSelection = selectedAssetIdsRef.current
-
-    if (currentSelection.includes(assetId)) {
-      const nextSelection = currentSelection.filter((id) => id !== assetId)
-      selectedAssetIdsRef.current = nextSelection
-      setSelectedAssetIds(nextSelection)
-      return
-    }
-
-    if (currentSelection.length >= MAX_CHAT_ATTACHMENTS) {
-      setError(`You can include up to ${MAX_CHAT_ATTACHMENTS} deck assets per message.`)
-      return
-    }
-
-    const nextSelection = [...currentSelection, assetId]
-    selectedAssetIdsRef.current = nextSelection
-    setSelectedAssetIds(nextSelection)
-    setError('')
+    dispatchSelection({ type: 'toggle', assetId })
   }, [])
 
   const clearSelection = useCallback(() => {
-    selectedAssetIdsRef.current = []
-    setSelectedAssetIds([])
+    dispatchSelection({ type: 'clear' })
   }, [])
 
   return {
@@ -236,6 +257,5 @@ export function useDeckAssets(deckId: string | null) {
     dismissUpload,
     toggleAssetSelected,
     clearSelection,
-    setError,
   }
 }
