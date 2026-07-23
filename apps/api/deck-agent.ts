@@ -524,21 +524,25 @@ export async function runDeckAgent({
     ...guideMetadata,
   })
   const providerOptions = reasoningEffort
-    ? buildReasoningProviderOptions(provider, reasoningEffort)
+    ? buildReasoningProviderOptions(provider, reasoningEffort, modelRef)
     : undefined
 
   let result
 
   try {
+    let streamError: unknown
     const stream = streamText({
       model,
       system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
-      ...(reasoningEffort ? {} : { temperature: 0.4 }),
+      ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,
+      onError: ({ error }) => {
+        streamError ??= error
+      },
       onChunk: async ({ chunk }) => {
         throwIfAborted(abortSignal)
         if (chunk.type === 'reasoning-delta') {
@@ -582,6 +586,9 @@ export async function runDeckAgent({
 
     // Drain the stream so tool loops and progress callbacks run to completion.
     await stream.consumeStream()
+    if (streamError) {
+      throw streamError
+    }
     result = {
       text: await stream.text,
       steps: await stream.steps,

@@ -89,6 +89,16 @@ function parseStoredJob(parsed: unknown): StoredGenerationJobFile | null {
       ...(record.request.editorSelection && typeof record.request.editorSelection === 'object'
         ? { editorSelection: record.request.editorSelection }
         : {}),
+      ...(typeof record.request.reasoningEffort === 'string' &&
+      (record.request.reasoningEffort === 'none' ||
+        record.request.reasoningEffort === 'minimal' ||
+        record.request.reasoningEffort === 'low' ||
+        record.request.reasoningEffort === 'medium' ||
+        record.request.reasoningEffort === 'high' ||
+        record.request.reasoningEffort === 'xhigh' ||
+        record.request.reasoningEffort === 'max')
+        ? { reasoningEffort: record.request.reasoningEffort }
+        : {}),
     },
     progress: {
       steps: record.progress.steps,

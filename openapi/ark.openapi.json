@@ -93,7 +93,19 @@
                             "type": "string",
                             "enum": ["missing_api_key", "not_found"]
                           },
-                          "supportsReasoning": { "type": "boolean" }
+                          "reasoningEfforts": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+                            }
+                          },
+                          "defaultReasoningEffort": {
+                            "type": "string",
+                            "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+                          },
+                          "supportsReasoning": { "type": "boolean" },
+                          "supportsAttachments": { "type": "boolean" }
                         },
                         "required": ["id", "provider", "modelId", "available"]
                       }
@@ -3359,7 +3371,7 @@
                   "model": { "type": "string" },
                   "reasoningEffort": {
                     "type": "string",
-                    "enum": ["low", "medium", "high", "xhigh"]
+                    "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
                   },
                   "deckId": {
                     "type": "string",
