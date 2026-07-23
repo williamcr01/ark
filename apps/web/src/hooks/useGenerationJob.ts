@@ -177,12 +177,23 @@ export function useGenerationJob({
       if (job.status === 'failed' || job.status === 'canceled') {
         setFailedJob(job)
         setError(job.error?.message ?? '')
+
+        const code = job.error?.code
+        const category = job.error?.errorCategory
+        if (
+          code === 'missing_api_key' ||
+          code === 'invalid_api_key' ||
+          category === 'missing_api_key' ||
+          category === 'invalid_api_key'
+        ) {
+          void onReloadModels?.()
+        }
       } else {
         setFailedJob(null)
         setError('')
       }
     },
-    [deckKey],
+    [deckKey, onReloadModels],
   )
 
   const runJob = useCallback(

@@ -94,7 +94,11 @@ describe('createChatStore', () => {
       transcriptParts: [{ type: 'tool-result', toolName: 'read_deck', summary: 'Read the deck.' }],
       assistantText: '',
       editingExistingDeck: true,
-      error: { message: 'The provider rejected the request.', code: 'provider_error' },
+      error: {
+        message: 'The provider rejected the request.',
+        code: 'provider_error',
+        errorCategory: 'provider_error',
+      },
     })
 
     const message = (await store.listMessages(deckId)).messages[0]
