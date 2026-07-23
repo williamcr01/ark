@@ -50,12 +50,14 @@ export function useDeckAssets(deckId: string | null) {
   const [error, setError] = useState('')
   const [trackedDeckId, setTrackedDeckId] = useState(deckId)
   const deckIdRef = useRef(deckId)
+  const selectedAssetIdsRef = useRef<string[]>([])
 
   // Reset transient state synchronously when the active deck changes
   // (React's "adjust state during render" pattern, not an effect).
   if (trackedDeckId !== deckId) {
     setTrackedDeckId(deckId)
     setUploads([])
+    selectedAssetIdsRef.current = []
     setSelectedAssetIds([])
   }
 
@@ -148,11 +150,15 @@ export function useDeckAssets(deckId: string | null) {
 
         setUploads((current) => current.filter((upload) => upload.id !== uploadId))
         setAssets((current) => [asset, ...current.filter((existing) => existing.id !== asset.id)])
-        setSelectedAssetIds((current) =>
-          current.includes(asset.id) || current.length >= MAX_CHAT_ATTACHMENTS
-            ? current
-            : [...current, asset.id],
-        )
+        const currentSelection = selectedAssetIdsRef.current
+        if (
+          !currentSelection.includes(asset.id) &&
+          currentSelection.length < MAX_CHAT_ATTACHMENTS
+        ) {
+          const nextSelection = [...currentSelection, asset.id]
+          selectedAssetIdsRef.current = nextSelection
+          setSelectedAssetIds(nextSelection)
+        }
       } catch (uploadError) {
         if (deckIdRef.current !== targetDeckId) {
           return
@@ -180,7 +186,9 @@ export function useDeckAssets(deckId: string | null) {
     try {
       await deleteAssetRequest(targetDeckId, assetId)
       setAssets((current) => current.filter((asset) => asset.id !== assetId))
-      setSelectedAssetIds((current) => current.filter((id) => id !== assetId))
+      const nextSelection = selectedAssetIdsRef.current.filter((id) => id !== assetId)
+      selectedAssetIdsRef.current = nextSelection
+      setSelectedAssetIds(nextSelection)
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the asset.')
     }
@@ -191,22 +199,28 @@ export function useDeckAssets(deckId: string | null) {
   }, [])
 
   const toggleAssetSelected = useCallback((assetId: string) => {
-    setSelectedAssetIds((current) => {
-      if (current.includes(assetId)) {
-        return current.filter((id) => id !== assetId)
-      }
+    const currentSelection = selectedAssetIdsRef.current
 
-      if (current.length >= MAX_CHAT_ATTACHMENTS) {
-        setError(`You can include up to ${MAX_CHAT_ATTACHMENTS} deck assets per message.`)
-        return current
-      }
+    if (currentSelection.includes(assetId)) {
+      const nextSelection = currentSelection.filter((id) => id !== assetId)
+      selectedAssetIdsRef.current = nextSelection
+      setSelectedAssetIds(nextSelection)
+      return
+    }
 
-      setError('')
-      return [...current, assetId]
-    })
+    if (currentSelection.length >= MAX_CHAT_ATTACHMENTS) {
+      setError(`You can include up to ${MAX_CHAT_ATTACHMENTS} deck assets per message.`)
+      return
+    }
+
+    const nextSelection = [...currentSelection, assetId]
+    selectedAssetIdsRef.current = nextSelection
+    setSelectedAssetIds(nextSelection)
+    setError('')
   }, [])
 
   const clearSelection = useCallback(() => {
+    selectedAssetIdsRef.current = []
     setSelectedAssetIds([])
   }, [])
 
