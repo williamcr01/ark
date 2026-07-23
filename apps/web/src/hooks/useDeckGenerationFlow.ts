@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import { toast } from 'sonner'
 
 import type { ChatAttachment, ChatMessage, EditorSelectionContext } from '@ark/deck-core/chat.ts'
 import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
+import {
+  formatModelGenerationFailure,
+  isModelGenerationError,
+} from '@ark/deck-core/generation-job.ts'
 import type { ReasoningEffort } from '@ark/contracts'
 import { describeDeckValidation } from '@/lib/deck-io'
 import { newId } from '@/lib/id'
@@ -23,6 +27,20 @@ type ChatSessionSlice = {
   appendMessage: (message: ChatMessage, targetDeckId?: string | null) => Promise<void>
   reloadChat: (targetDeckId?: string | null) => Promise<ChatMessage[]>
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
+}
+
+function formatGenerationFailureMessage(
+  status: 'failed' | 'canceled',
+  message: string,
+  modelFailure: boolean,
+) {
+  if (status === 'canceled') {
+    return `Generation canceled. ${message}`
+  }
+
+  return modelFailure
+    ? formatModelGenerationFailure(message)
+    : `I could not generate the deck yet. ${message}`
 }
 
 export type UseDeckGenerationFlowOptions = {
@@ -80,16 +98,52 @@ export function useDeckGenerationFlow({
     onReloadModels: loadModels,
   })
 
+  const [isPreviewUpdating, setIsPreviewUpdating] = useState(false)
   const recoveredJobIdsRef = useRef(new Set<string>())
+  const [modelFailure, setModelFailure] = useState(false)
+
+  const appendFailureChatMessage = useCallback(
+    async (status: 'failed' | 'canceled', message: string, isModelFailure: boolean) => {
+      const failureMessage: ChatMessage = {
+        id: newId(),
+        role: 'assistant',
+        content: formatGenerationFailureMessage(status, message, isModelFailure),
+      }
+
+      if (deckId) {
+        await appendMessage(failureMessage)
+        return
+      }
+
+      setMessages((current) => {
+        const last = current.at(-1)
+        if (last?.role === 'assistant' && last.content === failureMessage.content) {
+          return current
+        }
+
+        return [...current, failureMessage]
+      })
+    },
+    [appendMessage, deckId, setMessages],
+  )
 
   const applySucceededOutcome = useCallback(
     async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) => {
+      setModelFailure(false)
       onGenerationSucceeded?.()
+
+      if (outcome.deckChanged) {
+        setIsPreviewUpdating(true)
+      }
 
       try {
         await refreshActiveDeck(outcome.job.result?.deckId)
       } catch {
         toast.error('Deck generated but could not be refreshed in the editor')
+      } finally {
+        if (outcome.deckChanged) {
+          setIsPreviewUpdating(false)
+        }
       }
 
       const targetDeckId = outcome.job.result?.deckId ?? deckId
@@ -129,7 +183,7 @@ export function useDeckGenerationFlow({
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
-    [deckId, onGenerationSucceeded, refreshActiveDeck, reloadChat, setMessages],
+    [deckId, onGenerationSucceeded, refreshActiveDeck, reloadChat, setMessages, setModelFailure],
   )
 
   useEffect(() => {
@@ -154,41 +208,30 @@ export function useDeckGenerationFlow({
         return
       }
 
+      const isModelFailure =
+        outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
+      setModelFailure(isModelFailure)
+
       if (deckId) {
         await reloadChat(deckId)
       } else {
-        setMessages((current) => {
-          const failedContent =
-            outcome.status === 'canceled'
-              ? `Generation canceled. ${outcome.message}`
-              : `I could not generate the deck yet. ${outcome.message}`
-          const last = current.at(-1)
-
-          if (last?.role === 'assistant' && last.content === failedContent) {
-            return current
-          }
-
-          return [
-            ...current,
-            {
-              id: newId(),
-              role: 'assistant' as const,
-              content: failedContent,
-            },
-          ]
-        })
+        await appendFailureChatMessage(outcome.status, outcome.message, isModelFailure)
       }
 
-      onError(outcome.message)
+      if (!isModelFailure) {
+        onError(outcome.message)
+      }
     })()
   }, [
     applySucceededOutcome,
+    appendFailureChatMessage,
     deckId,
     isDeckLoading,
     onError,
     reloadChat,
     resumeStoredJob,
     setMessages,
+    setModelFailure,
   ])
 
   const generateDeck = useCallback(
@@ -206,6 +249,7 @@ export function useDeckGenerationFlow({
       }
 
       onError('')
+      setModelFailure(false)
       setGenerationError('')
       onGenerationStart?.()
       const userMessage: ChatMessage = {
@@ -235,29 +279,24 @@ export function useDeckGenerationFlow({
         }
 
         const message = outcome.message
-        onError(message)
+        const isModelFailure =
+          outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
+        setModelFailure(isModelFailure)
+        if (!isModelFailure) {
+          onError(message)
+        }
 
         if (deckId) {
           await reloadChat()
         } else {
-          setMessages((current) => [
-            ...current,
-            {
-              id: newId(),
-              role: 'assistant',
-              content:
-                outcome.status === 'canceled'
-                  ? `Generation canceled. ${message}`
-                  : `I could not generate the deck yet. ${message}`,
-            },
-          ])
+          await appendFailureChatMessage(outcome.status, message, isModelFailure)
         }
 
         if (outcome.status === 'canceled') {
           toast.info('Generation canceled')
         } else if (outcome.job.error?.code === 'version_conflict') {
           toast.error('Deck changed during generation')
-        } else {
+        } else if (!isModelFailure) {
           toast.error('Generation failed')
         }
       } catch (generationFailure) {
@@ -266,26 +305,26 @@ export function useDeckGenerationFlow({
             ? generationFailure.message
             : 'Something went wrong while generating the deck.'
 
-        onError(message)
+        const isModelFailure = isModelGenerationError(generationFailure)
+        setModelFailure(isModelFailure)
 
-        if (deckId) {
-          await reloadChat()
+        if (isModelFailure) {
+          await appendFailureChatMessage('failed', message, true)
         } else {
-          setMessages((current) => [
-            ...current,
-            {
-              id: newId(),
-              role: 'assistant',
-              content: `I could not generate the deck yet. ${message}`,
-            },
-          ])
+          onError(message)
+          if (deckId) {
+            await reloadChat()
+          } else {
+            await appendFailureChatMessage('failed', message, false)
+          }
+          toast.error('Generation failed')
         }
-        toast.error('Generation failed')
       }
     },
     [
       appendMessage,
       applySucceededOutcome,
+      appendFailureChatMessage,
       canGenerate,
       deckId,
       generatedHtml,
@@ -296,6 +335,7 @@ export function useDeckGenerationFlow({
       reloadChat,
       setGenerationError,
       setMessages,
+      setModelFailure,
       startGeneration,
     ],
   )
@@ -323,25 +363,55 @@ export function useDeckGenerationFlow({
       }
 
       const message = outcome.message
-      onError(message)
+      const isModelFailure =
+        outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
+      setModelFailure(isModelFailure)
+      if (!isModelFailure) {
+        onError(message)
+      }
 
       if (deckId) {
         await reloadChat()
+      } else {
+        await appendFailureChatMessage(outcome.status, message, isModelFailure)
       }
 
-      toast.error(outcome.status === 'canceled' ? 'Generation canceled' : 'Generation failed')
-    } catch {
-      toast.error('Could not retry generation')
+      if (outcome.status === 'canceled') {
+        toast.error('Generation canceled')
+      } else if (!isModelFailure) {
+        toast.error('Generation failed')
+      }
+    } catch (retryFailure) {
+      const message =
+        retryFailure instanceof Error ? retryFailure.message : 'Could not retry generation.'
+      const isModelFailure = isModelGenerationError(retryFailure)
+      setModelFailure(isModelFailure)
+
+      if (isModelFailure) {
+        await appendFailureChatMessage('failed', message, true)
+      } else {
+        toast.error('Could not retry generation')
+      }
     }
-  }, [applySucceededOutcome, deckId, onError, reloadChat, retryGeneration])
+  }, [
+    appendFailureChatMessage,
+    applySucceededOutcome,
+    deckId,
+    onError,
+    reloadChat,
+    retryGeneration,
+    setModelFailure,
+  ])
 
   return {
     activeSteps,
     cancelGeneration: handleCancelGeneration,
     failedJobId: failedJob?.id ?? null,
     generateDeck,
-    generationError,
+    generationError: modelFailure ? '' : generationError,
     generationStatus,
+    isPreviewUpdating,
+    isModelFailure: modelFailure,
     isGenerating,
     retryGeneration: handleRetryGeneration,
   }
