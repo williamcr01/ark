@@ -20,13 +20,32 @@ const model = (
 })
 
 describe('pickAvailableFallbackModel', () => {
-  it('prefers mini/flash/haiku models over larger ones', () => {
+  it('prefers Flash-Lite over other Gemini Flash models', () => {
     const models: AvailableModel[] = [
       model({
-        id: 'openai:gpt-4o',
+        id: 'google:gemini-3.6-flash',
+        provider: 'google',
+        modelId: 'gemini-3.6-flash',
+        available: true,
+      }),
+      model({
+        id: 'google:gemini-3.5-flash-lite',
+        provider: 'google',
+        modelId: 'gemini-3.5-flash-lite',
+        available: true,
+      }),
+    ]
+
+    expect(pickAvailableFallbackModel(models)).toBe('google:gemini-3.5-flash-lite')
+  })
+
+  it('prefers luna/flash/haiku/mini models over larger ones', () => {
+    const models: AvailableModel[] = [
+      model({
+        id: 'openai:gpt-5.6-sol',
         provider: 'openai',
-        modelId: 'gpt-4o',
-        name: 'GPT-4o',
+        modelId: 'gpt-5.6-sol',
+        name: 'GPT-5.6 Sol',
         available: true,
       }),
       model({
@@ -51,9 +70,9 @@ describe('pickAvailableFallbackModel', () => {
   it('returns null when no models are available', () => {
     const models: AvailableModel[] = [
       model({
-        id: 'openai:gpt-4o-mini',
+        id: 'openai:gpt-5.6-luna',
         provider: 'openai',
-        modelId: 'gpt-4o-mini',
+        modelId: 'gpt-5.6-luna',
         available: false,
         unavailableReason: 'missing_api_key',
       }),
@@ -66,18 +85,18 @@ describe('pickAvailableFallbackModel', () => {
 describe('resolveSelectedModel', () => {
   const models: AvailableModel[] = [
     model({
-      id: 'openai:gpt-4o-mini',
+      id: 'openai:gpt-5.6-sol',
       provider: 'openai',
-      modelId: 'gpt-4o-mini',
-      name: 'GPT-4o Mini',
+      modelId: 'gpt-5.6-sol',
+      name: 'GPT-5.6 Sol',
       available: false,
       unavailableReason: 'missing_api_key',
     }),
     model({
-      id: 'openai:gpt-4.1-mini',
+      id: 'openai:gpt-5.6-luna',
       provider: 'openai',
-      modelId: 'gpt-4.1-mini',
-      name: 'GPT-4.1 Mini',
+      modelId: 'gpt-5.6-luna',
+      name: 'GPT-5.6 Luna',
       available: true,
     }),
     model({
@@ -97,30 +116,30 @@ describe('resolveSelectedModel', () => {
   ]
 
   it('keeps the stored model when it is available', () => {
-    expect(resolveSelectedModel(models, 'google:gemini-3.5-flash', 'openai:gpt-4.1-mini')).toBe(
+    expect(resolveSelectedModel(models, 'google:gemini-3.5-flash', 'openai:gpt-5.6-luna')).toBe(
       'google:gemini-3.5-flash',
     )
   })
 
   it('prefers an available server default over the cheapest fallback', () => {
-    expect(resolveSelectedModel(models, null, 'openai:gpt-4.1-mini')).toBe('openai:gpt-4.1-mini')
+    expect(resolveSelectedModel(models, null, 'openai:gpt-5.6-luna')).toBe('openai:gpt-5.6-luna')
   })
 
   it('falls back when the default model has no API key', () => {
-    expect(resolveSelectedModel(models, null, 'openai:gpt-4o-mini')).toBe(
+    expect(resolveSelectedModel(models, null, 'openai:gpt-5.6-sol')).toBe(
       'anthropic:claude-haiku-4-5',
     )
   })
 
   it('falls back when the stored model is unavailable', () => {
-    expect(resolveSelectedModel(models, 'openai:gpt-4o-mini', 'openai:gpt-4o-mini')).toBe(
+    expect(resolveSelectedModel(models, 'openai:gpt-5.6-sol', 'openai:gpt-5.6-sol')).toBe(
       'anthropic:claude-haiku-4-5',
     )
   })
 
   it('uses the available default when the stored model is unavailable', () => {
-    expect(resolveSelectedModel(models, 'openai:gpt-4o-mini', 'openai:gpt-4.1-mini')).toBe(
-      'openai:gpt-4.1-mini',
+    expect(resolveSelectedModel(models, 'openai:gpt-5.6-sol', 'openai:gpt-5.6-luna')).toBe(
+      'openai:gpt-5.6-luna',
     )
   })
 })
@@ -130,43 +149,43 @@ describe('formatModelLabel', () => {
     expect(
       formatModelLabel(
         model({
-          id: 'openai:gpt-4o-mini',
+          id: 'openai:gpt-5.6-luna',
           provider: 'openai',
-          modelId: 'gpt-4o-mini',
-          name: 'GPT-4o Mini',
+          modelId: 'gpt-5.6-luna',
+          name: 'GPT-5.6 Luna',
           available: false,
           unavailableReason: 'missing_api_key',
         }),
       ),
-    ).toBe('openai · GPT-4o Mini (no API key)')
+    ).toBe('openai · GPT-5.6 Luna (no API key)')
 
     expect(
       formatModelLabel(
         model({
-          id: 'openai:gpt-4o',
+          id: 'openai:gpt-5.6-sol',
           provider: 'openai',
-          modelId: 'gpt-4o',
-          name: 'GPT-4o',
+          modelId: 'gpt-5.6-sol',
+          name: 'GPT-5.6 Sol',
           available: false,
           unavailableReason: 'not_found',
         }),
       ),
-    ).toBe('openai · GPT-4o (unavailable)')
+    ).toBe('openai · GPT-5.6 Sol (unavailable)')
   })
 })
 
 describe('model selector display helpers', () => {
   it('formats names, provider labels, and unavailable badges', () => {
     const available = model({
-      id: 'openai:gpt-4o-mini',
+      id: 'openai:gpt-5.6-luna',
       provider: 'openai',
-      modelId: 'gpt-4o-mini',
-      name: 'GPT-4o Mini',
+      modelId: 'gpt-5.6-luna',
+      name: 'GPT-5.6 Luna',
       available: true,
     })
 
-    expect(formatModelName(available)).toBe('GPT-4o Mini')
-    expect(formatModelName(model({ ...available, name: undefined }))).toBe('gpt-4o-mini')
+    expect(formatModelName(available)).toBe('GPT-5.6 Luna')
+    expect(formatModelName(model({ ...available, name: undefined }))).toBe('gpt-5.6-luna')
     expect(formatProviderLabel('anthropic')).toBe('Anthropic')
     expect(formatUnavailableBadge(available)).toBeNull()
     expect(

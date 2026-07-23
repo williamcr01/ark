@@ -15,7 +15,7 @@ export const ACTIVE_GENERATION_JOB_STATUSES = new Set<GenerationJobStatus>([
   'canceling',
 ])
 
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type GenerationJobRequest = {
   messages: ApiChatMessage[]

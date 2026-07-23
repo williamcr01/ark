@@ -33,6 +33,11 @@ import { cloneGenerationJobRequest, type GenerationJobStore } from './generation
 import { createLanguageModel } from './provider-runtime.ts'
 import { categorizeProviderError } from './observability/provider-errors.ts'
 import { createLogger } from './observability/logger.ts'
+import {
+  catalogSupportsAttachments,
+  findCatalogEntryByRef,
+  resolveCatalogReasoningEffort,
+} from './model-catalog.ts'
 
 export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
@@ -691,9 +696,38 @@ export function createGenerationJobRunner({
 
     const modelRef = body.model?.trim() || defaultModel
     const { provider } = createModel(modelRef)
+    const catalogEntry = findCatalogEntryByRef(modelRef)
+    const resolvedEffort = resolveCatalogReasoningEffort(catalogEntry, body.reasoningEffort ?? null)
+
+    if (!resolvedEffort.ok) {
+      throw Object.assign(new Error(resolvedEffort.error), {
+        apiError: {
+          code: 'provider_error',
+          error: resolvedEffort.error,
+        },
+      })
+    }
+
     const currentHtml = body.currentHtml ?? ''
     const deckId = typeof body.deckId === 'string' && body.deckId.trim() ? body.deckId.trim() : null
     const assetIds = body.assetIds?.map((id) => id.trim()).filter(Boolean) ?? []
+    const messagesHaveAttachments = messages.some(
+      (message) => (message.attachments?.length ?? 0) > 0,
+    )
+
+    if (
+      !catalogSupportsAttachments(catalogEntry) &&
+      (messagesHaveAttachments || assetIds.length > 0)
+    ) {
+      const modelName = catalogEntry?.name ?? modelRef
+      const error = `${modelName} is text-only and does not support attachments.`
+      throw Object.assign(new Error(error), {
+        apiError: {
+          code: 'provider_error',
+          error,
+        },
+      })
+    }
 
     if (assetIds.length > 0 && !deckId) {
       throw Object.assign(new Error('assetIds require a saved deck id.'), {
@@ -774,7 +808,7 @@ export function createGenerationJobRunner({
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
         ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
-        ...(body.reasoningEffort ? { reasoningEffort: body.reasoningEffort } : {}),
+        ...(resolvedEffort.effort ? { reasoningEffort: resolvedEffort.effort } : {}),
       },
     }
 
