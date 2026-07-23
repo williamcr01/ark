@@ -61,11 +61,15 @@ const resolveStoredModel = (models: AvailableModel[], storedModel: string | null
 const fallbackPreferenceScore = (model: AvailableModel): number => {
   const id = model.modelId.toLowerCase()
 
-  if (/mini|flash|haiku|nano/.test(id)) {
+  if (id.includes('flash-lite')) {
+    return -1
+  }
+
+  if (/luna|mini|flash|haiku|nano/.test(id)) {
     return 0
   }
 
-  if (/sonnet|gpt-4o$|pro/.test(id)) {
+  if (/terra|sonnet|gpt-4o$|pro/.test(id)) {
     return 1
   }
 

@@ -16,7 +16,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
-import { useReasoningEffort } from '@/hooks/useReasoningEffort'
+import { useReasoningEffort, type ReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useChatSession } from '@/hooks/useChatSession'
 import { useDeckAssets } from '@/hooks/useDeckAssets'
 import { useDeckActions } from '@/hooks/useDeckActions'
@@ -124,7 +124,17 @@ function App() {
     setSelectedModel,
     warnings: modelWarnings,
   } = useAvailableModels()
-  const { reasoningEffort, setReasoningEffort } = useReasoningEffort()
+  const { reasoningEffort, setReasoningEffort } = useReasoningEffort(selectedModel, models)
+
+  const handleModelSelect = useCallback(
+    (modelId: string, nextEffort?: ReasoningEffort) => {
+      setSelectedModel(modelId)
+      if (nextEffort) {
+        setReasoningEffort(nextEffort, modelId)
+      }
+    },
+    [setReasoningEffort, setSelectedModel],
+  )
 
   const {
     canRedo,
@@ -288,6 +298,14 @@ function App() {
     const hasContent = Boolean(message.text.trim() || attachments.length > 0)
 
     if (!hasContent || !canGenerate) {
+      return
+    }
+
+    const selectedModelInfo = models.find((model) => model.id === selectedModel)
+    if (selectedModelInfo?.supportsAttachments === false && attachments.length > 0) {
+      setAttachmentError(
+        `${selectedModelInfo.name ?? selectedModelInfo.modelId} is text-only and does not support attachments.`,
+      )
       return
     }
 
@@ -487,8 +505,7 @@ function App() {
       onAttachmentError={setAttachmentError}
       onCancelGeneration={handleCancelGeneration}
       onInputChange={setInput}
-      onModelChange={setSelectedModel}
-      onReasoningEffortChange={setReasoningEffort}
+      onModelSelect={handleModelSelect}
       onPromptSubmit={handlePromptSubmit}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}

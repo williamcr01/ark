@@ -56,10 +56,13 @@ function readRequestMetadata(metadata: Record<string, unknown> | null): Generati
   const messages = Array.isArray(metadata?.messages) ? metadata.messages : []
   const currentHtml = typeof metadata?.currentHtml === 'string' ? metadata.currentHtml : ''
   const reasoningEffort =
+    metadata?.reasoningEffort === 'none' ||
+    metadata?.reasoningEffort === 'minimal' ||
     metadata?.reasoningEffort === 'low' ||
     metadata?.reasoningEffort === 'medium' ||
     metadata?.reasoningEffort === 'high' ||
-    metadata?.reasoningEffort === 'xhigh'
+    metadata?.reasoningEffort === 'xhigh' ||
+    metadata?.reasoningEffort === 'max'
       ? metadata.reasoningEffort
       : undefined
 
@@ -203,6 +206,7 @@ export function createPostgresGenerationJobStore(
       baseVersionId: input.baseVersionId ?? request.baseVersionId ?? null,
       editingExistingDeck: request.editingExistingDeck ?? false,
       ...(request.editorSelection ? { editorSelection: request.editorSelection } : {}),
+      ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
       retryOfJobId: input.retryOfJobId ?? null,
       assetIds: input.assetIds ?? [],
       progress: createEmptyGenerationJobProgress(),
@@ -317,6 +321,9 @@ export function createPostgresGenerationJobStore(
       ...(existing.request.editorSelection
         ? { editorSelection: existing.request.editorSelection }
         : {}),
+      ...(existing.request.reasoningEffort
+        ? { reasoningEffort: existing.request.reasoningEffort }
+        : {}),
       retryOfJobId: existing.retryOfJobId,
       assetIds: existing.assetIds ?? [],
       progress: patch.progress ?? existing.progress,
@@ -424,6 +431,9 @@ export function createPostgresGenerationJobStore(
       editingExistingDeck: existing.request.editingExistingDeck ?? false,
       ...(existing.request.editorSelection
         ? { editorSelection: existing.request.editorSelection }
+        : {}),
+      ...(existing.request.reasoningEffort
+        ? { reasoningEffort: existing.request.reasoningEffort }
         : {}),
       retryOfJobId: existing.retryOfJobId,
       assetIds: existing.assetIds ?? [],
