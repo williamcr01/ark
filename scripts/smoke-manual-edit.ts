@@ -25,6 +25,11 @@ import {
 } from './lib/browser-smoke.ts'
 
 const manualEditFixturePath = path.join(repoRoot, 'test/fixtures/manual-edit-deck.html')
+const revealFixturePath = path.join(repoRoot, 'test/fixtures/reveal-vertical-deck.html')
+const hostileEditorFixturePath = path.join(
+  repoRoot,
+  'test/fixtures/hostile-editor-postmessage-deck.html',
+)
 
 type DeckVersionSummary = {
   id: string
@@ -123,7 +128,7 @@ async function enterEditMode(
   )
 
   await waitFor('editor bridge ready in preview frame', async () =>
-    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector('style[data-ark-editor="true"]'))`, {
       contextId: editPreview.id,
       sessionId: editPreview.sessionId,
     }),
@@ -158,85 +163,179 @@ async function refreshEditPreviewContext(
   contexts: Map<string, RuntimeContext>,
   previousSrc: string,
   expectedSlideText = 'Quarterly planning',
+  expectedLifecycle: 'reload' | 'reuse' = 'reload',
+  previousContext: RuntimeContext | null = null,
 ) {
-  return waitFor(
-    'refreshed editor sandbox preview',
-    async () => {
-      const src = await evaluate<string>(
-        cdp!,
-        `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
-      )
+  let lastState = 'not polled'
 
-      if (!src.startsWith(`${servers.sandboxOrigin}/render/`)) {
-        return null
-      }
+  try {
+    return await waitFor(
+      'refreshed editor sandbox preview',
+      async () => {
+        const src = await evaluate<string>(
+          cdp!,
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
 
-      if (previousSrc && src === previousSrc) {
-        return null
-      }
+        if (!src.startsWith(`${servers.sandboxOrigin}/render/`)) {
+          lastState = `unexpected URL: ${src || '(missing)'}`
+          return null
+        }
 
-      const context = await findContextByUrl(cdp!, contexts, src)
-      if (!context) {
-        return null
-      }
+        if (
+          previousSrc &&
+          expectedLifecycle === 'reload' &&
+          src === previousSrc &&
+          !previousContext
+        ) {
+          lastState = 'waiting for a new iframe URL'
+          return null
+        }
 
-      const loading = await evaluate<boolean>(
-        cdp!,
-        `document.body.innerText.includes('Loading sandbox preview')`,
-      )
+        if (previousSrc && expectedLifecycle === 'reuse' && src !== previousSrc) {
+          lastState = `iframe unexpectedly reloaded: ${previousSrc} → ${src}`
+          return null
+        }
 
-      if (loading) {
-        return null
-      }
+        const exact = await findContextByUrl(cdp!, contexts, src)
+        const candidates = [
+          ...(expectedLifecycle === 'reuse' && previousContext ? [previousContext] : []),
+          ...[...contexts.values()].reverse().filter((context) => context.isDefault),
+          exact,
+        ].filter((context): context is RuntimeContext => Boolean(context))
+        const seenContexts = new Set<string>()
+        const context = await (async () => {
+          for (const candidate of candidates) {
+            const key = `${candidate.sessionId ?? 'root'}:${candidate.id}`
 
-      const ready = await evaluate<boolean>(
-        cdp!,
-        `(() => {
-          if (!document.querySelector('script[data-ark-preview-editor]')) return false;
+            if (seenContexts.has(key)) {
+              continue
+            }
+            seenContexts.add(key)
+
+            if (
+              expectedLifecycle === 'reload' &&
+              previousContext &&
+              candidate.id === previousContext.id &&
+              candidate.sessionId === previousContext.sessionId
+            ) {
+              continue
+            }
+
+            const href = await evaluate<string>(cdp!, 'location.href', {
+              contextId: candidate.id,
+              sessionId: candidate.sessionId,
+            }).catch(() => '')
+
+            if (href === src) {
+              return candidate
+            }
+          }
+
+          return null
+        })()
+
+        if (!context) {
+          lastState = `no execution context for ${src}`
+          return null
+        }
+
+        const readiness = await evaluate<{ activeText: string; hasRuntime: boolean }>(
+          cdp!,
+          `(() => {
           const active = document.querySelector('section.slide.active, section.slide.is-active');
-          return Boolean(active && (active.textContent || '').includes(${JSON.stringify(expectedSlideText)}));
+          return {
+            activeText: active?.textContent || '',
+            hasRuntime: Boolean(document.querySelector('style[data-ark-editor="true"]')),
+          };
         })()`,
-        { contextId: context.id, sessionId: context.sessionId },
-      )
+          { contextId: context.id, sessionId: context.sessionId },
+        )
+        const ready = readiness.hasRuntime && readiness.activeText.includes(expectedSlideText)
+        lastState = `runtime=${readiness.hasRuntime}, active=${JSON.stringify(readiness.activeText.slice(0, 80))}`
 
-      return ready ? { editPreviewSrc: src, editPreview: context } : null
-    },
-    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-  )
+        if (!ready) return null
+
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        const stableSrc = await evaluate<string>(
+          cdp!,
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
+        const stableContextSrc = await evaluate<string>(cdp!, 'location.href', {
+          contextId: context.id,
+          sessionId: context.sessionId,
+        }).catch(() => '')
+
+        return stableSrc === src && stableContextSrc === src
+          ? { editPreviewSrc: src, editPreview: context }
+          : null
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)} Last state: ${lastState}`,
+      { cause: error },
+    )
+  }
 }
 
 async function getCurrentEditPreview(
   cdp: Awaited<ReturnType<typeof createPage>>,
   servers: { sandboxOrigin: string },
   contexts: Map<string, RuntimeContext>,
+  requiredSelector = 'style[data-ark-editor="true"]',
+  previousSrc = '',
 ) {
-  const editPreviewSrc = await waitFor(
-    'current editor sandbox preview iframe src',
+  return waitFor(
+    'current ready editor sandbox preview',
     async () => {
       const src = await evaluate<string>(
         cdp!,
         `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
       )
 
-      return src.startsWith(`${servers.sandboxOrigin}/render/`) ? src : ''
+      if (!src.startsWith(`${servers.sandboxOrigin}/render/`) || src === previousSrc) {
+        return null
+      }
+
+      const exact = await findContextByUrl(cdp!, contexts, src)
+      const candidates = [
+        exact,
+        ...[...contexts.values()].reverse().filter((context) => context.isDefault),
+      ].filter((context): context is RuntimeContext => Boolean(context))
+
+      for (const editPreview of candidates) {
+        const state = await evaluate<{ href: string; ready: boolean }>(
+          cdp!,
+          `({
+            href: location.href,
+            ready: Boolean(document.querySelector('style[data-ark-editor="true"]')) && Boolean(document.querySelector(${JSON.stringify(requiredSelector)})),
+          })`,
+          { contextId: editPreview.id, sessionId: editPreview.sessionId },
+        ).catch(() => null)
+
+        if (state?.ready && state.href === src) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          const stableSrc = await evaluate<string>(
+            cdp!,
+            `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+          )
+          const stableContextSrc = await evaluate<string>(cdp!, 'location.href', {
+            contextId: editPreview.id,
+            sessionId: editPreview.sessionId,
+          }).catch(() => '')
+
+          if (stableSrc === src && stableContextSrc === src) {
+            return { editPreviewSrc: state.href, editPreview }
+          }
+        }
+      }
+
+      return null
     },
     { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
   )
-
-  const editPreview = await waitFor(
-    'current editor sandbox preview frame context',
-    () => findContextByUrl(cdp!, contexts, editPreviewSrc),
-    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-  )
-
-  await waitFor('editor bridge script in current preview', async () =>
-    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
-      contextId: editPreview.id,
-      sessionId: editPreview.sessionId,
-    }),
-  )
-
-  return { editPreviewSrc, editPreview }
 }
 
 async function dispatchPointerSequence(
@@ -313,6 +412,57 @@ async function dispatchPointerSequence(
       ).catch(() => undefined)
     }
   }
+}
+
+async function getElementRect(
+  cdp: Awaited<ReturnType<typeof createPage>>,
+  context: RuntimeContext,
+  selector: string,
+) {
+  return evaluate<{ left: number; top: number; width: number; height: number } | null>(
+    cdp,
+    `(() => {
+      const rect = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+    })()`,
+    { contextId: context.id, sessionId: context.sessionId },
+  )
+}
+
+async function cancelPendingNudgeViaUndo(
+  cdp: Awaited<ReturnType<typeof createPage>>,
+  context: RuntimeContext,
+  selector: string,
+) {
+  const alreadySelected = await evaluate<boolean>(
+    cdp,
+    `document.querySelector(${JSON.stringify(selector)})?.hasAttribute('data-ark-editor-selected') === true`,
+    { contextId: context.id, sessionId: context.sessionId },
+  )
+
+  if (!alreadySelected) {
+    await dispatchPointerSequence(cdp, context, [
+      { type: 'pointerdown', selector },
+      { type: 'pointerup', selector },
+    ])
+  }
+
+  await waitFor('heading selected before nudge', async () =>
+    evaluate<boolean>(
+      cdp,
+      `document.querySelector(${JSON.stringify(selector)})?.hasAttribute('data-ark-editor-selected') === true`,
+      { contextId: context.id, sessionId: context.sessionId },
+    ),
+  )
+  await evaluate(
+    cdp,
+    `(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+      return new Promise((resolve) => setTimeout(resolve, 1000));
+    })()`,
+    { contextId: context.id, sessionId: context.sessionId },
+  )
 }
 
 async function moveTextBoxViaPointer(
@@ -416,7 +566,11 @@ async function deleteTextBoxViaKeyboard(
     ),
   )
 
-  await clickToolbarButton(cdp, 'Delete selected element')
+  await evaluate<boolean>(
+    cdp,
+    `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }))`,
+    { contextId: editPreview.id, sessionId: editPreview.sessionId },
+  )
 
   return waitFor(
     'deleted text box from deck HTML',
@@ -494,7 +648,7 @@ async function insertTextBoxViaTool(
 
 async function clickToolbarButton(
   cdp: Awaited<ReturnType<typeof createPage>>,
-  label: 'Undo' | 'Redo' | 'Delete selected element',
+  label: 'Undo' | 'Redo',
 ) {
   await waitFor(`click ${label} toolbar button`, async () =>
     evaluate<boolean>(
@@ -640,6 +794,285 @@ async function runSmoke() {
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
 
+    const headingSelector = '[data-ark-id="ark-el-title"]'
+    const initialVersionCount = (await fetchVersions(apiPort, deckId)).length
+    await cancelPendingNudgeViaUndo(cdp, editPreview, headingSelector)
+    assert(
+      (await fetchDeck(apiPort, deckId)).html === baseline.html,
+      'Immediate undo should cancel an unmanaged nudge without persisting',
+    )
+    assert(
+      (await fetchVersions(apiPort, deckId)).length === initialVersionCount,
+      'Immediate undo should not create a version when history is empty',
+    )
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(cdp, servers, contexts, ''))
+    const originalHeadingRect = await getElementRect(cdp, editPreview, headingSelector)
+    assert(originalHeadingRect, 'Unmanaged heading is missing before adoption')
+    const originalHeadingStyle = await evaluate<{ color: string; fontSize: string }>(
+      cdp,
+      `(() => {
+        const style = getComputedStyle(document.querySelector(${JSON.stringify(headingSelector)}));
+        return { color: style.color, fontSize: style.fontSize };
+      })()`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
+    const frameRect = await evaluate<{ left: number; top: number; width: number; height: number }>(
+      cdp,
+      `(() => {
+        const rect = document.querySelector('iframe[title="Generated Ark presentation preview"]')?.getBoundingClientRect();
+        return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+      })()`,
+    )
+    assert(frameRect, 'Edit preview iframe is missing before adoption')
+    const frameViewport = await evaluate<{ width: number; height: number }>(
+      cdp,
+      `({ width: window.innerWidth, height: window.innerHeight })`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
+    const startX =
+      frameRect.left +
+      (originalHeadingRect.left + originalHeadingRect.width / 2) *
+        (frameRect.width / frameViewport.width)
+    const startY =
+      frameRect.top +
+      (originalHeadingRect.top + originalHeadingRect.height / 2) *
+        (frameRect.height / frameViewport.height)
+    const outsideX = Math.max(1, frameRect.left - 20)
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: startX, y: startY })
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: startX,
+      y: startY,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    })
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: startX - 30,
+      y: startY,
+      button: 'left',
+      buttons: 1,
+    })
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: outsideX,
+      y: startY,
+      button: 'left',
+      buttons: 1,
+    })
+    await evaluate(
+      cdp,
+      `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
+    let liveAdoptedRect = await getElementRect(cdp, editPreview, headingSelector)
+    assert(liveAdoptedRect, 'Adopted heading is missing before commit')
+    assert(
+      Math.abs(liveAdoptedRect.left - originalHeadingRect.left) > 1 ||
+        Math.abs(liveAdoptedRect.top - originalHeadingRect.top) > 1,
+      'Heading did not move during adoption',
+    )
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: outsideX,
+      y: startY,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    })
+    const outsideCommit = await waitFor(
+      'outside drag commit or cancellation',
+      async () => {
+        const deck = await fetchDeck(apiPort, deckId)
+
+        if (deck.html !== baseline.html) {
+          return deck
+        }
+
+        const rect = await getElementRect(cdp, editPreview, headingSelector)
+
+        if (
+          rect &&
+          Math.abs(rect.left - originalHeadingRect.left) <= 1 &&
+          Math.abs(rect.top - originalHeadingRect.top) <= 1 &&
+          Math.abs(rect.width - originalHeadingRect.width) <= 1 &&
+          Math.abs(rect.height - originalHeadingRect.height) <= 1
+        ) {
+          return false
+        }
+
+        return null
+      },
+      { timeoutMs: 2_000, intervalMs: 50 },
+    ).catch(() => null)
+
+    if (!outsideCommit) {
+      const restoredRect = await getElementRect(cdp, editPreview, headingSelector)
+      assert(restoredRect, 'Heading is missing after outside drag cancellation')
+      for (const axis of ['left', 'top', 'width', 'height'] as const) {
+        assert(
+          Math.abs(restoredRect[axis] - originalHeadingRect[axis]) <= 1,
+          `Outside release left heading ${axis} stuck at ${restoredRect[axis]}`,
+        )
+      }
+
+      const endX = startX + 30
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: startX, y: startY })
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: startX,
+        y: startY,
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+      })
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: endX,
+        y: startY,
+        button: 'left',
+        buttons: 1,
+      })
+      await evaluate(
+        cdp,
+        `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+        { contextId: editPreview.id, sessionId: editPreview.sessionId },
+      )
+      liveAdoptedRect = await getElementRect(cdp, editPreview, headingSelector)
+      assert(liveAdoptedRect, 'Adopted heading is missing before in-frame commit')
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: endX,
+        y: startY,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+      })
+    }
+
+    await waitFor('adopted heading persisted', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html.includes('data-ark-id="ark-el-title"') &&
+        deck.html.includes('data-ark-managed="true"')
+        ? deck
+        : null
+    })
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+      'reuse',
+      editPreview,
+    ))
+    const persistedHeadingRect = await getElementRect(cdp, editPreview, headingSelector)
+    assert(persistedHeadingRect, 'Adopted heading is missing after persistence')
+    for (const axis of ['left', 'top', 'width', 'height'] as const) {
+      assert(
+        Math.abs(persistedHeadingRect[axis] - liveAdoptedRect[axis]) <= 1,
+        `Adopted heading ${axis} drifted after persistence: ${liveAdoptedRect[axis]} → ${persistedHeadingRect[axis]}`,
+      )
+    }
+    await waitFor('adopted heading selection restored', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector(${JSON.stringify(headingSelector)})?.hasAttribute('data-ark-editor-selected'))`,
+        { contextId: editPreview.id, sessionId: editPreview.sessionId },
+      ),
+    )
+    const persistedHeadingState = await evaluate<{
+      color: string
+      fontSize: string
+      position: string
+      width: string
+      parentClass: string
+      selected: boolean
+    }>(
+      cdp,
+      `(() => {
+        const heading = document.querySelector(${JSON.stringify(headingSelector)});
+        const style = getComputedStyle(heading);
+        return {
+          color: style.color,
+          fontSize: style.fontSize,
+          position: heading?.style.position || '',
+          width: heading?.style.width || '',
+          parentClass: heading?.parentElement?.className || '',
+          selected: Boolean(heading?.hasAttribute('data-ark-editor-selected')),
+        };
+      })()`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
+    assert(
+      persistedHeadingState.color === originalHeadingStyle.color &&
+        persistedHeadingState.fontSize === originalHeadingStyle.fontSize,
+      'Nested adoption changed inherited/scoped heading styles',
+    )
+    assert(
+      persistedHeadingState.parentClass.includes('positioned-title'),
+      'Nested adoption changed the heading parent',
+    )
+    assert(
+      persistedHeadingState.position === 'absolute' && persistedHeadingState.width.endsWith('px'),
+      'Adoption did not persist absolute positioning and measured width',
+    )
+    assert(
+      persistedHeadingState.selected,
+      'Adopted heading selection was not preserved after persistence',
+    )
+    await waitFor('dark-surface selection uses white chrome', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('.pointer-events-none.border-white'))`,
+      ),
+    )
+
+    const adoptedHtml = (await fetchDeck(apiPort, deckId)).html
+    const adoptedVersionCount = (await fetchVersions(apiPort, deckId)).length
+    await cancelPendingNudgeViaUndo(cdp, editPreview, headingSelector)
+    assert(
+      (await fetchDeck(apiPort, deckId)).html === adoptedHtml,
+      'Immediate undo should cancel a managed nudge without undoing prior history',
+    )
+    assert(
+      (await fetchVersions(apiPort, deckId)).length === adoptedVersionCount,
+      'Immediate undo should not create or undo a version when history is non-empty',
+    )
+
+    const beforeCommittedNudge = (await fetchDeck(apiPort, deckId)).html
+    await evaluate<boolean>(
+      cdp,
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
+      { contextId: editPreview.id, sessionId: editPreview.sessionId },
+    )
+    await waitFor('arrow nudge persisted', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html !== beforeCommittedNudge ? deck : null
+    })
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+      'reuse',
+      editPreview,
+    ))
+    await clickToolbarButton(cdp, 'Undo')
+    await waitFor('undo restored pre-nudge HTML', async () => {
+      const deck = await fetchDeck(apiPort, deckId)
+      return deck.html === beforeCommittedNudge ? deck : null
+    })
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+    ))
+
     // Order: insert → transform → delete on the fresh edit-mode iframe, then
     // text edit. Undo/redo after each op reloads the preview; doing structural
     // bridge ops first avoids racing a stale iframe after text undo/redo.
@@ -655,6 +1088,14 @@ async function runSmoke() {
     )
     assertManualPatchProvenance(insertVersion, ['insert_element'])
 
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
+
     await clickToolbarButton(cdp, 'Undo')
     await waitFor('undo removed inserted text box', async () => {
       const deck = await fetchDeck(apiPort, deckId)
@@ -669,6 +1110,14 @@ async function runSmoke() {
       ),
       'undo',
     )
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
 
     await clickToolbarButton(cdp, 'Redo')
     const afterInsertRedo = await waitFor('redo restored inserted text box', async () => {
@@ -732,6 +1181,16 @@ async function runSmoke() {
       `Expected move/resize ops, got ${JSON.stringify(transformVersion.provenance?.operations)}`,
     )
 
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+      'reuse',
+      editPreview,
+    ))
+
     await clickToolbarButton(cdp, 'Undo')
     await waitFor('undo restored pre-transform HTML', async () => {
       const deck = await fetchDeck(apiPort, deckId)
@@ -746,6 +1205,16 @@ async function runSmoke() {
       ),
       'undo',
     )
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+      'reload',
+      editPreview,
+    ))
 
     await clickToolbarButton(cdp, 'Redo')
     await waitFor('redo restored transform HTML', async () => {
@@ -793,6 +1262,14 @@ async function runSmoke() {
     )
     assertManualPatchProvenance(deleteVersion, ['delete_element'])
 
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
+
     await clickToolbarButton(cdp, 'Undo')
     await waitFor('undo restored deleted text box', async () => {
       const deck = await fetchDeck(apiPort, deckId)
@@ -807,6 +1284,14 @@ async function runSmoke() {
       ),
       'undo',
     )
+
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+    ))
 
     await clickToolbarButton(cdp, 'Redo')
     await waitFor('redo re-deleted text box', async () => {
@@ -831,17 +1316,14 @@ async function runSmoke() {
       'Quarterly planning',
     ))
 
-    // --- Text edit via real DOM events inside the sandbox iframe ---
-    await evaluate<boolean>(
-      cdp,
-      `(() => {
-        const heading = document.querySelector('section.slide.active h1, section.slide.is-active h1, h1');
-        if (!heading) return false;
-        heading.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));
-        return heading.getAttribute('contenteditable') === 'true' || Boolean(heading.closest('[contenteditable="true"]'));
-      })()`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
+    // --- Second-click text edit via real pointer events inside the sandbox iframe ---
+    const headingSelectorForTextEdit = 'section.slide.active h1, section.slide.is-active h1, h1'
+    await dispatchPointerSequence(cdp, editPreview, [
+      { type: 'pointerdown', selector: headingSelectorForTextEdit },
+      { type: 'pointerup', selector: headingSelectorForTextEdit },
+      { type: 'pointerdown', selector: headingSelectorForTextEdit },
+      { type: 'pointerup', selector: headingSelectorForTextEdit },
+    ])
 
     await waitFor('text edit active in preview', async () =>
       evaluate<boolean>(
@@ -861,7 +1343,7 @@ async function runSmoke() {
         target.dispatchEvent(new Event('input', { bubbles: true }));
         if (typeof target.blur === 'function') target.blur();
         target.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-        return true;
+        return !target.hasAttribute('contenteditable') && !target.hasAttribute('data-ark-editor-text-edit');
       })()`,
       { contextId: editPreview.id, sessionId: editPreview.sessionId },
     )
@@ -881,6 +1363,16 @@ async function runSmoke() {
     )
     assertManualPatchProvenance(textEditVersion, ['replace_text'])
 
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      editedText,
+      'reuse',
+      editPreview,
+    ))
+
     await clickToolbarButton(cdp, 'Undo')
     await waitFor('undo restored original heading text', async () => {
       const deck = await fetchDeck(apiPort, deckId)
@@ -898,6 +1390,16 @@ async function runSmoke() {
       'undo',
     )
 
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      'Quarterly planning',
+      'reload',
+      editPreview,
+    ))
+
     await clickToolbarButton(cdp, 'Redo')
     await waitFor('redo restored edited heading text', async () => {
       const deck = await fetchDeck(apiPort, deckId)
@@ -913,6 +1415,14 @@ async function runSmoke() {
       'redo',
     )
 
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
+      cdp,
+      servers,
+      contexts,
+      editPreviewSrc,
+      editedText,
+    ))
+
     const finalDeck = await fetchDeck(apiPort, deckId)
     assert(finalDeck.title.includes('Manual Edit Deck'), 'Deck title should remain intact')
     assert(finalDeck.html.includes(editedText), 'Final deck should keep the redone text edit')
@@ -926,6 +1436,195 @@ async function runSmoke() {
       versions.every((version) => version.source === 'manual' || version.source === 'upload'),
       'Unexpected non-manual/upload version sources in smoke run',
     )
+
+    await setUploadFile(cdp, revealFixturePath)
+    await waitFor('uploaded Reveal manual-edit deck in shell', async () => {
+      const text = await evaluate<string>(cdp!, 'document.body.innerText')
+      return text.includes('Reveal Vertical Deck') && text.includes('Slide 1 of 4')
+    })
+    const revealDeck = await waitFor('uploaded Reveal deck in API', async () => {
+      const listed = await listDecks(apiPort)
+      return listed.find((deck) => deck.title.includes('Reveal Vertical Deck')) ?? null
+    })
+    let revealPreview = await getCurrentEditPreview(
+      cdp,
+      servers,
+      contexts,
+      'style[data-ark-editor="true"]',
+      editPreviewSrc,
+    )
+    const revealHeadingSelector = '.reveal .slides > section.present > section.present > h2'
+    for (const [expectedSlide, expectedHeading] of [
+      [2, 'Vertical one'],
+      [3, 'Vertical two'],
+    ] as const) {
+      await evaluate(
+        cdp,
+        `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
+      )
+      await waitFor(`Reveal navigated to linear slide ${expectedSlide}`, async () => {
+        const text = await evaluate<string>(cdp!, 'document.body.innerText')
+        const activeHeading = await evaluate<string>(
+          cdp!,
+          `document.querySelector(${JSON.stringify(revealHeadingSelector)})?.textContent?.trim() || ''`,
+          {
+            contextId: revealPreview.editPreview.id,
+            sessionId: revealPreview.editPreview.sessionId,
+          },
+        ).catch(() => '')
+        return text.includes(`Slide ${expectedSlide} of 4`) && activeHeading === expectedHeading
+      })
+      await new Promise((resolve) => setTimeout(resolve, 900))
+    }
+    await waitFor('Reveal editor ready for selection', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `(() => {
+          const target = document.querySelector(${JSON.stringify(revealHeadingSelector)});
+          if (!target) return false;
+          const rect = target.getBoundingClientRect();
+          const init = {
+            bubbles: true, cancelable: true, composed: true, pointerId: 7,
+            pointerType: 'mouse', isPrimary: true, button: 0,
+            clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+          };
+          target.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1 }));
+          target.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0 }));
+          return target.hasAttribute('data-ark-editor-selected');
+        })()`,
+        {
+          contextId: revealPreview.editPreview.id,
+          sessionId: revealPreview.editPreview.sessionId,
+        },
+      ).catch(() => false),
+    )
+    const revealBefore = await getElementRect(cdp, revealPreview.editPreview, revealHeadingSelector)
+    assert(revealBefore, 'Reveal heading missing before movement')
+    await evaluate<boolean>(
+      cdp,
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true, cancelable: true }))`,
+      {
+        contextId: revealPreview.editPreview.id,
+        sessionId: revealPreview.editPreview.sessionId,
+      },
+    )
+    // Let the runtime correct for Reveal's post-adoption recenter before the
+    // 400 ms nudge commit reloads the iframe.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const revealLiveState = await evaluate<{
+      rect: { left: number; top: number; width: number; height: number } | null
+      style: string
+      selected: boolean
+    }>(
+      cdp,
+      `(() => {
+        const heading = document.querySelector(${JSON.stringify(revealHeadingSelector)});
+        const rect = heading?.getBoundingClientRect();
+        return {
+          rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+          style: heading?.getAttribute('style') || '',
+          selected: Boolean(heading?.hasAttribute('data-ark-editor-selected')),
+        };
+      })()`,
+      {
+        contextId: revealPreview.editPreview.id,
+        sessionId: revealPreview.editPreview.sessionId,
+      },
+    )
+    const revealLive = revealLiveState.rect
+    assert(revealLive, 'Reveal heading missing during movement')
+    assert(
+      Math.abs(revealLive.left - revealBefore.left) > 1 ||
+        Math.abs(revealLive.top - revealBefore.top) > 1,
+      `Reveal heading did not move (${JSON.stringify(revealLiveState)})`,
+    )
+    await waitFor('Reveal movement persisted', async () => {
+      const deck = await fetchDeck(apiPort, revealDeck.id)
+      return deck.html.includes('data-ark-managed="true"') ? deck : null
+    })
+    revealPreview = await getCurrentEditPreview(
+      cdp,
+      servers,
+      contexts,
+      revealHeadingSelector,
+      revealPreview.editPreviewSrc,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    const revealPersisted = await getElementRect(
+      cdp,
+      revealPreview.editPreview,
+      revealHeadingSelector,
+    )
+    assert(revealPersisted, 'Reveal heading missing after movement reload')
+    for (const axis of ['left', 'top', 'width', 'height'] as const) {
+      assert(
+        Math.abs(revealPersisted[axis] - revealLive[axis]) <= 1,
+        `Reveal heading ${axis} drifted after persistence: ${revealLive[axis]} → ${revealPersisted[axis]}`,
+      )
+    }
+
+    await setUploadFile(cdp, hostileEditorFixturePath)
+    await waitFor('uploaded hostile full-JS deck with edit chrome', async () => {
+      const text = await evaluate<string>(cdp!, 'document.body.innerText')
+      return (
+        text.includes('Hostile Editor PostMessage Deck') &&
+        text.includes('Scripts running') &&
+        (await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('button[aria-label="Select"]'))`,
+        ))
+      )
+    })
+    const fullJsDeck = await waitFor('uploaded full-JS deck in API', async () => {
+      const listed = await listDecks(apiPort)
+      return listed.find((deck) => deck.title.includes('Hostile Editor PostMessage Deck')) ?? null
+    })
+    const fullJsHeadingSelector = 'h1[data-ark-id="ark-el-title"]'
+    const fullJsPreview = await getCurrentEditPreview(
+      cdp,
+      servers,
+      contexts,
+      fullJsHeadingSelector,
+      revealPreview.editPreviewSrc,
+    )
+
+    // The fixture posts well-formed forged mutation requests on the public
+    // window channel. They must not enter the private editor channel.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const fullJsBefore = await fetchDeck(apiPort, fullJsDeck.id)
+    assert(
+      fullJsBefore.html.includes('Editor bridge hijack'),
+      'Full-JS deck forged a public editor delete request',
+    )
+
+    await dispatchPointerSequence(cdp, fullJsPreview.editPreview, [
+      { type: 'pointerdown', selector: fullJsHeadingSelector },
+      { type: 'pointerup', selector: fullJsHeadingSelector },
+    ])
+    await waitFor('full-JS heading selected', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `document.querySelector(${JSON.stringify(fullJsHeadingSelector)})?.hasAttribute('data-ark-editor-selected') === true`,
+        {
+          contextId: fullJsPreview.editPreview.id,
+          sessionId: fullJsPreview.editPreview.sessionId,
+        },
+      ),
+    )
+    await evaluate(
+      cdp,
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
+      {
+        contextId: fullJsPreview.editPreview.id,
+        sessionId: fullJsPreview.editPreview.sessionId,
+      },
+    )
+    await waitFor('full-JS nudge persisted through the private editor channel', async () => {
+      const deck = await fetchDeck(apiPort, fullJsDeck.id)
+      return deck.html !== fullJsBefore.html && deck.html.includes('data-ark-managed="true"')
+        ? deck
+        : null
+    })
 
     void afterInsert
     void baseline

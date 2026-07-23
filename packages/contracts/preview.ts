@@ -11,7 +11,7 @@ export type CreatePreviewSessionRequest = z.infer<typeof createPreviewSessionReq
 
 export const previewSessionResponseSchema = withRequestId({
   token: z.string().min(1),
-  /** Generation-correlation value for the bridge handshake (not a secret). */
+  /** Per-generation bridge handshake and editor-channel capability. */
   handshake: z.string().min(1),
   expiresAt: z.number(),
   sandboxOrigin: z.string(),

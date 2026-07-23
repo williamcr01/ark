@@ -75,6 +75,7 @@ const PATCHABLE_ATTRS = new Set([
 
 const PATCHABLE_STYLE_PROPS = new Set([
   'background-color',
+  'box-sizing',
   'color',
   'display',
   'font-size',
@@ -82,6 +83,7 @@ const PATCHABLE_STYLE_PROPS = new Set([
   'height',
   'left',
   'line-height',
+  'margin',
   'object-fit',
   'opacity',
   'position',
@@ -372,17 +374,6 @@ function assertElementPatchable(
     }
   }
 
-  if (
-    (operation.op === 'move_element' ||
-      operation.op === 'resize_element' ||
-      operation.op === 'reorder_element') &&
-    !meta.managed
-  ) {
-    return {
-      error: `${operation.op}: element "${elementId}" is not Ark-managed and cannot be repositioned.`,
-    }
-  }
-
   return null
 }
 
@@ -443,7 +434,7 @@ function parseElementHtml(doc: Document, html: string) {
   return { element }
 }
 
-function mergeInlineStyle(element: HTMLElement, updates: Record<string, string>) {
+function mergeInlineStyle(element: Element, updates: Record<string, string>) {
   const declarations = new Map<string, string>()
 
   for (const chunk of element.getAttribute('style')?.split(';') ?? []) {
@@ -638,25 +629,16 @@ function applyDuplicateElement(
     return patchable
   }
 
-  const view = context.doc.defaultView
-
-  if (!view) {
-    return { error: 'duplicate_element requires a live document view.' }
-  }
-
-  if (!(resolved.element instanceof view.HTMLElement)) {
-    return { error: 'duplicate_element requires an HTML element target.' }
-  }
-
-  const clone = resolved.element.cloneNode(true) as HTMLElement
+  const clone = resolved.element.cloneNode(true) as Element
   clearStableElementIds(clone)
-  clone.setAttribute(ARK_MANAGED_ATTR, 'true')
+  clone.removeAttribute(ARK_MANAGED_ATTR)
 
   // Only nudge the clone when the source is already absolutely positioned. For a
   // flow-positioned element, forcing `position: absolute` at a small offset would
   // rip the duplicate out of flow to the top-left of the slide; instead let it
   // sit inline right after the original.
   if (isAbsolutelyPositioned(resolved.element)) {
+    clone.setAttribute(ARK_MANAGED_ATTR, 'true')
     const offsetX = operation.offsetX ?? 0.02
     const offsetY = operation.offsetY ?? 0.02
     const currentLeft =
@@ -724,7 +706,7 @@ function isAbsolutelyPositioned(element: Element) {
   return position === 'absolute' || position === 'fixed'
 }
 
-function parsePixelValueFromStyle(element: HTMLElement, property: string) {
+function parsePixelValueFromStyle(element: Element, property: string) {
   const value = readInlineStyleValue(element, property)
 
   if (!value) {
@@ -816,7 +798,6 @@ function applySetInlineStyle(
     return merged
   }
 
-  resolved.element.setAttribute(ARK_MANAGED_ATTR, 'true')
   const elementId = ensureStableElementId(resolved.element)
   markElementChanged(context, resolved.slideIndex, elementId)
   context.summaries.push(`Updated style on ${elementId}.`)
@@ -840,17 +821,28 @@ function applyMoveElement(
     return patchable
   }
 
-  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
-    return { error: 'move_element requires an HTML element target.' }
-  }
-
-  const left = formatPixelValue(operation.x, ARK_SLIDE_REFERENCE_WIDTH)
-  const top = formatPixelValue(operation.y, ARK_SLIDE_REFERENCE_HEIGHT)
-  const merged = mergeInlineStyle(resolved.element, {
+  const slideWidth = operation.slideWidth ?? ARK_SLIDE_REFERENCE_WIDTH
+  const slideHeight = operation.slideHeight ?? ARK_SLIDE_REFERENCE_HEIGHT
+  const left = formatPixelValue(operation.cssX ?? operation.x, slideWidth)
+  const top = formatPixelValue(operation.cssY ?? operation.y, slideHeight)
+  const adopted = operation.width !== undefined || operation.height !== undefined
+  const style = {
     position: 'absolute',
     left,
     top,
-  })
+    ...(adopted ? { margin: '0', 'box-sizing': 'border-box' } : {}),
+    ...(operation.width === undefined
+      ? {}
+      : {
+          width: formatPixelValue(operation.cssWidth ?? operation.width, slideWidth),
+        }),
+    ...(operation.height === undefined
+      ? {}
+      : {
+          height: formatPixelValue(operation.cssHeight ?? operation.height, slideHeight),
+        }),
+  }
+  const merged = mergeInlineStyle(resolved.element, style)
 
   if ('error' in merged) {
     return merged
@@ -880,12 +872,10 @@ function applyResizeElement(
     return patchable
   }
 
-  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
-    return { error: 'resize_element requires an HTML element target.' }
-  }
-
-  const width = formatPixelValue(operation.width, ARK_SLIDE_REFERENCE_WIDTH)
-  const height = formatPixelValue(operation.height, ARK_SLIDE_REFERENCE_HEIGHT)
+  const slideWidth = operation.slideWidth ?? ARK_SLIDE_REFERENCE_WIDTH
+  const slideHeight = operation.slideHeight ?? ARK_SLIDE_REFERENCE_HEIGHT
+  const width = formatPixelValue(operation.cssWidth ?? operation.width, slideWidth)
+  const height = formatPixelValue(operation.cssHeight ?? operation.height, slideHeight)
   const merged = mergeInlineStyle(resolved.element, {
     position: 'absolute',
     width,
@@ -920,8 +910,10 @@ function applyReorderElement(
     return patchable
   }
 
-  if (!(resolved.element instanceof context.doc.defaultView!.HTMLElement)) {
-    return { error: 'reorder_element requires an HTML element target.' }
+  const position = context.doc.defaultView?.getComputedStyle(resolved.element).position
+
+  if (!position || position === 'static') {
+    return { error: 'reorder_element requires a positioned element target.' }
   }
 
   const targetZIndex = resolveReorderZIndex(resolved.element, operation)

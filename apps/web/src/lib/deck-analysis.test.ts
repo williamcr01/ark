@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
+import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
 
 import { analyzeDeckInBrowser } from './deck-analysis'
 
@@ -48,5 +49,12 @@ describe('analyzeDeckInBrowser', () => {
     expect(analysis.runtimeManifest.usesRevealAdapter).toBe(true)
     expect(analysis.hasExecutableContent).toBe(true)
     expect(analysis.usesStaticPreview).toBe(false)
+  })
+
+  it('reports when approved runtime decks execute deck-authored init scripts', () => {
+    const analysis = analyzeDeckInBrowser(revealChartDeck)
+
+    expect(analysis.runtimeMode).toBe('reveal')
+    expect(analysis.allowsDeckInitScripts).toBe(true)
   })
 })

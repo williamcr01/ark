@@ -94,9 +94,12 @@ export function useDeckPersistence() {
   const [saveError, setSaveError] = useState('')
   const saveRequestIdRef = useRef(0)
   const patchRequestIdRef = useRef(0)
+  const manualMutationQueueRef = useRef<Promise<void> | null>(null)
   const inspectRequestIdRef = useRef(0)
+  const htmlRef = useRef('')
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
+    htmlRef.current = deck.html
     setDeckId(deck.id)
     setDeckTitle(deck.title)
     setHtml(deck.html)
@@ -108,6 +111,7 @@ export function useDeckPersistence() {
   }, [])
 
   const clearActiveDeck = useCallback(() => {
+    htmlRef.current = ''
     clearActiveDeckId()
     setDeckId(null)
     setDeckTitle('')
@@ -238,6 +242,7 @@ export function useDeckPersistence() {
     async (nextHtml: string, options: DeckVersionOptions = {}) => {
       const requestId = ++saveRequestIdRef.current
 
+      htmlRef.current = nextHtml
       setHtml(nextHtml)
       // Unlock shell chrome before the save round-trip when the title is still
       // auto-derived from HTML (new decks or unsaved renames).
@@ -485,6 +490,7 @@ export function useDeckPersistence() {
     (patchResult: PatchDeckResponse) => {
       const { deck, patch } = patchResult
 
+      htmlRef.current = deck.html
       setHtml(deck.html)
       setSavedHtml(deck.html)
       setActiveVersionId(deck.activeVersionId ?? null)
@@ -498,99 +504,133 @@ export function useDeckPersistence() {
     [refreshVersions],
   )
 
+  const enqueueManualMutation = useCallback(<T>(mutation: () => Promise<T>) => {
+    const previous = manualMutationQueueRef.current
+    const result = previous ? previous.then(mutation, mutation) : mutation()
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    manualMutationQueueRef.current = settled
+    void settled.then(() => {
+      if (manualMutationQueueRef.current === settled) {
+        manualMutationQueueRef.current = null
+      }
+    })
+    return result
+  }, [])
+
   const restoreHtmlSnapshot = useCallback(
-    async (nextHtml: string, options: DeckVersionOptions = {}) => {
-      if (!deckId) {
-        throw new Error('Save the deck before editing.')
-      }
+    (nextHtml: string, options: DeckVersionOptions = {}) => {
+      const sessionId = saveRequestIdRef.current
 
-      const requestId = ++patchRequestIdRef.current
+      return enqueueManualMutation(async () => {
+        if (!deckId) {
+          throw new Error('Save the deck before editing.')
+        }
 
-      setIsPatching(true)
-      setSaveError('')
-
-      try {
-        // Keep source locked to manual so callers cannot override it and
-        // accidentally drop client provenance (accepted only for manual).
-        const deck = await updateDeck(deckId, nextHtml, { ...options, source: 'manual' })
-
-        if (requestId !== patchRequestIdRef.current) {
+        if (sessionId !== saveRequestIdRef.current) {
           return undefined
         }
 
-        setHtml(deck.html)
-        setSavedHtml(deck.html)
-        setActiveVersionId(deck.activeVersionId ?? null)
-        setVersionNumber(deck.versionNumber ?? null)
-        setPreviewVersion(null)
-        setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
-        void refreshVersions(deck.id)
-        return deck
-      } catch (error) {
-        if (requestId !== patchRequestIdRef.current) {
-          return undefined
-        }
+        const requestId = ++patchRequestIdRef.current
 
-        const message = error instanceof Error ? error.message : 'Could not update the deck.'
+        setIsPatching(true)
+        setSaveError('')
 
-        setSaveError(message)
-        throw error
-      } finally {
-        if (requestId === patchRequestIdRef.current) {
-          setIsPatching(false)
+        try {
+          // Keep source locked to manual so callers cannot override it and
+          // accidentally drop client provenance (accepted only for manual).
+          const deck = await updateDeck(deckId, nextHtml, { ...options, source: 'manual' })
+
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
+            return undefined
+          }
+
+          htmlRef.current = deck.html
+          setHtml(deck.html)
+          setSavedHtml(deck.html)
+          setActiveVersionId(deck.activeVersionId ?? null)
+          setVersionNumber(deck.versionNumber ?? null)
+          setPreviewVersion(null)
+          setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+          void refreshVersions(deck.id)
+          return deck
+        } catch (error) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
+            return undefined
+          }
+
+          const message = error instanceof Error ? error.message : 'Could not update the deck.'
+
+          setSaveError(message)
+          throw error
+        } finally {
+          if (requestId === patchRequestIdRef.current) {
+            setIsPatching(false)
+          }
         }
-      }
+      })
     },
-    [deckId, refreshVersions],
+    [deckId, enqueueManualMutation, refreshVersions],
   )
 
   const patchDeckOperations = useCallback(
-    async (
+    (
       operations: DeckPatchOperation[],
       activeSlideIndex?: number,
       options: DeckVersionOptions = {},
     ) => {
-      if (!deckId) {
-        throw new Error('Save the deck before editing.')
-      }
+      const sessionId = saveRequestIdRef.current
 
-      const requestId = ++patchRequestIdRef.current
+      return enqueueManualMutation(async () => {
+        if (!deckId) {
+          throw new Error('Save the deck before editing.')
+        }
 
-      setIsPatching(true)
-      setSaveError('')
-
-      try {
-        const patchResult = await patchDeck(deckId, {
-          operations,
-          activeSlideIndex,
-          source: options.source ?? 'manual',
-          summary: options.summary,
-          modelProvider: options.modelProvider,
-          modelName: options.modelName,
-        })
-
-        if (requestId !== patchRequestIdRef.current) {
+        if (sessionId !== saveRequestIdRef.current) {
           return undefined
         }
 
-        const suggestedSlideIndex = applyPatchedDeck(patchResult)
-        return { ...patchResult, suggestedSlideIndex }
-      } catch (error) {
-        if (requestId !== patchRequestIdRef.current) {
-          return undefined
-        }
+        const requestId = ++patchRequestIdRef.current
+        const beforeHtml = htmlRef.current
 
-        const message = error instanceof Error ? error.message : 'Could not patch the deck.'
+        setIsPatching(true)
+        setSaveError('')
 
-        setSaveError(message)
-        throw error
-      } finally {
-        if (requestId === patchRequestIdRef.current) {
-          setIsPatching(false)
+        try {
+          const patchResult = await patchDeck(deckId, {
+            operations,
+            activeSlideIndex,
+            source: options.source ?? 'manual',
+            summary: options.summary,
+            modelProvider: options.modelProvider,
+            modelName: options.modelName,
+          })
+
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
+            return undefined
+          }
+
+          const suggestedSlideIndex = applyPatchedDeck(patchResult)
+          return { ...patchResult, suggestedSlideIndex, beforeHtml }
+        } catch (error) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
+            return undefined
+          }
+
+          const message = error instanceof Error ? error.message : 'Could not patch the deck.'
+
+          setSaveError(message)
+          throw error
+        } finally {
+          if (requestId === patchRequestIdRef.current) {
+            setIsPatching(false)
+          }
         }
-      }
+      })
     },
-    [applyPatchedDeck, deckId],
+    [applyPatchedDeck, deckId, enqueueManualMutation],
   )
 
   const hasDeck = html.length > 0

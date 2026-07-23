@@ -1,5 +1,6 @@
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
+import { documentAllowsDeckInitScripts } from '@/lib/deck-runtime'
 import {
   buildDeckRuntimeManifestFromBrowserDocument,
   manifestIndicatesScriptStripping,
@@ -21,6 +22,7 @@ export type DeckBrowserAnalysis = ParsedDeck & {
   runtimeManifest: DeckRuntimeManifest
   runtimeMode: DeckRuntimeMode
   hasExecutableContent: boolean
+  allowsDeckInitScripts: boolean
   usesStaticPreview: boolean
 }
 
@@ -50,6 +52,7 @@ export function analyzeDeckInBrowser(
     runtimeManifest,
     runtimeMode: runtimeManifest.runtimeMode,
     hasExecutableContent,
+    allowsDeckInitScripts: documentAllowsDeckInitScripts(doc),
     usesStaticPreview: previewUsesStaticRendering(runtimeManifest, hasExecutableContent),
   }
 }

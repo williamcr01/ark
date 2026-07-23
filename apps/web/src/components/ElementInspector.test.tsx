@@ -16,6 +16,7 @@ function makeSelection(overrides: Partial<EditorSelectionInfo> = {}): EditorSele
     tagName: 'div',
     locked: false,
     managed: true,
+    geometryEditable: true,
     editableKind: 'text-box',
     textPreview: 'Hello world',
     imageFit: null,
@@ -154,15 +155,23 @@ describe('ElementInspector', () => {
     expect(screen.getByRole('button', { name: 'Unlock element' })).toBeEnabled()
   })
 
-  it('explains unmanaged uploaded-deck elements and disables edits', () => {
+  it('keeps geometry disabled until an unlocked unmanaged element is adopted', () => {
     renderInspector({
       selection: makeSelection({ managed: false, editableKind: null, tagName: 'h1' }),
     })
 
-    expect(screen.getByRole('note')).toHaveTextContent(/not ark-managed/i)
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: 'Font weight' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Send backward' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Lock element' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Lock element' })).toBeEnabled()
+  })
+
+  it('disables geometry outside the runtime-safe coordinate context', () => {
+    renderInspector({ selection: makeSelection({ geometryEditable: false }) })
+
+    expect(screen.getByRole('textbox', { name: 'X (%)' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Bring forward' })).toBeEnabled()
   })
 
   it('disables controls while saving', () => {

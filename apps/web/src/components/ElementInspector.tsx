@@ -325,6 +325,8 @@ export function ElementInspector({
   const disabledReason = getInspectorDisabledReason(selection)
   const busy = isSaving || textEditActive || !onApplyOperations
   const canModify = disabledReason === null && !busy
+  const canModifyGeometry = canModify && selection.managed && selection.geometryEditable === true
+  const canModifyLayer = canModify && selection.managed
   const textStyle = selection.textStyle ?? null
   const textAlign = textStyle ? normalizeTextAlign(textStyle.textAlign) : 'left'
   const colorValue =
@@ -481,7 +483,7 @@ export function ElementInspector({
             <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
               {GEOMETRY_FIELDS.map(({ field, label, summary }) => (
                 <CommitNumberField
-                  disabled={!canModify}
+                  disabled={!canModifyGeometry}
                   key={field}
                   label={label}
                   onCommit={(raw) => commitGeometryField(field, raw, summary)}
@@ -504,14 +506,14 @@ export function ElementInspector({
             </span>
             <ButtonGroup aria-label="Layer order">
               <InspectorIconButton
-                disabled={!canModify}
+                disabled={!canModifyLayer}
                 label="Bring forward"
                 onClick={() => commitReorder('front')}
               >
                 <ArrowUpIcon className="size-3.5" />
               </InspectorIconButton>
               <InspectorIconButton
-                disabled={!canModify}
+                disabled={!canModifyLayer}
                 label="Send backward"
                 onClick={() => commitReorder('back')}
               >
@@ -666,7 +668,7 @@ export function ElementInspector({
               'hover:bg-[var(--ark-titlebar-hover)]',
               'disabled:cursor-not-allowed disabled:text-[var(--ark-titlebar-muted)]/50',
             )}
-            disabled={busy || (!selection.locked && !selection.managed)}
+            disabled={busy}
             onClick={commitLockToggle}
             type="button"
           >

@@ -80,8 +80,8 @@ export type DeckRuntimeErrorMessage = {
 
 /**
  * Generation-correlation handshake posted by the Ark-injected head sentinel.
- * Not a secret: full-JS deck code can read the document. Used only to confirm
- * the expected preview document started executing before ordinary bridge traffic.
+ * The sentinel removes its script node before deck code runs so the value can
+ * also authenticate the editor's private MessagePort bootstrap.
  */
 export type DeckHandshakeMessage = {
   type: typeof DECK_HANDSHAKE_MESSAGE_TYPE
@@ -302,20 +302,45 @@ export function getDeckBridgeTargetOrigin(parentOrigin?: string | null) {
 export function buildDeckHandshakeSentinelScript(
   handshake: string,
   parentOrigin?: string | null,
+  editorSessionHandoffKey?: string | null,
 ): string {
   const targetOrigin = JSON.stringify(getDeckBridgeTargetOrigin(parentOrigin))
   const handshakeLiteral = JSON.stringify(handshake)
+  const handoffKeyLiteral = JSON.stringify(editorSessionHandoffKey?.trim() || '')
 
   return `(function () {
   var handshake = ${handshakeLiteral};
   var targetOrigin = ${targetOrigin};
+  var editorSessionHandoffKey = ${handoffKeyLiteral};
+  var ownScript = document.currentScript;
+  var parentWindow = window.parent;
+  var safeParentPostMessage =
+    parentWindow && parentWindow !== window && typeof parentWindow.postMessage === 'function'
+      ? parentWindow.postMessage.bind(parentWindow)
+      : null;
+  var safeSetTimeout = window.setTimeout.bind(window);
   var delays = [0, 0, 50, 200];
   var attempt = 0;
 
+  if (editorSessionHandoffKey) {
+    try {
+      Object.defineProperty(window, editorSessionHandoffKey, {
+        configurable: true,
+        value: handshake
+      });
+    } catch (error) {
+      window[editorSessionHandoffKey] = handshake;
+    }
+  }
+
+  if (ownScript && ownScript.parentNode) {
+    ownScript.parentNode.removeChild(ownScript);
+  }
+
   function postHandshake() {
     try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({
+      if (safeParentPostMessage) {
+        safeParentPostMessage({
           type: ${JSON.stringify(DECK_HANDSHAKE_MESSAGE_TYPE)},
           handshake: handshake,
           protocolVersion: ${DECK_BRIDGE_PROTOCOL_VERSION}
@@ -328,7 +353,7 @@ export function buildDeckHandshakeSentinelScript(
     }
 
     attempt += 1;
-    setTimeout(postHandshake, delays[attempt]);
+    safeSetTimeout(postHandshake, delays[attempt]);
   }
 
   postHandshake();
@@ -730,7 +755,10 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
   }
 
   function handleNavKey(event) {
-    if (isTypingTarget(event.target) || document.querySelector('[data-ark-editor-text-edit]')) {
+    if (
+      isTypingTarget(event.target) ||
+      document.querySelector('[data-ark-editor-text-edit], [data-ark-editor-selected]')
+    ) {
       return;
     }
 

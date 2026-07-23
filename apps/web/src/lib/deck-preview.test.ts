@@ -10,6 +10,10 @@ import {
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
 } from '@ark/deck-core/deck-bridge.ts'
+import {
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+} from '@ark/deck-core/deck-metadata.ts'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import chartRegistryDeck from '@fixtures/chart-registry-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
@@ -24,8 +28,19 @@ import {
   detectRuntimeMode,
   getPreviewHtml,
   getPreviewSandbox,
+  PREVIEW_FRAME_HEIGHT,
+  PREVIEW_FRAME_WIDTH,
   PREVIEW_IFRAME_SECURITY_PROPS,
 } from './deck-preview'
+
+describe('preview geometry', () => {
+  it('uses the same pixel dimensions as persisted normalized geometry', () => {
+    expect([PREVIEW_FRAME_WIDTH, PREVIEW_FRAME_HEIGHT]).toEqual([
+      ARK_SLIDE_REFERENCE_WIDTH,
+      ARK_SLIDE_REFERENCE_HEIGHT,
+    ])
+  })
+})
 
 function loadExecutablePreview(html: string) {
   return new Promise<JSDOM>((resolve) => {
@@ -250,6 +265,22 @@ describe('getPreviewHtml', () => {
     expect(withEditor).toContain('data-ark-preview-nav')
     expect(withEditor).toContain("connect-src 'none'")
     expect(withEditor).toMatch(/<script[^>]*data-ark-preview-editor[^>]*nonce="/)
+  })
+
+  it('boots the private editor channel before full-JS deck scripts', () => {
+    const previewHtml = getPreviewHtml(fullJsDeck, {
+      editorBridge: true,
+      handshake: 'editor-capability',
+    })
+    const handshakeIndex = previewHtml.indexOf('data-ark-preview-handshake')
+    const editorIndex = previewHtml.indexOf('data-ark-preview-editor')
+    const deckScriptIndex = previewHtml.indexOf('window.fullJsDeckBooted = true')
+
+    expect(handshakeIndex).toBeGreaterThan(-1)
+    expect(editorIndex).toBeGreaterThan(handshakeIndex)
+    expect(deckScriptIndex).toBeGreaterThan(editorIndex)
+    expect(previewHtml).toContain('__arkEditorSessionV1')
+    expect(previewHtml).toContain('ark:editor-connect')
   })
 
   it('keeps deck scripts and injects only the bridge for explicit custom-js decks', () => {

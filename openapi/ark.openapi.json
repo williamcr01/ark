@@ -1250,7 +1250,31 @@
                             "slideId": { "type": "string", "minLength": 1 },
                             "elementId": { "type": "string", "minLength": 1 },
                             "x": { "type": "number", "minimum": 0, "maximum": 1 },
-                            "y": { "type": "number", "minimum": 0, "maximum": 1 }
+                            "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "cssX": { "type": "number", "minimum": -10, "maximum": 10 },
+                            "cssY": { "type": "number", "minimum": -10, "maximum": 10 },
+                            "cssWidth": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "cssHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideWidth": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "width": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "height": { "type": "number", "minimum": 0, "maximum": 1 }
                           },
                           "required": ["op", "elementId", "x", "y"]
                         },
@@ -1262,7 +1286,27 @@
                             "slideId": { "type": "string", "minLength": 1 },
                             "elementId": { "type": "string", "minLength": 1 },
                             "width": { "type": "number", "minimum": 0, "maximum": 1 },
-                            "height": { "type": "number", "minimum": 0, "maximum": 1 }
+                            "height": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "cssWidth": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "cssHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideWidth": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "slideHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            }
                           },
                           "required": ["op", "elementId", "width", "height"]
                         },

@@ -50,6 +50,19 @@ describe('useDeckPreviewFrame srcDoc keying', () => {
     expect(view.result.current.handshake).toBe(viewHandshake)
   })
 
+  it('changes iframeKey when the same source must be reloaded', () => {
+    const view = renderHook(
+      ({ reloadRevision }) =>
+        useDeckPreviewFrame('<section class="slide">Hi</section>', true, reloadRevision),
+      { initialProps: { reloadRevision: 0 } },
+    )
+
+    const viewKey = view.result.current.iframeKey
+    view.rerender({ reloadRevision: 1 })
+
+    expect(view.result.current.iframeKey).not.toBe(viewKey)
+  })
+
   it('always injects the dormant editor runtime for interactive previews', () => {
     const view = renderHook(() => useDeckPreviewFrame('<section class="slide">Hi</section>', true))
 

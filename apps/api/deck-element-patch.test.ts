@@ -57,6 +57,16 @@ const arkManagedLinkDeck = `<!DOCTYPE html>
 </body>
 </html>`
 
+const inlineSvgDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>SVG</title></head>
+<body>
+  <section class="slide">
+    <svg data-ark-id="ark-el-svg" style="left: 200px" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /></svg>
+  </section>
+</body>
+</html>`
+
 function expectValidDeck(html: string) {
   const validation = validateDeckHtmlOnServer(html)
   expect(validation.valid).toBe(true)
@@ -98,7 +108,7 @@ describe('applyDeckPatches element operations', () => {
 </body>
 </html>`
     const elementId = parseDeckHtml(nestedDeck).editableElements[0]?.elements.find(
-      (element) => element.textPreview === 'Nested copy',
+      (element) => element.tagName === 'p' && element.textPreview === 'Nested copy',
     )?.id
 
     expect(elementId).toBe('transient-el-0-0.0')
@@ -294,8 +304,10 @@ describe('applyDeckPatches element operations', () => {
 
     expect(duplicated.html.match(/Opening/g)?.length).toBe(2)
     // Only the pre-existing managed body copy stays absolutely positioned; the
-    // flow-positioned heading clone must not be ripped out of flow.
+    // flow-positioned heading clone must not be ripped out of flow or marked as
+    // adopted layout.
     expect(duplicated.html.match(/position: absolute/g)?.length).toBe(1)
+    expect(duplicated.html.match(/data-ark-managed="true"/g)?.length).toBe(1)
   })
 
   it('moves, resizes, and reorders managed elements using normalized geometry', () => {
@@ -326,6 +338,8 @@ describe('applyDeckPatches element operations', () => {
         elementId: 'ark-el-body',
         width: 0.5,
         height: 0.25,
+        cssWidth: 0.4,
+        cssHeight: 0.2,
       },
     ])
 
@@ -334,8 +348,8 @@ describe('applyDeckPatches element operations', () => {
       return
     }
 
-    const expectedWidth = `${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`
-    const expectedHeight = `${Math.round(0.25 * ARK_SLIDE_REFERENCE_HEIGHT)}px`
+    const expectedWidth = `${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`
+    const expectedHeight = `${Math.round(0.2 * ARK_SLIDE_REFERENCE_HEIGHT)}px`
     expect(resized.html).toContain(`width: ${expectedWidth}`)
     expect(resized.html).toContain(`height: ${expectedHeight}`)
 
@@ -354,6 +368,268 @@ describe('applyDeckPatches element operations', () => {
     }
 
     expect(reordered.html).toContain('z-index: 5')
+  })
+
+  it('adopts unmanaged elements on move and preserves their measured size', () => {
+    const moved = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        x: 0.25,
+        y: 0.1,
+        width: 0.4,
+        height: 0.15,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.html).toMatch(/data-ark-id="ark-el-title"[^>]*data-ark-managed="true"/)
+    expect(moved.html).toMatch(/data-ark-id="ark-el-title"[^>]*position: absolute/)
+    expect(moved.html).toContain(`width: ${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(moved.html).toContain(`height: ${Math.round(0.15 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(moved.html).toContain('margin: 0')
+    expect(moved.html).toContain('box-sizing: border-box')
+  })
+
+  it('adopts and resizes a transient element in one move_element', () => {
+    const transientDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Transient</title></head>
+<body>
+  <section class="slide">
+    <h1>Opening</h1>
+  </section>
+</body>
+</html>`
+    const elementId = parseDeckHtml(transientDeck).editableElements[0]?.elements.find(
+      (element) => element.tagName === 'h1',
+    )?.id
+
+    expect(elementId).toMatch(/^transient-el-/)
+
+    // move stamps a stable id; a follow-up resize under the same transient id would
+    // fail assertElementPatchable — adopted resize must stay one operation.
+    const moved = applyDeckPatches(transientDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: elementId!,
+        x: 0.1,
+        y: 0.2,
+        width: 0.5,
+        height: 0.2,
+        cssWidth: 0.5,
+        cssHeight: 0.2,
+        slideWidth: 1280,
+        slideHeight: 720,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.changedElementIds.some((id) => id.startsWith('ark-el-'))).toBe(true)
+    expect(moved.html).toContain('data-ark-managed="true"')
+    expect(moved.html).toContain(`width: ${Math.round(0.5 * 1280)}px`)
+    expect(moved.html).toContain(`height: ${Math.round(0.2 * 720)}px`)
+
+    const split = applyDeckPatches(transientDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: elementId!,
+        x: 0.1,
+        y: 0.2,
+        width: 0.5,
+      },
+      {
+        op: 'resize_element',
+        slideIndex: 0,
+        elementId: elementId!,
+        width: 0.5,
+        height: 0.2,
+      },
+    ])
+
+    expect(split.ok).toBe(false)
+    if (split.ok) {
+      return
+    }
+
+    expect(split.error).toContain('not a recognized editable target')
+  })
+
+  it('rejects reordering a static inline SVG without changing its positioning', () => {
+    const reordered = applyDeckPatches(inlineSvgDeck, [
+      {
+        op: 'reorder_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        direction: 'front',
+      },
+    ])
+
+    expect(reordered).toEqual({
+      ok: false,
+      error: 'reorder_element requires a positioned element target.',
+      operationIndex: 0,
+    })
+  })
+
+  it('moves, resizes, and duplicates an inline SVG element', () => {
+    const moved = applyDeckPatches(inlineSvgDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        x: 0.25,
+        y: 0.1,
+        width: 0.4,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.html).toMatch(/<svg[^>]*data-ark-managed="true"/)
+    expect(moved.html).toContain(`left: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(moved.html).toContain(`top: ${Math.round(0.1 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(moved.html).toContain(`width: ${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+
+    const resized = applyDeckPatches(moved.html, [
+      {
+        op: 'resize_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+        width: 0.5,
+        height: 0.25,
+      },
+    ])
+
+    expect(resized.ok).toBe(true)
+    if (!resized.ok) {
+      return
+    }
+
+    expect(resized.html).toContain(`width: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(resized.html).toContain(`height: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+
+    const duplicated = applyDeckPatches(resized.html, [
+      {
+        op: 'duplicate_element',
+        slideIndex: 0,
+        elementId: 'ark-el-svg',
+      },
+    ])
+
+    expect(duplicated.ok).toBe(true)
+    if (!duplicated.ok) {
+      return
+    }
+
+    expect(duplicated.html.match(/<svg/g)).toHaveLength(2)
+  })
+
+  it('uses the runtime logical slide size for Reveal transforms', () => {
+    const moved = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        x: 0.25,
+        y: 0.1,
+        cssX: 0.25,
+        cssY: 0.1,
+        cssWidth: 0.4,
+        width: 0.4,
+        slideWidth: 960,
+        slideHeight: 700,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.html).toContain('left: 240px')
+    expect(moved.html).toContain('top: 70px')
+    expect(moved.html).toContain('width: 384px')
+  })
+
+  it('preserves an adopted element parent and applies containing-block coordinates', () => {
+    const moved = applyDeckPatches(
+      `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Nested adoption</title></head>
+<body>
+  <section class="slide">
+    <div style="position: relative; margin-left: 200px;">
+      <h1 data-ark-id="ark-el-nested">Nested title</h1>
+    </div>
+  </section>
+</body>
+</html>`,
+      [
+        {
+          op: 'move_element',
+          slideIndex: 0,
+          elementId: 'ark-el-nested',
+          x: 0.25,
+          y: 0.1,
+          cssX: 0.09375,
+          cssY: 0.1,
+          cssWidth: 0.35,
+          width: 0.4,
+        },
+      ],
+    )
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.html.indexOf('data-ark-id="ark-el-nested"')).toBeLessThan(
+      moved.html.indexOf('</div>'),
+    )
+    expect(moved.html).toContain(`left: ${Math.round(0.09375 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(moved.html).toContain(`top: ${Math.round(0.1 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(moved.html).toContain(`width: ${Math.round(0.35 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+  })
+
+  it('uses containing-block coordinates for an already-absolute nested element', () => {
+    const moved = applyDeckPatches(
+      `<!DOCTYPE html><html lang="en"><head><title>Nested absolute</title></head><body>
+        <section class="slide"><div style="position: relative; margin-left: 200px;">
+          <h1 data-ark-id="ark-el-nested" style="position: absolute; left: 20px; top: 30px;">Title</h1>
+        </div></section></body></html>`,
+      [
+        {
+          op: 'move_element',
+          slideIndex: 0,
+          elementId: 'ark-el-nested',
+          x: 0.25,
+          y: 0.1,
+          cssX: 0.09375,
+          cssY: 0.1,
+        },
+      ],
+    )
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) return
+    expect(moved.html).toContain(`left: ${Math.round(0.09375 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(moved.html).toContain(`top: ${Math.round(0.1 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
   })
 
   it('reorders relative to siblings when given a direction', () => {
@@ -405,6 +681,23 @@ describe('applyDeckPatches element operations', () => {
   })
 
   it('applies inline style updates and lock management', () => {
+    const flowStyled = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'set_inline_style',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        style: { 'font-size': '32px' },
+      },
+    ])
+
+    expect(flowStyled.ok).toBe(true)
+    if (!flowStyled.ok) {
+      return
+    }
+
+    expect(flowStyled.html).toMatch(/<h1[^>]*font-size: 32px/)
+    expect(flowStyled.html).not.toMatch(/<h1[^>]*data-ark-managed/)
+
     const styled = applyDeckPatches(arkManagedDeck, [
       {
         op: 'set_inline_style',
@@ -503,10 +796,11 @@ describe('applyDeckPatches element operations', () => {
     expect(
       applyDeckPatches(arkManagedDeck, [
         {
-          op: 'replace_text',
+          op: 'move_element',
           slideIndex: 0,
           elementId: 'ark-el-locked',
-          text: 'Still locked',
+          x: 0.1,
+          y: 0.1,
         },
       ]),
     ).toMatchObject({ ok: false, error: expect.stringContaining('locked') })
@@ -519,9 +813,11 @@ describe('applyDeckPatches element operations', () => {
     expect(
       applyDeckPatches(arkManagedDeck, [
         {
-          op: 'delete_element',
+          op: 'move_element',
           slideIndex: 0,
           elementId: notesId,
+          x: 0.1,
+          y: 0.1,
         },
       ]),
     ).toMatchObject({ ok: false, error: expect.stringContaining('not editable') })

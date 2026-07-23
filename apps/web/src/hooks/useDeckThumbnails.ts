@@ -34,6 +34,7 @@ async function fetchDeckThumbnails(deckId: string, versionId: string, signal: Ab
 function toThumbnailUrls(
   payload: DeckThumbnailsResponse,
   slideCount: number,
+  previousUrls: (string | null)[] | null,
 ): (string | null)[] | null {
   if (payload.status !== 'ready' || payload.slides.length === 0) {
     return null
@@ -43,11 +44,33 @@ function toThumbnailUrls(
 
   for (const slide of payload.slides) {
     if (slide.index >= 0 && slide.index < slideCount) {
-      urls[slide.index] = slide.url
+      const previousUrl = previousUrls?.[slide.index] ?? null
+      urls[slide.index] = canReuseThumbnailUrl(previousUrl, slide.url) ? previousUrl : slide.url
     }
   }
 
   return urls.every((url) => url === null) ? null : urls
+}
+
+function getThumbnailHash(url: string) {
+  try {
+    return new URL(url, 'http://ark.invalid').searchParams.get('hash')
+  } catch {
+    return null
+  }
+}
+
+function canReuseThumbnailUrl(previousUrl: string | null, nextUrl: string) {
+  if (!previousUrl) {
+    return false
+  }
+
+  if (previousUrl === nextUrl) {
+    return true
+  }
+
+  const previousHash = getThumbnailHash(previousUrl)
+  return Boolean(previousHash && previousHash === getThumbnailHash(nextUrl))
 }
 
 export function useDeckThumbnails(
@@ -66,27 +89,46 @@ export function useDeckThumbnails(
   // fetches for that deck. Rapid undo/redo otherwise hammers /thumbnails during
   // preview reloads (manual-edit smoke). Accessed only from effects.
   const disabledDeckIdsRef = useRef(new Set<string>())
-  // Tracks the deck+version the current state belongs to so a version change
-  // clears stale thumbnails immediately instead of showing the previous
-  // version's images until the next fetch resolves. Accessed only from effects.
-  const stateKeyRef = useRef<string | null>(null)
+  // Version URLs are immutable, but identical per-slide hashes point at the
+  // same rendered pixels. Keep those URLs stable across edits so unchanged
+  // thumbnail <img> elements do not reload.
+  const stateKeyRef = useRef<{
+    deckId: string
+    versionId: string
+    slideCount: number
+  } | null>(null)
 
   useEffect(() => {
     if (!enabled || !deckId || !versionId) {
       return
     }
 
-    if (disabledDeckIdsRef.current.has(deckId)) {
-      return
+    const previousStateKey = stateKeyRef.current
+    const deckOrStructureChanged =
+      previousStateKey !== null &&
+      (previousStateKey.deckId !== deckId || previousStateKey.slideCount !== slideCount)
+    const versionChanged =
+      previousStateKey === null ||
+      previousStateKey.deckId !== deckId ||
+      previousStateKey.versionId !== versionId ||
+      previousStateKey.slideCount !== slideCount
+
+    if (versionChanged) {
+      stateKeyRef.current = { deckId, versionId, slideCount }
+      setStatus(null)
+      setError(null)
+
+      if (deckOrStructureChanged) {
+        setThumbnailUrls(null)
+      }
     }
 
-    const stateKey = `${deckId}:${versionId}`
-
-    if (stateKeyRef.current !== stateKey) {
-      stateKeyRef.current = stateKey
-      setStatus(null)
+    if (disabledDeckIdsRef.current.has(deckId)) {
+      setStatus('disabled')
       setThumbnailUrls(null)
       setError(null)
+      setIsLoading(false)
+      return
     }
 
     let cancelled = false
@@ -128,15 +170,13 @@ export function useDeckThumbnails(
         setError(payload.error ?? null)
 
         if (payload.status === 'ready') {
-          setThumbnailUrls(toThumbnailUrls(payload, slideCount))
+          setThumbnailUrls((current) => toThumbnailUrls(payload, slideCount, current))
           if (activeController === controller) {
             activeController = null
           }
           setIsLoading(false)
           return
         }
-
-        setThumbnailUrls(null)
 
         if (payload.status === 'pending') {
           if (activeController === controller) {
@@ -145,6 +185,8 @@ export function useDeckThumbnails(
           schedulePoll()
           return
         }
+
+        setThumbnailUrls(null)
 
         if (activeController === controller) {
           activeController = null

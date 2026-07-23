@@ -33,7 +33,6 @@ import {
   isDeckSlideCountMessage,
   parseDeckBridgeMessage,
 } from './deck-bridge'
-
 describe('deck bridge protocol', () => {
   const metadata = createDeckMetadata({
     runtime: 'plain',
@@ -87,7 +86,7 @@ describe('deck bridge protocol', () => {
     )
     expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('hs-abc')
     // Retries cover parents that attach the handshake listener after first paint.
-    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('setTimeout(postHandshake')
+    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('safeSetTimeout(postHandshake')
   })
 
   it('validates known bridge messages and rejects malformed payloads', () => {
@@ -135,6 +134,16 @@ describe('deck bridge protocol', () => {
 
     expect(script).toContain('isTypingTarget')
     expect(script).toContain('data-ark-editor-text-edit')
+    expect(script).toContain('data-ark-editor-selected')
+  })
+})
+
+describe('Reveal adapter', () => {
+  it('preserves Reveal deck dimensions', () => {
+    const script = buildRevealNavRuntimeScript({ previewMode: 'full-js' })
+
+    expect(script).not.toContain('width: C.SLIDE_WIDTH')
+    expect(script).not.toContain('height: C.SLIDE_HEIGHT')
   })
 
   it('dispatches ark:deck-slide-change DOM events from the reveal adapter', () => {

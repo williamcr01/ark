@@ -1,5 +1,9 @@
 import type { CSSProperties, IframeHTMLAttributes } from 'react'
 
+import {
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+} from '@ark/deck-core/deck-metadata.ts'
 import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-core/deck-preview-html.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
@@ -23,8 +27,8 @@ export {
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
 } from '@ark/deck-core/deck-bridge.ts'
 
-export const PREVIEW_FRAME_WIDTH = 1600
-export const PREVIEW_FRAME_HEIGHT = 900
+export const PREVIEW_FRAME_WIDTH = ARK_SLIDE_REFERENCE_WIDTH
+export const PREVIEW_FRAME_HEIGHT = ARK_SLIDE_REFERENCE_HEIGHT
 export const PREVIEW_FRAME_ASPECT_RATIO = `${PREVIEW_FRAME_WIDTH} / ${PREVIEW_FRAME_HEIGHT}`
 
 export type ElementSize = {

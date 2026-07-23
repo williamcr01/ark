@@ -12,6 +12,7 @@ const restoreHtmlSnapshot = vi.hoisted(() =>
     updatedAt: '2026-01-01T00:00:00.000Z',
   }),
 )
+const patchDeckOperations = vi.hoisted(() => vi.fn())
 const historyState = vi.hoisted(() => {
   const entry = {
     beforeHtml: '<html>before</html>',
@@ -32,6 +33,7 @@ const historyState = vi.hoisted(() => {
     entry,
     commitUndo: vi.fn(),
     commitRedo: vi.fn(),
+    record: vi.fn(),
     canUndo: true,
     canRedo: true,
   }
@@ -61,7 +63,7 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     deckTitle: 'Deck',
     decks: [],
     deleteActiveDeck: vi.fn(),
-    patchDeckOperations: vi.fn(),
+    patchDeckOperations,
     persistHtml: vi.fn(),
     previewVersion: null,
     refreshActiveDeck: vi.fn(),
@@ -83,7 +85,7 @@ vi.mock('@/hooks/useDeckEditHistory', () => ({
     canRedo: historyState.canRedo,
     undoEntry: historyState.canUndo ? historyState.entry : null,
     redoEntry: historyState.canRedo ? historyState.entry : null,
-    record: vi.fn(),
+    record: historyState.record,
     commitUndo: historyState.commitUndo,
     commitRedo: historyState.commitRedo,
     reset: vi.fn(),
@@ -174,6 +176,11 @@ vi.mock('@/components/DeckPreview', () => ({
     canRedo?: boolean
     onUndo?: () => void | Promise<void>
     onRedo?: () => void | Promise<void>
+    onPatchEditorOperations?: (
+      operations: unknown[],
+      slideIndex: number,
+      summary: string,
+    ) => Promise<unknown>
   }) => (
     <div data-testid="deck-preview">
       <button disabled={!props.canUndo} onClick={() => void props.onUndo?.()} type="button">
@@ -181,6 +188,17 @@ vi.mock('@/components/DeckPreview', () => ({
       </button>
       <button disabled={!props.canRedo} onClick={() => void props.onRedo?.()} type="button">
         Redo
+      </button>
+      <button
+        onClick={() =>
+          void (async () => {
+            await props.onPatchEditorOperations?.([], 0, 'Dragged element')
+            await props.onPatchEditorOperations?.([], 0, 'Duplicated element')
+          })()
+        }
+        type="button"
+      >
+        Drag then duplicate
       </button>
     </div>
   ),
@@ -196,6 +214,8 @@ describe('App undo/redo version provenance', () => {
     restoreHtmlSnapshot.mockClear()
     historyState.commitUndo.mockClear()
     historyState.commitRedo.mockClear()
+    historyState.record.mockClear()
+    patchDeckOperations.mockReset()
   })
 
   afterEach(() => {
@@ -238,5 +258,31 @@ describe('App undo/redo version provenance', () => {
       })
     })
     expect(historyState.commitRedo).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps drag and immediate duplicate as separate undo snapshots', async () => {
+    patchDeckOperations
+      .mockResolvedValueOnce({
+        deck: { html: '<html>dragged</html>' },
+        patch: { changedSlideIndexes: [0], changedElementIds: ['ark-el-1'] },
+      })
+      .mockResolvedValueOnce({
+        deck: { html: '<html>duplicated</html>' },
+        patch: { changedSlideIndexes: [0], changedElementIds: ['ark-el-2'] },
+      })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Drag then duplicate' }))
+    await waitFor(() => expect(historyState.record).toHaveBeenCalledTimes(2))
+
+    expect(historyState.record.mock.calls[0]?.[0]).toMatchObject({
+      beforeHtml: '<html>after</html>',
+      afterHtml: '<html>dragged</html>',
+    })
+    expect(historyState.record.mock.calls[1]?.[0]).toMatchObject({
+      beforeHtml: '<html>dragged</html>',
+      afterHtml: '<html>duplicated</html>',
+    })
   })
 })

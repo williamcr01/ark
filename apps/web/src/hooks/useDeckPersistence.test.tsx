@@ -570,6 +570,166 @@ describe('useDeckPersistence', () => {
     expect(result.current.isSaving).toBe(false)
   })
 
+  it('serializes manual patches before issuing the next request', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    let resolveFirstPatch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
+    const firstPatchGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolveFirstPatch = resolve
+    })
+    const firstDeck = { ...deck, html: sampleHtml.replace('One', 'First'), versionNumber: 2 }
+    const secondDeck = { ...deck, html: sampleHtml.replace('One', 'Second'), versionNumber: 3 }
+    let patchCalls = 0
+    const patchResponse = (patchedDeck: typeof deck, elementId: string) =>
+      jsonResponse({
+        deck: patchedDeck,
+        validation: validValidation,
+        patch: {
+          appliedCount: 1,
+          changedSlideIndexes: [0],
+          changedElementIds: [elementId],
+          summary: 'Patched',
+          suggestedActiveSlideIndex: 0,
+        },
+      })
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url === '/api/decks') {
+        return Promise.resolve(jsonResponse({ decks: [toSummary(deck)] }))
+      }
+      if (url === `/api/decks/${deck.id}` && init?.method !== 'POST') {
+        return Promise.resolve(jsonResponse({ deck }))
+      }
+      if (url.includes('/versions')) {
+        return Promise.resolve(versionsResponse(deck.id))
+      }
+      if (url === `/api/decks/${deck.id}/patch`) {
+        patchCalls += 1
+        return patchCalls === 1
+          ? firstPatchGate
+          : Promise.resolve(patchResponse(secondDeck, 'ark-el-second'))
+      }
+
+      return Promise.resolve(jsonResponse({ error: 'Not found' }, { status: 404 }))
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    let firstPromise: ReturnType<typeof result.current.patchDeckOperations>
+    let secondPromise: ReturnType<typeof result.current.patchDeckOperations>
+    act(() => {
+      firstPromise = result.current.patchDeckOperations([
+        { op: 'replace_text', elementId: 'ark-el-first', slideIndex: 0, text: 'First' },
+      ])
+      secondPromise = result.current.patchDeckOperations([
+        { op: 'replace_text', elementId: 'ark-el-second', slideIndex: 0, text: 'Second' },
+      ])
+    })
+
+    expect(patchCalls).toBe(1)
+    resolveFirstPatch!(patchResponse(firstDeck, 'ark-el-first'))
+
+    await waitFor(() => expect(patchCalls).toBe(2))
+    let patchResults: Awaited<typeof firstPromise>[] = []
+    await act(async () => {
+      patchResults = await Promise.all([firstPromise, secondPromise])
+    })
+
+    expect(result.current.html).toBe(secondDeck.html)
+    expect(patchResults[0]?.beforeHtml).toBe(deck.html)
+    expect(patchResults[1]?.beforeHtml).toBe(firstDeck.html)
+  })
+
+  it('does not apply a completed patch after switching decks', async () => {
+    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
+
+    let resolvePatch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
+    const patchGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolvePatch = resolve
+    })
+    const patchedDeck = {
+      ...deck,
+      html: sampleHtml.replace('One', 'Patched A'),
+      activeVersionId: 'a0000000-0000-4000-8000-000000000002',
+      versionNumber: 2,
+    }
+    const activeSecondDeck = {
+      ...secondDeck,
+      activeVersionId: 'b0000000-0000-4000-8000-000000000007',
+      versionNumber: 7,
+    }
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo) => {
+      const url = String(input)
+
+      if (url === '/api/decks') {
+        return Promise.resolve(
+          jsonResponse({ decks: [toSummary(deck), toSummary(activeSecondDeck)] }),
+        )
+      }
+      if (url === `/api/decks/${deck.id}/patch`) {
+        return patchGate
+      }
+      if (url === `/api/decks/${deck.id}`) {
+        return Promise.resolve(jsonResponse({ deck }))
+      }
+      if (url === `/api/decks/${activeSecondDeck.id}`) {
+        return Promise.resolve(jsonResponse({ deck: activeSecondDeck }))
+      }
+      if (url.includes('/versions')) {
+        return Promise.resolve(
+          versionsResponse(url.includes(activeSecondDeck.id) ? activeSecondDeck.id : deck.id),
+        )
+      }
+
+      return Promise.resolve(jsonResponse({ error: 'Not found' }, { status: 404 }))
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence())
+
+    await waitFor(() => expect(result.current.deckId).toBe(deck.id))
+
+    let patchPromise: Promise<unknown> | undefined
+    act(() => {
+      patchPromise = result.current.patchDeckOperations([
+        { op: 'replace_text', elementId: 'ark-el-a', slideIndex: 0, text: 'Patched A' },
+      ])
+    })
+    await waitFor(() => expect(result.current.isPatching).toBe(true))
+
+    await act(async () => {
+      await result.current.selectDeck(activeSecondDeck.id)
+    })
+
+    resolvePatch!(
+      jsonResponse({
+        deck: patchedDeck,
+        validation: validValidation,
+        patch: {
+          appliedCount: 1,
+          changedSlideIndexes: [0],
+          changedElementIds: ['ark-el-a'],
+          summary: 'Patched A',
+          suggestedActiveSlideIndex: 0,
+        },
+      }),
+    )
+    await act(async () => {
+      await patchPromise
+    })
+
+    expect(result.current.deckId).toBe(activeSecondDeck.id)
+    expect(result.current.deckTitle).toBe(activeSecondDeck.title)
+    expect(result.current.html).toBe(activeSecondDeck.html)
+    expect(result.current.activeVersionId).toBe(activeSecondDeck.activeVersionId)
+    expect(result.current.versionNumber).toBe(activeSecondDeck.versionNumber)
+    expect(result.current.isPatching).toBe(false)
+  })
+
   it('forwards provenance on restoreHtmlSnapshot PUT requests', async () => {
     getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
 

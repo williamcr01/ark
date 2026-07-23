@@ -106,6 +106,56 @@ describe('stripDeckScriptsForPreview', () => {
 })
 
 describe('parseDeckSlides', () => {
+  it('changes the fallback shared key only for cross-slide influences', () => {
+    const before = parseDeckSlides(`
+      <html>
+        <head><style>.slide { color: navy; }</style></head>
+        <body>
+          <section class="slide"><h1>Before</h1></section>
+          <section class="slide"><p>Unchanged</p></section>
+        </body>
+      </html>
+    `)
+    const copyEdit = parseDeckSlides(`
+      <html>
+        <head><style>.slide { color: navy; }</style></head>
+        <body>
+          <section class="slide"><h1>After</h1></section>
+          <section class="slide"><p>Unchanged</p></section>
+        </body>
+      </html>
+    `)
+    const sharedStyleEdit = parseDeckSlides(`
+      <html>
+        <head><style>.slide { color: maroon; }</style></head>
+        <body>
+          <section class="slide"><h1>After</h1></section>
+          <section class="slide"><p>Unchanged</p></section>
+        </body>
+      </html>
+    `)
+
+    expect(copyEdit.thumbnailSharedKey).toBe(before.thumbnailSharedKey)
+    expect(sharedStyleEdit.thumbnailSharedKey).not.toBe(before.thumbnailSharedKey)
+  })
+
+  it('includes shared body markup in the fallback thumbnail key', () => {
+    const before = parseDeckSlides(`
+      <main class="deck light">
+        <section class="slide"><h1>One</h1></section>
+        <section class="slide"><h1>Two</h1></section>
+      </main>
+    `)
+    const sharedWrapperEdit = parseDeckSlides(`
+      <main class="deck dark">
+        <section class="slide"><h1>One</h1></section>
+        <section class="slide"><h1>Two</h1></section>
+      </main>
+    `)
+
+    expect(sharedWrapperEdit.thumbnailSharedKey).not.toBe(before.thumbnailSharedKey)
+  })
+
   it('parses plain CSS deck slides and generates one static thumbnail per slide', () => {
     const parsed = parseDeckSlides(plainCssDeck)
 

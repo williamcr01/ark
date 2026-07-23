@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { type DeckRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
 
-export const PREVIEW_HTML_CACHE_PIPELINE_VERSION = 'pre-handshake-preview-html-v2'
+export const PREVIEW_HTML_CACHE_PIPELINE_VERSION = 'private-editor-port-v3'
 export const PREVIEW_HTML_CACHE_NONCE_PLACEHOLDER = 'ArkPreviewCacheNoncePlaceholder'
 
 export type PreviewHtmlCacheKeyParts = {

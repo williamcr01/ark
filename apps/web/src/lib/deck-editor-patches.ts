@@ -27,24 +27,46 @@ export function buildTransformPatchOperations(
     ...(slideId ? { slideId } : {}),
   }
 
-  if (!previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['x', 'y'])) {
+  const sizeChanged =
+    !previousGeometry || geometryChanged(previousGeometry, commit.geometry, ['width', 'height'])
+
+  if (
+    commit.adopted ||
+    !previousGeometry ||
+    geometryChanged(previousGeometry, commit.geometry, ['x', 'y'])
+  ) {
+    // Adopted transforms must stay one operation: move stamps a stable data-ark-id,
+    // so a follow-up resize under the same transient id fails patchability checks.
     operations.push({
       op: 'move_element',
       ...target,
       x: commit.geometry.x,
       y: commit.geometry.y,
+      ...(commit.cssX !== undefined ? { cssX: commit.cssX } : {}),
+      ...(commit.cssY !== undefined ? { cssY: commit.cssY } : {}),
+      ...(commit.slideWidth !== undefined ? { slideWidth: commit.slideWidth } : {}),
+      ...(commit.slideHeight !== undefined ? { slideHeight: commit.slideHeight } : {}),
+      ...(commit.adopted ? { width: commit.geometry.width } : {}),
+      ...(commit.adopted && commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
+      ...(commit.adopted && commit.cssHeight !== undefined && sizeChanged
+        ? {
+            height: commit.geometry.height,
+            cssHeight: commit.cssHeight,
+          }
+        : {}),
     })
   }
 
-  if (
-    !previousGeometry ||
-    geometryChanged(previousGeometry, commit.geometry, ['width', 'height'])
-  ) {
+  if (!commit.adopted && (!previousGeometry || sizeChanged)) {
     operations.push({
       op: 'resize_element',
       ...target,
       width: commit.geometry.width,
       height: commit.geometry.height,
+      ...(commit.cssWidth !== undefined ? { cssWidth: commit.cssWidth } : {}),
+      ...(commit.cssHeight !== undefined ? { cssHeight: commit.cssHeight } : {}),
+      ...(commit.slideWidth !== undefined ? { slideWidth: commit.slideWidth } : {}),
+      ...(commit.slideHeight !== undefined ? { slideHeight: commit.slideHeight } : {}),
     })
   }
 

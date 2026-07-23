@@ -18,6 +18,7 @@ function createParsedDeck(
     headHtml: '',
     htmlAttrs: '',
     slideCount,
+    thumbnailSharedKey: 'shared',
     slides: Array.from({ length: slideCount }, (_, index) => ({
       index,
       outerHTML: `<section>Slide ${index + 1}</section>`,
@@ -324,6 +325,52 @@ describe('SlideThumbnailStrip', () => {
 
     await waitFor(() => {
       expect(getThumbnailSrcDoc).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  it('reuses an unchanged fallback document when another slide is edited', async () => {
+    const firstBuilder = vi.fn(
+      (index: number) => `<!doctype html><html><body>First ${index}</body></html>`,
+    )
+    const firstDeck = createParsedDeck(2, firstBuilder)
+    const { rerender } = render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={firstDeck}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(firstBuilder).toHaveBeenCalledTimes(2)
+    })
+
+    const unchangedSrcDoc = screen.getByTitle('Slide 1 thumbnail').getAttribute('srcdoc')
+    const secondBuilder = vi.fn(
+      (index: number) => `<!doctype html><html><body>Second ${index}</body></html>`,
+    )
+    const secondDeck = createParsedDeck(2, secondBuilder)
+    secondDeck.slides[1] = {
+      index: 1,
+      outerHTML: '<section>Edited slide 2</section>',
+    }
+
+    rerender(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={secondDeck}
+      />,
+    )
+
+    expect(screen.getByTitle('Slide 1 thumbnail')).toHaveAttribute('srcdoc', unchangedSrcDoc)
+    expect(secondBuilder).not.toHaveBeenCalledWith(0)
+    await waitFor(() => {
+      expect(secondBuilder).toHaveBeenCalledWith(1)
     })
   })
 

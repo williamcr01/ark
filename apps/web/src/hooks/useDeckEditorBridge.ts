@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 import {
+  createEditorConnectAckMessage,
   createEditorCancelTextEditMessage,
   createEditorClearSelectionMessage,
+  createEditorConfigureMessage,
   createEditorDisableMessage,
   createEditorEnableMessage,
   createEditorRequestGeometryMessage,
   createEditorSelectMessage,
   createEditorSetToolMessage,
   createEditorStartTextEditMessage,
+  createEditorTransformCancelMessage,
   isEditorErrorMessage,
   isEditorGeometryMessage,
   isEditorHoverMessage,
@@ -16,19 +19,25 @@ import {
   isEditorReadyMessage,
   isEditorRuntimeMessage,
   isEditorSelectionChangeMessage,
+  isEditorShortcutMessage,
   isEditorTextCommitMessage,
   isEditorTextEditStateMessage,
+  isEditorTransformCancelMessage,
   isEditorTransformCommitMessage,
   isEditorTransformPreviewMessage,
   isEditorDeleteRequestMessage,
+  isEditorConnectMessage,
   type EditorHoverMessage,
   type EditorInsertRequestMessage,
   type EditorNormalizedRect,
   type EditorSelectionInfo,
+  type EditorShortcutMessage,
   type EditorTool,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
   type EditorDeleteRequestMessage,
+  type EditorRuntimeMessage,
+  type EditorShellMessage,
   postEditorShellMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 import {
@@ -39,7 +48,7 @@ import {
 export type DeckEditorBridgeState = {
   editorReady: boolean
   selection: EditorSelectionInfo | null
-  hover: Pick<EditorHoverMessage, 'elementId' | 'slideIndex'> | null
+  hover: Pick<EditorHoverMessage, 'elementId' | 'slideIndex' | 'surface'> | null
   geometry: EditorNormalizedRect | null
   /** Viewport-normalized slide box for composing overlay geometry. */
   slideBounds: EditorNormalizedRect | null
@@ -47,8 +56,10 @@ export type DeckEditorBridgeState = {
   editorError: string | null
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
+  transformCancelSequence: number
   lastInsertRequest: EditorInsertRequestMessage | null
   lastDeleteRequest: EditorDeleteRequestMessage | null
+  lastShortcutRequest: (EditorShortcutMessage & { sequence: number }) | null
   textEditActive: boolean
   hoverGeometry: EditorNormalizedRect | null
   hoverSlideBounds: EditorNormalizedRect | null
@@ -67,6 +78,8 @@ export type UseDeckEditorBridgeOptions = {
   sandboxOrigin?: string | null
   parentOrigin?: string | null
   iframeGenerationKey?: string
+  /** Per-preview capability used to authenticate the private editor MessagePort. */
+  sessionHandshake?: string | null
   /** Synchronous send gate from usePreviewBridgeSession.canPostToFrame. */
   canPostToFrame?: () => boolean
   /** When false, ignore inbound editor messages (session not armed). */
@@ -85,8 +98,10 @@ const initialState: DeckEditorBridgeState = {
   editorError: null,
   transformPreview: null,
   transformCommit: null,
+  transformCancelSequence: 0,
   lastInsertRequest: null,
   lastDeleteRequest: null,
+  lastShortcutRequest: null,
   textEditActive: false,
   hoverGeometry: null,
   hoverSlideBounds: null,
@@ -103,6 +118,7 @@ export function useDeckEditorBridge(
     sandboxOrigin = null,
     parentOrigin: _parentOrigin = null,
     iframeGenerationKey = '',
+    sessionHandshake = null,
     canPostToFrame,
     shouldAcceptInbound,
     onSelectionChange,
@@ -112,13 +128,17 @@ export function useDeckEditorBridge(
   const [state, setState] = useState<DeckEditorBridgeState>(initialState)
   const [trackedGenerationKey, setTrackedGenerationKey] = useState(iframeGenerationKey)
   const iframeGenerationRef = useRef(0)
+  const editorPortRef = useRef<MessagePort | null>(null)
+  const queuedShellMessagesRef = useRef<EditorShellMessage[]>([])
   const canPostToFrameRef = useRef(canPostToFrame)
   const shouldAcceptInboundRef = useRef(shouldAcceptInbound)
+  const enabledRef = useRef(enabled)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    enabledRef.current = enabled
     canPostToFrameRef.current = canPostToFrame
     shouldAcceptInboundRef.current = shouldAcceptInbound
-  }, [canPostToFrame, shouldAcceptInbound])
+  }, [canPostToFrame, enabled, shouldAcceptInbound])
 
   // Hard-reset when the preview iframe remounts. Same-iframe enableEditor keeps
   // in-flight commits; a new generation key is a boundary (React "adjust state
@@ -128,12 +148,22 @@ export function useDeckEditorBridge(
     setState(initialState)
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     iframeGenerationRef.current += 1
+
+    editorPortRef.current?.close()
+    editorPortRef.current = null
+    queuedShellMessagesRef.current = []
+
+    return () => {
+      editorPortRef.current?.close()
+      editorPortRef.current = null
+      queuedShellMessagesRef.current = []
+    }
   }, [iframeGenerationKey])
 
   const postToFrame = useCallback(
-    (message: Parameters<typeof postEditorShellMessage>[1]) => {
+    (message: EditorShellMessage) => {
       if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
         return false
       }
@@ -144,14 +174,46 @@ export function useDeckEditorBridge(
         return false
       }
 
+      if (sessionHandshake?.trim()) {
+        const port = editorPortRef.current
+
+        if (port) {
+          port.postMessage(message)
+        } else {
+          // The head bootstrap normally connects before the frame handshake
+          // arms. Keep a small bounded queue for srcDoc/fast-cache races.
+          queuedShellMessagesRef.current = [...queuedShellMessagesRef.current.slice(-31), message]
+        }
+
+        return true
+      }
+
       postEditorShellMessage(iframeWindow, message, DECK_BRIDGE_POST_MESSAGE_TARGET)
       return true
     },
-    [iframeRef],
+    [iframeRef, sessionHandshake],
   )
 
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    const cancelTransform = () => {
+      postToFrame(createEditorTransformCancelMessage())
+    }
+
+    window.addEventListener('pointerup', cancelTransform, true)
+    window.addEventListener('pointercancel', cancelTransform, true)
+
+    return () => {
+      window.removeEventListener('pointerup', cancelTransform, true)
+      window.removeEventListener('pointercancel', cancelTransform, true)
+    }
+  }, [enabled, postToFrame])
+
   const enableEditor = useCallback(
-    (slideIndex = activeSlideIndex, tool: EditorTool = 'select') => {
+    (slideIndex = activeSlideIndex, tool: EditorTool = 'select', scale?: number) => {
       // Preserve readiness and in-flight commit requests across re-enable so
       // DeckPreview can still apply them (and so we do not retrigger an
       // enable/ready loop when editorReady would flip false → true).
@@ -163,12 +225,19 @@ export function useDeckEditorBridge(
         editorReady: current.editorReady,
         lastInsertRequest: current.lastInsertRequest,
         lastDeleteRequest: current.lastDeleteRequest,
+        lastShortcutRequest: current.lastShortcutRequest,
         transformCommit: current.transformCommit,
+        transformCancelSequence: current.transformCancelSequence,
         lastTextCommit: current.lastTextCommit,
       }))
-      return postToFrame(createEditorEnableMessage(slideIndex, tool))
+      return postToFrame(createEditorEnableMessage(slideIndex, tool, scale))
     },
     [activeSlideIndex, postToFrame],
+  )
+
+  const configureEditor = useCallback(
+    (scale: number) => postToFrame(createEditorConfigureMessage(scale)),
+    [postToFrame],
   )
 
   const disableEditor = useCallback(() => {
@@ -214,35 +283,13 @@ export function useDeckEditorBridge(
     [postToFrame],
   )
 
-  useEffect(() => {
-    if (!enabled) {
-      return
-    }
-
-    const messageGeneration = iframeGenerationRef.current
-
-    const handleMessage = (event: MessageEvent) => {
-      if (messageGeneration !== iframeGenerationRef.current) {
+  const handleRuntimeMessage = useCallback(
+    (data: EditorRuntimeMessage) => {
+      if (!enabledRef.current) {
         return
       }
 
       if (shouldAcceptInboundRef.current && !shouldAcceptInboundRef.current()) {
-        return
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-
-      if (!iframeWindow || event.source !== iframeWindow) {
-        return
-      }
-
-      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
-        return
-      }
-
-      const data = event.data
-
-      if (!isEditorRuntimeMessage(data)) {
         return
       }
 
@@ -256,18 +303,16 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorHoverMessage(data)) {
-        setState((current) => {
-          const sameHover = current.hover?.elementId === data.elementId
-
-          return {
-            ...current,
-            hover: { elementId: data.elementId, slideIndex: data.slideIndex },
-            // Drop hover overlay when the pointer target changes so a stale
-            // box from the previous element never briefly paints.
-            hoverGeometry: sameHover ? current.hoverGeometry : null,
-            hoverSlideBounds: sameHover ? current.hoverSlideBounds : null,
-          }
-        })
+        setState((current) => ({
+          ...current,
+          hover: {
+            elementId: data.elementId,
+            slideIndex: data.slideIndex,
+            ...(data.surface ? { surface: data.surface } : {}),
+          },
+          hoverGeometry: data.geometry ?? null,
+          hoverSlideBounds: data.slideBounds ?? null,
+        }))
         return
       }
 
@@ -298,22 +343,16 @@ export function useDeckEditorBridge(
           if (current.selection?.elementId === data.elementId) {
             return {
               ...current,
+              selection: data.surface
+                ? { ...current.selection, surface: data.surface }
+                : current.selection,
               geometry: data.geometry,
               slideBounds: data.slideBounds ?? null,
               selectionZIndex: data.zIndex,
             }
           }
 
-          if (current.hover?.elementId === data.elementId) {
-            return {
-              ...current,
-              hoverGeometry: data.geometry,
-              hoverSlideBounds: data.slideBounds ?? null,
-            }
-          }
-
-          // Ignore late geometry for elements that are no longer selected or
-          // hovered — never poison selection overlay state.
+          // Ignore late geometry for elements that are no longer selected.
           return current
         })
         return
@@ -360,6 +399,27 @@ export function useDeckEditorBridge(
         return
       }
 
+      if (isEditorTransformCancelMessage(data)) {
+        setState((current) => ({
+          ...current,
+          transformPreview: null,
+          transformCommit: null,
+          transformCancelSequence: current.transformCancelSequence + 1,
+        }))
+        return
+      }
+
+      if (isEditorShortcutMessage(data)) {
+        setState((current) => ({
+          ...current,
+          lastShortcutRequest: {
+            ...data,
+            sequence: (current.lastShortcutRequest?.sequence ?? 0) + 1,
+          },
+        }))
+        return
+      }
+
       if (isEditorInsertRequestMessage(data)) {
         setState((current) => ({
           ...current,
@@ -383,18 +443,123 @@ export function useDeckEditorBridge(
         }))
         onEditorError?.(data.message, data.code)
       }
+    },
+    [onEditorError, onSelectionChange],
+  )
+  const runtimeMessageHandlerRef = useRef(handleRuntimeMessage)
+
+  useLayoutEffect(() => {
+    runtimeMessageHandlerRef.current = handleRuntimeMessage
+  }, [handleRuntimeMessage])
+
+  useLayoutEffect(() => {
+    const expectedHandshake = sessionHandshake?.trim()
+
+    if (!expectedHandshake) {
+      return
     }
 
-    window.addEventListener('message', handleMessage)
+    const messageGeneration = iframeGenerationRef.current
+
+    const handleConnect = (event: MessageEvent) => {
+      if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
+      const iframeWindow = iframeRef.current?.contentWindow
+
+      if (!iframeWindow || event.source !== iframeWindow) {
+        return
+      }
+
+      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
+        return
+      }
+
+      if (!isEditorConnectMessage(event.data) || event.data.handshake !== expectedHandshake) {
+        return
+      }
+
+      const port = event.ports[0]
+
+      if (!port) {
+        return
+      }
+
+      if (editorPortRef.current) {
+        port.close()
+        return
+      }
+
+      editorPortRef.current = port
+      port.onmessage = (portEvent) => {
+        if (
+          messageGeneration !== iframeGenerationRef.current ||
+          !isEditorRuntimeMessage(portEvent.data)
+        ) {
+          return
+        }
+
+        runtimeMessageHandlerRef.current(portEvent.data)
+      }
+      port.start()
+      port.postMessage(createEditorConnectAckMessage())
+
+      const queued = queuedShellMessagesRef.current
+      queuedShellMessagesRef.current = []
+
+      if (!canPostToFrameRef.current || canPostToFrameRef.current()) {
+        queued.forEach((message) => port.postMessage(message))
+      }
+    }
+
+    window.addEventListener('message', handleConnect)
 
     return () => {
-      window.removeEventListener('message', handleMessage)
+      window.removeEventListener('message', handleConnect)
+      editorPortRef.current?.close()
+      editorPortRef.current = null
+      queuedShellMessagesRef.current = []
     }
-  }, [enabled, iframeGenerationKey, iframeRef, onEditorError, onSelectionChange, sandboxOrigin])
+  }, [iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
+
+  useEffect(() => {
+    if (!enabled || sessionHandshake?.trim()) {
+      return
+    }
+
+    const messageGeneration = iframeGenerationRef.current
+
+    const handleLegacyMessage = (event: MessageEvent) => {
+      if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
+      const iframeWindow = iframeRef.current?.contentWindow
+
+      if (
+        !iframeWindow ||
+        event.source !== iframeWindow ||
+        !isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin) ||
+        !isEditorRuntimeMessage(event.data)
+      ) {
+        return
+      }
+
+      runtimeMessageHandlerRef.current(event.data)
+    }
+
+    window.addEventListener('message', handleLegacyMessage)
+
+    return () => {
+      window.removeEventListener('message', handleLegacyMessage)
+    }
+  }, [enabled, iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
 
   return {
     ...state,
     enableEditor,
+    configureEditor,
     disableEditor,
     selectElement,
     clearSelection,

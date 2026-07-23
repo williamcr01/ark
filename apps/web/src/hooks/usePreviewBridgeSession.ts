@@ -71,8 +71,8 @@ function initialPhase(enabled: boolean, iframeKey: string): PreviewBridgeSession
  * React `compromised` state is display-only. Outbound posts must use
  * `canPostToFrame()` so a hostile load cannot race state commits.
  *
- * TODO(phase-2): migrate routine nav/editor commands to a per-generation
- * MessagePort and close the port on teardown (defense in depth).
+ * Editor commands use their own authenticated per-generation MessagePort.
+ * Navigation remains on this ref-gated window channel.
  */
 export function usePreviewBridgeSession(
   iframeKey: string,

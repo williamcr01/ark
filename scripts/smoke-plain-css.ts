@@ -194,14 +194,10 @@ async function runSmoke() {
     })
 
     await waitFor('editor bridge ready in preview frame', async () =>
-      evaluate<boolean>(
-        cdp!,
-        `Boolean(document.querySelector('script[data-ark-preview-editor]'))`,
-        {
-          contextId: mainPreview.id,
-          sessionId: mainPreview.sessionId,
-        },
-      ),
+      evaluate<boolean>(cdp!, `Boolean(document.querySelector('style[data-ark-editor="true"]'))`, {
+        contextId: mainPreview.id,
+        sessionId: mainPreview.sessionId,
+      }),
     )
 
     await evaluate<boolean>(

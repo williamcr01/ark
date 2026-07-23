@@ -43,12 +43,20 @@ describe('deck-editor-patches', () => {
   })
 
   it('maps transform commits to move and resize patch operations', () => {
-    const commit = createEditorTransformCommitMessage('ark-el-body', 0, {
-      x: 0.2,
-      y: 0.25,
-      width: 0.4,
-      height: 0.15,
-    })
+    const commit = createEditorTransformCommitMessage(
+      'ark-el-body',
+      0,
+      { x: 0.2, y: 0.25, width: 0.4, height: 0.15 },
+      undefined,
+      undefined,
+      undefined,
+      -0.05,
+      0.1,
+      0.35,
+      0.12,
+      960,
+      700,
+    )
 
     expect(
       buildTransformPatchOperations(
@@ -68,6 +76,10 @@ describe('deck-editor-patches', () => {
         slideIndex: 0,
         x: 0.2,
         y: 0.25,
+        cssX: -0.05,
+        cssY: 0.1,
+        slideWidth: 960,
+        slideHeight: 700,
       },
       {
         op: 'resize_element',
@@ -75,6 +87,82 @@ describe('deck-editor-patches', () => {
         slideIndex: 0,
         width: 0.4,
         height: 0.15,
+        cssWidth: 0.35,
+        cssHeight: 0.12,
+        slideWidth: 960,
+        slideHeight: 700,
+      },
+    ])
+  })
+
+  it('adopts flow elements with one width-preserving move', () => {
+    const commit = createEditorTransformCommitMessage(
+      'ark-el-heading',
+      0,
+      { x: 0.2, y: 0.25, width: 0.4, height: 0.15 },
+      undefined,
+      undefined,
+      true,
+      -0.05,
+      0.1,
+      0.35,
+      undefined,
+      960,
+      700,
+    )
+
+    expect(
+      buildTransformPatchOperations(commit, { x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, null),
+    ).toEqual([
+      {
+        op: 'move_element',
+        elementId: 'ark-el-heading',
+        slideIndex: 0,
+        x: 0.2,
+        y: 0.25,
+        cssX: -0.05,
+        cssY: 0.1,
+        cssWidth: 0.35,
+        slideWidth: 960,
+        slideHeight: 700,
+        width: 0.4,
+      },
+    ])
+  })
+
+  it('persists adopted resizes as a single move operation', () => {
+    const commit = createEditorTransformCommitMessage(
+      'ark-el-heading',
+      0,
+      { x: 0.1, y: 0.2, width: 0.5, height: 0.2 },
+      undefined,
+      undefined,
+      true,
+      0.1,
+      0.2,
+      0.5,
+      0.2,
+      1280,
+      720,
+    )
+
+    expect(
+      buildTransformPatchOperations(commit, { x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, null),
+    ).toEqual([
+      {
+        op: 'move_element',
+        elementId: 'ark-el-heading',
+        slideIndex: 0,
+        x: 0.1,
+        y: 0.2,
+        cssX: 0.1,
+        cssY: 0.2,
+        cssWidth: 0.5,
+        cssHeight: 0.2,
+        slideWidth: 1280,
+        slideHeight: 720,
+        width: 0.5,
+        height: 0.2,
       },
     ])
   })

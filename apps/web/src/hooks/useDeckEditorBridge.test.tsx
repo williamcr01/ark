@@ -1,19 +1,26 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  EDITOR_BRIDGE_PROTOCOL_VERSION,
+  EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+  EDITOR_CONNECT_MESSAGE_TYPE,
   createEditorDeleteRequestMessage,
   createEditorEnableMessage,
   createEditorErrorMessage,
   createEditorGeometryMessage,
+  createEditorHoverMessage,
   createEditorInsertRequestMessage,
   createEditorReadyMessage,
   createEditorSelectionChangeMessage,
+  createEditorShortcutMessage,
   createEditorTextCommitMessage,
   createEditorTextEditStateMessage,
+  createEditorTransformCancelMessage,
   createEditorTransformCommitMessage,
+  createEditorTransformPreviewMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 import {
   DECK_BRIDGE_POST_MESSAGE_TARGET,
@@ -27,6 +34,7 @@ function EditorHarness({
   enabled = true,
   sandboxOrigin = null,
   iframeGenerationKey = 'test-frame',
+  sessionHandshake = null,
   canPostToFrame,
   shouldAcceptInbound,
   onSelectionChange,
@@ -34,6 +42,7 @@ function EditorHarness({
   enabled?: boolean
   sandboxOrigin?: string | null
   iframeGenerationKey?: string
+  sessionHandshake?: string | null
   canPostToFrame?: () => boolean
   shouldAcceptInbound?: () => boolean
   onSelectionChange?: (selection: { elementId: string } | null) => void
@@ -45,6 +54,7 @@ function EditorHarness({
     activeSlideIndex: 0,
     sandboxOrigin,
     iframeGenerationKey,
+    sessionHandshake,
     canPostToFrame,
     shouldAcceptInbound,
     onSelectionChange,
@@ -69,9 +79,19 @@ function EditorHarness({
       <output aria-label="Editor ready">{bridge.editorReady ? 'ready' : 'pending'}</output>
       <output aria-label="Selection">{bridge.selection?.elementId ?? 'none'}</output>
       <output aria-label="Geometry">{bridge.geometry ? 'geometry' : 'none'}</output>
+      <output aria-label="Selection surface">{bridge.selection?.surface ?? 'light'}</output>
+      <output aria-label="Hover geometry">{bridge.hoverGeometry ? 'geometry' : 'none'}</output>
+      <output aria-label="Hover surface">{bridge.hover?.surface ?? 'light'}</output>
+      <output aria-label="Shortcut">
+        {bridge.lastShortcutRequest
+          ? `${bridge.lastShortcutRequest.action}:${bridge.lastShortcutRequest.sequence}`
+          : 'none'}
+      </output>
       <output aria-label="Editor error">{bridge.editorError ?? 'none'}</output>
       <output aria-label="Text commit">{bridge.lastTextCommit?.text ?? 'none'}</output>
       <output aria-label="Transform commit">{bridge.transformCommit?.elementId ?? 'none'}</output>
+      <output aria-label="Transform preview">{bridge.transformPreview?.elementId ?? 'none'}</output>
+      <output aria-label="Transform cancel">{bridge.transformCancelSequence}</output>
       <output aria-label="Delete request">{bridge.lastDeleteRequest?.elementId ?? 'none'}</output>
       <output aria-label="Insert request">{bridge.lastInsertRequest?.kind ?? 'none'}</output>
       <button onClick={() => bridge.enableEditor(0)} type="button">
@@ -131,6 +151,88 @@ describe('useDeckEditorBridge', () => {
     })
 
     expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
+  })
+
+  it('uses an authenticated MessagePort and ignores public editor-message forgeries', async () => {
+    const user = userEvent.setup()
+    const sessionHandshake = 'editor-session-capability'
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} sessionHandshake={sessionHandshake} />)
+    const iframeWindow = getIframeWindow()
+    const channel = new MessageChannel()
+    const shellMessages: unknown[] = []
+
+    channel.port1.onmessage = (event) => {
+      shellMessages.push(event.data)
+    }
+    channel.port1.start()
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: EDITOR_CONNECT_MESSAGE_TYPE,
+            handshake: sessionHandshake,
+            protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+          },
+          origin: sandboxOrigin,
+          source: iframeWindow,
+          ports: [channel.port2],
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(shellMessages).toContainEqual({
+        type: EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+        protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+      })
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Enable editor' }))
+
+    await waitFor(() => {
+      expect(shellMessages).toContainEqual(createEditorEnableMessage(0))
+    })
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'forged-public-selection',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Forged',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
+
+    channel.port1.postMessage(
+      createEditorSelectionChangeMessage({
+        elementId: 'authenticated-selection',
+        slideIndex: 0,
+        slideId: null,
+        tagName: 'h1',
+        locked: false,
+        managed: false,
+        editableKind: null,
+        textPreview: 'Authenticated',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Selection')).toHaveTextContent('authenticated-selection')
+    })
+
+    channel.port1.close()
   })
 
   it('clears overlay geometry when the runtime deselects', async () => {
@@ -350,6 +452,20 @@ describe('useDeckEditorBridge', () => {
     )
   })
 
+  it('cancels an iframe transform when the pointer is released in the shell', () => {
+    render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
+    const postMessage = vi.spyOn(getIframeWindow(), 'postMessage')
+
+    act(() => {
+      window.dispatchEvent(new Event('pointerup'))
+    })
+
+    expect(postMessage).toHaveBeenCalledWith(
+      createEditorTransformCancelMessage(),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
+  })
+
   it('surfaces bridge errors without throwing', async () => {
     render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
@@ -404,6 +520,103 @@ describe('useDeckEditorBridge', () => {
 
     expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+  })
+
+  it('stores inline hover geometry, adaptive surfaces, and shortcut requests', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorHoverMessage(
+            0,
+            'ark-el-title',
+            { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
+            undefined,
+            'dark',
+          ),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorShortcutMessage('undo'),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorShortcutMessage('undo'),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Hover geometry')).toHaveTextContent('geometry')
+    expect(screen.getByLabelText('Hover surface')).toHaveTextContent('dark')
+    expect(screen.getByLabelText('Shortcut')).toHaveTextContent('undo:2')
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorHoverMessage(0, 'ark-el-body'),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('ark-el-body', 0, {
+            x: 0.2,
+            y: 0.3,
+            width: 0.4,
+            height: 0.1,
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Hover geometry')).toHaveTextContent('none')
+  })
+
+  it('clears transform state when the runtime cancels a gesture', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+    const geometry = { x: 0.1, y: 0.2, width: 0.5, height: 0.1 }
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTransformPreviewMessage('ark-el-title', 0, geometry),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTransformCommitMessage('ark-el-title', 0, geometry),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTransformCancelMessage(),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Transform preview')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Transform commit')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Transform cancel')).toHaveTextContent('1')
   })
 
   it('ignores forged editor commits and mutation requests from hostile origins', async () => {

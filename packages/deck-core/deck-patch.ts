@@ -115,6 +115,14 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     elementId: z.string().min(1),
     x: normalizedUnitSchema,
     y: normalizedUnitSchema,
+    cssX: z.number().finite().min(-10).max(10).optional(),
+    cssY: z.number().finite().min(-10).max(10).optional(),
+    cssWidth: z.number().finite().positive().optional(),
+    cssHeight: z.number().finite().positive().optional(),
+    slideWidth: z.number().finite().positive().optional(),
+    slideHeight: z.number().finite().positive().optional(),
+    width: normalizedUnitSchema.optional(),
+    height: normalizedUnitSchema.optional(),
   }),
   z.object({
     op: z.literal('resize_element'),
@@ -123,6 +131,10 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     elementId: z.string().min(1),
     width: normalizedUnitSchema,
     height: normalizedUnitSchema,
+    cssWidth: z.number().finite().positive().optional(),
+    cssHeight: z.number().finite().positive().optional(),
+    slideWidth: z.number().finite().positive().optional(),
+    slideHeight: z.number().finite().positive().optional(),
   }),
   z
     .object({
