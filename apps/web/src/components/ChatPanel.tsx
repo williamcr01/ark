@@ -32,7 +32,6 @@ import {
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
 import { ModelSelector } from '@/components/ModelSelector'
-import { ReasoningEffortSelector } from '@/components/ReasoningEffortSelector'
 import { Card, CardContent } from '@/components/ui/card'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
@@ -319,7 +318,7 @@ export type ChatPanelProps = {
   attachmentError: string
   models: AvailableModel[]
   selectedModel: string
-  reasoningEffort: ReasoningEffort
+  reasoningEffort?: ReasoningEffort
   isLoadingModels: boolean
   modelsError: string
   modelWarnings: string[]
@@ -327,8 +326,7 @@ export type ChatPanelProps = {
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
   onInputChange: (value: string) => void
-  onModelChange: (modelId: string) => void
-  onReasoningEffortChange: (effort: ReasoningEffort) => void
+  onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
@@ -356,8 +354,7 @@ export function ChatPanel({
   selectedAssetIds = [],
   assetsSlot,
   onInputChange,
-  onModelChange,
-  onReasoningEffortChange,
+  onModelSelect,
   onPromptSubmit,
   onAttachmentError,
   onCancelGeneration,
@@ -366,10 +363,10 @@ export function ChatPanel({
   onRetryPersist,
 }: ChatPanelProps) {
   const isSubmitDisabled = isGenerating || !canGenerate
+  const selectedModelInfo = models.find((model) => model.id === selectedModel)
+  const supportsAttachments = selectedModelInfo?.supportsAttachments !== false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const modelWarningsKey = modelWarnings.join('\n')
-  const selectedModelInfo = models.find((model) => model.id === selectedModel)
-  const showReasoningEffort = Boolean(selectedModelInfo?.supportsReasoning)
 
   const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
     dismissedAlertKeys.has(alertDismissKey(alertId, content))
@@ -556,28 +553,29 @@ export function ChatPanel({
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="Add attachments"
-                    tooltip="Add attachments"
+                    disabled={!supportsAttachments || isGenerating}
+                    tooltip={
+                      supportsAttachments
+                        ? 'Add attachments'
+                        : 'This model is text-only and does not support attachments'
+                    }
                   />
-                  <PromptInputActionMenuContent>
-                    <PromptInputActionAddAttachments />
-                    <PromptInputActionAddScreenshot />
-                  </PromptInputActionMenuContent>
+                  {supportsAttachments ? (
+                    <PromptInputActionMenuContent>
+                      <PromptInputActionAddAttachments />
+                      <PromptInputActionAddScreenshot />
+                    </PromptInputActionMenuContent>
+                  ) : null}
                 </PromptInputActionMenu>
                 <ModelSelector
                   canGenerate={canGenerate}
                   disabled={isGenerating}
                   isLoading={isLoadingModels}
                   models={models}
-                  onValueChange={onModelChange}
+                  onSelect={onModelSelect}
+                  reasoningEffort={reasoningEffort}
                   value={selectedModel}
                 />
-                {showReasoningEffort ? (
-                  <ReasoningEffortSelector
-                    disabled={isGenerating}
-                    onValueChange={onReasoningEffortChange}
-                    value={reasoningEffort}
-                  />
-                ) : null}
                 {isGenerating ? (
                   <PromptInputButton
                     aria-label="Cancel generation"

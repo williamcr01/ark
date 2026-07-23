@@ -14,13 +14,13 @@
     "test:live-chromium": "ARK_LIVE_CHROMIUM_TESTS=1 vitest run --config vitest.config.ts thumbnails/renderer.test.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.0",
-    "@ai-sdk/google": "^3.0.0",
-    "@ai-sdk/openai": "^3.0.69",
+    "@ai-sdk/anthropic": "^3.0.99",
+    "@ai-sdk/google": "^3.0.98",
+    "@ai-sdk/openai": "^3.0.86",
     "@ark/contracts": "workspace:*",
     "@ark/deck-core": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
-    "ai": "^6.0.199",
+    "ai": "^6.0.233",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsdom": "^29.1.1",

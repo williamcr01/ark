@@ -42,7 +42,7 @@ describe('shared API contracts', () => {
     expect(
       healthResponseSchema.parse({
         ok: true,
-        model: 'openai:gpt-4o-mini',
+        model: 'openai:gpt-5.6-luna',
         apiKey: { configured: true },
         providers: {
           openai: { configured: true },
@@ -60,18 +60,22 @@ describe('shared API contracts', () => {
   it('parses models response', () => {
     expect(
       modelsResponseSchema.parse({
-        defaultModel: 'openai:gpt-4o-mini',
+        defaultModel: 'openai:gpt-5.6-luna',
         models: [
           {
-            id: 'openai:gpt-4o-mini',
+            id: 'openai:gpt-5.6-luna',
             provider: 'openai',
-            modelId: 'gpt-4o-mini',
+            modelId: 'gpt-5.6-luna',
+            name: 'GPT-5.6 Luna',
             available: true,
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+            defaultReasoningEffort: 'medium',
+            supportsReasoning: true,
           },
         ],
         warnings: [],
       }),
-    ).toMatchObject({ defaultModel: 'openai:gpt-4o-mini' })
+    ).toMatchObject({ defaultModel: 'openai:gpt-5.6-luna' })
   })
 
   it('rejects invalid deck create requests', () => {
@@ -151,6 +155,22 @@ describe('shared API contracts', () => {
         messages: [{ role: 'user', content: 'Hello' }],
         deckId,
         reasoningEffort: 'high',
+      }).success,
+    ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'Hello' }],
+        deckId,
+        reasoningEffort: 'max',
+      }).success,
+    ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'Hello' }],
+        deckId,
+        reasoningEffort: 'minimal',
       }).success,
     ).toBe(true)
 

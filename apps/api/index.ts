@@ -5,7 +5,6 @@ import { REPO_ROOT } from './repo-root.ts'
 dotenv.config({ path: `${REPO_ROOT}/.env` })
 
 import { createApp } from './app.ts'
-import { warmModelCatalog } from './models.ts'
 import { runStartupMigrations } from './startup.ts'
 import { type ThumbnailService } from './thumbnails/service.ts'
 
@@ -13,7 +12,6 @@ const port = Number(process.env.PORT ?? 8787)
 
 async function main() {
   await runStartupMigrations()
-  await warmModelCatalog()
 
   const app = createApp()
   const server = app.listen(port, () => {

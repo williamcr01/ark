@@ -43,13 +43,14 @@ describe('createPostgresGenerationJobStore', () => {
         deckId: deck.id,
         baseVersionId: deck.activeVersionId,
         chatThreadId: thread.id,
-        model: 'openai:gpt-4.1-mini',
+        model: 'openai:gpt-5.6-luna',
         provider: 'openai',
         request: {
           ...sampleRequest,
           currentHtml: deck.html,
           baseVersionId: deck.activeVersionId,
           editingExistingDeck: true,
+          reasoningEffort: 'high',
         },
       })
 
@@ -57,16 +58,23 @@ describe('createPostgresGenerationJobStore', () => {
       expect(created.deckId).toBe(deck.id)
       expect(created.baseVersionId).toBe(deck.activeVersionId)
       expect(created.chatThreadId).toBe(thread.id)
-      expect(created.model).toBe('openai:gpt-4.1-mini')
+      expect(created.model).toBe('openai:gpt-5.6-luna')
       expect(created.provider).toBe('openai')
       expect(created.request.messages).toEqual(sampleRequest.messages)
       expect(created.request.currentHtml).toBe(deck.html)
+      expect(created.request.reasoningEffort).toBe('high')
       expect(created.progress.steps).toEqual([])
       expect(created.startedAt).toBeNull()
       expect(created.completedAt).toBeNull()
 
       const loaded = await jobStore.getJob(created.id)
       expect(loaded).toEqual(created)
+
+      const updated = await jobStore.updateJob(created.id, {
+        status: 'running',
+        startedAt: '2026-07-01T12:00:00.000Z',
+      })
+      expect(updated?.request.reasoningEffort).toBe('high')
     } finally {
       await pool.end?.()
     }
