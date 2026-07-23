@@ -137,7 +137,7 @@ The required `quality`, `build`, `test`, and `smoke` checks always report a resu
 
 `quality` always runs for normal PR updates. Scope decisions and selected workspaces are written to the Actions job summary. Unknown paths fall back to full validation; classifier test or execution failures fail the required checks closed.
 
-Comprehensive validation runs for every `main` push, merge-queue candidate, manual workflow dispatch, and PR carrying the `ci:full` label. This includes the full unit suite, live Chromium renderer tests, plain-CSS smoke, Reveal, full-JS bridge, manual-edit, and thumbnail smokes. The workflow listens for the `merge_group` event, but GitHub Merge Queue must be enabled in repository settings to guarantee this full pass before a commit reaches `main`; otherwise the `main` push is the post-merge guarantee. Adding `ci:full` reruns a risky PR comprehensively without waiting for merge.
+Every `main` push and manual workflow dispatch runs comprehensive validation: the full unit suite, live Chromium renderer tests, plain-CSS smoke, Reveal, full-JS bridge, manual-edit, and thumbnail smokes. Pull requests never run the non-required live-Chromium or extended browser jobs; high-risk PR inputs still select the full unit suite and required plain-CSS smoke. Because this repository cannot use GitHub Merge Queue, comprehensive browser coverage is a post-merge guarantee and may temporarily make `main` red when it catches a regression.
 
 Format before pushing substantive changes:
 
