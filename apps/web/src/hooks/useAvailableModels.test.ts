@@ -1,14 +1,164 @@
-import { describe, expect, it } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  fetchModelCatalogWithRetry,
   formatModelLabel,
   formatModelName,
   formatProviderLabel,
   formatUnavailableBadge,
+  isTransientModelLoadError,
   pickAvailableFallbackModel,
   resolveSelectedModel,
+  useAvailableModels,
   type AvailableModel,
 } from './useAvailableModels'
+
+const healthResponse = {
+  ok: true,
+  model: 'openai:gpt-5.6-luna',
+  apiKey: { configured: true },
+  providers: {
+    openai: { configured: true },
+    anthropic: { configured: false },
+    google: { configured: false },
+  },
+  preview: {
+    sandboxOrigin: 'http://localhost:5174',
+    appOrigin: 'http://localhost:5173',
+  },
+}
+
+const modelsResponse = {
+  defaultModel: 'openai:gpt-5.6-luna',
+  models: [
+    {
+      id: 'openai:gpt-5.6-luna',
+      provider: 'openai',
+      modelId: 'gpt-5.6-luna',
+      name: 'GPT-5.6 Luna',
+      available: true,
+    },
+  ],
+  warnings: [],
+}
+
+const unreadableResponse = () =>
+  ({
+    ok: false,
+    status: 502,
+    json: async () => {
+      throw new Error('Unexpected token < in JSON')
+    },
+  }) as unknown as Response
+
+const jsonResponse = (body: unknown, ok = true) =>
+  ({
+    ok,
+    status: ok ? 200 : 500,
+    json: async () => body,
+  }) as Response
+
+describe('isTransientModelLoadError', () => {
+  it('matches startup proxy and network failures', () => {
+    expect(isTransientModelLoadError(new Error('The API returned an unreadable response.'))).toBe(
+      true,
+    )
+    expect(isTransientModelLoadError(new Error('Could not reach the Ark API server.'))).toBe(true)
+    expect(isTransientModelLoadError(new Error('Failed to fetch'))).toBe(true)
+    expect(isTransientModelLoadError(new Error('Incorrect API key provided'))).toBe(false)
+  })
+})
+
+describe('fetchModelCatalogWithRetry', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('retries transient startup failures and loads models', async () => {
+    let modelsCalls = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse(healthResponse)
+      }
+
+      modelsCalls += 1
+      if (modelsCalls === 1) {
+        return unreadableResponse()
+      }
+
+      return jsonResponse(modelsResponse)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchModelCatalogWithRetry({ retries: 2, delayMs: 1 })
+
+    expect(result.models).toHaveLength(1)
+    expect(modelsCalls).toBe(2)
+  })
+
+  it('throws transient errors without marking them as key failures', async () => {
+    const fetchMock = vi.fn(async () => unreadableResponse())
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchModelCatalogWithRetry({ retries: 1, delayMs: 1 })).rejects.toThrow(
+      'The API returned an unreadable response.',
+    )
+    expect(isTransientModelLoadError(new Error('The API returned an unreadable response.'))).toBe(
+      true,
+    )
+  })
+})
+
+describe('useAvailableModels startup loading', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  })
+
+  it('loads models on mount when the API is ready', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse(healthResponse)
+      }
+
+      return jsonResponse(modelsResponse)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.error).toBe('')
+    expect(result.current.apiKeyStatus).toBe('valid')
+    expect(result.current.models).toHaveLength(1)
+  })
+
+  it('keeps checking status when startup retries are exhausted', async () => {
+    const fetchMock = vi.fn(async () => unreadableResponse())
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(
+      () => {
+        expect(result.current.isLoading).toBe(false)
+      },
+      { timeout: 10_000 },
+    )
+
+    expect(result.current.error).toBe('The API returned an unreadable response.')
+    expect(result.current.apiKeyStatus).toBe('checking')
+    expect(result.current.models).toEqual([])
+  })
+})
 
 const model = (
   partial: Pick<AvailableModel, 'id' | 'provider' | 'modelId' | 'available'> &

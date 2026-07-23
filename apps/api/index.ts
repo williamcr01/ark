@@ -13,12 +13,13 @@ const port = Number(process.env.PORT ?? 8787)
 
 async function main() {
   await runStartupMigrations()
-  await warmModelCatalog()
 
   const app = createApp()
   const server = app.listen(port, () => {
     console.log(`Ark API server listening on http://localhost:${port}`)
   })
+
+  void warmModelCatalog().catch(() => undefined)
 
   // Kill the shared headless Chromium pool on shutdown; the spawned browser is
   // unref'd, so without this every restart would orphan a Chromium process.

@@ -124,6 +124,16 @@ export const resolveSelectedModel = (
   return pickAvailableFallbackModel(models) ?? stored ?? defaultEntry?.id ?? ''
 }
 
+const TRANSIENT_LOAD_ERROR =
+  /failed to fetch|network|unreadable response|could not reach the ark api/i
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+export const isTransientModelLoadError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error)
+  return TRANSIENT_LOAD_ERROR.test(message)
+}
+
 async function fetchHealth() {
   const response = await fetch('/api/health')
   return fetchApiJsonOrThrow(response, healthResponseSchema, {
@@ -142,6 +152,41 @@ async function fetchAvailableModels() {
     models: data.models,
     warnings: data.warnings,
   }
+}
+
+async function fetchModelCatalog() {
+  const health = await fetchHealth()
+  const { defaultModel, models, warnings } = await fetchAvailableModels()
+
+  return {
+    health,
+    defaultModel,
+    models,
+    warnings,
+  }
+}
+
+export async function fetchModelCatalogWithRetry(
+  options: { retries?: number; delayMs?: number } = {},
+) {
+  const { retries = 5, delayMs = 200 } = options
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fetchModelCatalog()
+    } catch (error) {
+      lastError = error
+
+      if (!isTransientModelLoadError(error) || attempt === retries) {
+        throw error
+      }
+
+      await sleep(delayMs * (attempt + 1))
+    }
+  }
+
+  throw lastError
 }
 
 export function useAvailableModels() {
@@ -171,33 +216,37 @@ export function useAvailableModels() {
     [],
   )
 
+  const handleLoadFailure = useCallback((loadError: unknown) => {
+    const message =
+      loadError instanceof Error ? loadError.message : 'Could not load available models.'
+
+    setApiKeyStatus(isTransientModelLoadError(loadError) ? 'checking' : 'invalid')
+    setModels([])
+    setSelectedModelState('')
+    setError(message)
+  }, [])
+
   const loadModels = useCallback(async () => {
     setIsLoading(true)
     setError('')
     setWarnings([])
 
     try {
-      const health = await fetchHealth()
       const {
+        health,
         defaultModel: nextDefault,
         models: nextModels,
         warnings: nextWarnings,
-      } = await fetchAvailableModels()
+      } = await fetchModelCatalog()
 
       setWarnings(nextWarnings)
       applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured))
     } catch (loadError) {
-      const message =
-        loadError instanceof Error ? loadError.message : 'Could not load available models.'
-
-      setApiKeyStatus('invalid')
-      setModels([])
-      setSelectedModelState('')
-      setError(message)
+      handleLoadFailure(loadError)
     } finally {
       setIsLoading(false)
     }
-  }, [applyModels])
+  }, [applyModels, handleLoadFailure])
 
   useEffect(() => {
     let cancelled = false
@@ -208,17 +257,12 @@ export function useAvailableModels() {
       setWarnings([])
 
       try {
-        const health = await fetchHealth()
-
-        if (cancelled) {
-          return
-        }
-
         const {
+          health,
           defaultModel: nextDefault,
           models: nextModels,
           warnings: nextWarnings,
-        } = await fetchAvailableModels()
+        } = await fetchModelCatalogWithRetry()
 
         if (cancelled) {
           return
@@ -231,13 +275,7 @@ export function useAvailableModels() {
           return
         }
 
-        const message =
-          loadError instanceof Error ? loadError.message : 'Could not load available models.'
-
-        setApiKeyStatus('invalid')
-        setModels([])
-        setSelectedModelState('')
-        setError(message)
+        handleLoadFailure(loadError)
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -250,7 +288,7 @@ export function useAvailableModels() {
     return () => {
       cancelled = true
     }
-  }, [applyModels])
+  }, [applyModels, handleLoadFailure])
 
   const setSelectedModel = useCallback(
     (modelId: string) => {
