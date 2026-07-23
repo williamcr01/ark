@@ -191,10 +191,12 @@ export function useDeckGenerationFlow({
       return
     }
 
+    let cancelled = false
+
     void (async () => {
       const outcome = await resumeStoredJob()
 
-      if (!outcome) {
+      if (cancelled || !outcome) {
         return
       }
 
@@ -222,6 +224,10 @@ export function useDeckGenerationFlow({
         onError(outcome.message)
       }
     })()
+
+    return () => {
+      cancelled = true
+    }
   }, [
     applySucceededOutcome,
     appendFailureChatMessage,

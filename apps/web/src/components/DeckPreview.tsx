@@ -2,6 +2,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -1039,166 +1040,145 @@ export function DeckPreview({
     goToSlide(slideIndex)
   }, [goToSlide, previewFrame.iframeKey, previewHtml])
 
+  const handleEditorPaste = useEffectEvent((event: ClipboardEvent) => {
+    if (isEditableClipboardTarget(event.target)) {
+      return
+    }
+
+    const clipboard = event.clipboardData
+
+    if (!clipboard) {
+      return
+    }
+
+    for (const item of clipboard.items) {
+      if (!item.type.startsWith('image/')) {
+        continue
+      }
+
+      const file = item.getAsFile()
+
+      if (!file) {
+        continue
+      }
+
+      event.preventDefault()
+      void handleInsertImageFile(file)
+      return
+    }
+
+    const pastedText = clipboard.getData('text/plain').trim()
+
+    if (pastedText && isRemoteImageUrl(pastedText)) {
+      event.preventDefault()
+      toast.error(
+        'Remote image URLs cannot be inserted directly. Use a local file or paste image data.',
+      )
+    }
+  })
+
   useEffect(() => {
     if (!editChromeActive || textEditActive) {
       return
     }
 
-    const handlePaste = (event: ClipboardEvent) => {
-      if (isEditableClipboardTarget(event.target)) {
-        return
-      }
-
-      const clipboard = event.clipboardData
-
-      if (!clipboard) {
-        return
-      }
-
-      for (const item of clipboard.items) {
-        if (!item.type.startsWith('image/')) {
-          continue
-        }
-
-        const file = item.getAsFile()
-
-        if (!file) {
-          continue
-        }
-
-        event.preventDefault()
-        void handleInsertImageFile(file)
-        return
-      }
-
-      const pastedText = clipboard.getData('text/plain').trim()
-
-      if (pastedText && isRemoteImageUrl(pastedText)) {
-        event.preventDefault()
-        toast.error(
-          'Remote image URLs cannot be inserted directly. Use a local file or paste image data.',
-        )
-      }
-    }
-
-    window.addEventListener('paste', handlePaste)
+    window.addEventListener('paste', handleEditorPaste)
 
     return () => {
-      window.removeEventListener('paste', handlePaste)
+      window.removeEventListener('paste', handleEditorPaste)
     }
-  }, [editChromeActive, handleInsertImageFile, textEditActive])
+  }, [editChromeActive, textEditActive])
 
-  useEffect(() => {
-    if (!editChromeActive) {
-      return
-    }
+  const handleEditorKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    const historyModifier = event.metaKey || event.ctrlKey
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const historyModifier = event.metaKey || event.ctrlKey
-
-      if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
-        // Leave undo/redo to the browser while editing text so contenteditable
-        // history keeps working inside the deck.
-        if (textEditActive || isTextEditSaving) {
-          return
-        }
-
-        if (event.shiftKey) {
-          if (!canRedo || !onRedo) {
-            return
-          }
-
-          event.preventDefault()
-          handleRedo()
-        } else {
-          if (!canUndo || !onUndo) {
-            return
-          }
-
-          event.preventDefault()
-          handleUndo()
-        }
-
+    if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
+      // Leave undo/redo to the browser while editing text so contenteditable
+      // history keeps working inside the deck.
+      if (textEditActive || isTextEditSaving) {
         return
       }
 
-      if (
-        historyModifier &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.key === 'y' || event.key === 'Y')
-      ) {
-        if (textEditActive || isTextEditSaving) {
-          return
-        }
-
+      if (event.shiftKey) {
         if (!canRedo || !onRedo) {
           return
         }
 
         event.preventDefault()
         handleRedo()
-        return
-      }
-
-      if (event.key === 'Escape') {
-        if (textEditActive) {
-          event.preventDefault()
-          endTextEditing()
+      } else {
+        if (!canUndo || !onUndo) {
           return
         }
 
-        if (activeTool !== 'select') {
-          event.preventDefault()
-          handleToolChange('select')
-        }
+        event.preventDefault()
+        handleUndo()
+      }
 
+      return
+    }
+
+    if (
+      historyModifier &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.key === 'y' || event.key === 'Y')
+    ) {
+      if (textEditActive || isTextEditSaving) {
         return
       }
 
-      if (
-        event.key !== 'Enter' ||
-        event.shiftKey ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey
-      ) {
-        return
-      }
-
-      if (textEditActive || !canEditSelectedText) {
-        return
-      }
-
-      if (event.target instanceof HTMLElement && event.target.closest('button, [role="button"]')) {
+      if (!canRedo || !onRedo) {
         return
       }
 
       event.preventDefault()
-      beginTextEdit()
+      handleRedo()
+      return
     }
 
-    window.addEventListener('keydown', handleKeyDown)
+    if (event.key === 'Escape') {
+      if (textEditActive) {
+        event.preventDefault()
+        endTextEditing()
+        return
+      }
+
+      if (activeTool !== 'select') {
+        event.preventDefault()
+        handleToolChange('select')
+      }
+
+      return
+    }
+
+    if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
+      return
+    }
+
+    if (textEditActive || !canEditSelectedText) {
+      return
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest('button, [role="button"]')) {
+      return
+    }
+
+    event.preventDefault()
+    beginTextEdit()
+  })
+
+  useEffect(() => {
+    if (!editChromeActive) {
+      return
+    }
+
+    window.addEventListener('keydown', handleEditorKeyDown)
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keydown', handleEditorKeyDown)
     }
-  }, [
-    activeTool,
-    beginTextEdit,
-    canEditSelectedText,
-    canRedo,
-    canUndo,
-    editChromeActive,
-    endTextEditing,
-    handleRedo,
-    handleToolChange,
-    handleUndo,
-    isTextEditSaving,
-    onRedo,
-    onUndo,
-    textEditActive,
-  ])
+  }, [editChromeActive])
 
   useEffect(() => {
     if (!editorBridgeActive || !editorReady) {

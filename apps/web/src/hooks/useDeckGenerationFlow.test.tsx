@@ -410,4 +410,31 @@ describe('useDeckGenerationFlow', () => {
       expect(harness.refreshActiveDeck).toHaveBeenCalledWith('deck-1')
     })
   })
+
+  it('ignores a stored job result after the recovery effect unmounts', async () => {
+    const harness = makeHarness({ deckId: 'deck-1' })
+    localStorage.setItem(`${STORAGE_PREFIX}deck-1`, 'job-stored')
+    let resolveFetch: (job: GenerationJobApi) => void = () => {}
+    fetchGenerationJobMock.mockImplementation(
+      () =>
+        new Promise<GenerationJobApi>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+
+    const { unmount } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await waitFor(() => {
+      expect(fetchGenerationJobMock).toHaveBeenCalledWith('job-stored')
+    })
+    unmount()
+
+    await act(async () => {
+      resolveFetch(makeJob({ id: 'job-stored', status: 'succeeded', result: succeededResult }))
+      await Promise.resolve()
+    })
+
+    expect(harness.refreshActiveDeck).not.toHaveBeenCalled()
+    expect(harness.reloadChat).not.toHaveBeenCalled()
+  })
 })
