@@ -146,15 +146,15 @@ function parseArguments(argv) {
   return parsed
 }
 
-function changedPathsSince(base) {
+export function changedPathsSince(base, cwd = process.cwd()) {
   if (!base) {
     throw new Error('--base is required unless --full-reason is provided')
   }
 
   const output = execFileSync(
     'git',
-    ['diff', '--name-only', '--diff-filter=ACMR', '-z', `${base}...HEAD`],
-    { encoding: 'buffer' },
+    ['diff', '--name-only', '--no-renames', '--diff-filter=ACMRD', '-z', `${base}...HEAD`],
+    { cwd, encoding: 'buffer' },
   )
 
   return output.toString('utf8').split('\0').filter(Boolean)

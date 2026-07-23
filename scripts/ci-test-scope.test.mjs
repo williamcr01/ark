@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
-import { classifyPaths } from './ci-test-scope.mjs'
+import { changedPathsSince, classifyPaths } from './ci-test-scope.mjs'
 
 function decisions(paths, options) {
   const { full, build, test: runTests, smoke } = classifyPaths(paths, options)
@@ -126,4 +130,38 @@ test('allows event and label handling to force full validation', () => {
     test: true,
     smoke: true,
   })
+})
+
+test('diff extraction includes deletions and both sides of renames', () => {
+  const repository = mkdtempSync(join(tmpdir(), 'ark-ci-scope-'))
+
+  try {
+    mkdirSync(join(repository, 'apps/web/src'), { recursive: true })
+    writeFileSync(join(repository, 'apps/web/src/App.tsx'), 'export const app = true\n')
+    writeFileSync(join(repository, 'apps/web/src/deleted.ts'), 'export const removed = true\n')
+    execFileSync('git', ['init', '--quiet'], { cwd: repository })
+    execFileSync('git', ['config', 'user.name', 'CI Scope Test'], { cwd: repository })
+    execFileSync('git', ['config', 'user.email', 'ci-scope@example.invalid'], {
+      cwd: repository,
+    })
+    execFileSync('git', ['add', '.'], { cwd: repository })
+    execFileSync('git', ['commit', '--quiet', '-m', 'initial'], { cwd: repository })
+    const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: repository,
+      encoding: 'utf8',
+    }).trim()
+
+    mkdirSync(join(repository, 'docs'))
+    renameSync(join(repository, 'apps/web/src/App.tsx'), join(repository, 'docs/App.md'))
+    rmSync(join(repository, 'apps/web/src/deleted.ts'))
+
+    assert.deepEqual(changedPathsSince(base, repository).sort(), [
+      'apps/web/src/App.tsx',
+      'apps/web/src/deleted.ts',
+      'docs/App.md',
+    ])
+    assert.equal(classifyPaths(changedPathsSince(base, repository)).smoke, true)
+  } finally {
+    rmSync(repository, { recursive: true, force: true })
+  }
 })

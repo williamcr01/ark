@@ -135,7 +135,7 @@ The required `quality`, `build`, `test`, and `smoke` checks always report a resu
 | Runtime workspace code                                                         | Full typecheck/build | Changed workspaces + dependents | Run             |
 | Fixtures, runtimes, dependency manifests, CI/test configuration, unknown paths | Full                 | Full                            | Run             |
 
-`quality` always runs for normal PR updates. Scope decisions and selected workspaces are written to the Actions job summary. A classifier failure or unknown path falls back to full validation.
+`quality` always runs for normal PR updates. Scope decisions and selected workspaces are written to the Actions job summary. Unknown paths fall back to full validation; classifier test or execution failures fail the required checks closed.
 
 Comprehensive validation runs for every `main` push, merge-queue candidate, manual workflow dispatch, and PR carrying the `ci:full` label. This includes the full unit suite, live Chromium renderer tests, plain-CSS smoke, Reveal, full-JS bridge, manual-edit, and thumbnail smokes. The workflow listens for the `merge_group` event, but GitHub Merge Queue must be enabled in repository settings to guarantee this full pass before a commit reaches `main`; otherwise the `main` push is the post-merge guarantee. Adding `ci:full` reruns a risky PR comprehensively without waiting for merge.
 

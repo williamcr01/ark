@@ -40,29 +40,9 @@ jobs:
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          EVENT_LABEL: ${{ github.event.label.name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           FORCE_FULL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
         run: |
-          if [[ "$EVENT_NAME" == "pull_request" && "$EVENT_ACTION" == "labeled" && "$EVENT_LABEL" != "ci:full" ]]; then
-            {
-              echo "run_ci=false"
-              echo "full=false"
-              echo "build=false"
-              echo "test=false"
-              echo "smoke=false"
-              echo "reason=Ignoring unrelated pull request label: $EVENT_LABEL"
-              echo "base_sha=$BASE_SHA"
-            } >> "$GITHUB_OUTPUT"
-            {
-              echo "## CI scope"
-              echo
-              echo "No CI work was repeated for unrelated label \`$EVENT_LABEL\`."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
           echo "run_ci=true" >> "$GITHUB_OUTPUT"
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
 
@@ -97,7 +77,9 @@ jobs:
 
       - name: No CI work required
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci != 'true'
-        run: echo "${{ needs.changes.outputs.reason }}"
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
@@ -134,7 +116,9 @@ jobs:
 
       - name: Build not required
         if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.build != 'true')
-        run: echo "${{ needs.changes.outputs.reason }}"
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.build == 'true'
@@ -164,7 +148,9 @@ jobs:
 
       - name: Unit tests not required
         if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.test != 'true')
-        run: echo "${{ needs.changes.outputs.reason }}"
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
@@ -246,7 +232,9 @@ jobs:
 
       - name: Browser smoke not required
         if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.smoke != 'true')
-        run: echo "${{ needs.changes.outputs.reason }}"
+        env:
+          CI_REASON: ${{ needs.changes.outputs.reason }}
+        run: echo "$CI_REASON"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
