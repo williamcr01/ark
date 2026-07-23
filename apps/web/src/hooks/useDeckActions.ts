@@ -171,7 +171,7 @@ export function useDeckActions({
 
   const handleNewDeck = useCallback(() => {
     startNewDeck()
-    void resetChat()
+    void resetChat(null)
     setInput('')
     setError('')
     toast.info('Started a fresh deck')
@@ -207,7 +207,8 @@ export function useDeckActions({
   const handleDeleteDeck = useCallback(async () => {
     try {
       await deleteActiveDeck()
-      await resetChat()
+      // Explicit null: ref may still hold the deleted deck id after clearActiveDeck.
+      await resetChat(null)
       setInput('')
       setError('')
       toast.success('Deck deleted')
