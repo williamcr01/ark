@@ -21,16 +21,21 @@ export type DeckPreviewFrameModel = {
   handshake: string | null
 }
 
-export function useDeckPreviewFrame(html: string, enabled: boolean): DeckPreviewFrameModel {
+export function useDeckPreviewFrame(
+  html: string,
+  enabled: boolean,
+  reloadRevision = 0,
+): DeckPreviewFrameModel {
   const usesSrcDocFallback = useSrcDocPreviewFallback()
-  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback)
+  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback, reloadRevision)
 
   const srcDocHtml =
     usesSrcDocFallback && enabled && html.trim() ? getPreviewHtml(html, { editorBridge: true }) : ''
   const contentFingerprint = fingerprintPreviewHtml(usesSrcDocFallback ? srcDocHtml || html : html)
+  const sandboxSessionIdentity = sandboxPreview.sessionToken ?? sandboxPreview.previewUrl
   const contentIdentity = usesSrcDocFallback
-    ? `srcdoc:${contentFingerprint}`
-    : `sandbox:${sandboxPreview.sessionToken ?? sandboxPreview.previewUrl ?? `pending:${contentFingerprint}`}`
+    ? `srcdoc:${contentFingerprint}:r${reloadRevision}`
+    : `sandbox:${sandboxSessionIdentity ?? `pending:${contentFingerprint}`}:r${reloadRevision}`
 
   const [generationState, setGenerationState] = useState({
     identity: contentIdentity,

@@ -81,7 +81,7 @@ const previewFrameMock = vi.hoisted(() => ({
 }))
 
 const useDeckPreviewFrameMock = vi.hoisted(() =>
-  vi.fn((_html: string, _enabled: boolean) => ({
+  vi.fn((_html: string, _enabled: boolean, _reloadRevision = 0) => ({
     iframeKey: previewFrameMock.iframeKey,
     iframeSrcDoc: '<html></html>',
     sandboxOrigin: null,
@@ -258,7 +258,7 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
     expect(screen.getByTitle('Generated Ark presentation preview')).toBe(previewIframe)
     expect(screen.getAllByTitle('Generated Ark presentation preview')).toHaveLength(1)
-    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(plainCssDeck, true)
+    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(plainCssDeck, true, 0)
     expect(useDeckPreviewFrameMock.mock.calls.every((call) => call[1] === true)).toBe(true)
   })
 
@@ -638,6 +638,52 @@ describe('DeckPreview script divergence UI', () => {
       text: 'Updated planning',
       originalText: 'Quarterly planning',
     })
+  })
+
+  it('keeps the iframe source stable after a source-backed text edit', async () => {
+    const beforeHtml =
+      '<!doctype html><html><body><section class="slide"><h1 data-ark-id="title">Before</h1></section></body></html>'
+    const afterHtml = beforeHtml.replace('>Before<', '>After<')
+    const onCommitTextEdit = vi.fn().mockResolvedValue({
+      deck: { html: afterHtml },
+      patch: {
+        appliedCount: 1,
+        changedSlideIndexes: [0],
+        changedElementIds: ['title'],
+        summary: 'Edited text',
+      },
+    })
+
+    editorBridgeMock.lastTextCommit = {
+      elementId: 'title',
+      slideIndex: 0,
+      slideId: null,
+      text: 'After',
+      originalText: 'Before',
+    }
+
+    const props = {
+      ...plainDeckProps,
+      html: beforeHtml,
+      deckId: 'deck-1',
+      deckAnalysis: analyzeDeckInBrowser(beforeHtml),
+      editorBridgeEnabled: true,
+      onCommitTextEdit,
+    }
+    const { rerender } = renderDeckPreview(props)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    editorBridgeMock.lastTextCommit = null
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...props} html={afterHtml} deckAnalysis={analyzeDeckInBrowser(afterHtml)} />
+      </TooltipProvider>,
+    )
+
+    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(beforeHtml, true, 0)
   })
 
   it('forwards forged text commits to onCommitTextEdit without client-side element validation', () => {

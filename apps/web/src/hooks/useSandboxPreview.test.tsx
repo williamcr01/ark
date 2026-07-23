@@ -254,6 +254,34 @@ describe('useSandboxPreview', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('creates a replacement session when the same HTML is force-reloaded', async () => {
+    const firstSession = createDeferred<Response>()
+    const replacementSession = createDeferred<Response>()
+    fetchMock
+      .mockReturnValueOnce(firstSession.promise)
+      .mockReturnValueOnce(replacementSession.promise)
+
+    const { result, rerender } = renderHook(
+      ({ reloadRevision }) => useSandboxPreview(deckHtml('Deck'), true, reloadRevision),
+      { initialProps: { reloadRevision: 0 } },
+    )
+    await resolvePreviewSession(firstSession, 'first-token')
+
+    rerender({ reloadRevision: 1 })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(requestBody(fetchMock, 1)).toMatchObject({
+      html: deckHtml('Deck'),
+      editorBridge: true,
+    })
+    expect(result.current.isStale).toBe(true)
+
+    await resolvePreviewSession(replacementSession, 'replacement-token')
+
+    expect(result.current.isStale).toBe(false)
+    expect(result.current.sessionToken).toBe('replacement-token')
+  })
+
   it('does not abort an in-flight session when the hook rerenders with the same HTML', async () => {
     const previewSession = createDeferred<Response>()
     fetchMock.mockReturnValueOnce(previewSession.promise)

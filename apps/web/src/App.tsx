@@ -365,6 +365,7 @@ function App() {
           summary,
           commit.slideIndex,
         )
+        return result
       } catch (patchError) {
         toast.error(
           patchError instanceof Error ? patchError.message : 'Could not save the text edit',

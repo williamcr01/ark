@@ -163,6 +163,8 @@ async function refreshEditPreviewContext(
   contexts: Map<string, RuntimeContext>,
   previousSrc: string,
   expectedSlideText = 'Quarterly planning',
+  expectedLifecycle: 'reload' | 'reuse' = 'reload',
+  previousContext: RuntimeContext | null = null,
 ) {
   let lastState = 'not polled'
 
@@ -180,12 +182,59 @@ async function refreshEditPreviewContext(
           return null
         }
 
-        if (previousSrc && src === previousSrc) {
+        if (
+          previousSrc &&
+          expectedLifecycle === 'reload' &&
+          src === previousSrc &&
+          !previousContext
+        ) {
           lastState = 'waiting for a new iframe URL'
           return null
         }
 
-        const context = await findContextByUrl(cdp!, contexts, src)
+        if (previousSrc && expectedLifecycle === 'reuse' && src !== previousSrc) {
+          lastState = `iframe unexpectedly reloaded: ${previousSrc} → ${src}`
+          return null
+        }
+
+        const exact = await findContextByUrl(cdp!, contexts, src)
+        const candidates = [
+          ...(expectedLifecycle === 'reuse' && previousContext ? [previousContext] : []),
+          ...[...contexts.values()].reverse().filter((context) => context.isDefault),
+          exact,
+        ].filter((context): context is RuntimeContext => Boolean(context))
+        const seenContexts = new Set<string>()
+        const context = await (async () => {
+          for (const candidate of candidates) {
+            const key = `${candidate.sessionId ?? 'root'}:${candidate.id}`
+
+            if (seenContexts.has(key)) {
+              continue
+            }
+            seenContexts.add(key)
+
+            if (
+              expectedLifecycle === 'reload' &&
+              previousContext &&
+              candidate.id === previousContext.id &&
+              candidate.sessionId === previousContext.sessionId
+            ) {
+              continue
+            }
+
+            const href = await evaluate<string>(cdp!, 'location.href', {
+              contextId: candidate.id,
+              sessionId: candidate.sessionId,
+            }).catch(() => '')
+
+            if (href === src) {
+              return candidate
+            }
+          }
+
+          return null
+        })()
+
         if (!context) {
           lastState = `no execution context for ${src}`
           return null
@@ -915,9 +964,12 @@ async function runSmoke() {
       servers,
       contexts,
       editPreviewSrc,
+      'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
     const persistedHeadingRect = await getElementRect(cdp, editPreview, headingSelector)
-    assert(persistedHeadingRect, 'Adopted heading is missing after preview reload')
+    assert(persistedHeadingRect, 'Adopted heading is missing after persistence')
     for (const axis of ['left', 'top', 'width', 'height'] as const) {
       assert(
         Math.abs(persistedHeadingRect[axis] - liveAdoptedRect[axis]) <= 1,
@@ -969,7 +1021,7 @@ async function runSmoke() {
     )
     assert(
       persistedHeadingState.selected,
-      'Adopted heading selection was not restored after reload',
+      'Adopted heading selection was not preserved after persistence',
     )
     await waitFor('dark-surface selection uses white chrome', async () =>
       evaluate<boolean>(
@@ -1000,12 +1052,14 @@ async function runSmoke() {
       const deck = await fetchDeck(apiPort, deckId)
       return deck.html !== beforeCommittedNudge ? deck : null
     })
-    ;({ editPreviewSrc, editPreview } = await getCurrentEditPreview(
+    ;({ editPreviewSrc, editPreview } = await refreshEditPreviewContext(
       cdp,
       servers,
       contexts,
-      'style[data-ark-editor="true"]',
       editPreviewSrc,
+      'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
     await clickToolbarButton(cdp, 'Undo')
     await waitFor('undo restored pre-nudge HTML', async () => {
@@ -1133,6 +1187,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Undo')
@@ -1156,6 +1212,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reload',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Redo')
@@ -1311,6 +1369,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       editedText,
+      'reuse',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Undo')
@@ -1336,6 +1396,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reload',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Redo')

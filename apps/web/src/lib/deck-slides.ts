@@ -2,6 +2,7 @@ import {
   findSlideElements,
   SLIDE_SELECTOR_CHAIN,
   stripDeckScriptsForPreview,
+  stripHostileNavigationVectors,
 } from '@ark/deck-core/deck-preview-slides.ts'
 import {
   createThumbnailSrcDocBuilder,
@@ -18,6 +19,8 @@ export type ParsedDeck = {
   headHtml: string
   htmlAttrs: string
   bodyAttrs: string
+  /** Shared material whose changes can affect every fallback thumbnail. */
+  thumbnailSharedKey: string
   getThumbnailSrcDoc: (index: number) => string
 }
 
@@ -63,12 +66,45 @@ function stripScriptsFromHead(head: HTMLHeadElement) {
   return clone.innerHTML
 }
 
+function getThumbnailSharedKey(
+  doc: Document,
+  runtimeMode: ReturnType<typeof detectRuntimeModeFromDocument>,
+  assetOrigin: string | null | undefined,
+) {
+  const root = doc.documentElement.cloneNode(true) as HTMLElement
+
+  stripScripts(root)
+  stripInlineHandlers(root)
+  stripHostileNavigationVectors(root)
+
+  const crossSlideInfluence = findSlideElements(root)
+    .map((slide, index) => {
+      const attributes = ['class', 'id', 'style']
+        .map((name) => {
+          const value = slide.getAttribute(name)
+          return value ? `${name}=${value}` : ''
+        })
+        .filter(Boolean)
+        .join('\0')
+      const embeddedStyles = [...slide.querySelectorAll('style, link')]
+        .map((node) => node.outerHTML)
+        .join('')
+
+      slide.replaceWith(doc.createComment(`ark-thumbnail-slide-${index}`))
+      return `${index}:${attributes}:${embeddedStyles}`
+    })
+    .join('\n')
+
+  return [runtimeMode, assetOrigin ?? '', root.outerHTML, crossSlideInfluence].join('\0')
+}
+
 const emptyParsedDeck: ParsedDeck = {
   slideCount: 0,
   slides: [],
   headHtml: '',
   htmlAttrs: '',
   bodyAttrs: '',
+  thumbnailSharedKey: '',
   getThumbnailSrcDoc: () => '',
 }
 
@@ -93,6 +129,7 @@ export function parseDeckSlideDocument(
   }))
 
   const runtimeMode = detectRuntimeModeFromDocument(doc)
+  const thumbnailSharedKey = getThumbnailSharedKey(doc, runtimeMode, options.assetOrigin)
   // Thumbnail srcDoc prep (reveal CSS inlining, etc.) is deferred until the
   // strip actually needs a fallback iframe — main preview/shell must not wait.
   let buildThumbnailSrcDoc: ((index: number) => string) | null = null
@@ -103,6 +140,7 @@ export function parseDeckSlideDocument(
     headHtml,
     htmlAttrs,
     bodyAttrs,
+    thumbnailSharedKey,
     getThumbnailSrcDoc(index) {
       if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
         return ''

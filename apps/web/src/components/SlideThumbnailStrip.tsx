@@ -41,6 +41,11 @@ type SlideThumbnailStripProps = {
   thumbnailUrls?: (string | null)[] | null
 }
 
+type ThumbnailSrcDocCacheEntry = {
+  identity: string
+  srcDoc: string
+}
+
 type LazyThumbnailProps = {
   active: boolean
   index: number
@@ -287,11 +292,8 @@ export function SlideThumbnailStrip({
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
   const [, setThumbnailSrcDocVersion] = useState(0)
   const thumbnailSrcDocCache = useMemo(
-    () => ({
-      parsedDeck,
-      srcDocs: new Map<number, string>(),
-    }),
-    [parsedDeck],
+    () => ({ entries: new Map<number, ThumbnailSrcDocCacheEntry>() }),
+    [],
   )
 
   const computedMountedIndices = useMemo(
@@ -325,25 +327,35 @@ export function SlideThumbnailStrip({
     [failedThumbnailUrls, thumbnailUrls],
   )
 
+  const getThumbnailSrcDocIdentity = useCallback(
+    (index: number) =>
+      `${parsedDeck.thumbnailSharedKey}\0${index}\0${parsedDeck.slides[index]?.outerHTML ?? ''}`,
+    [parsedDeck],
+  )
+
   const getCachedThumbnailSrcDoc = useCallback(
     (index: number) => {
-      const cached = thumbnailSrcDocCache.srcDocs.get(index)
+      const identity = getThumbnailSrcDocIdentity(index)
+      const cached = thumbnailSrcDocCache.entries.get(index)
 
-      if (cached !== undefined) {
-        return cached
+      if (cached?.identity === identity) {
+        return cached.srcDoc
       }
 
-      const srcDoc = thumbnailSrcDocCache.parsedDeck.getThumbnailSrcDoc(index)
-      thumbnailSrcDocCache.srcDocs.set(index, srcDoc)
+      const srcDoc = parsedDeck.getThumbnailSrcDoc(index)
+      thumbnailSrcDocCache.entries.set(index, { identity, srcDoc })
 
       return srcDoc
     },
-    [thumbnailSrcDocCache],
+    [getThumbnailSrcDocIdentity, parsedDeck, thumbnailSrcDocCache],
   )
 
   const getExistingThumbnailSrcDoc = useCallback(
-    (index: number) => thumbnailSrcDocCache.srcDocs.get(index) ?? null,
-    [thumbnailSrcDocCache],
+    (index: number) => {
+      const cached = thumbnailSrcDocCache.entries.get(index)
+      return cached?.identity === getThumbnailSrcDocIdentity(index) ? cached.srcDoc : null
+    },
+    [getThumbnailSrcDocIdentity, thumbnailSrcDocCache],
   )
 
   const fallbackCandidateIndices = useMemo(() => {
@@ -422,7 +434,7 @@ export function SlideThumbnailStrip({
     let cancelled = false
     let scheduledFrame: ScheduledThumbnailFrame | null = null
     const pendingIndices = fallbackCandidateIndices.filter(
-      (index) => index !== activeIndex && !thumbnailSrcDocCache.srcDocs.has(index),
+      (index) => index !== activeIndex && !getExistingThumbnailSrcDoc(index),
     )
 
     const buildNext = () => {
@@ -459,8 +471,8 @@ export function SlideThumbnailStrip({
     activeIndex,
     fallbackCandidateIndices,
     getCachedThumbnailSrcDoc,
+    getExistingThumbnailSrcDoc,
     isOpen,
-    thumbnailSrcDocCache,
   ])
 
   if (slideCount === 0) {

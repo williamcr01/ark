@@ -135,31 +135,47 @@ describe('useDeckThumbnails', () => {
     unmount()
   })
 
-  it('clears stale thumbnails immediately when the version changes', async () => {
-    let resolveSecondFetch: (response: Response) => void = () => undefined
+  it('keeps unchanged thumbnail images mounted across deck versions', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             status: 'ready',
-            slides: [{ index: 0, url: '/api/decks/d/thumbnails/v1/0.png?hash=abc' }],
+            slides: [
+              { index: 0, url: '/api/decks/d/thumbnails/v1/0.png?hash=unchanged' },
+              { index: 1, url: '/api/decks/d/thumbnails/v1/1.png?hash=before' },
+            ],
             width: 480,
             height: 270,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       )
-      .mockImplementationOnce(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveSecondFetch = resolve
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'pending', slides: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'ready',
+            slides: [
+              { index: 0, url: '/api/decks/d/thumbnails/v2/0.png?hash=unchanged' },
+              { index: 1, url: '/api/decks/d/thumbnails/v2/1.png?hash=after' },
+            ],
+            width: 480,
+            height: 270,
           }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
       )
     vi.stubGlobal('fetch', fetchMock)
 
     const { result, rerender } = renderHook(
-      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 1),
+      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 2),
       { initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' } },
     )
 
@@ -168,32 +184,33 @@ describe('useDeckThumbnails', () => {
     })
 
     expect(result.current.status).toBe('ready')
-    expect(result.current.thumbnailUrls).toEqual(['/api/decks/d/thumbnails/v1/0.png?hash=abc'])
+    expect(result.current.thumbnailUrls).toEqual([
+      '/api/decks/d/thumbnails/v1/0.png?hash=unchanged',
+      '/api/decks/d/thumbnails/v1/1.png?hash=before',
+    ])
 
-    // Switch versions while the second fetch is still in flight: the previous
-    // version's thumbnails must not linger.
     rerender({ versionId: 'a0000000-0000-4000-8000-000000000002' })
 
     await act(async () => {
       await Promise.resolve()
     })
 
-    expect(result.current.status).toBeNull()
-    expect(result.current.thumbnailUrls).toBeNull()
-
-    resolveSecondFetch(
-      new Response(JSON.stringify({ status: 'pending', slides: [] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+    expect(result.current.status).toBe('pending')
+    expect(result.current.thumbnailUrls).toEqual([
+      '/api/decks/d/thumbnails/v1/0.png?hash=unchanged',
+      '/api/decks/d/thumbnails/v1/1.png?hash=before',
+    ])
 
     await act(async () => {
-      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(300)
     })
 
-    expect(result.current.status).toBe('pending')
-    expect(result.current.thumbnailUrls).toBeNull()
+    expect(result.current.status).toBe('ready')
+    expect(result.current.thumbnailUrls).toEqual([
+      // Keep the exact old URL so React leaves the unchanged image alone.
+      '/api/decks/d/thumbnails/v1/0.png?hash=unchanged',
+      '/api/decks/d/thumbnails/v2/1.png?hash=after',
+    ])
   })
 
   it('keeps fallback behavior for disabled status', async () => {

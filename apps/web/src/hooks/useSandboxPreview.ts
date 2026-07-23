@@ -28,6 +28,7 @@ type PreviewSessionSnapshot = {
   sessionToken: string | null
   handshake: string | null
   html: string
+  reloadRevision: number
 }
 
 const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
@@ -35,9 +36,14 @@ const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
   sessionToken: null,
   handshake: null,
   html: '',
+  reloadRevision: 0,
 }
 
-export function useSandboxPreview(html: string, enabled: boolean): SandboxPreviewState {
+export function useSandboxPreview(
+  html: string,
+  enabled: boolean,
+  reloadRevision = 0,
+): SandboxPreviewState {
   const sandboxOrigin = resolveSandboxOrigin()
   const appOrigin = resolveAppOrigin()
   const shouldLoad = enabled && html.trim().length > 0
@@ -95,10 +101,14 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
     function latestSessionMatches() {
       const session = previewSessionRef.current
 
-      return session.previewUrl !== null && session.html === html
+      return (
+        session.previewUrl !== null &&
+        session.html === html &&
+        session.reloadRevision === reloadRevision
+      )
     }
 
-    async function createPreviewSession(requestHtml: string) {
+    async function createPreviewSession(requestHtml: string, requestReloadRevision: number) {
       const requestId = requestIdRef.current + 1
       requestIdRef.current = requestId
       const controller = new AbortController()
@@ -135,6 +145,7 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
           sessionToken: payload.token,
           handshake: payload.handshake,
           html: requestHtml,
+          reloadRevision: requestReloadRevision,
         })
       } catch (caught) {
         if (controller.signal.aborted || requestIdRef.current !== requestId) {
@@ -197,10 +208,10 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
     if (isRapidHtmlChange) {
       pendingTimerRef.current = window.setTimeout(() => {
         pendingTimerRef.current = null
-        void createPreviewSession(html)
+        void createPreviewSession(html, reloadRevision)
       }, PREVIEW_SESSION_COALESCE_MS)
     } else {
-      void createPreviewSession(html)
+      void createPreviewSession(html, reloadRevision)
     }
 
     return () => {
@@ -208,7 +219,7 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
       clearPendingTimer()
       abortActiveRequest()
     }
-  }, [appOrigin, html, sandboxOrigin, shouldLoad])
+  }, [appOrigin, html, reloadRevision, sandboxOrigin, shouldLoad])
 
   if (!shouldLoad) {
     return {
@@ -225,7 +236,9 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
 
   // HTML-only mismatch: keep the last successful URL/token/handshake so the
   // bridge stays armed for the content still on screen while the refresh runs.
-  const isStale = previewSession.previewUrl !== null && previewSession.html !== html
+  const isStale =
+    previewSession.previewUrl !== null &&
+    (previewSession.html !== html || previewSession.reloadRevision !== reloadRevision)
 
   return {
     previewUrl: previewSession.previewUrl,
