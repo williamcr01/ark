@@ -25,6 +25,7 @@ import { type AssetStorage } from './asset-storage.ts'
 import { type AssetStore } from './asset-record.ts'
 import {
   ensureChatThreadForJob,
+  formatTerminalGenerationChatContent,
   persistAssistantGenerationMessage,
   persistInitialDeckChatHistory,
   persistLatestUserMessage,
@@ -38,6 +39,13 @@ import {
   findCatalogEntryByRef,
   resolveCatalogReasoningEffort,
 } from './model-catalog.ts'
+import { clearModelCatalogCache } from './models.ts'
+
+function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | undefined) {
+  if (errorCategory === 'invalid_api_key' || errorCategory === 'missing_api_key') {
+    clearModelCatalogCache()
+  }
+}
 
 export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
@@ -295,6 +303,9 @@ export function createGenerationJobRunner({
       }
 
       if (!agentResult.ok) {
+        const errorCategory = agentResult.providerMetrics?.errorCategory ?? 'provider_error'
+        invalidateModelCatalogOnAuthFailure(errorCategory)
+
         const failedJob = await jobStore.updateJob(jobId, {
           status: 'failed',
           progress: {
@@ -306,7 +317,7 @@ export function createGenerationJobRunner({
             message: agentResult.error,
             code: 'provider_error',
             validation: agentResult.validation,
-            errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+            errorCategory,
           },
           observability,
           completedAt: now().toISOString(),
@@ -314,7 +325,7 @@ export function createGenerationJobRunner({
 
         jobLogger.warn('generation.job.failed', {
           durationMs: observability.durationMs,
-          errorCategory: agentResult.providerMetrics?.errorCategory ?? 'provider_error',
+          errorCategory,
           stepCount: agentResult.steps.length,
         })
 
@@ -618,6 +629,7 @@ export function createGenerationJobRunner({
       }
 
       const message = error instanceof Error ? error.message : 'Generation failed.'
+      invalidateModelCatalogOnAuthFailure(errorDetails.category)
 
       const failedJob = await jobStore.updateJob(jobId, {
         status: 'failed',
@@ -835,6 +847,26 @@ export function createGenerationJobRunner({
     let baseVersionId = existing.baseVersionId
     let retryControlMessage: ApiChatMessage | null = null
 
+    const appendRetryTurn = (failedAssistant: {
+      id: string
+      content: string
+      parts?: ApiChatMessage['parts']
+    }) => {
+      retryControlMessage = {
+        role: 'user',
+        content: 'Retry previous request',
+      }
+      request.messages.push(
+        {
+          id: failedAssistant.id,
+          role: 'assistant',
+          content: failedAssistant.content,
+          ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
+        },
+        retryControlMessage,
+      )
+    }
+
     if (chatStore && deckId) {
       const chat = await chatStore.listMessages(deckId, { limit: 500 })
       const failedAssistant = [...chat.messages]
@@ -842,20 +874,24 @@ export function createGenerationJobRunner({
         .find((message) => message.role === 'assistant' && message.generationJobId === existing.id)
 
       if (failedAssistant) {
-        retryControlMessage = {
-          role: 'user',
-          content: 'Retry previous request',
-        }
-        request.messages.push(
-          {
-            id: failedAssistant.id,
-            role: 'assistant',
-            content: failedAssistant.content,
-            ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
-          },
-          retryControlMessage,
-        )
+        appendRetryTurn({
+          id: failedAssistant.id,
+          content: failedAssistant.content,
+          parts: failedAssistant.parts,
+        })
       }
+    } else if (!deckId) {
+      // New-deck failures never hit chat persistence; keep the failure turn on the
+      // cloned request so a later successful retry still records it.
+      appendRetryTurn({
+        id: existing.id,
+        content: formatTerminalGenerationChatContent({
+          status: existing.status === 'canceled' ? 'canceled' : 'failed',
+          steps: existing.progress.steps,
+          editingExistingDeck: false,
+          error: existing.error,
+        }),
+      })
     }
 
     if (deckId) {

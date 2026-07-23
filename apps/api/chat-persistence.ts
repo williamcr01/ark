@@ -52,6 +52,43 @@ export async function persistLatestUserMessage(
   })
 }
 
+export function formatTerminalGenerationChatContent(options: {
+  status: GenerationJobStatus
+  steps: GenerationJob['progress']['steps']
+  assistantText?: string | null
+  editingExistingDeck: boolean
+  error?: GenerationJobError | null
+  validationNote?: string
+}) {
+  const assistantContent =
+    options.status === 'succeeded'
+      ? buildAssistantMessageContent(
+          options.assistantText ?? '',
+          options.steps,
+          options.editingExistingDeck,
+        )
+      : ''
+  const validationNote = options.validationNote ?? ''
+
+  if (assistantContent) {
+    return `${assistantContent}${validationNote}`
+  }
+
+  if (options.status === 'canceled') {
+    return `Generation canceled. ${options.error?.message ?? 'Generation was canceled.'}`
+  }
+
+  if (options.status === 'failed') {
+    return isModelGenerationError(options.error)
+      ? formatModelGenerationFailure(options.error?.message ?? 'Generation failed.')
+      : `I could not generate the deck yet. ${options.error?.message ?? 'Generation failed.'}`
+  }
+
+  return options.editingExistingDeck
+    ? `Updated the HTML deck and refreshed the preview.${validationNote}`
+    : `Generated a complete self-contained HTML slide deck.${validationNote}`
+}
+
 export async function persistAssistantGenerationMessage(
   chatStore: ChatStore,
   deckId: string,
@@ -68,27 +105,7 @@ export async function persistAssistantGenerationMessage(
     validationNote?: string
   },
 ) {
-  const assistantContent =
-    options.status === 'succeeded'
-      ? buildAssistantMessageContent(
-          options.assistantText ?? '',
-          options.steps,
-          options.editingExistingDeck,
-        )
-      : ''
-  const validationNote = options.validationNote ?? ''
-  const content = assistantContent
-    ? `${assistantContent}${validationNote}`
-    : options.status === 'canceled'
-      ? `Generation canceled. ${options.error?.message ?? 'Generation was canceled.'}`
-      : options.status === 'failed'
-        ? isModelGenerationError(options.error)
-          ? formatModelGenerationFailure(options.error?.message ?? 'Generation failed.')
-          : `I could not generate the deck yet. ${options.error?.message ?? 'Generation failed.'}`
-        : options.editingExistingDeck
-          ? `Updated the HTML deck and refreshed the preview.${validationNote}`
-          : `Generated a complete self-contained HTML slide deck.${validationNote}`
-
+  const content = formatTerminalGenerationChatContent(options)
   const assistantParts: ChatMessagePart[] = [...(options.transcriptParts ?? [])]
   const persistedText = assistantParts
     .filter((part) => part.type === 'text')

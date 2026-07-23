@@ -41,12 +41,13 @@ export type GenerationJobError = {
   errorCategory?: string | null
 }
 
-const MODEL_GENERATION_ERROR_CODES = new Set([
-  'missing_api_key',
-  'invalid_api_key',
-  'provider_error',
-])
+/** Auth / key codes that always mean a model-provider failure. */
+const MODEL_GENERATION_ERROR_CODES = new Set(['missing_api_key', 'invalid_api_key'])
 
+/**
+ * Provider-call categories from job runs. Do not treat bare `code: 'provider_error'`
+ * as a model failure — job-creation validation also uses that API code.
+ */
 const MODEL_GENERATION_ERROR_CATEGORIES = new Set([
   'missing_api_key',
   'invalid_api_key',

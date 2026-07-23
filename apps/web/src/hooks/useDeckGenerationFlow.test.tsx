@@ -294,6 +294,34 @@ describe('useDeckGenerationFlow', () => {
     ).toBe('The model failed to generate the deck. The provider rejected the request.')
   })
 
+  it('treats bare provider_error start failures as normal errors', async () => {
+    const harness = makeHarness({ deckId: null })
+    startGenerationJobMock.mockRejectedValue(
+      Object.assign(new Error('GPT-5.4 Mini is text-only and does not support attachments.'), {
+        code: 'provider_error',
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(result.current.isModelFailure).toBe(false)
+    expect(harness.onError).toHaveBeenCalledWith(
+      'GPT-5.4 Mini is text-only and does not support attachments.',
+    )
+
+    const updateMessages = harness.setMessages.mock.calls.at(-1)?.[0] as
+      ((current: ChatMessage[]) => ChatMessage[]) | undefined
+    expect(
+      updateMessages?.([{ id: 'u1', role: 'user', content: 'make slides' }]).at(-1)?.content,
+    ).toBe(
+      'I could not generate the deck yet. GPT-5.4 Mini is text-only and does not support attachments.',
+    )
+  })
+
   it('does not start generating when canGenerate is false', async () => {
     const harness = makeHarness({ deckId: 'deck-1', canGenerate: false })
 
