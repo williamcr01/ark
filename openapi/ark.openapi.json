@@ -1258,6 +1258,11 @@
                               "minimum": 0,
                               "exclusiveMinimum": true
                             },
+                            "cssHeight": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
                             "slideWidth": {
                               "type": "number",
                               "minimum": 0,
