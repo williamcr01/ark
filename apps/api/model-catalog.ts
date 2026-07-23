@@ -5,12 +5,7 @@ import type { ProviderId, ReasoningEffort } from '@ark/contracts'
  * Catalog entries pick one strategy so the picker and agent stay aligned.
  */
 export type ReasoningTransport =
-  | 'openai-effort'
-  | 'anthropic-adaptive'
-  | 'anthropic-budget'
-  | 'google-thinking-level'
-  | 'google-thinking-budget'
-  | 'none'
+  'openai-effort' | 'anthropic-adaptive' | 'anthropic-budget' | 'google-thinking-level' | 'none'
 
 export type ModelCatalogEntry = {
   provider: ProviderId
@@ -68,13 +63,15 @@ const GEMINI_FLASH_EFFORTS = [
   'high',
 ] as const satisfies readonly ReasoningEffort[]
 
-const GEMINI_PRO_EFFORTS = ['low', 'medium', 'high'] as const satisfies readonly ReasoningEffort[]
+const GEMINI_36_FLASH_EFFORTS = ['medium', 'high'] as const satisfies readonly ReasoningEffort[]
 
-const GEMINI_25_FLASH_EFFORTS = [
-  'low',
+const GEMINI_FLASH_LITE_EFFORTS = [
+  'minimal',
   'medium',
   'high',
 ] as const satisfies readonly ReasoningEffort[]
+
+const GEMINI_PRO_EFFORTS = ['low', 'medium', 'high'] as const satisfies readonly ReasoningEffort[]
 
 /**
  * Curated Ark model catalog (issue #211).
@@ -157,7 +154,7 @@ export const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
     provider: 'google',
     modelId: 'gemini-3.6-flash',
     name: 'Gemini 3.6 Flash',
-    reasoningEfforts: GEMINI_FLASH_EFFORTS,
+    reasoningEfforts: GEMINI_36_FLASH_EFFORTS,
     defaultReasoningEffort: 'medium',
     reasoningTransport: 'google-thinking-level',
   },
@@ -171,19 +168,19 @@ export const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
   },
   {
     provider: 'google',
+    modelId: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash-Lite',
+    reasoningEfforts: GEMINI_FLASH_LITE_EFFORTS,
+    defaultReasoningEffort: 'minimal',
+    reasoningTransport: 'google-thinking-level',
+  },
+  {
+    provider: 'google',
     modelId: 'gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
     reasoningEfforts: GEMINI_PRO_EFFORTS,
     defaultReasoningEffort: 'high',
     reasoningTransport: 'google-thinking-level',
-  },
-  {
-    provider: 'google',
-    modelId: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    reasoningEfforts: GEMINI_25_FLASH_EFFORTS,
-    defaultReasoningEffort: 'medium',
-    reasoningTransport: 'google-thinking-budget',
   },
 ] as const
 

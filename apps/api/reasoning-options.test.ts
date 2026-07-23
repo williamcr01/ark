@@ -39,14 +39,6 @@ describe('buildReasoningProviderOptions', () => {
     })
   })
 
-  it('maps Gemini 2.5 Flash to thinkingBudget', () => {
-    expect(buildReasoningProviderOptions('google', 'high', 'google:gemini-2.5-flash')).toEqual({
-      google: {
-        thinkingConfig: { includeThoughts: true, thinkingBudget: 16_384 },
-      },
-    })
-  })
-
   it('returns empty options for unknown providers', () => {
     expect(buildReasoningProviderOptions('unknown', 'low')).toEqual({})
   })

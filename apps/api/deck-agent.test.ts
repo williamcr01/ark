@@ -327,4 +327,31 @@ describe('runDeckAgent', () => {
       true,
     )
   })
+
+  it('returns the provider error when the stream fails before producing output', async () => {
+    const model = new MockLanguageModelV3({
+      doStream: {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'error', error: new Error('This model is no longer available.') },
+          ],
+        }),
+      },
+    })
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'google',
+      modelRef: 'google:gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'Create a deck' }],
+      currentHtml: '',
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'This model is no longer available.',
+    })
+    expect(model.doStreamCalls[0]?.temperature).toBeUndefined()
+  })
 })

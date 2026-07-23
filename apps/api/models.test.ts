@@ -32,7 +32,7 @@ afterEach(() => {
 })
 
 describe('curated model catalog', () => {
-  it('contains exactly the issue #211 models in provider order', () => {
+  it('contains the curated models in provider order', () => {
     expect(MODEL_CATALOG.map((entry) => `${entry.provider}:${entry.modelId}`)).toEqual([
       'openai:gpt-5.6-sol',
       'openai:gpt-5.6-terra',
@@ -45,8 +45,8 @@ describe('curated model catalog', () => {
       'anthropic:claude-haiku-4-5',
       'google:gemini-3.6-flash',
       'google:gemini-3.5-flash',
+      'google:gemini-3.5-flash-lite',
       'google:gemini-3.1-pro-preview',
-      'google:gemini-2.5-flash',
     ])
   })
 
@@ -69,11 +69,13 @@ describe('curated model catalog', () => {
     expect(findCatalogEntryByRef('openai:gpt-5.4-mini')?.defaultReasoningEffort).toBe('none')
     expect(findCatalogEntryByRef('anthropic:claude-fable-5')?.reasoningEfforts).toContain('max')
     expect(findCatalogEntryByRef('google:gemini-3.6-flash')?.reasoningEfforts).toEqual([
-      'minimal',
-      'low',
       'medium',
       'high',
     ])
+    expect(findCatalogEntryByRef('google:gemini-3.5-flash-lite')).toMatchObject({
+      reasoningEfforts: ['minimal', 'medium', 'high'],
+      defaultReasoningEffort: 'minimal',
+    })
     expect(findCatalogEntryByRef('google:gemini-3.1-pro-preview')?.reasoningEfforts).toEqual([
       'low',
       'medium',
