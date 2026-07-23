@@ -851,8 +851,8 @@ export function createGenerationJobRunner({
       id: string
       content: string
       parts?: ApiChatMessage['parts']
-    }) => {
-      retryControlMessage = {
+    }): ApiChatMessage => {
+      const controlMessage: ApiChatMessage = {
         role: 'user',
         content: 'Retry previous request',
       }
@@ -863,8 +863,9 @@ export function createGenerationJobRunner({
           content: failedAssistant.content,
           ...(failedAssistant.parts ? { parts: structuredClone(failedAssistant.parts) } : {}),
         },
-        retryControlMessage,
+        controlMessage,
       )
+      return controlMessage
     }
 
     if (chatStore && deckId) {
@@ -874,7 +875,7 @@ export function createGenerationJobRunner({
         .find((message) => message.role === 'assistant' && message.generationJobId === existing.id)
 
       if (failedAssistant) {
-        appendRetryTurn({
+        retryControlMessage = appendRetryTurn({
           id: failedAssistant.id,
           content: failedAssistant.content,
           parts: failedAssistant.parts,
@@ -883,7 +884,7 @@ export function createGenerationJobRunner({
     } else if (!deckId) {
       // New-deck failures never hit chat persistence; keep the failure turn on the
       // cloned request so a later successful retry still records it.
-      appendRetryTurn({
+      retryControlMessage = appendRetryTurn({
         id: existing.id,
         content: formatTerminalGenerationChatContent({
           status: existing.status === 'canceled' ? 'canceled' : 'failed',
