@@ -95,7 +95,7 @@ function makeHarness(
 
   const options: UseDeckGenerationFlowOptions = {
     deck: {
-      deckId: overrides.deckId ?? 'deck-1',
+      deckId: overrides.deckId === undefined ? 'deck-1' : overrides.deckId,
       activeVersionId: 'version-1',
       generatedHtml: '<html></html>',
       isDeckLoading: false,
@@ -158,6 +158,40 @@ describe('useDeckGenerationFlow', () => {
     expect(harness.refreshActiveDeck).toHaveBeenCalledWith('deck-1')
     expect(harness.reloadChat).toHaveBeenCalledWith('deck-1')
     expect(result.current.generationError).toBe('')
+  })
+
+  it('flags the preview only while a new deck version is being refreshed', async () => {
+    const harness = makeHarness({ deckId: 'deck-1' })
+    let resolveRefresh = () => {}
+    harness.refreshActiveDeck.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+    let generationPromise = Promise.resolve()
+
+    act(() => {
+      generationPromise = result.current.generateDeck('make slides')
+    })
+
+    await waitFor(() => {
+      expect(harness.refreshActiveDeck).toHaveBeenCalledWith('deck-1')
+      expect(result.current.isPreviewUpdating).toBe(true)
+    })
+
+    await act(async () => {
+      resolveRefresh()
+      await generationPromise
+    })
+
+    expect(result.current.isPreviewUpdating).toBe(false)
   })
 
   it('forwards editor selection context in the start request', async () => {
@@ -224,6 +258,68 @@ describe('useDeckGenerationFlow', () => {
     await waitFor(() => {
       expect(result.current.failedJobId).toBe('job-1')
     })
+  })
+
+  it('keeps provider failures in chat without a shell error', async () => {
+    const harness = makeHarness({ deckId: null })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        deckId: null,
+        status: 'failed',
+        error: {
+          message: 'The provider rejected the request.',
+          code: 'provider_error',
+          errorCategory: 'provider_error',
+        },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(harness.onError).toHaveBeenCalledWith('')
+    expect(harness.onError).not.toHaveBeenCalledWith('The provider rejected the request.')
+    expect(result.current.generationError).toBe('')
+    expect(result.current.isModelFailure).toBe(true)
+
+    const updateMessages = harness.setMessages.mock.calls.at(-1)?.[0] as
+      ((current: ChatMessage[]) => ChatMessage[]) | undefined
+    expect(
+      updateMessages?.([{ id: 'u1', role: 'user', content: 'make slides' }]).at(-1)?.content,
+    ).toBe('The model failed to generate the deck. The provider rejected the request.')
+  })
+
+  it('treats bare provider_error start failures as normal errors', async () => {
+    const harness = makeHarness({ deckId: null })
+    startGenerationJobMock.mockRejectedValue(
+      Object.assign(new Error('GPT-5.4 Mini is text-only and does not support attachments.'), {
+        code: 'provider_error',
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(result.current.isModelFailure).toBe(false)
+    expect(harness.onError).toHaveBeenCalledWith(
+      'GPT-5.4 Mini is text-only and does not support attachments.',
+    )
+
+    const updateMessages = harness.setMessages.mock.calls.at(-1)?.[0] as
+      ((current: ChatMessage[]) => ChatMessage[]) | undefined
+    expect(
+      updateMessages?.([{ id: 'u1', role: 'user', content: 'make slides' }]).at(-1)?.content,
+    ).toBe(
+      'I could not generate the deck yet. GPT-5.4 Mini is text-only and does not support attachments.',
+    )
   })
 
   it('does not start generating when canGenerate is false', async () => {

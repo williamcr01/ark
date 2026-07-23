@@ -81,6 +81,37 @@ describe('createChatStore', () => {
     })
   })
 
+  it('persists model failures as failure text instead of a success fallback', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-chat-'))
+    const store = createChatStore(dataDir)
+    const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
+
+    await persistAssistantGenerationMessage(store, deckId, {
+      jobId: '00000000-0000-4000-8000-000000000303',
+      model: 'mock:model',
+      status: 'failed',
+      steps: [{ type: 'tool-result', toolName: 'read_deck', summary: 'Read the deck.' }],
+      transcriptParts: [{ type: 'tool-result', toolName: 'read_deck', summary: 'Read the deck.' }],
+      assistantText: '',
+      editingExistingDeck: true,
+      error: {
+        message: 'The provider rejected the request.',
+        code: 'provider_error',
+        errorCategory: 'provider_error',
+      },
+    })
+
+    const message = (await store.listMessages(deckId)).messages[0]
+    expect(message.content).toBe(
+      'The model failed to generate the deck. The provider rejected the request.',
+    )
+    expect(message.content).not.toContain('Updated the deck using tool calls')
+    expect(message.parts?.at(-1)).toMatchObject({
+      type: 'text',
+      content: 'The model failed to generate the deck. The provider rejected the request.',
+    })
+  })
+
   it('persists and reloads a generated transcript within its durable ceiling', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-chat-'))
     const store = createChatStore(dataDir)
@@ -117,7 +148,8 @@ describe('createChatStore', () => {
       editingExistingDeck: true,
     })
     const message = (await store.listMessages(deckId)).messages[0]
-    expect(message.parts).toHaveLength(parts.length)
+    expect(message.parts).toHaveLength(parts.length + 1)
+    expect(message.parts?.at(-1)?.content).toContain('I could not generate the deck yet.')
     expect(persistedChatMessageSchema.safeParse(message).success).toBe(true)
   })
 

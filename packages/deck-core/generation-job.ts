@@ -41,6 +41,41 @@ export type GenerationJobError = {
   errorCategory?: string | null
 }
 
+/** Auth / key codes that always mean a model-provider failure. */
+const MODEL_GENERATION_ERROR_CODES = new Set(['missing_api_key', 'invalid_api_key'])
+
+/**
+ * Provider-call categories from job runs. Do not treat bare `code: 'provider_error'`
+ * as a model failure — job-creation validation also uses that API code.
+ */
+const MODEL_GENERATION_ERROR_CATEGORIES = new Set([
+  'missing_api_key',
+  'invalid_api_key',
+  'rate_limit',
+  'context_length',
+  'content_filter',
+  'timeout',
+  'network',
+  'provider_error',
+])
+
+export function isModelGenerationError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const candidate = error as { code?: unknown; errorCategory?: unknown }
+  return (
+    (typeof candidate.code === 'string' && MODEL_GENERATION_ERROR_CODES.has(candidate.code)) ||
+    (typeof candidate.errorCategory === 'string' &&
+      MODEL_GENERATION_ERROR_CATEGORIES.has(candidate.errorCategory))
+  )
+}
+
+export function formatModelGenerationFailure(message: string) {
+  return `The model failed to generate the deck. ${message.trim() || 'Generation failed.'}`
+}
+
 export type ProviderTokenUsage = {
   inputTokens?: number
   outputTokens?: number

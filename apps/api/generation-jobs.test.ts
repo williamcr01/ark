@@ -597,7 +597,11 @@ describe('generation job runner', () => {
 
     await jobStore.updateJob(failed.id, {
       status: 'failed',
-      error: { message: 'Provider unavailable', code: 'provider_error' },
+      error: {
+        message: 'Provider unavailable',
+        code: 'provider_error',
+        errorCategory: 'provider_error',
+      },
       completedAt: new Date().toISOString(),
     })
 
@@ -605,12 +609,66 @@ describe('generation job runner', () => {
 
     expect(retried?.retryOfJobId).toBe(failed.id)
     expect(retried?.status).toBe('queued')
+    expect(retried?.request.messages.map((message) => message.content)).toEqual([
+      'Retry me',
+      'The model failed to generate the deck. Provider unavailable',
+      'Retry previous request',
+    ])
 
     if (retried) {
       await runner.cancelJob(retried.id)
     }
 
     await new Promise((resolve) => setTimeout(resolve, 25))
+  })
+
+  it('persists the unsaved failure turn when a new-deck retry succeeds', async () => {
+    const { chatStore, runner, jobStore } = await createRunner({
+      runAgent: async () => ({
+        ok: true,
+        html: sampleHtml,
+        validation: validateDeckHtmlOnServer(sampleHtml),
+        steps: [],
+        transcriptParts: [],
+        assistantText: 'Here is the deck.',
+        providerMetrics: stubProviderMetrics,
+      }),
+    })
+
+    const failed = await jobStore.createJob({
+      deckId: null,
+      baseVersionId: null,
+      model: 'openai:gpt-4.1-mini',
+      provider: 'openai',
+      request: {
+        messages: [{ id: 'user-1', role: 'user', content: 'Make a pitch deck' }],
+        currentHtml: '',
+      },
+    })
+
+    await jobStore.updateJob(failed.id, {
+      status: 'failed',
+      error: {
+        message: 'The provider rejected the request.',
+        code: 'provider_error',
+        errorCategory: 'provider_error',
+      },
+      completedAt: new Date().toISOString(),
+    })
+
+    const retried = await runner.retryJob(failed.id)
+    expect(retried).not.toBeNull()
+
+    const succeeded = await waitForTerminalJob((id) => jobStore.getJob(id), retried!.id, {
+      statuses: ['succeeded'],
+    })
+    const persisted = await chatStore.listMessages(succeeded.result!.deckId)
+    expect(persisted.messages.map((message) => message.content)).toEqual([
+      'Make a pitch deck',
+      'The model failed to generate the deck. The provider rejected the request.',
+      'Retry previous request',
+      expect.stringContaining('Here is the deck.'),
+    ])
   })
 
   it('replays the persisted failed attempt transcript when retrying', async () => {

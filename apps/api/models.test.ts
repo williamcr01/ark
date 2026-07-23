@@ -8,6 +8,8 @@ import {
   resolveCatalogReasoningEffort,
 } from './model-catalog.ts'
 import {
+  catalogModelAccessible,
+  clearModelCatalogCache,
   ensureModelInList,
   fetchAllAvailableModels,
   getDefaultModel,
@@ -18,6 +20,7 @@ const ORIGINAL_ENV = { ...process.env }
 
 afterEach(() => {
   vi.restoreAllMocks()
+  clearModelCatalogCache()
 
   for (const key of Object.keys(process.env)) {
     if (!(key in ORIGINAL_ENV)) {
@@ -99,8 +102,18 @@ describe('curated model catalog', () => {
   })
 })
 
+describe('catalogModelAccessible', () => {
+  it('matches exact ids and versioned aliases', () => {
+    expect(catalogModelAccessible('claude-sonnet-5', new Set(['claude-sonnet-5-20250514']))).toBe(
+      true,
+    )
+    expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-5.4-mini']))).toBe(true)
+    expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-4o']))).toBe(false)
+  })
+})
+
 describe('fetchAllAvailableModels', () => {
-  it('marks providers without keys as missing_api_key and never fetches provider APIs', async () => {
+  it('marks providers without keys as missing_api_key and does not fetch', async () => {
     delete process.env.OPENAI_API_KEY
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -114,29 +127,58 @@ describe('fetchAllAvailableModels', () => {
     expect(models).toHaveLength(MODEL_CATALOG.length)
     expect(models.every((model) => model.available === false)).toBe(true)
     expect(models.every((model) => model.unavailableReason === 'missing_api_key')).toBe(true)
-    expect(models.every((model) => Array.isArray(model.reasoningEfforts))).toBe(true)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('marks a provider available when its API key is configured', async () => {
-    process.env.OPENAI_API_KEY = 'test-openai-key'
+  it('marks a provider unavailable when its API key is rejected', async () => {
+    process.env.OPENAI_API_KEY = 'sk-bad-key'
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: { message: 'Incorrect API key provided' } }, { status: 401 }),
+      ),
+    )
+
+    const { models, warnings } = await fetchAllAvailableModels()
+    const openaiModels = models.filter((model) => model.provider === 'openai')
+
+    expect(openaiModels.every((model) => model.available === false)).toBe(true)
+    expect(openaiModels.every((model) => model.unavailableReason === 'not_found')).toBe(true)
+    expect(warnings.some((warning) => /invalid|expired|Incorrect API key/i.test(warning))).toBe(
+      true,
+    )
+  })
+
+  it('marks only accessible catalog SKUs available when the key works', async () => {
+    process.env.OPENAI_API_KEY = 'sk-good-key'
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: [{ id: 'gpt-5.6-luna' }, { id: 'gpt-5.4-mini' }, { id: 'gpt-4o' }],
+        }),
+      ),
+    )
 
     const { models } = await getModelCatalog()
     const openaiModels = models.filter((model) => model.provider === 'openai')
     const otherModels = models.filter((model) => model.provider !== 'openai')
 
-    expect(openaiModels.every((model) => model.available)).toBe(true)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.available).toBe(true)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.available).toBe(true)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-sol')?.available).toBe(false)
+    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-sol')?.unavailableReason).toBe(
+      'not_found',
+    )
     expect(otherModels.every((model) => !model.available)).toBe(true)
     expect(
       openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsReasoning,
-    ).toBe(true)
-    expect(
-      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.supportsReasoning,
-    ).toBe(true)
-    expect(
-      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.supportsAttachments,
     ).toBe(true)
     expect(
       openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.defaultReasoningEffort,

@@ -55,6 +55,17 @@ describe('ChatPanel delivery status', () => {
 })
 
 describe('ChatPanel submit control', () => {
+  it('shows a concise working status while generating', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} generationStatus="running" isGenerating />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Working…')).toBeInTheDocument()
+    expect(screen.queryByText(/Designing the deck/i)).not.toBeInTheDocument()
+  })
+
   it('enables submit when only deck assets are selected', () => {
     render(
       <TooltipProvider>
@@ -154,6 +165,43 @@ describe('ChatPanel submit control', () => {
       screen.getByText('The Gemini API key in .env is invalid or expired.'),
     ).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Describe the deck/i)).toBeEnabled()
+  })
+
+  it('keeps model failures in the chat instead of showing a generation popup', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          error="The provider rejected the request."
+          messages={[
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'The model failed to generate the deck. The provider rejected the request.',
+            },
+          ]}
+          showGenerationErrorAlert={false}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText(/The model failed to generate the deck/)).toBeInTheDocument()
+    expect(screen.queryByText('Generation failed')).not.toBeInTheDocument()
+  })
+
+  it('keeps the generation popup for non-model errors', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          error="The deck changed while generation was running."
+          showGenerationErrorAlert
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Generation failed')).toBeInTheDocument()
+    expect(screen.getByText('The deck changed while generation was running.')).toBeInTheDocument()
   })
 
   it('dismisses floating agent warnings with the close button', async () => {
