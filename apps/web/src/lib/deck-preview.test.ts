@@ -267,6 +267,22 @@ describe('getPreviewHtml', () => {
     expect(withEditor).toMatch(/<script[^>]*data-ark-preview-editor[^>]*nonce="/)
   })
 
+  it('boots the private editor channel before full-JS deck scripts', () => {
+    const previewHtml = getPreviewHtml(fullJsDeck, {
+      editorBridge: true,
+      handshake: 'editor-capability',
+    })
+    const handshakeIndex = previewHtml.indexOf('data-ark-preview-handshake')
+    const editorIndex = previewHtml.indexOf('data-ark-preview-editor')
+    const deckScriptIndex = previewHtml.indexOf('window.fullJsDeckBooted = true')
+
+    expect(handshakeIndex).toBeGreaterThan(-1)
+    expect(editorIndex).toBeGreaterThan(handshakeIndex)
+    expect(deckScriptIndex).toBeGreaterThan(editorIndex)
+    expect(previewHtml).toContain('__arkEditorSessionV1')
+    expect(previewHtml).toContain('ark:editor-connect')
+  })
+
   it('keeps deck scripts and injects only the bridge for explicit custom-js decks', () => {
     const previewHtml = getPreviewHtml(fullJsDeck)
 

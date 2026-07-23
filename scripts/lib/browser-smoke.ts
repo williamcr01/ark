@@ -521,7 +521,7 @@ export async function setUploadFile(cdp: CdpClient, fixturePath: string) {
   })
   const input = await cdp.send<{ nodeId: number }>('DOM.querySelector', {
     nodeId: documentResult.root.nodeId,
-    selector: 'input[type="file"]',
+    selector: 'input[type="file"][accept*=".html"]',
   })
 
   assert(input.nodeId, 'Upload file input was not found.')

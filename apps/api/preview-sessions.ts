@@ -11,7 +11,7 @@ export type ThumbnailPreviewCache = {
 
 export type PreviewSession = {
   token: string
-  /** Correlates the render generation for the bridge handshake (not a secret). */
+  /** Correlates the render generation and authenticates the editor channel. */
   handshake: string
   html: string
   editorBridge: boolean

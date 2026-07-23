@@ -183,4 +183,23 @@ describe('buildDeckAgentSystemPrompt with agent guides', () => {
       resetAgentGuidesCache()
     }
   })
+
+  it('includes manual-edit compatibility guidance in the default system prompt', () => {
+    resetAgentGuidesCache()
+    const previous = process.env.ARK_AGENT_GUIDES_DIR
+    delete process.env.ARK_AGENT_GUIDES_DIR
+    try {
+      const prompt = buildDeckAgentSystemPrompt()
+      expect(prompt).toContain('## Manual-edit compatibility')
+      expect(prompt).toContain('directly in the source HTML')
+      expect(prompt).toContain('DOM created only at runtime cannot map back to source HTML')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ARK_AGENT_GUIDES_DIR
+      } else {
+        process.env.ARK_AGENT_GUIDES_DIR = previous
+      }
+      resetAgentGuidesCache()
+    }
+  })
 })

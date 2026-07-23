@@ -1,15 +1,15 @@
 # Ark manual editor bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). For CSS-only and approved Reveal decks without deck-authored init scripts, the shell enables the editor runtime automatically whenever the deck is interactive (not presenting or generating) — there is no Preview/Edit toggle. Persistent manual editing is disabled whenever deck-authored scripts execute, including custom-JS and Reveal+Chart.js decks, because code in the shared iframe realm could forge editor messages. The shell and deck runtime coordinate selection, geometry, transforms, and inline text editing through a versioned `postMessage` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell enables the editor runtime for CSS-only, approved Reveal, Reveal+Chart.js, and custom-JS decks whenever the preview is interactive (not presenting or generating) — there is no Preview/Edit toggle. The shell and injected editor runtime coordinate selection, geometry, transforms, and inline text editing through a private, per-preview `MessagePort` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
 
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
 ## Transport
 
-| Direction    | Mechanism                                                             |
-| ------------ | --------------------------------------------------------------------- |
-| Shell → deck | `window.postMessage` to the preview iframe (`postEditorShellMessage`) |
-| Deck → shell | `window.parent.postMessage` from the injected editor runtime          |
+| Direction    | Mechanism                                                  |
+| ------------ | ---------------------------------------------------------- |
+| Bootstrap    | Authenticated `window.postMessage` with a transferred port |
+| Shell ↔ deck | Entangled `MessagePort` endpoints                          |
 
 Protocol version: `EDITOR_BRIDGE_PROTOCOL_VERSION` (currently `1`).
 
@@ -19,30 +19,32 @@ All message types use the `ark:editor-*` prefix. TypeScript types, validators (`
 
 Preview HTML is built by `buildPreviewHtml` in `packages/deck-core/deck-preview-html.ts`. Ark always injects a **navigation** runtime (CSS shim, reveal adapter, or full-JS bridge). Interactive shell previews also inject the **editor** runtime up front (`editorBridge: true`); the shell activates or deactivates that dormant runtime with `ark:editor-enable` / `ark:editor-disable` messages instead of remounting the iframe.
 
-Load order (before `</body>`):
+Load order:
 
-1. Navigation runtime (`data-ark-preview-nav`, `data-ark-preview-reveal`, or `data-ark-preview-bridge`)
-2. Editor runtime (`data-ark-preview-editor`) — present in interactive previews, omitted from thumbnail renders
+1. The per-session handshake sentinel runs as the first head script, hands its capability to the editor bootstrap, posts the navigation handshake, and removes its own script node.
+2. The editor runtime runs next in `<head>`, consumes the capability, removes its own script node, and transfers one endpoint of a new `MessageChannel` to the shell.
+3. Deck-authored scripts run normally.
+4. The navigation runtime (`data-ark-preview-nav`, `data-ark-preview-reveal`, or `data-ark-preview-bridge`) handles the separate `ark:deck-*` protocol.
 
-Both runtimes are independent IIFEs. Navigation continues to handle `ark:deck-*` messages; the editor runtime handles `ark:editor-*` messages. They share slide selectors (`SLIDE_SELECTOR_CHAIN`) and the configured parent app origin.
+Interactive previews include the editor bootstrap; thumbnail renders omit it. Navigation continues to use its existing window-message protocol. Editor commands and results use only the transferred port after bootstrap.
 
 ## Lifecycle
 
 ### Enable / disable
 
-| Step | Actor | Action                                                                                                  |
-| ---- | ----- | ------------------------------------------------------------------------------------------------------- |
-| 1    | Shell | Derives edit chrome from a loaded deck that is not presenting or generating (`DeckPreview`)             |
-| 2    | Shell | The existing editor-capable preview frame stays mounted                                                 |
-| 3    | Shell | `useDeckEditorBridge` attaches a `message` listener and calls `enableEditor(slideIndex, tool?, scale?)` |
-| 4    | Shell | Posts `ark:editor-enable` with the active slide index, tool, and preview scale                          |
-| 5    | Deck  | Binds pointer/keyboard listeners, sets `enabled = true`, posts `ark:editor-ready`                       |
-| 6    | Shell | Marks `editorReady: true`; re-sends `ark:editor-enable` when the active slide changes                   |
+| Step | Actor | Action                                                                                           |
+| ---- | ----- | ------------------------------------------------------------------------------------------------ |
+| 1    | Shell | Derives edit chrome from a loaded deck that is not presenting or generating (`DeckPreview`)      |
+| 2    | Shell | The existing editor-capable preview frame stays mounted                                          |
+| 3    | Shell | `useDeckEditorBridge` authenticates the bootstrap and acknowledges its transferred `MessagePort` |
+| 4    | Shell | Sends `ark:editor-enable` over the port with the active slide index, tool, and preview scale     |
+| 5    | Deck  | Activates its pre-bound pointer/keyboard listeners and sends `ark:editor-ready` over the port    |
+| 6    | Shell | Marks `editorReady: true`; re-sends `ark:editor-enable` when the active slide changes            |
 
 `ark:editor-ready` guarantees:
 
 - The editor runtime received `ark:editor-enable`
-- Pointer and keyboard listeners are bound
+- Pointer and keyboard listeners are active
 - `slideIndex` in the ready message matches the editor's active slide
 - `protocolVersion` is `1`
 
@@ -50,13 +52,13 @@ The shell posts `ark:editor-configure` when the preview scale changes. The runti
 
 The editor runtime is **dormant** until `ark:editor-enable`. Messages other than enable/disable are ignored while disabled.
 
-**Disable:** the shell posts `ark:editor-disable` when Present mode opens, generation starts, or the deck becomes empty. The runtime ends any active text edit (without commit), clears selection/hover, unbinds listeners, and posts `ark:editor-selection-change` with `selection: null`.
+**Disable:** the shell posts `ark:editor-disable` when Present mode opens, generation starts, or the deck becomes empty. The runtime ends any active text edit (without commit), clears selection/hover, makes its pre-bound listeners dormant, and posts `ark:editor-selection-change` with `selection: null`.
 
 ### Preview reloads and deck switches
 
 - Each preview session or HTML change produces a new `iframeKey` / `iframeGenerationKey`. `useDeckEditorBridge` increments a generation counter and **ignores** runtime messages whose generation does not match — this rejects stale frames after reload.
-- Incoming messages are also rejected unless `event.source === iframeRef.contentWindow`.
-- When present mode is open, generation is running, or the deck has no slides, the bridge hook is disabled and does not listen.
+- A new generation closes the old `MessagePort`; later traffic on it cannot reach the shell.
+- When present mode is open, generation is running, or the deck has no slides, runtime messages are ignored and the editor is disabled.
 - After a successful text commit, `DeckPreview` preserves the active slide index across the preview HTML refresh triggered by the patch response.
 
 ## Message reference
@@ -143,6 +145,8 @@ Optional `slideBounds` is the **slide box normalized to the iframe viewport** (`
 
 #### Text editing
 
+Clicking selected text again without moving the pointer enters inline editing. A click-drag still moves the selected element; double-click, the **Edit text** button, and Enter remain supported.
+
 | Type                         | Payload fields                                                        | When fired                                                                  | Parent behavior                                                     |
 | ---------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `ark:editor-text-edit-state` | `active: boolean`; when `active: true` also `elementId`, `slideIndex` | Text edit starts or ends                                                    | Toggle `textEditActive`; overlay shows editing state                |
@@ -198,24 +202,31 @@ Known error codes from the injected runtime: `locked-element`, `non-text-element
 
 Cross-origin `postMessage` between the app shell and sandbox preview is a trust boundary. The editor bridge assumes **all iframe content is hostile**; the parent must never persist edits without server-side validation.
 
-### Origin scoping
+### Channel bootstrap
 
-| Direction    | Validation                                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Deck → shell | `event.source === iframe.contentWindow` **and** `isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)` (accepts configured sandbox origin or opaque `"null"`) |
-| Shell → deck | Runtime accepts only `event.source === window.parent` **and** `event.origin === PARENT_ORIGIN` (app origin from the sandbox render URL `?parent=` query parameter) |
+The only editor message accepted from the iframe's public window channel is `ark:editor-connect`. The shell requires all of:
 
-Parent → iframe posts use `postEditorShellMessage`, which targets `getDeckBridgeTargetOrigin(parentOrigin)` (configured app origin, or `*` as fallback). Navigation `ark:deck-goto` messages use `DECK_BRIDGE_POST_MESSAGE_TARGET` (`*`) explicitly so they reach opaque-origin sandbox frames — see [deck-bridge.md](./deck-bridge.md#security-notes).
+- `event.source === iframe.contentWindow`
+- `isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)`
+- the current `iframeGenerationKey`
+- the exact per-session handshake
+- the current editor protocol version
+- one transferred `MessagePort`
 
-Iframe → parent posts use `PARENT_ORIGIN` (embedded in the injected script) or `*` when unset.
+The handshake and editor scripts execute before deck-authored scripts, retain the handshake only in closures, and remove their script nodes before deck code runs. The runtime retries with fresh channel candidates until the shell acknowledges one. Both sides close old ports on generation changes.
+
+After acknowledgement, the shell ignores public `ark:editor-*` runtime payloads and the runtime ignores public shell commands. A deck script can create its own `MessageChannel`, but it cannot supply the session capability or acquire the already-transferred endpoint.
 
 ### Stale-frame and forged messages
 
-- **Generation guard:** `useDeckEditorBridge` tags each iframe load with `iframeGenerationKey`; runtime messages from a previous generation are dropped.
-- **Source guard:** messages not originating from the current preview `contentWindow` are dropped.
+- **Capability channel:** routine editor traffic is accepted only on the authenticated per-preview port.
+- **Generation guard:** `useDeckEditorBridge` tags each iframe load with `iframeGenerationKey`, closes the prior port, and drops stale messages.
+- **Source/origin guards:** public bootstrap messages not originating from the current preview `contentWindow` and configured sandbox origin are dropped.
 - **Shape guard:** only payloads passing `isEditorRuntimeMessage` / `isEditorShellMessage` are handled; unknown `ark:editor-*` types are ignored.
-- **Execution-realm guard:** decks with executing deck-authored scripts never activate the persistent editor bridge; a nonce cannot distinguish deck code from injected runtime code in the same window.
-- **Hostile fixtures (#81):** security tests should assert that forged origins, wrong `event.source`, malformed payloads, and out-of-protocol types never mutate shell state or reach the patch API.
+- **Authoritative patch guard:** the API resolves targets against persisted source HTML and rechecks editable metadata, unsafe tags, locks, allowed attributes/styles, and numeric bounds.
+- **Hostile fixtures (#81):** security tests assert that forged public commits cannot enter the private channel or mutate shell state.
+
+The editor and deck still share a DOM and JavaScript realm: arbitrary deck code can intentionally change rendered DOM, consume input, or otherwise interfere with the editing experience. Ordinary cross-browser pages do not have the extension-only isolated-world API that would provide separate globals while sharing one DOM. The private port prevents direct protocol forgery; sandbox/CSP containment and server-side validation remain the protection against untrusted deck behavior.
 
 ### Element identity
 
@@ -286,7 +297,7 @@ Transforms, inserts, duplicates, deletes, inspector changes, and layer changes f
 | Component / module                                     | Role                                                                          |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | `apps/web/src/components/DeckPreview.tsx`              | Always-on edit chrome, text commit orchestration, overlay, keyboard shortcuts |
-| `apps/web/src/hooks/useDeckEditorBridge.ts`            | `postMessage` listener and shell command helpers                              |
+| `apps/web/src/hooks/useDeckEditorBridge.ts`            | Authenticated port bootstrap, runtime listener, and shell command helpers     |
 | `apps/web/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                                    |
 | `apps/web/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                                 |
 | `apps/web/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                                        |
@@ -305,8 +316,8 @@ To add a new `ark:editor-*` message safely:
 1. **Type union** — Add the constant, payload interface, and entry in `EDITOR_SHELL_MESSAGE_TYPES` or `EDITOR_RUNTIME_MESSAGE_TYPES` in `packages/deck-core/deck-editor-bridge.ts`.
 2. **Validator** — Implement `isEditorFooMessage` with strict field checks; register it in `isEditorShellMessage` or `isEditorRuntimeMessage`.
 3. **Factory** — Add `createEditorFooMessage` for tests and shell callers.
-4. **Runtime handler** — Update `buildDeckEditorBridgeRuntimeScript` to emit or consume the message; keep handlers inside the existing `message` listener with origin/source checks.
-5. **Hook handler** — Handle the message in `useDeckEditorBridge` (or a dedicated hook) with generation, source, and origin guards.
+4. **Runtime handler** — Update `buildDeckEditorBridgeRuntimeScript` to emit or consume the message on the established port.
+5. **Hook handler** — Handle the message in `useDeckEditorBridge` (or a dedicated hook) with port and generation guards.
 6. **Persistence** — Map commit-style messages to `DeckPatchOperation` types in `packages/deck-core/deck-patch.ts` and `apps/api/deck-element-patch.ts`; never write deck HTML from the client alone.
 7. **Tests** — Add validator tests in `packages/deck-core/deck-editor-bridge.test.ts`; add hook/integration tests in `apps/web/src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.
 

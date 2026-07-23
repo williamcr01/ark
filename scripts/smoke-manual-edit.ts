@@ -26,6 +26,10 @@ import {
 
 const manualEditFixturePath = path.join(repoRoot, 'test/fixtures/manual-edit-deck.html')
 const revealFixturePath = path.join(repoRoot, 'test/fixtures/reveal-vertical-deck.html')
+const hostileEditorFixturePath = path.join(
+  repoRoot,
+  'test/fixtures/hostile-editor-postmessage-deck.html',
+)
 
 type DeckVersionSummary = {
   id: string
@@ -124,7 +128,7 @@ async function enterEditMode(
   )
 
   await waitFor('editor bridge ready in preview frame', async () =>
-    evaluate<boolean>(cdp!, `Boolean(document.querySelector('script[data-ark-preview-editor]'))`, {
+    evaluate<boolean>(cdp!, `Boolean(document.querySelector('style[data-ark-editor="true"]'))`, {
       contextId: editPreview.id,
       sessionId: editPreview.sessionId,
     }),
@@ -193,7 +197,7 @@ async function refreshEditPreviewContext(
           const active = document.querySelector('section.slide.active, section.slide.is-active');
           return {
             activeText: active?.textContent || '',
-            hasRuntime: Boolean(document.querySelector('script[data-ark-preview-editor]')),
+            hasRuntime: Boolean(document.querySelector('style[data-ark-editor="true"]')),
           };
         })()`,
           { contextId: context.id, sessionId: context.sessionId },
@@ -231,7 +235,7 @@ async function getCurrentEditPreview(
   cdp: Awaited<ReturnType<typeof createPage>>,
   servers: { sandboxOrigin: string },
   contexts: Map<string, RuntimeContext>,
-  requiredSelector = 'script[data-ark-preview-editor]',
+  requiredSelector = 'style[data-ark-editor="true"]',
   previousSrc = '',
 ) {
   return waitFor(
@@ -257,7 +261,7 @@ async function getCurrentEditPreview(
           cdp!,
           `({
             href: location.href,
-            ready: Boolean(document.querySelector('script[data-ark-preview-editor]')) && Boolean(document.querySelector(${JSON.stringify(requiredSelector)})),
+            ready: Boolean(document.querySelector('style[data-ark-editor="true"]')) && Boolean(document.querySelector(${JSON.stringify(requiredSelector)})),
           })`,
           { contextId: editPreview.id, sessionId: editPreview.sessionId },
         ).catch(() => null)
@@ -381,10 +385,19 @@ async function cancelPendingNudgeViaUndo(
   context: RuntimeContext,
   selector: string,
 ) {
-  await dispatchPointerSequence(cdp, context, [
-    { type: 'pointerdown', selector },
-    { type: 'pointerup', selector },
-  ])
+  const alreadySelected = await evaluate<boolean>(
+    cdp,
+    `document.querySelector(${JSON.stringify(selector)})?.hasAttribute('data-ark-editor-selected') === true`,
+    { contextId: context.id, sessionId: context.sessionId },
+  )
+
+  if (!alreadySelected) {
+    await dispatchPointerSequence(cdp, context, [
+      { type: 'pointerdown', selector },
+      { type: 'pointerup', selector },
+    ])
+  }
+
   await waitFor('heading selected before nudge', async () =>
     evaluate<boolean>(
       cdp,
@@ -991,7 +1004,7 @@ async function runSmoke() {
       cdp,
       servers,
       contexts,
-      'script[data-ark-preview-editor]',
+      'style[data-ark-editor="true"]',
       editPreviewSrc,
     ))
     await clickToolbarButton(cdp, 'Undo')
@@ -1245,17 +1258,14 @@ async function runSmoke() {
       'Quarterly planning',
     ))
 
-    // --- Text edit via real DOM events inside the sandbox iframe ---
-    await evaluate<boolean>(
-      cdp,
-      `(() => {
-        const heading = document.querySelector('section.slide.active h1, section.slide.is-active h1, h1');
-        if (!heading) return false;
-        heading.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));
-        return heading.getAttribute('contenteditable') === 'true' || Boolean(heading.closest('[contenteditable="true"]'));
-      })()`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
+    // --- Second-click text edit via real pointer events inside the sandbox iframe ---
+    const headingSelectorForTextEdit = 'section.slide.active h1, section.slide.is-active h1, h1'
+    await dispatchPointerSequence(cdp, editPreview, [
+      { type: 'pointerdown', selector: headingSelectorForTextEdit },
+      { type: 'pointerup', selector: headingSelectorForTextEdit },
+      { type: 'pointerdown', selector: headingSelectorForTextEdit },
+      { type: 'pointerup', selector: headingSelectorForTextEdit },
+    ])
 
     await waitFor('text edit active in preview', async () =>
       evaluate<boolean>(
@@ -1378,7 +1388,7 @@ async function runSmoke() {
       cdp,
       servers,
       contexts,
-      'script[data-ark-preview-editor]',
+      'style[data-ark-editor="true"]',
       editPreviewSrc,
     )
     const revealHeadingSelector = '.reveal .slides > section.present > section.present > h2'
@@ -1490,6 +1500,69 @@ async function runSmoke() {
         `Reveal heading ${axis} drifted after persistence: ${revealLive[axis]} → ${revealPersisted[axis]}`,
       )
     }
+
+    await setUploadFile(cdp, hostileEditorFixturePath)
+    await waitFor('uploaded hostile full-JS deck with edit chrome', async () => {
+      const text = await evaluate<string>(cdp!, 'document.body.innerText')
+      return (
+        text.includes('Hostile Editor PostMessage Deck') &&
+        text.includes('Scripts running') &&
+        (await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('button[aria-label="Select"]'))`,
+        ))
+      )
+    })
+    const fullJsDeck = await waitFor('uploaded full-JS deck in API', async () => {
+      const listed = await listDecks(apiPort)
+      return listed.find((deck) => deck.title.includes('Hostile Editor PostMessage Deck')) ?? null
+    })
+    const fullJsHeadingSelector = 'h1[data-ark-id="ark-el-title"]'
+    const fullJsPreview = await getCurrentEditPreview(
+      cdp,
+      servers,
+      contexts,
+      fullJsHeadingSelector,
+      revealPreview.editPreviewSrc,
+    )
+
+    // The fixture posts well-formed forged mutation requests on the public
+    // window channel. They must not enter the private editor channel.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const fullJsBefore = await fetchDeck(apiPort, fullJsDeck.id)
+    assert(
+      fullJsBefore.html.includes('Editor bridge hijack'),
+      'Full-JS deck forged a public editor delete request',
+    )
+
+    await dispatchPointerSequence(cdp, fullJsPreview.editPreview, [
+      { type: 'pointerdown', selector: fullJsHeadingSelector },
+      { type: 'pointerup', selector: fullJsHeadingSelector },
+    ])
+    await waitFor('full-JS heading selected', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `document.querySelector(${JSON.stringify(fullJsHeadingSelector)})?.hasAttribute('data-ark-editor-selected') === true`,
+        {
+          contextId: fullJsPreview.editPreview.id,
+          sessionId: fullJsPreview.editPreview.sessionId,
+        },
+      ),
+    )
+    await evaluate(
+      cdp,
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
+      {
+        contextId: fullJsPreview.editPreview.id,
+        sessionId: fullJsPreview.editPreview.sessionId,
+      },
+    )
+    await waitFor('full-JS nudge persisted through the private editor channel', async () => {
+      const deck = await fetchDeck(apiPort, fullJsDeck.id)
+      return deck.html !== fullJsBefore.html && deck.html.includes('data-ark-managed="true"')
+        ? deck
+        : null
+    })
 
     void afterInsert
     void baseline

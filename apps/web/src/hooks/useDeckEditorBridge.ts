@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 import {
+  createEditorConnectAckMessage,
   createEditorCancelTextEditMessage,
   createEditorClearSelectionMessage,
   createEditorConfigureMessage,
@@ -25,6 +26,7 @@ import {
   isEditorTransformCommitMessage,
   isEditorTransformPreviewMessage,
   isEditorDeleteRequestMessage,
+  isEditorConnectMessage,
   type EditorHoverMessage,
   type EditorInsertRequestMessage,
   type EditorNormalizedRect,
@@ -34,6 +36,8 @@ import {
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
   type EditorDeleteRequestMessage,
+  type EditorRuntimeMessage,
+  type EditorShellMessage,
   postEditorShellMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 import {
@@ -74,6 +78,8 @@ export type UseDeckEditorBridgeOptions = {
   sandboxOrigin?: string | null
   parentOrigin?: string | null
   iframeGenerationKey?: string
+  /** Per-preview capability used to authenticate the private editor MessagePort. */
+  sessionHandshake?: string | null
   /** Synchronous send gate from usePreviewBridgeSession.canPostToFrame. */
   canPostToFrame?: () => boolean
   /** When false, ignore inbound editor messages (session not armed). */
@@ -112,6 +118,7 @@ export function useDeckEditorBridge(
     sandboxOrigin = null,
     parentOrigin: _parentOrigin = null,
     iframeGenerationKey = '',
+    sessionHandshake = null,
     canPostToFrame,
     shouldAcceptInbound,
     onSelectionChange,
@@ -121,13 +128,17 @@ export function useDeckEditorBridge(
   const [state, setState] = useState<DeckEditorBridgeState>(initialState)
   const [trackedGenerationKey, setTrackedGenerationKey] = useState(iframeGenerationKey)
   const iframeGenerationRef = useRef(0)
+  const editorPortRef = useRef<MessagePort | null>(null)
+  const queuedShellMessagesRef = useRef<EditorShellMessage[]>([])
   const canPostToFrameRef = useRef(canPostToFrame)
   const shouldAcceptInboundRef = useRef(shouldAcceptInbound)
+  const enabledRef = useRef(enabled)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    enabledRef.current = enabled
     canPostToFrameRef.current = canPostToFrame
     shouldAcceptInboundRef.current = shouldAcceptInbound
-  }, [canPostToFrame, shouldAcceptInbound])
+  }, [canPostToFrame, enabled, shouldAcceptInbound])
 
   // Hard-reset when the preview iframe remounts. Same-iframe enableEditor keeps
   // in-flight commits; a new generation key is a boundary (React "adjust state
@@ -137,12 +148,22 @@ export function useDeckEditorBridge(
     setState(initialState)
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     iframeGenerationRef.current += 1
+
+    editorPortRef.current?.close()
+    editorPortRef.current = null
+    queuedShellMessagesRef.current = []
+
+    return () => {
+      editorPortRef.current?.close()
+      editorPortRef.current = null
+      queuedShellMessagesRef.current = []
+    }
   }, [iframeGenerationKey])
 
   const postToFrame = useCallback(
-    (message: Parameters<typeof postEditorShellMessage>[1]) => {
+    (message: EditorShellMessage) => {
       if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
         return false
       }
@@ -153,10 +174,24 @@ export function useDeckEditorBridge(
         return false
       }
 
+      if (sessionHandshake?.trim()) {
+        const port = editorPortRef.current
+
+        if (port) {
+          port.postMessage(message)
+        } else {
+          // The head bootstrap normally connects before the frame handshake
+          // arms. Keep a small bounded queue for srcDoc/fast-cache races.
+          queuedShellMessagesRef.current = [...queuedShellMessagesRef.current.slice(-31), message]
+        }
+
+        return true
+      }
+
       postEditorShellMessage(iframeWindow, message, DECK_BRIDGE_POST_MESSAGE_TARGET)
       return true
     },
-    [iframeRef],
+    [iframeRef, sessionHandshake],
   )
 
   useEffect(() => {
@@ -248,35 +283,13 @@ export function useDeckEditorBridge(
     [postToFrame],
   )
 
-  useEffect(() => {
-    if (!enabled) {
-      return
-    }
-
-    const messageGeneration = iframeGenerationRef.current
-
-    const handleMessage = (event: MessageEvent) => {
-      if (messageGeneration !== iframeGenerationRef.current) {
+  const handleRuntimeMessage = useCallback(
+    (data: EditorRuntimeMessage) => {
+      if (!enabledRef.current) {
         return
       }
 
       if (shouldAcceptInboundRef.current && !shouldAcceptInboundRef.current()) {
-        return
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-
-      if (!iframeWindow || event.source !== iframeWindow) {
-        return
-      }
-
-      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
-        return
-      }
-
-      const data = event.data
-
-      if (!isEditorRuntimeMessage(data)) {
         return
       }
 
@@ -430,14 +443,118 @@ export function useDeckEditorBridge(
         }))
         onEditorError?.(data.message, data.code)
       }
+    },
+    [onEditorError, onSelectionChange],
+  )
+  const runtimeMessageHandlerRef = useRef(handleRuntimeMessage)
+
+  useLayoutEffect(() => {
+    runtimeMessageHandlerRef.current = handleRuntimeMessage
+  }, [handleRuntimeMessage])
+
+  useLayoutEffect(() => {
+    const expectedHandshake = sessionHandshake?.trim()
+
+    if (!expectedHandshake) {
+      return
     }
 
-    window.addEventListener('message', handleMessage)
+    const messageGeneration = iframeGenerationRef.current
+
+    const handleConnect = (event: MessageEvent) => {
+      if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
+      const iframeWindow = iframeRef.current?.contentWindow
+
+      if (!iframeWindow || event.source !== iframeWindow) {
+        return
+      }
+
+      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
+        return
+      }
+
+      if (!isEditorConnectMessage(event.data) || event.data.handshake !== expectedHandshake) {
+        return
+      }
+
+      const port = event.ports[0]
+
+      if (!port) {
+        return
+      }
+
+      if (editorPortRef.current) {
+        port.close()
+        return
+      }
+
+      editorPortRef.current = port
+      port.onmessage = (portEvent) => {
+        if (
+          messageGeneration !== iframeGenerationRef.current ||
+          !isEditorRuntimeMessage(portEvent.data)
+        ) {
+          return
+        }
+
+        runtimeMessageHandlerRef.current(portEvent.data)
+      }
+      port.start()
+      port.postMessage(createEditorConnectAckMessage())
+
+      const queued = queuedShellMessagesRef.current
+      queuedShellMessagesRef.current = []
+
+      if (!canPostToFrameRef.current || canPostToFrameRef.current()) {
+        queued.forEach((message) => port.postMessage(message))
+      }
+    }
+
+    window.addEventListener('message', handleConnect)
 
     return () => {
-      window.removeEventListener('message', handleMessage)
+      window.removeEventListener('message', handleConnect)
+      editorPortRef.current?.close()
+      editorPortRef.current = null
+      queuedShellMessagesRef.current = []
     }
-  }, [enabled, iframeGenerationKey, iframeRef, onEditorError, onSelectionChange, sandboxOrigin])
+  }, [iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
+
+  useEffect(() => {
+    if (!enabled || sessionHandshake?.trim()) {
+      return
+    }
+
+    const messageGeneration = iframeGenerationRef.current
+
+    const handleLegacyMessage = (event: MessageEvent) => {
+      if (messageGeneration !== iframeGenerationRef.current) {
+        return
+      }
+
+      const iframeWindow = iframeRef.current?.contentWindow
+
+      if (
+        !iframeWindow ||
+        event.source !== iframeWindow ||
+        !isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin) ||
+        !isEditorRuntimeMessage(event.data)
+      ) {
+        return
+      }
+
+      runtimeMessageHandlerRef.current(event.data)
+    }
+
+    window.addEventListener('message', handleLegacyMessage)
+
+    return () => {
+      window.removeEventListener('message', handleLegacyMessage)
+    }
+  }, [enabled, iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
 
   return {
     ...state,

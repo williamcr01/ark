@@ -448,6 +448,37 @@ describe('deck editor bridge protocol', () => {
     dom.window.close()
   })
 
+  it('starts inline editing when selected text is clicked again without dragging', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title">Opening</h1></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    title.getBoundingClientRect = () => rect(100, 80, 400, 60)
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    expect(title.hasAttribute('contenteditable')).toBe(false)
+    messages.length = 0
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 100))
+
+    expect(title.getAttribute('contenteditable')).toBe('true')
+    expect(messages).toContainEqual({
+      type: EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
+      active: true,
+      elementId: 'title',
+      slideIndex: 0,
+    })
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
+      false,
+    )
+    dom.window.close()
+  })
+
   it('drills into an already-selected managed container', async () => {
     const { dom, messages } = await loadEditorRuntime(
       '<section class="slide"><div data-ark-id="group" data-ark-managed="true"><p data-ark-id="copy">Copy</p></div></section>',
@@ -507,20 +538,10 @@ describe('deck editor bridge protocol', () => {
     copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 130, 130))
     messages.length = 0
 
-    // Third click must stay on the drilled child (not bounce back to the group).
+    // Dragging the selected text still moves it instead of entering text edit.
     copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 3, 130, 130))
-    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 3, 130, 130))
-
-    const reclickSelections = messages
-      .filter((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE)
-      .map((message) => (message.selection as { elementId: string }).elementId)
-    expect(reclickSelections).toEqual(['copy'])
-    messages.length = 0
-
-    // Click-drag after drill must move the child, not the container.
-    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 4, 130, 130))
-    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 4, 230, 130))
-    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 4, 230, 130))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 3, 230, 130))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 3, 230, 130))
 
     const commit = messages.find((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)
     expect(commit).toMatchObject({

@@ -17,7 +17,7 @@ export type DeckPreviewFrameModel = {
   isStale: boolean
   error: string | null
   usesSandboxHost: boolean
-  /** Generation-correlation handshake for the bridge session (not a secret). */
+  /** Per-generation handshake and editor-channel capability. */
   handshake: string | null
 }
 

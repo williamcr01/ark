@@ -347,7 +347,7 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.getByText('Preview')).toBeInTheDocument()
   })
 
-  it('disables persistent manual editing for custom-JS decks', () => {
+  it('keeps persistent manual editing enabled for custom-JS decks', () => {
     renderDeckPreview({
       ...plainDeckProps,
       html: fullJsDeck,
@@ -355,14 +355,18 @@ describe('DeckPreview script divergence UI', () => {
       editorBridgeEnabled: true,
     })
 
-    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(screen.getByText('Scripts running')).toBeInTheDocument()
     expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
       expect.anything(),
-      expect.objectContaining({ enabled: false }),
+      expect.objectContaining({
+        enabled: true,
+        sessionHandshake: previewFrameMock.handshake,
+      }),
     )
   })
 
-  it('disables persistent editing when approved runtime decks execute init scripts', () => {
+  it('keeps persistent editing enabled when approved runtime decks execute init scripts', () => {
     renderDeckPreview({
       ...plainDeckProps,
       html: revealChartDeck,
@@ -370,11 +374,14 @@ describe('DeckPreview script divergence UI', () => {
       editorBridgeEnabled: true,
     })
 
-    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
-    expect(screen.getByText('Scripts running · editing off')).toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(screen.getByText('Scripts running')).toBeInTheDocument()
     expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
       expect.anything(),
-      expect.objectContaining({ enabled: false }),
+      expect.objectContaining({
+        enabled: true,
+        sessionHandshake: previewFrameMock.handshake,
+      }),
     )
   })
 

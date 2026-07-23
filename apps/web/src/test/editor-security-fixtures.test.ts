@@ -2,11 +2,16 @@ import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
+  EDITOR_BRIDGE_PROTOCOL_VERSION,
+  EDITOR_CONNECT_MESSAGE_TYPE,
   EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
   EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
   EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
   EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
   EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
+  createEditorConnectAckMessage,
+  createEditorEnableMessage,
+  createEditorSelectMessage,
   createEditorTextCommitMessage,
   isEditorRuntimeMessage,
   parseEditorMessage,
@@ -94,6 +99,88 @@ function loadExecutablePreview(html: string) {
   })
 }
 
+function loadSecureEditorPreview(html: string, handshake: string) {
+  return new Promise<{
+    dom: JSDOM
+    publicMessages: unknown[]
+    editorMessages: unknown[]
+    editorReady: Promise<void>
+  }>((resolve) => {
+    const publicMessages: unknown[] = []
+    const editorMessages: unknown[] = []
+    let resolveEditorReady: () => void
+    const editorReady = new Promise<void>((ready) => {
+      resolveEditorReady = ready
+    })
+    let parentWindow: {
+      postMessage: (message: unknown, targetOrigin?: string, transfer?: Transferable[]) => void
+    }
+
+    const dom = new JSDOM(html, {
+      pretendToBeVisual: true,
+      runScripts: 'dangerously',
+      url: 'https://ark.test/preview?parent=https%3A%2F%2Fark.test',
+      beforeParse(window) {
+        Object.defineProperty(window, 'MessageChannel', {
+          configurable: true,
+          value: MessageChannel,
+        })
+
+        parentWindow = {
+          postMessage(message, _targetOrigin, transfer) {
+            publicMessages.push(message)
+
+            if (
+              typeof message !== 'object' ||
+              message === null ||
+              !('type' in message) ||
+              message.type !== EDITOR_CONNECT_MESSAGE_TYPE ||
+              !('handshake' in message) ||
+              message.handshake !== handshake ||
+              !('protocolVersion' in message) ||
+              message.protocolVersion !== EDITOR_BRIDGE_PROTOCOL_VERSION
+            ) {
+              return
+            }
+
+            const port = transfer?.[0]
+
+            if (!(port instanceof MessagePort)) {
+              return
+            }
+
+            port.onmessage = (event) => {
+              editorMessages.push(event.data)
+
+              if (
+                typeof event.data === 'object' &&
+                event.data !== null &&
+                'type' in event.data &&
+                event.data.type === 'ark:editor-ready'
+              ) {
+                resolveEditorReady()
+              }
+            }
+            port.start()
+            port.postMessage(createEditorConnectAckMessage())
+            port.postMessage(createEditorEnableMessage(0))
+            port.postMessage(createEditorSelectMessage('ark-el-title', 0))
+          },
+        }
+
+        Object.defineProperty(window, 'parent', {
+          configurable: true,
+          value: parentWindow,
+        })
+      },
+    })
+
+    dom.window.addEventListener('load', () => {
+      resolve({ dom, publicMessages, editorMessages, editorReady })
+    })
+  })
+}
+
 describe('manual editor security fixtures (#81)', () => {
   it.each(malformedEditorPayloads.map((payload, index) => [index, payload] as const))(
     'rejects malformed editor payload %i at the validator boundary',
@@ -175,6 +262,70 @@ describe('manual editor security fixtures (#81)', () => {
           message.type !== 'ark:editor-ready',
       ),
     ).toBe(true)
+  })
+
+  it('keeps full-JS editor traffic on a private per-preview MessagePort', async () => {
+    const handshake = 'private-editor-capability'
+    const previewHtml = getPreviewHtml(hostileEditorPostmessageDeck, {
+      editorBridge: true,
+      handshake,
+    })
+    const { dom, publicMessages, editorMessages, editorReady } = await loadSecureEditorPreview(
+      previewHtml,
+      handshake,
+    )
+
+    await editorReady
+    await expect
+      .poll(() =>
+        editorMessages.some(
+          (message) =>
+            typeof message === 'object' &&
+            message !== null &&
+            'type' in message &&
+            message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        ),
+      )
+      .toBe(true)
+
+    expect(
+      publicMessages.some(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+      ),
+    ).toBe(true)
+    expect(editorMessages.some((message) => isEditorRuntimeMessage(message))).toBe(true)
+    expect(
+      editorMessages.some(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE &&
+          'selection' in message &&
+          typeof message.selection === 'object' &&
+          message.selection !== null &&
+          'elementId' in message.selection &&
+          message.selection.elementId === 'ark-el-title',
+      ),
+    ).toBe(true)
+    expect(
+      editorMessages.some(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+      ),
+    ).toBe(false)
+    expect(dom.window.document.querySelector('[data-ark-preview-handshake]')).toBeNull()
+    expect(dom.window.document.querySelector('[data-ark-preview-editor]')).toBeNull()
+    expect(dom.window.document.documentElement.innerHTML).not.toContain(handshake)
+
+    dom.window.close()
   })
 
   it('covers css-only and full-js editor preview injection paths', () => {

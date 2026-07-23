@@ -4,7 +4,10 @@ import {
   buildDeckHandshakeSentinelScript,
   buildRevealNavRuntimeScript,
 } from './deck-bridge.ts'
-import { buildDeckEditorBridgeRuntimeScript } from './deck-editor-bridge.ts'
+import {
+  buildDeckEditorBridgeRuntimeScript,
+  EDITOR_SESSION_HANDOFF_KEY,
+} from './deck-editor-bridge.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import {
   detectRuntimeModeFromDocument,
@@ -40,8 +43,8 @@ export type PreviewHtmlOptions = {
    */
   nonce?: string | null
   /**
-   * Generation-correlation handshake for the head sentinel.
-   * Not a secret — full-JS decks can inspect the document.
+   * Generation-correlation handshake for the head sentinel and editor channel.
+   * The injected sentinel removes its DOM node before deck scripts execute.
    */
   handshake?: string
 }
@@ -55,8 +58,8 @@ export type PreviewDocumentResult = {
 
 export type PreviewHandshakeInjectionOptions = {
   /**
-   * Per-session generation-correlation handshake for the head sentinel.
-   * Not a secret — full-JS decks can inspect the document.
+   * Per-session generation-correlation handshake for the head sentinel and
+   * editor channel.
    */
   handshake?: string
   parentOrigin?: string
@@ -282,7 +285,11 @@ function injectHandshakeSentinel(doc: Document, options: PreviewHtmlOptions, non
   appendScript(
     doc,
     ensureHead(doc),
-    buildDeckHandshakeSentinelScript(handshake, options.parentOrigin),
+    buildDeckHandshakeSentinelScript(
+      handshake,
+      options.parentOrigin,
+      doc.querySelector('script[data-ark-preview-editor]') ? EDITOR_SESSION_HANDOFF_KEY : undefined,
+    ),
     'data-ark-preview-handshake',
     nonce,
     'start',
@@ -342,6 +349,7 @@ function appendEditorBridgeInjection(
     }),
     'data-ark-preview-editor',
     nonce,
+    'start',
   )
 }
 
@@ -478,7 +486,7 @@ export function buildPreviewDocument(
       'data-ark-preview-bridge',
       nonce,
     )
-    appendEditorBridgeInjection(doc, body, options, runtimeOptions, nonce)
+    appendEditorBridgeInjection(doc, ensureHead(doc), options, runtimeOptions, nonce)
     injectHandshakeSentinel(doc, options, nonce)
 
     return {
@@ -504,7 +512,7 @@ export function buildPreviewDocument(
       'data-ark-preview-reveal',
       nonce,
     )
-    appendEditorBridgeInjection(doc, body, options, runtimeOptions, nonce)
+    appendEditorBridgeInjection(doc, ensureHead(doc), options, runtimeOptions, nonce)
     injectHandshakeSentinel(doc, options, nonce)
 
     return {
@@ -528,7 +536,7 @@ export function buildPreviewDocument(
     'data-ark-preview-nav',
     nonce,
   )
-  appendEditorBridgeInjection(doc, body, options, runtimeOptions, nonce)
+  appendEditorBridgeInjection(doc, ensureHead(doc), options, runtimeOptions, nonce)
   injectHandshakeSentinel(doc, options, nonce)
 
   return {
@@ -615,7 +623,13 @@ function tryInjectPreviewHandshakeFast(
     return next
   }
 
-  const scriptBody = buildDeckHandshakeSentinelScript(handshake, options.parentOrigin)
+  const scriptBody = buildDeckHandshakeSentinelScript(
+    handshake,
+    options.parentOrigin,
+    /<script\b[^>]*\bdata-ark-preview-editor\b/i.test(next)
+      ? EDITOR_SESSION_HANDOFF_KEY
+      : undefined,
+  )
   const scriptTag = `<script data-ark-preview-handshake="" nonce="${nonce}">${scriptBody}</script>`
   const headOpen = next.match(/<head([^>]*)>/i)
 

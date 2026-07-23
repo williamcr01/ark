@@ -2,7 +2,7 @@
  * Ark manual editor bridge protocol (issue #75).
  *
  * The shell and sandboxed deck iframe coordinate selection and editing through
- * validated postMessage payloads. The injected runtime stays dormant until the
+ * a per-preview MessagePort. The injected runtime stays dormant until the
  * parent sends `ark:editor-enable`.
  *
  * @see docs/deck-editor-bridge.md
@@ -25,6 +25,10 @@ import {
 import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
 
 export const EDITOR_BRIDGE_PROTOCOL_VERSION = 1 as const
+export const EDITOR_SESSION_HANDOFF_KEY = '__arkEditorSessionV1' as const
+
+export const EDITOR_CONNECT_MESSAGE_TYPE = 'ark:editor-connect' as const
+export const EDITOR_CONNECT_ACK_MESSAGE_TYPE = 'ark:editor-connect-ack' as const
 
 export const EDITOR_ENABLE_MESSAGE_TYPE = 'ark:editor-enable' as const
 export const EDITOR_CONFIGURE_MESSAGE_TYPE = 'ark:editor-configure' as const
@@ -100,6 +104,17 @@ export type EditorNormalizedRect = {
 }
 
 export type EditorImageFitMode = 'contain' | 'cover' | 'fill'
+
+export type EditorConnectMessage = {
+  type: typeof EDITOR_CONNECT_MESSAGE_TYPE
+  handshake: string
+  protocolVersion: typeof EDITOR_BRIDGE_PROTOCOL_VERSION
+}
+
+export type EditorConnectAckMessage = {
+  type: typeof EDITOR_CONNECT_ACK_MESSAGE_TYPE
+  protocolVersion: typeof EDITOR_BRIDGE_PROTOCOL_VERSION
+}
 
 /** Computed text styling for the selected element (issue #84). */
 export type EditorSelectionTextStyle = {
@@ -340,6 +355,24 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isNormalizedUnit(value: unknown) {
   return isFiniteNumber(value) && value >= 0 && value <= 1
+}
+
+export function isEditorConnectMessage(value: unknown): value is EditorConnectMessage {
+  return (
+    isRecord(value) &&
+    value.type === EDITOR_CONNECT_MESSAGE_TYPE &&
+    typeof value.handshake === 'string' &&
+    value.handshake.length > 0 &&
+    value.protocolVersion === EDITOR_BRIDGE_PROTOCOL_VERSION
+  )
+}
+
+export function isEditorConnectAckMessage(value: unknown): value is EditorConnectAckMessage {
+  return (
+    isRecord(value) &&
+    value.type === EDITOR_CONNECT_ACK_MESSAGE_TYPE &&
+    value.protocolVersion === EDITOR_BRIDGE_PROTOCOL_VERSION
+  )
 }
 
 export function isEditorMessageType(value: unknown): value is EditorMessageType {
@@ -895,6 +928,13 @@ export function createEditorErrorMessage(message: string, code?: string): Editor
   }
 }
 
+export function createEditorConnectAckMessage(): EditorConnectAckMessage {
+  return {
+    type: EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+    protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+  }
+}
+
 export function postEditorShellMessage(
   target: Window,
   message: EditorShellMessage,
@@ -913,6 +953,9 @@ export function buildDeckEditorBridgeRuntimeScript(
 ): string {
   const constants = {
     PROTOCOL_VERSION: EDITOR_BRIDGE_PROTOCOL_VERSION,
+    CONNECT: EDITOR_CONNECT_MESSAGE_TYPE,
+    CONNECT_ACK: EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+    SESSION_HANDOFF_KEY: EDITOR_SESSION_HANDOFF_KEY,
     ENABLE: EDITOR_ENABLE_MESSAGE_TYPE,
     CONFIGURE: EDITOR_CONFIGURE_MESSAGE_TYPE,
     DISABLE: EDITOR_DISABLE_MESSAGE_TYPE,
@@ -956,6 +999,28 @@ export function buildDeckEditorBridgeRuntimeScript(
   return `
 (function () {
   var C = ${JSON.stringify(constants)};
+  var ownScript = document.currentScript;
+  var sessionHandshake =
+    typeof window[C.SESSION_HANDOFF_KEY] === 'string' ? window[C.SESSION_HANDOFF_KEY] : '';
+
+  try {
+    delete window[C.SESSION_HANDOFF_KEY];
+  } catch (error) {}
+
+  // Do not leave the per-preview capability in DOM-visible script text.
+  if (ownScript && ownScript.parentNode) {
+    ownScript.parentNode.removeChild(ownScript);
+  }
+
+  var parentWindow = window.parent;
+  var safeParentPostMessage =
+    parentWindow !== window && typeof parentWindow.postMessage === 'function'
+      ? parentWindow.postMessage.bind(parentWindow)
+      : null;
+  var SafeMessageChannel = window.MessageChannel;
+  var safeSetTimeout = window.setTimeout.bind(window);
+  var activePortPostMessage = null;
+  var pendingPortCandidates = [];
   var enabled = false;
   var currentTool = 'select';
   var currentSlideIndex = 0;
@@ -985,9 +1050,115 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function postToParent(message) {
-    if (window.parent !== window) {
-      window.parent.postMessage(message, C.PARENT_ORIGIN || '*');
+    if (activePortPostMessage) {
+      activePortPostMessage(message);
+      return;
     }
+
+    // Standalone bridge scripts without a preview session retain the legacy
+    // transport for tests and non-interactive consumers. Ark previews always
+    // provide a session handshake and therefore never take this branch.
+    if (!sessionHandshake && safeParentPostMessage) {
+      safeParentPostMessage(message, C.PARENT_ORIGIN || '*');
+    }
+  }
+
+  function closePortCandidate(candidate) {
+    try {
+      candidate.close();
+    } catch (error) {}
+  }
+
+  function acceptPortCandidate(candidate) {
+    if (activePortPostMessage) {
+      closePortCandidate(candidate);
+      return;
+    }
+
+    activePortPostMessage = candidate.post;
+
+    pendingPortCandidates.forEach(function (pending) {
+      if (pending !== candidate) {
+        closePortCandidate(pending);
+      }
+    });
+    pendingPortCandidates = [candidate];
+  }
+
+  function createPortCandidate() {
+    if (
+      !sessionHandshake ||
+      typeof SafeMessageChannel !== 'function' ||
+      !safeParentPostMessage
+    ) {
+      return null;
+    }
+
+    var channel = new SafeMessageChannel();
+    var candidate = {
+      port: channel.port1,
+      remotePort: channel.port2,
+      post: channel.port1.postMessage.bind(channel.port1),
+      close: channel.port1.close.bind(channel.port1),
+      accepted: false,
+    };
+
+    channel.port1.onmessage = function (event) {
+      var data = event.data;
+
+      if (!candidate.accepted) {
+        if (
+          isRecord(data) &&
+          data.type === C.CONNECT_ACK &&
+          data.protocolVersion === C.PROTOCOL_VERSION
+        ) {
+          candidate.accepted = true;
+          acceptPortCandidate(candidate);
+        }
+        return;
+      }
+
+      handleShellMessage(data);
+    };
+    pendingPortCandidates.push(candidate);
+    return candidate;
+  }
+
+  function connectEditorPort(candidate) {
+    if (!candidate || activePortPostMessage || !safeParentPostMessage) {
+      if (candidate) {
+        closePortCandidate(candidate);
+      }
+      return;
+    }
+
+    try {
+      safeParentPostMessage(
+        {
+          type: C.CONNECT,
+          handshake: sessionHandshake,
+          protocolVersion: C.PROTOCOL_VERSION,
+        },
+        C.PARENT_ORIGIN || '*',
+        [candidate.remotePort],
+      );
+    } catch (error) {
+      closePortCandidate(candidate);
+    }
+  }
+
+  if (sessionHandshake) {
+    var connectDelays = [0, 50, 200, 1000];
+    var connectCandidates = connectDelays.map(function () {
+      return createPortCandidate();
+    });
+
+    connectEditorPort(connectCandidates[0]);
+    connectDelays.slice(1).forEach(function (delay, index) {
+      safeSetTimeout(function () {
+        connectEditorPort(connectCandidates[index + 1]);
+      }, delay);
+    });
   }
 
   function postError(message, code) {
@@ -1597,6 +1768,13 @@ export function buildDeckEditorBridgeRuntimeScript(
     }
 
     return element;
+  }
+
+  function isTextEditableElement(element) {
+    var target = getTextEditTarget(element);
+    var tag = target ? target.tagName.toLowerCase() : '';
+
+    return Boolean(target && (isTextEditableTag(tag) || isTextBox(element)));
   }
 
   function clearMarquee() {
@@ -2646,6 +2824,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     event.preventDefault();
     event.stopPropagation();
+    var editOnClick = target === selectedElement && isTextEditableElement(target);
     setSelectedElement(target, slide, currentSlideIndex);
     postSelection(target, slide, currentSlideIndex);
 
@@ -2663,6 +2842,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         positionContext: prepared.positionContext,
         started: false,
         snapRects: collectSnapRects(slide, target),
+        editOnClick: editOnClick,
       };
       captureTransformPointer(slide, event.pointerId);
     }
@@ -2701,7 +2881,14 @@ export function buildDeckEditorBridgeRuntimeScript(
         (transformState.kind === 'move' || transformState.kind === 'resize') &&
         !transformState.started
       ) {
+        var editOnClick = transformState.kind === 'move' && transformState.editOnClick;
+        var clickedElement = transformState.element;
         transformState = null;
+
+        if (editOnClick) {
+          startTextEditOnElement(clickedElement, slide, currentSlideIndex);
+        }
+
         return;
       }
 
@@ -3110,22 +3297,11 @@ export function buildDeckEditorBridgeRuntimeScript(
     clearEditorOverlays();
     clearHoverCursor();
     selectedElement = null;
-    unbindListeners();
     postToParent({ type: C.SELECTION_CHANGE, selection: null });
     postToParent({ type: C.HOVER, slideIndex: currentSlideIndex, elementId: null });
   }
 
-  window.addEventListener('message', function (event) {
-    if (event.source !== window.parent) {
-      return;
-    }
-
-    if (C.PARENT_ORIGIN && event.origin !== C.PARENT_ORIGIN) {
-      return;
-    }
-
-    var data = event.data;
-
+  function handleShellMessage(data) {
     if (!isRecord(data) || typeof data.type !== 'string' || data.type.indexOf('ark:editor-') !== 0) {
       return;
     }
@@ -3237,7 +3413,25 @@ export function buildDeckEditorBridgeRuntimeScript(
     } catch (error) {
       postError(error && error.message ? error.message : String(error), 'editor-runtime');
     }
-  });
+  }
+
+  if (!sessionHandshake) {
+    window.addEventListener('message', function (event) {
+      if (event.source !== window.parent) {
+        return;
+      }
+
+      if (C.PARENT_ORIGIN && event.origin !== C.PARENT_ORIGIN) {
+        return;
+      }
+
+      handleShellMessage(event.data);
+    });
+  }
+
+  // Register before deck-authored listeners. The handlers stay dormant while
+  // editing is disabled, preserving normal deck interaction.
+  bindListeners();
 
   document.addEventListener(
     'focusout',

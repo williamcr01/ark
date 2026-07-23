@@ -164,8 +164,7 @@ export function DeckPreview({
   )
   const hasSlides = parsedDeck.slideCount > 0
   const previewEnabled = html.length > 0 && hasSlides
-  const editChromeActive =
-    previewEnabled && !deckAnalysis.allowsDeckInitScripts && !isGenerating && !isPresentOpen
+  const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
   const previewFrame = useDeckPreviewFrame(html, previewEnabled)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
@@ -298,6 +297,7 @@ export function DeckPreview({
     activeSlideIndex,
     sandboxOrigin: previewFrame.sandboxOrigin,
     iframeGenerationKey: previewFrame.iframeKey,
+    sessionHandshake: previewFrame.handshake,
     canPostToFrame: bridgeSession.canPostToFrame,
     shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
   })
@@ -1225,7 +1225,7 @@ export function DeckPreview({
           ) : null}
           {!isPresentOpen && deckAnalysis.allowsDeckInitScripts ? (
             <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-              Scripts running · editing off
+              Scripts running
             </span>
           ) : !isPresentOpen && runtimeMode === 'reveal' && !usesStaticPreview ? (
             <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">

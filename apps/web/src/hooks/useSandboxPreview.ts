@@ -239,7 +239,7 @@ export function useSandboxPreview(html: string, enabled: boolean): SandboxPrevie
   }
 }
 
-/** Client-side handshake for srcDoc fallback (generation correlation, not a secret). */
+/** Client-side generation handshake and editor-channel capability for srcDoc fallback. */
 export function createClientPreviewHandshake(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID().replace(/-/g, '')

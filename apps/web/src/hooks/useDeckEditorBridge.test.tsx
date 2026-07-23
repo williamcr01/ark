@@ -1,9 +1,12 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  EDITOR_BRIDGE_PROTOCOL_VERSION,
+  EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+  EDITOR_CONNECT_MESSAGE_TYPE,
   createEditorDeleteRequestMessage,
   createEditorEnableMessage,
   createEditorErrorMessage,
@@ -31,6 +34,7 @@ function EditorHarness({
   enabled = true,
   sandboxOrigin = null,
   iframeGenerationKey = 'test-frame',
+  sessionHandshake = null,
   canPostToFrame,
   shouldAcceptInbound,
   onSelectionChange,
@@ -38,6 +42,7 @@ function EditorHarness({
   enabled?: boolean
   sandboxOrigin?: string | null
   iframeGenerationKey?: string
+  sessionHandshake?: string | null
   canPostToFrame?: () => boolean
   shouldAcceptInbound?: () => boolean
   onSelectionChange?: (selection: { elementId: string } | null) => void
@@ -49,6 +54,7 @@ function EditorHarness({
     activeSlideIndex: 0,
     sandboxOrigin,
     iframeGenerationKey,
+    sessionHandshake,
     canPostToFrame,
     shouldAcceptInbound,
     onSelectionChange,
@@ -145,6 +151,88 @@ describe('useDeckEditorBridge', () => {
     })
 
     expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
+  })
+
+  it('uses an authenticated MessagePort and ignores public editor-message forgeries', async () => {
+    const user = userEvent.setup()
+    const sessionHandshake = 'editor-session-capability'
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} sessionHandshake={sessionHandshake} />)
+    const iframeWindow = getIframeWindow()
+    const channel = new MessageChannel()
+    const shellMessages: unknown[] = []
+
+    channel.port1.onmessage = (event) => {
+      shellMessages.push(event.data)
+    }
+    channel.port1.start()
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: EDITOR_CONNECT_MESSAGE_TYPE,
+            handshake: sessionHandshake,
+            protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+          },
+          origin: sandboxOrigin,
+          source: iframeWindow,
+          ports: [channel.port2],
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(shellMessages).toContainEqual({
+        type: EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+        protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+      })
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Enable editor' }))
+
+    await waitFor(() => {
+      expect(shellMessages).toContainEqual(createEditorEnableMessage(0))
+    })
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'forged-public-selection',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Forged',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
+
+    channel.port1.postMessage(
+      createEditorSelectionChangeMessage({
+        elementId: 'authenticated-selection',
+        slideIndex: 0,
+        slideId: null,
+        tagName: 'h1',
+        locked: false,
+        managed: false,
+        editableKind: null,
+        textPreview: 'Authenticated',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Selection')).toHaveTextContent('authenticated-selection')
+    })
+
+    channel.port1.close()
   })
 
   it('clears overlay geometry when the runtime deselects', async () => {

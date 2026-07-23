@@ -11,6 +11,13 @@ Hard requirements and defaults for every deck.
 
 External JavaScript libraries are only acceptable if inlined in the HTML or served via approved runtime URLs from the system prompt registry section — never CDN script URLs.
 
+## Manual-edit compatibility
+
+- Keep user-visible text, images, inline SVG, and layout containers directly in the source HTML so Ark can select and persist edits to them.
+- Use JavaScript for navigation and progressive enhancement. Do not replace, continuously re-render, or intercept pointer events on the primary slide content.
+- Give important editable elements unique, stable `data-ark-id` values.
+- Prefer HTML or inline SVG for visuals users may edit. Canvas pixels and DOM created only at runtime cannot map back to source HTML; keep chart titles, captions, and key annotations in source-backed HTML when using canvas.
+
 ## Plain deck structure
 
 When the user wants a plain deck (or a simple static sequence):
