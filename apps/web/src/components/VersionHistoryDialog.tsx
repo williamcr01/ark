@@ -31,6 +31,7 @@ const SOURCE_LABELS: Record<DeckVersionSource, string> = {
   repair: 'Repair',
   rollback: 'Rollback',
 }
+const EMPTY_VERSIONS: DeckVersionSummary[] = []
 
 function formatVersionTimestamp(createdAt: string) {
   const date = new Date(createdAt)
@@ -121,7 +122,7 @@ export function VersionHistoryDialog({
   onRollback,
   open,
   previewVersion,
-  versions = [],
+  versions = EMPTY_VERSIONS,
 }: VersionHistoryDialogProps) {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
   const [inspectError, setInspectError] = useState('')

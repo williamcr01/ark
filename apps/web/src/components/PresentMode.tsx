@@ -10,6 +10,12 @@ import { cn } from '@/lib/utils'
 const CONTROLS_IDLE_MS = 2500
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const PRESENT_MODE_BACKDROP = (
+  <div
+    aria-hidden
+    className="pointer-events-auto fixed inset-0 z-[40] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04)),linear-gradient(#000,#000)]"
+  />
+)
 
 type PresentModeProps = {
   activeSlideIndex: number
@@ -136,7 +142,7 @@ export function PresentMode({
   useEffect(() => {
     window.addEventListener('keydown', showControls)
     window.addEventListener('mousemove', showControls)
-    window.addEventListener('touchstart', showControls)
+    window.addEventListener('touchstart', showControls, { passive: true })
 
     return () => {
       window.removeEventListener('keydown', showControls)
@@ -284,14 +290,6 @@ export function PresentMode({
   const canGoPrevious = activeSlideIndex > 0
   const canGoNext = activeSlideIndex < slideCount - 1
 
-  // Backdrop sits below the shared preview stage (z-60); controls sit above it.
-  const backdrop = (
-    <div
-      aria-hidden
-      className="pointer-events-auto fixed inset-0 z-[40] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04)),linear-gradient(#000,#000)]"
-    />
-  )
-
   const presenter = (
     <div
       aria-labelledby="ark-present-mode-title"
@@ -392,7 +390,7 @@ export function PresentMode({
 
   return (
     <>
-      {createPortal(backdrop, document.body)}
+      {createPortal(PRESENT_MODE_BACKDROP, document.body)}
       {createPortal(presenter, document.body)}
     </>
   )
