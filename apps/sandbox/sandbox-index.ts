@@ -19,6 +19,19 @@ const app = createSandboxHost({
   apiOrigin,
 })
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Ark sandbox host listening on ${resolveSandboxOrigin()}`)
 })
+
+let shuttingDown = false
+const shutdown = () => {
+  if (shuttingDown) return
+  shuttingDown = true
+  server.close()
+  // Exit immediately so tsx watch doesn't print "Force killing..." on Ctrl+C.
+  process.exit(0)
+}
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => shutdown())
+}
