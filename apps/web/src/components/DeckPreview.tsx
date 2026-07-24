@@ -1,27 +1,10 @@
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from 'react'
-import {
-  FileCode2Icon,
-  Loader2Icon,
-  Maximize2Icon,
-  MonitorPlayIcon,
-  ShieldAlertIcon,
-  ShieldCheckIcon,
-  WandSparklesIcon,
-} from 'lucide-react'
-import { toast } from 'sonner'
+import { useCallback, useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { WandSparklesIcon } from 'lucide-react'
 
 import { EditModeToolbar } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
+import { DeckPreviewHeader } from '@/components/DeckPreviewHeader'
+import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlays'
 import { PresentMode } from '@/components/PresentMode'
 import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
@@ -33,6 +16,12 @@ import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { usePreviewBridgeSession } from '@/hooks/usePreviewBridgeSession'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
+import { useDeckPreviewSource, type DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
+import { useDeckEditorShellShortcuts } from '@/hooks/useDeckEditorShellShortcuts'
+import {
+  useDeckEditorPatchCoordinator,
+  type DeckTextEditCommit,
+} from '@/hooks/useDeckEditorPatchCoordinator'
 import {
   getPreviewFrameScale,
   getPreviewFrameStyle,
@@ -41,37 +30,12 @@ import {
   PREVIEW_IFRAME_SECURITY_PROPS,
 } from '@/lib/deck-preview'
 import type { DeckBrowserAnalysis } from '@/lib/deck-analysis'
-import {
-  buildTextBoxInsertOperation,
-  buildTransformPatchOperations,
-} from '@/lib/deck-editor-patches'
-import {
-  buildImageInsertOperation,
-  clientPointToNormalizedSlidePoint,
-  isEditableClipboardTarget,
-  prepareImageInsertFromFile,
-} from '@/lib/deck-image-insert'
-import { isTextEditableSelection } from '@/lib/deck-text-edit'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import { clientPointToNormalizedSlidePoint } from '@/lib/deck-image-insert'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
-import { isRemoteImageUrl } from '@ark/deck-core/deck-image.ts'
-import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
-import { TRANSIENT_ELEMENT_ID_PREFIX } from '@ark/deck-core/deck-metadata.ts'
-import type { PatchDeckResponse } from '@/lib/deck-api'
 
-export type DeckTextEditCommit = {
-  elementId: string
-  slideIndex: number
-  slideId: string | null
-  text: string
-  originalText: string | null
-}
-
-type DeckPreviewPatchResult = Pick<PatchDeckResponse, 'patch'> & {
-  deck?: Pick<PatchDeckResponse['deck'], 'html'>
-}
+export type { DeckTextEditCommit } from '@/hooks/useDeckEditorPatchCoordinator'
 
 export type DeckPreviewProps = {
   html: string
@@ -131,44 +95,12 @@ export function DeckPreview({
     height: typeof window === 'undefined' ? 0 : window.innerHeight,
   }))
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
-  const [previewSource, setPreviewSource] = useState(() => ({
-    deckId,
-    html,
-    reloadRevision: 0,
-  }))
-  const [imageFitOverride, setImageFitOverride] = useState<{
-    elementId: string
-    fit: ImageFitMode
-  } | null>(null)
   const effectivePreviewViewportSize =
     isPresentOpen && presentViewportSize.width > 0 && presentViewportSize.height > 0
       ? presentViewportSize
       : previewViewportSize
   const previewFrameScale = getPreviewFrameScale(effectivePreviewViewportSize)
   const pendingPresentExitIndexRef = useRef<number | null>(null)
-  const preserveSlideIndexRef = useRef<number | null>(null)
-  const pendingReselectRef = useRef<{
-    elementId: string
-    slideIndex: number
-    iframeKey: string
-  } | null>(null)
-  const processedTextCommitRef = useRef<string | null>(null)
-  const processedInsertRequestRef = useRef<string | null>(null)
-  const processedDeleteRequestRef = useRef<string | null>(null)
-  const processedShortcutRequestRef = useRef<string | null>(null)
-  const processedTransformCommitRef = useRef<string | null>(null)
-  const pendingTransformPatchRef = useRef<Promise<DeckPreviewPatchResult | undefined> | null>(null)
-  const canonicalPreviewSourceRef = useRef({ deckId, html })
-  const observedPreviewSourceRef = useRef({ deckId, html })
-  const livePreviewPatchPendingRef = useRef(false)
-  const expectedLivePreviewHtmlRef = useRef<string | null>(null)
-  const committedGeometryRef = useRef<
-    import('@ark/deck-core/deck-editor-bridge.ts').EditorNormalizedRect | null
-  >(null)
-  const transformStartGeometryRef = useRef<
-    import('@ark/deck-core/deck-editor-bridge.ts').EditorNormalizedRect | null
-  >(null)
-  const isTransformingRef = useRef(false)
   const wasEditChromeActiveRef = useRef(false)
   const parsedDeck = deckAnalysis
   const runtimeManifest = deckAnalysis.runtimeManifest
@@ -182,9 +114,13 @@ export function DeckPreview({
   const previewEnabled = html.length > 0 && hasSlides
   const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
-  const previewSourceMatchesDeck = previewSource.deckId === deckId
-  const previewHtml = previewSourceMatchesDeck ? previewSource.html : html
-  const previewReloadRevision = previewSource.reloadRevision + (previewSourceMatchesDeck ? 0 : 1)
+  const {
+    previewHtml,
+    previewReloadRevision,
+    beginLivePatch: beginLivePreviewPatch,
+    finishLivePatch: finishPreviewSourcePatch,
+    rollbackLivePatch: reloadCanonicalPreview,
+  } = useDeckPreviewSource(deckId, html)
   const previewFrame = useDeckPreviewFrame(previewHtml, previewEnabled, previewReloadRevision)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
@@ -220,89 +156,6 @@ export function DeckPreview({
   const previewCompromised = bridgeSession.compromised
   const bridgeEnabled = previewEnabled && !previewCompromised
 
-  useLayoutEffect(() => {
-    canonicalPreviewSourceRef.current = { deckId, html }
-    const observed = observedPreviewSourceRef.current
-
-    if (observed.deckId !== deckId) {
-      observedPreviewSourceRef.current = { deckId, html }
-      livePreviewPatchPendingRef.current = false
-      expectedLivePreviewHtmlRef.current = null
-      setPreviewSource((current) => ({
-        deckId,
-        html,
-        reloadRevision: current.reloadRevision + 1,
-      }))
-      return
-    }
-
-    if (observed.html === html) {
-      return
-    }
-
-    observedPreviewSourceRef.current = { deckId, html }
-
-    if (livePreviewPatchPendingRef.current || expectedLivePreviewHtmlRef.current === html) {
-      if (expectedLivePreviewHtmlRef.current === html) {
-        expectedLivePreviewHtmlRef.current = null
-      }
-      return
-    }
-
-    setPreviewSource((current) => ({
-      ...current,
-      deckId,
-      html,
-      reloadRevision: current.html === html ? current.reloadRevision + 1 : current.reloadRevision,
-    }))
-  }, [deckId, html])
-
-  const beginLivePreviewPatch = useCallback((elementId: string) => {
-    if (elementId.startsWith(TRANSIENT_ELEMENT_ID_PREFIX) || livePreviewPatchPendingRef.current) {
-      return false
-    }
-
-    livePreviewPatchPendingRef.current = true
-    expectedLivePreviewHtmlRef.current = null
-    return true
-  }, [])
-
-  const reloadCanonicalPreview = useCallback(() => {
-    const canonical = canonicalPreviewSourceRef.current
-
-    livePreviewPatchPendingRef.current = false
-    expectedLivePreviewHtmlRef.current = null
-    observedPreviewSourceRef.current = canonical
-    setPreviewSource((current) => ({
-      deckId: canonical.deckId,
-      html: canonical.html,
-      reloadRevision: current.reloadRevision + 1,
-    }))
-  }, [])
-
-  const finishLivePreviewPatch = useCallback(
-    (result: DeckPreviewPatchResult | undefined) => {
-      livePreviewPatchPendingRef.current = false
-
-      if (!result) {
-        reloadCanonicalPreview()
-        return
-      }
-
-      const resultHtml = result.deck?.html
-      const observed = observedPreviewSourceRef.current
-
-      if (resultHtml && (observed.deckId !== deckId || observed.html !== resultHtml)) {
-        expectedLivePreviewHtmlRef.current = resultHtml
-      } else {
-        expectedLivePreviewHtmlRef.current = null
-      }
-
-      preserveSlideIndexRef.current = null
-      pendingReselectRef.current = null
-    },
-    [deckId, reloadCanonicalPreview],
-  )
   // Keep secondary preview work off the critical path until the current main
   // frame has loaded and completed its handshake. In particular, a thumbnail
   // long-poll can occupy an HTTP/1.1 connection for five seconds and fallback
@@ -434,189 +287,61 @@ export function DeckPreview({
     textEditActiveRef.current = textEditActive
   }, [textEditActive])
 
-  const canEditSelectedText = useMemo(
-    () => editChromeActive && isTextEditableSelection(selection),
-    [editChromeActive, selection],
-  )
-
-  const canModifySelection =
-    selection !== null && !selection.locked && editChromeActive && !textEditActive
-
-  const selectedImage = Boolean(
-    selection &&
-    !selection.locked &&
-    (selection.editableKind === 'image' || selection.tagName === 'img'),
-  )
-
-  const selectedImageAlt = selectedImage ? (selection?.textPreview ?? '') : ''
-
-  const selectedImageFit: ImageFitMode =
-    selectedImage &&
-    imageFitOverride !== null &&
-    imageFitOverride.elementId === selection?.elementId
-      ? imageFitOverride.fit
-      : (selection?.imageFit ?? 'contain')
-
-  // Remember the current selection so it can be restored after the preview
-  // iframe reloads with the patched HTML (issue #84). The recorded iframeKey
-  // marks the pre-patch frame; the reselect effect waits for a new frame.
-  const scheduleReselect = useCallback(() => {
-    if (!selection?.elementId) {
-      return
-    }
-
-    pendingReselectRef.current = {
-      elementId: selection.elementId,
-      slideIndex: selection.slideIndex,
-      iframeKey: previewFrame.iframeKey,
-    }
-  }, [previewFrame.iframeKey, selection])
-
-  const handleInspectorApply = useCallback(
-    (operations: DeckElementPatchOperation[], summary: string) => {
-      if (!selection || !onPatchEditorOperations || operations.length === 0) {
-        return
-      }
-
-      preserveSlideIndexRef.current = selection.slideIndex
-      scheduleReselect()
-
-      void onPatchEditorOperations(operations, selection.slideIndex, summary).catch(() => {
-        pendingReselectRef.current = null
-        preserveSlideIndexRef.current = null
-      })
+  const handleToolChange = useCallback(
+    (tool: EditorTool) => {
+      setActiveTool(tool)
+      setTool(tool)
     },
-    [onPatchEditorOperations, scheduleReselect, selection],
+    [setTool],
   )
 
-  const handleDeleteSelection = useCallback(() => {
-    if (!selection || !canModifySelection || !onPatchEditorOperations) {
-      return
-    }
-
-    void onPatchEditorOperations(
-      [
-        {
-          op: 'delete_element',
-          elementId: selection.elementId,
-          slideIndex: selection.slideIndex,
-          ...(selection.slideId ? { slideId: selection.slideId } : {}),
-        },
-      ],
-      selection.slideIndex,
-      'Deleted element in preview',
-    )
-  }, [canModifySelection, onPatchEditorOperations, selection])
-
-  const duplicateElement = useCallback(
-    (elementId: string, slideIndex: number, slideId: string | null) =>
-      onPatchEditorOperations?.(
-        [
-          {
-            op: 'duplicate_element',
-            elementId,
-            slideIndex,
-            ...(slideId ? { slideId } : {}),
-          },
-        ],
-        slideIndex,
-        'Duplicated element in preview',
-      ),
-    [onPatchEditorOperations],
-  )
-
-  const handleDuplicateSelection = useCallback(() => {
-    if (
-      !selection ||
-      selection.locked ||
-      !editChromeActive ||
-      textEditActive ||
-      !onPatchEditorOperations
-    ) {
-      return
-    }
-
-    void duplicateElement(selection.elementId, selection.slideIndex, selection.slideId)
-  }, [duplicateElement, editChromeActive, onPatchEditorOperations, selection, textEditActive])
-
-  const handleReorderSelection = useCallback(
-    (direction: 'front' | 'back') => {
-      if (!selection || !selection.managed || !canModifySelection || !onPatchEditorOperations) {
-        return
-      }
-
-      scheduleReselect()
-
-      void onPatchEditorOperations(
-        [
-          {
-            op: 'reorder_element',
-            elementId: selection.elementId,
-            slideIndex: selection.slideIndex,
-            ...(selection.slideId ? { slideId: selection.slideId } : {}),
-            direction,
-          },
-        ],
-        selection.slideIndex,
-        direction === 'front' ? 'Brought element forward' : 'Sent element backward',
-      )
-    },
-    [canModifySelection, onPatchEditorOperations, scheduleReselect, selection],
-  )
-
-  const handleUndo = useCallback(() => {
-    if (!canUndo || !onUndo || textEditActive || isTextEditSaving) {
-      return
-    }
-
-    // Jump to the slide the reverted edit happened on so the change is visible;
-    // fall back to the current slide when it is unknown.
-    preserveSlideIndexRef.current = undoSlideIndex ?? activeSlideIndex
-    void onUndo()
-  }, [activeSlideIndex, canUndo, isTextEditSaving, onUndo, textEditActive, undoSlideIndex])
-
-  const handleRedo = useCallback(() => {
-    if (!canRedo || !onRedo || textEditActive || isTextEditSaving) {
-      return
-    }
-
-    preserveSlideIndexRef.current = redoSlideIndex ?? activeSlideIndex
-    void onRedo()
-  }, [activeSlideIndex, canRedo, isTextEditSaving, onRedo, redoSlideIndex, textEditActive])
-
-  // Track the element's geometry from *before* a transform begins so a commit can
-  // be diffed against the real starting rect. While a drag is in progress the
-  // runtime streams `ark:editor-geometry` on every preview frame, so we must stop
-  // syncing here — otherwise the baseline would drift to the live previewed rect
-  // and the commit diff would come back empty (element visibly moves but nothing
-  // persists).
-  useEffect(() => {
-    if (isTransformingRef.current || transformPreview) {
-      return
-    }
-
-    committedGeometryRef.current = geometry
-  }, [geometry, transformPreview])
-
-  // A transform preview marks the start of a drag/resize. Snapshot the pre-drag
-  // geometry on the first preview frame and freeze the baseline until commit.
-  useEffect(() => {
-    if (!transformPreview || isTransformingRef.current) {
-      return
-    }
-
-    isTransformingRef.current = true
-    transformStartGeometryRef.current = committedGeometryRef.current
-  }, [transformPreview])
-
-  useEffect(() => {
-    if (transformCancelSequence === 0) {
-      return
-    }
-
-    isTransformingRef.current = false
-    transformStartGeometryRef.current = null
-  }, [transformCancelSequence])
+  const {
+    canEditSelectedText,
+    handleDeleteSelection,
+    handleDuplicateSelection,
+    handleImageAltChange,
+    handleImageFitChange,
+    handleInsertImageFile,
+    handleInspectorApply,
+    handleRedo,
+    handleReorderSelection,
+    handleUndo,
+    selectedImage,
+    selectedImageAlt,
+    selectedImageFit,
+  } = useDeckEditorPatchCoordinator({
+    activeSlideIndex,
+    canRedo,
+    canUndo,
+    editChromeActive,
+    editorReady,
+    geometry,
+    iframeKey: previewFrame.iframeKey,
+    isTextEditSaving,
+    lastDeleteRequest,
+    lastInsertRequest,
+    lastShortcutRequest,
+    lastTextCommit,
+    onCommitTextEdit,
+    onPatchEditorOperations,
+    onRedo,
+    onSelectElement: selectElement,
+    onSelectTool: handleToolChange,
+    onUndo,
+    preserveRedoSlideIndex: redoSlideIndex,
+    preserveUndoSlideIndex: undoSlideIndex,
+    previewHtml,
+    selection,
+    scopeKey: deckId,
+    textEditActive,
+    transformCancelSequence,
+    transformCommit,
+    transformPreview,
+    beginLivePatch: beginLivePreviewPatch,
+    finishLivePatch: finishPreviewSourcePatch,
+    goToSlide,
+    rollbackLivePatch: reloadCanonicalPreview,
+  })
 
   const beginTextEdit = useCallback(() => {
     if (!selection || !canEditSelectedText || textEditActive) {
@@ -646,43 +371,9 @@ export function DeckPreview({
     disableEditor()
   }, [disableEditor, editChromeActive, endTextEditing])
 
-  const handleToolChange = useCallback(
-    (tool: EditorTool) => {
-      setActiveTool(tool)
-      setTool(tool)
-    },
-    [setTool],
-  )
-
   const openImagePicker = useCallback(() => {
     imageInputRef.current?.click()
   }, [])
-
-  const handleInsertImageFile = useCallback(
-    async (file: File, position?: { x: number; y: number }) => {
-      if (!onPatchEditorOperations) {
-        toast.error('Save the deck before inserting images')
-        return
-      }
-
-      try {
-        const prepared = await prepareImageInsertFromFile(file, position)
-        preserveSlideIndexRef.current = activeSlideIndex
-
-        await onPatchEditorOperations(
-          [buildImageInsertOperation(activeSlideIndex, prepared, null)],
-          activeSlideIndex,
-          'Inserted image in preview',
-        )
-        handleToolChange('select')
-      } catch (insertError) {
-        toast.error(
-          insertError instanceof Error ? insertError.message : 'Could not insert the image',
-        )
-      }
-    },
-    [activeSlideIndex, handleToolChange, onPatchEditorOperations],
-  )
 
   const handleImageInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -699,486 +390,21 @@ export function DeckPreview({
     [handleInsertImageFile, handleToolChange],
   )
 
-  const handleImageAltChange = useCallback(
-    (alt: string) => {
-      if (!selection || !selectedImage || !onPatchEditorOperations) {
-        return
-      }
-
-      scheduleReselect()
-
-      void onPatchEditorOperations(
-        [
-          {
-            op: 'set_attrs',
-            elementId: selection.elementId,
-            slideIndex: selection.slideIndex,
-            ...(selection.slideId ? { slideId: selection.slideId } : {}),
-            attrs: { alt },
-          },
-        ],
-        selection.slideIndex,
-        'Updated image alt text',
-      )
-    },
-    [onPatchEditorOperations, scheduleReselect, selectedImage, selection],
-  )
-
-  const handleImageFitChange = useCallback(
-    (fit: ImageFitMode) => {
-      if (!selection || !selectedImage || !onPatchEditorOperations) {
-        return
-      }
-
-      setImageFitOverride({
-        elementId: selection.elementId,
-        fit,
-      })
-      scheduleReselect()
-
-      void onPatchEditorOperations(
-        [
-          {
-            op: 'set_inline_style',
-            elementId: selection.elementId,
-            slideIndex: selection.slideIndex,
-            ...(selection.slideId ? { slideId: selection.slideId } : {}),
-            style: { 'object-fit': fit },
-          },
-          {
-            op: 'set_attrs',
-            elementId: selection.elementId,
-            slideIndex: selection.slideIndex,
-            ...(selection.slideId ? { slideId: selection.slideId } : {}),
-            attrs: { 'data-ark-fit': fit },
-          },
-        ],
-        selection.slideIndex,
-        'Updated image fit mode',
-      )
-    },
-    [onPatchEditorOperations, scheduleReselect, selectedImage, selection],
-  )
-
-  useEffect(() => {
-    if (!lastTextCommit || !onCommitTextEdit) {
-      return
-    }
-
-    const commitKey = `${lastTextCommit.elementId}:${lastTextCommit.slideIndex}:${lastTextCommit.originalText}:${lastTextCommit.text}`
-
-    if (processedTextCommitRef.current === commitKey) {
-      return
-    }
-
-    processedTextCommitRef.current = commitKey
-
-    if (lastTextCommit.text === lastTextCommit.originalText) {
-      return
-    }
-
-    preserveSlideIndexRef.current = activeSlideIndex
-    scheduleReselect()
-
-    const keepLivePreview = beginLivePreviewPatch(lastTextCommit.elementId)
-
-    void onCommitTextEdit({
-      elementId: lastTextCommit.elementId,
-      slideIndex: lastTextCommit.slideIndex,
-      slideId: lastTextCommit.slideId,
-      text: lastTextCommit.text,
-      originalText: lastTextCommit.originalText,
-    })
-      .then((result) => {
-        if (keepLivePreview) {
-          finishLivePreviewPatch(result)
-        }
-      })
-      .catch(() => {
-        processedTextCommitRef.current = null
-        preserveSlideIndexRef.current = null
-        pendingReselectRef.current = null
-
-        if (keepLivePreview) {
-          reloadCanonicalPreview()
-        }
-      })
-  }, [
-    activeSlideIndex,
-    beginLivePreviewPatch,
-    finishLivePreviewPatch,
-    lastTextCommit,
-    onCommitTextEdit,
-    reloadCanonicalPreview,
-    scheduleReselect,
-  ])
-
-  useEffect(() => {
-    if (!lastInsertRequest || !onPatchEditorOperations) {
-      return
-    }
-
-    const requestKey = `${lastInsertRequest.kind}:${lastInsertRequest.slideIndex}:${lastInsertRequest.geometry.x}:${lastInsertRequest.geometry.y}:${lastInsertRequest.geometry.width}:${lastInsertRequest.geometry.height}`
-
-    if (processedInsertRequestRef.current === requestKey) {
-      return
-    }
-
-    processedInsertRequestRef.current = requestKey
-    preserveSlideIndexRef.current = activeSlideIndex
-
-    void onPatchEditorOperations(
-      [buildTextBoxInsertOperation(lastInsertRequest.slideIndex, lastInsertRequest.geometry, null)],
-      lastInsertRequest.slideIndex,
-      'Inserted text box in preview',
-    )
-      .then(() => {
-        handleToolChange('select')
-      })
-      .catch(() => {
-        processedInsertRequestRef.current = null
-        preserveSlideIndexRef.current = null
-      })
-  }, [activeSlideIndex, handleToolChange, lastInsertRequest, onPatchEditorOperations])
-
-  useEffect(() => {
-    if (!lastDeleteRequest || !onPatchEditorOperations) {
-      return
-    }
-
-    const requestKey = `${lastDeleteRequest.elementId}:${lastDeleteRequest.slideIndex}`
-
-    if (processedDeleteRequestRef.current === requestKey) {
-      return
-    }
-
-    processedDeleteRequestRef.current = requestKey
-    preserveSlideIndexRef.current = activeSlideIndex
-
-    void onPatchEditorOperations(
-      [
-        {
-          op: 'delete_element',
-          elementId: lastDeleteRequest.elementId,
-          slideIndex: lastDeleteRequest.slideIndex,
-        },
-      ],
-      lastDeleteRequest.slideIndex,
-      'Deleted element in preview',
-    ).catch(() => {
-      processedDeleteRequestRef.current = null
-      preserveSlideIndexRef.current = null
-    })
-  }, [activeSlideIndex, lastDeleteRequest, onPatchEditorOperations])
-
-  useEffect(() => {
-    if (!transformCommit || !onPatchEditorOperations) {
-      return
-    }
-
-    const commitKey = `${transformCommit.elementId}:${transformCommit.slideIndex}:${transformCommit.geometry.x}:${transformCommit.geometry.y}:${transformCommit.geometry.width}:${transformCommit.geometry.height}:${transformCommit.adopted ? 'adopted' : 'managed'}`
-
-    if (processedTransformCommitRef.current === commitKey) {
-      return
-    }
-
-    // Diff against the geometry captured when the drag started, not the live
-    // (previewed) geometry. Fall back to `null` when no drag baseline was
-    // captured so the commit still persists move + resize.
-    const previousGeometry = isTransformingRef.current ? transformStartGeometryRef.current : null
-
-    const operations = buildTransformPatchOperations(
-      transformCommit,
-      previousGeometry,
-      selection?.slideId ?? null,
-    )
-
-    isTransformingRef.current = false
-    transformStartGeometryRef.current = null
-
-    if (operations.length === 0) {
-      return
-    }
-
-    processedTransformCommitRef.current = commitKey
-    preserveSlideIndexRef.current = activeSlideIndex
-    scheduleReselect()
-    const keepLivePreview = beginLivePreviewPatch(transformCommit.elementId)
-
-    const patchPromise = onPatchEditorOperations(
-      operations,
-      transformCommit.slideIndex,
-      'Updated element layout in preview',
-    )
-    pendingTransformPatchRef.current = patchPromise
-
-    void patchPromise
-      .then((result) => {
-        if (transformCommit.adopted) {
-          const stableId = result?.patch.changedElementIds[0]
-          const pending = pendingReselectRef.current
-
-          if (stableId && pending?.elementId === transformCommit.elementId) {
-            pending.elementId = stableId
-          }
-        }
-
-        if (keepLivePreview) {
-          finishLivePreviewPatch(result)
-        }
-      })
-      .catch(() => {
-        processedTransformCommitRef.current = null
-        preserveSlideIndexRef.current = null
-        pendingReselectRef.current = null
-
-        if (keepLivePreview) {
-          reloadCanonicalPreview()
-        }
-      })
-      .finally(() => {
-        if (pendingTransformPatchRef.current === patchPromise) {
-          pendingTransformPatchRef.current = null
-        }
-      })
-  }, [
-    activeSlideIndex,
-    beginLivePreviewPatch,
-    finishLivePreviewPatch,
-    onPatchEditorOperations,
-    reloadCanonicalPreview,
-    scheduleReselect,
-    selection?.slideId,
-    transformCommit,
-  ])
-
-  useEffect(() => {
-    if (!lastShortcutRequest) {
-      return
-    }
-
-    const requestKey = `${previewFrame.iframeKey}:${lastShortcutRequest.sequence}`
-
-    if (processedShortcutRequestRef.current === requestKey) {
-      return
-    }
-
-    processedShortcutRequestRef.current = requestKey
-
-    if (lastShortcutRequest.action === 'duplicate') {
-      if (
-        !selection ||
-        selection.locked ||
-        !editChromeActive ||
-        textEditActive ||
-        !onPatchEditorOperations
-      ) {
-        return
-      }
-
-      const pendingTransform = pendingTransformPatchRef.current
-
-      if (pendingTransform) {
-        const { elementId, slideIndex, slideId } = selection
-        void pendingTransform
-          .then((result) =>
-            duplicateElement(result?.patch.changedElementIds[0] ?? elementId, slideIndex, slideId),
-          )
-          .catch(() => undefined)
-        return
-      }
-
-      if (transformPreview || isTextEditSaving) {
-        return
-      }
-
-      if (transformCommit) {
-        void duplicateElement(
-          pendingReselectRef.current?.elementId ?? selection.elementId,
-          selection.slideIndex,
-          selection.slideId,
-        )
-        return
-      }
-
-      handleDuplicateSelection()
-      return
-    }
-
-    if (transformPreview || pendingTransformPatchRef.current || isTextEditSaving) {
-      return
-    }
-
-    if (lastShortcutRequest.action === 'undo') {
-      handleUndo()
-    } else {
-      handleRedo()
-    }
-  }, [
-    duplicateElement,
-    editChromeActive,
-    handleDuplicateSelection,
-    handleRedo,
-    handleUndo,
-    isTextEditSaving,
-    lastShortcutRequest,
-    onPatchEditorOperations,
-    previewFrame.iframeKey,
-    selection,
+  useDeckEditorShellShortcuts({
+    active: editChromeActive,
     textEditActive,
-    transformCommit,
-    transformPreview,
-  ])
-
-  useEffect(() => {
-    if (preserveSlideIndexRef.current === null) {
-      return
-    }
-
-    const slideIndex = preserveSlideIndexRef.current
-    preserveSlideIndexRef.current = null
-    goToSlide(slideIndex)
-  }, [goToSlide, previewFrame.iframeKey, previewHtml])
-
-  const handleEditorPaste = useEffectEvent((event: ClipboardEvent) => {
-    if (isEditableClipboardTarget(event.target)) {
-      return
-    }
-
-    const clipboard = event.clipboardData
-
-    if (!clipboard) {
-      return
-    }
-
-    for (const item of clipboard.items) {
-      if (!item.type.startsWith('image/')) {
-        continue
-      }
-
-      const file = item.getAsFile()
-
-      if (!file) {
-        continue
-      }
-
-      event.preventDefault()
-      void handleInsertImageFile(file)
-      return
-    }
-
-    const pastedText = clipboard.getData('text/plain').trim()
-
-    if (pastedText && isRemoteImageUrl(pastedText)) {
-      event.preventDefault()
-      toast.error(
-        'Remote image URLs cannot be inserted directly. Use a local file or paste image data.',
-      )
-    }
+    isTextEditSaving,
+    activeTool,
+    canEditSelectedText,
+    canUndo,
+    canRedo,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onEndTextEditing: endTextEditing,
+    onSelectTool: () => handleToolChange('select'),
+    onBeginTextEdit: beginTextEdit,
+    onInsertImage: (file) => void handleInsertImageFile(file),
   })
-
-  useEffect(() => {
-    if (!editChromeActive || textEditActive) {
-      return
-    }
-
-    window.addEventListener('paste', handleEditorPaste)
-
-    return () => {
-      window.removeEventListener('paste', handleEditorPaste)
-    }
-  }, [editChromeActive, textEditActive])
-
-  const handleEditorKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    const historyModifier = event.metaKey || event.ctrlKey
-
-    if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
-      // Leave undo/redo to the browser while editing text so contenteditable
-      // history keeps working inside the deck.
-      if (textEditActive || isTextEditSaving) {
-        return
-      }
-
-      if (event.shiftKey) {
-        if (!canRedo || !onRedo) {
-          return
-        }
-
-        event.preventDefault()
-        handleRedo()
-      } else {
-        if (!canUndo || !onUndo) {
-          return
-        }
-
-        event.preventDefault()
-        handleUndo()
-      }
-
-      return
-    }
-
-    if (
-      historyModifier &&
-      !event.altKey &&
-      !event.shiftKey &&
-      (event.key === 'y' || event.key === 'Y')
-    ) {
-      if (textEditActive || isTextEditSaving) {
-        return
-      }
-
-      if (!canRedo || !onRedo) {
-        return
-      }
-
-      event.preventDefault()
-      handleRedo()
-      return
-    }
-
-    if (event.key === 'Escape') {
-      if (textEditActive) {
-        event.preventDefault()
-        endTextEditing()
-        return
-      }
-
-      if (activeTool !== 'select') {
-        event.preventDefault()
-        handleToolChange('select')
-      }
-
-      return
-    }
-
-    if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
-      return
-    }
-
-    if (textEditActive || !canEditSelectedText) {
-      return
-    }
-
-    if (event.target instanceof HTMLElement && event.target.closest('button, [role="button"]')) {
-      return
-    }
-
-    event.preventDefault()
-    beginTextEdit()
-  })
-
-  useEffect(() => {
-    if (!editChromeActive) {
-      return
-    }
-
-    window.addEventListener('keydown', handleEditorKeyDown)
-
-    return () => {
-      window.removeEventListener('keydown', handleEditorKeyDown)
-    }
-  }, [editChromeActive])
 
   useEffect(() => {
     if (!editorBridgeActive || !editorReady) {
@@ -1212,46 +438,6 @@ export function DeckPreview({
     previewViewportSize.width,
     requestGeometry,
     selection,
-  ])
-
-  // Restore the selection after the preview reloads with patched HTML so the
-  // inspector stays populated across saves (issue #84). Waits for a *new*
-  // iframe (key change) plus editor readiness, and gives up silently when the
-  // element no longer exists or the user selected something else meanwhile.
-  useEffect(() => {
-    const pending = pendingReselectRef.current
-
-    if (!pending) {
-      return
-    }
-
-    if (!editChromeActive) {
-      pendingReselectRef.current = null
-      return
-    }
-
-    if (pending.iframeKey === previewFrame.iframeKey) {
-      return
-    }
-
-    if (!editorReady || activeSlideIndex !== pending.slideIndex) {
-      return
-    }
-
-    if (selection?.elementId) {
-      pendingReselectRef.current = null
-      return
-    }
-
-    pendingReselectRef.current = null
-    selectElement(pending.elementId, pending.slideIndex)
-  }, [
-    activeSlideIndex,
-    editChromeActive,
-    editorReady,
-    previewFrame.iframeKey,
-    selectElement,
-    selection?.elementId,
   ])
 
   // Mirror the live selection up to the shell so chat requests can target the
@@ -1302,60 +488,15 @@ export function DeckPreview({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
-        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-          <MonitorPlayIcon
-            aria-hidden
-            className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
-          />
-          <span className="truncate text-xs font-medium">Preview</span>
-          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-            ›
-          </span>
-          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
-            {parsedDeck.slideCount > 0
-              ? `Slide ${activeSlideIndex + 1} of ${parsedDeck.slideCount}`
-              : 'HTML deck'}
-          </span>
-        </div>
-        <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
-          <button
-            aria-label="Present fullscreen"
-            className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!canPresent || isPresentOpen}
-            onClick={openPresentMode}
-            type="button"
-          >
-            <Maximize2Icon className="size-3" />
-            Present
-          </button>
-          {isTextEditSaving && !isPresentOpen ? (
-            <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
-              <Loader2Icon className="size-3 animate-spin" />
-              Saving edit
-            </span>
-          ) : null}
-          {!isPresentOpen && deckAnalysis.allowsDeckInitScripts ? (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-              Scripts running
-            </span>
-          ) : !isPresentOpen && runtimeMode === 'reveal' && !usesStaticPreview ? (
-            <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
-              Reveal runtime
-            </span>
-          ) : !isPresentOpen && usesStaticPreview ? (
-            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
-              Static preview
-            </span>
-          ) : null}
-          {!isPresentOpen ? (
-            <span className="flex items-center gap-1">
-              <FileCode2Icon className="size-3" />
-              {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
-            </span>
-          ) : null}
-        </span>
-      </div>
+      <DeckPreviewHeader
+        activeSlideIndex={activeSlideIndex}
+        analysis={deckAnalysis}
+        canPresent={canPresent}
+        isPresentOpen={isPresentOpen}
+        isTextEditSaving={isTextEditSaving}
+        onPresent={openPresentMode}
+        usesSandboxHost={previewFrame.usesSandboxHost}
+      />
 
       {editorBridgeEnabled && editChromeActive ? (
         <EditModeToolbar
@@ -1503,32 +644,6 @@ export function DeckPreview({
                     {...PREVIEW_IFRAME_SECURITY_PROPS}
                   />
                 )}
-                {previewCompromised && !isPresentOpen ? (
-                  <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
-                    <div className="flex items-start gap-2">
-                      <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="font-medium">Preview stopped</p>
-                        <p>
-                          The deck attempted an unexpected navigation. Preview was torn down to stop
-                          further bridge messages from reaching an untrusted page. Edit or reload
-                          the deck to restore the preview.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {!isPresentOpen && previewFrame.error ? (
-                  <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
-                    <p className="font-medium">Sandbox preview unavailable</p>
-                    <p>{previewFrame.error}</p>
-                  </div>
-                ) : null}
-                {!isPresentOpen && previewFrame.isLoading ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-medium text-muted-foreground backdrop-blur-sm">
-                    Loading sandbox preview…
-                  </div>
-                ) : null}
                 {editChromeActive ? (
                   <EditorSelectionOverlay
                     geometry={selection ? geometry : null}
@@ -1555,54 +670,16 @@ export function DeckPreview({
                     zIndex={selectionZIndex}
                   />
                 ) : null}
-                {!isPresentOpen && usesStaticPreview ? (
-                  <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
-                    <div className="flex items-start gap-2">
-                      <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="font-medium">Static preview</p>
-                        <p>
-                          Scripts and inline handlers were removed for preview. Download the
-                          original HTML to keep executable code, or choose sanitized export to match
-                          this preview.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {!isPresentOpen && editorError ? (
-                  <div
-                    className={cn(
-                      'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
-                      usesStaticPreview ? 'top-24' : 'top-4',
-                    )}
-                  >
-                    <p className="font-medium">Editor bridge error</p>
-                    <p>{editorError}</p>
-                  </div>
-                ) : null}
-                {!isPresentOpen && networkIssues.length > 0 ? (
-                  <div
-                    className={cn(
-                      'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
-                      usesStaticPreview ? 'top-24' : 'top-4',
-                    )}
-                  >
-                    <div className="flex items-start gap-2">
-                      <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="font-medium">Network access blocked</p>
-                        <p>{networkIssues[0]?.message}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {!isPresentOpen && isPreviewUpdating ? (
-                  <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-                    <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
-                    Updating preview
-                  </div>
-                ) : null}
+                <DeckPreviewStatusOverlays
+                  compromised={previewCompromised}
+                  editorError={editorError}
+                  frameError={previewFrame.error}
+                  isLoading={previewFrame.isLoading}
+                  isPresentOpen={isPresentOpen}
+                  isPreviewUpdating={isPreviewUpdating}
+                  networkIssue={networkIssues[0]?.message}
+                  usesStaticPreview={usesStaticPreview}
+                />
               </div>
             ) : isGenerating || isPreviewUpdating ? (
               <PreviewSkeleton scale={previewFrameScale} />
