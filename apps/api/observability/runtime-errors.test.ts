@@ -80,7 +80,7 @@ describe('runtime error reporting', () => {
           errors: 1,
           warnings: 2,
         },
-        relatedJobId: null,
+        relatedJobId: '33333333-3333-4333-8333-333333333333',
         versionId: null,
         html: '<main>must not be retained</main>',
       },
@@ -90,19 +90,20 @@ describe('runtime error reporting', () => {
 
     if (parsed.ok) {
       expect(parsed.input.message).not.toContain('sk-live-secret-value')
-      expect(parsed.input.repairContext).toMatchObject({
+      expect(parsed.input.repairContext).toEqual({
         errorSummary: parsed.input.message,
         affectedSlideIndex: 2,
         runtime: {
           mode: 'reveal',
-          previewMode: 'full-js',
-          approvedRuntime: { id: 'reveal.js', version: '5.1.0' },
+          previewMode: null,
+          approvedRuntime: null,
         },
         validation: {
-          status: 'invalid',
-          errors: 1,
-          warnings: 2,
+          status: 'unknown',
+          errors: 0,
+          warnings: 0,
         },
+        relatedJobId: null,
         versionId,
       })
       expect(parsed.input.repairContext).not.toHaveProperty('html')

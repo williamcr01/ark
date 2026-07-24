@@ -421,7 +421,9 @@ export function useDeckGenerationFlow({
     isModelFailure: modelFailure,
     isGenerating,
     recentGenerationJobId:
-      activeJob && (activeJob.deckId === deckId || (deckId && activeJob.result?.deckId === deckId))
+      activeJob?.status === 'succeeded' &&
+      activeVersionId &&
+      activeJob.result?.versionId === activeVersionId
         ? activeJob.id
         : null,
     retryGeneration: handleRetryGeneration,

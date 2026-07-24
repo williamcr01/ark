@@ -84,15 +84,23 @@ export function parseRuntimeErrorBody(
   }
 
   const runtimeModeRaw = parsed.data.runtimeMode?.trim().slice(0, MAX_RUNTIME_MODE_LENGTH) || null
+  // Only keep fields we can derive from the top-level request. Client-supplied
+  // previewMode / approvedRuntime / validation / relatedJobId are not trusted.
   const repairContext = parsed.data.repairContext
     ? {
-        ...parsed.data.repairContext,
         errorSummary: sanitizeRuntimeErrorText(message, MAX_REPAIR_SUMMARY_LENGTH),
         affectedSlideIndex: clampSlideIndex(parsed.data.slideIndex),
         runtime: {
-          ...parsed.data.repairContext.runtime,
           mode: runtimeModeRaw,
+          previewMode: null,
+          approvedRuntime: null,
         },
+        validation: {
+          status: 'unknown' as const,
+          errors: 0,
+          warnings: 0,
+        },
+        relatedJobId: null,
         versionId,
       }
     : undefined

@@ -1609,6 +1609,34 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('A later distinct failure')
   })
 
+  it('allows retrying the same runtime error after a report failure', async () => {
+    reportRuntimeErrorMock.mockRejectedValueOnce(new Error('network down'))
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      deckId: '11111111-1111-4111-8111-111111111111',
+      versionId: '33333333-3333-4333-8333-333333333333',
+    })
+
+    const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
+      onRuntimeError: (message: string, source?: string) => void
+    }
+
+    act(() => navigationOptions.onRuntimeError('Transient failure', 'deck.js'))
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(1)
+
+    act(() => navigationOptions.onRuntimeError('Transient failure', 'deck.js'))
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps runtime errors distinct from validation and network failures', () => {
     const invalidHtml = plainCssDeck.replace(
       '</body>',

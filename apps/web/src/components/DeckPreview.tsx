@@ -196,7 +196,9 @@ export function DeckPreview({
           relatedJobId: recentGenerationJobId,
           versionId,
         },
-      }).catch(() => undefined)
+      }).catch(() => {
+        reportedRuntimeErrorsRef.current.delete(fingerprint)
+      })
     },
     [
       deckId,
