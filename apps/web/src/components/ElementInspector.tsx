@@ -449,12 +449,12 @@ export function ElementInspector({
         <h2 className="text-[11px] font-semibold text-[var(--ark-titlebar-fg)]">Inspector</h2>
         <span className="flex items-center gap-1">
           {selection.managed ? (
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+            <span className="rounded-full border border-[var(--ark-success)]/30 bg-[var(--ark-success)]/10 px-1.5 py-0.5 text-[10px] text-[var(--ark-success)]">
               Managed
             </span>
           ) : null}
           {selection.locked ? (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+            <span className="rounded-full border border-[var(--ark-warning)]/30 bg-[var(--ark-warning)]/10 px-1.5 py-0.5 text-[10px] text-[var(--ark-warning)]">
               Locked
             </span>
           ) : null}
@@ -464,7 +464,7 @@ export function ElementInspector({
       <div className="flex flex-col gap-4 px-3 py-3">
         {disabledReason ? (
           <p
-            className="rounded-sm border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-700 dark:text-amber-300"
+            className="rounded-sm border border-[var(--ark-warning)]/30 bg-[var(--ark-warning)]/10 px-2 py-1.5 text-[11px] leading-snug text-[var(--ark-warning)]"
             role="note"
           >
             {disabledReason}

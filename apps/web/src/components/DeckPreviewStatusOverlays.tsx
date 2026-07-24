@@ -1,5 +1,6 @@
 import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon, XIcon } from 'lucide-react'
 
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -38,7 +39,10 @@ export function DeckPreviewStatusOverlays({
   return (
     <>
       {compromised ? (
-        <div className="absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
+        <Alert
+          className="absolute inset-x-4 top-4 z-10 border-destructive/30 text-xs shadow-sm"
+          variant="destructive"
+        >
           <div className="flex items-start gap-2">
             <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
@@ -50,21 +54,24 @@ export function DeckPreviewStatusOverlays({
               </p>
             </div>
           </div>
-        </div>
+        </Alert>
       ) : null}
       {frameError ? (
-        <div className="absolute inset-x-4 top-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100">
+        <Alert
+          className="absolute inset-x-4 top-4 border-destructive/30 text-xs shadow-sm"
+          variant="destructive"
+        >
           <p className="font-medium">Sandbox preview unavailable</p>
           <p>{frameError}</p>
-        </div>
+        </Alert>
       ) : null}
       {isLoading ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-card/90 text-xs font-medium text-muted-foreground">
           Loading sandbox preview…
         </div>
       ) : null}
       {usesStaticPreview ? (
-        <div className="absolute inset-x-4 top-4 rounded-lg border border-sky-500/30 bg-sky-50/95 px-3 py-2 text-xs text-sky-950 shadow-sm backdrop-blur dark:bg-sky-950/90 dark:text-sky-100">
+        <Alert className="absolute inset-x-4 top-4 text-xs shadow-sm">
           <div className="flex items-start gap-2">
             <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
@@ -75,25 +82,27 @@ export function DeckPreviewStatusOverlays({
               </p>
             </div>
           </div>
-        </div>
+        </Alert>
       ) : null}
       {editorError ? (
-        <div
+        <Alert
           className={cn(
-            'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
+            'absolute inset-x-4 border-destructive/30 text-xs shadow-sm',
             usesStaticPreview ? 'top-24' : 'top-4',
           )}
+          variant="destructive"
         >
           <p className="font-medium">Editor bridge error</p>
           <p>{editorError}</p>
-        </div>
+        </Alert>
       ) : null}
       {networkIssue ? (
-        <div
+        <Alert
           className={cn(
-            'absolute inset-x-4 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur dark:bg-red-950/90 dark:text-red-100',
+            'absolute inset-x-4 border-destructive/30 text-xs shadow-sm',
             usesStaticPreview ? 'top-24' : 'top-4',
           )}
+          variant="destructive"
         >
           <div className="flex items-start gap-2">
             <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -102,12 +111,12 @@ export function DeckPreviewStatusOverlays({
               <p>{networkIssue}</p>
             </div>
           </div>
-        </div>
+        </Alert>
       ) : null}
       {runtimeError ? (
-        <div
-          className="absolute inset-x-4 bottom-4 z-10 rounded-lg border border-destructive/30 bg-card/95 px-3 py-2 text-xs text-destructive shadow-sm backdrop-blur"
-          role="alert"
+        <Alert
+          className="absolute inset-x-4 bottom-4 z-10 border-destructive/30 text-xs shadow-sm"
+          variant="destructive"
         >
           <div className="flex items-start gap-2">
             <ShieldAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -126,10 +135,10 @@ export function DeckPreviewStatusOverlays({
               <XIcon aria-hidden />
             </Button>
           </div>
-        </div>
+        </Alert>
       ) : null}
       {isPreviewUpdating ? (
-        <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
+        <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm">
           <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
           Updating preview
         </div>

@@ -2,6 +2,8 @@ import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'reac
 import {
   ChevronDownIcon,
   HistoryIcon,
+  LaptopIcon,
+  MoonIcon,
   DownloadIcon,
   FilePlus2Icon,
   PanelLeftCloseIcon,
@@ -12,8 +14,10 @@ import {
   PresentationIcon,
   Trash2Icon,
   UploadIcon,
+  SunIcon,
 } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
@@ -31,6 +35,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -40,6 +46,7 @@ import type { DeckSummary, DeckVersionDetail, DeckVersionSummary } from '@/lib/d
 import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { cn } from '@/lib/utils'
+import type { AppearancePreference, ResolvedAppearance } from '@/hooks/useAppearance'
 
 type TitleBarButtonProps = {
   active?: boolean
@@ -151,6 +158,61 @@ function DownloadTitleBarButton({
             <span className="text-xs text-muted-foreground">Matches static preview</span>
           </div>
         </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function AppearanceMenu({
+  preference,
+  resolvedAppearance,
+  onChange,
+}: {
+  preference: AppearancePreference
+  resolvedAppearance: ResolvedAppearance
+  onChange: (preference: AppearancePreference) => void
+}) {
+  const icon =
+    preference === 'system' ? (
+      <LaptopIcon />
+    ) : resolvedAppearance === 'dark' ? (
+      <MoonIcon />
+    ) : (
+      <SunIcon />
+    )
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button aria-label="Appearance" className="h-7 px-2 text-xs" size="sm" variant="ghost">
+              {icon}
+              Theme
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Appearance</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          onValueChange={(value) => onChange(value as AppearancePreference)}
+          value={preference}
+        >
+          <DropdownMenuRadioItem value="system">
+            <LaptopIcon />
+            System
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="light">
+            <SunIcon />
+            Light
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="dark">
+            <MoonIcon />
+            Dark
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -349,6 +411,8 @@ export type DeckSaveStatus =
   'loading' | 'new' | 'generating' | 'saving' | 'dirty' | 'saved' | 'error'
 
 export type AppTitleBarProps = {
+  appearancePreference?: AppearancePreference
+  resolvedAppearance?: ResolvedAppearance
   activeDeckId: string | null
   activeVersionId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -362,6 +426,7 @@ export type AppTitleBarProps = {
   isLoadingVersions: boolean
   isStripOpen: boolean
   onClearVersionPreview: () => void
+  onAppearanceChange?: (preference: AppearancePreference) => void
   onDeleteDeck: () => Promise<void> | void
   onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
@@ -381,6 +446,8 @@ export type AppTitleBarProps = {
 }
 
 export function AppTitleBar({
+  appearancePreference = 'system',
+  resolvedAppearance = 'dark',
   activeDeckId,
   activeVersionId,
   fileInputRef,
@@ -394,6 +461,7 @@ export function AppTitleBar({
   isLoadingVersions,
   isStripOpen,
   onClearVersionPreview,
+  onAppearanceChange = () => undefined,
   onDeleteDeck,
   onDownload,
   onHtmlUpload,
@@ -427,16 +495,8 @@ export function AppTitleBar({
                 ? 'Saved'
                 : 'New deck'
 
-  const statusTone =
-    deckSaveStatus === 'loading' || deckSaveStatus === 'generating' || deckSaveStatus === 'saving'
-      ? 'pending'
-      : deckSaveStatus === 'dirty' || deckSaveStatus === 'error'
-        ? 'warning'
-        : hasDeck
-          ? 'saved'
-          : 'idle'
   return (
-    <header className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-2 text-[var(--ark-titlebar-fg)]">
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-2 text-foreground">
       <input
         accept=".html,.htm,text/html"
         className="hidden"
@@ -445,13 +505,12 @@ export function AppTitleBar({
         type="file"
       />
       <div className="flex min-w-0 items-center gap-2 px-1">
-        <PresentationIcon
-          aria-hidden
-          className="size-4 shrink-0 text-[var(--ark-titlebar-muted)]"
-        />
-        <span className="truncate text-[13px] leading-none">Ark</span>
-        <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-          ·
+        <PresentationIcon aria-hidden className="size-4 shrink-0 text-[var(--ark-focus)]" />
+        <span className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight">
+          Ark
+        </span>
+        <span aria-hidden className="text-muted-foreground">
+          /
         </span>
         <DeckLibraryMenu
           activeDeckId={activeDeckId}
@@ -463,27 +522,28 @@ export function AppTitleBar({
           onRenameDeck={onRenameDeck}
           onSelectDeck={onSelectDeck}
         />
-        <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
-          <span
-            aria-hidden
-            className={cn(
-              'size-1.5 shrink-0 rounded-full',
-              statusTone === 'pending' && 'animate-pulse bg-amber-500',
-              statusTone === 'warning' && 'bg-amber-500',
-              statusTone === 'saved' && 'bg-emerald-500',
-              statusTone === 'idle' && 'bg-[var(--ark-titlebar-muted)]/50',
-            )}
-          />
+        <Badge
+          variant={
+            deckSaveStatus === 'error'
+              ? 'destructive'
+              : deckSaveStatus === 'dirty'
+                ? 'outline'
+                : 'secondary'
+          }
+        >
           {statusLabel}
-          {versionNumber ? (
-            <span className="truncate text-[var(--ark-titlebar-muted)]">· v{versionNumber}</span>
-          ) : null}
-        </span>
+          {versionNumber ? <span>· v{versionNumber}</span> : null}
+        </Badge>
       </div>
 
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
+        <AppearanceMenu
+          onChange={onAppearanceChange}
+          preference={appearancePreference}
+          resolvedAppearance={resolvedAppearance}
+        />
         <TitleBarButton
           disabled={!activeDeckId || isGenerating}
           label="Version history"

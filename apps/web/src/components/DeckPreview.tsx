@@ -8,7 +8,14 @@ import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlay
 import { PresentMode } from '@/components/PresentMode'
 import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
@@ -547,7 +554,7 @@ export function DeckPreview({
   const canPresent = html.length > 0 && hasSlides && !isGenerating
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
+    <section className="flex h-full min-h-0 flex-col bg-[var(--ark-stage)]">
       <DeckPreviewHeader
         activeSlideIndex={activeSlideIndex}
         analysis={deckAnalysis}
@@ -617,7 +624,7 @@ export function DeckPreview({
 
         <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
           <div
-            className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden"
+            className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden p-4 lg:p-6"
             onDragOver={(event) => {
               if (!editChromeActive || textEditActive) {
                 return
@@ -665,9 +672,9 @@ export function DeckPreview({
             {html ? (
               <div
                 className={cn(
-                  'relative max-h-full max-w-full overflow-hidden bg-white shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]',
+                  'relative max-h-full max-w-full overflow-hidden bg-white shadow-[0_8px_28px_var(--ark-stage-shadow)]',
                   isPresentOpen &&
-                    'fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 shadow-[0_40px_120px_rgba(0,0,0,0.65)] ring-white/10',
+                    'fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2',
                 )}
                 ref={previewStageRef}
                 style={previewStageStyle}
@@ -775,33 +782,30 @@ export function DeckPreview({
 
 function EmptyPreview() {
   return (
-    <Card className="w-full max-w-xl border-dashed bg-white/80 text-center shadow-none">
-      <CardHeader className="items-center gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-[var(--ark-accent-soft)] text-[var(--ark-accent)]">
-          <WandSparklesIcon className="size-6" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <CardTitle>Ready for your first deck</CardTitle>
-          <CardDescription>
-            Ask Ark for a pitch deck, strategy update, sales proposal, research summary, or any
-            presentation you need.
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-2xl border bg-[var(--ark-paper)] p-4 text-left text-sm text-muted-foreground">
-          <p className="font-medium text-foreground">Try:</p>
-          <p>“Create a 6-slide launch deck for a privacy-first notes app.”</p>
-        </div>
-      </CardContent>
-    </Card>
+    <Empty className="max-w-xl">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <WandSparklesIcon />
+        </EmptyMedia>
+        <EmptyTitle>Set the stage</EmptyTitle>
+        <EmptyDescription>
+          Ask the agent to build a deck, or upload a self-contained HTML presentation from the
+          command strip.
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <span className="font-mono text-xs text-muted-foreground">
+          Try: “Create a six-slide launch deck for a privacy-first notes app.”
+        </span>
+      </EmptyContent>
+    </Empty>
   )
 }
 
 function PreviewSkeleton({ scale }: { scale: number }) {
   return (
     <div
-      className="max-h-full max-w-full bg-white p-8 shadow-2xl shadow-slate-950/10 ring-1 ring-[var(--ark-stage-border)]"
+      className="max-h-full max-w-full bg-white p-8 shadow-[0_8px_28px_var(--ark-stage-shadow)]"
       style={getPreviewStageStyle(scale)}
     >
       <div className="flex h-full flex-col gap-8">

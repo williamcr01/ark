@@ -63,6 +63,13 @@ describe('ChatPanel submit control', () => {
     )
 
     expect(screen.getByText('Working…')).toBeInTheDocument()
+    expect(
+      screen
+        .getByText('Listening')
+        .closest('[role="status"]')
+        ?.closest('[data-slot="agent-composer"]'),
+    ).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close agent panel' })).not.toBeInTheDocument()
     expect(screen.queryByText(/Designing the deck/i)).not.toBeInTheDocument()
   })
 
@@ -334,5 +341,41 @@ describe('ChatPanel submit control', () => {
     await user.click(summary)
     expect(screen.getByText('I will patch the title.')).toBeVisible()
     expect(screen.getByText('I will patch the title.')).toHaveClass('text-muted-foreground/80')
+  })
+
+  it('collapses consecutive tool calls into one unboxed text group', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            {
+              id: 'a2',
+              role: 'assistant',
+              content: 'Updated two slides.',
+              parts: [
+                { type: 'tool-call', toolName: 'read_deck', summary: 'Read slide 1' },
+                { type: 'tool-result', toolName: 'read_deck', summary: 'Slide loaded' },
+                { type: 'tool-call', toolName: 'patch_deck', summary: 'Updated slide 2' },
+                { type: 'tool-result', toolName: 'patch_deck', summary: 'Patch applied' },
+                { type: 'text', content: 'Updated two slides.' },
+              ],
+            },
+          ]}
+        />
+      </TooltipProvider>,
+    )
+
+    const summary = screen.getByText('2 tool calls')
+    const details = summary.closest('details')
+    expect(details).not.toHaveAttribute('open')
+    expect(details).not.toHaveClass('border')
+    expect(screen.getByText(/Read slide 1/)).not.toBeVisible()
+
+    await user.click(summary)
+    expect(screen.getByText(/Read slide 1/)).toBeVisible()
+    expect(screen.getByText(/Patch applied/)).toBeVisible()
   })
 })

@@ -77,7 +77,7 @@ function ValidationBadge({ status }: { status: DeckVersionSummary['validationSta
     <span
       className={cn(
         'rounded-full px-2 py-0.5 text-[11px] font-medium',
-        status === 'valid' && 'bg-emerald-500/10 text-emerald-700',
+        status === 'valid' && 'bg-[var(--ark-success)]/10 text-[var(--ark-success)]',
         status === 'invalid' && 'bg-destructive/10 text-destructive',
         status === 'unknown' && 'bg-muted text-muted-foreground',
       )}

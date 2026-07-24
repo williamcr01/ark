@@ -203,9 +203,10 @@ function LazyThumbnail({
       aria-current={active ? 'true' : undefined}
       aria-label={`Go to slide ${index + 1}`}
       className={cn(
-        'group relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)] transition-[box-shadow,transform]',
+        'group relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)]',
         'hover:ring-[var(--ark-titlebar-muted)]',
-        active && 'z-10 scale-[1.06] ring-[3px] ring-[var(--ark-accent)]',
+        active &&
+          'z-10 ring-2 ring-[var(--ark-selection)] shadow-[inset_3px_0_var(--ark-selection)]',
         orientation === 'vertical' ? 'w-full' : 'w-[152px]',
       )}
       onClick={() => onSelect(index)}
@@ -263,7 +264,9 @@ function LazyThumbnail({
       <span
         className={cn(
           'absolute bottom-1 left-1 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
-          active ? 'bg-[var(--ark-accent)] text-white' : 'bg-black/55 text-white',
+          active
+            ? 'bg-[var(--ark-selection)] text-primary-foreground'
+            : 'bg-[var(--ark-overlay)] text-primary-foreground',
         )}
       >
         {index + 1}
@@ -488,7 +491,7 @@ export function SlideThumbnailStrip({
     <aside
       aria-hidden={!isOpen}
       className={cn(
-        'flex min-h-0 shrink-0 flex-col border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)]',
+        'flex min-h-0 shrink-0 flex-col border-[var(--ark-line)] bg-[var(--ark-panel)]',
         orientation === 'vertical' ? 'w-[168px] border-r' : 'h-[132px] border-b',
         !isOpen && 'hidden',
       )}
