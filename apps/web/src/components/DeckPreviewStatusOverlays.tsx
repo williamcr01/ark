@@ -1,10 +1,12 @@
 import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
 import { cn } from '@/lib/utils'
 
 type DeckPreviewStatusOverlaysProps = {
   compromised: boolean
+  compromiseReason?: PreviewBridgeCompromiseReason | null
   editorError: string | null
   frameError: string | null
   isLoading: boolean
@@ -19,8 +21,31 @@ type DeckPreviewStatusOverlaysProps = {
   usesStaticPreview: boolean
 }
 
+export function previewCompromiseCopy(reason: PreviewBridgeCompromiseReason | null | undefined) {
+  switch (reason) {
+    case 'handshake-timeout':
+    case 'missing-handshake':
+      return {
+        title: 'Preview stopped',
+        body: 'The preview frame loaded but never completed its security handshake with Ark. This often happens when the app is opened on a different port than expected. Reload the deck, or restart `pnpm dev` with port 5173 free.',
+      }
+    case 'invalid-handshake':
+      return {
+        title: 'Preview stopped',
+        body: 'The preview frame sent an invalid security handshake. Reload the deck to restore the preview.',
+      }
+    case 'unexpected-load':
+    default:
+      return {
+        title: 'Preview stopped',
+        body: 'The deck attempted an unexpected navigation. Preview was torn down to stop further bridge messages from reaching an untrusted page. Edit or reload the deck to restore the preview.',
+      }
+  }
+}
+
 export function DeckPreviewStatusOverlays({
   compromised,
+  compromiseReason = null,
   editorError,
   frameError,
   isLoading,
@@ -35,6 +60,8 @@ export function DeckPreviewStatusOverlays({
     return null
   }
 
+  const compromiseCopy = previewCompromiseCopy(compromiseReason)
+
   return (
     <>
       {compromised ? (
@@ -42,12 +69,8 @@ export function DeckPreviewStatusOverlays({
           <div className="flex items-start gap-2">
             <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
-              <p className="font-medium">Preview stopped</p>
-              <p>
-                The deck attempted an unexpected navigation. Preview was torn down to stop further
-                bridge messages from reaching an untrusted page. Edit or reload the deck to restore
-                the preview.
-              </p>
+              <p className="font-medium">{compromiseCopy.title}</p>
+              <p>{compromiseCopy.body}</p>
             </div>
           </div>
         </div>
