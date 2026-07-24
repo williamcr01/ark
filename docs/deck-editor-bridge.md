@@ -2,6 +2,11 @@
 
 Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell enables the editor runtime for CSS-only, approved Reveal, Reveal+Chart.js, and custom-JS decks whenever the preview is interactive (not presenting or generating) — there is no Preview/Edit toggle. The shell and injected editor runtime coordinate selection, geometry, transforms, and inline text editing through a private, per-preview `MessagePort` protocol defined in `packages/deck-core/deck-editor-bridge.ts`.
 
+See [deck-preview-orchestration.md](./deck-preview-orchestration.md) for the
+shell-side ownership and state-transition table. The private editor port stays
+inside `useDeckEditorBridge`; extracted source and shortcut hooks cannot post
+bridge messages or authorize persistence.
+
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
 ## Transport

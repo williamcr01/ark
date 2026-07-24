@@ -2,26 +2,17 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
-  useEffectEvent,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
 } from 'react'
-import {
-  FileCode2Icon,
-  Loader2Icon,
-  Maximize2Icon,
-  MonitorPlayIcon,
-  ShieldAlertIcon,
-  ShieldCheckIcon,
-  WandSparklesIcon,
-} from 'lucide-react'
+import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon, WandSparklesIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { EditModeToolbar } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
+import { DeckPreviewHeader } from '@/components/DeckPreviewHeader'
 import { PresentMode } from '@/components/PresentMode'
 import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
 import { SlideThumbnailStrip } from '@/components/SlideThumbnailStrip'
@@ -33,6 +24,8 @@ import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
 import { usePreviewBridgeSession } from '@/hooks/usePreviewBridgeSession'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
+import { useDeckPreviewSource, type DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
+import { useDeckEditorShellShortcuts } from '@/hooks/useDeckEditorShellShortcuts'
 import {
   getPreviewFrameScale,
   getPreviewFrameStyle,
@@ -48,7 +41,6 @@ import {
 import {
   buildImageInsertOperation,
   clientPointToNormalizedSlidePoint,
-  isEditableClipboardTarget,
   prepareImageInsertFromFile,
 } from '@/lib/deck-image-insert'
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
@@ -56,10 +48,7 @@ import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
-import { isRemoteImageUrl } from '@ark/deck-core/deck-image.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
-import { TRANSIENT_ELEMENT_ID_PREFIX } from '@ark/deck-core/deck-metadata.ts'
-import type { PatchDeckResponse } from '@/lib/deck-api'
 
 export type DeckTextEditCommit = {
   elementId: string
@@ -67,10 +56,6 @@ export type DeckTextEditCommit = {
   slideId: string | null
   text: string
   originalText: string | null
-}
-
-type DeckPreviewPatchResult = Pick<PatchDeckResponse, 'patch'> & {
-  deck?: Pick<PatchDeckResponse['deck'], 'html'>
 }
 
 export type DeckPreviewProps = {
@@ -131,11 +116,6 @@ export function DeckPreview({
     height: typeof window === 'undefined' ? 0 : window.innerHeight,
   }))
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
-  const [previewSource, setPreviewSource] = useState(() => ({
-    deckId,
-    html,
-    reloadRevision: 0,
-  }))
   const [imageFitOverride, setImageFitOverride] = useState<{
     elementId: string
     fit: ImageFitMode
@@ -158,10 +138,6 @@ export function DeckPreview({
   const processedShortcutRequestRef = useRef<string | null>(null)
   const processedTransformCommitRef = useRef<string | null>(null)
   const pendingTransformPatchRef = useRef<Promise<DeckPreviewPatchResult | undefined> | null>(null)
-  const canonicalPreviewSourceRef = useRef({ deckId, html })
-  const observedPreviewSourceRef = useRef({ deckId, html })
-  const livePreviewPatchPendingRef = useRef(false)
-  const expectedLivePreviewHtmlRef = useRef<string | null>(null)
   const committedGeometryRef = useRef<
     import('@ark/deck-core/deck-editor-bridge.ts').EditorNormalizedRect | null
   >(null)
@@ -182,9 +158,13 @@ export function DeckPreview({
   const previewEnabled = html.length > 0 && hasSlides
   const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
-  const previewSourceMatchesDeck = previewSource.deckId === deckId
-  const previewHtml = previewSourceMatchesDeck ? previewSource.html : html
-  const previewReloadRevision = previewSource.reloadRevision + (previewSourceMatchesDeck ? 0 : 1)
+  const {
+    previewHtml,
+    previewReloadRevision,
+    beginLivePatch: beginLivePreviewPatch,
+    finishLivePatch: finishPreviewSourcePatch,
+    rollbackLivePatch: reloadCanonicalPreview,
+  } = useDeckPreviewSource(deckId, html)
   const previewFrame = useDeckPreviewFrame(previewHtml, previewEnabled, previewReloadRevision)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
@@ -220,88 +200,13 @@ export function DeckPreview({
   const previewCompromised = bridgeSession.compromised
   const bridgeEnabled = previewEnabled && !previewCompromised
 
-  useLayoutEffect(() => {
-    canonicalPreviewSourceRef.current = { deckId, html }
-    const observed = observedPreviewSourceRef.current
-
-    if (observed.deckId !== deckId) {
-      observedPreviewSourceRef.current = { deckId, html }
-      livePreviewPatchPendingRef.current = false
-      expectedLivePreviewHtmlRef.current = null
-      setPreviewSource((current) => ({
-        deckId,
-        html,
-        reloadRevision: current.reloadRevision + 1,
-      }))
-      return
-    }
-
-    if (observed.html === html) {
-      return
-    }
-
-    observedPreviewSourceRef.current = { deckId, html }
-
-    if (livePreviewPatchPendingRef.current || expectedLivePreviewHtmlRef.current === html) {
-      if (expectedLivePreviewHtmlRef.current === html) {
-        expectedLivePreviewHtmlRef.current = null
-      }
-      return
-    }
-
-    setPreviewSource((current) => ({
-      ...current,
-      deckId,
-      html,
-      reloadRevision: current.html === html ? current.reloadRevision + 1 : current.reloadRevision,
-    }))
-  }, [deckId, html])
-
-  const beginLivePreviewPatch = useCallback((elementId: string) => {
-    if (elementId.startsWith(TRANSIENT_ELEMENT_ID_PREFIX) || livePreviewPatchPendingRef.current) {
-      return false
-    }
-
-    livePreviewPatchPendingRef.current = true
-    expectedLivePreviewHtmlRef.current = null
-    return true
-  }, [])
-
-  const reloadCanonicalPreview = useCallback(() => {
-    const canonical = canonicalPreviewSourceRef.current
-
-    livePreviewPatchPendingRef.current = false
-    expectedLivePreviewHtmlRef.current = null
-    observedPreviewSourceRef.current = canonical
-    setPreviewSource((current) => ({
-      deckId: canonical.deckId,
-      html: canonical.html,
-      reloadRevision: current.reloadRevision + 1,
-    }))
-  }, [])
-
   const finishLivePreviewPatch = useCallback(
     (result: DeckPreviewPatchResult | undefined) => {
-      livePreviewPatchPendingRef.current = false
-
-      if (!result) {
-        reloadCanonicalPreview()
-        return
-      }
-
-      const resultHtml = result.deck?.html
-      const observed = observedPreviewSourceRef.current
-
-      if (resultHtml && (observed.deckId !== deckId || observed.html !== resultHtml)) {
-        expectedLivePreviewHtmlRef.current = resultHtml
-      } else {
-        expectedLivePreviewHtmlRef.current = null
-      }
-
+      finishPreviewSourcePatch(result)
       preserveSlideIndexRef.current = null
       pendingReselectRef.current = null
     },
-    [deckId, reloadCanonicalPreview],
+    [finishPreviewSourcePatch],
   )
   // Keep secondary preview work off the critical path until the current main
   // frame has loaded and completed its handshake. In particular, a thumbnail
@@ -1040,145 +945,21 @@ export function DeckPreview({
     goToSlide(slideIndex)
   }, [goToSlide, previewFrame.iframeKey, previewHtml])
 
-  const handleEditorPaste = useEffectEvent((event: ClipboardEvent) => {
-    if (isEditableClipboardTarget(event.target)) {
-      return
-    }
-
-    const clipboard = event.clipboardData
-
-    if (!clipboard) {
-      return
-    }
-
-    for (const item of clipboard.items) {
-      if (!item.type.startsWith('image/')) {
-        continue
-      }
-
-      const file = item.getAsFile()
-
-      if (!file) {
-        continue
-      }
-
-      event.preventDefault()
-      void handleInsertImageFile(file)
-      return
-    }
-
-    const pastedText = clipboard.getData('text/plain').trim()
-
-    if (pastedText && isRemoteImageUrl(pastedText)) {
-      event.preventDefault()
-      toast.error(
-        'Remote image URLs cannot be inserted directly. Use a local file or paste image data.',
-      )
-    }
+  useDeckEditorShellShortcuts({
+    active: editChromeActive,
+    textEditActive,
+    isTextEditSaving,
+    activeTool,
+    canEditSelectedText,
+    canUndo,
+    canRedo,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onEndTextEditing: endTextEditing,
+    onSelectTool: () => handleToolChange('select'),
+    onBeginTextEdit: beginTextEdit,
+    onInsertImage: (file) => void handleInsertImageFile(file),
   })
-
-  useEffect(() => {
-    if (!editChromeActive || textEditActive) {
-      return
-    }
-
-    window.addEventListener('paste', handleEditorPaste)
-
-    return () => {
-      window.removeEventListener('paste', handleEditorPaste)
-    }
-  }, [editChromeActive, textEditActive])
-
-  const handleEditorKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    const historyModifier = event.metaKey || event.ctrlKey
-
-    if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
-      // Leave undo/redo to the browser while editing text so contenteditable
-      // history keeps working inside the deck.
-      if (textEditActive || isTextEditSaving) {
-        return
-      }
-
-      if (event.shiftKey) {
-        if (!canRedo || !onRedo) {
-          return
-        }
-
-        event.preventDefault()
-        handleRedo()
-      } else {
-        if (!canUndo || !onUndo) {
-          return
-        }
-
-        event.preventDefault()
-        handleUndo()
-      }
-
-      return
-    }
-
-    if (
-      historyModifier &&
-      !event.altKey &&
-      !event.shiftKey &&
-      (event.key === 'y' || event.key === 'Y')
-    ) {
-      if (textEditActive || isTextEditSaving) {
-        return
-      }
-
-      if (!canRedo || !onRedo) {
-        return
-      }
-
-      event.preventDefault()
-      handleRedo()
-      return
-    }
-
-    if (event.key === 'Escape') {
-      if (textEditActive) {
-        event.preventDefault()
-        endTextEditing()
-        return
-      }
-
-      if (activeTool !== 'select') {
-        event.preventDefault()
-        handleToolChange('select')
-      }
-
-      return
-    }
-
-    if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
-      return
-    }
-
-    if (textEditActive || !canEditSelectedText) {
-      return
-    }
-
-    if (event.target instanceof HTMLElement && event.target.closest('button, [role="button"]')) {
-      return
-    }
-
-    event.preventDefault()
-    beginTextEdit()
-  })
-
-  useEffect(() => {
-    if (!editChromeActive) {
-      return
-    }
-
-    window.addEventListener('keydown', handleEditorKeyDown)
-
-    return () => {
-      window.removeEventListener('keydown', handleEditorKeyDown)
-    }
-  }, [editChromeActive])
 
   useEffect(() => {
     if (!editorBridgeActive || !editorReady) {
@@ -1302,60 +1083,15 @@ export function DeckPreview({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-preview)]">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
-        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-          <MonitorPlayIcon
-            aria-hidden
-            className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
-          />
-          <span className="truncate text-xs font-medium">Preview</span>
-          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-            ›
-          </span>
-          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
-            {parsedDeck.slideCount > 0
-              ? `Slide ${activeSlideIndex + 1} of ${parsedDeck.slideCount}`
-              : 'HTML deck'}
-          </span>
-        </div>
-        <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
-          <button
-            aria-label="Present fullscreen"
-            className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={!canPresent || isPresentOpen}
-            onClick={openPresentMode}
-            type="button"
-          >
-            <Maximize2Icon className="size-3" />
-            Present
-          </button>
-          {isTextEditSaving && !isPresentOpen ? (
-            <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
-              <Loader2Icon className="size-3 animate-spin" />
-              Saving edit
-            </span>
-          ) : null}
-          {!isPresentOpen && deckAnalysis.allowsDeckInitScripts ? (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-              Scripts running
-            </span>
-          ) : !isPresentOpen && runtimeMode === 'reveal' && !usesStaticPreview ? (
-            <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
-              Reveal runtime
-            </span>
-          ) : !isPresentOpen && usesStaticPreview ? (
-            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
-              Static preview
-            </span>
-          ) : null}
-          {!isPresentOpen ? (
-            <span className="flex items-center gap-1">
-              <FileCode2Icon className="size-3" />
-              {previewFrame.usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
-            </span>
-          ) : null}
-        </span>
-      </div>
+      <DeckPreviewHeader
+        activeSlideIndex={activeSlideIndex}
+        analysis={deckAnalysis}
+        canPresent={canPresent}
+        isPresentOpen={isPresentOpen}
+        isTextEditSaving={isTextEditSaving}
+        onPresent={openPresentMode}
+        usesSandboxHost={previewFrame.usesSandboxHost}
+      />
 
       {editorBridgeEnabled && editChromeActive ? (
         <EditModeToolbar
