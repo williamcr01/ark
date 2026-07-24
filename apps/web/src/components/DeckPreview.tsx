@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { WandSparklesIcon } from 'lucide-react'
 
 import { EditModeToolbar } from '@/components/EditModeToolbar'
@@ -66,6 +67,8 @@ export type DeckPreviewProps = {
   isStripOpen: boolean
   layout: 'desktop' | 'mobile'
   deckAnalysis: DeckBrowserAnalysis
+  /** When set, preview/edit bars render into this host so they can span the full shell width. */
+  chromeHost?: HTMLElement | null
   editorBridgeEnabled?: boolean
   isTextEditSaving?: boolean
   canUndo?: boolean
@@ -94,6 +97,7 @@ export function DeckPreview({
   isStripOpen,
   layout,
   deckAnalysis,
+  chromeHost = null,
   editorBridgeEnabled = false,
   isTextEditSaving = false,
   canUndo = false,
@@ -553,8 +557,8 @@ export function DeckPreview({
   const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
   const canPresent = html.length > 0 && hasSlides && !isGenerating
 
-  return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--ark-stage)]">
+  const previewChrome = (
+    <>
       <DeckPreviewHeader
         activeSlideIndex={activeSlideIndex}
         analysis={deckAnalysis}
@@ -594,6 +598,12 @@ export function DeckPreview({
           textEditActive={textEditActive}
         />
       ) : null}
+    </>
+  )
+
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-[var(--ark-stage)]">
+      {chromeHost ? createPortal(previewChrome, chromeHost) : previewChrome}
 
       <input
         accept="image/png,image/jpeg,image/webp,image/gif"

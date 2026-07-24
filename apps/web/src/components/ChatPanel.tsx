@@ -466,10 +466,6 @@ export function ChatPanel({
 
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 bg-[var(--ark-panel)] py-0 shadow-none ring-0 [--card-spacing:0]">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b bg-[var(--ark-panel-raised)] px-3">
-        <span className="font-heading text-sm font-semibold">Agent</span>
-      </div>
-
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <Conversation>
           <ConversationContent className="gap-5 px-5 py-6">

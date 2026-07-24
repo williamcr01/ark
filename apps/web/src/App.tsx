@@ -115,6 +115,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
+  const [deckChromeHost, setDeckChromeHost] = useState<HTMLDivElement | null>(null)
   const isDesktop = useMediaQuery('(min-width: 1180px)')
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const { preference, resolvedAppearance, setPreference } = useAppearance()
@@ -540,6 +541,7 @@ function App() {
     <DeckPreview
       canRedo={canRedo}
       canUndo={canUndo}
+      chromeHost={deckChromeHost}
       deckId={deckId}
       editorBridgeEnabled
       html={generatedHtml}
@@ -599,9 +601,13 @@ function App() {
           versions={versions}
         />
 
-        <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
+          <div className="shrink-0" ref={setDeckChromeHost} />
           {isDesktop ? (
-            <ResizablePanelGroup className="min-h-0 overflow-hidden" orientation="horizontal">
+            <ResizablePanelGroup
+              className="min-h-0 flex-1 overflow-hidden"
+              orientation="horizontal"
+            >
               <ResizablePanel
                 defaultSize={isChatOpen ? deckDefaultSizeWithChat : '100%'}
                 minSize={isChatOpen ? '55%' : '100%'}
@@ -624,7 +630,7 @@ function App() {
             </ResizablePanelGroup>
           ) : (
             <>
-              <div className="h-full min-h-0 overflow-hidden">{deckPreview}</div>
+              <div className="min-h-0 flex-1 overflow-hidden">{deckPreview}</div>
               <Sheet onOpenChange={setIsChatOpen} open={isChatOpen}>
                 <SheetContent
                   aria-describedby="ark-agent-sheet-description"
