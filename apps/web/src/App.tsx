@@ -158,6 +158,7 @@ function App() {
     isModelFailure,
     isPreviewUpdating,
     isGenerating,
+    recentGenerationJobId,
     retryGeneration: handleRetryGeneration,
   } = useDeckGenerationFlow({
     deck: {
@@ -590,6 +591,7 @@ function App() {
                   onUndo={handleUndoEdit}
                   deckAnalysis={deckAnalysis}
                   redoSlideIndex={redoEntry?.slideIndex ?? null}
+                  recentGenerationJobId={recentGenerationJobId}
                   undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />
@@ -634,6 +636,7 @@ function App() {
                   onUndo={handleUndoEdit}
                   deckAnalysis={deckAnalysis}
                   redoSlideIndex={redoEntry?.slideIndex ?? null}
+                  recentGenerationJobId={recentGenerationJobId}
                   undoSlideIndex={undoEntry?.slideIndex ?? null}
                   versionId={activeVersionId}
                 />

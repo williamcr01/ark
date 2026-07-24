@@ -4,6 +4,7 @@ import { isValidDeckId } from '../deck-record.ts'
 import {
   runtimeErrorInputSchema,
   type RuntimeErrorInput,
+  type RuntimeErrorRepairContext,
   type RuntimeErrorSeverity,
 } from '@ark/contracts'
 import { sanitizeRuntimeErrorText } from './redact.ts'
@@ -21,6 +22,7 @@ export type RuntimeErrorRecord = {
   source: string | null
   stack: string | null
   requestId: string | null
+  repairContext: RuntimeErrorRepairContext | null
   createdAt: string
 }
 
@@ -34,6 +36,7 @@ const MAX_MESSAGE_LENGTH = 2_000
 const MAX_STACK_LENGTH = 8_000
 const MAX_SOURCE_LENGTH = 500
 const MAX_RUNTIME_MODE_LENGTH = 64
+const MAX_REPAIR_SUMMARY_LENGTH = 500
 const DEFAULT_STORE_LIMIT = 500
 
 function clampSlideIndex(value: unknown) {
@@ -81,6 +84,26 @@ export function parseRuntimeErrorBody(
   }
 
   const runtimeModeRaw = parsed.data.runtimeMode?.trim().slice(0, MAX_RUNTIME_MODE_LENGTH) || null
+  // Only keep fields we can derive from the top-level request. Client-supplied
+  // previewMode / approvedRuntime / validation / relatedJobId are not trusted.
+  const repairContext = parsed.data.repairContext
+    ? {
+        errorSummary: sanitizeRuntimeErrorText(message, MAX_REPAIR_SUMMARY_LENGTH),
+        affectedSlideIndex: clampSlideIndex(parsed.data.slideIndex),
+        runtime: {
+          mode: runtimeModeRaw,
+          previewMode: null,
+          approvedRuntime: null,
+        },
+        validation: {
+          status: 'unknown' as const,
+          errors: 0,
+          warnings: 0,
+        },
+        relatedJobId: null,
+        versionId,
+      }
+    : undefined
 
   return {
     ok: true,
@@ -94,6 +117,7 @@ export function parseRuntimeErrorBody(
       source: sanitizeRuntimeErrorText(parsed.data.source, MAX_SOURCE_LENGTH) || null,
       stack: sanitizeRuntimeErrorText(parsed.data.stack, MAX_STACK_LENGTH) || null,
       requestId: parsed.data.requestId?.trim() || null,
+      repairContext,
     },
   }
 }
@@ -113,6 +137,7 @@ export function createRuntimeErrorStore(limit = DEFAULT_STORE_LIMIT): RuntimeErr
       source: sanitizeRuntimeErrorText(input.source, MAX_SOURCE_LENGTH) || null,
       stack: sanitizeRuntimeErrorText(input.stack, MAX_STACK_LENGTH) || null,
       requestId: input.requestId ?? null,
+      repairContext: input.repairContext ?? null,
       createdAt: new Date().toISOString(),
     }
 

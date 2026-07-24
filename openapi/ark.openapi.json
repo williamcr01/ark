@@ -4986,7 +4986,62 @@
                   "message": { "type": "string", "minLength": 1 },
                   "source": { "type": "string", "nullable": true },
                   "stack": { "type": "string", "nullable": true },
-                  "requestId": { "type": "string", "nullable": true }
+                  "requestId": { "type": "string", "nullable": true },
+                  "repairContext": {
+                    "type": "object",
+                    "properties": {
+                      "errorSummary": { "type": "string", "maxLength": 500 },
+                      "affectedSlideIndex": { "type": "integer", "nullable": true, "minimum": 0 },
+                      "runtime": {
+                        "type": "object",
+                        "properties": {
+                          "mode": { "type": "string", "nullable": true, "maxLength": 64 },
+                          "previewMode": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": ["css-only", "full-js", null]
+                          },
+                          "approvedRuntime": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "id": { "type": "string", "maxLength": 64 },
+                              "version": { "type": "string", "maxLength": 64 }
+                            },
+                            "required": ["id", "version"]
+                          }
+                        },
+                        "required": ["mode", "previewMode", "approvedRuntime"]
+                      },
+                      "validation": {
+                        "type": "object",
+                        "properties": {
+                          "status": { "type": "string", "enum": ["unknown", "valid", "invalid"] },
+                          "errors": { "type": "integer", "minimum": 0, "maximum": 10000 },
+                          "warnings": { "type": "integer", "minimum": 0, "maximum": 10000 }
+                        },
+                        "required": ["status", "errors", "warnings"]
+                      },
+                      "relatedJobId": {
+                        "type": "string",
+                        "nullable": true,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                      },
+                      "versionId": {
+                        "type": "string",
+                        "nullable": true,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                      }
+                    },
+                    "required": [
+                      "errorSummary",
+                      "affectedSlideIndex",
+                      "runtime",
+                      "validation",
+                      "relatedJobId",
+                      "versionId"
+                    ]
+                  }
                 },
                 "required": ["message"]
               }
