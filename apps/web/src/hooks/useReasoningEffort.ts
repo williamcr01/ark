@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { REASONING_EFFORT_LABELS, type ReasoningEffort } from '@ark/contracts'
 
@@ -6,14 +6,9 @@ import type { AvailableModel } from '@/hooks/useAvailableModels'
 
 export type { ReasoningEffort }
 
-export const REASONING_EFFORT_LEVELS: Array<{ value: ReasoningEffort; label: string }> = (
-  Object.entries(REASONING_EFFORT_LABELS) as Array<[ReasoningEffort, string]>
-).map(([value, label]) => ({ value, label }))
-
-export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'medium'
-
 const REASONING_EFFORT_STORAGE_KEY = 'ark:reasoning-effort'
-const REASONING_EFFORT_BY_MODEL_STORAGE_KEY = 'ark:reasoning-effort-by-model'
+const LEGACY_REASONING_EFFORT_BY_MODEL_STORAGE_KEY = 'ark:reasoning-effort-by-model'
+const REASONING_EFFORT_BY_MODEL_STORAGE_KEY = 'ark:reasoning-effort-by-model:v1'
 
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   value === 'none' ||
@@ -35,7 +30,9 @@ const readLegacyEffort = (): ReasoningEffort | null => {
 
 const readStoredEffortMap = (): Record<string, ReasoningEffort> => {
   try {
-    const raw = localStorage.getItem(REASONING_EFFORT_BY_MODEL_STORAGE_KEY)
+    const raw =
+      localStorage.getItem(REASONING_EFFORT_BY_MODEL_STORAGE_KEY) ??
+      localStorage.getItem(LEGACY_REASONING_EFFORT_BY_MODEL_STORAGE_KEY)
     if (!raw) {
       return {}
     }
@@ -58,6 +55,7 @@ const readStoredEffortMap = (): Record<string, ReasoningEffort> => {
 const writeStoredEffortMap = (map: Record<string, ReasoningEffort>) => {
   try {
     localStorage.setItem(REASONING_EFFORT_BY_MODEL_STORAGE_KEY, JSON.stringify(map))
+    localStorage.removeItem(LEGACY_REASONING_EFFORT_BY_MODEL_STORAGE_KEY)
   } catch {
     // Ignore storage failures.
   }
@@ -104,17 +102,17 @@ export function useReasoningEffort(selectedModel: string, models: AvailableModel
     [effortByModel, legacyEffort, selectedModelInfo],
   )
 
+  useEffect(() => {
+    writeStoredEffortMap(effortByModel)
+  }, [effortByModel])
+
   const setReasoningEffort = useCallback(
     (effort: ReasoningEffort, modelId = selectedModel) => {
       if (!modelId) {
         return
       }
 
-      setEffortByModel((current) => {
-        const next = { ...current, [modelId]: effort }
-        writeStoredEffortMap(next)
-        return next
-      })
+      setEffortByModel((current) => ({ ...current, [modelId]: effort }))
     },
     [selectedModel],
   )

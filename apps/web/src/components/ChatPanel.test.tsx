@@ -124,6 +124,35 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
   })
 
+  it('caps uploaded prompt attachments and revokes their blob URLs on unmount', async () => {
+    const createObjectURL = vi.fn((file: File) => `blob:${file.name}`)
+    const revokeObjectURL = vi.fn()
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: revokeObjectURL },
+    })
+    const onAttachmentError = vi.fn()
+    const user = userEvent.setup()
+    const { unmount } = render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} onAttachmentError={onAttachmentError} selectedAssetIds={[]} />
+      </TooltipProvider>,
+    )
+    const files = Array.from(
+      { length: 6 },
+      (_, index) => new File(['x'], `slide-${index}.png`, { type: 'image/png' }),
+    )
+
+    await user.upload(screen.getByLabelText('Upload files'), files)
+
+    expect(createObjectURL).toHaveBeenCalledTimes(5)
+    expect(onAttachmentError).toHaveBeenCalledWith('You can attach up to 5 files.')
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
+
+    unmount()
+    expect(revokeObjectURL).toHaveBeenCalledTimes(5)
+  })
+
   it('disables attachments for text-only models', () => {
     render(
       <TooltipProvider>

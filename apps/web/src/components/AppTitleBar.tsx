@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import {
   Dialog,

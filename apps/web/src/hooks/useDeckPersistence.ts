@@ -69,7 +69,7 @@ const toDeckSummary = (deck: StoredDeck): DeckSummary => ({
 })
 
 const sortDeckSummaries = (decks: DeckSummary[]) =>
-  [...decks].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  decks.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 
 const upsertDeckSummary = (decks: DeckSummary[], deck: StoredDeck) =>
   sortDeckSummaries([

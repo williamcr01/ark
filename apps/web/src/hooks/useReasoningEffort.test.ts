@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { AvailableModel } from '@/hooks/useAvailableModels'
@@ -68,6 +68,23 @@ describe('resolveEffortForModel', () => {
 })
 
 describe('useReasoningEffort', () => {
+  it('migrates legacy per-model preferences to the versioned key', async () => {
+    localStorage.setItem(
+      'ark:reasoning-effort-by-model',
+      JSON.stringify({ 'openai:gpt-5.6-luna': 'high' }),
+    )
+
+    const { result } = renderHook(() => useReasoningEffort('openai:gpt-5.6-luna', models))
+
+    expect(result.current.reasoningEffort).toBe('high')
+    await waitFor(() => {
+      expect(localStorage.getItem('ark:reasoning-effort-by-model:v1')).toBe(
+        JSON.stringify({ 'openai:gpt-5.6-luna': 'high' }),
+      )
+    })
+    expect(localStorage.getItem('ark:reasoning-effort-by-model')).toBeNull()
+  })
+
   it('stores effort per model and restores it when switching back', () => {
     const { result, rerender } = renderHook(
       ({ selectedModel }) => useReasoningEffort(selectedModel, models),

@@ -15,7 +15,7 @@ import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { cn } from '@/lib/utils'
 
 export type EditModeToolbarProps = {

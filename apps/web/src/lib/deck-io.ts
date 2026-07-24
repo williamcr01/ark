@@ -39,10 +39,6 @@ export function validateUploadedDeck(html: string): DeckValidationReport {
   return validateDeckHtmlInBrowser(html)
 }
 
-export function isCompleteHtmlDeck(html: string) {
-  return validateDeckHtmlInBrowser(html).valid
-}
-
 export function describeDeckValidation(report: DeckValidationReport) {
   const warnings = report.issues.filter((issue) => issue.severity === 'warning')
 

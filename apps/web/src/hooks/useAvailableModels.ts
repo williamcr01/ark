@@ -83,7 +83,7 @@ export const pickAvailableFallbackModel = (models: AvailableModel[]): string | n
     return null
   }
 
-  return [...available].sort((left, right) => {
+  return available.toSorted((left, right) => {
     const scoreDiff = fallbackPreferenceScore(left) - fallbackPreferenceScore(right)
     if (scoreDiff !== 0) {
       return scoreDiff
@@ -134,15 +134,15 @@ export const isTransientModelLoadError = (error: unknown): boolean => {
   return TRANSIENT_LOAD_ERROR.test(message)
 }
 
-async function fetchHealth() {
-  const response = await fetch('/api/health')
+async function fetchHealth(signal?: AbortSignal) {
+  const response = await fetch('/api/health', { signal })
   return fetchApiJsonOrThrow(response, healthResponseSchema, {
     fallbackMessage: 'Could not reach the Ark API server.',
   })
 }
 
-async function fetchAvailableModels() {
-  const response = await fetch('/api/models')
+async function fetchAvailableModels(signal?: AbortSignal) {
+  const response = await fetch('/api/models', { signal })
   const data = await fetchApiJsonOrThrow(response, modelsResponseSchema, {
     fallbackMessage: 'Could not load available models.',
   })
@@ -154,9 +154,11 @@ async function fetchAvailableModels() {
   }
 }
 
-async function fetchModelCatalog() {
-  const health = await fetchHealth()
-  const { defaultModel, models, warnings } = await fetchAvailableModels()
+async function fetchModelCatalog(signal?: AbortSignal) {
+  const [health, { defaultModel, models, warnings }] = await Promise.all([
+    fetchHealth(signal),
+    fetchAvailableModels(signal),
+  ])
 
   return {
     health,
@@ -167,14 +169,14 @@ async function fetchModelCatalog() {
 }
 
 export async function fetchModelCatalogWithRetry(
-  options: { retries?: number; delayMs?: number } = {},
+  options: { retries?: number; delayMs?: number; signal?: AbortSignal } = {},
 ) {
-  const { retries = 5, delayMs = 200 } = options
+  const { retries = 5, delayMs = 200, signal } = options
   let lastError: unknown
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      return await fetchModelCatalog()
+      return await fetchModelCatalog(signal)
     } catch (error) {
       lastError = error
 
@@ -250,6 +252,7 @@ export function useAvailableModels() {
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
 
     const load = async () => {
       setIsLoading(true)
@@ -262,7 +265,7 @@ export function useAvailableModels() {
           defaultModel: nextDefault,
           models: nextModels,
           warnings: nextWarnings,
-        } = await fetchModelCatalogWithRetry()
+        } = await fetchModelCatalogWithRetry({ signal: controller.signal })
 
         if (cancelled) {
           return
@@ -287,6 +290,7 @@ export function useAvailableModels() {
 
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [applyModels, handleLoadFailure])
 
