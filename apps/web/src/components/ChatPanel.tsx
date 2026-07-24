@@ -121,7 +121,7 @@ function ActiveComposer({
         duration={3.1}
         size="line"
         staticColors
-        strength={0.7}
+        strength={1}
         theme={resolvedAppearance}
       >
         {children}
@@ -193,12 +193,10 @@ function PromptInputAttachmentsDisplay() {
 function ChatPromptInputSubmit({
   input,
   isInputDisabled,
-  isGenerating,
   selectedAssetIds,
 }: {
   input: string
   isInputDisabled: boolean
-  isGenerating: boolean
   selectedAssetIds: string[]
 }) {
   const attachments = usePromptInputAttachments()
@@ -206,12 +204,7 @@ function ChatPromptInputSubmit({
     input.trim() || attachments.files.length > 0 || selectedAssetIds.length > 0,
   )
 
-  return (
-    <PromptInputSubmit
-      disabled={!canSubmit || isInputDisabled}
-      status={isGenerating ? 'submitted' : 'ready'}
-    />
-  )
+  return <PromptInputSubmit disabled={!canSubmit || isInputDisabled} />
 }
 
 function formatToolLabel(toolName: string) {
@@ -685,7 +678,6 @@ export function ChatPanel({
                 </PromptInputTools>
                 <ChatPromptInputSubmit
                   input={input}
-                  isGenerating={isGenerating}
                   isInputDisabled={isSubmitDisabled}
                   selectedAssetIds={selectedAssetIds}
                 />
