@@ -345,6 +345,38 @@ describe('shared API contracts', () => {
 
   it('parses runtime error contracts', () => {
     expect(runtimeErrorInputSchema.safeParse({ message: 'boom' }).success).toBe(true)
+    const parsed = runtimeErrorInputSchema.parse({
+      message: 'boom',
+      html: '<script>secret()</script>',
+      repairContext: {
+        errorSummary: 'boom',
+        affectedSlideIndex: 0,
+        runtime: {
+          mode: 'plain',
+          previewMode: 'full-js',
+          approvedRuntime: null,
+        },
+        validation: {
+          status: 'valid',
+          errors: 0,
+          warnings: 0,
+        },
+        relatedJobId: null,
+        versionId: null,
+        html: '<main>deck contents</main>',
+      },
+    })
+    expect(parsed).not.toHaveProperty('html')
+    expect(parsed.repairContext).not.toHaveProperty('html')
+    expect(
+      runtimeErrorInputSchema.safeParse({
+        ...parsed,
+        repairContext: {
+          ...parsed.repairContext,
+          errorSummary: 'x'.repeat(501),
+        },
+      }).success,
+    ).toBe(false)
     expect(
       runtimeErrorResponseSchema.parse({
         id: jobId,

@@ -37,10 +37,23 @@ import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor
 
 export type { DeckTextEditCommit } from '@/hooks/useDeckEditorPatchCoordinator'
 
+const MAX_RUNTIME_ERROR_REPORTS_PER_DECK_VERSION = 20
+const MAX_RUNTIME_ERROR_MESSAGE_LENGTH = 2_000
+const MAX_RUNTIME_ERROR_SOURCE_LENGTH = 500
+const MAX_RUNTIME_ERROR_SUMMARY_LENGTH = 500
+
+type RuntimeErrorNotice = {
+  deckId: string | null
+  message: string
+  slideIndex: number
+  versionId: string | null
+}
+
 export type DeckPreviewProps = {
   html: string
   deckId?: string | null
   versionId?: string | null
+  recentGenerationJobId?: string | null
   isGenerating: boolean
   isPreviewUpdating?: boolean
   isStripOpen: boolean
@@ -68,6 +81,7 @@ export function DeckPreview({
   html,
   deckId = null,
   versionId = null,
+  recentGenerationJobId = null,
   isGenerating,
   isPreviewUpdating = false,
   isStripOpen,
@@ -125,28 +139,84 @@ export function DeckPreview({
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
   const textEditActiveRef = useRef(false)
-  const reportNavigationCompromise = useCallback(() => {
-    const fingerprint = 'unexpected-frame-navigation:preview-navigation-guard'
+  const [runtimeError, setRuntimeError] = useState<RuntimeErrorNotice | null>(null)
+  const captureRuntimeError = useCallback(
+    (rawMessage: string, rawSource?: string | null, showNotice = true) => {
+      const message = rawMessage.trim().slice(0, MAX_RUNTIME_ERROR_MESSAGE_LENGTH)
 
-    if (reportedRuntimeErrorsRef.current.has(fingerprint)) {
-      return
-    }
+      if (!message) {
+        return
+      }
 
-    reportedRuntimeErrorsRef.current.add(fingerprint)
+      const source = rawSource?.trim().slice(0, MAX_RUNTIME_ERROR_SOURCE_LENGTH) || null
+      const fingerprint = `${message.slice(0, MAX_RUNTIME_ERROR_SUMMARY_LENGTH)}:${source ?? ''}`
+      const isNavigationGuard = source === 'preview-navigation-guard'
 
-    void reportRuntimeError({
+      if (
+        reportedRuntimeErrorsRef.current.has(fingerprint) ||
+        (!isNavigationGuard &&
+          reportedRuntimeErrorsRef.current.size >= MAX_RUNTIME_ERROR_REPORTS_PER_DECK_VERSION)
+      ) {
+        return
+      }
+
+      reportedRuntimeErrorsRef.current.add(fingerprint)
+      const slideIndex = activeSlideIndexRef.current
+
+      if (showNotice) {
+        setRuntimeError({
+          deckId,
+          message,
+          slideIndex,
+          versionId,
+        })
+      }
+
+      void reportRuntimeError({
+        deckId,
+        versionId,
+        slideIndex,
+        runtimeMode,
+        severity: 'error',
+        message,
+        source,
+        repairContext: {
+          errorSummary: message.slice(0, MAX_RUNTIME_ERROR_SUMMARY_LENGTH),
+          affectedSlideIndex: slideIndex,
+          runtime: {
+            mode: runtimeMode,
+            previewMode: runtimeManifest.previewMode,
+            approvedRuntime: runtimeManifest.approvedRuntime ?? null,
+          },
+          validation: {
+            status: validation.valid ? 'valid' : 'invalid',
+            errors: runtimeManifest.validation.errors,
+            warnings: runtimeManifest.validation.warnings,
+          },
+          relatedJobId: recentGenerationJobId,
+          versionId,
+        },
+      }).catch(() => undefined)
+    },
+    [
       deckId,
-      versionId,
-      slideIndex: activeSlideIndexRef.current,
+      recentGenerationJobId,
+      runtimeManifest.approvedRuntime,
+      runtimeManifest.previewMode,
+      runtimeManifest.validation.errors,
+      runtimeManifest.validation.warnings,
       runtimeMode,
-      severity: 'error',
-      message:
-        'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
-      source: 'preview-navigation-guard',
-    }).catch(() => {
-      reportedRuntimeErrorsRef.current.delete(fingerprint)
-    })
-  }, [deckId, runtimeMode, versionId])
+      validation.valid,
+      versionId,
+    ],
+  )
+  const reportNavigationCompromise = useCallback(() => {
+    captureRuntimeError(
+      'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
+      'preview-navigation-guard',
+      false,
+    )
+  }, [captureRuntimeError])
   const bridgeSession = usePreviewBridgeSession(previewFrame.iframeKey, {
     enabled: previewEnabled && Boolean(previewFrame.handshake?.trim()),
     handshake: previewFrame.handshake,
@@ -177,27 +247,7 @@ export function DeckPreview({
       syncOnLoad: false,
       canPostToFrame: bridgeSession.canPostToFrame,
       shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
-      onRuntimeError: (message, source) => {
-        const fingerprint = `${message}:${source ?? ''}`
-
-        if (reportedRuntimeErrorsRef.current.has(fingerprint)) {
-          return
-        }
-
-        reportedRuntimeErrorsRef.current.add(fingerprint)
-
-        void reportRuntimeError({
-          deckId,
-          versionId,
-          slideIndex: activeSlideIndexRef.current,
-          runtimeMode,
-          severity: 'error',
-          message,
-          source: source ?? null,
-        }).catch(() => {
-          reportedRuntimeErrorsRef.current.delete(fingerprint)
-        })
-      },
+      onRuntimeError: captureRuntimeError,
     },
   )
   const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
@@ -260,8 +310,16 @@ export function DeckPreview({
 
   useEffect(() => {
     // Allow re-reporting if the shell remounts the preview after a prior compromise.
-    reportedRuntimeErrorsRef.current.delete('unexpected-frame-navigation:preview-navigation-guard')
+    for (const fingerprint of reportedRuntimeErrorsRef.current) {
+      if (fingerprint.endsWith(':preview-navigation-guard')) {
+        reportedRuntimeErrorsRef.current.delete(fingerprint)
+      }
+    }
   }, [previewFrame.iframeKey])
+
+  useEffect(() => {
+    reportedRuntimeErrorsRef.current.clear()
+  }, [deckId, versionId])
 
   useEffect(() => {
     if (!bridgeSession.armed || previewCompromised) {
@@ -678,6 +736,12 @@ export function DeckPreview({
                   isPresentOpen={isPresentOpen}
                   isPreviewUpdating={isPreviewUpdating}
                   networkIssue={networkIssues[0]?.message}
+                  onDismissRuntimeError={() => setRuntimeError(null)}
+                  runtimeError={
+                    runtimeError?.deckId === deckId && runtimeError.versionId === versionId
+                      ? runtimeError
+                      : null
+                  }
                   usesStaticPreview={usesStaticPreview}
                 />
               </div>

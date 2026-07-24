@@ -1,5 +1,6 @@
-import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon } from 'lucide-react'
+import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon, XIcon } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 type DeckPreviewStatusOverlaysProps = {
@@ -10,6 +11,11 @@ type DeckPreviewStatusOverlaysProps = {
   isPreviewUpdating: boolean
   isPresentOpen: boolean
   networkIssue?: string
+  onDismissRuntimeError: () => void
+  runtimeError: {
+    message: string
+    slideIndex: number
+  } | null
   usesStaticPreview: boolean
 }
 
@@ -21,6 +27,8 @@ export function DeckPreviewStatusOverlays({
   isPreviewUpdating,
   isPresentOpen,
   networkIssue,
+  onDismissRuntimeError,
+  runtimeError,
   usesStaticPreview,
 }: DeckPreviewStatusOverlaysProps) {
   if (isPresentOpen) {
@@ -93,6 +101,30 @@ export function DeckPreviewStatusOverlays({
               <p className="font-medium">Network access blocked</p>
               <p>{networkIssue}</p>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {runtimeError ? (
+        <div
+          className="absolute inset-x-4 bottom-4 z-10 rounded-lg border border-destructive/30 bg-card/95 px-3 py-2 text-xs text-destructive shadow-sm backdrop-blur"
+          role="alert"
+        >
+          <div className="flex items-start gap-2">
+            <ShieldAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="font-medium">Runtime error on slide {runtimeError.slideIndex + 1}</p>
+              <p className="break-words text-foreground">{runtimeError.message}</p>
+            </div>
+            <Button
+              aria-label="Dismiss runtime error"
+              className="-mr-1 -mt-1 shrink-0"
+              onClick={onDismissRuntimeError}
+              size="icon-xs"
+              type="button"
+              variant="ghost"
+            >
+              <XIcon aria-hidden />
+            </Button>
           </div>
         </div>
       ) : null}

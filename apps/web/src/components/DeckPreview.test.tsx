@@ -94,6 +94,7 @@ const useDeckPreviewFrameMock = vi.hoisted(() =>
 )
 
 const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
+const deckSlideNavigationOptionsMock = vi.hoisted(() => vi.fn())
 const useDeckThumbnailsMock = vi.hoisted(() =>
   vi.fn(() => ({
     status: null,
@@ -112,10 +113,13 @@ vi.mock('@/hooks/useDeckEditorBridge', () => ({
 }))
 
 vi.mock('@/hooks/useDeckSlideNavigation', () => ({
-  useDeckSlideNavigation: () => ({
-    activeSlideIndex: 0,
-    goToSlide: vi.fn(),
-  }),
+  useDeckSlideNavigation: (...args: unknown[]) => {
+    deckSlideNavigationOptionsMock(args[4])
+    return {
+      activeSlideIndex: 0,
+      goToSlide: vi.fn(),
+    }
+  },
 }))
 
 vi.mock('@/hooks/useDeckPreviewFrame', () => ({
@@ -177,6 +181,7 @@ describe('DeckPreview script divergence UI', () => {
     useDeckPreviewFrameMock.mockClear()
     useDeckThumbnailsMock.mockClear()
     reportRuntimeErrorMock.mockClear()
+    deckSlideNavigationOptionsMock.mockClear()
     editorBridgeOptionsMock.mockClear()
   })
 
@@ -1564,5 +1569,91 @@ describe('DeckPreview script divergence UI', () => {
       0,
       'Updated image fit mode',
     )
+  })
+
+  it('shows, dismisses, and replaces runtime errors with structured repair context', async () => {
+    const user = userEvent.setup()
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      deckId: '11111111-1111-4111-8111-111111111111',
+      recentGenerationJobId: '22222222-2222-4222-8222-222222222222',
+      versionId: '33333333-3333-4333-8333-333333333333',
+    })
+
+    const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
+      onRuntimeError: (message: string, source?: string) => void
+    }
+
+    act(() => navigationOptions.onRuntimeError('Reveal failed to initialize', 'reveal.js'))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Runtime error on slide 1')
+    expect(screen.getByRole('alert')).toHaveTextContent('Reveal failed to initialize')
+    expect(reportRuntimeErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Reveal failed to initialize',
+        repairContext: expect.objectContaining({
+          affectedSlideIndex: 0,
+          errorSummary: 'Reveal failed to initialize',
+          relatedJobId: '22222222-2222-4222-8222-222222222222',
+          validation: expect.objectContaining({ status: 'valid' }),
+          versionId: '33333333-3333-4333-8333-333333333333',
+        }),
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss runtime error' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    act(() => navigationOptions.onRuntimeError('A later distinct failure', 'deck.js'))
+    expect(screen.getByRole('alert')).toHaveTextContent('A later distinct failure')
+  })
+
+  it('keeps runtime errors distinct from validation and network failures', () => {
+    const invalidHtml = plainCssDeck.replace(
+      '</body>',
+      '<img src="https://example.com/tracker.png" alt=""></body>',
+    )
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      html: invalidHtml,
+      deckAnalysis: analyzeDeckInBrowser(invalidHtml),
+    })
+    const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
+      onRuntimeError: (message: string, source?: string) => void
+    }
+
+    act(() => navigationOptions.onRuntimeError('Deck script crashed', 'deck.js'))
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          html={invalidHtml}
+          deckAnalysis={analyzeDeckInBrowser(invalidHtml)}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Network access blocked')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Deck script crashed')
+  })
+
+  it('caps hostile runtime error reports per deck version', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      deckId: '11111111-1111-4111-8111-111111111111',
+      versionId: '33333333-3333-4333-8333-333333333333',
+    })
+
+    for (let index = 0; index < 25; index += 1) {
+      const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
+        onRuntimeError: (message: string, source?: string) => void
+      }
+      act(() => navigationOptions.onRuntimeError(`Hostile failure ${index}`, 'hostile.js'))
+    }
+
+    expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(20)
+    expect(screen.getByRole('alert')).toHaveTextContent('Hostile failure 19')
   })
 })

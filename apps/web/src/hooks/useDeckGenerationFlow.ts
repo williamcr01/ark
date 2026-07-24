@@ -79,6 +79,7 @@ export function useDeckGenerationFlow({
   const { messages, appendMessage, reloadChat, setMessages } = chat
 
   const {
+    activeJob,
     activeSteps,
     cancelGeneration,
     error: generationError,
@@ -419,6 +420,10 @@ export function useDeckGenerationFlow({
     isPreviewUpdating,
     isModelFailure: modelFailure,
     isGenerating,
+    recentGenerationJobId:
+      activeJob && (activeJob.deckId === deckId || (deckId && activeJob.result?.deckId === deckId))
+        ? activeJob.id
+        : null,
     retryGeneration: handleRetryGeneration,
   }
 }

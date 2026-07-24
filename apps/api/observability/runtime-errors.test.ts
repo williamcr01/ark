@@ -58,4 +58,54 @@ describe('runtime error reporting', () => {
     expect(first.message).toBe('Reveal failed to initialize')
     expect(first.stack).toBeNull()
   })
+
+  it('builds bounded repair context from sanitized authoritative fields', () => {
+    const versionId = '22222222-2222-4222-8222-222222222222'
+    const parsed = parseRuntimeErrorBody({
+      deckId,
+      versionId,
+      slideIndex: 2,
+      runtimeMode: 'reveal',
+      message: 'Failed with sk-live-secret-value',
+      repairContext: {
+        errorSummary: 'untrusted summary',
+        affectedSlideIndex: 999,
+        runtime: {
+          mode: 'untrusted',
+          previewMode: 'full-js',
+          approvedRuntime: { id: 'reveal.js', version: '5.1.0' },
+        },
+        validation: {
+          status: 'invalid',
+          errors: 1,
+          warnings: 2,
+        },
+        relatedJobId: null,
+        versionId: null,
+        html: '<main>must not be retained</main>',
+      },
+    })
+
+    expect(parsed.ok).toBe(true)
+
+    if (parsed.ok) {
+      expect(parsed.input.message).not.toContain('sk-live-secret-value')
+      expect(parsed.input.repairContext).toMatchObject({
+        errorSummary: parsed.input.message,
+        affectedSlideIndex: 2,
+        runtime: {
+          mode: 'reveal',
+          previewMode: 'full-js',
+          approvedRuntime: { id: 'reveal.js', version: '5.1.0' },
+        },
+        validation: {
+          status: 'invalid',
+          errors: 1,
+          warnings: 2,
+        },
+        versionId,
+      })
+      expect(parsed.input.repairContext).not.toHaveProperty('html')
+    }
+  })
 })

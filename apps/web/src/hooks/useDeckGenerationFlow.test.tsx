@@ -158,6 +158,7 @@ describe('useDeckGenerationFlow', () => {
     expect(harness.refreshActiveDeck).toHaveBeenCalledWith('deck-1')
     expect(harness.reloadChat).toHaveBeenCalledWith('deck-1')
     expect(result.current.generationError).toBe('')
+    expect(result.current.recentGenerationJobId).toBe('job-1')
   })
 
   it('flags the preview only while a new deck version is being refreshed', async () => {
