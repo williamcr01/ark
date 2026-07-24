@@ -62,6 +62,10 @@ export function useDeckPreviewSource(deckId: string | null, html: string) {
   }, [])
 
   const rollbackLivePatch = useCallback(() => {
+    if (canonicalRef.current.deckId !== deckId) {
+      return
+    }
+
     const canonical = canonicalRef.current
 
     livePatchPendingRef.current = false
@@ -72,10 +76,14 @@ export function useDeckPreviewSource(deckId: string | null, html: string) {
       html: canonical.html,
       reloadRevision: current.reloadRevision + 1,
     }))
-  }, [])
+  }, [deckId])
 
   const finishLivePatch = useCallback(
     (result: DeckPreviewPatchResult | undefined) => {
+      if (canonicalRef.current.deckId !== deckId) {
+        return
+      }
+
       livePatchPendingRef.current = false
 
       if (!result) {

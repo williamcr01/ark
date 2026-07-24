@@ -61,4 +61,23 @@ describe('useDeckPreviewSource', () => {
     expect(view.result.current.beginLivePatch('element-a')).toBe(true)
     expect(view.result.current.beginLivePatch('element-b')).toBe(false)
   })
+
+  it('ignores stale live-patch completions after a deck switch', () => {
+    const view = renderHook(({ deckId, html }) => useDeckPreviewSource(deckId, html), {
+      initialProps: { deckId: 'deck-a', html: 'A' },
+    })
+    const finishStalePatch = view.result.current.finishLivePatch
+    const staleRollback = view.result.current.rollbackLivePatch
+    expect(view.result.current.beginLivePatch('element-a')).toBe(true)
+
+    view.rerender({ deckId: 'deck-b', html: 'B' })
+    const revision = view.result.current.previewReloadRevision
+    act(() => {
+      finishStalePatch(undefined)
+      staleRollback()
+    })
+
+    expect(view.result.current.previewHtml).toBe('B')
+    expect(view.result.current.previewReloadRevision).toBe(revision)
+  })
 })

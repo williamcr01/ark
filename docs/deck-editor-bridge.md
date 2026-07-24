@@ -7,6 +7,13 @@ shell-side ownership and state-transition table. The private editor port stays
 inside `useDeckEditorBridge`; extracted source and shortcut hooks cannot post
 bridge messages or authorize persistence.
 
+Authenticated editor events are persisted by
+`useDeckEditorPatchCoordinator`. That hook owns event deduplication, transform
+baselines, pending-transform serialization, stable-ID reselection, and
+live-patch rollback, but receives events only after `useDeckEditorBridge` has
+accepted them through the private port. Server-side element patch validation
+remains authoritative.
+
 This protocol is separate from, but co-injected with, the navigation bridge documented in [deck-bridge.md](./deck-bridge.md).
 
 ## Transport
