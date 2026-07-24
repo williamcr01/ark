@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n api,sandbox,web -c magenta,yellow,cyan \"pnpm --filter @ark/api dev\" \"pnpm --filter @ark/sandbox dev\" \"pnpm --filter @ark/web dev\"",
+    "dev": "node scripts/dev.mjs",
     "dev:client": "pnpm --filter @ark/web dev",
     "dev:server": "pnpm --filter @ark/api dev",
     "dev:sandbox": "pnpm --filter @ark/sandbox dev",

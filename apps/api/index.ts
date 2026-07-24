@@ -35,11 +35,18 @@ async function main() {
     server.close()
 
     const closeThumbnails = thumbnailService?.close() ?? Promise.resolve()
-    void closeThumbnails
-      .catch(() => undefined)
-      .finally(() => {
-        process.kill(process.pid, signal)
-      })
+
+    // Ctrl+C under tsx watch must exit immediately or tsx force-kills noisily.
+    // SIGTERM (tsx reload / stop) still waits briefly for Chromium teardown.
+    if (signal === 'SIGINT') {
+      void closeThumbnails.catch(() => undefined)
+      process.exit(0)
+    }
+
+    const timeout = new Promise((resolve) => setTimeout(resolve, 1500))
+    void Promise.race([closeThumbnails.catch(() => undefined), timeout]).finally(() => {
+      process.exit(0)
+    })
   }
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
