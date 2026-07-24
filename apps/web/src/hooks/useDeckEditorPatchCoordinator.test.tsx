@@ -102,6 +102,66 @@ describe('useDeckEditorPatchCoordinator', () => {
     expect(callbacks.onSelectElement).not.toHaveBeenCalled()
   })
 
+  it('clears deferred slide/reselection after a successful live patch', async () => {
+    const callbacks = options()
+    callbacks.onCommitTextEdit.mockResolvedValue(undefined)
+    const commit = {
+      elementId: 'element-a',
+      slideIndex: 0,
+      slideId: 'slide-a',
+      text: 'After',
+      originalText: 'Before',
+    }
+    const view = renderHook(
+      ({ activeSlideIndex, iframeKey, lastTextCommit, previewHtml, currentSelection }) =>
+        useDeckEditorPatchCoordinator({
+          ...callbacks,
+          activeSlideIndex,
+          iframeKey,
+          lastTextCommit,
+          previewHtml,
+          selection: currentSelection,
+        }),
+      {
+        initialProps: {
+          activeSlideIndex: 0,
+          iframeKey: 'frame-a',
+          lastTextCommit: null as typeof commit | null,
+          previewHtml: '<section>Before</section>',
+          currentSelection: selection as EditorSelectionInfo | null,
+        },
+      },
+    )
+
+    view.rerender({
+      activeSlideIndex: 0,
+      iframeKey: 'frame-a',
+      lastTextCommit: commit,
+      previewHtml: '<section>Before</section>',
+      currentSelection: selection,
+    })
+    await waitFor(() => expect(callbacks.finishLivePatch).toHaveBeenCalledOnce())
+
+    // User navigates away, then an unrelated preview reload occurs.
+    view.rerender({
+      activeSlideIndex: 1,
+      iframeKey: 'frame-a',
+      lastTextCommit: null,
+      previewHtml: '<section>Before</section>',
+      currentSelection: null,
+    })
+    view.rerender({
+      activeSlideIndex: 1,
+      iframeKey: 'frame-b',
+      lastTextCommit: null,
+      previewHtml: '<section>Unrelated update</section>',
+      currentSelection: null,
+    })
+
+    expect(callbacks.goToSlide).not.toHaveBeenCalled()
+    expect(callbacks.onSelectElement).not.toHaveBeenCalled()
+  })
+
   it('ignores stale async completions after the deck scope changes', async () => {
     const callbacks = options()
     let resolveCommit: ((value: undefined) => void) | undefined

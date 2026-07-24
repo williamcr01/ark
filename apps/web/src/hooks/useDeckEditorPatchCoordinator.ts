@@ -160,6 +160,17 @@ export function useDeckEditorPatchCoordinator({
     }
   }, [iframeKey, selection])
 
+  // Live patches skip iframe reload, so deferred slide/reselection intents must
+  // not survive into a later unrelated HTML/frame update.
+  const finishLivePatchAndClearDeferred = useCallback(
+    (result: DeckPreviewPatchResult | undefined) => {
+      finishLivePatch(result)
+      preserveSlideIndexRef.current = null
+      pendingReselectRef.current = null
+    },
+    [finishLivePatch],
+  )
+
   const handleInspectorApply = useCallback(
     (operations: DeckElementPatchOperation[], summary: string) => {
       if (!selection || !onPatchEditorOperations || operations.length === 0) {
@@ -384,7 +395,7 @@ export function useDeckEditorPatchCoordinator({
     void onCommitTextEdit(lastTextCommit)
       .then((result) => {
         if (scopeGenerationRef.current !== generation) return
-        if (keepLivePreview) finishLivePatch(result)
+        if (keepLivePreview) finishLivePatchAndClearDeferred(result)
       })
       .catch(() => {
         if (scopeGenerationRef.current !== generation) return
@@ -396,7 +407,7 @@ export function useDeckEditorPatchCoordinator({
   }, [
     activeSlideIndex,
     beginLivePatch,
-    finishLivePatch,
+    finishLivePatchAndClearDeferred,
     lastTextCommit,
     onCommitTextEdit,
     rollbackLivePatch,
@@ -484,7 +495,7 @@ export function useDeckEditorPatchCoordinator({
             pending.elementId = stableId
           }
         }
-        if (keepLivePreview) finishLivePatch(result)
+        if (keepLivePreview) finishLivePatchAndClearDeferred(result)
       })
       .catch(() => {
         if (scopeGenerationRef.current !== generation) return
@@ -502,7 +513,7 @@ export function useDeckEditorPatchCoordinator({
   }, [
     activeSlideIndex,
     beginLivePatch,
-    finishLivePatch,
+    finishLivePatchAndClearDeferred,
     onPatchEditorOperations,
     rollbackLivePatch,
     scheduleReselect,
