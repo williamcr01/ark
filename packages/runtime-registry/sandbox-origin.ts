@@ -158,7 +158,27 @@ export function isAllowedAppOrigin(origin: string, expectedOrigin = resolveAppOr
     return false
   }
 
-  return originsMatch(normalized, expectedOrigin)
+  if (originsMatch(normalized, expectedOrigin)) {
+    return true
+  }
+
+  // Vite falls back to 5175+ when 5173 is taken. The shell posts the real
+  // window.location.origin as `parent=`; accept any loopback parent while the
+  // configured app origin is also loopback so local preview can still arm.
+  try {
+    const actual = new URL(normalized)
+    const expected = new URL(
+      normalizeOrigin(expectedOrigin) || `http://localhost:${DEFAULT_APP_PORT}`,
+    )
+
+    return (
+      isLoopbackHostname(actual.hostname) &&
+      isLoopbackHostname(expected.hostname) &&
+      actual.protocol === expected.protocol
+    )
+  } catch {
+    return false
+  }
 }
 
 export function buildSandboxRenderUrl(

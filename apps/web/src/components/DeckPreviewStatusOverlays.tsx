@@ -1,10 +1,13 @@
 import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
+import { previewCompromiseCopy } from '@/lib/preview-compromise-copy'
 import { cn } from '@/lib/utils'
 
 type DeckPreviewStatusOverlaysProps = {
   compromised: boolean
+  compromiseReason?: PreviewBridgeCompromiseReason | null
   editorError: string | null
   frameError: string | null
   isLoading: boolean
@@ -21,6 +24,7 @@ type DeckPreviewStatusOverlaysProps = {
 
 export function DeckPreviewStatusOverlays({
   compromised,
+  compromiseReason = null,
   editorError,
   frameError,
   isLoading,
@@ -35,6 +39,8 @@ export function DeckPreviewStatusOverlays({
     return null
   }
 
+  const compromiseCopy = previewCompromiseCopy(compromiseReason)
+
   return (
     <>
       {compromised ? (
@@ -42,12 +48,8 @@ export function DeckPreviewStatusOverlays({
           <div className="flex items-start gap-2">
             <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
-              <p className="font-medium">Preview stopped</p>
-              <p>
-                The deck attempted an unexpected navigation. Preview was torn down to stop further
-                bridge messages from reaching an untrusted page. Edit or reload the deck to restore
-                the preview.
-              </p>
+              <p className="font-medium">{compromiseCopy.title}</p>
+              <p>{compromiseCopy.body}</p>
             </div>
           </div>
         </div>

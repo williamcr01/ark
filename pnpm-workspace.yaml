@@ -3,8 +3,11 @@ packages:
   - 'packages/*'
 
 # concurrently@10 pins shell-quote@1.8.4 exactly; override until upstream bumps.
+# postcss / brace-expansion: pin patched transitive versions until upstreams bump.
 overrides:
   shell-quote: 1.9.0
+  postcss: 8.5.18
+  brace-expansion: 5.0.8
 
 allowBuilds:
   esbuild: true
@@ -13,3 +16,5 @@ minimumReleaseAgeExclude:
   - '@ai-sdk/gateway@3.0.155'
   - '@ai-sdk/google@3.0.98'
   - ai@6.0.233
+  - postcss@8.5.18
+  - brace-expansion@5.0.8

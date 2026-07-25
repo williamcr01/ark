@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { type ElementSize } from '@/lib/deck-preview'
+import { previewCompromiseCopy } from '@/lib/preview-compromise-copy'
+import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
 import { cn } from '@/lib/utils'
 
 const CONTROLS_IDLE_MS = 2500
@@ -20,6 +22,7 @@ const PRESENT_MODE_BACKDROP = (
 type PresentModeProps = {
   activeSlideIndex: number
   previewCompromised: boolean
+  previewCompromiseReason?: PreviewBridgeCompromiseReason | null
   slideCount: number
   onGoToSlide: (index: number) => void
   onExit: (finalSlideIndex: number) => void
@@ -77,6 +80,7 @@ function useElementSize<T extends HTMLElement>() {
 export function PresentMode({
   activeSlideIndex,
   previewCompromised,
+  previewCompromiseReason = null,
   slideCount,
   onGoToSlide,
   onExit,
@@ -289,6 +293,7 @@ export function PresentMode({
 
   const canGoPrevious = activeSlideIndex > 0
   const canGoNext = activeSlideIndex < slideCount - 1
+  const compromiseCopy = previewCompromiseCopy(previewCompromiseReason)
 
   const presenter = (
     <div
@@ -318,11 +323,8 @@ export function PresentMode({
           <div className="flex items-start gap-2">
             <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
-              <p className="font-medium">Preview stopped</p>
-              <p>
-                The deck attempted an unexpected navigation. Presentation preview was torn down to
-                stop further bridge messages from reaching an untrusted page.
-              </p>
+              <p className="font-medium">{compromiseCopy.title}</p>
+              <p>{compromiseCopy.body}</p>
             </div>
           </div>
         </div>
