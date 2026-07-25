@@ -164,7 +164,7 @@ function DownloadTitleBarButton({
         >
           <DownloadIcon aria-hidden className="size-4" />
         </MorphMenuFooter>
-        <div className="ark-morph-reveal p-1">
+        <div className="ark-scrollbar-none ark-morph-reveal min-h-0 overflow-y-auto p-1">
           <DropdownMenuLabel>Export deck</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
@@ -220,12 +220,7 @@ function AppearanceMenu({
           Theme
         </Button>
       </DropdownMenuTrigger>
-      <MorphMenuContent
-        align="end"
-        side="bottom"
-        triggerHeight={28}
-        triggerRadius="10px 0 0 10px"
-      >
+      <MorphMenuContent align="end" side="bottom" triggerHeight={28} triggerRadius="10px 0 0 10px">
         <MorphMenuFooter
           className="h-7 justify-end gap-1 px-2 text-xs text-[var(--ark-titlebar-fg)]"
           label="Collapse theme menu"
@@ -235,7 +230,6 @@ function AppearanceMenu({
           Theme
         </MorphMenuFooter>
         <div className="ark-morph-reveal p-1">
-          <DropdownMenuLabel>Theme</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             onValueChange={(value) => onChange(value as AppearancePreference)}
             value={preference}
@@ -374,7 +368,7 @@ function DeckLibraryMenu({
             <span className="min-w-0 truncate">{displayTitle}</span>
             <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
           </MorphMenuFooter>
-          <div className="ark-scrollbar-none ark-morph-reveal min-h-0 flex-1 overflow-y-auto p-1">
+          <div className="ark-scrollbar-none ark-morph-reveal max-h-64 min-h-0 flex-1 overflow-y-auto p-1">
             <DropdownMenuLabel>Saved decks</DropdownMenuLabel>
             <DropdownMenuGroup>
               {decks.length > 0 ? (

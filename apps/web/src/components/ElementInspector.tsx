@@ -56,7 +56,7 @@ export type ElementInspectorProps = {
 }
 
 const fieldClassName =
-  'h-6 w-full min-w-0 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)] disabled:cursor-not-allowed disabled:opacity-50'
+  'h-6 w-full min-w-0 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none disabled:cursor-not-allowed disabled:opacity-50'
 
 const sectionTitleClassName =
   'text-[10px] font-semibold uppercase tracking-wide text-[var(--ark-titlebar-muted)]'

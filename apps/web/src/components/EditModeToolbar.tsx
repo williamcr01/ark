@@ -182,7 +182,7 @@ export function EditModeToolbar({
             <span className="sr-only">Image alt text</span>
             <span aria-hidden>Alt</span>
             <input
-              className="h-6 min-w-0 max-w-40 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)]"
+              className="h-6 min-w-0 max-w-40 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] outline-none"
               disabled={toolbarDisabled || textEditActive}
               onChange={(event) => onImageAltChange?.(event.target.value)}
               placeholder="Describe image"
@@ -194,7 +194,7 @@ export function EditModeToolbar({
             <span className="sr-only">Image fit mode</span>
             <span aria-hidden>Fit</span>
             <select
-              className="h-6 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)]"
+              className="h-6 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none"
               disabled={toolbarDisabled || textEditActive}
               onChange={(event) => onImageFitChange?.(event.target.value as ImageFitMode)}
               value={imageFit}
