@@ -4,8 +4,8 @@ import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucid
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { previewCompromiseCopy } from '@/components/DeckPreviewStatusOverlays'
 import { type ElementSize } from '@/lib/deck-preview'
+import { previewCompromiseCopy } from '@/lib/preview-compromise-copy'
 import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
 import { cn } from '@/lib/utils'
 
