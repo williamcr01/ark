@@ -71,7 +71,7 @@ const models: AvailableModel[] = [
 ]
 
 describe('ModelSelector', () => {
-  it('groups models by provider and selects effort from the submenu', async () => {
+  it('groups models by provider and selects effort after drilling into a model', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
@@ -91,9 +91,7 @@ describe('ModelSelector', () => {
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
     expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
 
-    const geminiTrigger = screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash/i })
-    geminiTrigger.focus()
-    await user.keyboard('{ArrowRight}')
+    await user.click(screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash/i }))
 
     const effortOption = await screen.findByRole('menuitem', { name: 'Medium' })
     await user.click(effortOption)
@@ -120,7 +118,7 @@ describe('ModelSelector', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('selects effort from the keyboard submenu', async () => {
+  it('drills into effort with the keyboard', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
@@ -135,9 +133,8 @@ describe('ModelSelector', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    const lunaTrigger = screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i })
-    lunaTrigger.focus()
-    await user.keyboard('{ArrowRight}')
+    screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }).focus()
+    await user.keyboard('{Enter}')
 
     const effortOption = await screen.findByRole('menuitem', { name: 'Extra High' })
     await user.click(effortOption)

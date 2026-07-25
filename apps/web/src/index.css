@@ -112,6 +112,19 @@
   --ark-titlebar-muted: var(--ark-muted-foreground);
   --ark-titlebar-hover: rgb(24 24 27 / 6%);
   --ark-titlebar-active: rgb(23 23 23 / 10%);
+  --ark-control-bg: #f4f4f6;
+  --ark-control-hover-bg: #fdfdfe;
+  --ark-control-border: #c7c7cc;
+  --ark-control-sheen: rgb(255 255 255 / 90%);
+  --ark-control-lowlight: rgb(24 24 27 / 6%);
+  --ark-control-shadow: rgb(24 24 27 / 12%);
+  --ark-control-panel: #fbfbfc;
+  --ark-control-invert-bg: #202020;
+  --ark-control-invert-hover-bg: #2e2e2e;
+  --ark-control-invert-border: #0a0a0a;
+  --ark-control-invert-sheen: rgb(255 255 255 / 22%);
+  --ark-control-invert-lowlight: rgb(0 0 0 / 30%);
+  --ark-control-invert-fg: #fafafa;
   color-scheme: light;
 }
 
@@ -162,7 +175,67 @@
   --ark-titlebar-muted: var(--ark-muted-foreground);
   --ark-titlebar-hover: rgb(242 238 232 / 6%);
   --ark-titlebar-active: rgb(242 238 232 / 10%);
+  --ark-control-bg: #232327;
+  --ark-control-hover-bg: #303035;
+  --ark-control-border: #3f3f45;
+  --ark-control-sheen: rgb(255 255 255 / 10%);
+  --ark-control-lowlight: rgb(0 0 0 / 30%);
+  --ark-control-shadow: rgb(0 0 0 / 40%);
+  --ark-control-panel: #1c1c1f;
+  --ark-control-invert-bg: #ebe7e0;
+  --ark-control-invert-hover-bg: #f7f4ef;
+  --ark-control-invert-border: #b9b4ac;
+  --ark-control-invert-sheen: rgb(255 255 255 / 90%);
+  --ark-control-invert-lowlight: rgb(24 24 27 / 12%);
+  --ark-control-invert-fg: #0a0a0b;
   color-scheme: dark;
+}
+
+/* Raised, tactile surface for composer controls. The bevel is built from layered
+   inset shadows rather than a gradient (see src/test/gradient-policy.test.ts).
+   Apply with the `!` modifier (`ark-control!`) at call sites so it wins over the
+   shadow/border utilities the underlying shadcn primitives already ship with. */
+@utility ark-control {
+  background-color: var(--ark-control-bg);
+  border: 1px solid var(--ark-control-border);
+  box-shadow: inset 0 1px 0 var(--ark-control-sheen);
+  transition-property: background-color, box-shadow, opacity;
+  transition-duration: 120ms;
+
+  &:hover:not(:disabled) {
+    background-color: var(--ark-control-hover-bg);
+  }
+
+  &:active:not(:disabled) {
+    box-shadow: inset 0 1px 2px -1px var(--ark-control-lowlight);
+  }
+}
+
+/* The single filled, primary-weight control (send). */
+@utility ark-control-invert {
+  background-color: var(--ark-control-invert-bg);
+  border: 1px solid var(--ark-control-invert-border);
+  color: var(--ark-control-invert-fg);
+  box-shadow: inset 0 1px 0 var(--ark-control-invert-sheen);
+  transition-property: background-color, box-shadow, opacity;
+  transition-duration: 120ms;
+
+  &:hover:not(:disabled) {
+    background-color: var(--ark-control-invert-hover-bg);
+  }
+
+  &:active:not(:disabled) {
+    box-shadow: inset 0 1px 2px -1px var(--ark-control-invert-lowlight);
+  }
+}
+
+/* Same material as `ark-control`, sized for a menu panel rather than a chip. */
+@utility ark-control-panel {
+  background-color: var(--ark-control-panel);
+  border: 1px solid var(--ark-control-border);
+  box-shadow:
+    0 2px 8px -4px var(--ark-control-shadow),
+    0 16px 40px -16px var(--ark-control-shadow);
 }
 
 @layer base {

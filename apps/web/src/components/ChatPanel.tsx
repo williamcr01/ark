@@ -7,7 +7,14 @@ import {
   useState,
 } from 'react'
 import type { BorderBeamProps } from 'border-beam'
-import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
+import {
+  AlertCircleIcon,
+  Loader2Icon,
+  PlusIcon,
+  RefreshCwIcon,
+  SparklesIcon,
+  XIcon,
+} from 'lucide-react'
 
 import { AgentPresence } from '@/components/AgentPresence'
 import {
@@ -28,7 +35,6 @@ import {
   PromptInputActionAddAttachments,
   PromptInputActionAddScreenshot,
   PromptInputActionMenu,
-  PromptInputActionMenuContent,
   PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputButton,
@@ -44,6 +50,11 @@ import { ModelSelector } from '@/components/ModelSelector'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  MorphMenuContent,
+  MorphMenuFooter,
+  morphMenuTriggerClassName,
+} from '@/components/ui/morph-menu'
 import type { ResolvedAppearance } from '@/hooks/useAppearance'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
@@ -192,11 +203,15 @@ function PromptInputAttachmentsDisplay() {
 
 function ChatPromptInputSubmit({
   input,
+  isGenerating,
   isInputDisabled,
+  onCancelGeneration,
   selectedAssetIds,
 }: {
   input: string
+  isGenerating: boolean
   isInputDisabled: boolean
+  onCancelGeneration: () => void | Promise<void>
   selectedAssetIds: string[]
 }) {
   const attachments = usePromptInputAttachments()
@@ -204,7 +219,16 @@ function ChatPromptInputSubmit({
     input.trim() || attachments.files.length > 0 || selectedAssetIds.length > 0,
   )
 
-  return <PromptInputSubmit disabled={!canSubmit || isInputDisabled} />
+  return (
+    <PromptInputSubmit
+      className="ark-control-invert! size-8 rounded-full"
+      disabled={!isGenerating && (!canSubmit || isInputDisabled)}
+      onStop={() => {
+        void onCancelGeneration()
+      }}
+      status={isGenerating ? 'streaming' : 'ready'}
+    />
+  )
 }
 
 function formatToolLabel(toolName: string) {
@@ -433,6 +457,7 @@ export function ChatPanel({
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
   const supportsAttachments = selectedModelInfo?.supportsAttachments !== false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const modelWarningsKey = modelWarnings.join('\n')
 
   const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
@@ -532,10 +557,7 @@ export function ChatPanel({
           <ConversationScrollButton />
         </Conversation>
 
-        <div
-          className="relative shrink-0 border-t border-[var(--ark-line)] bg-[var(--ark-paper)] p-4"
-          data-slot="agent-composer"
-        >
+        <div className="relative shrink-0 bg-[var(--ark-paper)] p-4" data-slot="agent-composer">
           {isGenerating ? (
             <div className="mb-2 flex min-h-5 items-center px-1">
               <AgentPresence
@@ -636,22 +658,27 @@ export function ChatPanel({
                 />
               </PromptInputBody>
               <PromptInputFooter className="gap-2">
-                <PromptInputTools className="gap-1.5">
-                  <PromptInputActionMenu>
+                <PromptInputTools className="gap-2">
+                  <PromptInputActionMenu onOpenChange={setAttachMenuOpen} open={attachMenuOpen}>
                     <PromptInputActionMenuTrigger
                       aria-label="Add attachments"
+                      className={morphMenuTriggerClassName}
                       disabled={!supportsAttachments || isGenerating}
-                      tooltip={
-                        supportsAttachments
-                          ? 'Add attachments'
-                          : 'This model is text-only and does not support attachments'
-                      }
                     />
                     {supportsAttachments ? (
-                      <PromptInputActionMenuContent>
-                        <PromptInputActionAddAttachments />
-                        <PromptInputActionAddScreenshot />
-                      </PromptInputActionMenuContent>
+                      <MorphMenuContent className="w-48">
+                        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+                          <PromptInputActionAddAttachments />
+                          <PromptInputActionAddScreenshot />
+                        </div>
+                        <MorphMenuFooter
+                          className="px-2"
+                          label="Collapse attachments menu"
+                          onCollapse={() => setAttachMenuOpen(false)}
+                        >
+                          <PlusIcon aria-hidden className="size-4 shrink-0" />
+                        </MorphMenuFooter>
+                      </MorphMenuContent>
                     ) : null}
                   </PromptInputActionMenu>
                   <ModelSelector
@@ -663,22 +690,12 @@ export function ChatPanel({
                     reasoningEffort={reasoningEffort}
                     value={selectedModel}
                   />
-                  {isGenerating ? (
-                    <PromptInputButton
-                      aria-label="Cancel generation"
-                      onClick={() => {
-                        void onCancelGeneration()
-                      }}
-                      tooltip="Cancel generation"
-                    >
-                      <XIcon className="size-4" />
-                      Cancel
-                    </PromptInputButton>
-                  ) : null}
                 </PromptInputTools>
                 <ChatPromptInputSubmit
                   input={input}
+                  isGenerating={isGenerating}
                   isInputDisabled={isSubmitDisabled}
+                  onCancelGeneration={onCancelGeneration}
                   selectedAssetIds={selectedAssetIds}
                 />
               </PromptInputFooter>
