@@ -31,6 +31,8 @@ export type PreviewBridgeSessionResult = {
   phase: PreviewBridgeSessionPhase
   /** React state for UI (banner). Prefer canPostToFrame / compromisedRef for send gates. */
   compromised: boolean
+  /** Why the session entered compromised; null while healthy. */
+  compromiseReason: PreviewBridgeCompromiseReason | null
   armed: boolean
   /** Synchronous send gate — true only while phase is armed. */
   canPostToFrame: () => boolean
@@ -87,6 +89,9 @@ export function usePreviewBridgeSession(
   const [phase, setPhase] = useState<PreviewBridgeSessionPhase>(() =>
     initialPhase(enabled, iframeKey),
   )
+  const [compromiseReason, setCompromiseReason] = useState<PreviewBridgeCompromiseReason | null>(
+    null,
+  )
   const [sessionIdentity, setSessionIdentity] = useState({
     key: iframeKey,
     enabled,
@@ -97,6 +102,7 @@ export function usePreviewBridgeSession(
   if (sessionIdentity.key !== iframeKey || sessionIdentity.enabled !== enabled) {
     setSessionIdentity({ key: iframeKey, enabled, handshake })
     setPhase(initialPhase(enabled, iframeKey))
+    setCompromiseReason(null)
   } else if (sessionIdentity.handshake !== handshake && phase !== 'compromised') {
     setSessionIdentity({ key: iframeKey, enabled, handshake })
   }
@@ -181,6 +187,7 @@ export function usePreviewBridgeSession(
       clearHandshakeTimeout()
       session.phase = 'compromised'
       setPhase('compromised')
+      setCompromiseReason(reason)
 
       if (!reportedCompromiseRef.current) {
         reportedCompromiseRef.current = true
@@ -327,6 +334,7 @@ export function usePreviewBridgeSession(
   return {
     phase: activePhase,
     compromised: activeEnabled && activePhase === 'compromised',
+    compromiseReason: activeEnabled && activePhase === 'compromised' ? compromiseReason : null,
     armed: activeEnabled && activePhase === 'armed',
     canPostToFrame,
     compromisedRef,

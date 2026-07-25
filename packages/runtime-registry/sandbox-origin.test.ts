@@ -62,7 +62,15 @@ describe('sandbox-origin', () => {
     expect(isAllowedSandboxOrigin('http://localhost:5174', 'http://localhost:5174')).toBe(true)
     expect(isAllowedSandboxOrigin('http://evil.test', 'http://localhost:5174')).toBe(false)
     expect(isAllowedAppOrigin('http://localhost:5173', 'http://localhost:5173')).toBe(true)
-    expect(isAllowedAppOrigin('http://localhost:5174', 'http://localhost:5173')).toBe(false)
+    expect(isAllowedAppOrigin('http://evil.test', 'http://localhost:5173')).toBe(false)
+    expect(isAllowedAppOrigin('https://app.example.com', 'https://app.example.com')).toBe(true)
+    expect(isAllowedAppOrigin('https://evil.example.com', 'https://app.example.com')).toBe(false)
+  })
+
+  it('allows alternate loopback Vite ports when the configured app origin is loopback', () => {
+    expect(isAllowedAppOrigin('http://localhost:5175', 'http://localhost:5173')).toBe(true)
+    expect(isAllowedAppOrigin('http://127.0.0.1:5175', 'http://localhost:5173')).toBe(true)
+    expect(isAllowedAppOrigin('http://localhost:5175', 'https://app.example.com')).toBe(false)
   })
 
   it('builds sandbox CSP with frame-ancestors for loopback app origins', () => {

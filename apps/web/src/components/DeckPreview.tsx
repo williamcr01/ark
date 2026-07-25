@@ -21,7 +21,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
-import { usePreviewBridgeSession } from '@/hooks/usePreviewBridgeSession'
+import {
+  usePreviewBridgeSession,
+  type PreviewBridgeCompromiseReason,
+} from '@/hooks/usePreviewBridgeSession'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useDeckPreviewSource, type DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
@@ -223,13 +226,19 @@ export function DeckPreview({
       versionId,
     ],
   )
-  const reportNavigationCompromise = useCallback(() => {
-    captureRuntimeError(
-      'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.',
-      'preview-navigation-guard',
-      false,
-    )
-  }, [captureRuntimeError])
+  const reportNavigationCompromise = useCallback(
+    (reason: PreviewBridgeCompromiseReason) => {
+      const message =
+        reason === 'unexpected-load'
+          ? 'Preview stopped: the deck attempted an unexpected navigation away from the sandbox render URL.'
+          : reason === 'invalid-handshake'
+            ? 'Preview stopped: the preview frame sent an invalid security handshake.'
+            : 'Preview stopped: the preview frame never completed its security handshake with Ark.'
+
+      captureRuntimeError(message, 'preview-navigation-guard', false)
+    },
+    [captureRuntimeError],
+  )
   const bridgeSession = usePreviewBridgeSession(previewFrame.iframeKey, {
     enabled: previewEnabled && Boolean(previewFrame.handshake?.trim()),
     handshake: previewFrame.handshake,
@@ -237,6 +246,7 @@ export function DeckPreview({
     onCompromised: reportNavigationCompromise,
   })
   const previewCompromised = bridgeSession.compromised
+  const previewCompromiseReason = bridgeSession.compromiseReason
   const bridgeEnabled = previewEnabled && !previewCompromised
 
   // Keep secondary preview work off the critical path until the current main
@@ -749,6 +759,7 @@ export function DeckPreview({
                 ) : null}
                 <DeckPreviewStatusOverlays
                   compromised={previewCompromised}
+                  compromiseReason={previewCompromiseReason}
                   editorError={editorError}
                   frameError={previewFrame.error}
                   isLoading={previewFrame.isLoading}
@@ -783,6 +794,7 @@ export function DeckPreview({
           onGoToSlide={goToSlide}
           onViewportSizeChange={handlePresentViewportSizeChange}
           previewCompromised={previewCompromised}
+          previewCompromiseReason={previewCompromiseReason}
           slideCount={parsedDeck.slideCount}
         />
       ) : null}
