@@ -125,6 +125,25 @@
   --ark-control-invert-sheen: rgb(255 255 255 / 22%);
   --ark-control-invert-lowlight: rgb(0 0 0 / 30%);
   --ark-control-invert-fg: #fafafa;
+  --ark-morph-in: 340ms;
+  --ark-morph-out: 180ms;
+  --ark-wing-in: 280ms;
+  --ark-wing-out: 140ms;
+  --ark-spring-ease: linear(
+    0,
+    0.082,
+    0.263,
+    0.486,
+    0.698,
+    0.86,
+    0.958,
+    1.006,
+    1.02,
+    1.017,
+    1.009,
+    1.003,
+    1
+  );
   color-scheme: light;
 }
 
@@ -249,6 +268,194 @@
     0 1px 3px -1px var(--ark-control-shadow),
     0 4px 12px -4px var(--ark-control-shadow),
     0 20px 44px -18px var(--ark-control-shadow);
+}
+
+@keyframes ark-morph-in {
+  from {
+    clip-path: inset(
+      calc(100% - 32px) calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) 0 0 round 16px
+    );
+  }
+
+  to {
+    clip-path: inset(-48px round 10px);
+  }
+}
+
+@keyframes ark-morph-out {
+  from {
+    clip-path: inset(-48px round 10px);
+  }
+
+  to {
+    clip-path: inset(
+      calc(100% - 32px) calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) 0 0 round 16px
+    );
+  }
+}
+
+@keyframes ark-wing-in {
+  from {
+    clip-path: inset(calc(50% - 16px) 100% calc(50% - 16px) 0 round 10px);
+  }
+
+  to {
+    clip-path: inset(-40px -40px -40px 0 round 0 10px 10px 0);
+  }
+}
+
+@keyframes ark-wing-out {
+  from {
+    clip-path: inset(-40px -40px -40px 0 round 0 10px 10px 0);
+  }
+
+  to {
+    clip-path: inset(calc(50% - 16px) 100% calc(50% - 16px) 0 round 10px);
+  }
+}
+
+@keyframes ark-morph-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ark-morph-conceal {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ark-morph-presence {
+  from,
+  to {
+    opacity: 1;
+  }
+}
+
+@utility ark-morph-surface {
+  &[data-state='open'],
+  [data-state='open'] > & {
+    animation: ark-morph-in var(--ark-morph-in) var(--ark-spring-ease) both;
+  }
+
+  &[data-state='closed'],
+  [data-state='closed'] > & {
+    animation: ark-morph-out var(--ark-morph-out) cubic-bezier(0.4, 0, 1, 1) both;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &[data-state='open'],
+    [data-state='open'] > & {
+      animation: ark-morph-reveal 100ms ease-out both;
+    }
+
+    &[data-state='closed'],
+    [data-state='closed'] > & {
+      animation: ark-morph-conceal 80ms ease-in both;
+    }
+  }
+}
+
+@utility ark-morph-presence {
+  &[data-state='closed'] {
+    animation: ark-morph-presence var(--ark-morph-out) linear;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &[data-state='closed'] {
+      animation-duration: 80ms;
+    }
+  }
+}
+
+@utility ark-morph-trigger {
+  transition-property: background-color, box-shadow, opacity;
+  transition-duration: 120ms, 120ms, 0ms;
+  transition-delay: 0ms, 0ms, var(--ark-morph-out);
+
+  &[data-state='open'] {
+    opacity: 0;
+    pointer-events: none;
+    transition-delay: 0ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-delay: 0ms;
+  }
+}
+
+@utility ark-morph-wing {
+  &[data-state='open'] {
+    animation: ark-wing-in var(--ark-wing-in) var(--ark-spring-ease) both;
+  }
+
+  &[data-state='closed'] {
+    animation: ark-wing-out var(--ark-wing-out) cubic-bezier(0.4, 0, 1, 1) both;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &[data-state='open'] {
+      animation: ark-morph-reveal 100ms ease-out both;
+    }
+
+    &[data-state='closed'] {
+      animation: ark-morph-conceal 80ms ease-in both;
+    }
+  }
+}
+
+@utility ark-morph-reveal {
+  [data-state='open'] & {
+    animation: ark-morph-reveal 180ms ease-out 120ms backwards;
+  }
+
+  [data-state='closed'] & {
+    animation: ark-morph-conceal 80ms ease-in both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-state='open'] & {
+      animation: ark-morph-reveal 100ms ease-out both;
+    }
+
+    [data-state='closed'] & {
+      animation: ark-morph-conceal 80ms ease-in both;
+    }
+  }
+}
+
+@utility ark-wing-reveal {
+  [data-state='open'] & {
+    animation: ark-morph-reveal 160ms ease-out 100ms backwards;
+  }
+
+  [data-state='closed'] & {
+    animation: ark-morph-conceal 70ms ease-in both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-state='open'] & {
+      animation: ark-morph-reveal 100ms ease-out both;
+    }
+
+    [data-state='closed'] & {
+      animation: ark-morph-conceal 70ms ease-in both;
+    }
+  }
 }
 
 @layer base {

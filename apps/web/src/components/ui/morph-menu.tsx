@@ -15,8 +15,9 @@ export const MORPH_TRIGGER_HEIGHT = 32
  * Trigger fades out under the open panel but keeps its layout box, so nothing
  * in the tools row shifts. `MorphMenuFooter` re-draws it as the panel's last row.
  */
-export const morphMenuTriggerClassName =
-  'ark-control! rounded-full transition-opacity data-[state=open]:pointer-events-none data-[state=open]:opacity-0'
+export const morphMenuTriggerClassName = 'ark-control! ark-morph-trigger! rounded-full'
+
+export const morphMenuSurfaceClassName = 'ark-morph-surface'
 
 export function MorphMenuContent({
   className,
@@ -38,7 +39,8 @@ export function MorphMenuContent({
       <DropdownMenuPrimitive.Content
         align={align}
         className={cn(
-          'z-50 flex max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-bottom-left flex-col p-0 text-[var(--ark-ink)] duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none',
+          'group z-50 flex max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-bottom-left flex-col p-0 text-[var(--ark-ink)]',
+          bare ? 'ark-morph-presence' : morphMenuSurfaceClassName,
           !bare && 'ark-control-panel! overflow-hidden rounded-lg bg-clip-padding',
           className,
         )}

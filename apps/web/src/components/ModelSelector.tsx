@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckIcon, ChevronRightIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import {
 import {
   MorphMenuContent,
   MorphMenuFooter,
+  morphMenuSurfaceClassName,
   morphMenuTriggerClassName,
 } from '@/components/ui/morph-menu'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -96,7 +97,43 @@ export function ModelSelector({
   // is that centre clamped so the wing can't hang off either end of the panel.
   const [effortModel, setEffortModel] = useState<AvailableModel | null>(null)
   const [effortAnchor, setEffortAnchor] = useState(0)
+  const [effortClosing, setEffortClosing] = useState(false)
+  const effortCloseTimerRef = useRef<number | null>(null)
+  const pendingEffortRef = useRef<{ model: AvailableModel; anchor: number } | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  const finishEffortClose = useCallback(() => {
+    if (effortCloseTimerRef.current !== null) {
+      window.clearTimeout(effortCloseTimerRef.current)
+      effortCloseTimerRef.current = null
+    }
+    const pendingEffort = pendingEffortRef.current
+    pendingEffortRef.current = null
+    setEffortClosing(false)
+    if (pendingEffort) {
+      setEffortAnchor(pendingEffort.anchor)
+      setEffortModel(pendingEffort.model)
+    } else {
+      setEffortModel(null)
+    }
+  }, [])
+
+  const closeEffortWing = useCallback(() => {
+    if (!effortModel || effortClosing) {
+      return
+    }
+    setEffortClosing(true)
+    effortCloseTimerRef.current = window.setTimeout(finishEffortClose, 200)
+  }, [effortClosing, effortModel, finishEffortClose])
+
+  useEffect(
+    () => () => {
+      if (effortCloseTimerRef.current !== null) {
+        window.clearTimeout(effortCloseTimerRef.current)
+      }
+    },
+    [],
+  )
 
   // Positions the wing on attach rather than from an effect: its height is only
   // known once mounted, and this keeps the clamp out of React state.
@@ -131,9 +168,15 @@ export function ModelSelector({
       : 'Select model'
 
   const closeMenu = () => {
+    if (effortCloseTimerRef.current !== null) {
+      window.clearTimeout(effortCloseTimerRef.current)
+      effortCloseTimerRef.current = null
+    }
     setOpen(false)
     setQuery('')
+    pendingEffortRef.current = null
     setEffortModel(null)
+    setEffortClosing(false)
   }
 
   const selectModel = (model: AvailableModel, effort?: ReasoningEffort) => {
@@ -196,10 +239,13 @@ export function ModelSelector({
       </DropdownMenuTrigger>
       <MorphMenuContent bare className="relative">
         <div
-          className="ark-control-panel! relative z-10 flex w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-clip-padding"
+          className={cn(
+            'ark-control-panel! relative z-10 flex w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-clip-padding',
+            morphMenuSurfaceClassName,
+          )}
           ref={panelRef}
         >
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="ark-morph-reveal flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-2 px-2.5 py-2">
               <SearchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               <input
@@ -247,16 +293,24 @@ export function ModelSelector({
                               }
                               event.preventDefault()
                               if (isExpanded) {
-                                setEffortModel(null)
+                                pendingEffortRef.current = null
+                                closeEffortWing()
                                 return
                               }
                               const row = (
                                 event.currentTarget as HTMLElement
                               ).getBoundingClientRect()
                               const panel = panelRef.current?.getBoundingClientRect()
-                              if (panel) {
-                                setEffortAnchor(row.top + row.height / 2 - panel.top)
+                              const nextAnchor = panel
+                                ? row.top + row.height / 2 - panel.top
+                                : effortAnchor
+                              if (effortModel) {
+                                pendingEffortRef.current = { model, anchor: nextAnchor }
+                                closeEffortWing()
+                                return
                               }
+                              setEffortAnchor(nextAnchor)
+                              setEffortClosing(false)
                               setEffortModel(model)
                             }}
                           >
@@ -304,15 +358,22 @@ export function ModelSelector({
             and only as tall as the effort list needs. */}
         {effortModel ? (
           <div
-            className="ark-control-wing! absolute left-full flex max-h-64 w-[7.5rem] -translate-y-1/2 flex-col overflow-hidden rounded-r-lg bg-clip-padding origin-left animate-in fade-in-0 zoom-in-95 slide-in-from-left-4 motion-reduce:animate-none"
+            className="ark-control-wing! ark-morph-wing absolute left-full z-20 -ml-px flex max-h-64 w-[7.5rem] -translate-y-1/2 flex-col overflow-hidden rounded-r-lg bg-clip-padding"
+            data-model-id={effortModel.id}
+            data-state={effortClosing ? 'closed' : 'open'}
             key={effortModel.id}
+            onAnimationEnd={(event) => {
+              if (effortClosing && event.target === event.currentTarget) {
+                finishEffortClose()
+              }
+            }}
             ref={placeWing}
             style={{ top: effortAnchor }}
           >
-            <div className="shrink-0 truncate px-2.5 pt-2 text-xs font-medium text-[var(--ark-muted-ink)]">
+            <div className="ark-wing-reveal shrink-0 truncate px-2.5 pt-2 text-xs font-medium text-[var(--ark-muted-ink)]">
               Thinking effort
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-1">
+            <div className="ark-wing-reveal min-h-0 flex-1 overflow-y-auto p-1">
               {(effortModel.reasoningEfforts ?? []).map((effort) => (
                 <DropdownMenuItem key={effort} onSelect={() => selectModel(effortModel, effort)}>
                   <span className="flex-1 truncate">{formatReasoningEffortLabel(effort)}</span>

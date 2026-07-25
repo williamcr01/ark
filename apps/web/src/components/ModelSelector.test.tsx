@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -116,6 +116,61 @@ describe('ModelSelector', () => {
     await user.click(screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }))
 
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('keeps the effort wing mounted for its close animation', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={vi.fn()}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select model' }))
+    const model = screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i })
+    await user.click(model)
+    await user.click(model)
+
+    const wing = screen.getByText('Thinking effort').parentElement
+    expect(wing).toHaveAttribute('data-state', 'closed')
+
+    fireEvent.animationEnd(wing!)
+    await waitFor(() => {
+      expect(screen.queryByText('Thinking effort')).not.toBeInTheDocument()
+    })
+  })
+
+  it('closes the current effort wing before opening another one', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={vi.fn()}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select model' }))
+    await user.click(screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }))
+    await user.click(screen.getByRole('menuitem', { name: /GPT-5\.4 Mini/i }))
+
+    const oldWing = screen.getByText('Thinking effort').parentElement
+    expect(oldWing).toHaveAttribute('data-model-id', 'openai:gpt-5.6-luna')
+    expect(oldWing).toHaveAttribute('data-state', 'closed')
+
+    fireEvent.animationEnd(oldWing!)
+
+    await waitFor(() => {
+      const newWing = screen.getByText('Thinking effort').parentElement
+      expect(newWing).toHaveAttribute('data-model-id', 'openai:gpt-5.4-mini')
+      expect(newWing).toHaveAttribute('data-state', 'open')
+    })
   })
 
   it('drills into effort with the keyboard', async () => {

@@ -667,7 +667,7 @@ export function ChatPanel({
                     />
                     {supportsAttachments ? (
                       <MorphMenuContent className="w-48">
-                        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+                        <div className="ark-morph-reveal min-h-0 flex-1 overflow-y-auto p-1">
                           <PromptInputActionAddAttachments />
                           <PromptInputActionAddScreenshot />
                         </div>
