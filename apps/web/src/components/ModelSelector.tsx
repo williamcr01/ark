@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -13,10 +13,12 @@ import {
 import {
   MorphMenuContent,
   MorphMenuFooter,
+  MorphMenuWing,
   morphMenuSurfaceClassName,
   morphMenuTriggerClassName,
 } from '@/components/ui/morph-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAnimatedHeight } from '@/hooks/useAnimatedHeight'
 import {
   formatModelName,
   formatProviderLabel,
@@ -24,6 +26,7 @@ import {
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
 import { formatReasoningEffortLabel, type ReasoningEffort } from '@/hooks/useReasoningEffort'
+import { useSequencedPresence } from '@/hooks/useSequencedPresence'
 import { cn } from '@/lib/utils'
 import type { ProviderId } from '@ark/contracts'
 
@@ -94,66 +97,12 @@ export function ModelSelector({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   // Thinking effort grows out of the side of the model panel rather than opening
-  // a detached submenu, so the two read as one surface. `effortAnchor` is the
-  // vertical centre of the clicked row (relative to the panel) and `effortTop`
-  // is that centre clamped so the wing can't hang off either end of the panel.
-  const [effortModel, setEffortModel] = useState<AvailableModel | null>(null)
-  const [effortAnchor, setEffortAnchor] = useState(0)
-  const [effortClosing, setEffortClosing] = useState(false)
-  const effortCloseTimerRef = useRef<number | null>(null)
-  const pendingEffortRef = useRef<{ model: AvailableModel; anchor: number } | null>(null)
-  const panelResizeFromRef = useRef<number | null>(null)
-  const panelResizeAnimationRef = useRef<Animation | null>(null)
+  // a detached submenu, so the two read as one surface. Its anchor is the
+  // vertical centre of the clicked row relative to the panel.
+  const effortWing = useSequencedPresence<{ model: AvailableModel; anchor: number }>()
   const panelRef = useRef<HTMLDivElement>(null)
-
-  const finishEffortClose = useCallback(() => {
-    if (effortCloseTimerRef.current !== null) {
-      window.clearTimeout(effortCloseTimerRef.current)
-      effortCloseTimerRef.current = null
-    }
-    const pendingEffort = pendingEffortRef.current
-    pendingEffortRef.current = null
-    setEffortClosing(false)
-    if (pendingEffort) {
-      setEffortAnchor(pendingEffort.anchor)
-      setEffortModel(pendingEffort.model)
-    } else {
-      setEffortModel(null)
-    }
-  }, [])
-
-  const closeEffortWing = useCallback(() => {
-    if (!effortModel || effortClosing) {
-      return
-    }
-    setEffortClosing(true)
-    effortCloseTimerRef.current = window.setTimeout(finishEffortClose, 200)
-  }, [effortClosing, effortModel, finishEffortClose])
-
-  useEffect(
-    () => () => {
-      if (effortCloseTimerRef.current !== null) {
-        window.clearTimeout(effortCloseTimerRef.current)
-      }
-    },
-    [],
-  )
-
-  // Positions the wing on attach rather than from an effect: its height is only
-  // known once mounted, and this keeps the clamp out of React state.
-  const placeWing = useCallback(
-    (wing: HTMLDivElement | null) => {
-      const panel = panelRef.current
-      if (!wing || !panel) {
-        return
-      }
-
-      const half = wing.offsetHeight / 2
-      const top = Math.min(Math.max(effortAnchor, half), panel.offsetHeight - half)
-      wing.style.top = `${top}px`
-    },
-    [effortAnchor],
-  )
+  const effortModel = effortWing.active?.model ?? null
+  const effortAnchor = effortWing.active?.anchor ?? 0
 
   const selected = models.find((model) => model.id === value)
   const normalizedQuery = query.trim().toLowerCase()
@@ -162,42 +111,7 @@ export function ModelSelector({
     const filtered = models.filter((model) => modelMatchesQuery(model, normalizedQuery))
     return groupModelsByProvider(filtered)
   }, [models, normalizedQuery])
-
-  useLayoutEffect(() => {
-    const panel = panelRef.current
-    const fromHeight = panelResizeFromRef.current
-    panelResizeFromRef.current = null
-    panelResizeAnimationRef.current?.cancel()
-    panelResizeAnimationRef.current = null
-
-    if (!panel || fromHeight === null) {
-      return
-    }
-
-    const toHeight = panel.getBoundingClientRect().height
-    if (
-      Math.abs(toHeight - fromHeight) < 1 ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-      return
-    }
-
-    const easing =
-      getComputedStyle(panel).getPropertyValue('--ark-spring-ease').trim() ||
-      'cubic-bezier(0.32, 0.72, 0, 1)'
-    const animation = panel.animate([{ height: `${fromHeight}px` }, { height: `${toHeight}px` }], {
-      duration: 280,
-      easing,
-    })
-    panelResizeAnimationRef.current = animation
-    animation.onfinish = () => {
-      if (panelResizeAnimationRef.current === animation) {
-        panelResizeAnimationRef.current = null
-      }
-    }
-
-    return () => animation.cancel()
-  }, [groups])
+  const capturePanelHeight = useAnimatedHeight(panelRef, groups)
 
   const resolveModelEffort = (model: AvailableModel) => {
     const supported = model.reasoningEfforts ?? []
@@ -223,15 +137,9 @@ export function ModelSelector({
       : 'Select model'
 
   const closeMenu = () => {
-    if (effortCloseTimerRef.current !== null) {
-      window.clearTimeout(effortCloseTimerRef.current)
-      effortCloseTimerRef.current = null
-    }
     setOpen(false)
     setQuery('')
-    pendingEffortRef.current = null
-    setEffortModel(null)
-    setEffortClosing(false)
+    effortWing.reset()
   }
 
   const selectModel = (model: AvailableModel, effort?: ReasoningEffort) => {
@@ -254,23 +162,14 @@ export function ModelSelector({
 
   const toggleEffortEditor = (model: AvailableModel, row: HTMLElement) => {
     if (effortModel?.id === model.id) {
-      pendingEffortRef.current = null
-      closeEffortWing()
+      effortWing.hide()
       return
     }
 
     const rowRect = row.getBoundingClientRect()
     const panel = panelRef.current?.getBoundingClientRect()
     const nextAnchor = panel ? rowRect.top + rowRect.height / 2 - panel.top : effortAnchor
-    if (effortModel) {
-      pendingEffortRef.current = { model, anchor: nextAnchor }
-      closeEffortWing()
-      return
-    }
-
-    setEffortAnchor(nextAnchor)
-    setEffortClosing(false)
-    setEffortModel(model)
+    effortWing.show({ model, anchor: nextAnchor })
   }
 
   return (
@@ -323,8 +222,7 @@ export function ModelSelector({
                 aria-label="Search models"
                 className="h-7 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 onChange={(event) => {
-                  panelResizeFromRef.current =
-                    panelRef.current?.getBoundingClientRect().height ?? null
+                  capturePanelHeight()
                   setQuery(event.currentTarget.value)
                 }}
                 onKeyDown={(event) => event.stopPropagation()}
@@ -426,18 +324,14 @@ export function ModelSelector({
         {/* Sits flush against the panel's right edge, centred on the clicked row,
             and only as tall as the effort list needs. */}
         {effortModel ? (
-          <div
-            className="ark-control-wing! ark-morph-wing absolute left-full z-20 -ml-px flex max-h-64 w-[7.5rem] -translate-y-1/2 flex-col overflow-hidden rounded-r-lg bg-clip-padding"
+          <MorphMenuWing
+            anchorY={effortAnchor}
+            className="w-[7.5rem]"
+            containerRef={panelRef}
             data-model-id={effortModel.id}
-            data-state={effortClosing ? 'closed' : 'open'}
             key={effortModel.id}
-            onAnimationEnd={(event) => {
-              if (effortClosing && event.target === event.currentTarget) {
-                finishEffortClose()
-              }
-            }}
-            ref={placeWing}
-            style={{ top: effortAnchor }}
+            onExitComplete={effortWing.completeExit}
+            state={effortWing.state}
           >
             <div className="ark-wing-reveal shrink-0 truncate px-2.5 pt-2 text-xs font-medium text-[var(--ark-muted-ink)]">
               Thinking effort
@@ -452,7 +346,7 @@ export function ModelSelector({
                 </DropdownMenuItem>
               ))}
             </div>
-          </div>
+          </MorphMenuWing>
         ) : null}
       </MorphMenuContent>
     </DropdownMenu>

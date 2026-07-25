@@ -84,3 +84,52 @@ export function MorphMenuFooter({
     </button>
   )
 }
+
+export function MorphMenuWing({
+  anchorY,
+  containerRef,
+  state,
+  onExitComplete,
+  className,
+  onAnimationEnd,
+  style,
+  ...props
+}: React.ComponentProps<'div'> & {
+  anchorY: number
+  containerRef: React.RefObject<HTMLElement | null>
+  state: 'open' | 'closed'
+  onExitComplete: () => void
+}) {
+  const placeWing = React.useCallback(
+    (wing: HTMLDivElement | null) => {
+      const container = containerRef.current
+      if (!wing || !container) {
+        return
+      }
+
+      const half = wing.offsetHeight / 2
+      const top = Math.min(Math.max(anchorY, half), container.offsetHeight - half)
+      wing.style.top = `${top}px`
+    },
+    [anchorY, containerRef],
+  )
+
+  return (
+    <div
+      {...props}
+      className={cn(
+        'ark-control-wing! ark-morph-wing absolute left-full z-20 -ml-px flex max-h-64 -translate-y-1/2 flex-col overflow-hidden rounded-r-lg bg-clip-padding',
+        className,
+      )}
+      data-state={state}
+      onAnimationEnd={(event) => {
+        onAnimationEnd?.(event)
+        if (state === 'closed' && event.target === event.currentTarget) {
+          onExitComplete()
+        }
+      }}
+      ref={placeWing}
+      style={{ ...style, top: anchorY }}
+    />
+  )
+}
