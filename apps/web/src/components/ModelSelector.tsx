@@ -1,11 +1,5 @@
-import { useMemo, useState } from 'react'
-import {
-  CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronsUpDownIcon,
-  SearchIcon,
-} from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { CheckIcon, ChevronRightIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -96,9 +90,29 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  // Drilling into a model's thinking effort swaps the panel contents in place
-  // rather than opening a detached submenu, so the morph stays a single surface.
+  // Thinking effort grows out of the side of the model panel rather than opening
+  // a detached submenu, so the two read as one surface. `effortAnchor` is the
+  // vertical centre of the clicked row (relative to the panel) and `effortTop`
+  // is that centre clamped so the wing can't hang off either end of the panel.
   const [effortModel, setEffortModel] = useState<AvailableModel | null>(null)
+  const [effortAnchor, setEffortAnchor] = useState(0)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Positions the wing on attach rather than from an effect: its height is only
+  // known once mounted, and this keeps the clamp out of React state.
+  const placeWing = useCallback(
+    (wing: HTMLDivElement | null) => {
+      const panel = panelRef.current
+      if (!wing || !panel) {
+        return
+      }
+
+      const half = wing.offsetHeight / 2
+      const top = Math.min(Math.max(effortAnchor, half), panel.offsetHeight - half)
+      wing.style.top = `${top}px`
+    },
+    [effortAnchor],
+  )
 
   const selected = models.find((model) => model.id === value)
   const normalizedQuery = query.trim().toLowerCase()
@@ -180,45 +194,13 @@ export function ModelSelector({
           <ChevronsUpDownIcon className="opacity-50" data-icon="inline-end" />
         </Button>
       </DropdownMenuTrigger>
-      <MorphMenuContent className="w-64">
-        {effortModel ? (
-          <div
-            className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-right-2 motion-reduce:animate-none"
-            key={`effort:${effortModel.id}`}
-          >
-            <div className="shrink-0 border-b border-[var(--ark-control-border)] px-2.5 py-2 text-sm font-medium">
-              <span className="truncate">{formatModelName(effortModel)}</span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-1">
-              <DropdownMenuItem
-                className="text-[var(--ark-muted-ink)]"
-                onSelect={(event) => {
-                  event.preventDefault()
-                  setEffortModel(null)
-                }}
-              >
-                <ChevronLeftIcon aria-hidden className="size-4 shrink-0" />
-                All models
-              </DropdownMenuItem>
-              <DropdownMenuLabel className="text-[var(--ark-muted-ink)]">
-                Thinking effort
-              </DropdownMenuLabel>
-              {(effortModel.reasoningEfforts ?? []).map((effort) => (
-                <DropdownMenuItem key={effort} onSelect={() => selectModel(effortModel, effort)}>
-                  <span className="flex-1">{formatReasoningEffortLabel(effort)}</span>
-                  {effortModel.id === value && reasoningEffort === effort ? (
-                    <CheckIcon aria-hidden className="size-4 shrink-0" />
-                  ) : null}
-                </DropdownMenuItem>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div
-            className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-left-2 motion-reduce:animate-none"
-            key="models"
-          >
-            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--ark-control-border)] px-2.5 py-2">
+      <MorphMenuContent bare className="relative">
+        <div
+          className="ark-control-panel! relative z-10 flex w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-clip-padding"
+          ref={panelRef}
+        >
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex shrink-0 items-center gap-2 px-2.5 py-2">
               <SearchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               <input
                 aria-label="Search models"
@@ -247,10 +229,15 @@ export function ModelSelector({
                         const unavailableLabel = formatUnavailableBadge(model)
                         const isSelected = model.id === value
                         const supportsEffort = (model.reasoningEfforts ?? []).length > 0
+                        const isExpanded = effortModel?.id === model.id
 
                         return (
                           <DropdownMenuItem
-                            className={cn('gap-2 py-1.5', !model.available && 'opacity-60')}
+                            className={cn(
+                              'gap-2 py-1.5',
+                              !model.available && 'opacity-60',
+                              isExpanded && 'bg-accent text-accent-foreground',
+                            )}
                             disabled={!model.available}
                             key={model.id}
                             onSelect={(event) => {
@@ -259,6 +246,17 @@ export function ModelSelector({
                                 return
                               }
                               event.preventDefault()
+                              if (isExpanded) {
+                                setEffortModel(null)
+                                return
+                              }
+                              const row = (
+                                event.currentTarget as HTMLElement
+                              ).getBoundingClientRect()
+                              const panel = panelRef.current?.getBoundingClientRect()
+                              if (panel) {
+                                setEffortAnchor(row.top + row.height / 2 - panel.top)
+                              }
                               setEffortModel(model)
                             }}
                           >
@@ -266,7 +264,7 @@ export function ModelSelector({
                               {formatModelName(model)}
                             </span>
                             {unavailableLabel ? (
-                              <span className="shrink-0 rounded-md border border-[var(--ark-control-border)] px-1.5 py-0.5 text-[0.65rem] text-[var(--ark-muted-ink)]">
+                              <span className="shrink-0 rounded-md bg-[var(--ark-accent-soft)] px-1.5 py-0.5 text-[0.65rem] text-[var(--ark-muted-ink)]">
                                 {unavailableLabel}
                               </span>
                             ) : null}
@@ -276,7 +274,10 @@ export function ModelSelector({
                             {supportsEffort ? (
                               <ChevronRightIcon
                                 aria-hidden
-                                className="size-4 shrink-0 opacity-50"
+                                className={cn(
+                                  'size-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none',
+                                  isExpanded ? 'opacity-100' : 'opacity-50',
+                                )}
                               />
                             ) : null}
                           </DropdownMenuItem>
@@ -288,16 +289,41 @@ export function ModelSelector({
               )}
             </div>
           </div>
-        )}
 
-        <MorphMenuFooter
-          className="justify-between"
-          label="Collapse model picker"
-          onCollapse={closeMenu}
-        >
-          <span className="truncate">{triggerLabel}</span>
-          <ChevronsUpDownIcon aria-hidden className="size-4 shrink-0 opacity-50" />
-        </MorphMenuFooter>
+          <MorphMenuFooter
+            className="justify-between"
+            label="Collapse model picker"
+            onCollapse={closeMenu}
+          >
+            <span className="truncate">{triggerLabel}</span>
+            <ChevronsUpDownIcon aria-hidden className="size-4 shrink-0 opacity-50" />
+          </MorphMenuFooter>
+        </div>
+
+        {/* Sits flush against the panel's right edge, centred on the clicked row,
+            and only as tall as the effort list needs. */}
+        {effortModel ? (
+          <div
+            className="ark-control-wing! absolute left-full flex max-h-64 w-[7.5rem] -translate-y-1/2 flex-col overflow-hidden rounded-r-lg bg-clip-padding origin-left animate-in fade-in-0 zoom-in-95 slide-in-from-left-4 motion-reduce:animate-none"
+            key={effortModel.id}
+            ref={placeWing}
+            style={{ top: effortAnchor }}
+          >
+            <div className="shrink-0 truncate px-2.5 pt-2 text-xs font-medium text-[var(--ark-muted-ink)]">
+              Thinking effort
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-1">
+              {(effortModel.reasoningEfforts ?? []).map((effort) => (
+                <DropdownMenuItem key={effort} onSelect={() => selectModel(effortModel, effort)}>
+                  <span className="flex-1 truncate">{formatReasoningEffortLabel(effort)}</span>
+                  {effortModel.id === value && reasoningEffort === effort ? (
+                    <CheckIcon aria-hidden className="size-4 shrink-0" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </MorphMenuContent>
     </DropdownMenu>
   )

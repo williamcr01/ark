@@ -21,17 +21,25 @@ export const morphMenuTriggerClassName =
 export function MorphMenuContent({
   className,
   align = 'start',
+  bare = false,
   side = 'top',
   sideOffset = -MORPH_TRIGGER_HEIGHT,
   collisionPadding = 8,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  /**
+   * Drop the panel surface so the caller can lay out several independently
+   * sized cards (see the model picker's thinking-effort column).
+   */
+  bare?: boolean
+}) {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         align={align}
         className={cn(
-          'ark-control-panel! z-50 flex max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-bottom-left flex-col overflow-hidden rounded-lg bg-clip-padding p-0 text-[var(--ark-ink)] duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none',
+          'z-50 flex max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-bottom-left flex-col p-0 text-[var(--ark-ink)] duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none',
+          !bare && 'ark-control-panel! overflow-hidden rounded-lg bg-clip-padding',
           className,
         )}
         collisionPadding={collisionPadding}
@@ -62,7 +70,7 @@ export function MorphMenuFooter({
     <button
       aria-label={label}
       className={cn(
-        'flex h-8 shrink-0 items-center gap-2 border-t border-[var(--ark-control-border)] px-2.5 text-sm font-medium text-[var(--ark-ink)] outline-none',
+        'flex h-8 shrink-0 items-center gap-2 px-2.5 text-sm font-medium text-[var(--ark-ink)] outline-none',
         className,
       )}
       onClick={onCollapse}

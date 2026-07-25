@@ -229,13 +229,26 @@
   }
 }
 
+/* A panel that grows out of the side of another one. The shadow is offset to the
+   right so it never bleeds back across the seam onto its parent panel, which is
+   what makes the two read as a single shape. */
+@utility ark-control-wing {
+  background-color: var(--ark-control-panel);
+  border: none;
+  box-shadow:
+    4px 0 6px -4px var(--ark-control-shadow),
+    8px 4px 16px -8px var(--ark-control-shadow),
+    16px 16px 44px -20px var(--ark-control-shadow);
+}
+
 /* Same material as `ark-control`, sized for a menu panel rather than a chip. */
 @utility ark-control-panel {
   background-color: var(--ark-control-panel);
-  border: 1px solid var(--ark-control-border);
+  border: none;
   box-shadow:
-    0 2px 8px -4px var(--ark-control-shadow),
-    0 16px 40px -16px var(--ark-control-shadow);
+    0 1px 3px -1px var(--ark-control-shadow),
+    0 4px 12px -4px var(--ark-control-shadow),
+    0 20px 44px -18px var(--ark-control-shadow);
 }
 
 @layer base {
