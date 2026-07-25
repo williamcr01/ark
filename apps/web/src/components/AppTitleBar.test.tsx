@@ -70,8 +70,9 @@ describe('AppTitleBar accessibility', () => {
     const onAppearanceChange = vi.fn()
     renderTitleBar({ appearancePreference: 'system', onAppearanceChange })
 
-    const appearanceButton = screen.getByRole('button', { name: 'Appearance' })
+    const appearanceButton = screen.getByRole('button', { name: 'Theme' })
     expect(appearanceButton).toHaveTextContent('Theme')
+    expect(screen.queryByText('Appearance')).not.toBeInTheDocument()
     await user.click(appearanceButton)
     expect(screen.getByRole('menuitemradio', { name: 'System' })).toHaveAttribute(
       'aria-checked',

@@ -281,7 +281,9 @@
 @keyframes ark-morph-in {
   from {
     clip-path: inset(
-      calc(100% - 32px) calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) 0 0 round 16px
+      calc(100% - var(--ark-morph-trigger-height, 32px))
+        calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) 0 0 round
+        var(--ark-morph-trigger-radius, 16px)
     );
   }
 
@@ -297,7 +299,65 @@
 
   to {
     clip-path: inset(
-      calc(100% - 32px) calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) 0 0 round 16px
+      calc(100% - var(--ark-morph-trigger-height, 32px))
+        calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) 0 0 round
+        var(--ark-morph-trigger-radius, 16px)
+    );
+  }
+}
+
+@keyframes ark-morph-in-bottom-start {
+  from {
+    clip-path: inset(
+      0 calc(100% - var(--radix-dropdown-menu-trigger-width, 100%))
+        calc(100% - var(--ark-morph-trigger-height, 32px)) 0 round
+        var(--ark-morph-trigger-radius, 16px)
+    );
+  }
+
+  to {
+    clip-path: inset(-48px round 10px);
+  }
+}
+
+@keyframes ark-morph-out-bottom-start {
+  from {
+    clip-path: inset(-48px round 10px);
+  }
+
+  to {
+    clip-path: inset(
+      0 calc(100% - var(--radix-dropdown-menu-trigger-width, 100%))
+        calc(100% - var(--ark-morph-trigger-height, 32px)) 0 round
+        var(--ark-morph-trigger-radius, 16px)
+    );
+  }
+}
+
+@keyframes ark-morph-in-bottom-end {
+  from {
+    clip-path: inset(
+      0 0 calc(100% - var(--ark-morph-trigger-height, 32px))
+        calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) round
+        var(--ark-morph-trigger-radius, 16px)
+    );
+  }
+
+  to {
+    clip-path: inset(-48px round 10px);
+  }
+}
+
+@keyframes ark-morph-out-bottom-end {
+  from {
+    clip-path: inset(-48px round 10px);
+  }
+
+  to {
+    clip-path: inset(
+      0 0 calc(100% - var(--ark-morph-trigger-height, 32px))
+        calc(100% - var(--radix-dropdown-menu-trigger-width, 100%)) round
+        var(--ark-morph-trigger-radius, 16px)
     );
   }
 }
@@ -361,6 +421,22 @@
   [data-state='closed'] > & {
     animation: ark-morph-out var(--ark-morph-out) cubic-bezier(0.4, 0, 1, 1) both;
     pointer-events: none;
+  }
+
+  &[data-side='bottom'][data-align='start'][data-state='open'] {
+    animation-name: ark-morph-in-bottom-start;
+  }
+
+  &[data-side='bottom'][data-align='start'][data-state='closed'] {
+    animation-name: ark-morph-out-bottom-start;
+  }
+
+  &[data-side='bottom'][data-align='end'][data-state='open'] {
+    animation-name: ark-morph-in-bottom-end;
+  }
+
+  &[data-side='bottom'][data-align='end'][data-state='closed'] {
+    animation-name: ark-morph-out-bottom-end;
   }
 
   @media (prefers-reduced-motion: reduce) {

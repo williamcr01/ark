@@ -31,7 +31,6 @@ import {
 } from '@/components/ui/dialog'
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -41,6 +40,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  MorphMenuContent,
+  MorphMenuFooter,
+  morphMenuTriggerMotionClassName,
+} from '@/components/ui/morph-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { DeckSummary, DeckVersionDetail, DeckVersionSummary } from '@/lib/deck-api'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
@@ -106,6 +110,8 @@ function DownloadTitleBarButton({
   onDownload: (variant: DeckDownloadVariant) => void
   showSanitizedDownload: boolean
 }) {
+  const [open, setOpen] = useState(false)
+
   if (!showSanitizedDownload) {
     return (
       <TitleBarButton
@@ -120,7 +126,7 @@ function DownloadTitleBarButton({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
@@ -128,6 +134,7 @@ function DownloadTitleBarButton({
               aria-label="Download HTML"
               className={cn(
                 buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+                morphMenuTriggerMotionClassName,
                 'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
                 'hover:bg-[var(--ark-accent-soft)]',
                 'disabled:text-[var(--ark-titlebar-muted)]/50',
@@ -143,22 +150,39 @@ function DownloadTitleBarButton({
         </TooltipTrigger>
         <TooltipContent side="bottom">Download HTML</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Export deck</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => onDownload('original')}>
-          <div className="flex flex-col gap-0.5">
-            <span>Original HTML</span>
-            <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
-          </div>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
-          <div className="flex flex-col gap-0.5">
-            <span>Sanitized HTML</span>
-            <span className="text-xs text-muted-foreground">Matches static preview</span>
-          </div>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+      <MorphMenuContent
+        align="end"
+        className="w-64"
+        side="bottom"
+        triggerHeight={26}
+        triggerRadius={0}
+      >
+        <MorphMenuFooter
+          className="h-[26px] justify-end px-1.5 text-[var(--ark-accent)]"
+          label="Collapse download menu"
+          onCollapse={() => setOpen(false)}
+        >
+          <DownloadIcon aria-hidden className="size-4" />
+        </MorphMenuFooter>
+        <div className="ark-morph-reveal p-1">
+          <DropdownMenuLabel>Export deck</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onSelect={() => onDownload('original')}>
+              <div className="flex flex-col gap-0.5">
+                <span>Original HTML</span>
+                <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
+              <div className="flex flex-col gap-0.5">
+                <span>Sanitized HTML</span>
+                <span className="text-xs text-muted-foreground">Matches static preview</span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </div>
+      </MorphMenuContent>
     </DropdownMenu>
   )
 }
@@ -172,48 +196,65 @@ function AppearanceMenu({
   resolvedAppearance: ResolvedAppearance
   onChange: (preference: AppearancePreference) => void
 }) {
+  const [open, setOpen] = useState(false)
   const icon =
     preference === 'system' ? (
-      <LaptopIcon />
+      <LaptopIcon className="size-3.5" />
     ) : resolvedAppearance === 'dark' ? (
-      <MoonIcon />
+      <MoonIcon className="size-3.5" />
     ) : (
-      <SunIcon />
+      <SunIcon className="size-3.5" />
     )
 
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button aria-label="Appearance" className="h-7 px-2 text-xs" size="sm" variant="ghost">
-              {icon}
-              Theme
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Appearance</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          onValueChange={(value) => onChange(value as AppearancePreference)}
-          value={preference}
+    <DropdownMenu onOpenChange={setOpen} open={open}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-expanded={open}
+          aria-label="Theme"
+          className={cn(morphMenuTriggerMotionClassName, 'h-7 px-2 text-xs')}
+          size="sm"
+          variant="ghost"
         >
-          <DropdownMenuRadioItem value="system">
-            <LaptopIcon />
-            System
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="light">
-            <SunIcon />
-            Light
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark">
-            <MoonIcon />
-            Dark
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
+          {icon}
+          Theme
+        </Button>
+      </DropdownMenuTrigger>
+      <MorphMenuContent
+        align="end"
+        side="bottom"
+        triggerHeight={28}
+        triggerRadius="10px 0 0 10px"
+      >
+        <MorphMenuFooter
+          className="h-7 justify-end gap-1 px-2 text-xs text-[var(--ark-titlebar-fg)]"
+          label="Collapse theme menu"
+          onCollapse={() => setOpen(false)}
+        >
+          {icon}
+          Theme
+        </MorphMenuFooter>
+        <div className="ark-morph-reveal p-1">
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            onValueChange={(value) => onChange(value as AppearancePreference)}
+            value={preference}
+          >
+            <DropdownMenuRadioItem value="system">
+              <LaptopIcon />
+              System
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="light">
+              <SunIcon />
+              Light
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">
+              <MoonIcon />
+              Dark
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </div>
+      </MorphMenuContent>
     </DropdownMenu>
   )
 }
@@ -252,6 +293,7 @@ function DeckLibraryMenu({
 }) {
   const [renameError, setRenameError] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(deckTitle)
   const [isRenaming, setIsRenaming] = useState(false)
   const displayTitle = deckTitle || 'New deck'
@@ -299,12 +341,13 @@ function DeckLibraryMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             aria-label="Select deck"
             className={cn(
               buttonVariants({ variant: 'ghost' }),
+              morphMenuTriggerMotionClassName,
               'h-7 min-w-0 max-w-48 justify-start gap-1 rounded-sm border-0 px-1.5 text-xs font-medium text-[var(--ark-titlebar-fg)] shadow-none',
               'hover:bg-[var(--ark-titlebar-hover)]',
               'disabled:text-[var(--ark-titlebar-muted)]/50',
@@ -313,56 +356,78 @@ function DeckLibraryMenu({
             type="button"
           >
             <span className="min-w-0 truncate">{displayTitle}</span>
-            <ChevronDownIcon aria-hidden className="shrink-0" />
+            <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>Saved decks</DropdownMenuLabel>
-          <DropdownMenuGroup>
-            {decks.length > 0 ? (
-              decks.map((deck) => (
-                <DropdownMenuItem
-                  className="items-start"
-                  disabled={deck.id === activeDeckId}
-                  key={deck.id}
-                  onSelect={() => {
-                    void onSelectDeck(deck.id)
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate">{deck.title}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {formatUpdatedAt(deck.updatedAt)}
-                    </span>
-                  </div>
-                  {deck.id === activeDeckId ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">Active</span>
-                  ) : null}
-                </DropdownMenuItem>
-              ))
-            ) : (
-              <DropdownMenuItem disabled>No saved decks yet</DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onNewDeck}>
-            <FilePlus2Icon />
-            New deck
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!activeDeckId}
-            onSelect={() => {
-              handleRenameOpenChange(true)
-            }}
+        <MorphMenuContent
+          align="start"
+          className="w-72"
+          side="bottom"
+          triggerHeight={28}
+          triggerRadius={6}
+        >
+          <MorphMenuFooter
+            className="h-7 justify-start gap-1 px-1.5 text-xs"
+            label="Collapse deck selector"
+            onCollapse={() => setMenuOpen(false)}
           >
-            <PencilIcon />
-            Rename deck
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={!activeDeckId} onSelect={handleDelete} variant="destructive">
-            <Trash2Icon />
-            Delete deck
-          </DropdownMenuItem>
-        </DropdownMenuContent>
+            <span className="min-w-0 truncate">{displayTitle}</span>
+            <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
+          </MorphMenuFooter>
+          <div className="ark-scrollbar-none ark-morph-reveal min-h-0 flex-1 overflow-y-auto p-1">
+            <DropdownMenuLabel>Saved decks</DropdownMenuLabel>
+            <DropdownMenuGroup>
+              {decks.length > 0 ? (
+                decks.map((deck) => (
+                  <DropdownMenuItem
+                    className="items-start"
+                    disabled={deck.id === activeDeckId}
+                    key={deck.id}
+                    onSelect={() => {
+                      void onSelectDeck(deck.id)
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate">{deck.title}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {formatUpdatedAt(deck.updatedAt)}
+                      </span>
+                    </div>
+                    {deck.id === activeDeckId ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">Active</span>
+                    ) : null}
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>No saved decks yet</DropdownMenuItem>
+              )}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={onNewDeck}>
+                <FilePlus2Icon />
+                New deck
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!activeDeckId}
+                onSelect={() => {
+                  handleRenameOpenChange(true)
+                }}
+              >
+                <PencilIcon />
+                Rename deck
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!activeDeckId}
+                onSelect={handleDelete}
+                variant="destructive"
+              >
+                <Trash2Icon />
+                Delete deck
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </div>
+        </MorphMenuContent>
       </DropdownMenu>
 
       <Dialog onOpenChange={handleRenameOpenChange} open={renameOpen}>

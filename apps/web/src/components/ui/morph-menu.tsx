@@ -15,7 +15,8 @@ export const MORPH_TRIGGER_HEIGHT = 32
  * Trigger fades out under the open panel but keeps its layout box, so nothing
  * in the tools row shifts. `MorphMenuFooter` re-draws it as the panel's last row.
  */
-export const morphMenuTriggerClassName = 'ark-control! ark-morph-trigger! rounded-full'
+export const morphMenuTriggerMotionClassName = 'ark-morph-trigger!'
+export const morphMenuTriggerClassName = `ark-control! ${morphMenuTriggerMotionClassName} rounded-full`
 
 export const morphMenuSurfaceClassName = 'ark-morph-surface'
 
@@ -24,8 +25,11 @@ export function MorphMenuContent({
   align = 'start',
   bare = false,
   side = 'top',
-  sideOffset = -MORPH_TRIGGER_HEIGHT,
+  triggerHeight = MORPH_TRIGGER_HEIGHT,
+  triggerRadius = triggerHeight / 2,
+  sideOffset = -triggerHeight,
   collisionPadding = 8,
+  style,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
   /**
@@ -33,7 +37,12 @@ export function MorphMenuContent({
    * sized cards (see the model picker's thinking-effort column).
    */
   bare?: boolean
+  triggerHeight?: number
+  triggerRadius?: number | string
 }) {
+  const resolvedTriggerRadius =
+    typeof triggerRadius === 'number' ? `${triggerRadius}px` : triggerRadius
+
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -48,6 +57,13 @@ export function MorphMenuContent({
         data-slot="morph-menu-content"
         side={side}
         sideOffset={sideOffset}
+        style={
+          {
+            '--ark-morph-trigger-height': `${triggerHeight}px`,
+            '--ark-morph-trigger-radius': resolvedTriggerRadius,
+            ...style,
+          } as React.CSSProperties
+        }
         {...props}
       />
     </DropdownMenuPrimitive.Portal>
