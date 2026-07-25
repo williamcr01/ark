@@ -71,12 +71,15 @@ const models: AvailableModel[] = [
 ]
 
 describe('ModelSelector', () => {
-  it('groups models by provider and selects effort after drilling into a model', async () => {
+  it('shows remembered effort and selects a model with it', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
     render(
       <ModelSelector
+        getReasoningEffort={(modelId) =>
+          modelId === 'google:gemini-3.5-flash' ? 'high' : undefined
+        }
         models={models}
         onSelect={onSelect}
         reasoningEffort="medium"
@@ -91,15 +94,12 @@ describe('ModelSelector', () => {
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
     expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
 
-    await user.click(screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash/i }))
+    await user.click(screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash\s*High/i }))
 
-    const effortOption = await screen.findByRole('menuitem', { name: 'Medium' })
-    await user.click(effortOption)
-
-    expect(onSelect).toHaveBeenCalledWith('google:gemini-3.5-flash', 'medium')
+    expect(onSelect).toHaveBeenCalledWith('google:gemini-3.5-flash', 'high')
   })
 
-  it('does not select a model when activating the submenu trigger alone', async () => {
+  it('opens the effort editor without selecting the model', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
@@ -113,8 +113,11 @@ describe('ModelSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
-    await user.click(screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }))
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.6 Luna' }),
+    )
 
+    expect(screen.getByText('Thinking effort')).toBeInTheDocument()
     expect(onSelect).not.toHaveBeenCalled()
   })
 
@@ -131,9 +134,11 @@ describe('ModelSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
-    const model = screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i })
-    await user.click(model)
-    await user.click(model)
+    const edit = screen.getByRole('menuitem', {
+      name: 'Edit thinking effort for GPT-5.6 Luna',
+    })
+    await user.click(edit)
+    await user.click(edit)
 
     const wing = screen.getByText('Thinking effort').parentElement
     expect(wing).toHaveAttribute('data-state', 'closed')
@@ -157,8 +162,12 @@ describe('ModelSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
-    await user.click(screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }))
-    await user.click(screen.getByRole('menuitem', { name: /GPT-5\.4 Mini/i }))
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.6 Luna' }),
+    )
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.4 Mini' }),
+    )
 
     const oldWing = screen.getByText('Thinking effort').parentElement
     expect(oldWing).toHaveAttribute('data-model-id', 'openai:gpt-5.6-luna')
@@ -188,7 +197,7 @@ describe('ModelSelector', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }).focus()
+    screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.6 Luna' }).focus()
     await user.keyboard('{Enter}')
 
     const effortOption = await screen.findByRole('menuitem', { name: 'Extra High' })

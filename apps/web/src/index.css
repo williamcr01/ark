@@ -270,6 +270,14 @@
     0 20px 44px -18px var(--ark-control-shadow);
 }
 
+@utility ark-scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @keyframes ark-morph-in {
   from {
     clip-path: inset(

@@ -129,7 +129,10 @@ function App() {
     setSelectedModel,
     warnings: modelWarnings,
   } = useAvailableModels()
-  const { reasoningEffort, setReasoningEffort } = useReasoningEffort(selectedModel, models)
+  const { getReasoningEffort, reasoningEffort, setReasoningEffort } = useReasoningEffort(
+    selectedModel,
+    models,
+  )
 
   const handleModelSelect = useCallback(
     (modelId: string, nextEffort?: ReasoningEffort) => {
@@ -515,6 +518,7 @@ function App() {
       failedJobId={failedJobId}
       generationStatus={generationStatus}
       getMessageDeliveryStatus={getMessageDeliveryStatus}
+      getReasoningEffort={getReasoningEffort}
       input={input}
       isGenerating={isGenerating}
       isLoadingModels={isLoadingModels}

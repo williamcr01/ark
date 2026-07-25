@@ -420,6 +420,7 @@ export type ChatPanelProps = {
   reducedMotion?: boolean
   resolvedAppearance?: ResolvedAppearance
   getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
+  getReasoningEffort?: (modelId: string) => ReasoningEffort | undefined
   onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
 }
 
@@ -450,6 +451,7 @@ export function ChatPanel({
   reducedMotion = false,
   resolvedAppearance = 'dark',
   getMessageDeliveryStatus,
+  getReasoningEffort,
   onRetryPersist,
   generationStatus,
 }: ChatPanelProps) {
@@ -667,7 +669,7 @@ export function ChatPanel({
                     />
                     {supportsAttachments ? (
                       <MorphMenuContent className="w-48">
-                        <div className="ark-morph-reveal min-h-0 flex-1 overflow-y-auto p-1">
+                        <div className="ark-scrollbar-none ark-morph-reveal min-h-0 flex-1 overflow-y-auto p-1">
                           <PromptInputActionAddAttachments />
                           <PromptInputActionAddScreenshot />
                         </div>
@@ -686,6 +688,7 @@ export function ChatPanel({
                     disabled={isGenerating}
                     isLoading={isLoadingModels}
                     models={models}
+                    getReasoningEffort={getReasoningEffort}
                     onSelect={onModelSelect}
                     reasoningEffort={reasoningEffort}
                     value={selectedModel}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckIcon, ChevronRightIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -72,6 +72,7 @@ export type ModelSelectorProps = {
   models: AvailableModel[]
   value: string
   reasoningEffort?: ReasoningEffort
+  getReasoningEffort?: (modelId: string) => ReasoningEffort | undefined
   onSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   disabled?: boolean
   isLoading?: boolean
@@ -83,6 +84,7 @@ export function ModelSelector({
   models,
   value,
   reasoningEffort,
+  getReasoningEffort,
   onSelect,
   disabled = false,
   isLoading = false,
@@ -100,6 +102,8 @@ export function ModelSelector({
   const [effortClosing, setEffortClosing] = useState(false)
   const effortCloseTimerRef = useRef<number | null>(null)
   const pendingEffortRef = useRef<{ model: AvailableModel; anchor: number } | null>(null)
+  const panelResizeFromRef = useRef<number | null>(null)
+  const panelResizeAnimationRef = useRef<Animation | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
   const finishEffortClose = useCallback(() => {
@@ -159,6 +163,57 @@ export function ModelSelector({
     return groupModelsByProvider(filtered)
   }, [models, normalizedQuery])
 
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    const fromHeight = panelResizeFromRef.current
+    panelResizeFromRef.current = null
+    panelResizeAnimationRef.current?.cancel()
+    panelResizeAnimationRef.current = null
+
+    if (!panel || fromHeight === null) {
+      return
+    }
+
+    const toHeight = panel.getBoundingClientRect().height
+    if (
+      Math.abs(toHeight - fromHeight) < 1 ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return
+    }
+
+    const easing =
+      getComputedStyle(panel).getPropertyValue('--ark-spring-ease').trim() ||
+      'cubic-bezier(0.32, 0.72, 0, 1)'
+    const animation = panel.animate([{ height: `${fromHeight}px` }, { height: `${toHeight}px` }], {
+      duration: 280,
+      easing,
+    })
+    panelResizeAnimationRef.current = animation
+    animation.onfinish = () => {
+      if (panelResizeAnimationRef.current === animation) {
+        panelResizeAnimationRef.current = null
+      }
+    }
+
+    return () => animation.cancel()
+  }, [groups])
+
+  const resolveModelEffort = (model: AvailableModel) => {
+    const supported = model.reasoningEfforts ?? []
+    const remembered = getReasoningEffort?.(model.id)
+    if (remembered && supported.includes(remembered)) {
+      return remembered
+    }
+    if (model.id === value && reasoningEffort && supported.includes(reasoningEffort)) {
+      return reasoningEffort
+    }
+    if (model.defaultReasoningEffort && supported.includes(model.defaultReasoningEffort)) {
+      return model.defaultReasoningEffort
+    }
+    return supported[0]
+  }
+
   const triggerLabel = isLoading
     ? 'Loading models…'
     : selected
@@ -191,15 +246,31 @@ export function ModelSelector({
       return
     }
 
-    const nextEffort =
-      effort && supported.includes(effort)
-        ? effort
-        : model.id === value && reasoningEffort && supported.includes(reasoningEffort)
-          ? reasoningEffort
-          : (model.defaultReasoningEffort ?? supported[0])
+    const nextEffort = effort && supported.includes(effort) ? effort : resolveModelEffort(model)
 
     onSelect(model.id, nextEffort)
     closeMenu()
+  }
+
+  const toggleEffortEditor = (model: AvailableModel, row: HTMLElement) => {
+    if (effortModel?.id === model.id) {
+      pendingEffortRef.current = null
+      closeEffortWing()
+      return
+    }
+
+    const rowRect = row.getBoundingClientRect()
+    const panel = panelRef.current?.getBoundingClientRect()
+    const nextAnchor = panel ? rowRect.top + rowRect.height / 2 - panel.top : effortAnchor
+    if (effortModel) {
+      pendingEffortRef.current = { model, anchor: nextAnchor }
+      closeEffortWing()
+      return
+    }
+
+    setEffortAnchor(nextAnchor)
+    setEffortClosing(false)
+    setEffortModel(model)
   }
 
   return (
@@ -251,14 +322,18 @@ export function ModelSelector({
               <input
                 aria-label="Search models"
                 className="h-7 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                onChange={(event) => setQuery(event.currentTarget.value)}
+                onChange={(event) => {
+                  panelResizeFromRef.current =
+                    panelRef.current?.getBoundingClientRect().height ?? null
+                  setQuery(event.currentTarget.value)
+                }}
                 onKeyDown={(event) => event.stopPropagation()}
                 placeholder="Search models…"
                 value={query}
               />
             </div>
 
-            <div className="max-h-64 min-h-0 flex-1 overflow-y-auto p-1">
+            <div className="ark-scrollbar-none max-h-64 min-h-0 flex-1 overflow-y-auto p-1">
               {groups.length === 0 ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   {models.length === 0 ? 'No models available.' : 'No models match your search.'}
@@ -275,66 +350,60 @@ export function ModelSelector({
                         const unavailableLabel = formatUnavailableBadge(model)
                         const isSelected = model.id === value
                         const supportsEffort = (model.reasoningEfforts ?? []).length > 0
+                        const canEditEffort = model.available && supportsEffort
+                        const modelEffort = resolveModelEffort(model)
                         const isExpanded = effortModel?.id === model.id
 
                         return (
-                          <DropdownMenuItem
-                            className={cn(
-                              'gap-2 py-1.5',
-                              !model.available && 'opacity-60',
-                              isExpanded && 'bg-accent text-accent-foreground',
-                            )}
-                            disabled={!model.available}
-                            key={model.id}
-                            onSelect={(event) => {
-                              if (!supportsEffort) {
-                                selectModel(model)
-                                return
-                              }
-                              event.preventDefault()
-                              if (isExpanded) {
-                                pendingEffortRef.current = null
-                                closeEffortWing()
-                                return
-                              }
-                              const row = (
-                                event.currentTarget as HTMLElement
-                              ).getBoundingClientRect()
-                              const panel = panelRef.current?.getBoundingClientRect()
-                              const nextAnchor = panel
-                                ? row.top + row.height / 2 - panel.top
-                                : effortAnchor
-                              if (effortModel) {
-                                pendingEffortRef.current = { model, anchor: nextAnchor }
-                                closeEffortWing()
-                                return
-                              }
-                              setEffortAnchor(nextAnchor)
-                              setEffortClosing(false)
-                              setEffortModel(model)
-                            }}
-                          >
-                            <span className="min-w-0 flex-1 truncate font-medium text-[var(--ark-ink)]">
-                              {formatModelName(model)}
-                            </span>
-                            {unavailableLabel ? (
-                              <span className="shrink-0 rounded-md bg-[var(--ark-accent-soft)] px-1.5 py-0.5 text-[0.65rem] text-[var(--ark-muted-ink)]">
-                                {unavailableLabel}
+                          <div className="relative" data-model-row key={model.id}>
+                            <DropdownMenuItem
+                              className={cn(
+                                'gap-2 py-1.5',
+                                canEditEffort && 'pr-10',
+                                !model.available && 'opacity-60',
+                                isExpanded && 'bg-accent text-accent-foreground',
+                              )}
+                              disabled={!model.available}
+                              onSelect={() => selectModel(model)}
+                            >
+                              <span className="min-w-0 truncate font-medium text-[var(--ark-ink)]">
+                                {formatModelName(model)}
                               </span>
-                            ) : null}
-                            {isSelected ? (
-                              <CheckIcon aria-hidden className="size-4 shrink-0" />
-                            ) : null}
-                            {supportsEffort ? (
-                              <ChevronRightIcon
-                                aria-hidden
+                              {modelEffort ? (
+                                <span className="shrink-0 text-xs font-normal text-[var(--ark-muted-ink)] opacity-75">
+                                  {formatReasoningEffortLabel(modelEffort)}
+                                </span>
+                              ) : null}
+                              {unavailableLabel ? (
+                                <span className="shrink-0 rounded-md bg-[var(--ark-accent-soft)] px-1.5 py-0.5 text-[0.65rem] text-[var(--ark-muted-ink)]">
+                                  {unavailableLabel}
+                                </span>
+                              ) : null}
+                              {isSelected ? (
+                                <CheckIcon aria-hidden className="size-3.5 shrink-0" />
+                              ) : null}
+                            </DropdownMenuItem>
+                            {canEditEffort ? (
+                              <DropdownMenuItem
+                                aria-label={`Edit thinking effort for ${formatModelName(model)}`}
                                 className={cn(
-                                  'size-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none',
-                                  isExpanded ? 'opacity-100' : 'opacity-50',
+                                  'absolute top-1/2 right-1 h-5 -translate-y-1/2 px-1.5 py-0 text-[0.625rem] font-medium text-[var(--ark-muted-ink)] opacity-65',
+                                  isExpanded && 'bg-accent text-accent-foreground opacity-100',
                                 )}
-                              />
+                                onSelect={(event) => {
+                                  event.preventDefault()
+                                  const row = (
+                                    event.currentTarget as HTMLElement | null
+                                  )?.closest<HTMLElement>('[data-model-row]')
+                                  if (row) {
+                                    toggleEffortEditor(model, row)
+                                  }
+                                }}
+                              >
+                                Edit
+                              </DropdownMenuItem>
                             ) : null}
-                          </DropdownMenuItem>
+                          </div>
                         )
                       })}
                     </DropdownMenuGroup>
@@ -373,11 +442,11 @@ export function ModelSelector({
             <div className="ark-wing-reveal shrink-0 truncate px-2.5 pt-2 text-xs font-medium text-[var(--ark-muted-ink)]">
               Thinking effort
             </div>
-            <div className="ark-wing-reveal min-h-0 flex-1 overflow-y-auto p-1">
+            <div className="ark-scrollbar-none ark-wing-reveal min-h-0 flex-1 overflow-y-auto p-1">
               {(effortModel.reasoningEfforts ?? []).map((effort) => (
                 <DropdownMenuItem key={effort} onSelect={() => selectModel(effortModel, effort)}>
                   <span className="flex-1 truncate">{formatReasoningEffortLabel(effort)}</span>
-                  {effortModel.id === value && reasoningEffort === effort ? (
+                  {resolveModelEffort(effortModel) === effort ? (
                     <CheckIcon aria-hidden className="size-4 shrink-0" />
                   ) : null}
                 </DropdownMenuItem>
