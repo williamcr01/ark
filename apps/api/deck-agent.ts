@@ -398,6 +398,7 @@ function createThinkingProgressReporter(
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>,
 ) {
   let thinkingBuffer = ''
+  let thinkingStartedAt: number | null = null
   let lastFlushAt = 0
   let flushTimer: ReturnType<typeof setTimeout> | null = null
   let pendingFlush: Promise<void> = Promise.resolve()
@@ -446,6 +447,9 @@ function createThinkingProgressReporter(
         return
       }
 
+      if (thinkingStartedAt === null) {
+        thinkingStartedAt = Date.now()
+      }
       thinkingBuffer += text
       scheduleFlush()
     },
@@ -459,10 +463,18 @@ function createThinkingProgressReporter(
       await pendingFlush
 
       const summary = (thinkingBuffer || fallbackText || '').trim()
+      const startedAt = thinkingStartedAt
       thinkingBuffer = ''
+      thinkingStartedAt = null
 
       if (summary) {
-        accumulatedSteps.push({ type: 'thinking', summary })
+        // In-progress flushes omit durationMs; commit always sets it so the UI can
+        // switch from "Thinking" to "Thought for X seconds".
+        accumulatedSteps.push({
+          type: 'thinking',
+          summary,
+          durationMs: startedAt !== null ? Math.max(0, Date.now() - startedAt) : 0,
+        })
       }
     },
   }
@@ -581,6 +593,9 @@ export async function runDeckAgent({
             type: 'thinking',
             content: committedThinking.summary,
             stepIndex: transcriptStepIndex,
+            ...(committedThinking.durationMs !== undefined
+              ? { durationMs: committedThinking.durationMs }
+              : {}),
           })
         }
         transcriptParts.push(...extracted)
@@ -606,10 +621,14 @@ export async function runDeckAgent({
       accumulatedSteps.length > trailingThinkingBefore &&
       accumulatedSteps[trailingThinkingBefore]?.type === 'thinking'
     ) {
+      const trailingThinking = accumulatedSteps[trailingThinkingBefore]
       transcriptParts.push({
         type: 'thinking',
-        content: accumulatedSteps[trailingThinkingBefore].summary,
+        content: trailingThinking.summary,
         stepIndex: transcriptStepIndex,
+        ...(trailingThinking.durationMs !== undefined
+          ? { durationMs: trailingThinking.durationMs }
+          : {}),
       })
     }
   } catch (error) {

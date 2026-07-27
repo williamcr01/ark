@@ -325,7 +325,7 @@ describe('ChatPanel submit control', () => {
               role: 'assistant',
               content: 'Updated the title.',
               parts: [
-                { type: 'thinking', content: 'I will patch the title.' },
+                { type: 'thinking', content: 'I will patch the title.', durationMs: 4200 },
                 { type: 'text', content: 'Updated the title.' },
               ],
             },
@@ -334,13 +334,37 @@ describe('ChatPanel submit control', () => {
       </TooltipProvider>,
     )
 
-    const summary = screen.getByText('Thinking')
+    const summary = screen.getByText('Thought for 4 seconds')
     expect(summary.closest('details')).not.toHaveAttribute('open')
     expect(screen.queryByText('I will patch the title.')).not.toBeVisible()
 
     await user.click(summary)
     expect(screen.getByText('I will patch the title.')).toBeVisible()
     expect(screen.getByText('I will patch the title.')).toHaveClass('text-muted-foreground/80')
+  })
+
+  it('labels finished thinking without a recorded duration as Thought', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            {
+              id: 'a1b',
+              role: 'assistant',
+              content: 'Updated the title.',
+              parts: [
+                { type: 'thinking', content: 'Legacy thinking without timing.' },
+                { type: 'text', content: 'Updated the title.' },
+              ],
+            },
+          ]}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Thought')).toBeInTheDocument()
+    expect(screen.queryByText('Thinking')).not.toBeInTheDocument()
   })
 
   it('collapses consecutive tool calls into one unboxed text group', async () => {
@@ -430,5 +454,25 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByText('1 tool call').closest('details')).not.toHaveAttribute('open')
     expect(screen.queryByText('Planning the edit.')).not.toBeVisible()
     expect(screen.queryByText(/Reading slide 1/)).not.toBeVisible()
+  })
+
+  it('labels finished live thinking with its duration', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          activeSteps={[
+            { type: 'thinking', summary: 'Planning the edit.', durationMs: 1100 },
+            { type: 'tool-call', toolName: 'read_deck', summary: 'Reading slide 1' },
+          ]}
+          generationStatus="running"
+          isGenerating
+          reducedMotion
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Thought for 1 second')).toBeInTheDocument()
+    expect(screen.queryByText('Thinking')).not.toBeInTheDocument()
   })
 })

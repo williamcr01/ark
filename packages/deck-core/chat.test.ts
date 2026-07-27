@@ -540,11 +540,13 @@ describe('agentStepsToChatParts', () => {
   it('converts agent steps into persisted chat parts', () => {
     expect(
       agentStepsToChatParts([
+        { type: 'thinking', summary: 'Plan first.', durationMs: 1500 },
         { type: 'tool-call', toolName: 'read_deck', summary: 'lines 1–100' },
         { type: 'tool-result', toolName: 'edit_deck', summary: 'Applied 1 edit(s)' },
         { type: 'text', summary: 'Done.' },
       ]),
     ).toEqual([
+      { type: 'thinking', content: 'Plan first.', durationMs: 1500 },
       { type: 'tool-call', toolName: 'read_deck', summary: 'lines 1–100' },
       { type: 'tool-result', toolName: 'edit_deck', summary: 'Applied 1 edit(s)' },
       { type: 'text', content: 'Done.' },

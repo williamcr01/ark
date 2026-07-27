@@ -26,6 +26,7 @@ export const agentStepSchema = z.object({
   toolName: z.string().optional(),
   summary: z.string(),
   error: z.boolean().optional(),
+  durationMs: z.number().int().min(0).optional(),
 })
 
 export const generationJobProgressSchema = z.object({
