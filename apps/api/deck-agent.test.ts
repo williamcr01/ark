@@ -314,7 +314,8 @@ describe('runDeckAgent', () => {
   })
 
   it('streams reasoning deltas into thinking progress', async () => {
-    const progressSnapshots: Array<Array<{ type: string; summary: string }>> = []
+    const progressSnapshots: Array<Array<{ type: string; summary: string; durationMs?: number }>> =
+      []
     const model = new MockLanguageModelV3({
       doStream: {
         stream: simulateReadableStream({
@@ -358,7 +359,13 @@ describe('runDeckAgent', () => {
         locked: true,
       },
       onStepProgress: async (steps) => {
-        progressSnapshots.push(steps.map((step) => ({ type: step.type, summary: step.summary })))
+        progressSnapshots.push(
+          steps.map((step) => ({
+            type: step.type,
+            summary: step.summary,
+            ...(step.durationMs !== undefined ? { durationMs: step.durationMs } : {}),
+          })),
+        )
       },
     })
 
@@ -367,12 +374,19 @@ describe('runDeckAgent', () => {
       return
     }
 
+    const thinkingStep = result.steps.find((step) => step.type === 'thinking')
+    expect(thinkingStep?.summary).toContain('Plan A')
+    expect(typeof thinkingStep?.durationMs).toBe('number')
     expect(
-      result.steps.some((step) => step.type === 'thinking' && step.summary.includes('Plan A')),
+      progressSnapshots.some((steps) =>
+        steps.some(
+          (step) =>
+            step.type === 'thinking' &&
+            step.summary.includes('Plan A') &&
+            step.durationMs === undefined,
+        ),
+      ),
     ).toBe(true)
-    expect(progressSnapshots.some((steps) => steps.some((step) => step.type === 'thinking'))).toBe(
-      true,
-    )
   })
 
   it('returns the provider error when the stream fails before producing output', async () => {

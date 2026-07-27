@@ -2364,7 +2364,8 @@
                                   "properties": {
                                     "type": { "type": "string", "enum": ["thinking"] },
                                     "content": { "type": "string" },
-                                    "stepIndex": { "type": "integer", "minimum": 0 }
+                                    "stepIndex": { "type": "integer", "minimum": 0 },
+                                    "durationMs": { "type": "integer", "minimum": 0 }
                                   },
                                   "required": ["type", "content"]
                                 },
@@ -2617,7 +2618,8 @@
                           "properties": {
                             "type": { "type": "string", "enum": ["thinking"] },
                             "content": { "type": "string" },
-                            "stepIndex": { "type": "integer", "minimum": 0 }
+                            "stepIndex": { "type": "integer", "minimum": 0 },
+                            "durationMs": { "type": "integer", "minimum": 0 }
                           },
                           "required": ["type", "content"]
                         },
@@ -2748,7 +2750,8 @@
                                 "properties": {
                                   "type": { "type": "string", "enum": ["thinking"] },
                                   "content": { "type": "string" },
-                                  "stepIndex": { "type": "integer", "minimum": 0 }
+                                  "stepIndex": { "type": "integer", "minimum": 0 },
+                                  "durationMs": { "type": "integer", "minimum": 0 }
                                 },
                                 "required": ["type", "content"]
                               },
@@ -3350,7 +3353,8 @@
                                     "properties": {
                                       "type": { "type": "string", "enum": ["thinking"] },
                                       "content": { "type": "string" },
-                                      "stepIndex": { "type": "integer", "minimum": 0 }
+                                      "stepIndex": { "type": "integer", "minimum": 0 },
+                                      "durationMs": { "type": "integer", "minimum": 0 }
                                     },
                                     "required": ["type", "content"]
                                   },
@@ -3506,7 +3510,8 @@
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
-                                  "error": { "type": "boolean" }
+                                  "error": { "type": "boolean" },
+                                  "durationMs": { "type": "integer", "minimum": 0 }
                                 },
                                 "required": ["type", "summary"]
                               }
@@ -3796,7 +3801,8 @@
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
-                                  "error": { "type": "boolean" }
+                                  "error": { "type": "boolean" },
+                                  "durationMs": { "type": "integer", "minimum": 0 }
                                 },
                                 "required": ["type", "summary"]
                               }
@@ -4077,7 +4083,8 @@
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
-                                  "error": { "type": "boolean" }
+                                  "error": { "type": "boolean" },
+                                  "durationMs": { "type": "integer", "minimum": 0 }
                                 },
                                 "required": ["type", "summary"]
                               }
@@ -4358,7 +4365,8 @@
                                   },
                                   "toolName": { "type": "string" },
                                   "summary": { "type": "string" },
-                                  "error": { "type": "boolean" }
+                                  "error": { "type": "boolean" },
+                                  "durationMs": { "type": "integer", "minimum": 0 }
                                 },
                                 "required": ["type", "summary"]
                               }

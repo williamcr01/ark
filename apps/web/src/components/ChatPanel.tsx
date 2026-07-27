@@ -319,7 +319,18 @@ function ChatMessageDeliveryStatus({
   )
 }
 
-function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
+function formatThinkingSummaryLabel(durationMs: number | undefined, live: boolean) {
+  if (durationMs === undefined) {
+    // Live in-progress flushes omit durationMs; finished history without a
+    // recorded duration (older chats) falls back to a past-tense label.
+    return live ? 'Thinking' : 'Thought'
+  }
+
+  const seconds = Math.max(1, Math.round(durationMs / 1000))
+  return seconds === 1 ? 'Thought for 1 second' : `Thought for ${seconds} seconds`
+}
+
+function ChatMessageParts({ parts, live = false }: { parts: ChatMessagePart[]; live?: boolean }) {
   const segments = segmentChatParts(parts)
 
   return (
@@ -350,7 +361,7 @@ function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
           return (
             <details className="text-xs" key={`thinking-${index}`}>
               <summary className="cursor-pointer select-none font-medium text-muted-foreground">
-                Thinking
+                {formatThinkingSummaryLabel(part.durationMs, live)}
               </summary>
               <div className="mt-1 whitespace-pre-wrap pl-4 text-muted-foreground/80">
                 {part.content}
@@ -519,7 +530,7 @@ export function ChatPanel({
                   <div className="flex flex-col gap-2">
                     <span className="sr-only">Working…</span>
                     {activeSteps.length > 0 ? (
-                      <ChatMessageParts parts={agentStepsToChatParts(activeSteps)} />
+                      <ChatMessageParts live parts={agentStepsToChatParts(activeSteps)} />
                     ) : null}
                   </div>
                 </MessageContent>
