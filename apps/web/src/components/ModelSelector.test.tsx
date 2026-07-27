@@ -283,6 +283,23 @@ describe('ModelSelector', () => {
       value: MeasuringResizeObserver,
     })
 
+    const fireResize = (label: HTMLElement) => {
+      act(() => {
+        observedCallback?.(
+          [
+            {
+              borderBoxSize: [],
+              contentBoxSize: [],
+              contentRect: label.getBoundingClientRect(),
+              devicePixelContentBoxSize: [],
+              target: label,
+            },
+          ],
+          new MeasuringResizeObserver(() => undefined) as unknown as ResizeObserver,
+        )
+      })
+    }
+
     try {
       render(
         <ModelSelector
@@ -299,26 +316,18 @@ describe('ModelSelector', () => {
 
       Object.defineProperty(label, 'clientWidth', { configurable: true, value: 72 })
       Object.defineProperty(measure, 'scrollWidth', { configurable: true, value: 180 })
-
-      act(() => {
-        observedCallback?.(
-          [
-            {
-              borderBoxSize: [],
-              contentBoxSize: [],
-              contentRect: label.getBoundingClientRect(),
-              devicePixelContentBoxSize: [],
-              target: label,
-            },
-          ],
-          new MeasuringResizeObserver(() => undefined) as unknown as ResizeObserver,
-        )
-      })
+      fireResize(label)
 
       const visibleLabel = label.querySelector('span.flex')
       expect(visibleLabel).toHaveTextContent('GPT-5.6 Luna')
       expect(visibleLabel).not.toHaveTextContent('Extra High')
       expect(trigger).toHaveAttribute('title', 'GPT-5.6 Luna · Extra High')
+
+      // Wider chat panel: grow reclaiming space should restore the effort suffix.
+      Object.defineProperty(label, 'clientWidth', { configurable: true, value: 220 })
+      fireResize(label)
+
+      expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent('Extra High')
     } finally {
       Object.defineProperty(globalThis, 'ResizeObserver', {
         configurable: true,

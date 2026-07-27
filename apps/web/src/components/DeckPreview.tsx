@@ -242,6 +242,7 @@ export function DeckPreview({
   const bridgeSession = usePreviewBridgeSession(previewFrame.iframeKey, {
     enabled: previewEnabled && Boolean(previewFrame.handshake?.trim()),
     handshake: previewFrame.handshake,
+    frameRef: iframeRef,
     sandboxOrigin: previewFrame.sandboxOrigin,
     onCompromised: reportNavigationCompromise,
   })

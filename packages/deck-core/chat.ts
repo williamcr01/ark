@@ -39,6 +39,8 @@ export type AgentStep = {
   toolName?: string
   summary: string
   error?: boolean
+  /** Wall-clock duration for a finished thinking period (UI label only). */
+  durationMs?: number
 }
 
 export type JsonValue =
@@ -51,7 +53,7 @@ export const MAX_MODEL_ASSISTANT_TURN_BYTES = 96 * 1024
 /** Rich assistant turn content persisted in chat history. */
 export type ChatMessagePart =
   | { type: 'text'; content: string; stepIndex?: number }
-  | { type: 'thinking'; content: string; stepIndex?: number }
+  | { type: 'thinking'; content: string; stepIndex?: number; durationMs?: number }
   | {
       type: 'tool-call'
       toolName: string
@@ -174,10 +176,21 @@ function parseChatMessageParts(input: unknown, messageIndex: number) {
       continue
     }
     if (part.type === 'thinking' && typeof part.content === 'string') {
+      const durationMs = part.durationMs
+      if (
+        durationMs !== undefined &&
+        (!Number.isInteger(durationMs) || (durationMs as number) < 0)
+      ) {
+        return {
+          ok: false as const,
+          error: `messages[${messageIndex}].parts[${partIndex}].durationMs must be a non-negative integer.`,
+        }
+      }
       parts.push({
         type: 'thinking',
         content: part.content,
         ...(stepIndex !== undefined ? { stepIndex: stepIndex as number } : {}),
+        ...(durationMs !== undefined ? { durationMs: durationMs as number } : {}),
       })
       continue
     }
@@ -711,7 +724,11 @@ export function agentStepsToChatParts(steps: AgentStep[]): ChatMessagePart[] {
     }
 
     if (step.type === 'thinking') {
-      parts.push({ type: 'thinking', content: step.summary })
+      parts.push({
+        type: 'thinking',
+        content: step.summary,
+        ...(step.durationMs !== undefined ? { durationMs: step.durationMs } : {}),
+      })
       continue
     }
 

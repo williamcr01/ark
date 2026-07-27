@@ -154,6 +154,101 @@ describe('usePreviewBridgeSession', () => {
     expect(onCompromised).toHaveBeenCalledWith('invalid-handshake')
   })
 
+  it('ignores stale-frame handshakes when frameRef is provided (rapid remount race)', () => {
+    const onCompromised = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const currentFrame = document.createElement('iframe')
+    const previousFrame = document.createElement('iframe')
+    container.appendChild(currentFrame)
+    container.appendChild(previousFrame)
+    const frameRef = createRef<HTMLIFrameElement>() as React.RefObject<HTMLIFrameElement | null>
+    frameRef.current = currentFrame
+
+    try {
+      const { result } = renderHook(() =>
+        usePreviewBridgeSession('gen-2', {
+          enabled: true,
+          handshake: 'hs-new',
+          frameRef,
+          sandboxOrigin: null,
+          onCompromised,
+        }),
+      )
+
+      act(() => {
+        result.current.onFrameLoad()
+      })
+
+      // In-flight sentinel retry from the previous iframe generation carries
+      // the old handshake value; it must be ignored, not compromise gen-2.
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: createDeckHandshakeMessage('hs-old'),
+            origin: window.location.origin,
+            source: previousFrame.contentWindow,
+          }),
+        )
+      })
+
+      expect(result.current.compromised).toBe(false)
+      expect(onCompromised).not.toHaveBeenCalled()
+
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: createDeckHandshakeMessage('hs-new'),
+            origin: window.location.origin,
+            source: currentFrame.contentWindow,
+          }),
+        )
+      })
+
+      expect(result.current.phase).toBe('armed')
+      expect(result.current.canPostToFrame()).toBe(true)
+    } finally {
+      container.remove()
+    }
+  })
+
+  it('still compromises on a wrong handshake from the live frame', () => {
+    const onCompromised = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const currentFrame = document.createElement('iframe')
+    container.appendChild(currentFrame)
+    const frameRef = createRef<HTMLIFrameElement>() as React.RefObject<HTMLIFrameElement | null>
+    frameRef.current = currentFrame
+
+    try {
+      const { result } = renderHook(() =>
+        usePreviewBridgeSession('gen-1', {
+          enabled: true,
+          handshake: 'expected',
+          frameRef,
+          sandboxOrigin: null,
+          onCompromised,
+        }),
+      )
+
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: createDeckHandshakeMessage('forged'),
+            origin: window.location.origin,
+            source: currentFrame.contentWindow,
+          }),
+        )
+      })
+
+      expect(result.current.compromised).toBe(true)
+      expect(onCompromised).toHaveBeenCalledWith('invalid-handshake')
+    } finally {
+      container.remove()
+    }
+  })
+
   it('marks compromised when handshake never arrives after load', () => {
     const onCompromised = vi.fn()
     const { result } = renderHook(() =>

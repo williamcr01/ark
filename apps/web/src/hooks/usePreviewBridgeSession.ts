@@ -13,6 +13,12 @@ export type PreviewBridgeSessionOptions = {
    * Empty/null keeps the session awaiting until timeout (then compromised).
    */
   handshake?: string | null
+  /**
+   * Live preview iframe. When set, handshake messages posted by any other
+   * window (e.g. a just-replaced previous frame generation) are ignored
+   * instead of compromising the new session.
+   */
+  frameRef?: RefObject<HTMLIFrameElement | null>
   sandboxOrigin?: string | null
   /** Bounded wait for handshake after a trusted load (ms). */
   handshakeTimeoutMs?: number
@@ -82,6 +88,7 @@ export function usePreviewBridgeSession(
 ): PreviewBridgeSessionResult {
   const enabled = options.enabled ?? true
   const handshake = options.handshake?.trim() ?? ''
+  const frameRef = options.frameRef ?? null
   const sandboxOrigin = options.sandboxOrigin ?? null
   const handshakeTimeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS
   const onCompromised = options.onCompromised
@@ -231,6 +238,14 @@ export function usePreviewBridgeSession(
         return
       }
 
+      // Only judge handshakes posted by the live preview frame. A stale
+      // sentinel retry from a just-replaced frame generation (rapid remounts,
+      // e.g. adding a slide) must not compromise the new session. Synthetic
+      // events (null source) can only come from same-origin page code.
+      if (frameRef && event.source && event.source !== frameRef.current?.contentWindow) {
+        return
+      }
+
       if (!isDeckHandshakeMessage(event.data)) {
         return
       }
@@ -252,7 +267,7 @@ export function usePreviewBridgeSession(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [enabled, iframeKey, markCompromised, sandboxOrigin, tryArm])
+  }, [enabled, frameRef, iframeKey, markCompromised, sandboxOrigin, tryArm])
 
   useEffect(() => {
     return () => {
