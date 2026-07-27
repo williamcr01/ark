@@ -1,10 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 
-import {
-  MAX_CHAT_ATTACHMENTS,
-  toChatAttachments,
-  type ChatAttachment,
-} from '@ark/deck-core/chat.ts'
+import { toChatAttachments, type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
@@ -39,10 +35,44 @@ import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.t
 import { buildUndoRedoVersionOptions } from '@/lib/undo-redo-version-options'
 import { toEditorSelectionContext } from '@/lib/editor-selection-context'
 import type { PatchDeckResponse } from '@/lib/deck-api'
+import { uploadDeckAsset } from '@/lib/asset-api'
 import {
   startRevealThumbnailStylesPreload,
   waitForRevealThumbnailStylesPreload,
 } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
+
+async function uploadPromptAttachments(
+  deckId: string,
+  files: PromptInputMessage['files'],
+): Promise<ChatAttachment[]> {
+  const attachments = new Array<ChatAttachment>(files.length)
+  let nextIndex = 0
+
+  async function uploadNext(): Promise<void> {
+    const index = nextIndex
+    nextIndex += 1
+    const file = files[index]
+    if (!file) return
+
+    const asset = await uploadDeckAsset(deckId, {
+      filename: file.filename ?? 'attachment',
+      mediaType: file.mediaType,
+      data: file.url,
+    })
+    attachments[index] = {
+      type: 'file',
+      mediaType: asset.mediaType,
+      filename: asset.filename,
+      url: asset.url,
+      assetId: asset.id,
+    }
+    await uploadNext()
+  }
+
+  const workerCount = Math.min(3, files.length)
+  await Promise.all(Array.from({ length: workerCount }, uploadNext))
+  return attachments
+}
 
 function App() {
   const {
@@ -292,7 +322,6 @@ function App() {
   }, [])
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
-    const promptAttachments = toChatAttachments(message.files)
     const selectedDeckAttachments: ChatAttachment[] = deckId
       ? selectedAssetIds
           .map((id) => deckAssets.find((asset) => asset.id === id))
@@ -305,28 +334,36 @@ function App() {
             assetId: asset.id,
           }))
       : []
-    const attachments = [...selectedDeckAttachments, ...promptAttachments]
-    const hasContent = Boolean(message.text.trim() || attachments.length > 0)
+    const hasAttachments = selectedDeckAttachments.length > 0 || message.files.length > 0
+    const hasContent = Boolean(message.text.trim() || hasAttachments)
 
     if (!hasContent || !canGenerate) {
       return
     }
 
     const selectedModelInfo = models.find((model) => model.id === selectedModel)
-    if (selectedModelInfo?.supportsAttachments === false && attachments.length > 0) {
+    if (selectedModelInfo?.supportsAttachments === false && hasAttachments) {
       setAttachmentError(
         `${selectedModelInfo.name ?? selectedModelInfo.modelId} is text-only and does not support attachments.`,
       )
       return
     }
 
-    if (attachments.length > MAX_CHAT_ATTACHMENTS) {
-      setAttachmentError(`You can attach up to ${MAX_CHAT_ATTACHMENTS} files per message.`)
-      return
-    }
+    // Bound concurrency so large selections upload promptly without flooding the browser or API.
+    const promptAttachments = deckId
+      ? await uploadPromptAttachments(deckId, message.files)
+      : toChatAttachments(message.files)
 
+    const attachments = [...selectedDeckAttachments, ...promptAttachments]
     setInput('')
-    const assetIds = deckId ? selectedAssetIds : []
+    const assetIds = deckId
+      ? [
+          ...new Set([
+            ...selectedAssetIds,
+            ...promptAttachments.flatMap((item) => (item.assetId ? [item.assetId] : [])),
+          ]),
+        ]
+      : []
     const editorSelection = toEditorSelectionContext(editorSelectionRef.current)
     await generateDeck(message.text, attachments, {
       assetIds,

@@ -5,7 +5,6 @@ import {
   MAX_ASSET_UPLOAD_BYTES,
   isAllowedAssetMediaType,
 } from '@ark/deck-core/assets.ts'
-import { MAX_CHAT_ATTACHMENTS } from '@ark/deck-core/chat.ts'
 import {
   deleteAsset as deleteAssetRequest,
   listDeckAssets,
@@ -47,7 +46,7 @@ function reduceAssetSelection(
 ): AssetSelectionState {
   switch (action.type) {
     case 'add':
-      return state.ids.includes(action.assetId) || state.ids.length >= MAX_CHAT_ATTACHMENTS
+      return state.ids.includes(action.assetId)
         ? state
         : { ...state, ids: [...state.ids, action.assetId] }
     case 'clear':
@@ -60,13 +59,6 @@ function reduceAssetSelection(
     case 'toggle':
       if (state.ids.includes(action.assetId)) {
         return { ids: state.ids.filter((id) => id !== action.assetId), error: '' }
-      }
-
-      if (state.ids.length >= MAX_CHAT_ATTACHMENTS) {
-        return {
-          ...state,
-          error: `You can include up to ${MAX_CHAT_ATTACHMENTS} deck assets per message.`,
-        }
       }
 
       return { ids: [...state.ids, action.assetId], error: '' }

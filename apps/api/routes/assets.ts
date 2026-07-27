@@ -24,7 +24,7 @@ export type AssetsRouterDeps = {
 // upload body limit must exceed MAX_ASSET_UPLOAD_BYTES plus that overhead. This
 // route parses its own body so the global (smaller) JSON limit does not reject
 // legitimate max-size uploads before validation runs.
-const ASSET_UPLOAD_JSON_LIMIT = '24mb'
+const ASSET_UPLOAD_JSON_LIMIT = '72mb'
 
 function sendAssetBytes(response: Response, record: AssetRecord, bytes: Buffer) {
   response.setHeader('Content-Type', record.mediaType)

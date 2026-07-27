@@ -21,8 +21,8 @@ export type ChatAttachment = {
   assetId?: string
 }
 
-export const MAX_CHAT_ATTACHMENTS = 5
-export const MAX_CHAT_ATTACHMENT_BYTES = 2 * 1024 * 1024
+export const MAX_CHAT_ATTACHMENT_BYTES = 50 * 1024 * 1024
+export const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 50 * 1024 * 1024
 
 const CHAT_MESSAGE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -278,14 +278,8 @@ export const parseChatAttachments = (
     return { ok: false, error: `messages[${messageIndex}].attachments must be an array.` }
   }
 
-  if (input.length > MAX_CHAT_ATTACHMENTS) {
-    return {
-      ok: false,
-      error: `messages[${messageIndex}] has too many attachments (max ${MAX_CHAT_ATTACHMENTS}).`,
-    }
-  }
-
   const attachments: ChatAttachment[] = []
+  let totalInlineBytes = 0
 
   for (const [attachmentIndex, item] of input.entries()) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
@@ -358,6 +352,13 @@ export const parseChatAttachments = (
         return {
           ok: false,
           error: `messages[${messageIndex}].attachments[${attachmentIndex}] exceeds the ${MAX_CHAT_ATTACHMENT_BYTES} byte limit.`,
+        }
+      }
+      totalInlineBytes += estimatedBytes
+      if (totalInlineBytes > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
+        return {
+          ok: false,
+          error: `messages[${messageIndex}].attachments exceed the ${MAX_CHAT_ATTACHMENT_TOTAL_BYTES} byte combined inline limit.`,
         }
       }
     }

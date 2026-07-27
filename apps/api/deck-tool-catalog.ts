@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto'
 
 import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/deck-core/chat.ts'
 import type { Logger } from './observability/logger.ts'
-import { createDeckTools, type DeckVersionInspector } from './deck-tools.ts'
+import {
+  createDeckTools,
+  type DeckAttachmentInspector,
+  type DeckVersionInspector,
+} from './deck-tools.ts'
 import type { DeckWorkspace } from './deck-workspace.ts'
 
 export type DeckToolDefinition = {
@@ -233,6 +237,14 @@ const metadata = {
     mutating: false,
     snippet: 'list_versions({ limit })',
   },
+  list_attachments: {
+    mutating: false,
+    snippet: 'list_attachments()',
+  },
+  read_attachment: {
+    mutating: false,
+    snippet: 'read_attachment({ id, offset, limit })',
+  },
 } as const
 
 const transcriptProjectors = {
@@ -268,6 +280,14 @@ const transcriptProjectors = {
     input: (value: unknown) => projectReadOnly('list_versions', value),
     output: (value: unknown) => projectReadOnly('list_versions', value),
   },
+  list_attachments: {
+    input: (value: unknown) => projectReadOnly('list_attachments', value),
+    output: (value: unknown) => projectReadOnly('list_attachments', value),
+  },
+  read_attachment: {
+    input: (value: unknown) => projectReadOnly('read_attachment', value),
+    output: (value: unknown) => projectReadOnly('read_attachment', value),
+  },
 } satisfies Record<
   keyof typeof metadata,
   {
@@ -278,7 +298,11 @@ const transcriptProjectors = {
 
 export function createActiveDeckTools(
   workspace: DeckWorkspace,
-  options: { logger?: Logger; versionInspector?: DeckVersionInspector } = {},
+  options: {
+    logger?: Logger
+    versionInspector?: DeckVersionInspector
+    attachmentInspector?: DeckAttachmentInspector
+  } = {},
 ) {
   const rawTools = createDeckTools(workspace, options)
   const activeDefinitions = Object.entries(rawTools).map(([name, registeredTool]) => {

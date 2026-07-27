@@ -15,7 +15,7 @@ export type AssetSource = 'upload' | 'screenshot' | 'proxy'
 export const ASSET_SOURCES: readonly AssetSource[] = ['upload', 'screenshot', 'proxy']
 
 /** Hard upper bound for a single uploaded asset. */
-export const MAX_ASSET_UPLOAD_BYTES = 10 * 1024 * 1024
+export const MAX_ASSET_UPLOAD_BYTES = 50 * 1024 * 1024
 
 export const MAX_ASSET_FILENAME_LENGTH = 200
 

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_ASSET_UPLOAD_BYTES } from '@ark/deck-core/assets.ts'
 
 import {
   computeChecksum,
   decodeAssetPayload,
+  isAssetUploadTooLarge,
   sniffMatchesMediaType,
   validateAssetUpload,
 } from './asset-validate.ts'
@@ -119,15 +121,8 @@ describe('validateAssetUpload', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'content_mismatch' } })
   })
 
-  it('rejects oversized files', () => {
-    const huge = Buffer.alloc(11 * 1024 * 1024)
-    PNG_BYTES.copy(huge)
-    const result = validateAssetUpload({
-      filename: 'logo.png',
-      mediaType: 'image/png',
-      data: huge.toString('base64'),
-    })
-
-    expect(result).toMatchObject({ ok: false, error: { code: 'too_large' } })
+  it('enforces the upload byte boundary', () => {
+    expect(isAssetUploadTooLarge(MAX_ASSET_UPLOAD_BYTES)).toBe(false)
+    expect(isAssetUploadTooLarge(MAX_ASSET_UPLOAD_BYTES + 1)).toBe(true)
   })
 })

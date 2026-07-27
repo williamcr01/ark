@@ -13,6 +13,7 @@ import type {
 } from '@ark/deck-core/generation-job.ts'
 import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark/contracts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
+import { buildAssetUrl } from '@ark/deck-core/assets.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { computeDeckVersionDiff } from './deck-diff.ts'
@@ -22,7 +23,7 @@ import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import { type ChatStore } from './chat-record.ts'
 import { resolveAssetAttachments } from './asset-resolve.ts'
 import { type AssetStorage } from './asset-storage.ts'
-import { type AssetStore } from './asset-record.ts'
+import { type AssetRecord, type AssetStore } from './asset-record.ts'
 import {
   ensureChatThreadForJob,
   formatTerminalGenerationChatContent,
@@ -201,6 +202,7 @@ export function createGenerationJobRunner({
       const { model, provider } = createModel(currentJob.model)
 
       let modelMessages = currentJob.request.messages
+      let attachmentInspector: Parameters<typeof runDeckAgent>[0]['attachmentInspector']
 
       const historyAssetIds = collectAssetIdsFromMessages(currentJob.request.messages)
       const latestTurnAssetIds = currentJob.assetIds ?? []
@@ -214,9 +216,39 @@ export function createGenerationJobRunner({
         )
 
         if (resolved.ok) {
+          const records = (
+            await Promise.all(allAssetIds.map(async (id) => assetStore.getAsset(id)))
+          ).filter((record): record is AssetRecord => Boolean(record?.deckId === currentJob.deckId))
+          const recordsById = new Map(records.map((record) => [record.id, record]))
+          attachmentInspector = {
+            attachments: records.map((record) => ({
+              id: record.id,
+              filename: record.filename,
+              mediaType: record.mediaType,
+              byteSize: record.byteSize,
+              url: buildAssetUrl(currentJob.deckId!, record.id),
+            })),
+            read: async (id) => {
+              const record = recordsById.get(id)
+              return record ? assetStorage.read(record.storageKey) : null
+            },
+          }
+          const modelAttachments = new Map(
+            [...resolved.byId].map(([id, attachment]) => {
+              const record = recordsById.get(id)
+              const isReadableText =
+                record?.mediaType.startsWith('text/') || record?.mediaType === 'application/json'
+              return [
+                id,
+                isReadableText
+                  ? { ...attachment, url: buildAssetUrl(currentJob.deckId!, id) }
+                  : attachment,
+              ]
+            }),
+          )
           modelMessages = prepareMessagesForModel(
             currentJob.request.messages,
-            resolved.byId,
+            modelAttachments,
             latestTurnAssetIds,
           )
         }
@@ -232,6 +264,7 @@ export function createGenerationJobRunner({
         reasoningEffort: currentJob.request.reasoningEffort,
         abortSignal: abortController.signal,
         logger: jobLogger,
+        attachmentInspector,
         versionInspector:
           currentJob.request.editingExistingDeck && currentJob.deckId
             ? {
@@ -556,8 +589,7 @@ export function createGenerationJobRunner({
         )
       }
 
-      const succeededJob = await jobStore.updateJob(jobId, {
-        status: 'succeeded',
+      const preparedJob = await jobStore.updateJob(jobId, {
         deckId: createdDeck.id,
         progress: {
           steps: agentResult.steps,
@@ -572,17 +604,10 @@ export function createGenerationJobRunner({
           assistantText: agentResult.assistantText,
         },
         observability,
-        completedAt: now().toISOString(),
       })
 
-      jobLogger.info('generation.job.succeeded', {
-        durationMs: observability.durationMs,
-        stepCount: agentResult.steps.length,
-        tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
-      })
-
-      if (succeededJob) {
-        await persistTerminalAssistantMessage(succeededJob, {
+      if (preparedJob) {
+        await persistTerminalAssistantMessage(preparedJob, {
           status: 'succeeded',
           steps: agentResult.steps,
           transcriptParts: agentResult.transcriptParts,
@@ -591,6 +616,17 @@ export function createGenerationJobRunner({
           deckVersionId: createdDeck.activeVersionId ?? null,
         })
       }
+
+      await jobStore.updateJob(jobId, {
+        status: 'succeeded',
+        completedAt: now().toISOString(),
+      })
+
+      jobLogger.info('generation.job.succeeded', {
+        durationMs: observability.durationMs,
+        stepCount: agentResult.steps.length,
+        tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+      })
 
       notifyVersionPersisted(createdDeck.id, createdDeck.activeVersionId)
     } catch (error) {

@@ -24,6 +24,19 @@ export type DeckVersionInspector = {
   listVersions: (limit?: number) => Promise<DeckVersionSummary[]>
 }
 
+export type DeckAttachmentSummary = {
+  id: string
+  filename: string
+  mediaType: string
+  byteSize: number
+  url: string
+}
+
+export type DeckAttachmentInspector = {
+  attachments: readonly DeckAttachmentSummary[]
+  read: (id: string) => Promise<Buffer | null>
+}
+
 const editSchema = z.object({
   oldText: z
     .string()
@@ -67,9 +80,13 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
 
 export function createDeckTools(
   workspace: DeckWorkspace,
-  options: { logger?: Logger; versionInspector?: DeckVersionInspector } = {},
+  options: {
+    logger?: Logger
+    versionInspector?: DeckVersionInspector
+    attachmentInspector?: DeckAttachmentInspector
+  } = {},
 ) {
-  const { logger, versionInspector } = options
+  const { logger, versionInspector, attachmentInspector } = options
   const timingOptions = logger ? { logger } : {}
   const baseTools = {
     parse_deck: tool({
@@ -353,45 +370,96 @@ export function createDeckTools(
     }),
   }
 
-  if (!versionInspector) {
-    return baseTools
-  }
-
   return {
     ...baseTools,
-    list_versions: tool({
-      description:
-        'List recent deck versions with source, summary, model, structural diff, and compact provenance metadata. Never returns full HTML snapshots. Use before large rewrites or when the user asks what changed.',
-      inputSchema: z.object({
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(20)
-          .optional()
-          .describe('Maximum versions to return (default 10, max 20).'),
-      }),
-      execute: async ({ limit = 10 }) => {
-        const versions = await versionInspector.listVersions(Math.min(limit, 20))
-
-        return {
-          versionCount: versions.length,
-          versions: versions.map((version) => ({
-            versionNumber: version.versionNumber,
-            source: version.source,
-            summary:
-              typeof version.summary === 'string'
-                ? truncateDeckVersionSummary(version.summary)
-                : version.summary,
-            createdAt: version.createdAt,
-            validationStatus: version.validationStatus,
-            modelName: version.modelName ?? null,
-            diff: compactVersionDiffForAgent(version.diff),
-            provenance: compactVersionProvenanceForAgent(version.provenance),
-          })),
+    ...(attachmentInspector
+      ? {
+          list_attachments: tool({
+            description:
+              'List all files attached to this deck conversation. Use before reading reference material or placing attached images in the deck.',
+            inputSchema: z.object({}),
+            execute: async () => ({
+              attachmentCount: attachmentInspector.attachments.length,
+              attachments: attachmentInspector.attachments,
+            }),
+          }),
+          read_attachment: tool({
+            description:
+              'Read a UTF-8 text, CSV, Markdown, or JSON attachment by byte offset. For binary files, returns metadata and the Ark URL that can be placed in the deck.',
+            inputSchema: z.object({
+              id: z.string().describe('Attachment id from list_attachments.'),
+              offset: z.number().int().min(0).optional().describe('UTF-8 byte offset.'),
+              limit: z
+                .number()
+                .int()
+                .min(1)
+                .max(64 * 1024)
+                .optional()
+                .describe('Maximum bytes to return, up to 64 KiB.'),
+            }),
+            execute: async ({ id, offset = 0, limit = 32 * 1024 }) => {
+              const attachment = attachmentInspector.attachments.find((item) => item.id === id)
+              if (!attachment) return { error: 'Attachment not found.' }
+              if (
+                !attachment.mediaType.startsWith('text/') &&
+                attachment.mediaType !== 'application/json'
+              ) {
+                return {
+                  ...attachment,
+                  binary: true,
+                  message: 'Binary attachment. Use its Ark URL when placing it in the deck.',
+                }
+              }
+              const bytes = await attachmentInspector.read(id)
+              if (!bytes) return { error: 'Attachment bytes are unavailable.' }
+              const end = Math.min(bytes.length, offset + limit)
+              return {
+                ...attachment,
+                offset,
+                nextOffset: end < bytes.length ? end : undefined,
+                content: bytes.subarray(offset, end).toString('utf8'),
+              }
+            },
+          }),
         }
-      },
-    }),
+      : {}),
+    ...(versionInspector
+      ? {
+          list_versions: tool({
+            description:
+              'List recent deck versions with source, summary, model, structural diff, and compact provenance metadata. Never returns full HTML snapshots. Use before large rewrites or when the user asks what changed.',
+            inputSchema: z.object({
+              limit: z
+                .number()
+                .int()
+                .min(1)
+                .max(20)
+                .optional()
+                .describe('Maximum versions to return (default 10, max 20).'),
+            }),
+            execute: async ({ limit = 10 }) => {
+              const versions = await versionInspector.listVersions(Math.min(limit, 20))
+
+              return {
+                versionCount: versions.length,
+                versions: versions.map((version) => ({
+                  versionNumber: version.versionNumber,
+                  source: version.source,
+                  summary:
+                    typeof version.summary === 'string'
+                      ? truncateDeckVersionSummary(version.summary)
+                      : version.summary,
+                  createdAt: version.createdAt,
+                  validationStatus: version.validationStatus,
+                  modelName: version.modelName ?? null,
+                  diff: compactVersionDiffForAgent(version.diff),
+                  provenance: compactVersionProvenanceForAgent(version.provenance),
+                })),
+              }
+            },
+          }),
+        }
+      : {}),
   }
 }
 

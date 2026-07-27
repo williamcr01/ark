@@ -337,18 +337,19 @@ export function useDeckSlideNavigation(
         return
       }
 
+      // Capture phase + preventDefault so focused chrome (e.g. the chat
+      // panel resize separator) cannot consume arrows for layout changes.
       event.preventDefault()
-      event.stopPropagation()
 
       if (targetIndex !== activeSlideIndexRef.current) {
         goToSlide(targetIndex)
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, true)
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keydown', handleKeyDown, true)
     }
   }, [enabled, goToSlide, keyboardMode, shouldSuspendKeyboard, slideCount])
 
