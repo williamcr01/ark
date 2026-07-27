@@ -11,7 +11,9 @@ import {
   createEditorSelectMessage,
   createEditorSetToolMessage,
   createEditorStartTextEditMessage,
+  createEditorAssignIdMessage,
   createEditorTransformCancelMessage,
+  createEditorTransformEndMessage,
   isEditorErrorMessage,
   isEditorGeometryMessage,
   isEditorHoverMessage,
@@ -199,15 +201,20 @@ export function useDeckEditorBridge(
       return
     }
 
+    // pointerup outside the iframe should commit the last geometry (PowerPoint-
+    // style). Only true cancellation (pointercancel) restores the snapshot.
+    const endTransform = () => {
+      postToFrame(createEditorTransformEndMessage())
+    }
     const cancelTransform = () => {
       postToFrame(createEditorTransformCancelMessage())
     }
 
-    window.addEventListener('pointerup', cancelTransform, true)
+    window.addEventListener('pointerup', endTransform, true)
     window.addEventListener('pointercancel', cancelTransform, true)
 
     return () => {
-      window.removeEventListener('pointerup', cancelTransform, true)
+      window.removeEventListener('pointerup', endTransform, true)
       window.removeEventListener('pointercancel', cancelTransform, true)
     }
   }, [enabled, postToFrame])
@@ -280,6 +287,12 @@ export function useDeckEditorBridge(
 
   const setTool = useCallback(
     (tool: EditorTool) => postToFrame(createEditorSetToolMessage(tool)),
+    [postToFrame],
+  )
+
+  const assignElementId = useCallback(
+    (fromElementId: string, toElementId: string, slideIndex: number, managed?: boolean) =>
+      postToFrame(createEditorAssignIdMessage(fromElementId, toElementId, slideIndex, managed)),
     [postToFrame],
   )
 
@@ -382,11 +395,29 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorTransformPreviewMessage(data)) {
-        setState((current) => ({
-          ...current,
-          transformPreview: data,
-          transformCommit: null,
-        }))
+        setState((current) => {
+          if (current.selection?.elementId !== data.elementId) {
+            return {
+              ...current,
+              transformPreview: data,
+              transformCommit: null,
+            }
+          }
+
+          return {
+            ...current,
+            transformPreview: data,
+            transformCommit: null,
+            // Keep overlay geometry in the same update so chrome does not lag a
+            // frame behind the iframe transform preview.
+            geometry: data.geometry,
+            slideBounds: data.slideBounds ?? current.slideBounds,
+            selectionZIndex:
+              data.zIndex !== undefined && data.zIndex !== null
+                ? data.zIndex
+                : current.selectionZIndex,
+          }
+        })
         return
       }
 
@@ -567,5 +598,6 @@ export function useDeckEditorBridge(
     startTextEdit,
     cancelTextEdit,
     setTool,
+    assignElementId,
   }
 }

@@ -321,6 +321,7 @@ export function DeckPreview({
     startTextEdit,
     cancelTextEdit,
     setTool,
+    assignElementId,
   } = useDeckEditorBridge(iframeRef, {
     enabled: editorBridgeActive && bridgeEnabled,
     activeSlideIndex,
@@ -422,6 +423,7 @@ export function DeckPreview({
     finishLivePatch: finishPreviewSourcePatch,
     goToSlide,
     rollbackLivePatch: reloadCanonicalPreview,
+    onAssignElementId: assignElementId,
   })
 
   const beginTextEdit = useCallback(() => {

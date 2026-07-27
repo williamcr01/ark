@@ -18,6 +18,8 @@ export const ARK_MANAGED_ATTR = 'data-ark-managed' as const
 
 export const TRANSIENT_SLIDE_ID_PREFIX = 'transient-slide-' as const
 export const TRANSIENT_ELEMENT_ID_PREFIX = 'transient-el-' as const
+/** Prefix for durable `data-ark-id` values stamped by the element patch path. */
+export const STABLE_ELEMENT_ID_PREFIX = 'ark-el-' as const
 
 /** Canonical slide size for converting normalized editor geometry to inline CSS. */
 export const ARK_SLIDE_REFERENCE_WIDTH = 1280 as const

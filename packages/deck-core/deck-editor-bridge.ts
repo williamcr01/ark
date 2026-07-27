@@ -50,6 +50,10 @@ export const EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE = 'ark:editor-text-edit-state' 
 export const EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE = 'ark:editor-transform-preview' as const
 export const EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE = 'ark:editor-transform-commit' as const
 export const EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE = 'ark:editor-transform-cancel' as const
+/** Parent observed pointer release — commit if the gesture started, else clear. */
+export const EDITOR_TRANSFORM_END_MESSAGE_TYPE = 'ark:editor-transform-end' as const
+/** Stamp a stable data-ark-id onto a live element after a successful live patch. */
+export const EDITOR_ASSIGN_ID_MESSAGE_TYPE = 'ark:editor-assign-id' as const
 export const EDITOR_DELETE_REQUEST_MESSAGE_TYPE = 'ark:editor-delete-request' as const
 export const EDITOR_INSERT_REQUEST_MESSAGE_TYPE = 'ark:editor-insert-request' as const
 export const EDITOR_ERROR_MESSAGE_TYPE = 'ark:editor-error' as const
@@ -65,6 +69,8 @@ export const EDITOR_SHELL_MESSAGE_TYPES = [
   EDITOR_REQUEST_GEOMETRY_MESSAGE_TYPE,
   EDITOR_SET_TOOL_MESSAGE_TYPE,
   EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE,
+  EDITOR_TRANSFORM_END_MESSAGE_TYPE,
+  EDITOR_ASSIGN_ID_MESSAGE_TYPE,
 ] as const
 
 export const EDITOR_RUNTIME_MESSAGE_TYPES = [
@@ -285,6 +291,19 @@ export type EditorTransformCancelMessage = {
   type: typeof EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE
 }
 
+export type EditorTransformEndMessage = {
+  type: typeof EDITOR_TRANSFORM_END_MESSAGE_TYPE
+}
+
+export type EditorAssignIdMessage = {
+  type: typeof EDITOR_ASSIGN_ID_MESSAGE_TYPE
+  fromElementId: string
+  toElementId: string
+  slideIndex: number
+  /** When true, also stamp data-ark-managed="true" (adopted layout). */
+  managed?: boolean
+}
+
 export type EditorShortcutMessage = {
   type: typeof EDITOR_SHORTCUT_MESSAGE_TYPE
   action: EditorShortcutAction
@@ -322,6 +341,8 @@ export type EditorShellMessage =
   | EditorRequestGeometryMessage
   | EditorSetToolMessage
   | EditorTransformCancelMessage
+  | EditorTransformEndMessage
+  | EditorAssignIdMessage
 
 export type EditorRuntimeMessage =
   | EditorReadyMessage
@@ -645,6 +666,24 @@ export function isEditorTransformCancelMessage(
   return isRecord(value) && value.type === EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE
 }
 
+export function isEditorTransformEndMessage(value: unknown): value is EditorTransformEndMessage {
+  return isRecord(value) && value.type === EDITOR_TRANSFORM_END_MESSAGE_TYPE
+}
+
+export function isEditorAssignIdMessage(value: unknown): value is EditorAssignIdMessage {
+  return (
+    isRecord(value) &&
+    value.type === EDITOR_ASSIGN_ID_MESSAGE_TYPE &&
+    typeof value.fromElementId === 'string' &&
+    value.fromElementId.trim().length > 0 &&
+    typeof value.toElementId === 'string' &&
+    value.toElementId.trim().length > 0 &&
+    typeof value.slideIndex === 'number' &&
+    Number.isFinite(value.slideIndex) &&
+    (value.managed === undefined || typeof value.managed === 'boolean')
+  )
+}
+
 export function isEditorDeleteRequestMessage(value: unknown): value is EditorDeleteRequestMessage {
   return (
     isRecord(value) && value.type === EDITOR_DELETE_REQUEST_MESSAGE_TYPE && hasElementTarget(value)
@@ -681,7 +720,9 @@ export function isEditorShellMessage(value: unknown): value is EditorShellMessag
     isEditorCancelTextEditMessage(value) ||
     isEditorRequestGeometryMessage(value) ||
     isEditorSetToolMessage(value) ||
-    isEditorTransformCancelMessage(value)
+    isEditorTransformCancelMessage(value) ||
+    isEditorTransformEndMessage(value) ||
+    isEditorAssignIdMessage(value)
   )
 }
 
@@ -905,6 +946,25 @@ export function createEditorTransformCancelMessage(): EditorTransformCancelMessa
   return { type: EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE }
 }
 
+export function createEditorTransformEndMessage(): EditorTransformEndMessage {
+  return { type: EDITOR_TRANSFORM_END_MESSAGE_TYPE }
+}
+
+export function createEditorAssignIdMessage(
+  fromElementId: string,
+  toElementId: string,
+  slideIndex: number,
+  managed?: boolean,
+): EditorAssignIdMessage {
+  return {
+    type: EDITOR_ASSIGN_ID_MESSAGE_TYPE,
+    fromElementId,
+    toElementId,
+    slideIndex,
+    ...(managed ? { managed: true } : {}),
+  }
+}
+
 export function createEditorDeleteRequestMessage(
   elementId: string,
   slideIndex: number,
@@ -975,6 +1035,8 @@ export function buildDeckEditorBridgeRuntimeScript(
     TRANSFORM_PREVIEW: EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
     TRANSFORM_COMMIT: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
     TRANSFORM_CANCEL: EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE,
+    TRANSFORM_END: EDITOR_TRANSFORM_END_MESSAGE_TYPE,
+    ASSIGN_ID: EDITOR_ASSIGN_ID_MESSAGE_TYPE,
     DELETE_REQUEST: EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
     INSERT_REQUEST: EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
     ERROR: EDITOR_ERROR_MESSAGE_TYPE,
@@ -1036,6 +1098,8 @@ export function buildDeckEditorBridgeRuntimeScript(
   var hoveredElement = null;
   var editorStyle = null;
   var nudgeState = null;
+  var hoverRafId = 0;
+  var pendingHover = null;
 
   function isRecord(value) {
     return typeof value === 'object' && value !== null;
@@ -1797,12 +1861,40 @@ export function buildDeckEditorBridgeRuntimeScript(
 
   function clearGuides() {
     for (var i = 0; i < guideElements.length; i++) {
+      guideElements[i].style.display = 'none';
+    }
+  }
+
+  function destroyGuides() {
+    for (var i = 0; i < guideElements.length; i++) {
       if (guideElements[i].parentElement) {
         guideElements[i].parentElement.removeChild(guideElements[i]);
       }
     }
 
     guideElements = [];
+  }
+
+  function ensureGuide(slide, axis) {
+    var index = axis === 'x' ? 0 : 1;
+    var guide = guideElements[index];
+
+    if (!guide) {
+      guide = document.createElement('div');
+      guide.setAttribute('data-ark-editor-guide', 'true');
+      guide.style.position = 'absolute';
+      guide.style.pointerEvents = 'none';
+      guide.style.background = '#ef4444';
+      guide.style.zIndex = '10001';
+      guideElements[index] = guide;
+    }
+
+    if (guide.parentElement !== getSlideCoordinateElement(slide)) {
+      getSlideCoordinateElement(slide).appendChild(guide);
+    }
+
+    guide.style.display = 'block';
+    return guide;
   }
 
   function clearHoverCursor() {
@@ -1842,16 +1934,16 @@ export function buildDeckEditorBridgeRuntimeScript(
   function clearEditorOverlays() {
     clearMarquee();
     clearResizeHandles();
-    clearGuides();
+    destroyGuides();
   }
 
-  function updateResizeHandles(element, slide) {
+  function updateResizeHandles(element, slide, geometry) {
     if (!element || !slide || element.getAttribute(C.LOCKED_ATTR) === 'true') {
       clearResizeHandles();
       return;
     }
 
-    var rect = normalizeRect(element, slide);
+    var rect = geometry || normalizeRect(element, slide);
     var overlayRoot = getSlideCoordinateElement(slide);
     var handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
     var cursors = { nw: 'nwse-resize', n: 'ns-resize', ne: 'nesw-resize', e: 'ew-resize', se: 'nwse-resize', s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize' };
@@ -2098,18 +2190,70 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
-  function applyTransform(element, slide, geometry, preview, mode, adopted, positionContext) {
-    var slideRect = getSlideCoordinateRect(slide);
+  function clearLiveTransform(element) {
+    // Only clear transforms we applied for the gesture preview — never wipe an
+    // authored translate(-50%, -50%) (or similar) on the left/top preview path.
+    if (!element.hasAttribute('data-ark-editor-live-transform')) {
+      return;
+    }
+
+    element.style.transform = '';
+    element.style.willChange = '';
+    element.removeAttribute('data-ark-editor-live-transform');
+  }
+
+  function applyLiveMovePreview(element, slide, geometry, startGeometry, positionContext, cache) {
+    var rect = clampRect(geometry);
+    var slideRect = cache.slideRect;
+    var dx = (rect.x - startGeometry.x) * slideRect.width / positionContext.scaleX;
+    var dy = (rect.y - startGeometry.y) * slideRect.height / positionContext.scaleY;
+    element.setAttribute('data-ark-editor-live-transform', '');
+    element.style.willChange = 'transform';
+    element.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+    postToParent({
+      type: C.TRANSFORM_PREVIEW,
+      elementId: resolveElementId(element, slide, currentSlideIndex),
+      slideIndex: currentSlideIndex,
+      geometry: rect,
+      zIndex: cache.zIndex,
+      slideBounds: cache.slideBounds,
+    });
+    updateResizeHandles(element, slide, rect);
+    return rect;
+  }
+
+  function applyTransform(element, slide, geometry, preview, mode, adopted, positionContext, cache) {
+    var slideRect = (cache && cache.slideRect) || getSlideCoordinateRect(slide);
     var rect = clampRect(geometry);
 
     if (!slideRect.width || !slideRect.height) {
       return rect;
     }
 
+    if (preview && mode === 'move' && cache && cache.liveTransform && cache.startGeometry) {
+      return applyLiveMovePreview(
+        element,
+        slide,
+        rect,
+        cache.startGeometry,
+        positionContext,
+        cache,
+      );
+    }
+
+    clearLiveTransform(element);
+
+    if (adopted && !preview) {
+      adoptMove(element, slide, rect, cache && cache.logicalWidth, positionContext, cache);
+      // Flow removal shifts containing-block geometry; remeasure without the
+      // pre-adopt margin cache (adopt zeroes margins).
+      cache = null;
+    }
+
     element.style.position = 'absolute';
     var cssPosition = preview
-      ? setSlideRelativePosition(element, slide, rect, positionContext)
-      : settleSlideRelativePosition(element, slide, rect, positionContext);
+      ? setSlideRelativePosition(element, slide, rect, positionContext, cache)
+      : settleSlideRelativePosition(element, slide, rect, positionContext, cache);
 
     // A pure move must not touch the element size. Only rewrite width/height
     // during a resize, otherwise elements sized with an explicit height would
@@ -2135,12 +2279,13 @@ export function buildDeckEditorBridgeRuntimeScript(
         elementId: resolveElementId(element, slide, currentSlideIndex),
         slideIndex: currentSlideIndex,
         geometry: rect,
-        zIndex: readZIndex(element),
-        slideBounds: normalizeSlideBounds(slide),
+        zIndex: cache && cache.zIndex != null ? cache.zIndex : readZIndex(element),
+        slideBounds: (cache && cache.slideBounds) || normalizeSlideBounds(slide),
       });
+      updateResizeHandles(element, slide, rect);
     } else {
-      var logicalSlideWidth = getSlideLogicalWidth(slide);
-      var logicalSlideHeight = getSlideLogicalHeight(slide);
+      var logicalSlideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide);
+      var logicalSlideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide);
       postToParent({
         type: C.TRANSFORM_COMMIT,
         elementId: resolveElementId(element, slide, currentSlideIndex),
@@ -2160,9 +2305,9 @@ export function buildDeckEditorBridgeRuntimeScript(
         slideWidth: logicalSlideWidth,
         slideHeight: logicalSlideHeight,
       });
+      refreshSelectionChrome(element, slide, currentSlideIndex);
     }
 
-    refreshSelectionChrome(element, slide, currentSlideIndex);
     return rect;
   }
 
@@ -2326,33 +2471,38 @@ export function buildDeckEditorBridgeRuntimeScript(
     return { x: context.scaleX, y: context.scaleY };
   }
 
-  function setSlideRelativePosition(element, slide, geometry, positionContext) {
-    var slideRect = getSlideCoordinateRect(slide);
+  function setSlideRelativePosition(element, slide, geometry, positionContext, cache) {
+    var slideRect = (cache && cache.slideRect) || getSlideCoordinateRect(slide);
     var context = positionContext || readPositionContext(element, slide);
     var containingBlock = context.containingBlock;
-    var blockRect = containingBlock.getBoundingClientRect();
+    var blockRect = (cache && cache.blockRect) || containingBlock.getBoundingClientRect();
     var scaleX = context.scaleX;
     var scaleY = context.scaleY;
-    var style = window.getComputedStyle(element);
-    var marginLeft = Number.parseFloat(style.marginLeft) || 0;
-    var marginTop = Number.parseFloat(style.marginTop) || 0;
+    var marginLeft = cache && cache.marginLeft != null
+      ? cache.marginLeft
+      : Number.parseFloat(window.getComputedStyle(element).marginLeft) || 0;
+    var marginTop = cache && cache.marginTop != null
+      ? cache.marginTop
+      : Number.parseFloat(window.getComputedStyle(element).marginTop) || 0;
     var targetLeft = slideRect.left + geometry.x * slideRect.width;
     var targetTop = slideRect.top + geometry.y * slideRect.height;
     var left = (targetLeft - blockRect.left) / scaleX - (containingBlock.clientLeft || 0) +
       (containingBlock.scrollLeft || 0) - marginLeft;
     var top = (targetTop - blockRect.top) / scaleY - (containingBlock.clientTop || 0) +
       (containingBlock.scrollTop || 0) - marginTop;
+    var logicalSlideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide);
+    var logicalSlideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide);
 
     element.style.left = left + 'px';
     element.style.top = top + 'px';
     return {
-      x: left / getSlideLogicalWidth(slide),
-      y: top / getSlideLogicalHeight(slide),
+      x: left / logicalSlideWidth,
+      y: top / logicalSlideHeight,
     };
   }
 
-  function settleSlideRelativePosition(element, slide, geometry, positionContext) {
-    var position = setSlideRelativePosition(element, slide, geometry, positionContext);
+  function settleSlideRelativePosition(element, slide, geometry, positionContext, cache) {
+    var position = setSlideRelativePosition(element, slide, geometry, positionContext, cache);
     var reveal = window.Reveal;
 
     if (
@@ -2365,6 +2515,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     // Reveal centers each section from its scrollHeight. Absolute children can
     // change that height, so converge the local CSS offset before persisting.
+    // Only runs on commit/nudge finish — not during transform-preview frames.
     for (var i = 0; i < 6; i++) {
       reveal.layout();
       position = setSlideRelativePosition(element, slide, geometry, positionContext);
@@ -2373,23 +2524,54 @@ export function buildDeckEditorBridgeRuntimeScript(
     return position;
   }
 
-  function adoptMove(element, slide, geometry, logicalWidth, positionContext) {
+  function refreshPositionCache(cache, element, slide, positionContext) {
+    if (!cache) {
+      return;
+    }
+
+    cache.marginLeft = 0;
+    cache.marginTop = 0;
+    cache.blockRect = positionContext.containingBlock.getBoundingClientRect();
+    cache.slideRect = getSlideCoordinateRect(slide);
+    cache.slideBounds = normalizeSlideBounds(slide);
+  }
+
+  function adoptMove(element, slide, geometry, logicalWidth, positionContext, cache) {
     element.style.position = 'absolute';
     element.style.margin = '0px';
     element.style.boxSizing = 'border-box';
-    element.style.width = logicalWidth + 'px';
-    setSlideRelativePosition(element, slide, geometry, positionContext);
+    element.style.width = (logicalWidth || (cache && cache.logicalWidth) || readLogicalWidth(element, slide)) + 'px';
+    // Adoption zeroes margins and can shift containing-block geometry.
+    refreshPositionCache(cache, element, slide, positionContext);
+    setSlideRelativePosition(element, slide, geometry, positionContext, cache);
   }
 
   function prepareMove(element, slide, activate) {
     var geometry = normalizeRect(element, slide);
     var snapshot = snapshotInlineStyle(element);
-    var adopted = window.getComputedStyle(element).position !== 'absolute';
+    var computed = window.getComputedStyle(element);
+    var adopted = computed.position !== 'absolute';
     var logicalWidth = readLogicalWidth(element, slide);
     var positionContext = readPositionContext(element, slide);
+    var authoredTransform = computed.transform && computed.transform !== 'none';
+    var cache = {
+      startGeometry: geometry,
+      slideRect: getSlideCoordinateRect(slide),
+      slideBounds: normalizeSlideBounds(slide),
+      blockRect: positionContext.containingBlock.getBoundingClientRect(),
+      logicalSlideWidth: getSlideLogicalWidth(slide),
+      logicalSlideHeight: getSlideLogicalHeight(slide),
+      logicalWidth: logicalWidth,
+      zIndex: readZIndex(element),
+      marginLeft: Number.parseFloat(computed.marginLeft) || 0,
+      marginTop: Number.parseFloat(computed.marginTop) || 0,
+      authoredTransform: authoredTransform,
+    };
 
-    if (adopted && activate !== false) {
-      adoptMove(element, slide, geometry, logicalWidth, positionContext);
+    // Resize still needs absolute layout for edge math; moves stay in-flow and
+    // use transform previews until commit so siblings do not reflow mid-drag.
+    if (adopted && activate === true) {
+      adoptMove(element, slide, geometry, logicalWidth, positionContext, cache);
     }
 
     return {
@@ -2398,6 +2580,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       adopted: adopted,
       logicalWidth: logicalWidth,
       positionContext: positionContext,
+      cache: cache,
     };
   }
 
@@ -2438,38 +2621,32 @@ export function buildDeckEditorBridgeRuntimeScript(
     return best;
   }
 
-  function showGuide(slide, axis, position) {
-    var guide = document.createElement('div');
-    guide.setAttribute('data-ark-editor-guide', 'true');
-    guide.style.position = 'absolute';
-    guide.style.pointerEvents = 'none';
-    guide.style.background = '#ef4444';
-    guide.style.zIndex = '10001';
+  function showGuide(slide, axis, position, cache) {
+    var guide = ensureGuide(slide, axis);
+    var slideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide);
+    var slideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide);
 
     if (axis === 'x') {
-      guide.style.left = position * getSlideLogicalWidth(slide) + 'px';
+      guide.style.left = position * slideWidth + 'px';
       guide.style.top = '0';
       guide.style.width = 1 / editorScale + 'px';
       guide.style.height = '100%';
     } else {
       guide.style.left = '0';
-      guide.style.top = position * getSlideLogicalHeight(slide) + 'px';
+      guide.style.top = position * slideHeight + 'px';
       guide.style.width = '100%';
       guide.style.height = 1 / editorScale + 'px';
     }
-
-    getSlideCoordinateElement(slide).appendChild(guide);
-    guideElements.push(guide);
   }
 
-  function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis) {
+  function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis, cache) {
     clearGuides();
 
     if (disabled) {
       return clampRect(rect);
     }
 
-    var slideRect = getSlideCoordinateRect(slide);
+    var slideRect = (cache && cache.slideRect) || getSlideCoordinateRect(slide);
     var xTargets = [0, 0.5, 1];
     var yTargets = [0, 0.5, 1];
 
@@ -2491,12 +2668,12 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (xSnap) {
       rect.x += xSnap.difference;
-      showGuide(slide, 'x', xSnap.target);
+      showGuide(slide, 'x', xSnap.target, cache);
     }
 
     if (ySnap) {
       rect.y += ySnap.difference;
-      showGuide(slide, 'y', ySnap.target);
+      showGuide(slide, 'y', ySnap.target, cache);
     }
 
     return clampRect(rect);
@@ -2565,8 +2742,176 @@ export function buildDeckEditorBridgeRuntimeScript(
     });
   }
 
-  function onPointerMove(event) {
-    if (!enabled || textEditElement) {
+  function pointerFromCache(clientX, clientY, cache, slide) {
+    var slideRect = (cache && cache.slideRect) || getSlideCoordinateRect(slide);
+
+    if (!slideRect.width || !slideRect.height) {
+      return { x: 0, y: 0 };
+    }
+
+    return {
+      x: (clientX - slideRect.left) / slideRect.width,
+      y: (clientY - slideRect.top) / slideRect.height,
+    };
+  }
+
+  function cancelTransformRaf() {
+    if (!transformState || !transformState.rafId) {
+      return;
+    }
+
+    window.cancelAnimationFrame(transformState.rafId);
+    transformState.rafId = 0;
+  }
+
+  function flushTransformPointer(slide) {
+    if (!transformState || !transformState.pendingPointer) {
+      return;
+    }
+
+    var pointer = transformState.pendingPointer;
+    transformState.pendingPointer = null;
+    transformState.rafId = 0;
+    var cache = transformState.cache;
+
+    if (transformState.kind === 'draw') {
+      updateMarquee(
+        transformState.startPoint,
+        pointerFromCache(pointer.clientX, pointer.clientY, cache, slide),
+        slide,
+      );
+      return;
+    }
+
+    if (transformState.kind === 'move' && transformState.element) {
+      var point = pointerFromCache(pointer.clientX, pointer.clientY, cache, slide);
+      var deltaX = point.x - transformState.startPoint.x;
+      var deltaY = point.y - transformState.startPoint.y;
+      var constrainedAxis = null;
+      var slideRect = cache.slideRect;
+
+      if (!transformState.started) {
+        if (
+          Math.abs(deltaX * slideRect.width) < 2 / editorScale &&
+          Math.abs(deltaY * slideRect.height) < 2 / editorScale
+        ) {
+          return;
+        }
+
+        // Authored-transform moves use the left/top preview path, so adopt at
+        // the drag threshold to freeze width before absolute positioning.
+        if (transformState.adopted && !cache.liveTransform) {
+          adoptMove(
+            transformState.element,
+            slide,
+            transformState.startGeometry,
+            transformState.logicalWidth,
+            transformState.positionContext,
+            cache,
+          );
+        }
+
+        transformState.started = true;
+      }
+
+      if (pointer.shiftKey) {
+        if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+          deltaY = 0;
+          constrainedAxis = 'x';
+        } else {
+          deltaX = 0;
+          constrainedAxis = 'y';
+        }
+      }
+
+      var moved = snapMoveRect({
+        x: transformState.startGeometry.x + deltaX,
+        y: transformState.startGeometry.y + deltaY,
+        width: transformState.startGeometry.width,
+        height: transformState.startGeometry.height,
+      }, transformState.snapRects, slide, pointer.altKey, constrainedAxis, cache);
+      transformState.lastGeometry = applyTransform(
+        transformState.element,
+        slide,
+        moved,
+        true,
+        'move',
+        transformState.adopted,
+        transformState.positionContext,
+        cache,
+      );
+      return;
+    }
+
+    if (transformState.kind === 'resize' && transformState.element && transformState.handle) {
+      var resizePoint = pointerFromCache(pointer.clientX, pointer.clientY, cache, slide);
+      var resizeDeltaX = resizePoint.x - transformState.startPoint.x;
+      var resizeDeltaY = resizePoint.y - transformState.startPoint.y;
+      var resizeSlideRect = cache.slideRect;
+
+      if (!transformState.started) {
+        if (
+          Math.abs(resizeDeltaX * resizeSlideRect.width) < 2 / editorScale &&
+          Math.abs(resizeDeltaY * resizeSlideRect.height) < 2 / editorScale
+        ) {
+          return;
+        }
+
+        if (transformState.adopted) {
+          adoptMove(
+            transformState.element,
+            slide,
+            transformState.startGeometry,
+            transformState.logicalWidth,
+            transformState.positionContext,
+            cache,
+          );
+        }
+
+        transformState.started = true;
+      }
+
+      var resized = resizeRectWithHandle(
+        transformState.startGeometry,
+        transformState.handle,
+        pointer,
+        slide,
+        transformState.element,
+      );
+      transformState.lastGeometry = applyTransform(
+        transformState.element,
+        slide,
+        resized,
+        true,
+        'resize',
+        transformState.adopted,
+        transformState.positionContext,
+        cache,
+      );
+    }
+  }
+
+  function scheduleTransformFlush(slide) {
+    if (!transformState || transformState.rafId) {
+      return;
+    }
+
+    var pending = transformState;
+    transformState.rafId = window.requestAnimationFrame(function () {
+      if (transformState !== pending) {
+        return;
+      }
+
+      flushTransformPointer(slide);
+    });
+  }
+
+  function flushHover() {
+    hoverRafId = 0;
+    var hover = pendingHover;
+    pendingHover = null;
+
+    if (!hover || !enabled || textEditElement || transformState) {
       return;
     }
 
@@ -2576,151 +2921,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       return;
     }
 
-    if (transformState && transformState.pointerId === event.pointerId) {
-      if (transformState.kind === 'draw') {
-        updateMarquee(transformState.startPoint, pointerToNormalized(event.clientX, event.clientY, slide), slide);
-        return;
-      }
-
-      if (transformState.kind === 'move' && transformState.element) {
-        var deltaX = pointerToNormalized(event.clientX, event.clientY, slide).x - transformState.startPoint.x;
-        var deltaY = pointerToNormalized(event.clientX, event.clientY, slide).y - transformState.startPoint.y;
-        var constrainedAxis = null;
-        var startedMove = false;
-
-        if (!transformState.started) {
-          var slideRect = getSlideCoordinateRect(slide);
-
-          if (
-            Math.abs(deltaX * slideRect.width) < 2 / editorScale &&
-            Math.abs(deltaY * slideRect.height) < 2 / editorScale
-          ) {
-            return;
-          }
-
-          if (transformState.adopted) {
-            adoptMove(
-              transformState.element,
-              slide,
-              transformState.startGeometry,
-              transformState.logicalWidth,
-              transformState.positionContext,
-            );
-          }
-
-          transformState.started = true;
-          startedMove = true;
-        }
-
-        if (event.shiftKey) {
-          if (Math.abs(deltaX) >= Math.abs(deltaY)) {
-            deltaY = 0;
-            constrainedAxis = 'x';
-          } else {
-            deltaX = 0;
-            constrainedAxis = 'y';
-          }
-        }
-
-        var moved = snapMoveRect({
-          x: transformState.startGeometry.x + deltaX,
-          y: transformState.startGeometry.y + deltaY,
-          width: transformState.startGeometry.width,
-          height: transformState.startGeometry.height,
-        }, transformState.snapRects, slide, event.altKey, constrainedAxis);
-        transformState.lastGeometry = applyTransform(
-          transformState.element,
-          slide,
-          moved,
-          true,
-          'move',
-          transformState.adopted,
-          transformState.positionContext,
-        );
-        if (startedMove && transformState.adopted) {
-          var pendingTransformState = transformState;
-          window.requestAnimationFrame(function () {
-            if (transformState !== pendingTransformState || !pendingTransformState.lastGeometry) {
-              return;
-            }
-
-            pendingTransformState.lastGeometry = applyTransform(
-              pendingTransformState.element,
-              slide,
-              pendingTransformState.lastGeometry,
-              true,
-              'move',
-              true,
-              pendingTransformState.positionContext,
-            );
-            settleSlideRelativePosition(
-              pendingTransformState.element,
-              slide,
-              pendingTransformState.lastGeometry,
-              pendingTransformState.positionContext,
-            );
-            refreshSelectionChrome(
-              pendingTransformState.element,
-              slide,
-              currentSlideIndex,
-            );
-          });
-        }
-        return;
-      }
-
-      if (transformState.kind === 'resize' && transformState.element && transformState.handle) {
-        if (!transformState.started) {
-          var resizePoint = pointerToNormalized(event.clientX, event.clientY, slide);
-          var resizeDeltaX = resizePoint.x - transformState.startPoint.x;
-          var resizeDeltaY = resizePoint.y - transformState.startPoint.y;
-          var resizeSlideRect = getSlideCoordinateRect(slide);
-
-          if (
-            Math.abs(resizeDeltaX * resizeSlideRect.width) < 2 / editorScale &&
-            Math.abs(resizeDeltaY * resizeSlideRect.height) < 2 / editorScale
-          ) {
-            return;
-          }
-
-          if (transformState.adopted) {
-            adoptMove(
-              transformState.element,
-              slide,
-              transformState.startGeometry,
-              transformState.logicalWidth,
-              transformState.positionContext,
-            );
-          }
-
-          transformState.started = true;
-        }
-
-        var resized = resizeRectWithHandle(
-          transformState.startGeometry,
-          transformState.handle,
-          event,
-          slide,
-          transformState.element,
-        );
-        transformState.lastGeometry = applyTransform(
-          transformState.element,
-          slide,
-          resized,
-          true,
-          'resize',
-          transformState.adopted,
-          transformState.positionContext,
-        );
-        return;
-      }
-    }
-
-    if (transformState) {
-      return;
-    }
-
-    var target = findEditableTarget(event.target, slide);
+    var target = findEditableTarget(hover.eventTarget, slide);
 
     if (!setHoverCursor(target)) {
       return;
@@ -2734,6 +2935,39 @@ export function buildDeckEditorBridgeRuntimeScript(
       slideBounds: target ? normalizeSlideBounds(slide) : undefined,
       surface: target ? detectSurface(target, slide) : undefined,
     });
+  }
+
+  function onPointerMove(event) {
+    if (!enabled || textEditElement) {
+      return;
+    }
+
+    var slide = getActiveSlide();
+
+    if (!slide) {
+      return;
+    }
+
+    if (transformState && transformState.pointerId === event.pointerId) {
+      transformState.pendingPointer = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+      };
+      scheduleTransformFlush(slide);
+      return;
+    }
+
+    if (transformState) {
+      return;
+    }
+
+    pendingHover = { eventTarget: event.target };
+
+    if (!hoverRafId) {
+      hoverRafId = window.requestAnimationFrame(flushHover);
+    }
   }
 
   function captureTransformPointer(slide, pointerId) {
@@ -2771,6 +3005,13 @@ export function buildDeckEditorBridgeRuntimeScript(
         kind: 'draw',
         pointerId: event.pointerId,
         startPoint: pointerToNormalized(event.clientX, event.clientY, slide),
+        cache: {
+          slideRect: getSlideCoordinateRect(slide),
+          logicalSlideWidth: getSlideLogicalWidth(slide),
+          logicalSlideHeight: getSlideLogicalHeight(slide),
+        },
+        pendingPointer: null,
+        rafId: 0,
       };
       captureTransformPointer(slide, event.pointerId);
       ensureMarquee(slide);
@@ -2794,13 +3035,19 @@ export function buildDeckEditorBridgeRuntimeScript(
         pointerId: event.pointerId,
         handle: handle,
         element: selectedElement,
-        startPoint: pointerToNormalized(event.clientX, event.clientY, slide),
+        startPoint: pointerFromCache(event.clientX, event.clientY, preparedResize.cache, slide),
         startGeometry: preparedResize.geometry,
         snapshot: preparedResize.snapshot,
         adopted: preparedResize.adopted,
         logicalWidth: preparedResize.logicalWidth,
         positionContext: preparedResize.positionContext,
+        cache: Object.assign(preparedResize.cache, {
+          // Resize writes left/top/width; never use compositor translate preview.
+          liveTransform: false,
+        }),
         started: false,
+        pendingPointer: null,
+        rafId: 0,
       };
       captureTransformPointer(slide, event.pointerId);
       return;
@@ -2834,53 +3081,79 @@ export function buildDeckEditorBridgeRuntimeScript(
         kind: 'move',
         pointerId: event.pointerId,
         element: target,
-        startPoint: pointerToNormalized(event.clientX, event.clientY, slide),
+        startPoint: pointerFromCache(event.clientX, event.clientY, prepared.cache, slide),
         startGeometry: prepared.geometry,
         snapshot: prepared.snapshot,
         adopted: prepared.adopted,
         logicalWidth: prepared.logicalWidth,
         positionContext: prepared.positionContext,
+        cache: Object.assign(prepared.cache, {
+          // Authored transforms (e.g. translate(-50%, -50%)) must keep the
+          // left/top preview path so we do not clobber them.
+          liveTransform: !prepared.cache.authoredTransform,
+        }),
         started: false,
         snapRects: collectSnapRects(slide, target),
         editOnClick: editOnClick,
+        pendingPointer: null,
+        rafId: 0,
       };
       captureTransformPointer(slide, event.pointerId);
     }
   }
 
-  function onPointerUp(event) {
-    if (!enabled || !transformState || transformState.pointerId !== event.pointerId) {
-      return;
+  function finishTransform(slide, pointer) {
+    if (!transformState) {
+      return false;
     }
 
-    var slide = getActiveSlide();
+    cancelTransformRaf();
+    var lastPointer = pointer || transformState.pendingPointer;
+
+    if (pointer) {
+      transformState.pendingPointer = pointer;
+      flushTransformPointer(slide);
+    } else if (transformState.pendingPointer) {
+      flushTransformPointer(slide);
+    }
 
     if (!slide) {
       if (transformState.element) {
+        clearLiveTransform(transformState.element);
         restoreInlineStyle(transformState.element, transformState.snapshot);
       }
 
       transformState = null;
       clearEditorOverlays();
-      return;
+      return true;
     }
 
     if (transformState.kind === 'draw') {
-      var endPoint = pointerToNormalized(event.clientX, event.clientY, slide);
+      // Outside release without a tracked pointer has no meaningful end point —
+      // discard the marquee rather than inserting a default-size box.
+      if (!lastPointer) {
+        clearMarquee();
+        transformState = null;
+        return true;
+      }
+
+      var endPoint = pointerFromCache(
+        lastPointer.clientX,
+        lastPointer.clientY,
+        transformState.cache,
+        slide,
+      );
       finishTextBoxDraw(slide, transformState.startPoint, endPoint);
       clearMarquee();
       transformState = null;
-      return;
+      return true;
     }
 
     if (
       (transformState.kind === 'move' || transformState.kind === 'resize') &&
       transformState.element
     ) {
-      if (
-        (transformState.kind === 'move' || transformState.kind === 'resize') &&
-        !transformState.started
-      ) {
+      if (!transformState.started) {
         var editOnClick = transformState.kind === 'move' && transformState.editOnClick;
         var clickedElement = transformState.element;
         transformState = null;
@@ -2889,7 +3162,7 @@ export function buildDeckEditorBridgeRuntimeScript(
           startTextEditOnElement(clickedElement, slide, currentSlideIndex);
         }
 
-        return;
+        return true;
       }
 
       var finalGeometry = transformState.lastGeometry || normalizeRect(transformState.element, slide);
@@ -2904,13 +3177,28 @@ export function buildDeckEditorBridgeRuntimeScript(
         transformState.kind,
         transformState.adopted,
         transformState.positionContext,
+        transformState.cache,
       );
       clearGuides();
       transformState = null;
-      return;
+      return true;
     }
 
     transformState = null;
+    return true;
+  }
+
+  function onPointerUp(event) {
+    if (!enabled || !transformState || transformState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    finishTransform(getActiveSlide(), {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+    });
   }
 
   function onPointerCancel(event) {
@@ -2925,7 +3213,10 @@ export function buildDeckEditorBridgeRuntimeScript(
       return;
     }
 
+    cancelTransformRaf();
+
     if (transformState.element) {
+      clearLiveTransform(transformState.element);
       restoreInlineStyle(transformState.element, transformState.snapshot);
     }
 
@@ -2934,10 +3225,19 @@ export function buildDeckEditorBridgeRuntimeScript(
     postToParent({ type: C.TRANSFORM_CANCEL });
   }
 
-  function onPointerOut(event) {
-    if (transformState && event.relatedTarget === null) {
-      onPointerCancel({ pointerId: transformState.pointerId });
+  function onLostPointerCapture(event) {
+    if (!transformState || transformState.pointerId !== event.pointerId) {
+      return;
     }
+
+    // Crossing a sandboxed iframe boundary can drop capture. If the gesture
+    // already moved, treat that as commit; otherwise cancel like a click.
+    if (transformState.started) {
+      finishTransform(getActiveSlide(), null);
+      return;
+    }
+
+    onPointerCancel(event);
   }
 
   function onDoubleClick(event) {
@@ -2999,6 +3299,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         'move',
         nudgeState.adopted,
         nudgeState.positionContext,
+        nudgeState.cache,
       );
     }
 
@@ -3013,6 +3314,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     var state = nudgeState;
     nudgeState = null;
     window.clearTimeout(state.timer);
+    clearLiveTransform(state.element);
     restoreInlineStyle(state.element, state.snapshot);
     clearGuides();
     postToParent({ type: C.TRANSFORM_CANCEL });
@@ -3031,20 +3333,28 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (!nudgeState || nudgeState.element !== selectedElement) {
       finishNudge();
-      var prepared = prepareMove(selectedElement, slide);
+      // Keyboard nudges adopt immediately (one discrete reflow). Pointer drags
+      // defer adoption and use transform previews instead.
+      var prepared = prepareMove(selectedElement, slide, true);
       nudgeState = {
         element: selectedElement,
         adopted: prepared.adopted,
         geometry: prepared.geometry,
         snapshot: prepared.snapshot,
         positionContext: prepared.positionContext,
+        cache: prepared.cache,
         timer: null,
       };
     }
 
-    var geometry = nudgeState.geometry || normalizeRect(selectedElement, slide);
-    var slideWidth = getSlideLogicalWidth(slide);
-    var slideHeight = getSlideLogicalHeight(slide);
+    var geometry = {
+      x: nudgeState.geometry.x,
+      y: nudgeState.geometry.y,
+      width: nudgeState.geometry.width,
+      height: nudgeState.geometry.height,
+    };
+    var slideWidth = nudgeState.cache.logicalSlideWidth || getSlideLogicalWidth(slide);
+    var slideHeight = nudgeState.cache.logicalSlideHeight || getSlideLogicalHeight(slide);
     var amount = event.shiftKey ? 10 : 1;
 
     if (event.key === 'ArrowLeft') geometry.x -= amount / slideWidth;
@@ -3060,6 +3370,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       'move',
       nudgeState.adopted,
       nudgeState.positionContext,
+      nudgeState.cache,
     );
     if (nudgeState.adopted && !nudgeState.layoutCorrectionScheduled) {
       nudgeState.layoutCorrectionScheduled = true;
@@ -3069,15 +3380,8 @@ export function buildDeckEditorBridgeRuntimeScript(
           return;
         }
 
-        pendingNudgeState.geometry = applyTransform(
-          pendingNudgeState.element,
-          slide,
-          pendingNudgeState.geometry,
-          true,
-          'move',
-          true,
-          pendingNudgeState.positionContext,
-        );
+        // Reveal can recenter after adoption changes scrollHeight; converge CSS
+        // offsets once so the live nudge matches the intended geometry.
         settleSlideRelativePosition(
           pendingNudgeState.element,
           slide,
@@ -3097,7 +3401,10 @@ export function buildDeckEditorBridgeRuntimeScript(
       return false;
     }
 
+    cancelTransformRaf();
+
     if (transformState.element) {
+      clearLiveTransform(transformState.element);
       restoreInlineStyle(transformState.element, transformState.snapshot);
     }
 
@@ -3224,8 +3531,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
-    document.addEventListener('lostpointercapture', onPointerCancel, true);
-    document.addEventListener('pointerout', onPointerOut, true);
+    document.addEventListener('lostpointercapture', onLostPointerCapture, true);
     document.addEventListener('dblclick', onDoubleClick, true);
     document.addEventListener('keydown', onKeyDown, true);
     listenersBound = true;
@@ -3240,8 +3546,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('pointercancel', onPointerCancel, true);
-    document.removeEventListener('lostpointercapture', onPointerCancel, true);
-    document.removeEventListener('pointerout', onPointerOut, true);
+    document.removeEventListener('lostpointercapture', onLostPointerCapture, true);
     document.removeEventListener('dblclick', onDoubleClick, true);
     document.removeEventListener('keydown', onKeyDown, true);
     listenersBound = false;
@@ -3337,6 +3642,46 @@ export function buildDeckEditorBridgeRuntimeScript(
 
       if (data.type === C.TRANSFORM_CANCEL) {
         cancelTransform(getActiveSlide());
+        return;
+      }
+
+      if (data.type === C.TRANSFORM_END) {
+        finishTransform(getActiveSlide(), null);
+        return;
+      }
+
+      if (
+        data.type === C.ASSIGN_ID &&
+        typeof data.fromElementId === 'string' &&
+        typeof data.toElementId === 'string' &&
+        typeof data.slideIndex === 'number'
+      ) {
+        currentSlideIndex = data.slideIndex;
+        var assignSlide = getActiveSlide();
+
+        if (!assignSlide) {
+          postError('No active slide found for editor command.', 'missing-slide');
+          return;
+        }
+
+        var assignTarget = findElementById(data.fromElementId, assignSlide, data.slideIndex);
+
+        if (!assignTarget) {
+          postError('Element "' + data.fromElementId + '" was not found.', 'missing-element');
+          return;
+        }
+
+        assignTarget.setAttribute(C.ELEMENT_ID_ATTR, data.toElementId);
+
+        if (data.managed) {
+          assignTarget.setAttribute(C.MANAGED_ATTR, 'true');
+        }
+
+        if (selectedElement === assignTarget) {
+          postSelection(assignTarget, assignSlide, data.slideIndex);
+          refreshSelectionChrome(assignTarget, assignSlide, data.slideIndex);
+        }
+
         return;
       }
 

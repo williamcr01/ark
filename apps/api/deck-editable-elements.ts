@@ -15,6 +15,7 @@ import {
   ARK_MANAGED_ATTR,
   ARK_ROLE_ATTR,
   ARK_SLIDE_ID_ATTR,
+  STABLE_ELEMENT_ID_PREFIX,
   TRANSIENT_ELEMENT_ID_PREFIX,
   TRANSIENT_SLIDE_ID_PREFIX,
 } from '@ark/deck-core/deck-metadata.ts'
@@ -138,7 +139,7 @@ const PATCH_ATTRS = [
 ] as const
 
 export function createElementId() {
-  return `ark-el-${nanoid(10)}`
+  return `${STABLE_ELEMENT_ID_PREFIX}${nanoid(10)}`
 }
 
 export function createTransientSlideId(slideIndex: number) {
