@@ -19,6 +19,7 @@ function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
 function ResizableHandle({
   withHandle,
   className,
+  onPointerUp,
   ...props
 }: ResizablePrimitive.SeparatorProps & {
   withHandle?: boolean
@@ -31,6 +32,12 @@ function ResizableHandle({
         className,
       )}
       {...props}
+      onPointerUp={(event) => {
+        onPointerUp?.(event)
+        // react-resizable-panels focuses the separator on pointerdown; blur
+        // after a drag so arrow keys return to slide navigation.
+        event.currentTarget.blur()
+      }}
     >
       {withHandle && <div className="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border" />}
     </ResizablePrimitive.Separator>
