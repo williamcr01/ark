@@ -256,6 +256,18 @@ describe('deck editor bridge protocol', () => {
       { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), cssX: 11 },
       { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), cssHeight: Number.NaN },
       { ...createEditorTransformCommitMessage('ark-el-title', 0, geometry), slideWidth: 0 },
+      {
+        ...createEditorTransformCommitMessage('ark-el-title', 0, geometry),
+        spacer: {
+          width: 0,
+          height: 10,
+          marginTop: 0,
+          marginRight: 0,
+          marginBottom: 0,
+          marginLeft: 0,
+          display: 'block',
+        },
+      },
       { type: EDITOR_SHORTCUT_MESSAGE_TYPE, action: 'paste' },
     ]
 
@@ -679,7 +691,11 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain(
       'function adoptMove(element, slide, geometry, logicalWidth, positionContext',
     )
+    expect(script).toContain('function insertAdoptSpacer(element, slide, cache)')
+    expect(script).toContain('function removeAdoptSpacer(cache)')
+    expect(script).toContain('data-ark-spacer')
     expect(script).toContain('adopted: adopted ? true : undefined')
+    expect(script).toContain('spacer: adopted && spacerFootprint ? spacerFootprint : undefined')
     expect(script).toContain(
       'function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis',
     )
@@ -747,7 +763,10 @@ describe('deck editor bridge protocol', () => {
       offsetWidth: { configurable: true, value: 400 },
       offsetHeight: { configurable: true, value: 200 },
     })
-    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 200 })
+    Object.defineProperties(heading, {
+      offsetWidth: { configurable: true, value: 200 },
+      offsetHeight: { configurable: true, value: 80 },
+    })
     slide.setPointerCapture = (pointerId) => {
       capturedPointer = pointerId
     }
@@ -773,6 +792,18 @@ describe('deck editor bridge protocol', () => {
     expect(commit.geometry).toMatchObject({ x: 350 / 1280, y: 150 / 720, width: 400 / 1280 })
     expect(commit).toMatchObject({ cssX: 75 / 1280, cssY: 25 / 720, cssWidth: 200 / 1280 })
     expect(commit.adopted).toBe(true)
+    expect(commit.spacer).toMatchObject({
+      width: 200,
+      height: 80,
+      display: 'block',
+    })
+    const spacer = heading.previousElementSibling as HTMLElement | null
+    expect(spacer?.getAttribute('data-ark-spacer')).toBe('true')
+    expect(spacer?.getAttribute('aria-hidden')).toBe('true')
+    expect(spacer?.style.width).toBe('200px')
+    expect(spacer?.style.height).toBe('80px')
+    expect(spacer?.style.visibility).toBe('hidden')
+    expect(container.querySelectorAll('[data-ark-spacer]').length).toBe(1)
     dom.window.close()
   })
 
@@ -820,6 +851,8 @@ describe('deck editor bridge protocol', () => {
     expect(commit.geometry).toMatchObject({ x: 350 / 1280, y: 150 / 720 })
     expect(commit).toMatchObject({ cssX: 150 / 1280, cssY: 50 / 720 })
     expect(commit.adopted).toBeUndefined()
+    expect(commit.spacer).toBeUndefined()
+    expect(heading.previousElementSibling?.getAttribute('data-ark-spacer')).not.toBe('true')
     expect(selection?.selection).toMatchObject({ managed: true })
     dom.window.close()
   })
@@ -1127,6 +1160,7 @@ describe('deck editor bridge protocol', () => {
     expect(capturedPointer).toBe(9)
     expect(heading.parentElement).toBe(container)
     expect(heading.nextElementSibling).toBe(after)
+    expect(heading.previousElementSibling?.getAttribute('data-ark-spacer')).not.toBe('true')
     expect(heading.getAttribute('style')).toBe('color: red')
     expect(messages.some((message) => message.type === EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE)).toBe(
       true,
@@ -1134,6 +1168,52 @@ describe('deck editor bridge protocol', () => {
     expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
       false,
     )
+    dom.window.close()
+  })
+
+  it('removes an early-adopted resize spacer on pointercancel', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 id="heading">Title</h1><p id="after">After</p></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const heading = dom.window.document.querySelector<HTMLElement>('h1')!
+    const after = dom.window.document.querySelector<HTMLElement>('#after')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    heading.getBoundingClientRect = () =>
+      heading.style.position === 'absolute'
+        ? rect(
+            Number.parseFloat(heading.style.left),
+            Number.parseFloat(heading.style.top),
+            Number.parseFloat(heading.style.width),
+            Number.parseFloat(heading.style.minHeight) || 80,
+          )
+        : rect(100, 100, 400, 80)
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperties(heading, {
+      offsetWidth: { configurable: true, value: 400 },
+      offsetHeight: { configurable: true, value: 80 },
+    })
+
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 11, 110, 110))
+    heading.dispatchEvent(pointerEvent(dom, 'pointerup', 11, 110, 110))
+    const handle = slide.querySelector<HTMLElement>('[data-ark-editor-handle="se"]')!
+    messages.length = 0
+    handle.dispatchEvent(pointerEvent(dom, 'pointerdown', 12, 500, 180))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 12, 600, 240))
+    await new Promise<void>((resolve) => dom.window.requestAnimationFrame(() => resolve()))
+    expect(heading.previousElementSibling?.getAttribute('data-ark-spacer')).toBe('true')
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointercancel', 12, 600, 240))
+
+    expect(heading.style.position).not.toBe('absolute')
+    expect(heading.nextElementSibling).toBe(after)
+    expect(slide.querySelectorAll('[data-ark-spacer]').length).toBe(0)
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    // Cancel restores the pre-gesture snapshot, including clearing the
+    // transient data-ark-id stamped only for adoption.
+    expect(heading.hasAttribute('data-ark-id')).toBe(false)
     dom.window.close()
   })
 

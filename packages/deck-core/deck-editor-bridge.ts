@@ -20,6 +20,8 @@ import {
   ARK_LOCKED_ATTR,
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
+  ARK_SPACER_ATTR,
+  ARK_SPACER_FOR_ATTR,
   TRANSIENT_ELEMENT_ID_PREFIX,
 } from './deck-metadata.ts'
 import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
@@ -107,6 +109,17 @@ export type EditorNormalizedRect = {
   y: number
   width: number
   height: number
+}
+
+/** Local CSS-px flow footprint preserved when adopting an in-flow element. */
+export type EditorAdoptSpacer = {
+  width: number
+  height: number
+  marginTop: number
+  marginRight: number
+  marginBottom: number
+  marginLeft: number
+  display: string
 }
 
 export type EditorImageFitMode = 'contain' | 'cover' | 'fill'
@@ -285,6 +298,8 @@ export type EditorTransformCommitMessage = {
   slideWidth?: number
   /** Logical slide height used to convert normalized CSS values to pixels. */
   slideHeight?: number
+  /** Flow footprint to persist as an inert spacer when this commit adopted the element. */
+  spacer?: EditorAdoptSpacer
 }
 
 export type EditorTransformCancelMessage = {
@@ -638,6 +653,27 @@ export function isEditorTransformPreviewMessage(
   )
 }
 
+function isEditorAdoptSpacer(value: unknown): value is EditorAdoptSpacer {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value.width) &&
+    value.width > 0 &&
+    isFiniteNumber(value.height) &&
+    value.height > 0 &&
+    isFiniteNumber(value.marginTop) &&
+    value.marginTop >= 0 &&
+    isFiniteNumber(value.marginRight) &&
+    value.marginRight >= 0 &&
+    isFiniteNumber(value.marginBottom) &&
+    value.marginBottom >= 0 &&
+    isFiniteNumber(value.marginLeft) &&
+    value.marginLeft >= 0 &&
+    typeof value.display === 'string' &&
+    value.display.trim().length > 0 &&
+    value.display.length <= 64
+  )
+}
+
 export function isEditorTransformCommitMessage(
   value: unknown,
 ): value is EditorTransformCommitMessage {
@@ -656,7 +692,8 @@ export function isEditorTransformCommitMessage(
     (value.slideWidth === undefined ||
       (isFiniteNumber(value.slideWidth) && value.slideWidth > 0)) &&
     (value.slideHeight === undefined ||
-      (isFiniteNumber(value.slideHeight) && value.slideHeight > 0))
+      (isFiniteNumber(value.slideHeight) && value.slideHeight > 0)) &&
+    (value.spacer === undefined || isEditorAdoptSpacer(value.spacer))
   )
 }
 
@@ -924,6 +961,7 @@ export function createEditorTransformCommitMessage(
   cssHeight?: number,
   slideWidth?: number,
   slideHeight?: number,
+  spacer?: EditorAdoptSpacer,
 ): EditorTransformCommitMessage {
   return {
     type: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
@@ -939,6 +977,7 @@ export function createEditorTransformCommitMessage(
     ...(cssHeight !== undefined ? { cssHeight } : {}),
     ...(slideWidth !== undefined ? { slideWidth } : {}),
     ...(slideHeight !== undefined ? { slideHeight } : {}),
+    ...(spacer ? { spacer } : {}),
   }
 }
 
@@ -1045,6 +1084,8 @@ export function buildDeckEditorBridgeRuntimeScript(
     ELEMENT_ID_ATTR: ARK_ELEMENT_ID_ATTR,
     LOCKED_ATTR: ARK_LOCKED_ATTR,
     MANAGED_ATTR: 'data-ark-managed',
+    SPACER_ATTR: ARK_SPACER_ATTR,
+    SPACER_FOR_ATTR: ARK_SPACER_FOR_ATTR,
     EDITABLE_ATTR: 'data-ark-editable',
     ROLE_ATTR: 'data-ark-role',
     TRANSIENT_PREFIX: TRANSIENT_ELEMENT_ID_PREFIX,
@@ -1327,7 +1368,13 @@ export function buildDeckEditorBridgeRuntimeScript(
       return false;
     }
 
-    if (element.closest('[data-ark-editor-handle], [data-ark-editor-marquee], [data-ark-editor-guide]')) {
+    if (
+      element.closest(
+        '[data-ark-editor-handle], [data-ark-editor-marquee], [data-ark-editor-guide], [' +
+          C.SPACER_ATTR +
+          ']',
+      )
+    ) {
       return false;
     }
 
@@ -2252,10 +2299,14 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     clearLiveTransform(element);
 
+    var spacerFootprint = cache && cache.spacerFootprint ? cache.spacerFootprint : null;
+
     if (adopted && !preview) {
       adoptMove(element, slide, rect, cache && cache.logicalWidth, positionContext, cache);
+      spacerFootprint = (cache && cache.spacerFootprint) || spacerFootprint;
       // Flow removal shifts containing-block geometry; remeasure without the
-      // pre-adopt margin cache (adopt zeroes margins).
+      // pre-adopt margin cache (adopt zeroes margins). Keep spacerFootprint for
+      // the commit payload after nulling the layout cache.
       cache = null;
     }
 
@@ -2313,6 +2364,7 @@ export function buildDeckEditorBridgeRuntimeScript(
           : undefined,
         slideWidth: logicalSlideWidth,
         slideHeight: logicalSlideHeight,
+        spacer: adopted && spacerFootprint ? spacerFootprint : undefined,
       });
       refreshSelectionChrome(element, slide, currentSlideIndex);
     }
@@ -2545,7 +2597,151 @@ export function buildDeckEditorBridgeRuntimeScript(
     cache.slideBounds = normalizeSlideBounds(slide);
   }
 
+  function measureAdoptSpacer(element, slide) {
+    var computed = window.getComputedStyle(element);
+    var display = computed.display || 'block';
+
+    if (display === 'inline') {
+      display = 'inline-block';
+    }
+
+    var width = readLogicalWidth(element, slide);
+    var height = readLogicalHeight(element, slide);
+
+    if (!width || !height) {
+      return null;
+    }
+
+    return {
+      width: width,
+      height: height,
+      marginTop: Math.max(0, Number.parseFloat(computed.marginTop) || 0),
+      marginRight: Math.max(0, Number.parseFloat(computed.marginRight) || 0),
+      marginBottom: Math.max(0, Number.parseFloat(computed.marginBottom) || 0),
+      marginLeft: Math.max(0, Number.parseFloat(computed.marginLeft) || 0),
+      display: display,
+    };
+  }
+
+  function removeAdoptSpacer(cache) {
+    if (!cache || !cache.spacerElement) {
+      return;
+    }
+
+    var spacer = cache.spacerElement;
+
+    if (spacer.parentNode) {
+      spacer.parentNode.removeChild(spacer);
+    }
+
+    cache.spacerElement = null;
+  }
+
+  function cleanupAdoptSideEffects(element, cache) {
+    removeAdoptSpacer(cache);
+
+    if (
+      element &&
+      cache &&
+      cache.stampedTransientId &&
+      element.getAttribute(C.ELEMENT_ID_ATTR) === cache.stampedTransientId
+    ) {
+      element.removeAttribute(C.ELEMENT_ID_ATTR);
+      cache.stampedTransientId = null;
+    }
+  }
+
+  function ensureElementIdBeforeAdopt(element, slide, cache) {
+    // Path-based transient ids shift when the spacer is inserted as a previous
+    // sibling. Stamp the pre-adopt id so selection/commit stay aligned with the
+    // server's pre-spacer HTML. Cancel clears this stamp if we created it.
+    var existing = element.getAttribute(C.ELEMENT_ID_ATTR);
+
+    if (existing && existing.trim()) {
+      return existing.trim();
+    }
+
+    var stamped = resolveElementId(element, slide, currentSlideIndex);
+    element.setAttribute(C.ELEMENT_ID_ATTR, stamped);
+
+    if (cache) {
+      cache.stampedTransientId = stamped;
+    }
+
+    return stamped;
+  }
+
+  function insertAdoptSpacer(element, slide, cache) {
+    if (!cache) {
+      return;
+    }
+
+    if (cache.spacerElement && cache.spacerElement.isConnected) {
+      return;
+    }
+
+    var previous = element.previousElementSibling;
+
+    if (
+      previous &&
+      previous.getAttribute &&
+      previous.getAttribute(C.SPACER_ATTR) === 'true'
+    ) {
+      cache.spacerElement = previous;
+      if (!cache.spacerFootprint) {
+        cache.spacerFootprint = {
+          width: Number.parseFloat(previous.style.width) || 0,
+          height: Number.parseFloat(previous.style.height) || 0,
+          marginTop: Number.parseFloat(previous.style.marginTop) || 0,
+          marginRight: Number.parseFloat(previous.style.marginRight) || 0,
+          marginBottom: Number.parseFloat(previous.style.marginBottom) || 0,
+          marginLeft: Number.parseFloat(previous.style.marginLeft) || 0,
+          display: previous.style.display || 'block',
+        };
+      }
+      return;
+    }
+
+    var footprint = cache.spacerFootprint || measureAdoptSpacer(element, slide);
+
+    if (!footprint || !element.parentNode) {
+      return;
+    }
+
+    var forId = ensureElementIdBeforeAdopt(element, slide, cache);
+    cache.spacerFootprint = footprint;
+    var spacer = document.createElement('div');
+    spacer.setAttribute(C.SPACER_ATTR, 'true');
+    spacer.setAttribute('aria-hidden', 'true');
+
+    if (forId) {
+      spacer.setAttribute(C.SPACER_FOR_ATTR, forId);
+    }
+
+    spacer.style.visibility = 'hidden';
+    spacer.style.pointerEvents = 'none';
+    spacer.style.flex = '0 0 auto';
+    spacer.style.display = footprint.display;
+    spacer.style.boxSizing = 'border-box';
+    spacer.style.width = footprint.width + 'px';
+    spacer.style.height = footprint.height + 'px';
+    spacer.style.margin =
+      footprint.marginTop +
+      'px ' +
+      footprint.marginRight +
+      'px ' +
+      footprint.marginBottom +
+      'px ' +
+      footprint.marginLeft +
+      'px';
+    element.parentNode.insertBefore(spacer, element);
+    cache.spacerElement = spacer;
+  }
+
   function adoptMove(element, slide, geometry, logicalWidth, positionContext, cache) {
+    // Preserve the in-flow footprint so siblings (and Reveal scrollHeight) do
+    // not collapse when this element leaves normal flow.
+    insertAdoptSpacer(element, slide, cache);
     element.style.position = 'absolute';
     element.style.margin = '0px';
     element.style.boxSizing = 'border-box';
@@ -3125,6 +3321,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       if (transformState.element) {
         clearLiveTransform(transformState.element);
         restoreInlineStyle(transformState.element, transformState.snapshot);
+        cleanupAdoptSideEffects(transformState.element, transformState.cache);
       }
 
       transformState = null;
@@ -3229,6 +3426,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     if (transformState.element) {
       clearLiveTransform(transformState.element);
       restoreInlineStyle(transformState.element, transformState.snapshot);
+      cleanupAdoptSideEffects(transformState.element, transformState.cache);
     }
 
     transformState = null;
@@ -3327,6 +3525,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     window.clearTimeout(state.timer);
     clearLiveTransform(state.element);
     restoreInlineStyle(state.element, state.snapshot);
+    cleanupAdoptSideEffects(state.element, state.cache);
     clearGuides();
     postToParent({ type: C.TRANSFORM_CANCEL });
 
@@ -3417,6 +3616,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     if (transformState.element) {
       clearLiveTransform(transformState.element);
       restoreInlineStyle(transformState.element, transformState.snapshot);
+      cleanupAdoptSideEffects(transformState.element, transformState.cache);
     }
 
     transformState = null;
@@ -3573,6 +3773,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       } else {
         if (transformState.element) {
           restoreInlineStyle(transformState.element, transformState.snapshot);
+          cleanupAdoptSideEffects(transformState.element, transformState.cache);
         }
 
         transformState = null;
@@ -3598,6 +3799,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (transformState && transformState.element) {
       restoreInlineStyle(transformState.element, transformState.snapshot);
+      cleanupAdoptSideEffects(transformState.element, transformState.cache);
     }
 
     transformState = null;
@@ -3605,6 +3807,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (nudgeState && nudgeState.element) {
       restoreInlineStyle(nudgeState.element, nudgeState.snapshot);
+      cleanupAdoptSideEffects(nudgeState.element, nudgeState.cache);
     }
 
     nudgeState = null;

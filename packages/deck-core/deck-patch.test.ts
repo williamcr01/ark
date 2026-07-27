@@ -68,6 +68,43 @@ describe('deck patch schema', () => {
         height: 0.3,
       }).success,
     ).toBe(true)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: 0.1,
+        y: 0.2,
+        width: 0.4,
+        spacer: {
+          width: 400,
+          height: 80,
+          marginTop: 0,
+          marginRight: 0,
+          marginBottom: 16,
+          marginLeft: 0,
+          display: 'block',
+        },
+      }).success,
+    ).toBe(true)
+
+    expect(
+      deckPatchOperationSchema.safeParse({
+        op: 'move_element',
+        elementId: 'ark-el-1',
+        x: 0.1,
+        y: 0.2,
+        spacer: {
+          width: 0,
+          height: 80,
+          marginTop: 0,
+          marginRight: 0,
+          marginBottom: 0,
+          marginLeft: 0,
+          display: 'block',
+        },
+      }).success,
+    ).toBe(false)
   })
 
   it('rejects out-of-range normalized element geometry', () => {

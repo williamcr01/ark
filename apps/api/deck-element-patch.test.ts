@@ -396,6 +396,128 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain('box-sizing: border-box')
   })
 
+  it('inserts a flow spacer when adopting with a spacer payload', () => {
+    const moved = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        x: 0.25,
+        y: 0.1,
+        width: 0.4,
+        height: 0.15,
+        spacer: {
+          width: 512,
+          height: 72,
+          marginTop: 0,
+          marginRight: 0,
+          marginBottom: 24,
+          marginLeft: 0,
+          display: 'block',
+        },
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.html).toContain('data-ark-spacer="true"')
+    expect(moved.html).toContain('data-ark-spacer-for="ark-el-title"')
+    expect(moved.html).toContain('width: 512px')
+    expect(moved.html).toContain('height: 72px')
+    expect(moved.html).toContain('margin: 0px 0px 24px 0px')
+    expect(moved.html.indexOf('data-ark-spacer="true"')).toBeLessThan(
+      moved.html.indexOf('data-ark-id="ark-el-title"'),
+    )
+
+    const parsed = parseDeckHtml(moved.html)
+    expect(
+      parsed.editableElements[0]?.elements.some(
+        (element) => element.tagName === 'div' && !element.id,
+      ),
+    ).toBe(false)
+    expect(
+      parsed.editableElements
+        .flatMap((group) => group.elements)
+        .some((element) => element.id === 'ark-el-title'),
+    ).toBe(true)
+
+    const removed = applyDeckPatches(moved.html, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        x: 0.3,
+        y: 0.2,
+        width: 0.4,
+        spacer: {
+          width: 512,
+          height: 72,
+          marginTop: 0,
+          marginRight: 0,
+          marginBottom: 24,
+          marginLeft: 0,
+          display: 'block',
+        },
+      },
+    ])
+
+    expect(removed.ok).toBe(true)
+    if (!removed.ok) {
+      return
+    }
+
+    expect(removed.html.match(/data-ark-spacer="true"/g)?.length).toBe(1)
+  })
+
+  it('rejects adoption spacers as patch targets', () => {
+    const withSpacer = applyDeckPatches(arkManagedDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: 'ark-el-title',
+        x: 0.25,
+        y: 0.1,
+        width: 0.4,
+        spacer: {
+          width: 400,
+          height: 80,
+          marginTop: 0,
+          marginRight: 0,
+          marginBottom: 0,
+          marginLeft: 0,
+          display: 'block',
+        },
+      },
+    ])
+
+    expect(withSpacer.ok).toBe(true)
+    if (!withSpacer.ok) {
+      return
+    }
+
+    const spacerDeck = withSpacer.html.replace(
+      'data-ark-spacer="true"',
+      'data-ark-id="ark-el-spacer" data-ark-spacer="true"',
+    )
+    const rejected = applyDeckPatches(spacerDeck, [
+      {
+        op: 'delete_element',
+        slideIndex: 0,
+        elementId: 'ark-el-spacer',
+      },
+    ])
+
+    expect(rejected.ok).toBe(false)
+    if (rejected.ok) {
+      return
+    }
+
+    expect(rejected.error).toMatch(/not editable|not a recognized editable target/)
+  })
+
   it('adopts and resizes a transient element in one move_element', () => {
     const transientDeck = `<!DOCTYPE html>
 <html lang="en">

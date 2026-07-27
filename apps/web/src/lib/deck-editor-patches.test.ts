@@ -166,4 +166,50 @@ describe('deck-editor-patches', () => {
       },
     ])
   })
+
+  it('forwards an adoption spacer on move_element', () => {
+    const spacer = {
+      width: 400,
+      height: 80,
+      marginTop: 0,
+      marginRight: 0,
+      marginBottom: 16,
+      marginLeft: 0,
+      display: 'block',
+    }
+    const commit = createEditorTransformCommitMessage(
+      'ark-el-heading',
+      0,
+      { x: 0.2, y: 0.25, width: 0.4, height: 0.15 },
+      undefined,
+      undefined,
+      true,
+      -0.05,
+      0.1,
+      0.35,
+      undefined,
+      960,
+      700,
+      spacer,
+    )
+
+    expect(
+      buildTransformPatchOperations(commit, { x: 0.1, y: 0.2, width: 0.3, height: 0.1 }, null),
+    ).toEqual([
+      {
+        op: 'move_element',
+        elementId: 'ark-el-heading',
+        slideIndex: 0,
+        x: 0.2,
+        y: 0.25,
+        cssX: -0.05,
+        cssY: 0.1,
+        cssWidth: 0.35,
+        slideWidth: 960,
+        slideHeight: 700,
+        width: 0.4,
+        spacer,
+      },
+    ])
+  })
 })

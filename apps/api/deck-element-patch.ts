@@ -7,6 +7,8 @@ import {
   ARK_MANAGED_ATTR,
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
+  ARK_SPACER_ATTR,
+  ARK_SPACER_FOR_ATTR,
   TRANSIENT_ELEMENT_ID_PREFIX,
 } from '@ark/deck-core/deck-metadata.ts'
 import { validateImageSrcForInsert } from '@ark/deck-core/deck-image.ts'
@@ -275,6 +277,10 @@ function isUnsafeElement(element: Element) {
     return true
   }
 
+  if (element.getAttribute(ARK_SPACER_ATTR) === 'true') {
+    return true
+  }
+
   if (
     element.closest('[data-ark-preview-nav], [data-ark-preview-bridge], [data-ark-preview-reveal]')
   ) {
@@ -282,6 +288,55 @@ function isUnsafeElement(element: Element) {
   }
 
   return false
+}
+
+function hasInlineAbsolutePosition(element: Element) {
+  const style = element.getAttribute('style') ?? ''
+  return /(?:^|;)\s*position\s*:\s*absolute\s*(?:;|$)/i.test(style)
+}
+
+function insertAdoptSpacer(
+  element: Element,
+  spacer: NonNullable<Extract<DeckElementPatchOperation, { op: 'move_element' }>['spacer']>,
+  elementId: string,
+) {
+  if (element.getAttribute(ARK_MANAGED_ATTR) === 'true' || hasInlineAbsolutePosition(element)) {
+    return
+  }
+
+  const previous = element.previousElementSibling
+
+  if (previous?.getAttribute(ARK_SPACER_ATTR) === 'true') {
+    const forId = previous.getAttribute(ARK_SPACER_FOR_ATTR)
+    if (!forId || forId === elementId || forId === element.getAttribute(ARK_ELEMENT_ID_ATTR)) {
+      return
+    }
+  }
+
+  const parent = element.parentNode
+
+  if (!parent || !element.ownerDocument) {
+    return
+  }
+
+  const node = element.ownerDocument.createElement('div')
+  node.setAttribute(ARK_SPACER_ATTR, 'true')
+  node.setAttribute('aria-hidden', 'true')
+  node.setAttribute(ARK_SPACER_FOR_ATTR, elementId)
+  node.setAttribute(
+    'style',
+    [
+      'visibility: hidden',
+      'pointer-events: none',
+      'flex: 0 0 auto',
+      `display: ${spacer.display}`,
+      'box-sizing: border-box',
+      `width: ${Math.round(spacer.width)}px`,
+      `height: ${Math.round(spacer.height)}px`,
+      `margin: ${Math.round(spacer.marginTop)}px ${Math.round(spacer.marginRight)}px ${Math.round(spacer.marginBottom)}px ${Math.round(spacer.marginLeft)}px`,
+    ].join('; '),
+  )
+  parent.insertBefore(node, element)
 }
 
 function findUnsafeInsertedElement(root: Element) {
@@ -826,6 +881,13 @@ function applyMoveElement(
   const left = formatPixelValue(operation.cssX ?? operation.x, slideWidth)
   const top = formatPixelValue(operation.cssY ?? operation.y, slideHeight)
   const adopted = operation.width !== undefined || operation.height !== undefined
+  // Stamp a stable id before inserting the spacer so data-ark-spacer-for is durable.
+  const elementId = ensureStableElementId(resolved.element)
+
+  if (operation.spacer) {
+    insertAdoptSpacer(resolved.element, operation.spacer, elementId)
+  }
+
   const style = {
     position: 'absolute',
     left,
@@ -849,7 +911,6 @@ function applyMoveElement(
   }
 
   resolved.element.setAttribute(ARK_MANAGED_ATTR, 'true')
-  const elementId = ensureStableElementId(resolved.element)
   markElementChanged(context, resolved.slideIndex, elementId)
   context.summaries.push(`Moved ${elementId}.`)
 

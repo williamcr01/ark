@@ -54,6 +54,7 @@ export function buildTransformPatchOperations(
             cssHeight: commit.cssHeight,
           }
         : {}),
+      ...(commit.adopted && commit.spacer ? { spacer: commit.spacer } : {}),
     })
   }
 
