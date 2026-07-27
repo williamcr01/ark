@@ -60,10 +60,43 @@ export type UseDeckGenerationFlowOptions = {
 
 /**
  * Owns the deck generation lifecycle: starting a job, applying a succeeded
- * outcome (deck refresh + chat reload), cancel, retry, and pending-job recovery
- * on mount. Extracted from `App.tsx` so the shell stays thin; behavior is
- * intended to be identical to the previous inline implementation.
+ * outcome (deck refresh + local assistant message), cancel, retry, and
+ * pending-job recovery on mount. Extracted from `App.tsx` so the shell stays
+ * thin; behavior is intended to be identical to the previous inline
+ * implementation.
  */
+
+function buildSucceededAssistantMessage(
+  outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>,
+): ChatMessage {
+  const validation = outcome.job.result?.validation as DeckValidationReport | null | undefined
+  const validationNote =
+    validation && Array.isArray(validation.issues) && typeof validation.slideCount === 'number'
+      ? ` Validation: ${describeDeckValidation(validation)}.`
+      : ''
+  const content = outcome.assistantContent
+    ? `${outcome.assistantContent}${validationNote}`
+    : `Generated a complete self-contained HTML slide deck.${validationNote}`
+  const assistantParts = [...outcome.assistantParts]
+  const existingText = assistantParts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.content)
+    .join('\n')
+    .trim()
+  const extraText = content.trim()
+
+  if (extraText && extraText !== existingText && !existingText.endsWith(extraText)) {
+    assistantParts.push({ type: 'text', content: extraText })
+  }
+
+  return {
+    // Server persists the assistant turn under the job id — keep them aligned.
+    id: outcome.job.id,
+    role: 'assistant',
+    content,
+    parts: assistantParts.length > 0 ? assistantParts : undefined,
+  }
+}
 export function useDeckGenerationFlow({
   deck,
   chat,
@@ -147,44 +180,18 @@ export function useDeckGenerationFlow({
         }
       }
 
-      const targetDeckId = outcome.job.result?.deckId ?? deckId
+      const assistantMessage = buildSucceededAssistantMessage(outcome)
+      setMessages((current) => {
+        if (current.some((message) => message.id === assistantMessage.id)) {
+          return current
+        }
 
-      if (targetDeckId) {
-        await reloadChat(targetDeckId)
-      } else {
-        const validationNote = outcome.job.result?.validation
-          ? ` Validation: ${describeDeckValidation(outcome.job.result.validation as DeckValidationReport)}.`
-          : ''
-        const assistantParts = [
-          ...outcome.assistantParts,
-          ...(outcome.assistantContent
-            ? [
-                {
-                  type: 'text' as const,
-                  content: `${outcome.assistantContent}${validationNote}`,
-                },
-              ]
-            : validationNote
-              ? [{ type: 'text' as const, content: validationNote.trim() }]
-              : []),
-        ]
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: newId(),
-            role: 'assistant',
-            content: outcome.assistantContent
-              ? `${outcome.assistantContent}${validationNote}`
-              : `Generated a complete self-contained HTML slide deck.${validationNote}`,
-            parts: assistantParts.length > 0 ? assistantParts : undefined,
-          },
-        ])
-      }
+        return [...current, assistantMessage]
+      })
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
-    [deckId, onGenerationSucceeded, refreshActiveDeck, reloadChat, setMessages, setModelFailure],
+    [onGenerationSucceeded, refreshActiveDeck, setMessages, setModelFailure],
   )
 
   useEffect(() => {
