@@ -63,7 +63,6 @@ type JobResult = NonNullable<GenerationJobApi['result']>
 const succeededResult: JobResult = {
   deckId: 'deck-1',
   versionId: 'v1',
-  html: '<section class="slide">Hi</section>',
   validation: {
     valid: true,
     slideCount: 1,
