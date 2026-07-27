@@ -291,6 +291,41 @@ describe('useDeckSlideNavigation', () => {
     )
   })
 
+  it('keeps arrow keys for slide navigation when a resize separator is focused', async () => {
+    render(
+      <div>
+        <NavigationHarness sandboxOrigin={sandboxOrigin} />
+        <div role="separator" tabIndex={0} aria-orientation="horizontal" aria-label="Chat resize">
+          Resize
+        </div>
+      </div>,
+    )
+    const iframeWindow = getIframeWindow()
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+    const separator = screen.getByRole('separator', { name: 'Chat resize' })
+
+    separator.focus()
+    expect(separator).toHaveFocus()
+
+    act(() => {
+      separator.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: 'ArrowRight',
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
+    })
+    expect(postMessage).toHaveBeenLastCalledWith(
+      createDeckGotoMessage(1),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
+  })
+
   it('uses present-mode keyboard shortcuts and clamps to available slides', async () => {
     render(<NavigationHarness keyboardMode="present" sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
