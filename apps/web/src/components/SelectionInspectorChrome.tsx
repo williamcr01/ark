@@ -111,7 +111,7 @@ export function SelectionInspectorChrome({
           aria-label="Element settings"
           className={cn(
             'pointer-events-auto absolute z-20 inline-flex items-center justify-center rounded-md border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] text-[var(--ark-titlebar-fg)] shadow-sm transition-colors',
-            'hover:bg-[var(--ark-titlebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ark-accent)]/40',
+            'hover:bg-[var(--ark-titlebar-hover)] outline-none',
             open && 'bg-[var(--ark-accent-soft)] text-[var(--ark-accent)]',
           )}
           style={{

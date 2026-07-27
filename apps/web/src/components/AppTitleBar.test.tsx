@@ -65,6 +65,24 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
 }
 
 describe('AppTitleBar accessibility', () => {
+  it('selects an appearance from the keyboard-accessible menu', async () => {
+    const user = userEvent.setup()
+    const onAppearanceChange = vi.fn()
+    renderTitleBar({ appearancePreference: 'system', onAppearanceChange })
+
+    const appearanceButton = screen.getByRole('button', { name: 'Theme' })
+    expect(appearanceButton).toHaveTextContent('Theme')
+    expect(screen.queryByText('Appearance')).not.toBeInTheDocument()
+    await user.click(appearanceButton)
+    expect(screen.getByRole('menuitemradio', { name: 'System' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await user.click(screen.getByRole('menuitemradio', { name: 'Dark' }))
+
+    expect(onAppearanceChange).toHaveBeenCalledWith('dark')
+  })
+
   it('does not expose aria-pressed on non-toggle action buttons', () => {
     renderTitleBar()
 

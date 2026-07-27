@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -71,12 +71,15 @@ const models: AvailableModel[] = [
 ]
 
 describe('ModelSelector', () => {
-  it('groups models by provider and selects effort from the submenu', async () => {
+  it('shows remembered effort and selects a model with it', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
     render(
       <ModelSelector
+        getReasoningEffort={(modelId) =>
+          modelId === 'google:gemini-3.5-flash' ? 'high' : undefined
+        }
         models={models}
         onSelect={onSelect}
         reasoningEffort="medium"
@@ -91,17 +94,12 @@ describe('ModelSelector', () => {
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
     expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
 
-    const geminiTrigger = screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash/i })
-    geminiTrigger.focus()
-    await user.keyboard('{ArrowRight}')
+    await user.click(screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash\s*High/i }))
 
-    const effortOption = await screen.findByRole('menuitem', { name: 'Medium' })
-    await user.click(effortOption)
-
-    expect(onSelect).toHaveBeenCalledWith('google:gemini-3.5-flash', 'medium')
+    expect(onSelect).toHaveBeenCalledWith('google:gemini-3.5-flash', 'high')
   })
 
-  it('does not select a model when activating the submenu trigger alone', async () => {
+  it('opens the effort editor without selecting the model', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
@@ -115,12 +113,76 @@ describe('ModelSelector', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
-    await user.click(screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i }))
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.6 Luna' }),
+    )
 
+    expect(screen.getByText('Thinking effort')).toBeInTheDocument()
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('selects effort from the keyboard submenu', async () => {
+  it('keeps the effort wing mounted for its close animation', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={vi.fn()}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select model' }))
+    const edit = screen.getByRole('menuitem', {
+      name: 'Edit thinking effort for GPT-5.6 Luna',
+    })
+    await user.click(edit)
+    await user.click(edit)
+
+    const wing = screen.getByText('Thinking effort').parentElement
+    expect(wing).toHaveAttribute('data-state', 'closed')
+
+    fireEvent.animationEnd(wing!)
+    await waitFor(() => {
+      expect(screen.queryByText('Thinking effort')).not.toBeInTheDocument()
+    })
+  })
+
+  it('closes the current effort wing before opening another one', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ModelSelector
+        models={models}
+        onSelect={vi.fn()}
+        reasoningEffort="medium"
+        value="openai:gpt-5.6-luna"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select model' }))
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.6 Luna' }),
+    )
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.4 Mini' }),
+    )
+
+    const oldWing = screen.getByText('Thinking effort').parentElement
+    expect(oldWing).toHaveAttribute('data-model-id', 'openai:gpt-5.6-luna')
+    expect(oldWing).toHaveAttribute('data-state', 'closed')
+
+    fireEvent.animationEnd(oldWing!)
+
+    await waitFor(() => {
+      const newWing = screen.getByText('Thinking effort').parentElement
+      expect(newWing).toHaveAttribute('data-model-id', 'openai:gpt-5.4-mini')
+      expect(newWing).toHaveAttribute('data-state', 'open')
+    })
+  })
+
+  it('drills into effort with the keyboard', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
@@ -135,9 +197,8 @@ describe('ModelSelector', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    const lunaTrigger = screen.getByRole('menuitem', { name: /GPT-5\.6 Luna/i })
-    lunaTrigger.focus()
-    await user.keyboard('{ArrowRight}')
+    screen.getByRole('menuitem', { name: 'Edit thinking effort for GPT-5.6 Luna' }).focus()
+    await user.keyboard('{Enter}')
 
     const effortOption = await screen.findByRole('menuitem', { name: 'Extra High' })
     await user.click(effortOption)

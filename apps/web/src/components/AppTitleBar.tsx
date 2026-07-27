@@ -2,6 +2,8 @@ import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'reac
 import {
   ChevronDownIcon,
   HistoryIcon,
+  LaptopIcon,
+  MoonIcon,
   DownloadIcon,
   FilePlus2Icon,
   PanelLeftCloseIcon,
@@ -12,8 +14,10 @@ import {
   PresentationIcon,
   Trash2Icon,
   UploadIcon,
+  SunIcon,
 } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
@@ -27,19 +31,26 @@ import {
 } from '@/components/ui/dialog'
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  MorphMenuContent,
+  MorphMenuFooter,
+  morphMenuTriggerMotionClassName,
+} from '@/components/ui/morph-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { DeckSummary, DeckVersionDetail, DeckVersionSummary } from '@/lib/deck-api'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { cn } from '@/lib/utils'
+import type { AppearancePreference, ResolvedAppearance } from '@/hooks/useAppearance'
 
 type TitleBarButtonProps = {
   active?: boolean
@@ -99,6 +110,8 @@ function DownloadTitleBarButton({
   onDownload: (variant: DeckDownloadVariant) => void
   showSanitizedDownload: boolean
 }) {
+  const [open, setOpen] = useState(false)
+
   if (!showSanitizedDownload) {
     return (
       <TitleBarButton
@@ -113,7 +126,7 @@ function DownloadTitleBarButton({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
@@ -121,6 +134,7 @@ function DownloadTitleBarButton({
               aria-label="Download HTML"
               className={cn(
                 buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+                morphMenuTriggerMotionClassName,
                 'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
                 'hover:bg-[var(--ark-accent-soft)]',
                 'disabled:text-[var(--ark-titlebar-muted)]/50',
@@ -136,22 +150,105 @@ function DownloadTitleBarButton({
         </TooltipTrigger>
         <TooltipContent side="bottom">Download HTML</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Export deck</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => onDownload('original')}>
-          <div className="flex flex-col gap-0.5">
-            <span>Original HTML</span>
-            <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
-          </div>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
-          <div className="flex flex-col gap-0.5">
-            <span>Sanitized HTML</span>
-            <span className="text-xs text-muted-foreground">Matches static preview</span>
-          </div>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+      <MorphMenuContent
+        align="end"
+        className="w-64"
+        side="bottom"
+        triggerHeight={26}
+        triggerRadius={0}
+      >
+        <MorphMenuFooter
+          className="h-[26px] justify-end px-1.5 text-[var(--ark-accent)]"
+          label="Collapse download menu"
+          onCollapse={() => setOpen(false)}
+        >
+          <DownloadIcon aria-hidden className="size-4" />
+        </MorphMenuFooter>
+        <div className="ark-scrollbar-none ark-morph-reveal min-h-0 overflow-y-auto p-1">
+          <DropdownMenuLabel>Export deck</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onSelect={() => onDownload('original')}>
+              <div className="flex flex-col gap-0.5">
+                <span>Original HTML</span>
+                <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
+              <div className="flex flex-col gap-0.5">
+                <span>Sanitized HTML</span>
+                <span className="text-xs text-muted-foreground">Matches static preview</span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </div>
+      </MorphMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function AppearanceMenu({
+  preference,
+  resolvedAppearance,
+  onChange,
+}: {
+  preference: AppearancePreference
+  resolvedAppearance: ResolvedAppearance
+  onChange: (preference: AppearancePreference) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const icon =
+    preference === 'system' ? (
+      <LaptopIcon className="size-3.5" />
+    ) : resolvedAppearance === 'dark' ? (
+      <MoonIcon className="size-3.5" />
+    ) : (
+      <SunIcon className="size-3.5" />
+    )
+
+  return (
+    <DropdownMenu onOpenChange={setOpen} open={open}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-expanded={open}
+          aria-label="Theme"
+          className={cn(morphMenuTriggerMotionClassName, 'h-7 px-2 text-xs')}
+          size="sm"
+          variant="ghost"
+        >
+          {icon}
+          Theme
+        </Button>
+      </DropdownMenuTrigger>
+      <MorphMenuContent align="end" side="bottom" triggerHeight={28} triggerRadius="10px 0 0 10px">
+        <MorphMenuFooter
+          className="h-7 justify-end gap-1 px-2 text-xs text-[var(--ark-titlebar-fg)]"
+          label="Collapse theme menu"
+          onCollapse={() => setOpen(false)}
+        >
+          {icon}
+          Theme
+        </MorphMenuFooter>
+        <div className="ark-morph-reveal p-1">
+          <DropdownMenuRadioGroup
+            onValueChange={(value) => onChange(value as AppearancePreference)}
+            value={preference}
+          >
+            <DropdownMenuRadioItem value="system">
+              <LaptopIcon />
+              System
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="light">
+              <SunIcon />
+              Light
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">
+              <MoonIcon />
+              Dark
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </div>
+      </MorphMenuContent>
     </DropdownMenu>
   )
 }
@@ -190,6 +287,7 @@ function DeckLibraryMenu({
 }) {
   const [renameError, setRenameError] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(deckTitle)
   const [isRenaming, setIsRenaming] = useState(false)
   const displayTitle = deckTitle || 'New deck'
@@ -237,12 +335,13 @@ function DeckLibraryMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             aria-label="Select deck"
             className={cn(
               buttonVariants({ variant: 'ghost' }),
+              morphMenuTriggerMotionClassName,
               'h-7 min-w-0 max-w-48 justify-start gap-1 rounded-sm border-0 px-1.5 text-xs font-medium text-[var(--ark-titlebar-fg)] shadow-none',
               'hover:bg-[var(--ark-titlebar-hover)]',
               'disabled:text-[var(--ark-titlebar-muted)]/50',
@@ -251,56 +350,78 @@ function DeckLibraryMenu({
             type="button"
           >
             <span className="min-w-0 truncate">{displayTitle}</span>
-            <ChevronDownIcon aria-hidden className="shrink-0" />
+            <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>Saved decks</DropdownMenuLabel>
-          <DropdownMenuGroup>
-            {decks.length > 0 ? (
-              decks.map((deck) => (
-                <DropdownMenuItem
-                  className="items-start"
-                  disabled={deck.id === activeDeckId}
-                  key={deck.id}
-                  onSelect={() => {
-                    void onSelectDeck(deck.id)
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate">{deck.title}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {formatUpdatedAt(deck.updatedAt)}
-                    </span>
-                  </div>
-                  {deck.id === activeDeckId ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">Active</span>
-                  ) : null}
-                </DropdownMenuItem>
-              ))
-            ) : (
-              <DropdownMenuItem disabled>No saved decks yet</DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onNewDeck}>
-            <FilePlus2Icon />
-            New deck
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!activeDeckId}
-            onSelect={() => {
-              handleRenameOpenChange(true)
-            }}
+        <MorphMenuContent
+          align="start"
+          className="w-72"
+          side="bottom"
+          triggerHeight={28}
+          triggerRadius={6}
+        >
+          <MorphMenuFooter
+            className="h-7 justify-start gap-1 px-1.5 text-xs"
+            label="Collapse deck selector"
+            onCollapse={() => setMenuOpen(false)}
           >
-            <PencilIcon />
-            Rename deck
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={!activeDeckId} onSelect={handleDelete} variant="destructive">
-            <Trash2Icon />
-            Delete deck
-          </DropdownMenuItem>
-        </DropdownMenuContent>
+            <span className="min-w-0 truncate">{displayTitle}</span>
+            <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
+          </MorphMenuFooter>
+          <div className="ark-scrollbar-none ark-morph-reveal max-h-64 min-h-0 flex-1 overflow-y-auto p-1">
+            <DropdownMenuLabel>Saved decks</DropdownMenuLabel>
+            <DropdownMenuGroup>
+              {decks.length > 0 ? (
+                decks.map((deck) => (
+                  <DropdownMenuItem
+                    className="items-start"
+                    disabled={deck.id === activeDeckId}
+                    key={deck.id}
+                    onSelect={() => {
+                      void onSelectDeck(deck.id)
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate">{deck.title}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {formatUpdatedAt(deck.updatedAt)}
+                      </span>
+                    </div>
+                    {deck.id === activeDeckId ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">Active</span>
+                    ) : null}
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>No saved decks yet</DropdownMenuItem>
+              )}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={onNewDeck}>
+                <FilePlus2Icon />
+                New deck
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!activeDeckId}
+                onSelect={() => {
+                  handleRenameOpenChange(true)
+                }}
+              >
+                <PencilIcon />
+                Rename deck
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!activeDeckId}
+                onSelect={handleDelete}
+                variant="destructive"
+              >
+                <Trash2Icon />
+                Delete deck
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </div>
+        </MorphMenuContent>
       </DropdownMenu>
 
       <Dialog onOpenChange={handleRenameOpenChange} open={renameOpen}>
@@ -349,6 +470,8 @@ export type DeckSaveStatus =
   'loading' | 'new' | 'generating' | 'saving' | 'dirty' | 'saved' | 'error'
 
 export type AppTitleBarProps = {
+  appearancePreference?: AppearancePreference
+  resolvedAppearance?: ResolvedAppearance
   activeDeckId: string | null
   activeVersionId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -362,6 +485,7 @@ export type AppTitleBarProps = {
   isLoadingVersions: boolean
   isStripOpen: boolean
   onClearVersionPreview: () => void
+  onAppearanceChange?: (preference: AppearancePreference) => void
   onDeleteDeck: () => Promise<void> | void
   onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
@@ -381,6 +505,8 @@ export type AppTitleBarProps = {
 }
 
 export function AppTitleBar({
+  appearancePreference = 'system',
+  resolvedAppearance = 'dark',
   activeDeckId,
   activeVersionId,
   fileInputRef,
@@ -394,6 +520,7 @@ export function AppTitleBar({
   isLoadingVersions,
   isStripOpen,
   onClearVersionPreview,
+  onAppearanceChange = () => undefined,
   onDeleteDeck,
   onDownload,
   onHtmlUpload,
@@ -427,16 +554,8 @@ export function AppTitleBar({
                 ? 'Saved'
                 : 'New deck'
 
-  const statusTone =
-    deckSaveStatus === 'loading' || deckSaveStatus === 'generating' || deckSaveStatus === 'saving'
-      ? 'pending'
-      : deckSaveStatus === 'dirty' || deckSaveStatus === 'error'
-        ? 'warning'
-        : hasDeck
-          ? 'saved'
-          : 'idle'
   return (
-    <header className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-2 text-[var(--ark-titlebar-fg)]">
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-2 text-foreground">
       <input
         accept=".html,.htm,text/html"
         className="hidden"
@@ -445,13 +564,12 @@ export function AppTitleBar({
         type="file"
       />
       <div className="flex min-w-0 items-center gap-2 px-1">
-        <PresentationIcon
-          aria-hidden
-          className="size-4 shrink-0 text-[var(--ark-titlebar-muted)]"
-        />
-        <span className="truncate text-[13px] leading-none">Ark</span>
-        <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-          ·
+        <PresentationIcon aria-hidden className="size-4 shrink-0 text-[var(--ark-focus)]" />
+        <span className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight">
+          Ark
+        </span>
+        <span aria-hidden className="text-muted-foreground">
+          /
         </span>
         <DeckLibraryMenu
           activeDeckId={activeDeckId}
@@ -463,27 +581,28 @@ export function AppTitleBar({
           onRenameDeck={onRenameDeck}
           onSelectDeck={onSelectDeck}
         />
-        <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--ark-titlebar-muted)]">
-          <span
-            aria-hidden
-            className={cn(
-              'size-1.5 shrink-0 rounded-full',
-              statusTone === 'pending' && 'animate-pulse bg-amber-500',
-              statusTone === 'warning' && 'bg-amber-500',
-              statusTone === 'saved' && 'bg-emerald-500',
-              statusTone === 'idle' && 'bg-[var(--ark-titlebar-muted)]/50',
-            )}
-          />
+        <Badge
+          variant={
+            deckSaveStatus === 'error'
+              ? 'destructive'
+              : deckSaveStatus === 'dirty'
+                ? 'outline'
+                : 'secondary'
+          }
+        >
           {statusLabel}
-          {versionNumber ? (
-            <span className="truncate text-[var(--ark-titlebar-muted)]">· v{versionNumber}</span>
-          ) : null}
-        </span>
+          {versionNumber ? <span>· v{versionNumber}</span> : null}
+        </Badge>
       </div>
 
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
+        <AppearanceMenu
+          onChange={onAppearanceChange}
+          preference={appearancePreference}
+          resolvedAppearance={resolvedAppearance}
+        />
         <TitleBarButton
           disabled={!activeDeckId || isGenerating}
           label="Version history"

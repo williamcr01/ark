@@ -1664,7 +1664,9 @@ describe('DeckPreview script divergence UI', () => {
     )
 
     expect(screen.getByText('Network access blocked')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('Deck script crashed')
+    expect(screen.getByText('Deck script crashed').closest('[role="alert"]')).toHaveTextContent(
+      'Deck script crashed',
+    )
   })
 
   it('caps hostile runtime error reports per deck version', () => {

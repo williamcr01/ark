@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { REASONING_EFFORT_LABELS, type ReasoningEffort } from '@ark/contracts'
 
@@ -92,15 +92,16 @@ export function useReasoningEffort(selectedModel: string, models: AvailableModel
     useState<Record<string, ReasoningEffort>>(readStoredEffortMap)
   const [legacyEffort] = useState<ReasoningEffort | null>(readLegacyEffort)
 
-  const selectedModelInfo = useMemo(
-    () => models.find((model) => model.id === selectedModel),
-    [models, selectedModel],
+  const getReasoningEffort = useCallback(
+    (modelId: string) =>
+      resolveEffortForModel(
+        models.find((model) => model.id === modelId),
+        effortByModel,
+        legacyEffort,
+      ),
+    [effortByModel, legacyEffort, models],
   )
-
-  const reasoningEffort = useMemo(
-    () => resolveEffortForModel(selectedModelInfo, effortByModel, legacyEffort),
-    [effortByModel, legacyEffort, selectedModelInfo],
-  )
+  const reasoningEffort = getReasoningEffort(selectedModel)
 
   useEffect(() => {
     writeStoredEffortMap(effortByModel)
@@ -117,5 +118,5 @@ export function useReasoningEffort(selectedModel: string, models: AvailableModel
     [selectedModel],
   )
 
-  return { reasoningEffort, setReasoningEffort }
+  return { getReasoningEffort, reasoningEffort, setReasoningEffort }
 }

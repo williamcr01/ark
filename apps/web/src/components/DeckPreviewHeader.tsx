@@ -1,6 +1,8 @@
-import { FileCode2Icon, Loader2Icon, Maximize2Icon, MonitorPlayIcon } from 'lucide-react'
+import { FileCode2Icon, Maximize2Icon, MonitorPlayIcon } from 'lucide-react'
 
 import type { DeckBrowserAnalysis } from '@/lib/deck-analysis'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
 type DeckPreviewHeaderProps = {
   activeSlideIndex: number
@@ -24,56 +26,43 @@ export function DeckPreviewHeader({
   const { runtimeManifest, slideCount, usesStaticPreview } = analysis
 
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
-      <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-        <MonitorPlayIcon
-          aria-hidden
-          className="size-3.5 shrink-0 text-[var(--ark-titlebar-muted)]"
-        />
-        <span className="truncate text-xs font-medium">Preview</span>
-        <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-          ›
+    <div className="flex h-9 shrink-0 items-center justify-between border-b bg-[var(--ark-panel-raised)] px-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <MonitorPlayIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="font-heading text-xs font-semibold">Preview</span>
+        <span aria-hidden className="text-muted-foreground">
+          /
         </span>
-        <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">
+        <span className="truncate font-mono text-[11px] text-muted-foreground">
           {slideCount > 0 ? `Slide ${activeSlideIndex + 1} of ${slideCount}` : 'HTML deck'}
         </span>
       </div>
-      <span className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
-        <button
-          aria-label="Present fullscreen"
-          className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] font-medium text-[var(--ark-titlebar-fg)] transition-colors hover:bg-[var(--ark-titlebar-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!canPresent || isPresentOpen}
-          onClick={onPresent}
-          type="button"
-        >
-          <Maximize2Icon className="size-3" />
-          Present
-        </button>
-        {isTextEditSaving && !isPresentOpen ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ark-titlebar-muted)]">
-            <Loader2Icon className="size-3 animate-spin" />
-            Saving edit
-          </span>
-        ) : null}
+      <span className="flex shrink-0 items-center gap-2">
+        {isTextEditSaving && !isPresentOpen ? <Badge variant="secondary">Saving edit</Badge> : null}
         {!isPresentOpen && analysis.allowsDeckInitScripts ? (
-          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-            Scripts running
-          </span>
+          <Badge variant="outline">Scripts running</Badge>
         ) : !isPresentOpen && runtimeManifest.runtimeMode === 'reveal' && !usesStaticPreview ? (
-          <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
-            Reveal runtime
-          </span>
+          <Badge variant="outline">Reveal runtime</Badge>
         ) : !isPresentOpen && usesStaticPreview ? (
-          <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-700 dark:text-sky-300">
-            Static preview
-          </span>
+          <Badge variant="secondary">Static preview</Badge>
         ) : null}
         {!isPresentOpen ? (
-          <span className="flex items-center gap-1">
-            <FileCode2Icon className="size-3" />
-            {usesSandboxHost ? 'Sandbox host' : 'srcDoc'}
-          </span>
+          <Badge variant="ghost">
+            <FileCode2Icon />
+            {usesSandboxHost ? 'Sandbox' : 'srcDoc'}
+          </Badge>
         ) : null}
+        <Button
+          aria-label="Present fullscreen"
+          disabled={!canPresent || isPresentOpen}
+          onClick={onPresent}
+          size="xs"
+          type="button"
+          variant="outline"
+        >
+          <Maximize2Icon />
+          Present
+        </Button>
       </span>
     </div>
   )

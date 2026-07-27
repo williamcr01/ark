@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { type ElementSize } from '@/lib/deck-preview'
 import { previewCompromiseCopy } from '@/lib/preview-compromise-copy'
@@ -13,10 +14,7 @@ const CONTROLS_IDLE_MS = 2500
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const PRESENT_MODE_BACKDROP = (
-  <div
-    aria-hidden
-    className="pointer-events-auto fixed inset-0 z-[40] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(180deg,_rgba(255,255,255,0.05),_transparent_22%,_rgba(255,255,255,0.04)),linear-gradient(#000,#000)]"
-  />
+  <div aria-hidden className="pointer-events-auto fixed inset-0 z-[40] bg-[#000]" />
 )
 
 type PresentModeProps = {
@@ -319,7 +317,10 @@ export function PresentMode({
       />
 
       {previewCompromised ? (
-        <div className="pointer-events-auto absolute inset-x-4 top-4 z-10 rounded-lg border border-red-500/30 bg-red-50/95 px-3 py-2 text-xs text-red-900 shadow-sm backdrop-blur">
+        <Alert
+          className="pointer-events-auto absolute inset-x-4 top-4 z-10 border-destructive/30 text-xs shadow-sm"
+          variant="destructive"
+        >
           <div className="flex items-start gap-2">
             <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
@@ -327,7 +328,7 @@ export function PresentMode({
               <p>{compromiseCopy.body}</p>
             </div>
           </div>
-        </div>
+        </Alert>
       ) : null}
 
       <div
@@ -336,7 +337,7 @@ export function PresentMode({
           controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       >
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-zinc-950/80 px-2 py-2 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#111]/90 px-2 py-2 shadow-2xl shadow-black/50">
           <Button
             aria-label="Previous slide"
             className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"

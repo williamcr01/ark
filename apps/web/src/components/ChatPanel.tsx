@@ -1,6 +1,22 @@
-import { type ReactNode, useState } from 'react'
-import { AlertCircleIcon, Loader2Icon, RefreshCwIcon, SparklesIcon, XIcon } from 'lucide-react'
+import {
+  lazy,
+  Suspense,
+  type ComponentType,
+  type LazyExoticComponent,
+  type ReactNode,
+  useState,
+} from 'react'
+import type { BorderBeamProps } from 'border-beam'
+import {
+  AlertCircleIcon,
+  Loader2Icon,
+  PlusIcon,
+  RefreshCwIcon,
+  SparklesIcon,
+  XIcon,
+} from 'lucide-react'
 
+import { AgentPresence } from '@/components/AgentPresence'
 import {
   Attachment,
   AttachmentPreview,
@@ -19,7 +35,6 @@ import {
   PromptInputActionAddAttachments,
   PromptInputActionAddScreenshot,
   PromptInputActionMenu,
-  PromptInputActionMenuContent,
   PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputButton,
@@ -32,7 +47,15 @@ import {
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
 import { ModelSelector } from '@/components/ModelSelector'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  MorphMenuContent,
+  MorphMenuFooter,
+  morphMenuTriggerClassName,
+} from '@/components/ui/morph-menu'
+import type { ResolvedAppearance } from '@/hooks/useAppearance'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
@@ -50,6 +73,10 @@ import {
 import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 import { cn } from '@/lib/utils'
 
+const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
+  ComponentType<BorderBeamProps>
+>
+
 export type { ChatMessage } from '@ark/deck-core/chat.ts'
 
 type ChatAlertId = 'generation' | 'attachment' | 'models' | 'model-warnings'
@@ -66,45 +93,51 @@ function ChatFloatingAlert({
   children: ReactNode
 }) {
   return (
-    <div
-      className={cn(
-        'relative rounded-lg border px-3 py-2.5 pr-9 text-sm shadow-md backdrop-blur-sm',
-        variant === 'destructive'
-          ? 'border-destructive/30 bg-destructive/10 text-destructive'
-          : 'border-amber-500/30 bg-amber-50/95 text-amber-950 dark:bg-amber-950/90 dark:text-amber-100',
-      )}
-      role="alert"
+    <Alert variant={variant}>
+      <AlertCircleIcon />
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{children}</AlertDescription>
+      <AlertAction>
+        <Button aria-label={`Dismiss ${title}`} onClick={onClose} size="icon-xs" variant="ghost">
+          <XIcon />
+        </Button>
+      </AlertAction>
+    </Alert>
+  )
+}
+
+function ActiveComposer({
+  active,
+  reducedMotion,
+  resolvedAppearance,
+  children,
+}: {
+  active: boolean
+  reducedMotion: boolean
+  resolvedAppearance: ResolvedAppearance
+  children: ReactNode
+}) {
+  if (!active || reducedMotion) {
+    return (
+      <div className={cn(active && 'rounded-lg ring-1 ring-[var(--ark-focus)]')}>{children}</div>
+    )
+  }
+
+  return (
+    <Suspense
+      fallback={<div className="rounded-lg ring-1 ring-[var(--ark-focus)]">{children}</div>}
     >
-      <button
-        aria-label={`Dismiss ${title}`}
-        className={cn(
-          'absolute top-2 right-2 rounded-sm p-0.5 transition-colors',
-          variant === 'destructive'
-            ? 'text-destructive/70 hover:text-destructive'
-            : 'text-amber-700/70 hover:text-amber-950 dark:text-amber-200/70 dark:hover:text-amber-50',
-        )}
-        onClick={onClose}
-        type="button"
+      <BorderBeam
+        colorVariant="mono"
+        duration={3.1}
+        size="line"
+        staticColors
+        strength={1}
+        theme={resolvedAppearance}
       >
-        <XIcon className="size-3.5" />
-      </button>
-      <div className="flex items-start gap-2">
-        <AlertCircleIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-        <div className="min-w-0 space-y-1">
-          <p className="font-medium">{title}</p>
-          <div
-            className={cn(
-              'text-xs leading-relaxed',
-              variant === 'destructive'
-                ? 'text-destructive/90'
-                : 'text-amber-900 dark:text-amber-100/90',
-            )}
-          >
-            {children}
-          </div>
-        </div>
-      </div>
-    </div>
+        {children}
+      </BorderBeam>
+    </Suspense>
   )
 }
 
@@ -170,13 +203,15 @@ function PromptInputAttachmentsDisplay() {
 
 function ChatPromptInputSubmit({
   input,
-  isInputDisabled,
   isGenerating,
+  isInputDisabled,
+  onCancelGeneration,
   selectedAssetIds,
 }: {
   input: string
-  isInputDisabled: boolean
   isGenerating: boolean
+  isInputDisabled: boolean
+  onCancelGeneration: () => void | Promise<void>
   selectedAssetIds: string[]
 }) {
   const attachments = usePromptInputAttachments()
@@ -186,14 +221,81 @@ function ChatPromptInputSubmit({
 
   return (
     <PromptInputSubmit
-      disabled={!canSubmit || isInputDisabled}
-      status={isGenerating ? 'submitted' : 'ready'}
+      className="ark-control-invert! size-8 rounded-full"
+      disabled={!isGenerating && (!canSubmit || isInputDisabled)}
+      onStop={() => {
+        void onCancelGeneration()
+      }}
+      status={isGenerating ? 'streaming' : 'ready'}
     />
   )
 }
 
 function formatToolLabel(toolName: string) {
   return toolName.replace(/_/g, ' ')
+}
+
+type IndexedToolPart = {
+  index: number
+  part: Extract<ChatMessagePart, { type: 'tool-call' | 'tool-result' }>
+}
+
+type ChatPartSegment =
+  | { type: 'part'; index: number; part: ChatMessagePart }
+  | { type: 'tools'; parts: IndexedToolPart[] }
+
+function segmentChatParts(parts: ChatMessagePart[]) {
+  const segments: ChatPartSegment[] = []
+
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]
+    if (part.type !== 'tool-call' && part.type !== 'tool-result') {
+      segments.push({ type: 'part', index, part })
+      continue
+    }
+
+    const run: IndexedToolPart[] = []
+    while (index < parts.length) {
+      const toolPart = parts[index]
+      if (toolPart.type !== 'tool-call' && toolPart.type !== 'tool-result') break
+      run.push({ index, part: toolPart })
+      index += 1
+    }
+    index -= 1
+
+    const callCount = run.filter(({ part: toolPart }) => toolPart.type === 'tool-call').length
+    if (callCount > 1) {
+      segments.push({ type: 'tools', parts: run })
+    } else {
+      segments.push(
+        ...run.map(({ index: partIndex, part: toolPart }) => ({
+          type: 'part' as const,
+          index: partIndex,
+          part: toolPart,
+        })),
+      )
+    }
+  }
+
+  return segments
+}
+
+function ToolActivityLine({ part }: { part: IndexedToolPart['part'] }) {
+  const error = part.type === 'tool-result' && part.error
+
+  return (
+    <div
+      className={cn(
+        'text-xs leading-relaxed',
+        error ? 'text-destructive' : 'text-muted-foreground',
+      )}
+    >
+      <span className={cn('font-medium', !error && 'text-foreground')}>
+        {formatToolLabel(part.toolName)}
+      </span>
+      {part.summary ? <span> — {part.summary}</span> : null}
+    </div>
+  )
 }
 
 function ChatMessageDeliveryStatus({
@@ -241,9 +343,28 @@ function ChatMessageParts({
   parts: ChatMessagePart[]
   thinkingDefaultOpen?: boolean
 }) {
+  const segments = segmentChatParts(parts)
+
   return (
     <div className="flex flex-col gap-2">
-      {parts.map((part, index) => {
+      {segments.map((segment) => {
+        if (segment.type === 'tools') {
+          const callCount = segment.parts.filter(({ part }) => part.type === 'tool-call').length
+          return (
+            <details className="text-xs" key={`tools-${segment.parts[0]?.index}`}>
+              <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+                {callCount} tool calls
+              </summary>
+              <div className="mt-1 flex flex-col gap-1 pl-4">
+                {segment.parts.map(({ index, part }) => (
+                  <ToolActivityLine key={`tool-${index}`} part={part} />
+                ))}
+              </div>
+            </details>
+          )
+        }
+
+        const { part, index } = segment
         if (part.type === 'text') {
           return <MessageResponse key={`text-${index}`}>{part.content}</MessageResponse>
         }
@@ -251,57 +372,21 @@ function ChatMessageParts({
         if (part.type === 'thinking') {
           return (
             <details
-              className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs"
+              className="text-xs"
               key={`thinking-${index}`}
               open={thinkingDefaultOpen || undefined}
             >
               <summary className="cursor-pointer select-none font-medium text-muted-foreground">
                 Thinking
               </summary>
-              <div className="mt-2 whitespace-pre-wrap text-muted-foreground/80 opacity-80">
+              <div className="mt-1 whitespace-pre-wrap pl-4 text-muted-foreground/80">
                 {part.content}
               </div>
             </details>
           )
         }
 
-        if (part.type === 'tool-call') {
-          return (
-            <div
-              className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
-              key={`tool-call-${index}`}
-            >
-              <span className="font-medium text-foreground">{formatToolLabel(part.toolName)}</span>
-              {part.summary ? (
-                <span className="text-muted-foreground"> — {part.summary}</span>
-              ) : null}
-            </div>
-          )
-        }
-
-        return (
-          <div
-            className={cn(
-              'rounded-md border px-3 py-2 text-xs',
-              part.error
-                ? 'border-destructive/30 bg-destructive/5 text-destructive'
-                : 'border-emerald-500/20 bg-emerald-500/5 text-muted-foreground',
-            )}
-            key={`tool-result-${index}`}
-          >
-            <span
-              className={cn('font-medium', part.error ? 'text-destructive' : 'text-foreground')}
-            >
-              {formatToolLabel(part.toolName)}
-            </span>
-            {part.summary ? (
-              <span className={part.error ? 'text-destructive/90' : 'text-muted-foreground'}>
-                {' '}
-                — {part.summary}
-              </span>
-            ) : null}
-          </div>
-        )
+        return <ToolActivityLine key={`tool-${index}`} part={part} />
       })}
     </div>
   )
@@ -332,7 +417,10 @@ export type ChatPanelProps = {
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
   onRetryGeneration: () => void | Promise<void>
+  reducedMotion?: boolean
+  resolvedAppearance?: ResolvedAppearance
   getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
+  getReasoningEffort?: (modelId: string) => ReasoningEffort | undefined
   onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
 }
 
@@ -360,13 +448,18 @@ export function ChatPanel({
   onAttachmentError,
   onCancelGeneration,
   onRetryGeneration,
+  reducedMotion = false,
+  resolvedAppearance = 'dark',
   getMessageDeliveryStatus,
+  getReasoningEffort,
   onRetryPersist,
+  generationStatus,
 }: ChatPanelProps) {
   const isSubmitDisabled = isGenerating || !canGenerate
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
   const supportsAttachments = selectedModelInfo?.supportsAttachments !== false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const modelWarningsKey = modelWarnings.join('\n')
 
   const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
@@ -392,27 +485,35 @@ export function ChatPanel({
     showGenerationError || showAttachmentError || showModelsError || showModelWarnings
 
   return (
-    <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3">
-        <div className="flex min-w-0 items-center gap-2 text-[var(--ark-titlebar-fg)]">
-          <SparklesIcon aria-hidden className="size-3.5 shrink-0 text-[var(--ark-accent)]" />
-          <span className="truncate text-xs font-medium">Chat</span>
-          <span aria-hidden className="text-[var(--ark-titlebar-muted)]">
-            ›
-          </span>
-          <span className="truncate text-xs text-[var(--ark-titlebar-muted)]">AI agent</span>
-        </div>
-      </div>
-
+    <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 bg-[var(--ark-panel)] py-0 shadow-none ring-0 [--card-spacing:0]">
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <Conversation>
           <ConversationContent className="gap-5 px-5 py-6">
             {messages.length === 0 ? (
-              <ConversationEmptyState
-                description="Paste notes, describe an audience, or ask for a specific deck structure. Ark will return a complete HTML presentation."
-                icon={<SparklesIcon className="size-10" />}
-                title="Tell Ark what to make"
-              />
+              <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 text-center">
+                <ConversationEmptyState
+                  description="Start with an audience, raw notes, or one clear outcome."
+                  icon={<SparklesIcon className="size-8" />}
+                  title="Direct the next cut"
+                />
+                <div className="flex max-w-sm flex-col gap-2">
+                  {[
+                    'Turn my notes into a concise narrative',
+                    'Build a six-slide pitch for this idea',
+                    'Give this deck a sharper visual hierarchy',
+                  ].map((prompt) => (
+                    <Button
+                      className="h-auto justify-start whitespace-normal text-left"
+                      key={prompt}
+                      onClick={() => onInputChange(prompt)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {prompt}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             ) : (
               messages.map((message) => (
                 <Message from={message.role} key={message.id}>
@@ -443,10 +544,7 @@ export function ChatPanel({
               <Message from="assistant">
                 <MessageContent>
                   <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2Icon aria-hidden className="size-4 animate-spin" />
-                      <span>Working…</span>
-                    </div>
+                    <span className="sr-only">Working…</span>
                     {activeSteps.length > 0 ? (
                       <ChatMessageParts
                         parts={agentStepsToChatParts(activeSteps)}
@@ -461,7 +559,17 @@ export function ChatPanel({
           <ConversationScrollButton />
         </Conversation>
 
-        <div className="relative shrink-0 border-t border-[var(--ark-line)] bg-[var(--ark-paper)] p-4">
+        <div className="relative shrink-0 bg-[var(--ark-paper)] p-4" data-slot="agent-composer">
+          {isGenerating ? (
+            <div className="mb-2 flex min-h-5 items-center px-1">
+              <AgentPresence
+                activeSteps={activeSteps}
+                generationStatus={generationStatus}
+                reducedMotion={reducedMotion}
+                resolvedAppearance={resolvedAppearance}
+              />
+            </div>
+          ) : null}
           {assetsSlot}
 
           {hasFloatingAlerts ? (
@@ -525,76 +633,77 @@ export function ChatPanel({
             </div>
           ) : null}
 
-          <PromptInput
-            accept="image/*,text/*,application/pdf"
-            className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
-            maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
-            maxFiles={MAX_CHAT_ATTACHMENTS}
-            multiple
-            onError={(error) => onAttachmentError(formatAttachmentError(error))}
-            onSubmit={onPromptSubmit}
+          <ActiveComposer
+            active={isGenerating}
+            reducedMotion={reducedMotion}
+            resolvedAppearance={resolvedAppearance}
           >
-            <PromptInputHeader>
-              <PromptInputAttachmentsDisplay />
-            </PromptInputHeader>
-            <PromptInputBody>
-              <PromptInputTextarea
-                className="min-h-24 resize-none bg-transparent"
-                disabled={isGenerating}
-                onChange={(event) => onInputChange(event.currentTarget.value)}
-                placeholder="Describe the deck you want, or ask for an edit…"
-                value={input}
-              />
-            </PromptInputBody>
-            <PromptInputFooter className="gap-2">
-              <PromptInputTools className="gap-1.5">
-                <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger
-                    aria-label="Add attachments"
-                    disabled={!supportsAttachments || isGenerating}
-                    tooltip={
-                      supportsAttachments
-                        ? 'Add attachments'
-                        : 'This model is text-only and does not support attachments'
-                    }
-                  />
-                  {supportsAttachments ? (
-                    <PromptInputActionMenuContent>
-                      <PromptInputActionAddAttachments />
-                      <PromptInputActionAddScreenshot />
-                    </PromptInputActionMenuContent>
-                  ) : null}
-                </PromptInputActionMenu>
-                <ModelSelector
-                  canGenerate={canGenerate}
+            <PromptInput
+              accept="image/*,text/*,application/pdf"
+              className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
+              maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
+              maxFiles={MAX_CHAT_ATTACHMENTS}
+              multiple
+              onError={(error) => onAttachmentError(formatAttachmentError(error))}
+              onSubmit={onPromptSubmit}
+            >
+              <PromptInputHeader>
+                <PromptInputAttachmentsDisplay />
+              </PromptInputHeader>
+              <PromptInputBody>
+                <PromptInputTextarea
+                  className="min-h-24 resize-none bg-transparent"
                   disabled={isGenerating}
-                  isLoading={isLoadingModels}
-                  models={models}
-                  onSelect={onModelSelect}
-                  reasoningEffort={reasoningEffort}
-                  value={selectedModel}
+                  onChange={(event) => onInputChange(event.currentTarget.value)}
+                  placeholder="Describe the deck you want, or ask for an edit…"
+                  value={input}
                 />
-                {isGenerating ? (
-                  <PromptInputButton
-                    aria-label="Cancel generation"
-                    onClick={() => {
-                      void onCancelGeneration()
-                    }}
-                    tooltip="Cancel generation"
-                  >
-                    <XIcon className="size-4" />
-                    Cancel
-                  </PromptInputButton>
-                ) : null}
-              </PromptInputTools>
-              <ChatPromptInputSubmit
-                input={input}
-                isGenerating={isGenerating}
-                isInputDisabled={isSubmitDisabled}
-                selectedAssetIds={selectedAssetIds}
-              />
-            </PromptInputFooter>
-          </PromptInput>
+              </PromptInputBody>
+              <PromptInputFooter className="gap-2">
+                <PromptInputTools className="gap-2">
+                  <PromptInputActionMenu onOpenChange={setAttachMenuOpen} open={attachMenuOpen}>
+                    <PromptInputActionMenuTrigger
+                      aria-label="Add attachments"
+                      className={morphMenuTriggerClassName}
+                      disabled={!supportsAttachments || isGenerating}
+                    />
+                    {supportsAttachments ? (
+                      <MorphMenuContent className="w-48">
+                        <div className="ark-scrollbar-none ark-morph-reveal min-h-0 flex-1 overflow-y-auto p-1">
+                          <PromptInputActionAddAttachments />
+                          <PromptInputActionAddScreenshot />
+                        </div>
+                        <MorphMenuFooter
+                          className="px-2"
+                          label="Collapse attachments menu"
+                          onCollapse={() => setAttachMenuOpen(false)}
+                        >
+                          <PlusIcon aria-hidden className="size-4 shrink-0" />
+                        </MorphMenuFooter>
+                      </MorphMenuContent>
+                    ) : null}
+                  </PromptInputActionMenu>
+                  <ModelSelector
+                    canGenerate={canGenerate}
+                    disabled={isGenerating}
+                    isLoading={isLoadingModels}
+                    models={models}
+                    getReasoningEffort={getReasoningEffort}
+                    onSelect={onModelSelect}
+                    reasoningEffort={reasoningEffort}
+                    value={selectedModel}
+                  />
+                </PromptInputTools>
+                <ChatPromptInputSubmit
+                  input={input}
+                  isGenerating={isGenerating}
+                  isInputDisabled={isSubmitDisabled}
+                  onCancelGeneration={onCancelGeneration}
+                  selectedAssetIds={selectedAssetIds}
+                />
+              </PromptInputFooter>
+            </PromptInput>
+          </ActiveComposer>
         </div>
       </CardContent>
     </Card>

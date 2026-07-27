@@ -13,9 +13,11 @@ import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { DeckPreview } from '@/components/DeckPreview'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
+import { useAppearance } from '@/hooks/useAppearance'
 import { useReasoningEffort, type ReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useChatSession } from '@/hooks/useChatSession'
 import { useDeckAssets } from '@/hooks/useDeckAssets'
@@ -113,7 +115,10 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
-  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const [deckChromeHost, setDeckChromeHost] = useState<HTMLDivElement | null>(null)
+  const isDesktop = useMediaQuery('(min-width: 1180px)')
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const { preference, resolvedAppearance, setPreference } = useAppearance()
   const {
     canGenerate,
     error: modelsError,
@@ -124,7 +129,10 @@ function App() {
     setSelectedModel,
     warnings: modelWarnings,
   } = useAvailableModels()
-  const { reasoningEffort, setReasoningEffort } = useReasoningEffort(selectedModel, models)
+  const { getReasoningEffort, reasoningEffort, setReasoningEffort } = useReasoningEffort(
+    selectedModel,
+    models,
+  )
 
   const handleModelSelect = useCallback(
     (modelId: string, nextEffort?: ReasoningEffort) => {
@@ -510,6 +518,7 @@ function App() {
       failedJobId={failedJobId}
       generationStatus={generationStatus}
       getMessageDeliveryStatus={getMessageDeliveryStatus}
+      getReasoningEffort={getReasoningEffort}
       input={input}
       isGenerating={isGenerating}
       isLoadingModels={isLoadingModels}
@@ -524,10 +533,37 @@ function App() {
       onPromptSubmit={handlePromptSubmit}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}
+      reducedMotion={reducedMotion}
       reasoningEffort={reasoningEffort}
+      resolvedAppearance={resolvedAppearance}
       selectedAssetIds={selectedAssetIds}
       selectedModel={selectedModel}
       showGenerationErrorAlert={!isModelFailure}
+    />
+  )
+  const deckPreview = (
+    <DeckPreview
+      canRedo={canRedo}
+      canUndo={canUndo}
+      chromeHost={deckChromeHost}
+      deckId={deckId}
+      editorBridgeEnabled
+      html={generatedHtml}
+      isGenerating={isGenerating}
+      isPreviewUpdating={isPreviewUpdating}
+      isStripOpen={isStripOpen}
+      isTextEditSaving={isDeckPatching || isDeckSaving}
+      layout={isDesktop ? 'desktop' : 'mobile'}
+      onCommitTextEdit={handleCommitTextEdit}
+      onEditorSelectionChange={handleEditorSelectionChange}
+      onPatchEditorOperations={handlePatchEditorOperations}
+      onRedo={handleRedoEdit}
+      onUndo={handleUndoEdit}
+      deckAnalysis={deckAnalysis}
+      redoSlideIndex={redoEntry?.slideIndex ?? null}
+      recentGenerationJobId={recentGenerationJobId}
+      undoSlideIndex={undoEntry?.slideIndex ?? null}
+      versionId={activeVersionId}
     />
   )
 
@@ -547,6 +583,8 @@ function App() {
           isGenerating={isGenerating}
           isLoadingVersions={isLoadingVersions}
           isStripOpen={isStripOpen}
+          appearancePreference={preference}
+          resolvedAppearance={resolvedAppearance}
           onClearVersionPreview={clearVersionPreview}
           onDeleteDeck={handleDeleteDeck}
           onDownload={handleDownload}
@@ -559,6 +597,7 @@ function App() {
           onSelectDeck={handleSelectDeck}
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
+          onAppearanceChange={setPreference}
           onUploadClick={handleUploadClick}
           previewVersion={previewVersion}
           showSanitizedDownload={showSanitizedDownload}
@@ -566,35 +605,18 @@ function App() {
           versions={versions}
         />
 
-        <main className="min-h-0 flex-1 overflow-hidden" ref={mainRef}>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
+          <div className="shrink-0" ref={setDeckChromeHost} />
           {isDesktop ? (
-            <ResizablePanelGroup className="min-h-0 overflow-hidden" orientation="horizontal">
+            <ResizablePanelGroup
+              className="min-h-0 flex-1 overflow-hidden"
+              orientation="horizontal"
+            >
               <ResizablePanel
                 defaultSize={isChatOpen ? deckDefaultSizeWithChat : '100%'}
-                minSize={isChatOpen ? '45%' : '100%'}
+                minSize={isChatOpen ? '55%' : '100%'}
               >
-                <DeckPreview
-                  canRedo={canRedo}
-                  canUndo={canUndo}
-                  deckId={deckId}
-                  editorBridgeEnabled
-                  html={generatedHtml}
-                  isGenerating={isGenerating}
-                  isPreviewUpdating={isPreviewUpdating}
-                  isStripOpen={isStripOpen}
-                  isTextEditSaving={isDeckPatching || isDeckSaving}
-                  layout="desktop"
-                  onCommitTextEdit={handleCommitTextEdit}
-                  onEditorSelectionChange={handleEditorSelectionChange}
-                  onPatchEditorOperations={handlePatchEditorOperations}
-                  onRedo={handleRedoEdit}
-                  onUndo={handleUndoEdit}
-                  deckAnalysis={deckAnalysis}
-                  redoSlideIndex={redoEntry?.slideIndex ?? null}
-                  recentGenerationJobId={recentGenerationJobId}
-                  undoSlideIndex={undoEntry?.slideIndex ?? null}
-                  versionId={activeVersionId}
-                />
+                {deckPreview}
               </ResizablePanel>
               {isChatOpen ? (
                 <>
@@ -602,6 +624,7 @@ function App() {
                   <ResizablePanel
                     defaultSize={chatDefaultSize}
                     id="ark-chat-panel"
+                    maxSize={460}
                     minSize={CHAT_PANEL_MIN_WIDTH_PX}
                   >
                     {chatPanel}
@@ -610,43 +633,27 @@ function App() {
               ) : null}
             </ResizablePanelGroup>
           ) : (
-            <div
-              className={
-                isChatOpen
-                  ? 'grid h-full min-h-0 grid-rows-[minmax(320px,0.9fr)_minmax(420px,1fr)]'
-                  : 'h-full min-h-0'
-              }
-            >
-              <div className="min-h-0 overflow-hidden">
-                <DeckPreview
-                  canRedo={canRedo}
-                  canUndo={canUndo}
-                  deckId={deckId}
-                  editorBridgeEnabled
-                  html={generatedHtml}
-                  isGenerating={isGenerating}
-                  isPreviewUpdating={isPreviewUpdating}
-                  isStripOpen={isStripOpen}
-                  isTextEditSaving={isDeckPatching || isDeckSaving}
-                  layout="mobile"
-                  onCommitTextEdit={handleCommitTextEdit}
-                  onEditorSelectionChange={handleEditorSelectionChange}
-                  onPatchEditorOperations={handlePatchEditorOperations}
-                  onRedo={handleRedoEdit}
-                  onUndo={handleUndoEdit}
-                  deckAnalysis={deckAnalysis}
-                  redoSlideIndex={redoEntry?.slideIndex ?? null}
-                  recentGenerationJobId={recentGenerationJobId}
-                  undoSlideIndex={undoEntry?.slideIndex ?? null}
-                  versionId={activeVersionId}
-                />
-              </div>
-              {isChatOpen ? (
-                <div className="min-h-0 overflow-hidden" id="ark-chat-panel">
+            <>
+              <div className="min-h-0 flex-1 overflow-hidden">{deckPreview}</div>
+              <Sheet onOpenChange={setIsChatOpen} open={isChatOpen}>
+                <SheetContent
+                  aria-describedby="ark-agent-sheet-description"
+                  aria-labelledby="ark-agent-sheet-title"
+                  className="gap-0 p-0"
+                  forceMount
+                  id="ark-chat-panel"
+                  showCloseButton={false}
+                >
+                  <SheetTitle className="sr-only" id="ark-agent-sheet-title">
+                    Agent
+                  </SheetTitle>
+                  <SheetDescription className="sr-only" id="ark-agent-sheet-description">
+                    Build and edit the current deck with Ark.
+                  </SheetDescription>
                   {chatPanel}
-                </div>
-              ) : null}
-            </div>
+                </SheetContent>
+              </Sheet>
+            </>
           )}
         </main>
       </div>

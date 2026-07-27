@@ -179,4 +179,16 @@ describe('App chat panel layout', () => {
     expect(getByTestId('deck-preview')).toBeInTheDocument()
     expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
   })
+
+  it('keeps the mobile preview and agent instance mounted while the sheet closes', () => {
+    mediaState.isDesktop = false
+    const { container, getByTestId } = render(<App />)
+
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    fireEvent.click(getByTestId('toggle-chat'))
+
+    expect(container.ownerDocument.querySelectorAll('[data-testid="chat-panel"]')).toHaveLength(1)
+    expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
+  })
 })

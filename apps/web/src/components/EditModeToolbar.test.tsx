@@ -41,7 +41,10 @@ describe('EditModeToolbar', () => {
       'aria-pressed',
       'false',
     )
-    expect(screen.getByRole('button', { name: 'Image' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Insert image' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 
   it('disables tools when no deck is loaded', () => {
@@ -50,7 +53,7 @@ describe('EditModeToolbar', () => {
     expect(screen.getByText('No deck loaded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Text box' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Image' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Insert image' })).toBeDisabled()
   })
 
   it('shows generation paused state and disables tools while generating', () => {

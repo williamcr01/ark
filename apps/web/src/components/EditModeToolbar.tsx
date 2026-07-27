@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
+import { Badge } from '@/components/ui/badge'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
@@ -130,38 +132,45 @@ export function EditModeToolbar({
       className="flex h-9 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3"
       role="toolbar"
     >
-      <ButtonGroup aria-label="Editor tools" className="shrink-0">
-        <ToolbarButton
-          active={activeTool === 'select'}
+      <ToggleGroup
+        aria-label="Editor tools"
+        onValueChange={(value) => {
+          if (!value) return
+          const tool = value as EditorTool
+          onToolChange(tool)
+          if (tool === 'insert') onPickImage?.()
+        }}
+        type="single"
+        value={activeTool}
+      >
+        <ToggleGroupItem
+          aria-label="Select"
+          aria-pressed={activeTool === 'select'}
           disabled={!canUseTools || textEditActive}
-          label="Select"
-          onClick={() => onToolChange('select')}
-          toggle
+          role="button"
+          value="select"
         >
           <MousePointer2Icon className="size-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          active={activeTool === 'text'}
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          aria-label="Text box"
+          aria-pressed={activeTool === 'text'}
           disabled={!canUseTools || textEditActive}
-          label="Text box"
-          onClick={() => onToolChange('text')}
-          toggle
+          role="button"
+          value="text"
         >
           <TypeIcon className="size-3.5" />
-        </ToolbarButton>
-        <ToolbarButton
-          active={activeTool === 'insert'}
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          aria-label="Insert image"
+          aria-pressed={activeTool === 'insert'}
           disabled={!canUseTools || textEditActive}
-          label="Image"
-          onClick={() => {
-            onToolChange('insert')
-            onPickImage?.()
-          }}
-          toggle
+          role="button"
+          value="insert"
         >
           <ImageIcon className="size-3.5" />
-        </ToolbarButton>
-      </ButtonGroup>
+        </ToggleGroupItem>
+      </ToggleGroup>
 
       {selectedImage ? (
         <>
@@ -173,7 +182,7 @@ export function EditModeToolbar({
             <span className="sr-only">Image alt text</span>
             <span aria-hidden>Alt</span>
             <input
-              className="h-6 min-w-0 max-w-40 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)]"
+              className="h-6 min-w-0 max-w-40 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] outline-none"
               disabled={toolbarDisabled || textEditActive}
               onChange={(event) => onImageAltChange?.(event.target.value)}
               placeholder="Describe image"
@@ -185,7 +194,7 @@ export function EditModeToolbar({
             <span className="sr-only">Image fit mode</span>
             <span aria-hidden>Fit</span>
             <select
-              className="h-6 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none focus:border-[var(--ark-accent)]"
+              className="h-6 rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] px-1.5 text-[11px] text-[var(--ark-titlebar-fg)] outline-none"
               disabled={toolbarDisabled || textEditActive}
               onChange={(event) => onImageFitChange?.(event.target.value as ImageFitMode)}
               value={imageFit}
@@ -285,11 +294,7 @@ export function EditModeToolbar({
       <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
         {!hasDeck ? <span>No deck loaded</span> : null}
         {hasDeck && isGenerating ? <span>Editing paused during generation</span> : null}
-        {selectionLocked ? (
-          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
-            Locked
-          </span>
-        ) : null}
+        {selectionLocked ? <Badge variant="outline">Locked</Badge> : null}
         {textEditActive ? <span>Editing text — press Escape to cancel</span> : null}
         {isSaving ? <span>Saving edit…</span> : null}
       </div>
