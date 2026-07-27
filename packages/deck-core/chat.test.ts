@@ -116,6 +116,26 @@ describe('parseGenerateMessages', () => {
     })
   })
 
+  it('does not impose a fixed attachment-count limit', () => {
+    const attachments = Array.from({ length: 20 }, (_, index) => ({
+      ...sampleAttachment,
+      filename: `image-${index}.png`,
+    }))
+
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'Use all of these',
+        attachments,
+      },
+    ])
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.messages[0]?.attachments).toHaveLength(20)
+    }
+  })
+
   it('keeps attachment-only user turns', () => {
     expect(
       parseGenerateMessages([

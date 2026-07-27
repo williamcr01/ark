@@ -134,7 +134,7 @@ describe('useDeckAssets', () => {
     expect(result.current.error).toContain('Save the deck')
   })
 
-  it('limits deck asset selection to the chat attachment maximum', async () => {
+  it('allows selecting every deck asset for a message', async () => {
     const assets = Array.from({ length: 6 }, (_, index) =>
       makeAsset({
         id: `00000000-0000-4000-8000-00000000070${index}`,
@@ -153,7 +153,7 @@ describe('useDeckAssets', () => {
       }
     })
 
-    expect(result.current.selectedAssetIds).toHaveLength(5)
-    expect(result.current.error).toContain('5 deck assets')
+    expect(result.current.selectedAssetIds).toHaveLength(6)
+    expect(result.current.error).toBe('')
   })
 })
