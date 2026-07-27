@@ -215,7 +215,7 @@ function ChatPromptInputSubmit({
 
   return (
     <PromptInputSubmit
-      className="ark-control-invert! size-8 rounded-full"
+      className="ark-control-invert! size-8 shrink-0 rounded-full"
       disabled={!isGenerating && (!canSubmit || isInputDisabled)}
       onStop={() => {
         void onCancelGeneration()
@@ -628,12 +628,12 @@ export function ChatPanel({
                   value={input}
                 />
               </PromptInputBody>
-              <PromptInputFooter className="gap-2">
-                <PromptInputTools className="gap-2">
+              <PromptInputFooter className="min-w-0 gap-2">
+                <PromptInputTools className="min-w-0 flex-1 gap-2 overflow-hidden">
                   <PromptInputActionMenu onOpenChange={setAttachMenuOpen} open={attachMenuOpen}>
                     <PromptInputActionMenuTrigger
                       aria-label="Add attachments"
-                      className={morphMenuTriggerClassName}
+                      className={cn(morphMenuTriggerClassName, 'shrink-0')}
                       disabled={!supportsAttachments || isGenerating}
                     />
                     {supportsAttachments ? (
@@ -654,6 +654,7 @@ export function ChatPanel({
                   </PromptInputActionMenu>
                   <ModelSelector
                     canGenerate={canGenerate}
+                    className="min-w-0"
                     disabled={isGenerating}
                     isLoading={isLoadingModels}
                     models={models}

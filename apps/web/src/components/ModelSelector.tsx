@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,54 @@ import { formatReasoningEffortLabel, type ReasoningEffort } from '@/hooks/useRea
 import { useSequencedPresence } from '@/hooks/useSequencedPresence'
 import { cn } from '@/lib/utils'
 import type { ProviderId } from '@ark/contracts'
+
+function ModelSelectorTriggerLabel({
+  modelName,
+  effortLabel,
+}: {
+  modelName: string
+  effortLabel?: string
+}) {
+  const containerRef = useRef<HTMLSpanElement>(null)
+  const measureRef = useRef<HTMLSpanElement>(null)
+  const [hideEffort, setHideEffort] = useState(false)
+  const fullLabel = effortLabel ? `${modelName} · ${effortLabel}` : modelName
+
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    const measure = measureRef.current
+    if (!container || !measure || !effortLabel) {
+      setHideEffort(false)
+      return
+    }
+
+    const update = () => {
+      const available = container.clientWidth
+      if (available <= 0) {
+        setHideEffort(false)
+        return
+      }
+      setHideEffort(measure.scrollWidth > available)
+    }
+
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [effortLabel, modelName])
+
+  return (
+    <span className="relative min-w-0 flex-1 overflow-hidden text-left" ref={containerRef}>
+      <span aria-hidden className="invisible absolute whitespace-nowrap" ref={measureRef}>
+        {fullLabel}
+      </span>
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{modelName}</span>
+        {effortLabel && !hideEffort ? <span className="shrink-0">· {effortLabel}</span> : null}
+      </span>
+    </span>
+  )
+}
 
 const PROVIDER_ORDER: ProviderId[] = ['openai', 'anthropic', 'google']
 
@@ -128,13 +176,14 @@ export function ModelSelector({
     return supported[0]
   }
 
+  const selectedName = selected ? formatModelName(selected) : 'Select model'
+  const effortLabel =
+    selected && reasoningEffort ? formatReasoningEffortLabel(reasoningEffort) : undefined
   const triggerLabel = isLoading
     ? 'Loading models…'
-    : selected
-      ? reasoningEffort
-        ? `${formatModelName(selected)} · ${formatReasoningEffortLabel(reasoningEffort)}`
-        : formatModelName(selected)
-      : 'Select model'
+    : effortLabel
+      ? `${selectedName} · ${effortLabel}`
+      : selectedName
 
   const closeMenu = () => {
     setOpen(false)
@@ -189,20 +238,21 @@ export function ModelSelector({
           aria-label="Select model"
           className={cn(
             morphMenuTriggerClassName,
-            'h-8 max-w-[260px] justify-between font-medium text-[var(--ark-ink)]',
+            'h-8 min-w-0 max-w-full shrink justify-between font-medium text-[var(--ark-ink)] sm:max-w-[260px]',
             'motion-reduce:transition-none',
             !canGenerate && 'text-muted-foreground',
             className,
           )}
           disabled={disabled || isLoading}
           size="sm"
+          title={isLoading ? undefined : triggerLabel}
           type="button"
           variant="ghost"
         >
           {isLoading ? (
             <Skeleton className="h-3.5 w-24" />
           ) : (
-            <span className="truncate">{triggerLabel}</span>
+            <ModelSelectorTriggerLabel effortLabel={effortLabel} modelName={selectedName} />
           )}
           <ChevronsUpDownIcon className="opacity-50" data-icon="inline-end" />
         </Button>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -261,9 +261,70 @@ describe('ModelSelector', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent(
-      'GPT-5.6 Luna · High',
-    )
+    const trigger = screen.getByRole('button', { name: 'Select model' })
+    expect(trigger).toHaveTextContent('GPT-5.6 Luna · High')
+    expect(trigger).toHaveAttribute('title', 'GPT-5.6 Luna · High')
+  })
+
+  it('hides thinking effort on the trigger when the full label cannot fit', () => {
+    let observedCallback: ResizeObserverCallback | null = null
+    class MeasuringResizeObserver {
+      observe = vi.fn()
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+      constructor(callback: ResizeObserverCallback) {
+        observedCallback = callback
+      }
+    }
+
+    const previous = globalThis.ResizeObserver
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: MeasuringResizeObserver,
+    })
+
+    try {
+      render(
+        <ModelSelector
+          models={models}
+          onSelect={vi.fn()}
+          reasoningEffort="xhigh"
+          value="openai:gpt-5.6-luna"
+        />,
+      )
+
+      const trigger = screen.getByRole('button', { name: 'Select model' })
+      const label = trigger.querySelector('span.relative') as HTMLSpanElement
+      const measure = label.querySelector('[aria-hidden="true"]') as HTMLSpanElement
+
+      Object.defineProperty(label, 'clientWidth', { configurable: true, value: 72 })
+      Object.defineProperty(measure, 'scrollWidth', { configurable: true, value: 180 })
+
+      act(() => {
+        observedCallback?.(
+          [
+            {
+              borderBoxSize: [],
+              contentBoxSize: [],
+              contentRect: label.getBoundingClientRect(),
+              devicePixelContentBoxSize: [],
+              target: label,
+            },
+          ],
+          new MeasuringResizeObserver(() => undefined) as unknown as ResizeObserver,
+        )
+      })
+
+      const visibleLabel = label.querySelector('span.flex')
+      expect(visibleLabel).toHaveTextContent('GPT-5.6 Luna')
+      expect(visibleLabel).not.toHaveTextContent('Extra High')
+      expect(trigger).toHaveAttribute('title', 'GPT-5.6 Luna · Extra High')
+    } finally {
+      Object.defineProperty(globalThis, 'ResizeObserver', {
+        configurable: true,
+        value: previous,
+      })
+    }
   })
 
   it('filters models via search', async () => {
