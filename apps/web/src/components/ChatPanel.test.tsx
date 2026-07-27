@@ -131,7 +131,7 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
   })
 
-  it('caps uploaded prompt attachments and revokes their blob URLs on unmount', async () => {
+  it('accepts all prompt attachments and revokes their blob URLs on unmount', async () => {
     const createObjectURL = vi.fn((file: File) => `blob:${file.name}`)
     const revokeObjectURL = vi.fn()
     Object.defineProperties(URL, {
@@ -152,12 +152,12 @@ describe('ChatPanel submit control', () => {
 
     await user.upload(screen.getByLabelText('Upload files'), files)
 
-    expect(createObjectURL).toHaveBeenCalledTimes(5)
-    expect(onAttachmentError).toHaveBeenCalledWith('You can attach up to 5 files.')
+    expect(createObjectURL).toHaveBeenCalledTimes(6)
+    expect(onAttachmentError).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
 
     unmount()
-    expect(revokeObjectURL).toHaveBeenCalledTimes(5)
+    expect(revokeObjectURL).toHaveBeenCalledTimes(6)
   })
 
   it('disables attachments for text-only models', () => {

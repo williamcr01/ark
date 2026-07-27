@@ -359,6 +359,7 @@ describe('generation job runner', () => {
 
   it('merges resolved asset attachments into the latest user model message at run time', async () => {
     let capturedMessages: unknown = null
+    let capturedAttachmentCount = 0
     let resolveCaptured: () => void = () => {}
     const captured = new Promise<void>((resolve) => {
       resolveCaptured = resolve
@@ -405,6 +406,7 @@ describe('generation job runner', () => {
       }),
       runAgent: async (options) => {
         capturedMessages = options.messages
+        capturedAttachmentCount = options.attachmentInspector?.attachments.length ?? 0
         resolveCaptured()
         return { ok: false, error: 'stop', steps: [] }
       },
@@ -441,9 +443,10 @@ describe('generation job runner', () => {
         'data:image/png;base64,',
       ),
     ).toBe(true)
+    expect(capturedAttachmentCount).toBe(1)
   })
 
-  it('resolves asset references from prior user turns at run time', async () => {
+  it('keeps prior text assets as references for attachment tools', async () => {
     let capturedMessages: unknown = null
     let resolveCaptured: () => void = () => {}
     const captured = new Promise<void>((resolve) => {
@@ -463,15 +466,15 @@ describe('generation job runner', () => {
     const assetStorage = createLocalAssetStorage(assetBlobDir)
     const deck = await deckStore.createDeck(sampleHtml)
     const storageKey = createAssetStorageKey()
-    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    await assetStorage.write(storageKey, pngBytes)
+    const csvBytes = Buffer.from('name,value\none,1')
+    await assetStorage.write(storageKey, csvBytes)
     const asset = await assetStore.createAsset({
       deckId: deck.id,
       chatMessageId: null,
-      filename: 'chart.png',
-      mediaType: 'image/png',
-      category: 'image',
-      byteSize: pngBytes.length,
+      filename: 'data.csv',
+      mediaType: 'text/csv',
+      category: 'text',
+      byteSize: csvBytes.length,
       checksum: 'test-checksum',
       source: 'upload',
       storageKind: 'local',
@@ -499,8 +502,8 @@ describe('generation job runner', () => {
 
     const assetReference = {
       type: 'file' as const,
-      mediaType: 'image/png',
-      filename: 'chart.png',
+      mediaType: 'text/csv',
+      filename: 'data.csv',
       url: `/api/decks/${deck.id}/assets/${asset.id}`,
       assetId: asset.id,
     }
@@ -530,11 +533,9 @@ describe('generation job runner', () => {
     const messages = capturedMessages as Array<{ role: string; attachments?: unknown[] }>
     expect(messages[0]?.attachments?.[0]).toMatchObject({
       assetId: asset.id,
-      mediaType: 'image/png',
+      mediaType: 'text/csv',
     })
-    expect(
-      (messages[0]?.attachments?.[0] as { url?: string }).url?.startsWith('data:image/png;base64,'),
-    ).toBe(true)
+    expect((messages[0]?.attachments?.[0] as { url?: string }).url).toBe(assetReference.url)
   })
 
   it('rejects startJob when assetIds cannot be resolved', async () => {

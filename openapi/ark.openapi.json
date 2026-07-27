@@ -2918,7 +2918,7 @@
                 "properties": {
                   "filename": { "type": "string", "minLength": 1, "maxLength": 1024 },
                   "mediaType": { "type": "string", "minLength": 1 },
-                  "data": { "type": "string", "minLength": 1, "maxLength": 13981270 },
+                  "data": { "type": "string", "minLength": 1, "maxLength": 69905323 },
                   "chatMessageId": {
                     "type": "string",
                     "nullable": true,
@@ -3446,8 +3446,7 @@
                     "items": {
                       "type": "string",
                       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                    },
-                    "maxItems": 5
+                    }
                   }
                 }
               }
