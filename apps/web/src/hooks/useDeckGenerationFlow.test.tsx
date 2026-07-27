@@ -63,7 +63,26 @@ type JobResult = NonNullable<GenerationJobApi['result']>
 const succeededResult: JobResult = {
   deckId: 'deck-1',
   versionId: 'v1',
-  validation: { status: 'valid', issues: [] } as unknown as JobResult['validation'],
+  validation: {
+    valid: true,
+    slideCount: 1,
+    scripts: [],
+    forms: 0,
+    iframes: 0,
+    externalUrls: [],
+    malformedSlides: [],
+    runtimeMarkers: {
+      runtimeMode: 'plain',
+      arkDeck: null,
+      arkPreview: null,
+      arkRuntime: null,
+      arkRuntimeLib: null,
+      arkRuntimeVersion: null,
+      approvedRuntimeId: null,
+      approvedRuntimeVersion: null,
+    },
+    issues: [],
+  },
   assistantText: 'Generated the deck.',
 }
 
@@ -141,7 +160,7 @@ describe('useDeckGenerationFlow', () => {
     vi.clearAllMocks()
   })
 
-  it('applies a succeeded outcome (deck refresh + chat reload)', async () => {
+  it('applies a succeeded outcome (deck refresh + local assistant message)', async () => {
     const harness = makeHarness({ deckId: 'deck-1', activeVersionId: 'v1' })
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
     fetchGenerationJobMock.mockResolvedValue(
@@ -158,7 +177,14 @@ describe('useDeckGenerationFlow', () => {
     expect(harness.appendMessage).toHaveBeenCalledTimes(1)
     expect(startGenerationJobMock).toHaveBeenCalledTimes(1)
     expect(harness.refreshActiveDeck).toHaveBeenCalledWith('deck-1')
-    expect(harness.reloadChat).toHaveBeenCalledWith('deck-1')
+    expect(harness.reloadChat).not.toHaveBeenCalled()
+    const updateMessages = harness.setMessages.mock.calls.at(-1)?.[0] as
+      ((current: ChatMessage[]) => ChatMessage[]) | undefined
+    const next = updateMessages?.([{ id: 'u1', role: 'user', content: 'make slides' }])
+    expect(next?.at(-1)).toMatchObject({
+      id: 'job-1',
+      role: 'assistant',
+    })
     expect(result.current.generationError).toBe('')
     expect(result.current.recentGenerationJobId).toBe('job-1')
   })
