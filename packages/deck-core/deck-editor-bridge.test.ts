@@ -1137,6 +1137,54 @@ describe('deck editor bridge protocol', () => {
     dom.window.close()
   })
 
+  it('survives a y-only snap without crashing on sparse guide reuse', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 id="heading">Title</h1></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
+    const heading = dom.window.document.querySelector<HTMLElement>('#heading')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    heading.getBoundingClientRect = () =>
+      heading.style.position === 'absolute' ||
+      heading.hasAttribute('data-ark-editor-live-transform')
+        ? rect(
+            Number.parseFloat(heading.style.left) || 100,
+            Number.parseFloat(heading.style.top) || 100,
+            Number.parseFloat(heading.style.width) || 400,
+            80,
+          )
+        : rect(100, 100, 400, 80)
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    // Drag straight down so the element center hits the horizontal mid-line
+    // (y = 0.5) with no x snap — ensureGuide only fills guideElements[1].
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 15, 110, 110))
+    expect(() => {
+      dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 15, 110, 330))
+    }).not.toThrow()
+    await new Promise((resolve) => dom.window.requestAnimationFrame(() => resolve(undefined)))
+
+    expect(slide.querySelector('[data-ark-editor-guide]')).not.toBeNull()
+    expect(() => {
+      dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 15, 110, 340))
+    }).not.toThrow()
+    await new Promise((resolve) => dom.window.requestAnimationFrame(() => resolve(undefined)))
+    expect(() => {
+      dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 15, 110, 340))
+    }).not.toThrow()
+
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    dom.window.close()
+  })
+
   it('ark:editor-transform-end commits a started gesture at the last preview geometry', async () => {
     const { dom, messages } = await loadEditorRuntime(
       '<section class="slide"><h1 id="heading">Title</h1></section>',

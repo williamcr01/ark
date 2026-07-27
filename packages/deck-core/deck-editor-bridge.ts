@@ -1861,12 +1861,21 @@ export function buildDeckEditorBridgeRuntimeScript(
 
   function clearGuides() {
     for (var i = 0; i < guideElements.length; i++) {
+      // ensureGuide writes by axis index (x=0, y=1); a y-only snap leaves a hole at 0.
+      if (!guideElements[i]) {
+        continue;
+      }
+
       guideElements[i].style.display = 'none';
     }
   }
 
   function destroyGuides() {
     for (var i = 0; i < guideElements.length; i++) {
+      if (!guideElements[i]) {
+        continue;
+      }
+
       if (guideElements[i].parentElement) {
         guideElements[i].parentElement.removeChild(guideElements[i]);
       }
@@ -1937,7 +1946,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     destroyGuides();
   }
 
-  function updateResizeHandles(element, slide, geometry) {
+  function updateResizeHandles(element, slide, geometry, cache) {
     if (!element || !slide || element.getAttribute(C.LOCKED_ATTR) === 'true') {
       clearResizeHandles();
       return;
@@ -1947,6 +1956,8 @@ export function buildDeckEditorBridgeRuntimeScript(
     var overlayRoot = getSlideCoordinateElement(slide);
     var handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
     var cursors = { nw: 'nwse-resize', n: 'ns-resize', ne: 'nesw-resize', e: 'ew-resize', se: 'nwse-resize', s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize' };
+    var slideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide);
+    var slideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide);
 
     if (resizeHandles.length !== handles.length || resizeHandles[0].parentElement !== overlayRoot) {
       clearResizeHandles();
@@ -1983,13 +1994,11 @@ export function buildDeckEditorBridgeRuntimeScript(
       resizeHandles[j].firstChild.style.width = visualSize + 'px';
       resizeHandles[j].firstChild.style.height = visualSize + 'px';
       resizeHandles[j].firstChild.style.borderWidth = 1 / editorScale + 'px';
-      positionResizeHandle(resizeHandles[j], handles[j], rect, slide);
+      positionResizeHandle(resizeHandles[j], handles[j], rect, slideWidth, slideHeight);
     }
   }
 
-  function positionResizeHandle(handle, kind, rect, slide) {
-    var slideWidth = getSlideLogicalWidth(slide);
-    var slideHeight = getSlideLogicalHeight(slide);
+  function positionResizeHandle(handle, kind, rect, slideWidth, slideHeight) {
     var left = rect.x * slideWidth;
     var top = rect.y * slideHeight;
     var width = rect.width * slideWidth;
@@ -2218,7 +2227,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       zIndex: cache.zIndex,
       slideBounds: cache.slideBounds,
     });
-    updateResizeHandles(element, slide, rect);
+    updateResizeHandles(element, slide, rect, cache);
     return rect;
   }
 
@@ -2282,7 +2291,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         zIndex: cache && cache.zIndex != null ? cache.zIndex : readZIndex(element),
         slideBounds: (cache && cache.slideBounds) || normalizeSlideBounds(slide),
       });
-      updateResizeHandles(element, slide, rect);
+      updateResizeHandles(element, slide, rect, cache);
     } else {
       var logicalSlideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide);
       var logicalSlideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide);
@@ -3110,13 +3119,8 @@ export function buildDeckEditorBridgeRuntimeScript(
     cancelTransformRaf();
     var lastPointer = pointer || transformState.pendingPointer;
 
-    if (pointer) {
-      transformState.pendingPointer = pointer;
-      flushTransformPointer(slide);
-    } else if (transformState.pendingPointer) {
-      flushTransformPointer(slide);
-    }
-
+    // Flush needs a live slide (showGuide → getSlideCoordinateElement). Restore
+    // the snapshot when the slide is gone instead of flushing into null.
     if (!slide) {
       if (transformState.element) {
         clearLiveTransform(transformState.element);
@@ -3126,6 +3130,13 @@ export function buildDeckEditorBridgeRuntimeScript(
       transformState = null;
       clearEditorOverlays();
       return true;
+    }
+
+    if (pointer) {
+      transformState.pendingPointer = pointer;
+      flushTransformPointer(slide);
+    } else if (transformState.pendingPointer) {
+      flushTransformPointer(slide);
     }
 
     if (transformState.kind === 'draw') {
