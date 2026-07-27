@@ -15,6 +15,8 @@ import {
   ARK_MANAGED_ATTR,
   ARK_ROLE_ATTR,
   ARK_SLIDE_ID_ATTR,
+  ARK_SPACER_ATTR,
+  STABLE_ELEMENT_ID_PREFIX,
   TRANSIENT_ELEMENT_ID_PREFIX,
   TRANSIENT_SLIDE_ID_PREFIX,
 } from '@ark/deck-core/deck-metadata.ts'
@@ -138,7 +140,7 @@ const PATCH_ATTRS = [
 ] as const
 
 export function createElementId() {
-  return `ark-el-${nanoid(10)}`
+  return `${STABLE_ELEMENT_ID_PREFIX}${nanoid(10)}`
 }
 
 export function createTransientSlideId(slideIndex: number) {
@@ -465,6 +467,10 @@ function isCandidateElement(element: Element, slide: Element) {
   const tag = element.tagName.toLowerCase()
 
   if (element === slide) {
+    return false
+  }
+
+  if (element.getAttribute(ARK_SPACER_ATTR) === 'true') {
     return false
   }
 

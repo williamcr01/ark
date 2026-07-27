@@ -19,6 +19,7 @@ import {
   createEditorTextCommitMessage,
   createEditorTextEditStateMessage,
   createEditorTransformCancelMessage,
+  createEditorTransformEndMessage,
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
@@ -452,12 +453,26 @@ describe('useDeckEditorBridge', () => {
     )
   })
 
-  it('cancels an iframe transform when the pointer is released in the shell', () => {
+  it('ends an iframe transform when the pointer is released in the shell', () => {
     render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
     const postMessage = vi.spyOn(getIframeWindow(), 'postMessage')
 
     act(() => {
       window.dispatchEvent(new Event('pointerup'))
+    })
+
+    expect(postMessage).toHaveBeenCalledWith(
+      createEditorTransformEndMessage(),
+      DECK_BRIDGE_POST_MESSAGE_TARGET,
+    )
+  })
+
+  it('cancels an iframe transform when the shell pointer is cancelled', () => {
+    render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
+    const postMessage = vi.spyOn(getIframeWindow(), 'postMessage')
+
+    act(() => {
+      window.dispatchEvent(new Event('pointercancel'))
     })
 
     expect(postMessage).toHaveBeenCalledWith(

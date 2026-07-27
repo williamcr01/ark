@@ -48,6 +48,7 @@ function options() {
     finishLivePatch: vi.fn(),
     goToSlide: vi.fn(),
     rollbackLivePatch: vi.fn(),
+    onAssignElementId: vi.fn(),
   } satisfies Parameters<typeof useDeckEditorPatchCoordinator>[0]
 }
 
@@ -104,7 +105,15 @@ describe('useDeckEditorPatchCoordinator', () => {
 
   it('clears deferred slide/reselection after a successful live patch', async () => {
     const callbacks = options()
-    callbacks.onCommitTextEdit.mockResolvedValue(undefined)
+    callbacks.onCommitTextEdit.mockResolvedValue({
+      deck: { html: '<section>After</section>' },
+      patch: {
+        appliedCount: 1,
+        changedSlideIndexes: [0],
+        changedElementIds: ['element-a'],
+        summary: 'Updated text',
+      },
+    })
     const commit = {
       elementId: 'element-a',
       slideIndex: 0,
@@ -160,6 +169,100 @@ describe('useDeckEditorPatchCoordinator', () => {
 
     expect(callbacks.goToSlide).not.toHaveBeenCalled()
     expect(callbacks.onSelectElement).not.toHaveBeenCalled()
+  })
+
+  it('stamps a stable id onto the live DOM after an adopted transform live patch', async () => {
+    const callbacks = options()
+    callbacks.onPatchEditorOperations.mockResolvedValue({
+      deck: { html: '<section><h1 data-ark-id="ark-el-title">Title</h1></section>' },
+      patch: {
+        appliedCount: 1,
+        changedSlideIndexes: [0],
+        changedElementIds: ['ark-el-title'],
+        summary: 'Updated element layout in preview',
+      },
+    })
+    const transformCommit = {
+      type: 'ark:editor-transform-commit' as const,
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      geometry: { x: 0.1, y: 0.2, width: 0.4, height: 0.1 },
+      adopted: true as const,
+      cssX: 0.1,
+      cssY: 0.2,
+      cssWidth: 0.4,
+      slideWidth: 1280,
+      slideHeight: 720,
+    }
+    renderHook(
+      ({ transformCommit: commit }) =>
+        useDeckEditorPatchCoordinator({ ...callbacks, transformCommit: commit }),
+      { initialProps: { transformCommit } },
+    )
+
+    await waitFor(() => expect(callbacks.finishLivePatch).toHaveBeenCalledOnce())
+    expect(callbacks.onAssignElementId).toHaveBeenCalledWith(
+      'transient-el-0-0',
+      'ark-el-title',
+      0,
+      true,
+    )
+  })
+
+  it('keeps deferred reselect when the patch result cannot retain live HTML', async () => {
+    const callbacks = options()
+    callbacks.selection = {
+      ...selection,
+      elementId: 'transient-el-0-0',
+      managed: false,
+    }
+    callbacks.onPatchEditorOperations.mockResolvedValue({
+      patch: {
+        appliedCount: 1,
+        changedSlideIndexes: [0],
+        changedElementIds: ['ark-el-stable'],
+        summary: 'Updated element layout in preview',
+      },
+    })
+    const transformCommit = {
+      type: 'ark:editor-transform-commit' as const,
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      geometry: { x: 0.1, y: 0.2, width: 0.4, height: 0.1 },
+      adopted: true as const,
+      cssX: 0.1,
+      cssY: 0.2,
+      cssWidth: 0.4,
+      slideWidth: 1280,
+      slideHeight: 720,
+    }
+    const view = renderHook(
+      ({ transformCommit: commit, iframeKey, currentSelection }) =>
+        useDeckEditorPatchCoordinator({
+          ...callbacks,
+          transformCommit: commit,
+          iframeKey,
+          selection: currentSelection,
+        }),
+      {
+        initialProps: {
+          transformCommit: transformCommit as typeof transformCommit | null,
+          iframeKey: 'frame-a',
+          currentSelection: callbacks.selection as EditorSelectionInfo | null,
+        },
+      },
+    )
+
+    await waitFor(() => expect(callbacks.finishLivePatch).toHaveBeenCalledOnce())
+    expect(callbacks.onAssignElementId).not.toHaveBeenCalled()
+
+    view.rerender({
+      transformCommit: null,
+      iframeKey: 'frame-b',
+      currentSelection: null,
+    })
+
+    expect(callbacks.onSelectElement).toHaveBeenCalledWith('ark-el-stable', 0)
   })
 
   it('ignores stale async completions after the deck scope changes', async () => {

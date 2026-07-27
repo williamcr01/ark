@@ -4,6 +4,19 @@ import { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR } from './deck-metadata.ts'
 
 export { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR }
 
+/** Flow footprint left behind when adopting an in-flow element to absolute layout. */
+export const deckAdoptSpacerSchema = z.object({
+  width: z.number().finite().positive().max(20_000),
+  height: z.number().finite().positive().max(20_000),
+  marginTop: z.number().finite().min(0).max(20_000),
+  marginRight: z.number().finite().min(0).max(20_000),
+  marginBottom: z.number().finite().min(0).max(20_000),
+  marginLeft: z.number().finite().min(0).max(20_000),
+  display: z.string().min(1).max(64),
+})
+
+export type DeckAdoptSpacer = z.infer<typeof deckAdoptSpacerSchema>
+
 export type DeckSlideTarget = {
   slideIndex?: number
   slideId?: string
@@ -123,6 +136,7 @@ export const deckElementPatchOperationSchema = z.discriminatedUnion('op', [
     slideHeight: z.number().finite().positive().optional(),
     width: normalizedUnitSchema.optional(),
     height: normalizedUnitSchema.optional(),
+    spacer: deckAdoptSpacerSchema.optional(),
   }),
   z.object({
     op: z.literal('resize_element'),

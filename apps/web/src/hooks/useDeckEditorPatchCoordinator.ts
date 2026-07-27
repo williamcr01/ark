@@ -12,6 +12,7 @@ import type { DeckEditorBridgeState } from '@/hooks/useDeckEditorBridge'
 import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
+import { STABLE_ELEMENT_ID_PREFIX } from '@ark/deck-core/deck-metadata.ts'
 
 type PatchOperations = (
   operations: DeckElementPatchOperation[],
@@ -59,6 +60,13 @@ type UseDeckEditorPatchCoordinatorOptions = {
   finishLivePatch: (result: DeckPreviewPatchResult | undefined) => void
   goToSlide: (slideIndex: number) => void
   rollbackLivePatch: () => void
+  /** Stamp a stable id onto the live iframe DOM after a live patch. */
+  onAssignElementId?: (
+    fromElementId: string,
+    toElementId: string,
+    slideIndex: number,
+    managed?: boolean,
+  ) => void
 }
 
 export function useDeckEditorPatchCoordinator({
@@ -93,6 +101,7 @@ export function useDeckEditorPatchCoordinator({
   finishLivePatch,
   goToSlide,
   rollbackLivePatch,
+  onAssignElementId,
 }: UseDeckEditorPatchCoordinatorOptions) {
   const [imageFitOverride, setImageFitOverride] = useState<{
     scopeKey: string | null
@@ -160,8 +169,18 @@ export function useDeckEditorPatchCoordinator({
     }
   }, [iframeKey, selection])
 
+  const pickStableChangedElementId = useCallback((changedElementIds: string[]) => {
+    // Manual-edit commits are single-op today; prefer an explicit stable id when
+    // present, otherwise fall back to the sole changed id.
+    return (
+      changedElementIds.find((id) => id.startsWith(STABLE_ELEMENT_ID_PREFIX)) ??
+      (changedElementIds.length === 1 ? changedElementIds[0] : undefined)
+    )
+  }, [])
+
   // Live patches skip iframe reload, so deferred slide/reselection intents must
-  // not survive into a later unrelated HTML/frame update.
+  // not survive into a later unrelated HTML/frame update — but only when the
+  // live DOM is actually retained (result includes deck.html).
   const finishLivePatchAndClearDeferred = useCallback(
     (result: DeckPreviewPatchResult | undefined) => {
       finishLivePatch(result)
@@ -169,6 +188,36 @@ export function useDeckEditorPatchCoordinator({
       pendingReselectRef.current = null
     },
     [finishLivePatch],
+  )
+
+  const completeLivePatch = useCallback(
+    (
+      result: DeckPreviewPatchResult | undefined,
+      sync?: { fromElementId: string; slideIndex: number; managed?: boolean },
+    ) => {
+      const keptLive = Boolean(result?.deck?.html)
+
+      if (keptLive) {
+        if (sync && onAssignElementId && result) {
+          const toElementId = pickStableChangedElementId(result.patch.changedElementIds)
+          if (toElementId && toElementId !== sync.fromElementId) {
+            onAssignElementId(sync.fromElementId, toElementId, sync.slideIndex, sync.managed)
+          }
+        }
+        finishLivePatchAndClearDeferred(result)
+        return
+      }
+
+      // No deck.html → iframe will reload with canonical HTML. Keep the remapped
+      // pendingReselect so selection survives (assign-id is pointless on a dying DOM).
+      finishLivePatch(result)
+    },
+    [
+      finishLivePatch,
+      finishLivePatchAndClearDeferred,
+      onAssignElementId,
+      pickStableChangedElementId,
+    ],
   )
 
   const handleInspectorApply = useCallback(
@@ -395,7 +444,12 @@ export function useDeckEditorPatchCoordinator({
     void onCommitTextEdit(lastTextCommit)
       .then((result) => {
         if (scopeGenerationRef.current !== generation) return
-        if (keepLivePreview) finishLivePatchAndClearDeferred(result)
+        if (keepLivePreview) {
+          completeLivePatch(result, {
+            fromElementId: lastTextCommit.elementId,
+            slideIndex: lastTextCommit.slideIndex,
+          })
+        }
       })
       .catch(() => {
         if (scopeGenerationRef.current !== generation) return
@@ -407,7 +461,7 @@ export function useDeckEditorPatchCoordinator({
   }, [
     activeSlideIndex,
     beginLivePatch,
-    finishLivePatchAndClearDeferred,
+    completeLivePatch,
     lastTextCommit,
     onCommitTextEdit,
     rollbackLivePatch,
@@ -489,13 +543,19 @@ export function useDeckEditorPatchCoordinator({
       .then((result) => {
         if (scopeGenerationRef.current !== generation) return
         if (transformCommit.adopted) {
-          const stableId = result?.patch.changedElementIds[0]
+          const stableId = pickStableChangedElementId(result?.patch.changedElementIds ?? [])
           const pending = pendingReselectRef.current
           if (stableId && pending?.elementId === transformCommit.elementId) {
             pending.elementId = stableId
           }
         }
-        if (keepLivePreview) finishLivePatchAndClearDeferred(result)
+        if (keepLivePreview) {
+          completeLivePatch(result, {
+            fromElementId: transformCommit.elementId,
+            slideIndex: transformCommit.slideIndex,
+            managed: Boolean(transformCommit.adopted),
+          })
+        }
       })
       .catch(() => {
         if (scopeGenerationRef.current !== generation) return
@@ -513,8 +573,9 @@ export function useDeckEditorPatchCoordinator({
   }, [
     activeSlideIndex,
     beginLivePatch,
-    finishLivePatchAndClearDeferred,
+    completeLivePatch,
     onPatchEditorOperations,
+    pickStableChangedElementId,
     rollbackLivePatch,
     scheduleReselect,
     selection?.slideId,

@@ -54,11 +54,10 @@ describe('useDeckPreviewSource', () => {
     expect(view.result.current.previewReloadRevision).toBeGreaterThan(revision)
   })
 
-  it('does not keep live HTML for transient elements or overlapping patches', () => {
+  it('allows live HTML for transient elements but not overlapping patches', () => {
     const view = renderHook(() => useDeckPreviewSource('deck-a', 'before'))
 
-    expect(view.result.current.beginLivePatch('transient-el-test')).toBe(false)
-    expect(view.result.current.beginLivePatch('element-a')).toBe(true)
+    expect(view.result.current.beginLivePatch('transient-el-test')).toBe(true)
     expect(view.result.current.beginLivePatch('element-b')).toBe(false)
   })
 

@@ -1,8 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import type { PatchDeckResponse } from '@/lib/deck-api'
-import { TRANSIENT_ELEMENT_ID_PREFIX } from '@ark/deck-core/deck-metadata.ts'
-
 export type DeckPreviewPatchResult = Pick<PatchDeckResponse, 'patch'> & {
   deck?: Pick<PatchDeckResponse['deck'], 'html'>
 }
@@ -51,8 +49,10 @@ export function useDeckPreviewSource(deckId: string | null, html: string) {
     }))
   }, [deckId, html])
 
-  const beginLivePatch = useCallback((elementId: string) => {
-    if (elementId.startsWith(TRANSIENT_ELEMENT_ID_PREFIX) || livePatchPendingRef.current) {
+  const beginLivePatch = useCallback((_elementId: string) => {
+    // Transient ids are fine: the runtime already mutated the live DOM, and the
+    // patch coordinator remaps reselection to the stable id from the response.
+    if (livePatchPendingRef.current) {
       return false
     }
 

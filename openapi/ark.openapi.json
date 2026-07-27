@@ -1274,7 +1274,42 @@
                               "exclusiveMinimum": true
                             },
                             "width": { "type": "number", "minimum": 0, "maximum": 1 },
-                            "height": { "type": "number", "minimum": 0, "maximum": 1 }
+                            "height": { "type": "number", "minimum": 0, "maximum": 1 },
+                            "spacer": {
+                              "type": "object",
+                              "properties": {
+                                "width": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true,
+                                  "maximum": 20000
+                                },
+                                "height": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true,
+                                  "maximum": 20000
+                                },
+                                "marginTop": { "type": "number", "minimum": 0, "maximum": 20000 },
+                                "marginRight": { "type": "number", "minimum": 0, "maximum": 20000 },
+                                "marginBottom": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 20000
+                                },
+                                "marginLeft": { "type": "number", "minimum": 0, "maximum": 20000 },
+                                "display": { "type": "string", "minLength": 1, "maxLength": 64 }
+                              },
+                              "required": [
+                                "width",
+                                "height",
+                                "marginTop",
+                                "marginRight",
+                                "marginBottom",
+                                "marginLeft",
+                                "display"
+                              ]
+                            }
                           },
                           "required": ["op", "elementId", "x", "y"]
                         },

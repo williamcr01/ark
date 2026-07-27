@@ -16,8 +16,16 @@ export const ARK_LOCKED_ATTR = 'data-ark-locked' as const
 /** Marks Ark-owned layout (safe to move/resize in the manual editor). */
 export const ARK_MANAGED_ATTR = 'data-ark-managed' as const
 
+/** Inert flow placeholder left behind when an in-flow element is adopted. */
+export const ARK_SPACER_ATTR = 'data-ark-spacer' as const
+
+/** Optional stable/transient id of the element a spacer was inserted for. */
+export const ARK_SPACER_FOR_ATTR = 'data-ark-spacer-for' as const
+
 export const TRANSIENT_SLIDE_ID_PREFIX = 'transient-slide-' as const
 export const TRANSIENT_ELEMENT_ID_PREFIX = 'transient-el-' as const
+/** Prefix for durable `data-ark-id` values stamped by the element patch path. */
+export const STABLE_ELEMENT_ID_PREFIX = 'ark-el-' as const
 
 /** Canonical slide size for converting normalized editor geometry to inline CSS. */
 export const ARK_SLIDE_REFERENCE_WIDTH = 1280 as const
