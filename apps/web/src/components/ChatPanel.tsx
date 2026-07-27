@@ -65,11 +65,7 @@ import type {
   ChatMessage,
   ChatMessagePart,
 } from '@ark/deck-core/chat.ts'
-import {
-  agentStepsToChatParts,
-  MAX_CHAT_ATTACHMENTS,
-  MAX_CHAT_ATTACHMENT_BYTES,
-} from '@ark/deck-core/chat.ts'
+import { agentStepsToChatParts, MAX_CHAT_ATTACHMENT_BYTES } from '@ark/deck-core/chat.ts'
 import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 import { cn } from '@/lib/utils'
 
@@ -147,8 +143,6 @@ function alertDismissKey(alertId: ChatAlertId, content: string) {
 
 function formatAttachmentError(error: { code: string; message: string }) {
   switch (error.code) {
-    case 'max_files':
-      return `You can attach up to ${MAX_CHAT_ATTACHMENTS} files.`
     case 'max_file_size':
       return `Each attachment must be ${Math.round(MAX_CHAT_ATTACHMENT_BYTES / (1024 * 1024))} MB or smaller.`
     default:
@@ -263,18 +257,7 @@ function segmentChatParts(parts: ChatMessagePart[]) {
     }
     index -= 1
 
-    const callCount = run.filter(({ part: toolPart }) => toolPart.type === 'tool-call').length
-    if (callCount > 1) {
-      segments.push({ type: 'tools', parts: run })
-    } else {
-      segments.push(
-        ...run.map(({ index: partIndex, part: toolPart }) => ({
-          type: 'part' as const,
-          index: partIndex,
-          part: toolPart,
-        })),
-      )
-    }
+    segments.push({ type: 'tools', parts: run })
   }
 
   return segments
@@ -336,13 +319,7 @@ function ChatMessageDeliveryStatus({
   )
 }
 
-function ChatMessageParts({
-  parts,
-  thinkingDefaultOpen = false,
-}: {
-  parts: ChatMessagePart[]
-  thinkingDefaultOpen?: boolean
-}) {
+function ChatMessageParts({ parts }: { parts: ChatMessagePart[] }) {
   const segments = segmentChatParts(parts)
 
   return (
@@ -353,7 +330,7 @@ function ChatMessageParts({
           return (
             <details className="text-xs" key={`tools-${segment.parts[0]?.index}`}>
               <summary className="cursor-pointer select-none font-medium text-muted-foreground">
-                {callCount} tool calls
+                {callCount === 1 ? '1 tool call' : `${callCount} tool calls`}
               </summary>
               <div className="mt-1 flex flex-col gap-1 pl-4">
                 {segment.parts.map(({ index, part }) => (
@@ -371,11 +348,7 @@ function ChatMessageParts({
 
         if (part.type === 'thinking') {
           return (
-            <details
-              className="text-xs"
-              key={`thinking-${index}`}
-              open={thinkingDefaultOpen || undefined}
-            >
+            <details className="text-xs" key={`thinking-${index}`}>
               <summary className="cursor-pointer select-none font-medium text-muted-foreground">
                 Thinking
               </summary>
@@ -386,7 +359,7 @@ function ChatMessageParts({
           )
         }
 
-        return <ToolActivityLine key={`tool-${index}`} part={part} />
+        return null
       })}
     </div>
   )
@@ -546,10 +519,7 @@ export function ChatPanel({
                   <div className="flex flex-col gap-2">
                     <span className="sr-only">Working…</span>
                     {activeSteps.length > 0 ? (
-                      <ChatMessageParts
-                        parts={agentStepsToChatParts(activeSteps)}
-                        thinkingDefaultOpen
-                      />
+                      <ChatMessageParts parts={agentStepsToChatParts(activeSteps)} />
                     ) : null}
                   </div>
                 </MessageContent>
@@ -642,7 +612,6 @@ export function ChatPanel({
               accept="image/*,text/*,application/pdf"
               className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
               maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
-              maxFiles={MAX_CHAT_ATTACHMENTS}
               multiple
               onError={(error) => onAttachmentError(formatAttachmentError(error))}
               onSubmit={onPromptSubmit}

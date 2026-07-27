@@ -104,6 +104,63 @@ describe('read_deck tool', () => {
   })
 })
 
+describe('attachment tools', () => {
+  it('lists attachments and pages through text without putting bytes in the prompt', async () => {
+    const attachments = [
+      {
+        id: 'asset-1',
+        filename: 'data.csv',
+        mediaType: 'text/csv',
+        byteSize: 11,
+        url: '/api/decks/deck-1/assets/asset-1',
+      },
+    ]
+    const tools = createDeckTools(createDeckWorkspace(managedDeck), {
+      attachmentInspector: {
+        attachments,
+        read: async () => Buffer.from('name,value\none,1'),
+      },
+    })
+    const list = await (tools.list_attachments.execute as unknown as ToolExecute)({}, {})
+    const read = await (tools.read_attachment.execute as unknown as ToolExecute)(
+      { id: 'asset-1', limit: 10 },
+      {},
+    )
+
+    expect(list).toEqual({ attachmentCount: 1, attachments })
+    expect(read).toMatchObject({
+      id: 'asset-1',
+      content: 'name,value',
+      nextOffset: 10,
+    })
+  })
+
+  it('returns an Ark URL instead of loading binary attachment bytes', async () => {
+    const tools = createDeckTools(createDeckWorkspace(managedDeck), {
+      attachmentInspector: {
+        attachments: [
+          {
+            id: 'asset-2',
+            filename: 'photo.png',
+            mediaType: 'image/png',
+            byteSize: 100,
+            url: '/api/decks/deck-1/assets/asset-2',
+          },
+        ],
+        read: async () => {
+          throw new Error('binary data should not be loaded')
+        },
+      },
+    })
+    const output = await (tools.read_attachment.execute as unknown as ToolExecute)(
+      { id: 'asset-2' },
+      {},
+    )
+
+    expect(output).toMatchObject({ id: 'asset-2', binary: true })
+  })
+})
+
 describe('list_versions tool', () => {
   it('returns compact version metadata without HTML', async () => {
     const workspace = createDeckWorkspace(managedDeck)

@@ -131,7 +131,7 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
   })
 
-  it('caps uploaded prompt attachments and revokes their blob URLs on unmount', async () => {
+  it('accepts all prompt attachments and revokes their blob URLs on unmount', async () => {
     const createObjectURL = vi.fn((file: File) => `blob:${file.name}`)
     const revokeObjectURL = vi.fn()
     Object.defineProperties(URL, {
@@ -152,12 +152,12 @@ describe('ChatPanel submit control', () => {
 
     await user.upload(screen.getByLabelText('Upload files'), files)
 
-    expect(createObjectURL).toHaveBeenCalledTimes(5)
-    expect(onAttachmentError).toHaveBeenCalledWith('You can attach up to 5 files.')
+    expect(createObjectURL).toHaveBeenCalledTimes(6)
+    expect(onAttachmentError).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
 
     unmount()
-    expect(revokeObjectURL).toHaveBeenCalledTimes(5)
+    expect(revokeObjectURL).toHaveBeenCalledTimes(6)
   })
 
   it('disables attachments for text-only models', () => {
@@ -377,5 +377,58 @@ describe('ChatPanel submit control', () => {
     await user.click(summary)
     expect(screen.getByText(/Read slide 1/)).toBeVisible()
     expect(screen.getByText(/Patch applied/)).toBeVisible()
+  })
+
+  it('collapses a single tool call by default', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            {
+              id: 'a3',
+              role: 'assistant',
+              content: 'Updated the title.',
+              parts: [
+                { type: 'tool-call', toolName: 'patch_deck', summary: 'Updated slide 1' },
+                { type: 'tool-result', toolName: 'patch_deck', summary: 'Patch applied' },
+                { type: 'text', content: 'Updated the title.' },
+              ],
+            },
+          ]}
+        />
+      </TooltipProvider>,
+    )
+
+    const summary = screen.getByText('1 tool call')
+    expect(summary.closest('details')).not.toHaveAttribute('open')
+    expect(screen.getByText(/Updated slide 1/)).not.toBeVisible()
+
+    await user.click(summary)
+    expect(screen.getByText(/Updated slide 1/)).toBeVisible()
+  })
+
+  it('keeps live generation thinking and tool calls collapsed', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          activeSteps={[
+            { type: 'thinking', summary: 'Planning the edit.' },
+            { type: 'tool-call', toolName: 'read_deck', summary: 'Reading slide 1' },
+          ]}
+          generationStatus="running"
+          isGenerating
+          reducedMotion
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Thinking').closest('details')).not.toHaveAttribute('open')
+    expect(screen.getByText('1 tool call').closest('details')).not.toHaveAttribute('open')
+    expect(screen.queryByText('Planning the edit.')).not.toBeVisible()
+    expect(screen.queryByText(/Reading slide 1/)).not.toBeVisible()
   })
 })

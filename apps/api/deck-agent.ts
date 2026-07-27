@@ -12,7 +12,7 @@ import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/genera
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
-import { type DeckVersionInspector } from './deck-tools.ts'
+import { type DeckAttachmentInspector, type DeckVersionInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
@@ -28,6 +28,7 @@ export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
+When attachment tools are available, list and read the relevant files before designing from them.
 
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
@@ -50,6 +51,7 @@ export type RunDeckAgentOptions = {
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
   versionInspector?: DeckVersionInspector
+  attachmentInspector?: DeckAttachmentInspector
 }
 
 function buildProviderMetrics(input: {
@@ -502,6 +504,7 @@ export async function runDeckAgent({
   onStepProgress,
   logger,
   versionInspector,
+  attachmentInspector,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
   const provider = providerInput ?? 'unknown'
   const modelRef = modelRefInput ?? 'unknown'
@@ -511,6 +514,7 @@ export async function runDeckAgent({
   const { tools, activeDefinitions } = createActiveDeckTools(workspace, {
     logger,
     versionInspector,
+    attachmentInspector,
   })
   const accumulatedSteps: AgentStep[] = []
   const transcriptParts: ChatMessagePart[] = []
