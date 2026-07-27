@@ -17,6 +17,19 @@ deterministic semantic ledger in a prefixed user-context message when the emerge
 ceiling is reached. This projection does not mutate or persist markers back into chat. The AI SDK
 owns continuation between tool steps inside one generation job.
 
+## Attachments
+
+Ark does not impose a fixed attachment-count limit. Files attached to a saved deck are uploaded as
+deck assets and persisted in chat as lightweight references. The agent receives attachment metadata
+through `list_attachments` and can page through text, CSV, Markdown, and JSON content with
+`read_attachment`, so those files are not copied into every model request. Images and other binary
+formats remain provider-native model attachments when the selected model supports them.
+
+Each uploaded file may contain up to 50 MiB of decoded data. Attachments on a not-yet-saved deck
+remain inline until the first deck is created and share a 50 MiB decoded-data ceiling. Provider
+context windows and provider-specific attachment rules still apply independently of Ark's storage
+limits.
+
 ## Future compaction contract
 
 Session compaction is not implemented. A future `ChatCompactionEntry` should live separately from

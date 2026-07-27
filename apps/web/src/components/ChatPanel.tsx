@@ -65,11 +65,7 @@ import type {
   ChatMessage,
   ChatMessagePart,
 } from '@ark/deck-core/chat.ts'
-import {
-  agentStepsToChatParts,
-  MAX_CHAT_ATTACHMENTS,
-  MAX_CHAT_ATTACHMENT_BYTES,
-} from '@ark/deck-core/chat.ts'
+import { agentStepsToChatParts, MAX_CHAT_ATTACHMENT_BYTES } from '@ark/deck-core/chat.ts'
 import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 import { cn } from '@/lib/utils'
 
@@ -147,8 +143,6 @@ function alertDismissKey(alertId: ChatAlertId, content: string) {
 
 function formatAttachmentError(error: { code: string; message: string }) {
   switch (error.code) {
-    case 'max_files':
-      return `You can attach up to ${MAX_CHAT_ATTACHMENTS} files.`
     case 'max_file_size':
       return `Each attachment must be ${Math.round(MAX_CHAT_ATTACHMENT_BYTES / (1024 * 1024))} MB or smaller.`
     default:
@@ -642,7 +636,6 @@ export function ChatPanel({
               accept="image/*,text/*,application/pdf"
               className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
               maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
-              maxFiles={MAX_CHAT_ATTACHMENTS}
               multiple
               onError={(error) => onAttachmentError(formatAttachmentError(error))}
               onSubmit={onPromptSubmit}

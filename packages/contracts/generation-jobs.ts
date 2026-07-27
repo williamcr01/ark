@@ -1,6 +1,5 @@
 import { z } from 'zod'
 
-import { MAX_CHAT_ATTACHMENTS } from '@ark/deck-core/chat.ts'
 import { apiChatMessageSchema } from './chat.ts'
 import {
   deckIdSchema,
@@ -136,10 +135,7 @@ export const startGenerationJobRequestSchema = z.object({
    * user turn. Requires `deckId`. Omitted from job poll responses — clients
    * already know what they sent; the runner stores ids on the job record.
    */
-  assetIds: z
-    .array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.'))
-    .max(MAX_CHAT_ATTACHMENTS)
-    .optional(),
+  assetIds: z.array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.')).optional(),
 })
 
 export type StartGenerationJobRequest = z.infer<typeof startGenerationJobRequestSchema>

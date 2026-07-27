@@ -86,6 +86,10 @@ export function computeChecksum(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
+export function isAssetUploadTooLarge(byteSize: number): boolean {
+  return byteSize > MAX_ASSET_UPLOAD_BYTES
+}
+
 function extensionMatchesMediaType(filename: string, mediaType: string): boolean {
   const extensions = getAssetExtensions(mediaType)
   if (extensions.length === 0) {
@@ -234,7 +238,7 @@ export function validateAssetUpload(input: ValidateAssetInput): AssetValidationR
     return { ok: false, error: { code: 'empty', message: 'The file is empty.' } }
   }
 
-  if (bytes.length > MAX_ASSET_UPLOAD_BYTES) {
+  if (isAssetUploadTooLarge(bytes.length)) {
     return {
       ok: false,
       error: {

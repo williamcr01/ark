@@ -141,18 +141,19 @@ describe('asset API routes', () => {
     expect(json.code).toBe('unsupported_media_type')
   })
 
-  it('rejects oversized payloads', async () => {
+  it('accepts payloads above the former 10 MiB cap', async () => {
     const { baseUrl, deckId } = await startApi()
-    const huge = Buffer.alloc(11 * 1024 * 1024)
-    PNG_BYTES.copy(huge)
+    const payload = Buffer.alloc(11 * 1024 * 1024)
+    PNG_BYTES.copy(payload)
 
     const response = await upload(baseUrl, deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
-      data: huge.toString('base64'),
+      data: payload.toString('base64'),
     })
 
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(201)
+    expect((await response.json()).asset.byteSize).toBe(payload.length)
   })
 
   it('rejects suspicious filenames', async () => {
