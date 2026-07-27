@@ -238,7 +238,7 @@ export function ModelSelector({
           aria-label="Select model"
           className={cn(
             morphMenuTriggerClassName,
-            'h-8 min-w-0 max-w-full shrink justify-between font-medium text-[var(--ark-ink)] sm:max-w-[260px]',
+            'h-8 min-w-0 max-w-full grow shrink justify-between font-medium text-[var(--ark-ink)] sm:max-w-[260px]',
             'motion-reduce:transition-none',
             !canGenerate && 'text-muted-foreground',
             className,
