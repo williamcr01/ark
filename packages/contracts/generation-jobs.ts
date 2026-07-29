@@ -9,6 +9,19 @@ import {
   withRequestId,
 } from './common.ts'
 import { deckValidationReportSchema } from './decks.ts'
+import {
+  editorSelectionContextSchema,
+  MAX_SLIDE_CONTEXTS,
+  slideContextSchema,
+} from './agent-context.ts'
+
+export {
+  editorSelectionContextSchema,
+  MAX_SLIDE_CONTEXTS,
+  slideContextSchema,
+  type EditorSelectionContext,
+  type SlideContext,
+} from './agent-context.ts'
 
 export const generationJobStatusSchema = z.enum([
   'queued',
@@ -102,24 +115,6 @@ export const generationJobResponseSchema = withRequestId({
 
 export type GenerationJobResponse = z.infer<typeof generationJobResponseSchema>
 
-/**
- * Manual-editor selection context (issue #83). Sent when the user has an element
- * selected so the agent can target "this" element by id and prefer id-based
- * patches over brittle full-document rewrites.
- */
-export const editorSelectionContextSchema = z.object({
-  slideIndex: z.number().int().min(0),
-  slideId: z.string().min(1).optional(),
-  elementId: z.string().min(1),
-  elementKind: z.string().min(1).max(64).optional(),
-  elementRole: z.string().min(1).max(64).optional(),
-  textPreview: z.string().max(280).optional(),
-  locked: z.boolean().optional(),
-  managed: z.boolean().optional(),
-})
-
-export type EditorSelectionContext = z.infer<typeof editorSelectionContextSchema>
-
 export const startGenerationJobRequestSchema = z.object({
   /** Full visible chat history replayed for this generation run. */
   messages: z.array(apiChatMessageSchema).optional(),
@@ -131,6 +126,8 @@ export const startGenerationJobRequestSchema = z.object({
   baseVersionId: deckIdSchema.nullable().optional(),
   /** Current manual-editor selection so the agent can target the selected element. */
   editorSelection: editorSelectionContextSchema.optional(),
+  /** Slides the user attached as context for this generation turn. */
+  slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
   /**
    * Deck-scoped uploaded asset ids to resolve into file inputs for the latest
    * user turn. Requires `deckId`. Omitted from job poll responses — clients

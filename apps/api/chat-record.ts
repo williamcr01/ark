@@ -1,4 +1,4 @@
-import type { ChatAttachment, ChatMessagePart } from '@ark/deck-core/chat.ts'
+import type { ChatAttachment, ChatMessageContext, ChatMessagePart } from '@ark/deck-core/chat.ts'
 import { isValidDeckId } from './deck-record.ts'
 
 export type ChatThreadStatus = 'active' | 'archived'
@@ -27,6 +27,7 @@ export type StoredChatMessage = {
   content: string
   parts?: ChatMessagePart[]
   attachments?: ChatAttachment[]
+  context?: ChatMessageContext
   generationJobId?: string | null
   generationStatus?: string | null
   model?: string | null
@@ -40,6 +41,7 @@ export type AppendChatMessageInput = {
   content: string
   parts?: ChatMessagePart[]
   attachments?: ChatAttachment[]
+  context?: ChatMessageContext
   deckVersionId?: string | null
   generationJobId?: string | null
   generationStatus?: string | null

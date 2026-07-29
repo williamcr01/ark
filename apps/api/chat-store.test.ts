@@ -45,6 +45,15 @@ describe('createChatStore', () => {
           url: 'data:text/plain;base64,UTEgcmVzdWx0cw==',
         },
       ],
+      context: {
+        slideContexts: [{ slideIndex: 1, title: 'Agenda' }],
+        editorSelection: {
+          slideIndex: 1,
+          elementId: 'ark-el-1',
+          elementKind: 'text-box',
+          textPreview: 'Hello',
+        },
+      },
     })
     const second = await store.appendMessage(deckId, {
       id: '00000000-0000-4000-8000-000000000201',
@@ -65,6 +74,8 @@ describe('createChatStore', () => {
     })
 
     expect(first.attachments).toHaveLength(1)
+    expect(first.context?.slideContexts).toEqual([{ slideIndex: 1, title: 'Agenda' }])
+    expect(first.context?.editorSelection?.elementId).toBe('ark-el-1')
     expect(second.parts).toHaveLength(1)
     expect(second.content).not.toContain('<!DOCTYPE html>')
     expect(duplicate.id).toBe(second.id)

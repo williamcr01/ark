@@ -89,6 +89,9 @@ function parseStoredJob(parsed: unknown): StoredGenerationJobFile | null {
       ...(record.request.editorSelection && typeof record.request.editorSelection === 'object'
         ? { editorSelection: record.request.editorSelection }
         : {}),
+      ...(Array.isArray(record.request.slideContexts)
+        ? { slideContexts: record.request.slideContexts }
+        : {}),
       ...(typeof record.request.reasoningEffort === 'string' &&
       (record.request.reasoningEffort === 'none' ||
         record.request.reasoningEffort === 'minimal' ||

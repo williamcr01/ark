@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { parseDeckSlides, type ParsedDeck } from '@/lib/deck-slides'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 
 import { SlideThumbnailStrip } from './SlideThumbnailStrip'
@@ -389,5 +390,40 @@ describe('SlideThumbnailStrip', () => {
 
     expect(strip).toHaveAttribute('aria-hidden', 'true')
     expect(strip).toHaveClass('hidden')
+  })
+
+  it('toggles slide chat context without changing the active slide', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    const onToggleContextSlide = vi.fn()
+    const parsedDeck = createParsedDeck(2)
+
+    render(
+      <TooltipProvider>
+        <SlideThumbnailStrip
+          activeIndex={0}
+          contextSlideIndexes={[1]}
+          isOpen
+          onSelect={onSelect}
+          onToggleContextSlide={onToggleContextSlide}
+          orientation="vertical"
+          parsedDeck={parsedDeck}
+        />
+      </TooltipProvider>,
+    )
+
+    const addButton = screen.getByRole('button', { name: 'Add slide 1 to chat' })
+    const removeButton = screen.getByRole('button', { name: 'Remove slide 2 from chat' })
+
+    expect(removeButton).toHaveAttribute('aria-pressed', 'true')
+    expect(addButton).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(addButton)
+    expect(onToggleContextSlide).toHaveBeenCalledWith(0)
+    expect(onSelect).not.toHaveBeenCalled()
+
+    await user.click(removeButton)
+    expect(onToggleContextSlide).toHaveBeenCalledWith(1)
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })

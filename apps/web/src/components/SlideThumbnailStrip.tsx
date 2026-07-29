@@ -7,9 +7,11 @@ import {
   type CSSProperties,
   type SyntheticEvent,
 } from 'react'
+import { MessageSquarePlusIcon } from 'lucide-react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   getThumbnailSandbox,
   PREVIEW_FRAME_ASPECT_RATIO,
@@ -32,9 +34,13 @@ type SlideThumbnailStripProps = {
   activeIndex: number
   /** Defers thumbnail parsing and requests until the main preview is ready. */
   contentEnabled?: boolean
+  /** Zero-based slide indexes currently attached as chat context. */
+  contextSlideIndexes?: number[]
   id?: string
   isOpen: boolean
   onSelect: (index: number) => void
+  /** Toggle a slide as chat context without changing the active slide. */
+  onToggleContextSlide?: (index: number) => void
   orientation: 'horizontal' | 'vertical'
   parsedDeck: ParsedDeck
   /** Sandbox-rendered PNG URLs when available; null entries fall back to srcDoc. */
@@ -48,10 +54,12 @@ type ThumbnailSrcDocCacheEntry = {
 
 type LazyThumbnailProps = {
   active: boolean
+  contextAttached: boolean
   index: number
   mountContent: boolean
   onSelect: (index: number) => void
   onThumbnailImageError: (index: number, url: string) => void
+  onToggleContextSlide?: (index: number) => void
   onVisibilityChange: (index: number, isVisible: boolean) => void
   orientation: 'horizontal' | 'vertical'
   prioritizeLoad: boolean
@@ -143,10 +151,12 @@ function computeMountedIndices(
 
 function LazyThumbnail({
   active,
+  contextAttached,
   index,
   mountContent,
   onSelect,
   onThumbnailImageError,
+  onToggleContextSlide,
   onVisibilityChange,
   orientation,
   prioritizeLoad,
@@ -199,88 +209,125 @@ function LazyThumbnail({
   }, [index, onVisibilityChange, trackVisibility])
 
   return (
-    <button
-      aria-current={active ? 'true' : undefined}
-      aria-label={`Go to slide ${index + 1}`}
-      className={cn(
-        'group relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)]',
-        'hover:ring-[var(--ark-titlebar-muted)]',
-        active &&
-          'z-10 ring-2 ring-[var(--ark-selection)] shadow-[inset_3px_0_var(--ark-selection)]',
-        orientation === 'vertical' ? 'w-full' : 'w-[152px]',
-      )}
-      onClick={() => onSelect(index)}
-      ref={containerRef}
-      type="button"
-    >
-      <div
-        className="relative w-full overflow-hidden bg-white"
-        style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
-      >
-        {mountContent ? (
-          <>
-            {!imageReady ? (
-              srcDoc ? (
-                <iframe
-                  className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
-                  sandbox={getThumbnailSandbox()}
-                  srcDoc={srcDoc}
-                  style={{
-                    width: PREVIEW_FRAME_WIDTH,
-                    height: PREVIEW_FRAME_HEIGHT,
-                    transform: 'scale(var(--ark-thumb-scale))',
-                    transformOrigin: 'top left',
-                  }}
-                  tabIndex={-1}
-                  title={
-                    thumbnailUrl ? `Loading slide ${index + 1}` : `Slide ${index + 1} thumbnail`
-                  }
-                />
-              ) : (
-                <Skeleton className="absolute inset-0 rounded-none" />
-              )
-            ) : null}
-            {thumbnailUrl ? (
-              <img
-                alt=""
-                className={cn(
-                  'pointer-events-none absolute inset-0 h-full w-full object-cover',
-                  imageReady ? 'opacity-100' : 'opacity-0',
-                )}
-                decoding="async"
-                fetchPriority={prioritizeLoad ? 'high' : 'auto'}
-                loading="eager"
-                onError={() => onThumbnailImageError(index, thumbnailUrl)}
-                onLoad={handleImageLoad}
-                src={thumbnailUrl}
-                title={`Slide ${index + 1} thumbnail`}
-              />
-            ) : null}
-          </>
-        ) : (
-          <Skeleton className="absolute inset-0 rounded-none" />
-        )}
-      </div>
-      <span
+    <div className="group/thumb relative">
+      <button
+        aria-current={active ? 'true' : undefined}
+        aria-label={`Go to slide ${index + 1}`}
         className={cn(
-          'absolute bottom-1 left-1 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
-          active
-            ? 'bg-[var(--ark-selection)] text-primary-foreground'
-            : 'bg-[var(--ark-overlay)] text-primary-foreground',
+          'relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)]',
+          'hover:ring-[var(--ark-titlebar-muted)]',
+          active &&
+            'z-10 ring-2 ring-[var(--ark-selection)] shadow-[inset_3px_0_var(--ark-selection)]',
+          orientation === 'vertical' ? 'w-full' : 'w-[152px]',
         )}
+        onClick={() => onSelect(index)}
+        ref={containerRef}
+        type="button"
       >
-        {index + 1}
-      </span>
-    </button>
+        <div
+          className="relative w-full overflow-hidden bg-white"
+          style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
+        >
+          {mountContent ? (
+            <>
+              {!imageReady ? (
+                srcDoc ? (
+                  <iframe
+                    className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
+                    sandbox={getThumbnailSandbox()}
+                    srcDoc={srcDoc}
+                    style={{
+                      width: PREVIEW_FRAME_WIDTH,
+                      height: PREVIEW_FRAME_HEIGHT,
+                      transform: 'scale(var(--ark-thumb-scale))',
+                      transformOrigin: 'top left',
+                    }}
+                    tabIndex={-1}
+                    title={
+                      thumbnailUrl ? `Loading slide ${index + 1}` : `Slide ${index + 1} thumbnail`
+                    }
+                  />
+                ) : (
+                  <Skeleton className="absolute inset-0 rounded-none" />
+                )
+              ) : null}
+              {thumbnailUrl ? (
+                <img
+                  alt=""
+                  className={cn(
+                    'pointer-events-none absolute inset-0 h-full w-full object-cover',
+                    imageReady ? 'opacity-100' : 'opacity-0',
+                  )}
+                  decoding="async"
+                  fetchPriority={prioritizeLoad ? 'high' : 'auto'}
+                  loading="eager"
+                  onError={() => onThumbnailImageError(index, thumbnailUrl)}
+                  onLoad={handleImageLoad}
+                  src={thumbnailUrl}
+                  title={`Slide ${index + 1} thumbnail`}
+                />
+              ) : null}
+            </>
+          ) : (
+            <Skeleton className="absolute inset-0 rounded-none" />
+          )}
+        </div>
+        <span
+          className={cn(
+            'absolute bottom-1 left-1 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
+            active
+              ? 'bg-[var(--ark-selection)] text-primary-foreground'
+              : 'bg-[var(--ark-overlay)] text-primary-foreground',
+          )}
+        >
+          {index + 1}
+        </span>
+      </button>
+
+      {onToggleContextSlide ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              aria-label={
+                contextAttached
+                  ? `Remove slide ${index + 1} from chat`
+                  : `Add slide ${index + 1} to chat`
+              }
+              aria-pressed={contextAttached}
+              className={cn(
+                'absolute right-1 top-1 z-20 flex size-6 items-center justify-center rounded-sm',
+                'border border-[var(--ark-stage-border)] bg-[var(--ark-panel)]/95 text-[var(--ark-titlebar-fg)]',
+                'opacity-0 shadow-sm transition-opacity',
+                'focus-visible:opacity-100 group-hover/thumb:opacity-100 group-focus-within/thumb:opacity-100',
+                contextAttached &&
+                  'border-[var(--ark-accent)]/50 bg-[var(--ark-accent)] text-primary-foreground opacity-100',
+              )}
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggleContextSlide(index)
+              }}
+              type="button"
+            >
+              <MessageSquarePlusIcon aria-hidden className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {contextAttached ? 'Remove slide from chat' : 'Add slide to chat'}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+    </div>
   )
 }
 
 export function SlideThumbnailStrip({
   activeIndex,
   contentEnabled = true,
+  contextSlideIndexes = [],
   id,
   isOpen,
   onSelect,
+  onToggleContextSlide,
   orientation,
   parsedDeck,
   thumbnailUrls = null,
@@ -521,10 +568,12 @@ export function SlideThumbnailStrip({
               <div key={index} ref={index === activeIndex ? activeItemRef : undefined}>
                 <LazyThumbnail
                   active={index === activeIndex}
+                  contextAttached={contextSlideIndexes.includes(index)}
                   index={index}
                   mountContent={mountContent}
                   onSelect={onSelect}
                   onThumbnailImageError={handleThumbnailImageError}
+                  onToggleContextSlide={onToggleContextSlide}
                   onVisibilityChange={handleVisibilityChange}
                   orientation={orientation}
                   prioritizeLoad={index < INITIAL_EAGER_THUMBNAILS || index === activeIndex}

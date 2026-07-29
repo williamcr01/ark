@@ -31,6 +31,8 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
+import { ContextChipList } from '@/components/ChatContextChips'
+import { contextToChipProps } from '@/lib/chat-context-chips'
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -401,6 +403,8 @@ export type ChatPanelProps = {
   canGenerate: boolean
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
+  /** Context chips (selected element / attached slides) above the composer. */
+  contextSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
@@ -433,6 +437,7 @@ export function ChatPanel({
   canGenerate,
   selectedAssetIds = [],
   assetsSlot,
+  contextSlot,
   onInputChange,
   onModelSelect,
   onPromptSubmit,
@@ -523,6 +528,13 @@ export function ChatPanel({
                     {message.attachments?.length ? (
                       <ChatMessageAttachments attachments={message.attachments} />
                     ) : null}
+                    {message.role === 'user' && message.context ? (
+                      <ContextChipList
+                        className="mt-2"
+                        label="Attached context"
+                        {...contextToChipProps(message.context)}
+                      />
+                    ) : null}
                     <ChatMessageDeliveryStatus
                       onRetry={
                         onRetryPersist
@@ -565,6 +577,7 @@ export function ChatPanel({
             </div>
           ) : null}
           {assetsSlot}
+          {contextSlot}
 
           {hasFloatingAlerts ? (
             <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">

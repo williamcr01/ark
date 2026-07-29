@@ -7,6 +7,7 @@ import {
   type AgentStep,
   type ChatMessage,
   type EditorSelectionContext,
+  type SlideContext,
 } from '@ark/deck-core/chat.ts'
 import type { GenerationJobApi, GenerationJobStatus, ReasoningEffort } from '@ark/contracts'
 import {
@@ -228,7 +229,11 @@ export function useGenerationJob({
     async (
       messages: ChatMessage[],
       currentHtml: string,
-      options: { assetIds?: string[]; editorSelection?: EditorSelectionContext } = {},
+      options: {
+        assetIds?: string[]
+        editorSelection?: EditorSelectionContext
+        slideContexts?: SlideContext[]
+      } = {},
     ) => {
       if (isGenerating || !canGenerate) {
         return null
@@ -248,6 +253,7 @@ export function useGenerationJob({
           baseVersionId,
           ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
           ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
+          ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
         })
 
         setActiveJob(job)

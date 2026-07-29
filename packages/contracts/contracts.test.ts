@@ -215,6 +215,25 @@ describe('shared API contracts', () => {
 
     expect(
       startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'update these slides' }],
+        deckId,
+        slideContexts: [
+          { slideIndex: 0, title: 'Title' },
+          { slideIndex: 2, slideId: 'ark-slide-3', title: 'Market' },
+        ],
+      }).success,
+    ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'update these slides' }],
+        deckId,
+        slideContexts: [{ slideIndex: -1 }],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
         messages: [{ role: 'user', content: 'make this bigger' }],
         deckId,
         editorSelection: { slideIndex: 0 },
@@ -303,6 +322,29 @@ describe('shared API contracts', () => {
         content: 'Hello',
       }).success,
     ).toBe(true)
+
+    expect(
+      appendChatMessageRequestSchema.safeParse({
+        role: 'user',
+        content: 'Update this',
+        context: {
+          slideContexts: [{ slideIndex: 2, title: 'Market' }],
+          editorSelection: {
+            slideIndex: 2,
+            elementId: 'ark-el-9',
+            elementKind: 'text',
+          },
+        },
+      }).success,
+    ).toBe(true)
+
+    expect(
+      appendChatMessageRequestSchema.safeParse({
+        role: 'assistant',
+        content: 'Done',
+        context: { slideContexts: [{ slideIndex: 0 }] },
+      }).success,
+    ).toBe(false)
 
     expect(
       deckChatResponseSchema.parse({

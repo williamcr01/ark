@@ -4,6 +4,7 @@ import { toChatAttachments, type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
+import { ChatContextChips } from '@/components/ChatContextChips'
 import { ChatPanel } from '@/components/ChatPanel'
 import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
@@ -33,7 +34,16 @@ import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
 import { buildUndoRedoVersionOptions } from '@/lib/undo-redo-version-options'
+import { MAX_SLIDE_CONTEXTS } from '@ark/contracts'
 import { toEditorSelectionContext } from '@/lib/editor-selection-context'
+import {
+  buildSlideContexts,
+  extractSlideTitleFromOuterHtml,
+  resolveContextSlides,
+  sameContextSlideEntries,
+  toggleContextSlideEntry,
+  type ContextSlideEntry,
+} from '@/lib/slide-context'
 import type { PatchDeckResponse } from '@/lib/deck-api'
 import { uploadDeckAsset } from '@/lib/asset-api'
 import {
@@ -137,7 +147,9 @@ function App() {
     clearSelection: clearAssetSelection,
   } = useDeckAssets(deckId)
   const [input, setInput] = useState('')
-  const editorSelectionRef = useRef<EditorSelectionInfo | null>(null)
+  const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
+  const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
+  const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
   const [error, setError] = useState('')
@@ -221,6 +233,7 @@ function App() {
     onGenerationStart: useCallback(() => setAttachmentError(''), []),
     onGenerationSucceeded: useCallback(() => {
       clearAssetSelection()
+      setContextSlideEntries([])
       resetEditHistory()
     }, [clearAssetSelection, resetEditHistory]),
   })
@@ -253,10 +266,69 @@ function App() {
     resetEditHistory()
   }, [deckId, resetEditHistory])
 
+  const [prevDeckIdForContext, setPrevDeckIdForContext] = useState(deckId)
+  if (deckId !== prevDeckIdForContext) {
+    setPrevDeckIdForContext(deckId)
+    setContextSlideEntries([])
+    setEditorSelection(null)
+  }
+
+  const handleEditorSelectionChange = useCallback((selection: EditorSelectionInfo | null) => {
+    setEditorSelection(selection)
+  }, [])
+
+  const handleClearEditorSelection = useCallback(() => {
+    const clear = clearEditorSelectionRef.current
+    if (clear?.()) {
+      // Bridge accepted the clear; selection change event will null local state.
+      return
+    }
+    setEditorSelection(null)
+  }, [])
+
   const deckAnalysis = useMemo(() => {
     void thumbnailStylesRevision
     return analyzeDeckInBrowser(generatedHtml)
   }, [generatedHtml, thumbnailStylesRevision])
+
+  const handleToggleContextSlide = useCallback(
+    (slideIndex: number) => {
+      setContextSlideEntries((current) => {
+        const result = toggleContextSlideEntry(
+          current,
+          slideIndex,
+          deckAnalysis.slides,
+          MAX_SLIDE_CONTEXTS,
+        )
+        if (result.capped) {
+          toast.warning(`You can attach up to ${MAX_SLIDE_CONTEXTS} slides to the chat`)
+          return current
+        }
+        return result.entries
+      })
+    },
+    [deckAnalysis.slides],
+  )
+
+  const handleRemoveContextSlide = useCallback(
+    (slideIndex: number) => {
+      setContextSlideEntries((current) =>
+        resolveContextSlides(current, deckAnalysis.slides).filter(
+          (entry) => entry.slideIndex !== slideIndex,
+        ),
+      )
+    },
+    [deckAnalysis.slides],
+  )
+
+  // Keep attached-slide state aligned with the live deck (reorder/delete/rollback).
+  const resolvedContextSlides = resolveContextSlides(contextSlideEntries, deckAnalysis.slides)
+  if (!sameContextSlideEntries(resolvedContextSlides, contextSlideEntries)) {
+    setContextSlideEntries(resolvedContextSlides)
+  }
+
+  const contextSlideIndexes = resolvedContextSlides.map((entry) => entry.slideIndex)
+
   const showSanitizedDownload = deckAnalysis.hasExecutableContent
   const hasSlides = deckAnalysis.slideCount > 0
   const deckSaveStatus: DeckSaveStatus = isDeckLoading
@@ -284,6 +356,30 @@ function App() {
       uploads={assetUploads}
     />
   ) : null
+  const contextSlidesForChips = useMemo(
+    () =>
+      resolvedContextSlides.flatMap((entry) => {
+        const slide = deckAnalysis.slides.find((item) => item.index === entry.slideIndex)
+        if (!slide) {
+          return []
+        }
+        return [
+          {
+            slideIndex: entry.slideIndex,
+            title: extractSlideTitleFromOuterHtml(slide.outerHTML, entry.slideIndex),
+          },
+        ]
+      }),
+    [deckAnalysis.slides, resolvedContextSlides],
+  )
+  const chatContextSlot = (
+    <ChatContextChips
+      editorSelection={editorSelection}
+      onClearEditorSelection={handleClearEditorSelection}
+      onRemoveSlide={handleRemoveContextSlide}
+      slides={contextSlidesForChips}
+    />
+  )
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
@@ -317,10 +413,6 @@ function App() {
     setError,
     onEditHistoryBoundary: resetEditHistory,
   })
-
-  const handleEditorSelectionChange = useCallback((selection: EditorSelectionInfo | null) => {
-    editorSelectionRef.current = selection
-  }, [])
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
     const selectedDeckAttachments: ChatAttachment[] = deckId
@@ -365,10 +457,15 @@ function App() {
           ]),
         ]
       : []
-    const editorSelection = toEditorSelectionContext(editorSelectionRef.current)
+    const editorSelectionContext = toEditorSelectionContext(editorSelection)
+    const slideContexts =
+      resolvedContextSlides.length > 0
+        ? buildSlideContexts(resolvedContextSlides, deckAnalysis.slides)
+        : undefined
     await generateDeck(message.text, attachments, {
       assetIds,
-      ...(editorSelection ? { editorSelection } : {}),
+      ...(editorSelectionContext ? { editorSelection: editorSelectionContext } : {}),
+      ...(slideContexts?.length ? { slideContexts } : {}),
     })
   }
 
@@ -553,6 +650,7 @@ function App() {
       assetsSlot={deckAssetsSlot}
       attachmentError={attachmentError}
       canGenerate={canGenerate}
+      contextSlot={chatContextSlot}
       error={displayError}
       failedJobId={failedJobId}
       generationStatus={generationStatus}
@@ -585,6 +683,8 @@ function App() {
       canRedo={canRedo}
       canUndo={canUndo}
       chromeHost={deckChromeHost}
+      clearEditorSelectionRef={clearEditorSelectionRef}
+      contextSlideIndexes={contextSlideIndexes}
       deckId={deckId}
       editorBridgeEnabled
       html={generatedHtml}
@@ -597,6 +697,7 @@ function App() {
       onEditorSelectionChange={handleEditorSelectionChange}
       onPatchEditorOperations={handlePatchEditorOperations}
       onRedo={handleRedoEdit}
+      onToggleContextSlide={handleToggleContextSlide}
       onUndo={handleUndoEdit}
       deckAnalysis={deckAnalysis}
       redoSlideIndex={redoEntry?.slideIndex ?? null}
