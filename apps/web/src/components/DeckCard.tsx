@@ -1,5 +1,14 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
+import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { cn } from '@/lib/utils'
@@ -18,7 +27,13 @@ function formatUpdatedAt(updatedAt: string) {
   })}`
 }
 
-export function DeckCard({ deck }: { deck: DeckSummary }) {
+export type DeckCardProps = {
+  deck: DeckSummary
+  onDelete: (deck: DeckSummary) => void | Promise<void>
+  onRename: (deck: DeckSummary, title: string) => void | Promise<void>
+}
+
+export function DeckCard({ deck, onDelete, onRename }: DeckCardProps) {
   const { thumbnailUrls, isLoading, status } = useDeckThumbnails(deck.id, deck.activeVersionId, 1, {
     waitMs: 0,
   })
@@ -26,17 +41,97 @@ export function DeckCard({ deck }: { deck: DeckSummary }) {
   const showSkeleton = Boolean(deck.activeVersionId) && (isLoading || status === 'pending')
   const initial = (deck.title.trim().charAt(0) || 'A').toUpperCase()
 
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(deck.title)
+  const [isSaving, setIsSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const skipCommitRef = useRef(false)
+  const focusTitleOnMenuCloseRef = useRef(false)
+
+  useEffect(() => {
+    if (!isEditing) {
+      return
+    }
+
+    const input = inputRef.current
+    if (!input) {
+      return
+    }
+
+    input.focus()
+    input.select()
+  }, [isEditing])
+
+  const startRename = () => {
+    skipCommitRef.current = false
+    focusTitleOnMenuCloseRef.current = true
+    setDraftTitle(deck.title)
+    setIsEditing(true)
+  }
+
+  const cancelRename = () => {
+    skipCommitRef.current = true
+    setDraftTitle(deck.title)
+    setIsEditing(false)
+  }
+
+  const commitRename = async () => {
+    if (skipCommitRef.current) {
+      skipCommitRef.current = false
+      return
+    }
+
+    const nextTitle = draftTitle.trim()
+
+    if (!nextTitle || nextTitle === deck.title) {
+      setDraftTitle(deck.title)
+      setIsEditing(false)
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      await onRename(deck, nextTitle)
+      setIsEditing(false)
+    } catch {
+      // Keep editing so the user can retry or cancel.
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      inputRef.current?.blur()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelRename()
+    }
+  }
+
+  const handleDelete = () => {
+    const confirmed = window.confirm(`Delete "${deck.title}"? This cannot be undone.`)
+
+    if (confirmed) {
+      void onDelete(deck)
+    }
+  }
+
   return (
-    <Link
+    <article
       className={cn(
-        'group flex flex-col overflow-hidden rounded-xl bg-card text-left ring-1 ring-foreground/10',
+        'relative flex flex-col overflow-hidden rounded-xl bg-card text-left ring-1 ring-foreground/10',
         'transition-[transform,box-shadow] duration-150',
         'hover:-translate-y-0.5 hover:shadow-md',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )}
-      to={`/decks/${deck.id}`}
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-muted">
+      <Link
+        aria-label={`Open ${deck.title}`}
+        className="relative aspect-video w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        to={`/decks/${deck.id}`}
+      >
         {thumbnailUrl ? (
           <img
             alt=""
@@ -50,18 +145,77 @@ export function DeckCard({ deck }: { deck: DeckSummary }) {
         ) : (
           <div
             aria-hidden
-            className="flex size-full items-center justify-center bg-muted text-3xl font-heading font-semibold text-muted-foreground"
+            className="flex size-full items-center justify-center bg-muted font-heading text-3xl font-semibold text-muted-foreground"
           >
             {initial}
           </div>
         )}
+      </Link>
+
+      <div className="flex items-start gap-1 px-3 py-2.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {isEditing ? (
+            <input
+              aria-label="Deck title"
+              className="box-border h-5 w-full min-w-0 truncate rounded-sm border border-ring bg-transparent px-0 font-heading text-sm font-medium leading-5 outline-none"
+              disabled={isSaving}
+              onBlur={() => {
+                void commitRename()
+              }}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              onKeyDown={handleTitleKeyDown}
+              ref={inputRef}
+              value={draftTitle}
+            />
+          ) : (
+            <Link
+              className="box-border flex h-5 w-full min-w-0 items-center truncate rounded-sm border border-transparent font-heading text-sm font-medium leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              to={`/decks/${deck.id}`}
+            >
+              {deck.title}
+            </Link>
+          )}
+          <span className="truncate text-xs text-muted-foreground">
+            {formatUpdatedAt(deck.updatedAt)}
+          </span>
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`Actions for ${deck.title}`}
+              className="size-7 shrink-0"
+              size="icon-sm"
+              variant="ghost"
+            >
+              <MoreHorizontalIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            onCloseAutoFocus={(event) => {
+              if (!focusTitleOnMenuCloseRef.current) {
+                return
+              }
+
+              // Keep focus on the title input instead of returning to the ⋯ trigger.
+              event.preventDefault()
+              focusTitleOnMenuCloseRef.current = false
+              inputRef.current?.focus()
+              inputRef.current?.select()
+            }}
+          >
+            <DropdownMenuItem onSelect={startRename}>
+              <PencilIcon />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleDelete} variant="destructive">
+              <Trash2Icon />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <div className="flex flex-col gap-0.5 px-3 py-2.5">
-        <span className="truncate font-heading text-sm font-medium leading-snug">{deck.title}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {formatUpdatedAt(deck.updatedAt)}
-        </span>
-      </div>
-    </Link>
+    </article>
   )
 }

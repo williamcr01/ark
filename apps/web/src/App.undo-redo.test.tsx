@@ -155,7 +155,6 @@ vi.mock('@/hooks/useDeckActions', () => ({
     handleNewDeck: vi.fn(),
     handleRenameDeck: vi.fn(),
     handleRollbackVersion: vi.fn(),
-    handleSelectDeck: vi.fn(),
     handleUploadClick: vi.fn(),
   }),
 }))

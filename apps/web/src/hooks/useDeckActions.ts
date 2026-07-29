@@ -30,7 +30,6 @@ type DeckActionsDeckSlice = Pick<
   | 'html'
   | 'persistHtml'
   | 'rollbackToVersion'
-  | 'selectDeck'
   | 'startNewDeck'
   | 'renameActiveDeck'
   | 'deleteActiveDeck'
@@ -50,7 +49,7 @@ export type UseDeckActionsOptions = {
 
 /**
  * Deck lifecycle handlers used by the shell chrome: upload/download, deck CRUD
- * (new/select/rename/delete), and version rollback. Extracted from `App.tsx`;
+ * (new/rename/delete), and version rollback. Extracted from `App.tsx`;
  * behavior is intended to be identical to the previous inline implementation.
  */
 export function useDeckActions({
@@ -66,7 +65,6 @@ export function useDeckActions({
     html: generatedHtml,
     persistHtml,
     rollbackToVersion,
-    selectDeck,
     startNewDeck,
     renameActiveDeck,
     deleteActiveDeck,
@@ -177,20 +175,6 @@ export function useDeckActions({
     toast.info('Started a fresh deck')
   }, [resetChat, setError, setInput, startNewDeck])
 
-  const handleSelectDeck = useCallback(
-    async (nextDeckId: string) => {
-      try {
-        await selectDeck(nextDeckId)
-        setInput('')
-        setError('')
-        toast.success('Deck loaded')
-      } catch {
-        toast.error('Could not load that deck')
-      }
-    },
-    [selectDeck, setError, setInput],
-  )
-
   const handleRenameDeck = useCallback(
     async (title: string) => {
       try {
@@ -224,7 +208,6 @@ export function useDeckActions({
     handleNewDeck,
     handleRenameDeck,
     handleRollbackVersion,
-    handleSelectDeck,
     handleUploadClick,
   }
 }
