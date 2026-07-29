@@ -19,6 +19,7 @@ import {
 import { AgentPresence } from '@/components/AgentPresence'
 import {
   Attachment,
+  AttachmentInfo,
   AttachmentPreview,
   AttachmentRemove,
   Attachments,
@@ -113,17 +114,18 @@ function ActiveComposer({
   resolvedAppearance: ResolvedAppearance
   children: ReactNode
 }) {
-  if (!active || reducedMotion) {
-    return (
-      <div className={cn(active && 'rounded-lg ring-1 ring-[var(--ark-focus)]')}>{children}</div>
-    )
+  const ringClassName = cn(active && 'rounded-lg ring-1 ring-[var(--ark-focus)]')
+
+  // Keep a stable wrapper tree so toggling generation does not remount PromptInput.
+  if (reducedMotion) {
+    return <div className={ringClassName}>{children}</div>
   }
 
   return (
-    <Suspense
-      fallback={<div className="rounded-lg ring-1 ring-[var(--ark-focus)]">{children}</div>}
-    >
+    <Suspense fallback={<div className={ringClassName}>{children}</div>}>
       <BorderBeam
+        active={active}
+        className={ringClassName}
         colorVariant="mono"
         duration={3.1}
         size="line"
@@ -166,6 +168,7 @@ function ChatMessageAttachments({ attachments }: { attachments: ChatAttachment[]
           key={`${attachment.filename ?? 'attachment'}-${index}`}
         >
           <AttachmentPreview />
+          <AttachmentInfo />
         </Attachment>
       ))}
     </Attachments>
@@ -188,6 +191,7 @@ function PromptInputAttachmentsDisplay() {
           onRemove={() => attachments.remove(attachment.id)}
         >
           <AttachmentPreview />
+          <AttachmentInfo />
           <AttachmentRemove />
         </Attachment>
       ))}
@@ -382,6 +386,8 @@ export type ChatPanelProps = {
   isGenerating: boolean
   generationStatus: GenerationJobStatus | null
   activeSteps: AgentStep[]
+  /** Job id for the in-flight or just-finished generation; used to bridge live → final UI. */
+  activeJobId?: string | null
   failedJobId: string | null
   error: string
   showGenerationErrorAlert?: boolean
@@ -413,6 +419,7 @@ export function ChatPanel({
   input,
   isGenerating,
   activeSteps,
+  activeJobId = null,
   failedJobId,
   error,
   showGenerationErrorAlert = true,
@@ -445,6 +452,14 @@ export function ChatPanel({
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const modelWarningsKey = modelWarnings.join('\n')
+  const finalizedLiveMessage =
+    activeJobId != null && messages.some((message) => message.id === activeJobId)
+  const showLiveAssistant =
+    !finalizedLiveMessage &&
+    (isGenerating ||
+      (generationStatus === 'succeeded' &&
+        activeSteps.length > 0 &&
+        activeJobId != null))
 
   const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
     dismissedAlertKeys.has(alertDismissKey(alertId, content))
@@ -524,7 +539,7 @@ export function ChatPanel({
                 </Message>
               ))
             )}
-            {isGenerating ? (
+            {showLiveAssistant ? (
               <Message from="assistant">
                 <MessageContent>
                   <div className="flex flex-col gap-2">

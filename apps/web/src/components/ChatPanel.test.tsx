@@ -22,6 +22,8 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   modelsError: '',
   modelWarnings: [],
   canGenerate: true,
+  // Avoid mounting border-beam in jsdom (it requires matchMedia).
+  reducedMotion: true,
   onInputChange: vi.fn(),
   onModelSelect: vi.fn(),
   onPromptSubmit: vi.fn(),
@@ -474,5 +476,48 @@ describe('ChatPanel submit control', () => {
 
     expect(screen.getByText('Thought for 1 second')).toBeInTheDocument()
     expect(screen.queryByText('Thinking')).not.toBeInTheDocument()
+  })
+
+  it('keeps live assistant progress until the finalized job message is present', () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          activeJobId="job-1"
+          activeSteps={[{ type: 'thinking', summary: 'Planning the edit.', durationMs: 1100 }]}
+          generationStatus="succeeded"
+          isGenerating={false}
+          messages={[{ id: 'u1', role: 'user', content: 'make slides' }]}
+          reducedMotion
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Thought for 1 second')).toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          activeJobId="job-1"
+          activeSteps={[{ type: 'thinking', summary: 'Planning the edit.', durationMs: 1100 }]}
+          generationStatus="succeeded"
+          isGenerating={false}
+          messages={[
+            { id: 'u1', role: 'user', content: 'make slides' },
+            {
+              id: 'job-1',
+              role: 'assistant',
+              content: 'Updated the deck.',
+              parts: [{ type: 'text', content: 'Updated the deck.' }],
+            },
+          ]}
+          reducedMotion
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('Thought for 1 second')).not.toBeInTheDocument()
+    expect(screen.getByText('Updated the deck.')).toBeInTheDocument()
   })
 })

@@ -187,6 +187,7 @@ function App() {
   const undoRedoInFlightRef = useRef(false)
 
   const {
+    activeJobId,
     activeSteps,
     cancelGeneration: handleCancelGeneration,
     failedJobId,
@@ -547,6 +548,7 @@ function App() {
 
   const chatPanel = (
     <ChatPanel
+      activeJobId={activeJobId}
       activeSteps={activeSteps}
       assetsSlot={deckAssetsSlot}
       attachmentError={attachmentError}

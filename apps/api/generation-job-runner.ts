@@ -3,6 +3,7 @@ import { type LanguageModel } from 'ai'
 import {
   applyResolvedAssetAttachments,
   collectAssetIdsFromMessages,
+  isReadableTextMediaType,
   parseGenerateMessages,
 } from '@ark/deck-core/chat.ts'
 import type { ApiChatMessage, ChatAttachment } from '@ark/deck-core/chat.ts'
@@ -236,11 +237,9 @@ export function createGenerationJobRunner({
           const modelAttachments = new Map(
             [...resolved.byId].map(([id, attachment]) => {
               const record = recordsById.get(id)
-              const isReadableText =
-                record?.mediaType.startsWith('text/') || record?.mediaType === 'application/json'
               return [
                 id,
-                isReadableText
+                record && isReadableTextMediaType(record.mediaType)
                   ? { ...attachment, url: buildAssetUrl(currentJob.deckId!, id) }
                   : attachment,
               ]

@@ -108,6 +108,142 @@ describe('useChatSession', () => {
     })
   })
 
+  it('shows the local cache for the next deck immediately on switch', async () => {
+    writeChatSession('deck-1', {
+      messages: [{ id: 'm1', role: 'user', content: 'deck one' }],
+      updatedAt: new Date().toISOString(),
+    })
+    writeChatSession('deck-2', {
+      messages: [{ id: 'm2', role: 'user', content: 'deck two cached' }],
+      updatedAt: new Date().toISOString(),
+    })
+
+    let resolveDeck2: ((value: unknown) => void) | undefined
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes('deck-2')) {
+        await new Promise((resolve) => {
+          resolveDeck2 = resolve
+        })
+        return {
+          ok: true,
+          json: async () => ({
+            thread: null,
+            messages: [
+              {
+                id: 'm2',
+                role: 'user',
+                content: 'deck two server',
+                threadId: 'thread-2',
+                deckId: 'deck-2',
+                deckVersionId: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+            hasMore: false,
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        json: async () => ({
+          thread: null,
+          messages: [
+            {
+              id: 'm1',
+              role: 'user',
+              content: 'deck one',
+              threadId: 'thread-1',
+              deckId: 'deck-1',
+              deckVersionId: null,
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          hasMore: false,
+        }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, rerender } = renderHook(
+      ({ deckId }: { deckId: string | null }) => useChatSession({ deckId }),
+      { initialProps: { deckId: 'deck-1' as string | null } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.messages[0]?.content).toBe('deck one')
+    })
+
+    rerender({ deckId: 'deck-2' })
+
+    await waitFor(() => {
+      expect(result.current.messages[0]?.content).toBe('deck two cached')
+    })
+    expect(readChatSession('deck-2')?.messages[0]?.content).toBe('deck two cached')
+
+    await act(async () => {
+      resolveDeck2?.(undefined)
+    })
+
+    await waitFor(() => {
+      expect(result.current.messages[0]?.content).toBe('deck two server')
+    })
+  })
+
+  it('keeps an unsaved in-flight thread when a new deck id appears', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        thread: null,
+        messages: [
+          {
+            id: 'm-user',
+            role: 'user',
+            content: 'make slides',
+            threadId: 'thread-new',
+            deckId: 'deck-new',
+            deckVersionId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 'job-1',
+            role: 'assistant',
+            content: 'Generated the deck.',
+            threadId: 'thread-new',
+            deckId: 'deck-new',
+            deckVersionId: null,
+            createdAt: '2026-01-01T00:00:01.000Z',
+          },
+        ],
+        hasMore: false,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, rerender } = renderHook(
+      ({ deckId }: { deckId: string | null }) => useChatSession({ deckId }),
+      { initialProps: { deckId: null as string | null } },
+    )
+
+    await act(async () => {
+      result.current.setMessages([
+        { id: 'm-user', role: 'user', content: 'make slides' },
+        { id: 'job-1', role: 'assistant', content: 'Generated the deck.' },
+      ])
+    })
+
+    rerender({ deckId: 'deck-new' })
+
+    await waitFor(() => {
+      expect(result.current.messages).toEqual([
+        { id: 'm-user', role: 'user', content: 'make slides' },
+        { id: 'job-1', role: 'assistant', content: 'Generated the deck.' },
+      ])
+    })
+  })
+
   it('restores local new-deck chat when no deck id is active', () => {
     writeChatSession(null, {
       messages: [{ id: 'm1', role: 'user', content: 'hello' }],

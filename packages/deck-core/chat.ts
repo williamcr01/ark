@@ -545,18 +545,106 @@ ${effectivePrompt}${attachmentNote}
 Use the available tools to save the deck, then summarize what you built.`
 }
 
-export function chatAttachmentsToFileParts(attachments: ChatAttachment[]): FilePart[] {
-  // Only attachments that carry inline bytes (data URLs) can be sent to the
-  // model directly. Ark asset references must be resolved to data URLs by the
-  // server (see resolveAssetAttachments) before reaching this point.
-  return attachments
-    .filter((attachment) => attachment.url.startsWith('data:'))
-    .map((attachment) => ({
+/** Media types that models should receive as text, not provider file parts. */
+export function isReadableTextMediaType(mediaType: string) {
+  const normalized = mediaType.split(';')[0]?.trim().toLowerCase() ?? ''
+  return normalized.startsWith('text/') || normalized === 'application/json'
+}
+
+/** Max characters of decoded text inlined into a model TextPart per attachment. */
+export const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 256 * 1024
+
+function decodeBase64ToUtf8(base64: string): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(base64, 'base64').toString('utf8')
+  }
+
+  const binary = atob(base64)
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+/** Decode a `data:` URL payload to UTF-8 text. Returns null when the URL is invalid. */
+export function decodeDataUrlText(dataUrl: string): string | null {
+  if (!dataUrl.startsWith('data:')) {
+    return null
+  }
+
+  const commaIndex = dataUrl.indexOf(',')
+  if (commaIndex === -1) {
+    return null
+  }
+
+  const meta = dataUrl.slice(5, commaIndex)
+  const payload = dataUrl.slice(commaIndex + 1)
+  const isBase64 = meta.split(';').some((parameter) => parameter.trim().toLowerCase() === 'base64')
+
+  try {
+    if (isBase64) {
+      return decodeBase64ToUtf8(payload)
+    }
+
+    return decodeURIComponent(payload)
+  } catch {
+    return null
+  }
+}
+
+function formatInlineTextAttachmentPart(attachment: ChatAttachment): TextPart {
+  const label = attachment.filename ? `"${attachment.filename}"` : 'attachment'
+  const header = `Attached file ${label} (${attachment.mediaType}):`
+  const decoded = decodeDataUrlText(attachment.url)
+
+  if (decoded === null) {
+    return {
+      type: 'text',
+      text: `${header}\n[Could not decode attachment contents.]`,
+    }
+  }
+
+  if (decoded.length <= MAX_INLINE_TEXT_ATTACHMENT_CHARS) {
+    return { type: 'text', text: `${header}\n${decoded}` }
+  }
+
+  const truncated = decoded.slice(0, MAX_INLINE_TEXT_ATTACHMENT_CHARS)
+  return {
+    type: 'text',
+    text: `${header}\n${truncated}\n\n[Truncated: showing first ${MAX_INLINE_TEXT_ATTACHMENT_CHARS} characters of ${decoded.length}.]`,
+  }
+}
+
+/**
+ * Convert inline attachments into model content parts.
+ *
+ * Readable text (CSV, plain text, Markdown, JSON) becomes TextParts so OpenAI
+ * and Claude do not reject unsupported file media types. Images/PDFs remain
+ * FileParts. Ark asset references are skipped — the server resolves them (or
+ * exposes them via read_attachment) before this runs.
+ */
+export function chatAttachmentsToModelParts(
+  attachments: ChatAttachment[],
+): Array<TextPart | FilePart> {
+  const parts: Array<TextPart | FilePart> = []
+
+  for (const attachment of attachments) {
+    if (!attachment.url.startsWith('data:')) {
+      continue
+    }
+
+    if (isReadableTextMediaType(attachment.mediaType)) {
+      parts.push(formatInlineTextAttachmentPart(attachment))
+      continue
+    }
+
+    parts.push({
       type: 'file',
       mediaType: attachment.mediaType,
       data: attachment.url,
       ...(attachment.filename ? { filename: attachment.filename } : {}),
-    }))
+    })
+  }
+
+  return parts
 }
 
 export function buildUserModelContent(
@@ -584,7 +672,7 @@ export function buildUserModelContent(
     return prompt
   }
 
-  return [...chatAttachmentsToFileParts(attachments), { type: 'text', text: prompt }]
+  return [...chatAttachmentsToModelParts(attachments), { type: 'text', text: prompt }]
 }
 
 export function toModelMessage(message: ApiChatMessage): ModelMessage {
