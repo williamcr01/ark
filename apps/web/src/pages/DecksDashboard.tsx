@@ -31,13 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppearance, type AppearancePreference } from '@/hooks/useAppearance'
-import {
-  createDeck,
-  deleteDeck,
-  listDecks,
-  renameDeck,
-  type DeckSummary,
-} from '@/lib/deck-api'
+import { createDeck, deleteDeck, listDecks, renameDeck, type DeckSummary } from '@/lib/deck-api'
 import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck-io'
 
 function DeckCardSkeleton() {
