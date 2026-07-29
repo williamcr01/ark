@@ -65,15 +65,58 @@ export function useChatSession({
     () => new Map(),
   )
   const [isReloadStale, setIsReloadStale] = useState(false)
+  // Tracks which deckId the visible thread was last adjusted for (render-time swap).
+  const [trackedDeckId, setTrackedDeckId] = useState(deckId)
+  // Which deck the current `messages` state belongs to. Prevents writing the
+  // previous thread into the next deck's local cache during a switch.
+  const [messagesDeckId, setMessagesDeckId] = useState<string | null>(deckId)
   const loadRequestIdRef = useRef(0)
   const deckIdRef = useRef(deckId)
   const failedPersistIdsRef = useRef(failedPersistIds)
   const messagesRef = useRef(messages)
-  // Which deck the current `messages` state belongs to. Prevents writing the
-  // previous thread into the next deck's local cache during a switch.
   const messagesDeckIdRef = useRef<string | null>(deckId)
 
-  deckIdRef.current = deckId
+  // Swap the visible thread synchronously when the active deck changes
+  // (React's "adjust state during render" pattern — not an effect).
+  if (trackedDeckId !== deckId) {
+    const previousMessagesDeckId = messagesDeckId
+    setTrackedDeckId(deckId)
+    setIsReloadStale(false)
+
+    if (!deckId) {
+      setMessagesDeckId(null)
+      setMessages(readChatSession(null)?.messages ?? [])
+      setFailedPersistIds(new Set())
+      setDeliveryStatus(new Map())
+      setIsLoading(false)
+    } else {
+      const localSession = readChatSession(deckId)
+      // New deck created from an unsaved session: keep the in-progress thread
+      // instead of flashing empty while the server catch-up loads.
+      const keepInFlight =
+        previousMessagesDeckId === null &&
+        messages.length > 0 &&
+        (!localSession || localSession.messages.length === 0)
+
+      if (keepInFlight) {
+        setMessagesDeckId(deckId)
+        setDeliveryStatus(buildDeliveryStatusMap(messages, failedPersistIds))
+        setIsLoading(true)
+      } else {
+        const localMessages = localSession?.messages ?? []
+        const storedFailedIds = new Set(localSession?.failedPersistIds ?? [])
+        setMessagesDeckId(deckId)
+        setMessages(localMessages)
+        setFailedPersistIds(storedFailedIds)
+        setDeliveryStatus(buildDeliveryStatusMap(localMessages, storedFailedIds))
+        setIsLoading(true)
+      }
+    }
+  }
+
+  useEffect(() => {
+    deckIdRef.current = deckId
+  }, [deckId])
 
   useEffect(() => {
     failedPersistIdsRef.current = failedPersistIds
@@ -82,6 +125,10 @@ export function useChatSession({
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    messagesDeckIdRef.current = messagesDeckId
+  }, [messagesDeckId])
 
   const applyReconciledMessages = useCallback(
     (
@@ -106,49 +153,33 @@ export function useChatSession({
 
   useEffect(() => {
     const requestId = ++loadRequestIdRef.current
-    const previousMessagesDeckId = messagesDeckIdRef.current
-
-    setIsReloadStale(false)
 
     if (!deckId) {
-      const localMessages = readChatSession(null)?.messages ?? []
-      messagesDeckIdRef.current = null
-      setMessages(localMessages)
-      setFailedPersistIds(new Set())
-      setDeliveryStatus(new Map())
-      setIsLoading(false)
       return
     }
 
     let localSession = readChatSession(deckId)
-    const inFlightMessages = messagesRef.current
-    const inFlightFailedIds = failedPersistIdsRef.current
 
-    // New deck created from an unsaved session: keep the in-progress thread
-    // instead of flashing empty while the server catch-up loads.
+    // Finish unsaved→deck promotion outside render (localStorage side effects).
+    // Render keeps the in-flight thread when cache is empty; persist it here.
     if (
-      previousMessagesDeckId === null &&
-      inFlightMessages.length > 0 &&
-      (!localSession || localSession.messages.length === 0)
+      (!localSession || localSession.messages.length === 0) &&
+      messagesDeckIdRef.current === deckId &&
+      messagesRef.current.length > 0
     ) {
       localSession = {
-        messages: inFlightMessages,
+        messages: messagesRef.current,
         updatedAt: new Date().toISOString(),
-        failedPersistIds: [...inFlightFailedIds],
+        failedPersistIds: [...failedPersistIdsRef.current],
       }
       writeChatSession(deckId, localSession)
       clearChatSession(null)
     }
 
-    const localMessages = localSession?.messages ?? []
-    const storedFailedIds = new Set(localSession?.failedPersistIds ?? [])
-
-    // Swap the visible thread immediately so the previous deck's chat does not linger.
-    messagesDeckIdRef.current = deckId
-    setMessages(localMessages)
-    setFailedPersistIds(storedFailedIds)
-    setDeliveryStatus(buildDeliveryStatusMap(localMessages, storedFailedIds))
-    setIsLoading(true)
+    const localMessages = localSession?.messages ?? messagesRef.current
+    const storedFailedIds = new Set(
+      localSession?.failedPersistIds ?? [...failedPersistIdsRef.current],
+    )
 
     void (async () => {
       try {
@@ -160,6 +191,7 @@ export function useChatSession({
         }
 
         messagesDeckIdRef.current = deckId
+        setMessagesDeckId(deckId)
         const { messages: merged, failedIds } = applyReconciledMessages(
           localMessages,
           serverMessages,
@@ -177,6 +209,7 @@ export function useChatSession({
 
         const cachedMessages = readChatSession(deckId)?.messages ?? localMessages
         messagesDeckIdRef.current = deckId
+        setMessagesDeckId(deckId)
         setMessages(cachedMessages)
         setFailedPersistIds(storedFailedIds)
         setDeliveryStatus(buildDeliveryStatusMap(cachedMessages, storedFailedIds))
@@ -193,14 +226,12 @@ export function useChatSession({
   useEffect(() => {
     // Persist against the deck the messages belong to — not a newly selected deckId
     // that has not received its thread yet.
-    writeChatSession(messagesDeckIdRef.current, {
+    writeChatSession(messagesDeckId, {
       messages,
       updatedAt: new Date().toISOString(),
-      ...(messagesDeckIdRef.current
-        ? { failedPersistIds: [...failedPersistIds] }
-        : {}),
+      ...(messagesDeckId ? { failedPersistIds: [...failedPersistIds] } : {}),
     })
-  }, [failedPersistIds, messages])
+  }, [failedPersistIds, messages, messagesDeckId])
 
   const markDeliveryStatus = useCallback(
     (messageId: string, status: MessageDeliveryStatus) => {
@@ -269,6 +300,7 @@ export function useChatSession({
       if (targetDeckId && targetDeckId !== deckIdRef.current) {
         loadRequestIdRef.current += 1
         messagesDeckIdRef.current = targetDeckId
+        setMessagesDeckId(targetDeckId)
       }
 
       setMessages((current) => [...current, message])
@@ -316,6 +348,7 @@ export function useChatSession({
 
       if (!activeDeckId) {
         messagesDeckIdRef.current = null
+        setMessagesDeckId(null)
         setIsReloadStale(false)
         return readChatSession(null)?.messages ?? []
       }
@@ -329,6 +362,7 @@ export function useChatSession({
         const data = await fetchAllDeckChat(activeDeckId)
         const serverMessages = data.messages.map(persistedMessageToChatMessage)
         messagesDeckIdRef.current = activeDeckId
+        setMessagesDeckId(activeDeckId)
         const { messages: merged, failedIds } = applyReconciledMessages(
           localMessages,
           serverMessages,
@@ -342,6 +376,7 @@ export function useChatSession({
         return merged
       } catch {
         messagesDeckIdRef.current = activeDeckId
+        setMessagesDeckId(activeDeckId)
         setIsReloadStale(true)
         onReloadFallback?.()
         return readChatSession(activeDeckId)?.messages ?? localMessages
@@ -358,6 +393,7 @@ export function useChatSession({
       clearChatSession(activeDeckId)
       loadRequestIdRef.current += 1
       messagesDeckIdRef.current = activeDeckId
+      setMessagesDeckId(activeDeckId)
       setMessages([])
       setFailedPersistIds(new Set())
       setDeliveryStatus(new Map())
