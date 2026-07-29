@@ -267,9 +267,10 @@ describe('useDeckGenerationFlow', () => {
     // Assistant turn should already be in local chat before the deck refresh finishes.
     expect(harness.setMessages).toHaveBeenCalled()
     const updateMessages = harness.setMessages.mock.calls.at(-1)?.[0] as
-      | ((current: ChatMessage[]) => ChatMessage[])
-      | undefined
-    expect(updateMessages?.([{ id: 'u1', role: 'user', content: 'make slides' }])?.at(-1)).toMatchObject({
+      ((current: ChatMessage[]) => ChatMessage[]) | undefined
+    expect(
+      updateMessages?.([{ id: 'u1', role: 'user', content: 'make slides' }])?.at(-1),
+    ).toMatchObject({
       id: 'job-1',
       role: 'assistant',
     })

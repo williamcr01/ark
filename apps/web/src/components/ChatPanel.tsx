@@ -457,9 +457,7 @@ export function ChatPanel({
   const showLiveAssistant =
     !finalizedLiveMessage &&
     (isGenerating ||
-      (generationStatus === 'succeeded' &&
-        activeSteps.length > 0 &&
-        activeJobId != null))
+      (generationStatus === 'succeeded' && activeSteps.length > 0 && activeJobId != null))
 
   const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
     dismissedAlertKeys.has(alertDismissKey(alertId, content))
