@@ -155,11 +155,16 @@ export function buildSlideContexts(
   })
 }
 
-/** @deprecated Prefer resolveContextSlides; kept for call-site migration. */
-export function filterValidSlideIndexes(indexes: number[], slideCount: number): number[] {
-  if (slideCount <= 0) {
-    return []
-  }
-
-  return indexes.filter((slideIndex) => slideIndex >= 0 && slideIndex < slideCount)
+/** True when two resolved entry lists are identical (order + ids). */
+export function sameContextSlideEntries(
+  left: ContextSlideEntry[],
+  right: ContextSlideEntry[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (entry, index) =>
+        entry.slideIndex === right[index]?.slideIndex && entry.slideId === right[index]?.slideId,
+    )
+  )
 }

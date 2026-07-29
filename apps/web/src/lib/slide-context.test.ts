@@ -5,6 +5,7 @@ import {
   extractSlideIdFromOuterHtml,
   extractSlideTitleFromOuterHtml,
   resolveContextSlides,
+  sameContextSlideEntries,
   toggleContextSlideEntry,
 } from './slide-context'
 
@@ -70,6 +71,15 @@ describe('slide-context helpers', () => {
     ])
   })
 
+  it('compares resolved entry lists', () => {
+    expect(
+      sameContextSlideEntries([{ slideIndex: 0, slideId: 'a' }], [{ slideIndex: 0, slideId: 'a' }]),
+    ).toBe(true)
+    expect(
+      sameContextSlideEntries([{ slideIndex: 0, slideId: 'a' }], [{ slideIndex: 1, slideId: 'a' }]),
+    ).toBe(false)
+  })
+
   it('builds ordered slide contexts for selected entries', () => {
     const slides = [
       { index: 0, outerHTML: '<section data-ark-slide-id="a"><h2>One</h2></section>' },
@@ -77,12 +87,12 @@ describe('slide-context helpers', () => {
       { index: 2, outerHTML: '<section><p>Three</p></section>' },
     ]
 
-    expect(buildSlideContexts([{ slideIndex: 2 }, { slideIndex: 0, slideId: 'a' }], slides)).toEqual(
-      [
-        { slideIndex: 0, slideId: 'a', title: 'One' },
-        { slideIndex: 2, title: 'Slide 3' },
-      ],
-    )
+    expect(
+      buildSlideContexts([{ slideIndex: 2 }, { slideIndex: 0, slideId: 'a' }], slides),
+    ).toEqual([
+      { slideIndex: 0, slideId: 'a', title: 'One' },
+      { slideIndex: 2, title: 'Slide 3' },
+    ])
   })
 
   it('omits indexes that do not match a slide', () => {

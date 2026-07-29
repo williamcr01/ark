@@ -89,7 +89,7 @@ export type DeckPreviewProps = {
   /** Zero-based slide indexes currently attached as chat context. */
   contextSlideIndexes?: number[]
   /** Ref filled with the bridge clear-selection function for chat context chips. */
-  clearEditorSelectionRef?: MutableRefObject<(() => void) | null>
+  clearEditorSelectionRef?: MutableRefObject<(() => boolean) | null>
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<DeckPreviewPatchResult | undefined>

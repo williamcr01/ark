@@ -40,6 +40,7 @@ import {
   buildSlideContexts,
   extractSlideTitleFromOuterHtml,
   resolveContextSlides,
+  sameContextSlideEntries,
   toggleContextSlideEntry,
   type ContextSlideEntry,
 } from '@/lib/slide-context'
@@ -147,7 +148,7 @@ function App() {
   } = useDeckAssets(deckId)
   const [input, setInput] = useState('')
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
-  const clearEditorSelectionRef = useRef<(() => void) | null>(null)
+  const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
@@ -278,9 +279,8 @@ function App() {
 
   const handleClearEditorSelection = useCallback(() => {
     const clear = clearEditorSelectionRef.current
-    if (clear) {
-      // Let the bridge round-trip clear selection → onEditorSelectionChange(null).
-      clear()
+    if (clear?.()) {
+      // Bridge accepted the clear; selection change event will null local state.
       return
     }
     setEditorSelection(null)
@@ -310,32 +310,24 @@ function App() {
     [deckAnalysis.slides],
   )
 
-  const handleRemoveContextSlide = useCallback((slideIndex: number) => {
-    setContextSlideEntries((current) => current.filter((entry) => entry.slideIndex !== slideIndex))
-  }, [])
+  const handleRemoveContextSlide = useCallback(
+    (slideIndex: number) => {
+      setContextSlideEntries((current) =>
+        resolveContextSlides(current, deckAnalysis.slides).filter(
+          (entry) => entry.slideIndex !== slideIndex,
+        ),
+      )
+    },
+    [deckAnalysis.slides],
+  )
 
-  // Re-resolve attached slides after deletes/reorders/undo/rollback/etc.
-  const slidesKey = `${deckAnalysis.slideCount}:${deckAnalysis.thumbnailSharedKey}`
-  const [prevSlidesKeyForContext, setPrevSlidesKeyForContext] = useState(slidesKey)
-  if (slidesKey !== prevSlidesKeyForContext) {
-    setPrevSlidesKeyForContext(slidesKey)
-    setContextSlideEntries((current) => {
-      const next = resolveContextSlides(current, deckAnalysis.slides)
-      return next.length === current.length &&
-        next.every(
-          (entry, index) =>
-            entry.slideIndex === current[index]?.slideIndex &&
-            entry.slideId === current[index]?.slideId,
-        )
-        ? current
-        : next
-    })
+  // Keep attached-slide state aligned with the live deck (reorder/delete/rollback).
+  const resolvedContextSlides = resolveContextSlides(contextSlideEntries, deckAnalysis.slides)
+  if (!sameContextSlideEntries(resolvedContextSlides, contextSlideEntries)) {
+    setContextSlideEntries(resolvedContextSlides)
   }
 
-  const contextSlideIndexes = useMemo(
-    () => contextSlideEntries.map((entry) => entry.slideIndex),
-    [contextSlideEntries],
-  )
+  const contextSlideIndexes = resolvedContextSlides.map((entry) => entry.slideIndex)
 
   const showSanitizedDownload = deckAnalysis.hasExecutableContent
   const hasSlides = deckAnalysis.slideCount > 0
@@ -364,10 +356,6 @@ function App() {
       uploads={assetUploads}
     />
   ) : null
-  const resolvedContextSlides = useMemo(
-    () => resolveContextSlides(contextSlideEntries, deckAnalysis.slides),
-    [contextSlideEntries, deckAnalysis.slides],
-  )
   const contextSlidesForChips = useMemo(
     () =>
       resolvedContextSlides.flatMap((entry) => {
@@ -471,8 +459,8 @@ function App() {
       : []
     const editorSelectionContext = toEditorSelectionContext(editorSelection)
     const slideContexts =
-      contextSlideEntries.length > 0
-        ? buildSlideContexts(contextSlideEntries, deckAnalysis.slides)
+      resolvedContextSlides.length > 0
+        ? buildSlideContexts(resolvedContextSlides, deckAnalysis.slides)
         : undefined
     await generateDeck(message.text, attachments, {
       assetIds,
