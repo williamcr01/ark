@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { toChatAttachments, type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
@@ -41,6 +42,16 @@ import {
   waitForRevealThumbnailStylesPreload,
 } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 
+/** Parse `?slide=` — 0-based index (slide=0 is the first slide). */
+function parseInitialSlideIndex(value: string | null) {
+  if (!value) {
+    return 0
+  }
+
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
 async function uploadPromptAttachments(
   deckId: string,
   files: PromptInputMessage['files'],
@@ -75,6 +86,12 @@ async function uploadPromptAttachments(
 }
 
 function App() {
+  const navigate = useNavigate()
+  const { deckId: routeParam } = useParams<{ deckId: string }>()
+  const [searchParams] = useSearchParams()
+  const routeDeckId = routeParam && routeParam !== 'new' ? routeParam : null
+  const initialSlideIndex = parseInitialSlideIndex(searchParams.get('slide'))
+
   const {
     activeVersionId,
     clearVersionPreview,
@@ -103,7 +120,14 @@ function App() {
     startNewDeck,
     versionNumber,
     versions,
-  } = useDeckPersistence()
+  } = useDeckPersistence(routeDeckId)
+
+  // After the first save on /decks/new, put the real id in the URL.
+  useEffect(() => {
+    if (deckId && !routeDeckId) {
+      navigate(`/decks/${deckId}`, { replace: true })
+    }
+  }, [deckId, navigate, routeDeckId])
   const editHistory = useDeckEditHistory()
   const {
     appendMessage,
@@ -288,13 +312,12 @@ function App() {
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
   const {
-    handleDeleteDeck,
+    handleDeleteDeck: deleteDeckAction,
     handleDownload,
     handleHtmlUpload,
-    handleNewDeck,
+    handleNewDeck: newDeckAction,
     handleRenameDeck,
     handleRollbackVersion,
-    handleSelectDeck,
     handleUploadClick,
   } = useDeckActions({
     fileInputRef,
@@ -317,6 +340,25 @@ function App() {
     setError,
     onEditHistoryBoundary: resetEditHistory,
   })
+
+  const handleNewDeck = useCallback(() => {
+    newDeckAction()
+    navigate('/decks/new')
+  }, [navigate, newDeckAction])
+
+  const handleSelectDeck = useCallback(
+    (nextDeckId: string) => {
+      navigate(`/decks/${nextDeckId}`)
+      setInput('')
+      setError('')
+    },
+    [navigate],
+  )
+
+  const handleDeleteDeck = useCallback(async () => {
+    await deleteDeckAction()
+    navigate('/decks')
+  }, [deleteDeckAction, navigate])
 
   const handleEditorSelectionChange = useCallback((selection: EditorSelectionInfo | null) => {
     editorSelectionRef.current = selection
@@ -588,6 +630,7 @@ function App() {
       deckId={deckId}
       editorBridgeEnabled
       html={generatedHtml}
+      initialSlideIndex={initialSlideIndex}
       isGenerating={isGenerating}
       isPreviewUpdating={isPreviewUpdating}
       isStripOpen={isStripOpen}

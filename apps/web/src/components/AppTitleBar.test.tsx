@@ -1,6 +1,7 @@
 import { createRef, type ComponentProps } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -25,40 +26,42 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
   const fileInputRef = createRef<HTMLInputElement>()
 
   render(
-    <TooltipProvider>
-      <AppTitleBar
-        activeDeckId={deck.id}
-        activeVersionId="a0000000-0000-4000-8000-000000000001"
-        deckSaveStatus="saved"
-        deckTitle={deck.title}
-        decks={[deck, secondDeck]}
-        fileInputRef={fileInputRef}
-        hasDeck
-        hasSlides
-        isChatOpen={false}
-        isGenerating={false}
-        isLoadingVersions={false}
-        isStripOpen={false}
-        onClearVersionPreview={vi.fn()}
-        onDeleteDeck={vi.fn()}
-        onDownload={vi.fn()}
-        onHtmlUpload={vi.fn()}
-        onInspectVersion={vi.fn()}
-        onNewDeck={vi.fn()}
-        onRefreshVersions={vi.fn().mockResolvedValue([])}
-        onRenameDeck={vi.fn()}
-        onRollbackVersion={vi.fn()}
-        onSelectDeck={vi.fn()}
-        onToggleChat={vi.fn()}
-        onToggleStrip={vi.fn()}
-        onUploadClick={vi.fn()}
-        previewVersion={null}
-        showSanitizedDownload={false}
-        versionNumber={1}
-        versions={[]}
-        {...overrides}
-      />
-    </TooltipProvider>,
+    <MemoryRouter>
+      <TooltipProvider>
+        <AppTitleBar
+          activeDeckId={deck.id}
+          activeVersionId="a0000000-0000-4000-8000-000000000001"
+          deckSaveStatus="saved"
+          deckTitle={deck.title}
+          decks={[deck, secondDeck]}
+          fileInputRef={fileInputRef}
+          hasDeck
+          hasSlides
+          isChatOpen={false}
+          isGenerating={false}
+          isLoadingVersions={false}
+          isStripOpen={false}
+          onClearVersionPreview={vi.fn()}
+          onDeleteDeck={vi.fn()}
+          onDownload={vi.fn()}
+          onHtmlUpload={vi.fn()}
+          onInspectVersion={vi.fn()}
+          onNewDeck={vi.fn()}
+          onRefreshVersions={vi.fn().mockResolvedValue([])}
+          onRenameDeck={vi.fn()}
+          onRollbackVersion={vi.fn()}
+          onSelectDeck={vi.fn()}
+          onToggleChat={vi.fn()}
+          onToggleStrip={vi.fn()}
+          onUploadClick={vi.fn()}
+          previewVersion={null}
+          showSanitizedDownload={false}
+          versionNumber={1}
+          versions={[]}
+          {...overrides}
+        />
+      </TooltipProvider>
+    </MemoryRouter>,
   )
 
   return { fileInputRef }

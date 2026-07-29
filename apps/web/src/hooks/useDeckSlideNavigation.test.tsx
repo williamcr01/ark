@@ -249,6 +249,61 @@ describe('useDeckSlideNavigation', () => {
     )
   })
 
+  it('applies initialSlideIndex when html first arrives after an empty mount', () => {
+    const { rerender } = render(
+      <NavigationHarness
+        html=""
+        initialSlideIndex={2}
+        sandboxOrigin={sandboxOrigin}
+        slideCount={0}
+      />,
+    )
+
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
+
+    rerender(
+      <NavigationHarness
+        html={plainCssDeck}
+        initialSlideIndex={2}
+        sandboxOrigin={sandboxOrigin}
+        slideCount={3}
+      />,
+    )
+
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
+  })
+
+  it('resets to slide 0 on subsequent html replacements after the deep link applied', () => {
+    const { rerender } = render(
+      <NavigationHarness
+        html=""
+        initialSlideIndex={2}
+        sandboxOrigin={sandboxOrigin}
+        slideCount={0}
+      />,
+    )
+
+    rerender(
+      <NavigationHarness
+        html={plainCssDeck}
+        initialSlideIndex={2}
+        sandboxOrigin={sandboxOrigin}
+        slideCount={3}
+      />,
+    )
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('2')
+
+    rerender(
+      <NavigationHarness
+        html={`${plainCssDeck}\n`}
+        initialSlideIndex={2}
+        sandboxOrigin={sandboxOrigin}
+        slideCount={3}
+      />,
+    )
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
+  })
+
   it('forwards runtime errors from the preview iframe', async () => {
     const onRuntimeError = vi.fn()
     render(<NavigationHarness onRuntimeError={onRuntimeError} sandboxOrigin={sandboxOrigin} />)

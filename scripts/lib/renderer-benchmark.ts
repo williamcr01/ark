@@ -467,6 +467,11 @@ export async function readActiveDeckIdFromShell(cdp: CdpClient) {
     cdp,
     `(() => {
       try {
+        const match = window.location.pathname.match(/^\\/decks\\/([^/]+)/)
+        const id = match?.[1]
+        if (id && id !== 'new') {
+          return id
+        }
         return window.localStorage?.getItem('ark:active-deck-id') || null
       } catch {
         return null

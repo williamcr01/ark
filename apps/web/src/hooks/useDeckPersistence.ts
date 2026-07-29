@@ -21,44 +21,6 @@ import {
 import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import { extractDeckTitle } from '@ark/contracts'
 
-const ACTIVE_DECK_STORAGE_KEY = 'ark:active-deck-id'
-
-const readActiveDeckId = () => {
-  try {
-    if (typeof localStorage === 'undefined') {
-      return null
-    }
-
-    return localStorage.getItem(ACTIVE_DECK_STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
-const writeActiveDeckId = (deckId: string) => {
-  try {
-    if (typeof localStorage === 'undefined') {
-      return
-    }
-
-    localStorage.setItem(ACTIVE_DECK_STORAGE_KEY, deckId)
-  } catch {
-    // Ignore storage failures (private mode, quota, etc.)
-  }
-}
-
-const clearActiveDeckId = () => {
-  try {
-    if (typeof localStorage === 'undefined') {
-      return
-    }
-
-    localStorage.removeItem(ACTIVE_DECK_STORAGE_KEY)
-  } catch {
-    // Ignore storage failures (private mode, quota, etc.)
-  }
-}
-
 const toDeckSummary = (deck: StoredDeck): DeckSummary => ({
   id: deck.id,
   title: deck.title,
@@ -77,7 +39,10 @@ const upsertDeckSummary = (decks: DeckSummary[], deck: StoredDeck) =>
     ...decks.filter((existingDeck) => existingDeck.id !== deck.id),
   ])
 
-export function useDeckPersistence() {
+/**
+ * @param routeDeckId Deck id from `/decks/:deckId`, or `null` on `/decks/new`.
+ */
+export function useDeckPersistence(routeDeckId: string | null = null) {
   const [decks, setDecks] = useState<DeckSummary[]>([])
   const [html, setHtml] = useState('')
   const [savedHtml, setSavedHtml] = useState('')
@@ -97,9 +62,11 @@ export function useDeckPersistence() {
   const manualMutationQueueRef = useRef<Promise<void> | null>(null)
   const inspectRequestIdRef = useRef(0)
   const htmlRef = useRef('')
+  const deckIdRef = useRef<string | null>(null)
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
     htmlRef.current = deck.html
+    deckIdRef.current = deck.id
     setDeckId(deck.id)
     setDeckTitle(deck.title)
     setHtml(deck.html)
@@ -107,12 +74,11 @@ export function useDeckPersistence() {
     setActiveVersionId(deck.activeVersionId ?? null)
     setVersionNumber(deck.versionNumber ?? null)
     setPreviewVersion(null)
-    writeActiveDeckId(deck.id)
   }, [])
 
   const clearActiveDeck = useCallback(() => {
     htmlRef.current = ''
-    clearActiveDeckId()
+    deckIdRef.current = null
     setDeckId(null)
     setDeckTitle('')
     setHtml('')
@@ -140,23 +106,56 @@ export function useDeckPersistence() {
 
   useEffect(() => {
     let cancelled = false
-    const storedActiveDeckId = readActiveDeckId()
+
+    // Create→navigate lands here with the deck already loaded. Refresh the list
+    // only — do not bump saveRequestIdRef (would strand isSaving) or flash
+    // isLoading for a list round-trip.
+    if (routeDeckId && deckIdRef.current === routeDeckId && htmlRef.current) {
+      void listDecks()
+        .then((summaries) => {
+          if (!cancelled) {
+            setDecks(summaries)
+            setSaveError('')
+          }
+        })
+        .catch(() => {
+          // Ignore list refresh failures on the already-loaded path.
+        })
+
+      return () => {
+        cancelled = true
+      }
+    }
+
     // selectDeck / startNewDeck / persistHtml bump this ref; boot must not
     // overwrite a deck the user chose after early apply unlocked the shell.
-    const bootRequestId = saveRequestIdRef.current
+    const bootRequestId = ++saveRequestIdRef.current
     const bootStillOwnsSession = () => !cancelled && saveRequestIdRef.current === bootRequestId
 
     const loadDecks = async () => {
+      setIsLoading(true)
+
       try {
-        // Fetch the active deck immediately so shell chrome is not gated on
-        // listDecks. Validate against the list once it arrives.
         const summariesPromise = listDecks()
-        const earlyDeckPromise = storedActiveDeckId
-          ? fetchDeck(storedActiveDeckId).catch(() => null)
-          : Promise.resolve(null)
+
+        if (!routeDeckId) {
+          clearActiveDeck()
+
+          const summaries = await summariesPromise
+
+          if (!bootStillOwnsSession()) {
+            return
+          }
+
+          setDecks(summaries)
+          setSaveError('')
+          return
+        }
+
+        const earlyDeckPromise = fetchDeck(routeDeckId).catch(() => null)
 
         void earlyDeckPromise.then((deck) => {
-          if (!bootStillOwnsSession() || !deck || deck.id !== storedActiveDeckId) {
+          if (!bootStillOwnsSession() || !deck || deck.id !== routeDeckId) {
             return
           }
 
@@ -178,12 +177,9 @@ export function useDeckPersistence() {
           return
         }
 
-        if (!storedActiveDeckId) {
-          return
-        }
-
-        if (!summaries.some((deck) => deck.id === storedActiveDeckId)) {
+        if (!summaries.some((deck) => deck.id === routeDeckId)) {
           clearActiveDeck()
+          setSaveError('Could not load the deck.')
           return
         }
 
@@ -193,15 +189,13 @@ export function useDeckPersistence() {
           return
         }
 
-        if (earlyDeck && earlyDeck.id === storedActiveDeckId) {
-          // Already applied above; keep a second setActiveDeck only if the
-          // optimistic apply raced before this validation path.
+        if (earlyDeck && earlyDeck.id === routeDeckId) {
           setActiveDeck(earlyDeck)
           return
         }
 
         try {
-          const deck = await fetchDeck(storedActiveDeckId)
+          const deck = await fetchDeck(routeDeckId)
 
           if (!bootStillOwnsSession()) {
             return
@@ -215,6 +209,7 @@ export function useDeckPersistence() {
           }
 
           clearActiveDeck()
+          setSaveError('Could not load the deck.')
         }
       } catch {
         if (!bootStillOwnsSession()) {
@@ -225,7 +220,7 @@ export function useDeckPersistence() {
         setDecks([])
         setSaveError('Could not load saved decks.')
       } finally {
-        if (!cancelled) {
+        if (!cancelled && saveRequestIdRef.current === bootRequestId) {
           setIsLoading(false)
         }
       }
@@ -236,7 +231,7 @@ export function useDeckPersistence() {
     return () => {
       cancelled = true
     }
-  }, [clearActiveDeck, refreshVersions, setActiveDeck])
+  }, [clearActiveDeck, refreshVersions, routeDeckId, setActiveDeck])
 
   const persistHtml = useCallback(
     async (nextHtml: string, options: DeckVersionOptions = {}) => {
@@ -262,11 +257,11 @@ export function useDeckPersistence() {
           return undefined
         }
 
+        deckIdRef.current = deck.id
         setDeckId(deck.id)
         setDeckTitle(deck.title)
         setActiveVersionId(deck.activeVersionId ?? null)
         setVersionNumber(deck.versionNumber ?? null)
-        writeActiveDeckId(deck.id)
         setSavedHtml(deck.html)
         setPreviewVersion(null)
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))

@@ -1,5 +1,7 @@
-import { fireEvent, render } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { renderWithRouter } from '@/test/render-with-router'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const chatPanelProps = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }))
@@ -131,27 +133,27 @@ describe('App chat panel layout', () => {
 
   it('renders a single chat panel in the desktop layout', () => {
     mediaState.isDesktop = true
-    const { getAllByTestId } = render(<App />)
+    const { getAllByTestId } = renderWithRouter(<App />)
 
     expect(getAllByTestId('chat-panel')).toHaveLength(1)
   })
 
   it('renders a single chat panel in the mobile layout', () => {
     mediaState.isDesktop = false
-    const { getAllByTestId } = render(<App />)
+    const { getAllByTestId } = renderWithRouter(<App />)
 
     expect(getAllByTestId('chat-panel')).toHaveLength(1)
   })
 
   it('passes identical chat panel props in both layouts', () => {
     mediaState.isDesktop = true
-    const { unmount } = render(<App />)
+    const { unmount } = renderWithRouter(<App />)
     const desktopProps = chatPanelProps.calls.at(-1)
     unmount()
 
     chatPanelProps.calls = []
     mediaState.isDesktop = false
-    render(<App />)
+    renderWithRouter(<App />)
     const mobileProps = chatPanelProps.calls.at(-1)
 
     expect(desktopProps).toBeDefined()
@@ -161,7 +163,7 @@ describe('App chat panel layout', () => {
 
   it('keeps the desktop preview mounted when chat opens and closes', () => {
     mediaState.isDesktop = true
-    const { getByTestId, queryByTestId } = render(<App />)
+    const { getByTestId, queryByTestId } = renderWithRouter(<App />)
 
     expect(getByTestId('deck-preview')).toBeInTheDocument()
     expect(getByTestId('chat-panel')).toBeInTheDocument()
@@ -182,7 +184,7 @@ describe('App chat panel layout', () => {
 
   it('keeps the mobile preview and agent instance mounted while the sheet closes', () => {
     mediaState.isDesktop = false
-    const { container, getByTestId } = render(<App />)
+    const { container, getByTestId } = renderWithRouter(<App />)
 
     expect(getByTestId('deck-preview')).toBeInTheDocument()
     expect(getByTestId('chat-panel')).toBeInTheDocument()
