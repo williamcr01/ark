@@ -324,6 +324,29 @@ describe('shared API contracts', () => {
     ).toBe(true)
 
     expect(
+      appendChatMessageRequestSchema.safeParse({
+        role: 'user',
+        content: 'Update this',
+        context: {
+          slideContexts: [{ slideIndex: 2, title: 'Market' }],
+          editorSelection: {
+            slideIndex: 2,
+            elementId: 'ark-el-9',
+            elementKind: 'text',
+          },
+        },
+      }).success,
+    ).toBe(true)
+
+    expect(
+      appendChatMessageRequestSchema.safeParse({
+        role: 'assistant',
+        content: 'Done',
+        context: { slideContexts: [{ slideIndex: 0 }] },
+      }).success,
+    ).toBe(false)
+
+    expect(
       deckChatResponseSchema.parse({
         thread: null,
         messages: [],

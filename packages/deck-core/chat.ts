@@ -92,6 +92,8 @@ export type ChatMessage = {
   content: string
   attachments?: ChatAttachment[]
   parts?: ChatMessagePart[]
+  /** Attached element/slide context for user turns (composer + history). */
+  context?: ChatMessageContext
 }
 
 /** API payload message (optional client ids enable server-side deduplication). */
@@ -101,6 +103,7 @@ export type ApiChatMessage = {
   content: string
   attachments?: ChatAttachment[]
   parts?: ChatMessagePart[]
+  context?: ChatMessageContext
 }
 
 /**
@@ -127,6 +130,12 @@ export type SlideContext = {
   slideIndex: number
   slideId?: string
   title?: string
+}
+
+/** Optional context attached to a user chat turn. */
+export type ChatMessageContext = {
+  editorSelection?: EditorSelectionContext
+  slideContexts?: SlideContext[]
 }
 
 /**
@@ -400,6 +409,129 @@ export const parseChatAttachments = (
   return { ok: true, attachments }
 }
 
+function parseChatMessageContext(
+  input: unknown,
+  messageIndex: number,
+): { ok: true; context?: ChatMessageContext } | { ok: false; error: string } {
+  if (input === undefined) {
+    return { ok: true }
+  }
+
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return {
+      ok: false,
+      error: `messages[${messageIndex}].context must be an object.`,
+    }
+  }
+
+  const record = input as {
+    editorSelection?: unknown
+    slideContexts?: unknown
+  }
+  const context: ChatMessageContext = {}
+
+  if (record.editorSelection !== undefined) {
+    const selection = record.editorSelection
+    if (!selection || typeof selection !== 'object' || Array.isArray(selection)) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.editorSelection must be an object.`,
+      }
+    }
+    const slideIndex = (selection as { slideIndex?: unknown }).slideIndex
+    const elementId = (selection as { elementId?: unknown }).elementId
+    if (typeof slideIndex !== 'number' || !Number.isInteger(slideIndex) || slideIndex < 0) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.editorSelection.slideIndex must be a non-negative integer.`,
+      }
+    }
+    if (typeof elementId !== 'string' || elementId.trim().length === 0) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.editorSelection.elementId must be a string.`,
+      }
+    }
+    const editorSelection: EditorSelectionContext = {
+      slideIndex,
+      elementId: elementId.trim(),
+    }
+    const slideId = (selection as { slideId?: unknown }).slideId
+    if (typeof slideId === 'string' && slideId.trim()) {
+      editorSelection.slideId = slideId.trim()
+    }
+    const elementKind = (selection as { elementKind?: unknown }).elementKind
+    if (typeof elementKind === 'string' && elementKind.trim()) {
+      editorSelection.elementKind = elementKind.trim()
+    }
+    const elementRole = (selection as { elementRole?: unknown }).elementRole
+    if (typeof elementRole === 'string' && elementRole.trim()) {
+      editorSelection.elementRole = elementRole.trim()
+    }
+    const textPreview = (selection as { textPreview?: unknown }).textPreview
+    if (typeof textPreview === 'string' && textPreview.trim()) {
+      editorSelection.textPreview = textPreview.trim().slice(0, 280)
+    }
+    if (typeof (selection as { locked?: unknown }).locked === 'boolean') {
+      editorSelection.locked = (selection as { locked: boolean }).locked
+    }
+    if (typeof (selection as { managed?: unknown }).managed === 'boolean') {
+      editorSelection.managed = (selection as { managed: boolean }).managed
+    }
+    context.editorSelection = editorSelection
+  }
+
+  if (record.slideContexts !== undefined) {
+    if (!Array.isArray(record.slideContexts)) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.slideContexts must be an array.`,
+      }
+    }
+    if (record.slideContexts.length > 64) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.slideContexts exceeds the 64 slide limit.`,
+      }
+    }
+    const slideContexts: SlideContext[] = []
+    for (const [slideOffset, item] of record.slideContexts.entries()) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return {
+          ok: false,
+          error: `messages[${messageIndex}].context.slideContexts[${slideOffset}] must be an object.`,
+        }
+      }
+      const slideIndex = (item as { slideIndex?: unknown }).slideIndex
+      if (typeof slideIndex !== 'number' || !Number.isInteger(slideIndex) || slideIndex < 0) {
+        return {
+          ok: false,
+          error: `messages[${messageIndex}].context.slideContexts[${slideOffset}].slideIndex must be a non-negative integer.`,
+        }
+      }
+      const slide: SlideContext = { slideIndex }
+      const slideId = (item as { slideId?: unknown }).slideId
+      if (typeof slideId === 'string' && slideId.trim()) {
+        slide.slideId = slideId.trim()
+      }
+      const title = (item as { title?: unknown }).title
+      if (typeof title === 'string' && title.trim()) {
+        slide.title = title.trim().slice(0, 200)
+      }
+      slideContexts.push(slide)
+    }
+    if (slideContexts.length > 0) {
+      context.slideContexts = slideContexts
+    }
+  }
+
+  if (!context.editorSelection && !context.slideContexts?.length) {
+    return { ok: true }
+  }
+
+  return { ok: true, context }
+}
+
 /** Runtime validation for untrusted generation job request bodies. */
 export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResult {
   if (!Array.isArray(input)) {
@@ -450,6 +582,14 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
     const id =
       typeof rawId === 'string' && isValidChatMessageId(rawId.trim()) ? rawId.trim() : undefined
 
+    const context =
+      role === 'user'
+        ? parseChatMessageContext((item as { context?: unknown }).context, index)
+        : null
+    if (context && !context.ok) {
+      return context
+    }
+
     const trimmed = content.trim()
     if (trimmed.length > 0 || parsedAttachments.attachments.length > 0) {
       messages.push({
@@ -460,6 +600,7 @@ export function parseGenerateMessages(input: unknown): ParseGenerateMessagesResu
           ? { attachments: parsedAttachments.attachments }
           : {}),
         ...(role === 'assistant' && parsedParts.parts?.length ? { parts: parsedParts.parts } : {}),
+        ...(role === 'user' && context?.ok && context.context ? { context: context.context } : {}),
       })
     }
   }
@@ -752,12 +893,13 @@ export function buildModelMessages(
 }
 
 export function toApiMessages(messages: ChatMessage[]): ApiChatMessage[] {
-  return messages.map(({ id, role, content, attachments, parts }) => ({
+  return messages.map(({ id, role, content, attachments, parts, context }) => ({
     ...(id ? { id } : {}),
     role,
     content,
     ...(attachments?.length ? { attachments } : {}),
     ...(role === 'assistant' && parts?.length ? { parts: structuredClone(parts) } : {}),
+    ...(role === 'user' && context ? { context: structuredClone(context) } : {}),
   }))
 }
 

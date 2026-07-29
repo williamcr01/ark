@@ -557,11 +557,18 @@ export function DeckPreview({
       return
     }
 
-    clearEditorSelectionRef.current = clearSelection
+    // Only expose clear while the editor bridge can actually clear selection.
+    // When inactive, leave the ref null so App falls back to local state clear.
+    if (editorBridgeActive && bridgeEnabled) {
+      clearEditorSelectionRef.current = clearSelection
+    } else {
+      clearEditorSelectionRef.current = null
+    }
+
     return () => {
       clearEditorSelectionRef.current = null
     }
-  }, [clearEditorSelectionRef, clearSelection])
+  }, [bridgeEnabled, clearEditorSelectionRef, clearSelection, editorBridgeActive])
 
   useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {

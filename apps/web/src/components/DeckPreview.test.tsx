@@ -1686,4 +1686,43 @@ describe('DeckPreview script divergence UI', () => {
     expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(20)
     expect(screen.getByRole('alert')).toHaveTextContent('Hostile failure 19')
   })
+
+  it('only assigns clearEditorSelectionRef while the editor bridge is active', () => {
+    const clearEditorSelectionRef = { current: null as (() => void) | null }
+
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      clearEditorSelectionRef,
+      editorBridgeEnabled: false,
+      isGenerating: false,
+    })
+
+    expect(clearEditorSelectionRef.current).toBeNull()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          clearEditorSelectionRef={clearEditorSelectionRef}
+          editorBridgeEnabled
+          isGenerating={false}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(clearEditorSelectionRef.current).toBe(editorBridgeMock.clearSelection)
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          clearEditorSelectionRef={clearEditorSelectionRef}
+          editorBridgeEnabled
+          isGenerating
+        />
+      </TooltipProvider>,
+    )
+
+    expect(clearEditorSelectionRef.current).toBeNull()
+  })
 })

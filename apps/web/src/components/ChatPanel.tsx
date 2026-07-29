@@ -31,6 +31,8 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
+import { ContextChipList } from '@/components/ChatContextChips'
+import { contextToChipProps } from '@/lib/chat-context-chips'
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -525,6 +527,13 @@ export function ChatPanel({
                     )}
                     {message.attachments?.length ? (
                       <ChatMessageAttachments attachments={message.attachments} />
+                    ) : null}
+                    {message.role === 'user' && message.context ? (
+                      <ContextChipList
+                        className="mt-2"
+                        label="Attached context"
+                        {...contextToChipProps(message.context)}
+                      />
                     ) : null}
                     <ChatMessageDeliveryStatus
                       onRetry={

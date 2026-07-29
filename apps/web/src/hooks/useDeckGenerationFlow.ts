@@ -277,11 +277,19 @@ export function useDeckGenerationFlow({
       setModelFailure(false)
       setGenerationError('')
       onGenerationStart?.()
+      const messageContext =
+        options.editorSelection || options.slideContexts?.length
+          ? {
+              ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
+              ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
+            }
+          : undefined
       const userMessage: ChatMessage = {
         id: newId(),
         role: 'user',
         content: rawPrompt.trim(),
         ...(attachments.length > 0 ? { attachments } : {}),
+        ...(messageContext ? { context: messageContext } : {}),
       }
       const nextMessages: ChatMessage[] = [...messages, userMessage]
 

@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 
-import { ChatContextChips } from './ChatContextChips'
+import { ChatContextChips, ContextChipList } from './ChatContextChips'
+import { contextToChipProps } from '@/lib/chat-context-chips'
 
 const selection: EditorSelectionInfo = {
   elementId: 'ark-el-1',
@@ -59,5 +60,24 @@ describe('ChatContextChips', () => {
 
     await user.click(screen.getByLabelText('Remove slide 3 from chat context'))
     expect(onRemoveSlide).toHaveBeenCalledWith(2)
+  })
+
+  it('renders read-only chips from persisted context', () => {
+    const chips = contextToChipProps({
+      editorSelection: {
+        slideIndex: 0,
+        elementId: 'ark-el-2',
+        elementKind: 'image',
+        textPreview: 'Logo',
+      },
+      slideContexts: [{ slideIndex: 1, title: 'Agenda' }],
+    })
+
+    render(<ContextChipList className="mt-2" label="Attached context" {...chips} />)
+
+    expect(screen.getByLabelText('Attached context')).toBeInTheDocument()
+    expect(screen.getByText(/Slide 1 · image/)).toBeInTheDocument()
+    expect(screen.getByText('Slide 2 — Agenda')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Remove selected element from chat context')).toBeNull()
   })
 })

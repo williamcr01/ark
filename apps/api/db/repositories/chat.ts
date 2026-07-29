@@ -96,6 +96,10 @@ function readMessageMetadata(
   return {
     generationJobId: typeof metadata.generationJobId === 'string' ? metadata.generationJobId : null,
     model: typeof metadata.model === 'string' ? metadata.model : null,
+    context:
+      metadata.context && typeof metadata.context === 'object' && !Array.isArray(metadata.context)
+        ? (metadata.context as import('@ark/deck-core/chat.ts').ChatMessageContext)
+        : undefined,
   }
 }
 
@@ -114,7 +118,7 @@ function mapThread(row: ChatThreadRow): ChatThread {
 function mapMessage(row: ChatMessageRow): StoredChatMessage {
   const messageMetadata = row.message_metadata ?? {}
   const errorMetadata = row.error_metadata ?? {}
-  const { generationJobId, model } = readMessageMetadata(messageMetadata, errorMetadata)
+  const { generationJobId, model, context } = readMessageMetadata(messageMetadata, errorMetadata)
   const error = readErrorMetadata(errorMetadata)
 
   return {
@@ -126,6 +130,7 @@ function mapMessage(row: ChatMessageRow): StoredChatMessage {
     content: row.content_summary,
     parts: readToolActivity(row.tool_activity),
     attachments: readAttachments(row.attachments_metadata),
+    ...(context ? { context } : {}),
     generationJobId,
     generationStatus: row.generation_status,
     model,
@@ -143,6 +148,10 @@ function buildMessageMetadata(input: AppendChatMessageInput) {
 
   if (input.model) {
     metadata.model = input.model
+  }
+
+  if (input.context) {
+    metadata.context = input.context
   }
 
   return metadata

@@ -9,6 +9,19 @@ import {
   withRequestId,
 } from './common.ts'
 import { deckValidationReportSchema } from './decks.ts'
+import {
+  editorSelectionContextSchema,
+  MAX_SLIDE_CONTEXTS,
+  slideContextSchema,
+} from './agent-context.ts'
+
+export {
+  editorSelectionContextSchema,
+  MAX_SLIDE_CONTEXTS,
+  slideContextSchema,
+  type EditorSelectionContext,
+  type SlideContext,
+} from './agent-context.ts'
 
 export const generationJobStatusSchema = z.enum([
   'queued',
@@ -101,39 +114,6 @@ export const generationJobResponseSchema = withRequestId({
 })
 
 export type GenerationJobResponse = z.infer<typeof generationJobResponseSchema>
-
-/**
- * Manual-editor selection context (issue #83). Sent when the user has an element
- * selected so the agent can target "this" element by id and prefer id-based
- * patches over brittle full-document rewrites.
- */
-export const editorSelectionContextSchema = z.object({
-  slideIndex: z.number().int().min(0),
-  slideId: z.string().min(1).optional(),
-  elementId: z.string().min(1),
-  elementKind: z.string().min(1).max(64).optional(),
-  elementRole: z.string().min(1).max(64).optional(),
-  textPreview: z.string().max(280).optional(),
-  locked: z.boolean().optional(),
-  managed: z.boolean().optional(),
-})
-
-export type EditorSelectionContext = z.infer<typeof editorSelectionContextSchema>
-
-/** Max slides a user can attach as generation context in one request. */
-export const MAX_SLIDE_CONTEXTS = 64
-
-/**
- * Slide(s) the user attached as chat context so the agent can focus reads/edits
- * on those slides (e.g. "update this slide").
- */
-export const slideContextSchema = z.object({
-  slideIndex: z.number().int().min(0),
-  slideId: z.string().min(1).optional(),
-  title: z.string().min(1).max(200).optional(),
-})
-
-export type SlideContext = z.infer<typeof slideContextSchema>
 
 export const startGenerationJobRequestSchema = z.object({
   /** Full visible chat history replayed for this generation run. */

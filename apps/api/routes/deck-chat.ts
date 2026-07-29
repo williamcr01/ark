@@ -90,6 +90,7 @@ export function createDeckChatRouter(deps: { deckStore: DeckStore; chatStore: Ch
         content: parsed.data.content.trim(),
         parts: parsed.data.parts,
         attachments: parsed.data.attachments,
+        context: parsed.data.context,
         deckVersionId: parsed.data.deckVersionId ?? null,
         generationJobId: parsed.data.generationJobId ?? null,
         generationStatus: parsed.data.generationStatus ?? null,

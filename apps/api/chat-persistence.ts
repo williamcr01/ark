@@ -48,6 +48,7 @@ export async function persistLatestUserMessage(
     role: 'user',
     content: lastUserMessage.content,
     attachments: lastUserMessage.attachments,
+    context: lastUserMessage.context,
     deckVersionId,
   })
 }
@@ -149,6 +150,7 @@ export async function persistInitialDeckChatHistory(
       role: message.role,
       content: message.content,
       attachments: message.attachments,
+      context: message.role === 'user' ? message.context : undefined,
       parts: message.role === 'assistant' ? message.parts : undefined,
       deckVersionId,
     })

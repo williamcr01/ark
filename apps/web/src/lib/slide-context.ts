@@ -1,6 +1,18 @@
+import { MAX_SLIDE_CONTEXTS } from '@ark/contracts'
 import type { SlideContext } from '@ark/deck-core/chat.ts'
 
 const MAX_TITLE_LENGTH = 200
+
+export type SlideHtmlEntry = {
+  index: number
+  outerHTML: string
+}
+
+/** Attached-slide state captured at toggle time (index + optional stable id). */
+export type ContextSlideEntry = {
+  slideIndex: number
+  slideId?: string
+}
 
 /**
  * Extract a short title from a slide's outerHTML for chat context chips / job
@@ -32,38 +44,122 @@ export function extractSlideIdFromOuterHtml(outerHTML: string): string | undefin
   return slideId || undefined
 }
 
-/** Drop indexes that are out of range for the current deck. */
+export type ToggleContextSlideResult = {
+  entries: ContextSlideEntry[]
+  /** True when add was rejected because `max` was already reached. */
+  capped: boolean
+}
+
+/**
+ * Toggle a slide in the attached-context list. Removal always succeeds; adds
+ * that would exceed `max` leave the list unchanged and set `capped`.
+ */
+export function toggleContextSlideEntry(
+  current: ContextSlideEntry[],
+  slideIndex: number,
+  slides: SlideHtmlEntry[],
+  max: number = MAX_SLIDE_CONTEXTS,
+): ToggleContextSlideResult {
+  const existingIndex = current.findIndex((entry) => entry.slideIndex === slideIndex)
+  if (existingIndex >= 0) {
+    return {
+      entries: current.filter((_, index) => index !== existingIndex),
+      capped: false,
+    }
+  }
+
+  if (current.length >= max) {
+    return { entries: current, capped: true }
+  }
+
+  const slide = slides.find((entry) => entry.index === slideIndex)
+  const slideId = slide ? extractSlideIdFromOuterHtml(slide.outerHTML) : undefined
+  const next: ContextSlideEntry = {
+    slideIndex,
+    ...(slideId ? { slideId } : {}),
+  }
+
+  return {
+    entries: [...current, next].sort((left, right) => left.slideIndex - right.slideIndex),
+    capped: false,
+  }
+}
+
+/**
+ * Re-resolve attached slides after deck edits: prefer matching by `slideId`,
+ * fall back to index for slides without ids, drop vanished/out-of-range entries.
+ */
+export function resolveContextSlides(
+  entries: ContextSlideEntry[],
+  slides: SlideHtmlEntry[],
+): ContextSlideEntry[] {
+  const byId = new Map<string, SlideHtmlEntry>()
+  for (const slide of slides) {
+    const slideId = extractSlideIdFromOuterHtml(slide.outerHTML)
+    if (slideId) {
+      byId.set(slideId, slide)
+    }
+  }
+
+  const resolved: ContextSlideEntry[] = []
+  const seenIndexes = new Set<number>()
+
+  for (const entry of entries) {
+    if (entry.slideId) {
+      const match = byId.get(entry.slideId)
+      if (!match) {
+        continue
+      }
+      if (seenIndexes.has(match.index)) {
+        continue
+      }
+      seenIndexes.add(match.index)
+      resolved.push({ slideIndex: match.index, slideId: entry.slideId })
+      continue
+    }
+
+    const match = slides.find((slide) => slide.index === entry.slideIndex)
+    if (!match || seenIndexes.has(match.index)) {
+      continue
+    }
+    seenIndexes.add(match.index)
+    const slideId = extractSlideIdFromOuterHtml(match.outerHTML)
+    resolved.push({
+      slideIndex: match.index,
+      ...(slideId ? { slideId } : {}),
+    })
+  }
+
+  return resolved.sort((left, right) => left.slideIndex - right.slideIndex)
+}
+
+/** Build generation-request slideContexts from resolved attached entries. */
+export function buildSlideContexts(
+  entries: ContextSlideEntry[],
+  slides: SlideHtmlEntry[],
+): SlideContext[] {
+  return resolveContextSlides(entries, slides).flatMap((entry) => {
+    const slide = slides.find((item) => item.index === entry.slideIndex)
+    if (!slide) {
+      return []
+    }
+
+    const title = extractSlideTitleFromOuterHtml(slide.outerHTML, entry.slideIndex)
+    return [
+      {
+        slideIndex: entry.slideIndex,
+        ...(entry.slideId ? { slideId: entry.slideId } : {}),
+        ...(title ? { title } : {}),
+      },
+    ]
+  })
+}
+
+/** @deprecated Prefer resolveContextSlides; kept for call-site migration. */
 export function filterValidSlideIndexes(indexes: number[], slideCount: number): number[] {
   if (slideCount <= 0) {
     return []
   }
 
   return indexes.filter((slideIndex) => slideIndex >= 0 && slideIndex < slideCount)
-}
-
-/** Build slide context entries for a generation request from selected indexes. */
-export function buildSlideContexts(
-  indexes: number[],
-  slides: { index: number; outerHTML: string }[],
-): SlideContext[] {
-  return indexes
-    .slice()
-    .sort((left, right) => left - right)
-    .flatMap((slideIndex) => {
-      const slide = slides.find((entry) => entry.index === slideIndex)
-      if (!slide) {
-        return []
-      }
-
-      const title = extractSlideTitleFromOuterHtml(slide.outerHTML, slideIndex)
-      const slideId = extractSlideIdFromOuterHtml(slide.outerHTML)
-
-      return [
-        {
-          slideIndex,
-          ...(slideId ? { slideId } : {}),
-          ...(title ? { title } : {}),
-        },
-      ]
-    })
 }

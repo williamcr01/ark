@@ -2469,6 +2469,46 @@
                               "required": ["type", "mediaType", "url"]
                             }
                           },
+                          "context": {
+                            "type": "object",
+                            "properties": {
+                              "editorSelection": {
+                                "type": "object",
+                                "properties": {
+                                  "slideIndex": { "type": "integer", "minimum": 0 },
+                                  "slideId": { "type": "string", "minLength": 1 },
+                                  "elementId": { "type": "string", "minLength": 1 },
+                                  "elementKind": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "elementRole": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "textPreview": { "type": "string", "maxLength": 280 },
+                                  "locked": { "type": "boolean" },
+                                  "managed": { "type": "boolean" }
+                                },
+                                "required": ["slideIndex", "elementId"]
+                              },
+                              "slideContexts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "slideIndex": { "type": "integer", "minimum": 0 },
+                                    "slideId": { "type": "string", "minLength": 1 },
+                                    "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+                                  },
+                                  "required": ["slideIndex"]
+                                },
+                                "maxItems": 64
+                              }
+                            }
+                          },
                           "generationJobId": { "type": "string", "nullable": true },
                           "generationStatus": { "type": "string", "nullable": true },
                           "model": { "type": "string", "nullable": true },
@@ -2723,6 +2763,38 @@
                       "required": ["type", "mediaType", "url"]
                     }
                   },
+                  "context": {
+                    "type": "object",
+                    "properties": {
+                      "editorSelection": {
+                        "type": "object",
+                        "properties": {
+                          "slideIndex": { "type": "integer", "minimum": 0 },
+                          "slideId": { "type": "string", "minLength": 1 },
+                          "elementId": { "type": "string", "minLength": 1 },
+                          "elementKind": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "elementRole": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "textPreview": { "type": "string", "maxLength": 280 },
+                          "locked": { "type": "boolean" },
+                          "managed": { "type": "boolean" }
+                        },
+                        "required": ["slideIndex", "elementId"]
+                      },
+                      "slideContexts": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "slideIndex": { "type": "integer", "minimum": 0 },
+                            "slideId": { "type": "string", "minLength": 1 },
+                            "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+                          },
+                          "required": ["slideIndex"]
+                        },
+                        "maxItems": 64
+                      }
+                    }
+                  },
                   "deckVersionId": {
                     "type": "string",
                     "nullable": true,
@@ -2853,6 +2925,46 @@
                               "assetId": { "type": "string" }
                             },
                             "required": ["type", "mediaType", "url"]
+                          }
+                        },
+                        "context": {
+                          "type": "object",
+                          "properties": {
+                            "editorSelection": {
+                              "type": "object",
+                              "properties": {
+                                "slideIndex": { "type": "integer", "minimum": 0 },
+                                "slideId": { "type": "string", "minLength": 1 },
+                                "elementId": { "type": "string", "minLength": 1 },
+                                "elementKind": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                "elementRole": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                "textPreview": { "type": "string", "maxLength": 280 },
+                                "locked": { "type": "boolean" },
+                                "managed": { "type": "boolean" }
+                              },
+                              "required": ["slideIndex", "elementId"]
+                            },
+                            "slideContexts": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "slideIndex": { "type": "integer", "minimum": 0 },
+                                  "slideId": { "type": "string", "minLength": 1 },
+                                  "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+                                },
+                                "required": ["slideIndex"]
+                              },
+                              "maxItems": 64
+                            }
                           }
                         },
                         "generationJobId": { "type": "string", "nullable": true },
@@ -3345,6 +3457,50 @@
                                   "assetId": { "type": "string" }
                                 },
                                 "required": ["type", "mediaType", "url"]
+                              }
+                            },
+                            "context": {
+                              "type": "object",
+                              "properties": {
+                                "editorSelection": {
+                                  "type": "object",
+                                  "properties": {
+                                    "slideIndex": { "type": "integer", "minimum": 0 },
+                                    "slideId": { "type": "string", "minLength": 1 },
+                                    "elementId": { "type": "string", "minLength": 1 },
+                                    "elementKind": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    },
+                                    "elementRole": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    },
+                                    "textPreview": { "type": "string", "maxLength": 280 },
+                                    "locked": { "type": "boolean" },
+                                    "managed": { "type": "boolean" }
+                                  },
+                                  "required": ["slideIndex", "elementId"]
+                                },
+                                "slideContexts": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "slideIndex": { "type": "integer", "minimum": 0 },
+                                      "slideId": { "type": "string", "minLength": 1 },
+                                      "title": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      }
+                                    },
+                                    "required": ["slideIndex"]
+                                  },
+                                  "maxItems": 64
+                                }
                               }
                             }
                           },
