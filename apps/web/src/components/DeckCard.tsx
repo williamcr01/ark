@@ -50,12 +50,6 @@ export function DeckCard({ deck, onDelete, onRename }: DeckCardProps) {
 
   useEffect(() => {
     if (!isEditing) {
-      setDraftTitle(deck.title)
-    }
-  }, [deck.title, isEditing])
-
-  useEffect(() => {
-    if (!isEditing) {
       return
     }
 

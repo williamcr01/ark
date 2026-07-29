@@ -269,12 +269,6 @@ function DeckTitleEditor({
 
   useEffect(() => {
     if (!isEditing) {
-      setDraftTitle(deckTitle)
-    }
-  }, [deckTitle, isEditing])
-
-  useEffect(() => {
-    if (!isEditing) {
       return
     }
 
@@ -289,6 +283,7 @@ function DeckTitleEditor({
 
   const startEditing = () => {
     setEditWidth(buttonRef.current?.offsetWidth)
+    setDraftTitle(deckTitle)
     setIsEditing(true)
   }
 
