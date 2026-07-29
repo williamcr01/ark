@@ -1,4 +1,4 @@
-import type { AgentStep, ApiChatMessage, EditorSelectionContext } from './chat.ts'
+import type { AgentStep, ApiChatMessage, EditorSelectionContext, SlideContext } from './chat.ts'
 
 export type GenerationJobStatus =
   'queued' | 'running' | 'canceling' | 'succeeded' | 'failed' | 'canceled'
@@ -24,6 +24,8 @@ export type GenerationJobRequest = {
   editingExistingDeck?: boolean
   /** Manual-editor selection captured when the request was submitted (issue #83). */
   editorSelection?: EditorSelectionContext
+  /** Slides the user attached as context when the request was submitted. */
+  slideContexts?: SlideContext[]
   /** Reasoning effort captured when the request was submitted. */
   reasoningEffort?: ReasoningEffort
 }

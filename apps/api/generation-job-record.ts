@@ -56,6 +56,9 @@ export function cloneGenerationJobRequest(request: GenerationJobRequest): Genera
     baseVersionId: request.baseVersionId ?? null,
     editingExistingDeck: request.editingExistingDeck ?? false,
     ...(request.editorSelection ? { editorSelection: { ...request.editorSelection } } : {}),
+    ...(request.slideContexts?.length
+      ? { slideContexts: request.slideContexts.map((slide) => ({ ...slide })) }
+      : {}),
     ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
   }
 }

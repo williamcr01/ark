@@ -6,6 +6,7 @@ import {
   type ChatMessagePart,
   type EditorSelectionContext,
   type JsonValue,
+  type SlideContext,
 } from '@ark/deck-core/chat.ts'
 import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
@@ -46,6 +47,7 @@ export type RunDeckAgentOptions = {
   messages: ApiChatMessage[]
   currentHtml: string
   editorSelection?: EditorSelectionContext
+  slideContexts?: SlideContext[]
   reasoningEffort?: ReasoningEffort
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
@@ -511,6 +513,7 @@ export async function runDeckAgent({
   messages,
   currentHtml,
   editorSelection,
+  slideContexts,
   reasoningEffort,
   abortSignal,
   onStepProgress,
@@ -533,7 +536,12 @@ export async function runDeckAgent({
   let transcriptStepIndex = 0
   const thinkingProgress = createThinkingProgressReporter(accumulatedSteps, onStepProgress)
   const startedAt = performance.now()
-  const context = assembleDeckAgentContext({ messages, currentHtml, editorSelection })
+  const context = assembleDeckAgentContext({
+    messages,
+    currentHtml,
+    editorSelection,
+    slideContexts,
+  })
   const guideMetadata = getAgentGuidesMetadata()
   logger?.info('generation.context.assembled', {
     ...context.metadata,

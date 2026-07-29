@@ -401,6 +401,8 @@ export type ChatPanelProps = {
   canGenerate: boolean
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
+  /** Context chips (selected element / attached slides) above the composer. */
+  contextSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
@@ -433,6 +435,7 @@ export function ChatPanel({
   canGenerate,
   selectedAssetIds = [],
   assetsSlot,
+  contextSlot,
   onInputChange,
   onModelSelect,
   onPromptSubmit,
@@ -565,6 +568,7 @@ export function ChatPanel({
             </div>
           ) : null}
           {assetsSlot}
+          {contextSlot}
 
           {hasFloatingAlerts ? (
             <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">

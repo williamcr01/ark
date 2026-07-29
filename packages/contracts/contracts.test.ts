@@ -215,6 +215,25 @@ describe('shared API contracts', () => {
 
     expect(
       startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'update these slides' }],
+        deckId,
+        slideContexts: [
+          { slideIndex: 0, title: 'Title' },
+          { slideIndex: 2, slideId: 'ark-slide-3', title: 'Market' },
+        ],
+      }).success,
+    ).toBe(true)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'update these slides' }],
+        deckId,
+        slideContexts: [{ slideIndex: -1 }],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
         messages: [{ role: 'user', content: 'make this bigger' }],
         deckId,
         editorSelection: { slideIndex: 0 },

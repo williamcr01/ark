@@ -120,6 +120,21 @@ export const editorSelectionContextSchema = z.object({
 
 export type EditorSelectionContext = z.infer<typeof editorSelectionContextSchema>
 
+/** Max slides a user can attach as generation context in one request. */
+export const MAX_SLIDE_CONTEXTS = 64
+
+/**
+ * Slide(s) the user attached as chat context so the agent can focus reads/edits
+ * on those slides (e.g. "update this slide").
+ */
+export const slideContextSchema = z.object({
+  slideIndex: z.number().int().min(0),
+  slideId: z.string().min(1).optional(),
+  title: z.string().min(1).max(200).optional(),
+})
+
+export type SlideContext = z.infer<typeof slideContextSchema>
+
 export const startGenerationJobRequestSchema = z.object({
   /** Full visible chat history replayed for this generation run. */
   messages: z.array(apiChatMessageSchema).optional(),
@@ -131,6 +146,8 @@ export const startGenerationJobRequestSchema = z.object({
   baseVersionId: deckIdSchema.nullable().optional(),
   /** Current manual-editor selection so the agent can target the selected element. */
   editorSelection: editorSelectionContextSchema.optional(),
+  /** Slides the user attached as context for this generation turn. */
+  slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
   /**
    * Deck-scoped uploaded asset ids to resolve into file inputs for the latest
    * user turn. Requires `deckId`. Omitted from job poll responses — clients

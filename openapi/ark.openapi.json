@@ -3480,6 +3480,19 @@
                     },
                     "required": ["slideIndex", "elementId"]
                   },
+                  "slideContexts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slideIndex": { "type": "integer", "minimum": 0 },
+                        "slideId": { "type": "string", "minLength": 1 },
+                        "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+                      },
+                      "required": ["slideIndex"]
+                    },
+                    "maxItems": 64
+                  },
                   "assetIds": {
                     "type": "array",
                     "items": {

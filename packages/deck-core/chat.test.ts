@@ -8,10 +8,12 @@ import {
   chatAttachmentsToModelParts,
   collectAssetIds,
   collectAssetIdsFromMessages,
+  describeSlideContexts,
   isReadableTextMediaType,
   MAX_INLINE_TEXT_ATTACHMENT_CHARS,
   parseGenerateMessages,
   MAX_PERSISTED_TOOL_VALUE_BYTES,
+  wrapUserPromptForAgent,
   wrapUserPromptForGeneration,
 } from './chat.ts'
 import { buildAgentModelMessages, convertChatHistoryToModelMessages } from './chat-context.ts'
@@ -673,5 +675,43 @@ describe('wrapUserPromptForGeneration', () => {
     expect(wrapUserPromptForGeneration('create', '')).toContain(
       'Create a new complete Ark HTML slide deck',
     )
+  })
+})
+
+describe('describeSlideContexts', () => {
+  it('returns empty string for no slides', () => {
+    expect(describeSlideContexts([])).toBe('')
+  })
+
+  it('describes a single attached slide with index guidance', () => {
+    const note = describeSlideContexts([{ slideIndex: 2, title: 'Market', slideId: 'ark-slide-3' }])
+    expect(note).toContain('slide 2 ("Market"), slide id "ark-slide-3"')
+    expect(note).toContain('slide index 2')
+  })
+
+  it('lists multiple attached slides', () => {
+    const note = describeSlideContexts([{ slideIndex: 0, title: 'Title' }, { slideIndex: 1 }])
+    expect(note).toContain('slide 0 ("Title")')
+    expect(note).toContain('slide 1')
+    expect(note).toContain('listed slide indexes')
+  })
+})
+
+describe('wrapUserPromptForAgent', () => {
+  it('includes slide context notes when revising an existing deck', () => {
+    const wrapped = wrapUserPromptForAgent('Tighten the copy', '<html></html>', 0, undefined, [
+      { slideIndex: 1, title: 'Agenda' },
+    ])
+    expect(wrapped).toContain('Tighten the copy')
+    expect(wrapped).toContain('attached the following slide(s) as context')
+    expect(wrapped).toContain('slide 1 ("Agenda")')
+  })
+
+  it('omits slide context notes for brand-new decks', () => {
+    const wrapped = wrapUserPromptForAgent('Build a pitch deck', '', 0, undefined, [
+      { slideIndex: 0, title: 'Title' },
+    ])
+    expect(wrapped).toContain('Build a pitch deck')
+    expect(wrapped).not.toContain('attached the following slide(s) as context')
   })
 })

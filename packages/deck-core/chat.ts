@@ -120,6 +120,16 @@ export type EditorSelectionContext = {
 }
 
 /**
+ * Slide(s) the user attached as chat context so the agent can focus reads/edits
+ * on those slides.
+ */
+export type SlideContext = {
+  slideIndex: number
+  slideId?: string
+  title?: string
+}
+
+/**
  * Context policy (pi-style): every generation request replays the full visible
  * conversation. Durable assistant turns retain every logical step using bounded,
  * recoverable tool projections. Mutations are never recommended for replay.
@@ -512,11 +522,35 @@ Selected element: id "${selection.elementId}"${descriptor} on ${slideRef}${textN
 Verify it with parse_deck or read_deck, then prefer patch_element with this elementId. If the id is missing or no longer matches (stale selection), inspect the deck and pick the closest element or ask before guessing.${lockGuidance}`
 }
 
+function describeOneSlideContext(slide: SlideContext): string {
+  const titleNote = slide.title ? ` ("${slide.title}")` : ''
+  const idNote = slide.slideId ? `, slide id "${slide.slideId}"` : ''
+  return `slide ${slide.slideIndex}${titleNote}${idNote}`
+}
+
+/** Prompt note for slides the user attached as chat context. */
+export function describeSlideContexts(slides: SlideContext[]): string {
+  if (slides.length === 0) {
+    return ''
+  }
+
+  const listed = slides.map(describeOneSlideContext).join('; ')
+  const focus =
+    slides.length === 1
+      ? `Focus reads and edits on that slide; use read_deck / patch_deck with slide index ${slides[0]!.slideIndex}.`
+      : `Focus reads and edits on those slides; use read_deck / patch_deck with the listed slide indexes.`
+
+  return `The user attached the following slide(s) as context: ${listed}.
+When the instruction refers to "this slide", "these slides", or attached slide context, target them.
+${focus}`
+}
+
 export function wrapUserPromptForAgent(
   prompt: string,
   currentHtml: string,
   attachmentCount = 0,
   editorSelection?: EditorSelectionContext,
+  slideContexts?: SlideContext[],
 ) {
   const effectivePrompt =
     prompt.trim() ||
@@ -528,12 +562,14 @@ export function wrapUserPromptForAgent(
       : ''
 
   const selectionNote = editorSelection ? `\n\n${describeEditorSelection(editorSelection)}` : ''
+  const slideNote =
+    slideContexts && slideContexts.length > 0 ? `\n\n${describeSlideContexts(slideContexts)}` : ''
 
   if (currentHtml.trim()) {
     return `The user wants to revise their Ark HTML deck.
 
 User instruction:
-${effectivePrompt}${attachmentNote}${selectionNote}
+${effectivePrompt}${attachmentNote}${selectionNote}${slideNote}
 
 The current deck is available in the job workspace. Inspect it with the available tools before editing.`
   }
@@ -653,6 +689,7 @@ export function buildUserModelContent(
     wrapForAgent?: boolean
     currentHtml?: string
     editorSelection?: EditorSelectionContext
+    slideContexts?: SlideContext[]
   },
 ): string | Array<TextPart | FilePart> {
   const attachments = message.attachments ?? []
@@ -665,6 +702,7 @@ export function buildUserModelContent(
           currentHtml,
           attachments.length,
           options?.editorSelection,
+          options?.slideContexts,
         )
       : message.content
 
