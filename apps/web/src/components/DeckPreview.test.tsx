@@ -66,7 +66,7 @@ const editorBridgeMock = vi.hoisted(() => ({
   configureEditor: vi.fn(),
   disableEditor: vi.fn(),
   selectElement: vi.fn(),
-  clearSelection: vi.fn(),
+  clearSelection: vi.fn(() => true),
   requestGeometry: vi.fn(),
   startTextEdit: vi.fn(),
   cancelTextEdit: vi.fn(),
@@ -1688,7 +1688,7 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('only assigns clearEditorSelectionRef while the editor bridge is active', () => {
-    const clearEditorSelectionRef = { current: null as (() => void) | null }
+    const clearEditorSelectionRef = { current: null as (() => boolean) | null }
 
     const { rerender } = renderDeckPreview({
       ...plainDeckProps,
