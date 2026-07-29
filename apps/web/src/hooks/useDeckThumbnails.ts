@@ -16,11 +16,18 @@ export type DeckThumbnailsState = {
 }
 
 const PENDING_REPOLL_MS = 50
+/** When waitMs is 0 the server answers immediately — don't spin at 20 req/s. */
+const PENDING_REPOLL_NO_WAIT_MS = 1000
 
-async function fetchDeckThumbnails(deckId: string, versionId: string, signal: AbortSignal) {
+async function fetchDeckThumbnails(
+  deckId: string,
+  versionId: string,
+  signal: AbortSignal,
+  waitMs: number,
+) {
   const params = new URLSearchParams({
     versionId,
-    waitMs: String(THUMBNAIL_LONG_POLL_MAX_WAIT_MS),
+    waitMs: String(waitMs),
   })
   const response = await fetch(
     `/api/decks/${encodeURIComponent(deckId)}/thumbnails?${params.toString()}`,
@@ -77,9 +84,10 @@ export function useDeckThumbnails(
   deckId: string | null | undefined,
   versionId: string | null | undefined,
   slideCount: number,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; waitMs?: number } = {},
 ): DeckThumbnailsState {
   const enabled = options.enabled !== false && Boolean(deckId && versionId && slideCount > 0)
+  const waitMs = options.waitMs ?? THUMBNAIL_LONG_POLL_MAX_WAIT_MS
   const [status, setStatus] = useState<ThumbnailStatus | null>(null)
   const [thumbnailUrls, setThumbnailUrls] = useState<(string | null)[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -144,9 +152,12 @@ export function useDeckThumbnails(
     }
 
     const schedulePoll = () => {
-      timeoutId = setTimeout(() => {
-        void load()
-      }, PENDING_REPOLL_MS)
+      timeoutId = setTimeout(
+        () => {
+          void load()
+        },
+        waitMs === 0 ? PENDING_REPOLL_NO_WAIT_MS : PENDING_REPOLL_MS,
+      )
     }
 
     const load = async () => {
@@ -156,7 +167,7 @@ export function useDeckThumbnails(
       setIsLoading(true)
 
       try {
-        const payload = await fetchDeckThumbnails(deckId, versionId, controller.signal)
+        const payload = await fetchDeckThumbnails(deckId, versionId, controller.signal, waitMs)
 
         if (cancelled || requestId !== requestIdRef.current) {
           return
@@ -215,7 +226,7 @@ export function useDeckThumbnails(
       clearTimer()
       activeController?.abort()
     }
-  }, [deckId, enabled, slideCount, versionId])
+  }, [deckId, enabled, slideCount, versionId, waitMs])
 
   if (!enabled) {
     return {

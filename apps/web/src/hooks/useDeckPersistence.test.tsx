@@ -1,7 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { getTestLocalStorage, installTestLocalStorage } from '@/test/storage'
 import type { StoredDeck } from '@/lib/deck-api'
 
 import { useDeckPersistence } from './useDeckPersistence'
@@ -83,20 +82,12 @@ const validValidation = {
 }
 
 describe('useDeckPersistence', () => {
-  beforeEach(() => {
-    installTestLocalStorage()
-  })
-
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    installTestLocalStorage()
-    getTestLocalStorage().clear()
   })
 
-  it('restores the active deck after refresh', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
+  it('loads the deck from the route id', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
@@ -105,7 +96,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -121,9 +112,7 @@ describe('useDeckPersistence', () => {
     expect(result.current.isDirty).toBe(false)
   })
 
-  it('clears a stale active deck id after refresh', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
+  it('clears when the route deck id is missing from the list', async () => {
     const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo) => {
       const url = String(input)
 
@@ -136,7 +125,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -145,12 +134,9 @@ describe('useDeckPersistence', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/decks')
     expect(fetchMock).toHaveBeenCalledWith(`/api/decks/${deck.id}`)
     expect(result.current.hasDeck).toBe(false)
-    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
 
   it('does not let a slow boot list overwrite a deck selected after early apply', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     let resolveList: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
     const listGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
       resolveList = resolve
@@ -180,7 +166,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.deckId).toBe(deck.id)
@@ -202,7 +188,6 @@ describe('useDeckPersistence', () => {
     })
 
     expect(result.current.deckId).toBe(secondDeck.id)
-    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(secondDeck.id)
   })
 
   it('persists new HTML and marks the deck as saved', async () => {
@@ -214,7 +199,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(null))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -234,7 +219,65 @@ describe('useDeckPersistence', () => {
     expect(result.current.html).toBe(sampleHtml)
     expect(result.current.decks).toEqual([toSummary(deck)])
     expect(result.current.isDirty).toBe(false)
-    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(deck.id)
+  })
+
+  it('clears isSaving when create navigates from /decks/new to /decks/:id', async () => {
+    let resolveVersions: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
+    const versionsGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      resolveVersions = resolve
+    })
+
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url === '/api/decks' && (!init || init.method === undefined || init.method === 'GET')) {
+        return jsonResponse({ decks: [] })
+      }
+
+      if (url === '/api/decks' && init?.method === 'POST') {
+        return jsonResponse({ deck }, { status: 201 })
+      }
+
+      if (url.includes('/versions')) {
+        return versionsGate
+      }
+
+      return jsonResponse({ decks: [toSummary(deck)] })
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, rerender } = renderHook(
+      ({ routeDeckId }: { routeDeckId: string | null }) => useDeckPersistence(routeDeckId),
+      { initialProps: { routeDeckId: null as string | null } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    let persistPromise: Promise<StoredDeck | undefined> | undefined
+
+    act(() => {
+      persistPromise = result.current.persistHtml(sampleHtml)
+    })
+
+    await waitFor(() => {
+      expect(result.current.deckId).toBe(deck.id)
+      expect(result.current.isSaving).toBe(true)
+    })
+
+    // Simulate App navigate(`/decks/${deck.id}`) while refreshVersions is in flight.
+    rerender({ routeDeckId: deck.id })
+
+    await act(async () => {
+      resolveVersions?.(versionsResponse(deck.id))
+      await persistPromise
+    })
+
+    expect(result.current.isSaving).toBe(false)
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.deckId).toBe(deck.id)
   })
 
   it('returns the saved deck from persistHtml', async () => {
@@ -246,7 +289,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(null))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -262,8 +305,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('updates an existing deck and tracks dirty state until save completes', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
@@ -285,7 +326,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -315,8 +356,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('starts a new deck without deleting the previous saved deck', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
@@ -325,7 +364,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -338,7 +377,6 @@ describe('useDeckPersistence', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(result.current.hasDeck).toBe(false)
     expect(result.current.decks).toEqual([toSummary(deck)])
-    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
 
   it('selects another saved deck', async () => {
@@ -350,7 +388,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(null))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -364,12 +402,9 @@ describe('useDeckPersistence', () => {
     expect(result.current.deckId).toBe(secondDeck.id)
     expect(result.current.deckTitle).toBe('Roadmap')
     expect(result.current.html).toBe(secondDeck.html)
-    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBe(secondDeck.id)
   })
 
   it('renames the active deck metadata', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const renamedDeck = {
       ...deck,
       title: 'Board plan',
@@ -384,7 +419,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -407,8 +442,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('deletes the active deck explicitly', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ decks: [toSummary(deck)] }))
@@ -418,7 +451,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -434,12 +467,9 @@ describe('useDeckPersistence', () => {
     )
     expect(result.current.hasDeck).toBe(false)
     expect(result.current.decks).toEqual([])
-    expect(getTestLocalStorage().getItem('ark:active-deck-id')).toBeNull()
   })
 
   it('ignores stale version inspect responses when selection changes quickly', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const versionA = {
       id: 'a0000000-0000-4000-8000-000000000001',
       deckId: deck.id,
@@ -478,7 +508,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -506,8 +536,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('patches the active deck without toggling the general save state', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const patchedHtml = sampleHtml.replace('One', 'Patched')
     const patchedDeck = {
       ...deck,
@@ -538,7 +566,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -571,8 +599,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('serializes manual patches before issuing the next request', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     let resolveFirstPatch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
     const firstPatchGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
       resolveFirstPatch = resolve
@@ -615,7 +641,7 @@ describe('useDeckPersistence', () => {
     })
 
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
@@ -645,8 +671,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('does not apply a completed patch after switching decks', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     let resolvePatch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null
     const patchGate = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
       resolvePatch = resolve
@@ -689,7 +713,7 @@ describe('useDeckPersistence', () => {
     })
 
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => expect(result.current.deckId).toBe(deck.id))
 
@@ -731,8 +755,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('forwards provenance on restoreHtmlSnapshot PUT requests', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const restoredHtml = sampleHtml.replace('One', 'Restored')
     const restoredDeck = {
       ...deck,
@@ -751,7 +773,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -786,8 +808,6 @@ describe('useDeckPersistence', () => {
   })
 
   it('keeps restoreHtmlSnapshot source locked to manual when options override it', async () => {
-    getTestLocalStorage().setItem('ark:active-deck-id', deck.id)
-
     const restoredHtml = sampleHtml.replace('One', 'Locked')
     const restoredDeck = {
       ...deck,
@@ -806,7 +826,7 @@ describe('useDeckPersistence', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence())
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)

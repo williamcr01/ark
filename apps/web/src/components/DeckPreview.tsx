@@ -82,6 +82,7 @@ export type DeckPreviewProps = {
   chromeHost?: HTMLElement | null
   editorBridgeEnabled?: boolean
   isTextEditSaving?: boolean
+  initialSlideIndex?: number
   canUndo?: boolean
   canRedo?: boolean
   undoSlideIndex?: number | null
@@ -117,6 +118,7 @@ export function DeckPreview({
   chromeHost = null,
   editorBridgeEnabled = false,
   isTextEditSaving = false,
+  initialSlideIndex = 0,
   canUndo = false,
   canRedo = false,
   undoSlideIndex = null,
@@ -282,6 +284,7 @@ export function DeckPreview({
     bridgeEnabled,
     {
       runtimeMode,
+      initialSlideIndex,
       keyboardMode: previewCompromised ? 'off' : isPresentOpen ? 'present' : 'preview',
       shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,

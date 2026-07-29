@@ -127,6 +127,7 @@ export function useDeckSlideNavigation(
     clampSlideIndex(initialSlideIndex, slideCount),
   )
   const prevHtmlRef = useRef(html)
+  const appliedInitialSlideRef = useRef(html.length > 0)
   const activeSlideIndexRef = useRef(activeSlideIndex)
   const iframeGenerationRef = useRef(0)
   const canPostToFrameRef = useRef(canPostToFrame)
@@ -172,8 +173,25 @@ export function useDeckSlideNavigation(
       return
     }
 
+    const previousHtml = prevHtmlRef.current
     prevHtmlRef.current = html
-    commitSlideIndex(initialSlideIndex)
+
+    if (!html) {
+      // Cleared deck (e.g. /decks/new) — allow the next load to deep-link again.
+      appliedInitialSlideRef.current = false
+      commitSlideIndex(0)
+      return
+    }
+
+    // DeckPreview mounts empty while the route deck loads. Apply ?slide= on the
+    // first empty→content transition; later HTML edits reset to slide 0.
+    if (!previousHtml && !appliedInitialSlideRef.current) {
+      appliedInitialSlideRef.current = true
+      commitSlideIndex(initialSlideIndex)
+      return
+    }
+
+    commitSlideIndex(0)
   }, [commitSlideIndex, html, initialSlideIndex])
 
   const goToSlide = useCallback(

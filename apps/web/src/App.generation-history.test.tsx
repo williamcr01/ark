@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DeckEditHistoryEntry } from '@/hooks/useDeckEditHistory'
+import { renderWithRouter } from '@/test/render-with-router'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const persistenceState = vi.hoisted(() => ({
@@ -194,7 +195,7 @@ describe('App generation / deck-switch edit history boundaries', () => {
   })
 
   it('resets manual undo history when AI generation succeeds', async () => {
-    render(<App />)
+    renderWithRouter(<App />)
 
     await waitFor(() => {
       expect(historyCapture.current).not.toBeNull()
@@ -222,7 +223,7 @@ describe('App generation / deck-switch edit history boundaries', () => {
   })
 
   it('resets manual undo history when the active deck changes', async () => {
-    const { rerender } = render(<App />)
+    const { rerender } = renderWithRouter(<App />)
 
     await waitFor(() => {
       expect(historyCapture.current).not.toBeNull()

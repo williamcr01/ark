@@ -445,7 +445,19 @@ export function createGenerationJobRunner({
         }
 
         if (agentResult.changed === false) {
-          const succeededJob = await jobStore.updateJob(jobId, {
+          // Persist chat before marking the job terminal so clients (and tests)
+          // that poll job status then read chat never observe a succeeded job
+          // without its assistant turn.
+          await persistTerminalAssistantMessage(refreshed, {
+            status: 'succeeded',
+            steps: agentResult.steps,
+            transcriptParts: agentResult.transcriptParts,
+            assistantText: agentResult.assistantText,
+            deckId: existingDeck.id,
+            deckVersionId: existingDeck.activeVersionId ?? null,
+          })
+
+          await jobStore.updateJob(jobId, {
             status: 'succeeded',
             deckId: existingDeck.id,
             progress: {
@@ -470,17 +482,6 @@ export function createGenerationJobRunner({
             stepCount: agentResult.steps.length,
             tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
           })
-
-          if (succeededJob) {
-            await persistTerminalAssistantMessage(succeededJob, {
-              status: 'succeeded',
-              steps: agentResult.steps,
-              transcriptParts: agentResult.transcriptParts,
-              assistantText: agentResult.assistantText,
-              deckId: existingDeck.id,
-              deckVersionId: existingDeck.activeVersionId ?? null,
-            })
-          }
 
           return
         }
@@ -526,7 +527,6 @@ export function createGenerationJobRunner({
         }
 
         const succeededJob = await jobStore.updateJob(jobId, {
-          status: 'succeeded',
           deckId: updatedDeck.id,
           progress: {
             steps: agentResult.steps,
@@ -541,13 +541,6 @@ export function createGenerationJobRunner({
             assistantText: agentResult.assistantText,
           },
           observability,
-          completedAt: now().toISOString(),
-        })
-
-        jobLogger.info('generation.job.succeeded', {
-          durationMs: observability.durationMs,
-          stepCount: agentResult.steps.length,
-          tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
         })
 
         if (succeededJob) {
@@ -560,6 +553,17 @@ export function createGenerationJobRunner({
             deckVersionId: updatedDeck.activeVersionId ?? null,
           })
         }
+
+        await jobStore.updateJob(jobId, {
+          status: 'succeeded',
+          completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.succeeded', {
+          durationMs: observability.durationMs,
+          stepCount: agentResult.steps.length,
+          tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+        })
 
         notifyVersionPersisted(updatedDeck.id, updatedDeck.activeVersionId)
 

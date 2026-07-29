@@ -1,6 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { renderWithRouter } from '@/test/render-with-router'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const restoreHtmlSnapshot = vi.hoisted(() =>
@@ -224,7 +226,7 @@ describe('App undo/redo version provenance', () => {
 
   it('sends undo provenance on the restore PUT options', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderWithRouter(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Undo' }))
 
@@ -243,7 +245,7 @@ describe('App undo/redo version provenance', () => {
 
   it('sends redo provenance on the restore PUT options', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderWithRouter(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Redo' }))
 
@@ -271,7 +273,7 @@ describe('App undo/redo version provenance', () => {
         patch: { changedSlideIndexes: [0], changedElementIds: ['ark-el-2'] },
       })
     const user = userEvent.setup()
-    render(<App />)
+    renderWithRouter(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Drag then duplicate' }))
     await waitFor(() => expect(historyState.record).toHaveBeenCalledTimes(2))

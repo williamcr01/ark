@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import {
   ChevronDownIcon,
   HistoryIcon,
@@ -564,10 +565,19 @@ export function AppTitleBar({
         type="file"
       />
       <div className="flex min-w-0 items-center gap-2 px-1">
-        <PresentationIcon aria-hidden className="size-4 shrink-0 text-[var(--ark-focus)]" />
-        <span className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight">
+        <Link
+          aria-label="All decks"
+          className="inline-flex shrink-0 items-center rounded-sm text-[var(--ark-focus)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          to="/decks"
+        >
+          <PresentationIcon aria-hidden className="size-4" />
+        </Link>
+        <Link
+          className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          to="/decks"
+        >
           Ark
-        </span>
+        </Link>
         <span aria-hidden className="text-muted-foreground">
           /
         </span>

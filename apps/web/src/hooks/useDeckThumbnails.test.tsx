@@ -101,6 +101,42 @@ describe('useDeckThumbnails', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('waitMs=5000')
   })
 
+  it('repolls pending waitMs=0 thumbnails on a 1s interval instead of 50ms', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'pending', slides: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderHook(() =>
+      useDeckThumbnails(
+        'b0000000-0000-4000-8000-000000000001',
+        'a0000000-0000-4000-8000-000000000001',
+        1,
+        { waitMs: 0 },
+      ),
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('waitMs=0')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('aborts an in-flight long-poll when the version changes', async () => {
     const signals: AbortSignal[] = []
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
