@@ -21,6 +21,7 @@ export function toChatApiMessage(message: {
   content: string
   parts?: AppendChatMessageRequest['parts']
   attachments?: AppendChatMessageRequest['attachments']
+  context?: AppendChatMessageRequest['context']
   generationJobId?: string | null
   generationStatus?: string | null
   model?: string | null
@@ -36,6 +37,7 @@ export function toChatApiMessage(message: {
     content: message.content,
     ...(message.parts?.length ? { parts: message.parts } : {}),
     ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+    ...(message.context ? { context: message.context } : {}),
     generationJobId: message.generationJobId ?? null,
     generationStatus: message.generationStatus ?? null,
     model: message.model ?? null,

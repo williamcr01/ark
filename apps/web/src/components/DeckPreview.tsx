@@ -1,4 +1,12 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MutableRefObject,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { WandSparklesIcon } from 'lucide-react'
 
@@ -79,11 +87,17 @@ export type DeckPreviewProps = {
   canRedo?: boolean
   undoSlideIndex?: number | null
   redoSlideIndex?: number | null
+  /** Zero-based slide indexes currently attached as chat context. */
+  contextSlideIndexes?: number[]
+  /** Ref filled with the bridge clear-selection function for chat context chips. */
+  clearEditorSelectionRef?: MutableRefObject<(() => boolean) | null>
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<DeckPreviewPatchResult | undefined>
   /** Reports the current editor selection to the shell (issue #83); null when edit chrome is inactive. */
   onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
+  /** Toggle a slide as chat context without changing the active slide. */
+  onToggleContextSlide?: (index: number) => void
   onPatchEditorOperations?: (
     operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
     activeSlideIndex: number,
@@ -109,10 +123,13 @@ export function DeckPreview({
   canRedo = false,
   undoSlideIndex = null,
   redoSlideIndex = null,
+  contextSlideIndexes,
+  clearEditorSelectionRef,
   onUndo,
   onRedo,
   onCommitTextEdit,
   onEditorSelectionChange,
+  onToggleContextSlide,
   onPatchEditorOperations,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -539,6 +556,24 @@ export function DeckPreview({
   }, [editChromeActive, onEditorSelectionChange, selection])
 
   useEffect(() => {
+    if (!clearEditorSelectionRef) {
+      return
+    }
+
+    // Only expose clear while the editor bridge can actually clear selection.
+    // When inactive, leave the ref null so App falls back to local state clear.
+    if (editorBridgeActive && bridgeEnabled) {
+      clearEditorSelectionRef.current = clearSelection
+    } else {
+      clearEditorSelectionRef.current = null
+    }
+
+    return () => {
+      clearEditorSelectionRef.current = null
+    }
+  }, [bridgeEnabled, clearEditorSelectionRef, clearSelection, editorBridgeActive])
+
+  useEffect(() => {
     if (isPresentOpen || pendingPresentExitIndexRef.current === null) {
       return
     }
@@ -639,9 +674,11 @@ export function DeckPreview({
           <SlideThumbnailStrip
             activeIndex={activeSlideIndex}
             contentEnabled={mainPreviewReady}
+            contextSlideIndexes={contextSlideIndexes}
             id="ark-slide-strip"
             isOpen={isStripOpen}
             onSelect={goToSlide}
+            onToggleContextSlide={onToggleContextSlide}
             orientation={stripOrientation}
             parsedDeck={stripParsedDeck}
             thumbnailUrls={deferredThumbnailUrls}

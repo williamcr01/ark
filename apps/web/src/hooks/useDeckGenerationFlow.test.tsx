@@ -298,13 +298,27 @@ describe('useDeckGenerationFlow', () => {
       elementKind: 'text',
       managed: true,
     }
+    const slideContexts = [{ slideIndex: 2, title: 'Market' }]
 
     await act(async () => {
-      await result.current.generateDeck('make this punchier', [], { editorSelection })
+      await result.current.generateDeck('make this punchier', [], {
+        editorSelection,
+        slideContexts,
+      })
     })
 
     expect(startGenerationJobMock).toHaveBeenCalledTimes(1)
-    expect(startGenerationJobMock.mock.calls[0]?.[0]).toMatchObject({ editorSelection })
+    expect(startGenerationJobMock.mock.calls[0]?.[0]).toMatchObject({
+      editorSelection,
+      slideContexts,
+    })
+    expect(harness.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'user',
+        content: 'make this punchier',
+        context: { editorSelection, slideContexts },
+      }),
+    )
   })
 
   it('omits editor selection when none is provided', async () => {

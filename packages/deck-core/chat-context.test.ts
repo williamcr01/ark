@@ -84,6 +84,27 @@ describe('agent context assembly', () => {
     expect(context.modelMessages.at(-1)?.content).toContain('Retry previous request')
   })
 
+  it('injects slide contexts into the latest user turn only', () => {
+    const messages: ApiChatMessage[] = [
+      { role: 'user', content: 'Earlier turn' },
+      { role: 'assistant', content: 'Ok' },
+      { role: 'user', content: 'Update this slide' },
+    ]
+    const context = assembleDeckAgentContext({
+      messages,
+      currentHtml: '<html></html>',
+      slideContexts: [{ slideIndex: 3, title: 'Pricing' }],
+    })
+    const last = context.modelMessages.at(-1)
+    expect(typeof last?.content).toBe('string')
+    expect(last?.content).toContain('Update this slide')
+    expect(last?.content).toContain('slide 3 ("Pricing")')
+    const earlier = context.modelMessages.find(
+      (message) => message.role === 'user' && message.content === 'Earlier turn',
+    )
+    expect(earlier).toBeTruthy()
+  })
+
   it('keeps durable input intact while enforcing the default model ceiling', () => {
     const parts = [
       ...toolStep(0, 'call-0', 'old'),

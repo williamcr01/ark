@@ -260,6 +260,7 @@ export function createGenerationJobRunner({
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
         editorSelection: currentJob.request.editorSelection,
+        slideContexts: currentJob.request.slideContexts,
         reasoningEffort: currentJob.request.reasoningEffort,
         abortSignal: abortController.signal,
         logger: jobLogger,
@@ -859,6 +860,9 @@ export function createGenerationJobRunner({
         baseVersionId,
         editingExistingDeck: Boolean(deckId && currentHtml.trim()),
         ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
+        ...(body.slideContexts && body.slideContexts.length > 0
+          ? { slideContexts: body.slideContexts }
+          : {}),
         ...(resolvedEffort.effort ? { reasoningEffort: resolvedEffort.effort } : {}),
       },
     }

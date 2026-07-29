@@ -1,4 +1,4 @@
-import type { ChatAttachment, ChatMessagePart } from './chat.ts'
+import type { ChatAttachment, ChatMessageContext, ChatMessagePart } from './chat.ts'
 
 export type ChatThreadStatus = 'active' | 'archived'
 
@@ -15,6 +15,7 @@ export function persistedMessageToChatMessage(message: {
   content: string
   attachments?: ChatAttachment[]
   parts?: ChatMessagePart[]
+  context?: ChatMessageContext
 }) {
   return {
     id: message.id,
@@ -22,5 +23,6 @@ export function persistedMessageToChatMessage(message: {
     content: message.content,
     ...(message.attachments?.length ? { attachments: message.attachments } : {}),
     ...(message.parts?.length ? { parts: message.parts } : {}),
+    ...(message.role === 'user' && message.context ? { context: message.context } : {}),
   }
 }

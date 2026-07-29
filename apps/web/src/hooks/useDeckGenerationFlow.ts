@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 
 import { toast } from 'sonner'
 
-import type { ChatAttachment, ChatMessage, EditorSelectionContext } from '@ark/deck-core/chat.ts'
+import type {
+  ChatAttachment,
+  ChatMessage,
+  EditorSelectionContext,
+  SlideContext,
+} from '@ark/deck-core/chat.ts'
 import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
 import {
   formatModelGenerationFailure,
@@ -254,7 +259,11 @@ export function useDeckGenerationFlow({
     async (
       rawPrompt: string,
       attachments: ChatAttachment[] = [],
-      options: { assetIds?: string[]; editorSelection?: EditorSelectionContext } = {},
+      options: {
+        assetIds?: string[]
+        editorSelection?: EditorSelectionContext
+        slideContexts?: SlideContext[]
+      } = {},
     ) => {
       const prompt =
         rawPrompt.trim() ||
@@ -268,11 +277,19 @@ export function useDeckGenerationFlow({
       setModelFailure(false)
       setGenerationError('')
       onGenerationStart?.()
+      const messageContext =
+        options.editorSelection || options.slideContexts?.length
+          ? {
+              ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
+              ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
+            }
+          : undefined
       const userMessage: ChatMessage = {
         id: newId(),
         role: 'user',
         content: rawPrompt.trim(),
         ...(attachments.length > 0 ? { attachments } : {}),
+        ...(messageContext ? { context: messageContext } : {}),
       }
       const nextMessages: ChatMessage[] = [...messages, userMessage]
 

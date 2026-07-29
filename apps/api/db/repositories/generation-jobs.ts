@@ -74,6 +74,9 @@ function readRequestMetadata(metadata: Record<string, unknown> | null): Generati
     ...(metadata?.editorSelection && typeof metadata.editorSelection === 'object'
       ? { editorSelection: metadata.editorSelection as GenerationJobRequest['editorSelection'] }
       : {}),
+    ...(Array.isArray(metadata?.slideContexts)
+      ? { slideContexts: metadata.slideContexts as GenerationJobRequest['slideContexts'] }
+      : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }
@@ -206,6 +209,7 @@ export function createPostgresGenerationJobStore(
       baseVersionId: input.baseVersionId ?? request.baseVersionId ?? null,
       editingExistingDeck: request.editingExistingDeck ?? false,
       ...(request.editorSelection ? { editorSelection: request.editorSelection } : {}),
+      ...(request.slideContexts?.length ? { slideContexts: request.slideContexts } : {}),
       ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
       retryOfJobId: input.retryOfJobId ?? null,
       assetIds: input.assetIds ?? [],
@@ -321,6 +325,9 @@ export function createPostgresGenerationJobStore(
       ...(existing.request.editorSelection
         ? { editorSelection: existing.request.editorSelection }
         : {}),
+      ...(existing.request.slideContexts?.length
+        ? { slideContexts: existing.request.slideContexts }
+        : {}),
       ...(existing.request.reasoningEffort
         ? { reasoningEffort: existing.request.reasoningEffort }
         : {}),
@@ -431,6 +438,9 @@ export function createPostgresGenerationJobStore(
       editingExistingDeck: existing.request.editingExistingDeck ?? false,
       ...(existing.request.editorSelection
         ? { editorSelection: existing.request.editorSelection }
+        : {}),
+      ...(existing.request.slideContexts?.length
+        ? { slideContexts: existing.request.slideContexts }
         : {}),
       ...(existing.request.reasoningEffort
         ? { reasoningEffort: existing.request.reasoningEffort }

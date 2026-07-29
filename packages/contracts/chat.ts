@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { deckIdSchema, withRequestId } from './common.ts'
+import { chatMessageContextSchema } from './agent-context.ts'
 import {
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_TOOL_VALUE_BYTES,
@@ -118,6 +119,8 @@ export const apiChatMessageSchema = z.discriminatedUnion('role', [
     role: z.literal('user'),
     content: z.string(),
     attachments: z.array(chatAttachmentSchema).optional(),
+    /** Composer/history context chips; display-only for prior turns. */
+    context: chatMessageContextSchema.optional(),
   }),
   z.object({
     id: z.string().optional(),
@@ -139,6 +142,7 @@ export const persistedChatMessageSchema = z.object({
   content: z.string(),
   parts: assistantPartsSchema.optional(),
   attachments: z.array(chatAttachmentSchema).optional(),
+  context: chatMessageContextSchema.optional(),
   generationJobId: z.string().nullable().optional(),
   generationStatus: z.string().nullable().optional(),
   model: z.string().nullable().optional(),
@@ -155,6 +159,7 @@ export const appendChatMessageRequestSchema = z
     content: z.string(),
     parts: assistantPartsSchema.optional(),
     attachments: z.array(chatAttachmentSchema).optional(),
+    context: chatMessageContextSchema.optional(),
     deckVersionId: deckIdSchema.nullable().optional(),
     generationJobId: z.string().nullable().optional(),
     generationStatus: z.string().nullable().optional(),
@@ -169,6 +174,14 @@ export const appendChatMessageRequestSchema = z
         code: 'custom',
         message: parsedAttachments.error,
         path: ['attachments'],
+      })
+    }
+
+    if (value.context && value.role !== 'user') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Only user messages may include context.',
+        path: ['context'],
       })
     }
   })

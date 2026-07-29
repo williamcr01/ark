@@ -283,6 +283,7 @@ export function useChatSession({
           content: message.content,
           parts: message.parts,
           attachments: message.attachments,
+          context: message.context,
           deckVersionId,
         })
         markDeliveryStatus(message.id, 'saved')

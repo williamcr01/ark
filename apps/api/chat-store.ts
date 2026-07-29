@@ -286,6 +286,7 @@ export function createChatStore(dataDir = DEFAULT_DATA_DIR): ChatStore {
         content: input.content,
         parts: input.parts,
         attachments: input.attachments,
+        ...(input.context ? { context: input.context } : {}),
         generationJobId: input.generationJobId ?? null,
         generationStatus: input.generationStatus ?? null,
         model: input.model ?? null,
