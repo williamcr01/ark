@@ -31,7 +31,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppearance, type AppearancePreference } from '@/hooks/useAppearance'
-import { createDeck, listDecks, type DeckSummary } from '@/lib/deck-api'
+import {
+  createDeck,
+  deleteDeck,
+  listDecks,
+  renameDeck,
+  type DeckSummary,
+} from '@/lib/deck-api'
 import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck-io'
 
 function DeckCardSkeleton() {
@@ -140,6 +146,29 @@ export function DecksDashboard() {
     fileInputRef.current?.click()
   }, [])
 
+  const handleRenameDeck = useCallback(async (deck: DeckSummary, title: string) => {
+    try {
+      const updated = await renameDeck(deck.id, title)
+      setDecks((current) =>
+        current.map((entry) => (entry.id === updated.id ? { ...entry, ...updated } : entry)),
+      )
+      toast.success('Deck renamed')
+    } catch {
+      toast.error('Could not rename deck')
+      throw new Error('Could not rename deck')
+    }
+  }, [])
+
+  const handleDeleteDeck = useCallback(async (deck: DeckSummary) => {
+    try {
+      await deleteDeck(deck.id)
+      setDecks((current) => current.filter((entry) => entry.id !== deck.id))
+      toast.success('Deck deleted')
+    } catch {
+      toast.error('Could not delete deck')
+    }
+  }, [])
+
   const handleHtmlUpload = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.currentTarget.files?.[0]
@@ -183,7 +212,7 @@ export function DecksDashboard() {
 
   return (
     <TooltipProvider>
-      <div className="flex min-h-svh flex-col bg-[var(--ark-canvas)] text-foreground">
+      <div className="flex h-svh flex-col overflow-y-auto bg-[var(--ark-canvas)] text-foreground">
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-[var(--ark-panel-raised)] px-4">
           <input
             accept=".html,.htm,text/html"
@@ -263,7 +292,12 @@ export function DecksDashboard() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {decks.map((deck) => (
-                <DeckCard deck={deck} key={deck.id} />
+                <DeckCard
+                  deck={deck}
+                  key={deck.id}
+                  onDelete={handleDeleteDeck}
+                  onRename={handleRenameDeck}
+                />
               ))}
             </div>
           )}

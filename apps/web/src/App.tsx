@@ -115,7 +115,6 @@ function App() {
     isPatching: isDeckPatching,
     deckId,
     deckTitle,
-    decks,
     deleteActiveDeck,
     patchDeckOperations,
     persistHtml,
@@ -126,7 +125,6 @@ function App() {
     restoreHtmlSnapshot,
     rollbackToVersion,
     saveError,
-    selectDeck,
     startNewDeck,
     versionNumber,
     versions,
@@ -408,7 +406,6 @@ function App() {
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
   const {
-    handleDeleteDeck: deleteDeckAction,
     handleDownload,
     handleHtmlUpload,
     handleNewDeck: newDeckAction,
@@ -422,7 +419,6 @@ function App() {
       html: generatedHtml,
       persistHtml,
       rollbackToVersion,
-      selectDeck,
       startNewDeck,
       renameActiveDeck,
       deleteActiveDeck,
@@ -441,20 +437,6 @@ function App() {
     newDeckAction()
     navigate('/decks/new')
   }, [navigate, newDeckAction])
-
-  const handleSelectDeck = useCallback(
-    (nextDeckId: string) => {
-      navigate(`/decks/${nextDeckId}`)
-      setInput('')
-      setError('')
-    },
-    [navigate],
-  )
-
-  const handleDeleteDeck = useCallback(async () => {
-    await deleteDeckAction()
-    navigate('/decks')
-  }, [deleteDeckAction, navigate])
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
     const selectedDeckAttachments: ChatAttachment[] = deckId
@@ -758,7 +740,6 @@ function App() {
           activeVersionId={activeVersionId}
           deckTitle={deckTitle}
           deckSaveStatus={deckSaveStatus}
-          decks={decks}
           fileInputRef={fileInputRef}
           hasDeck={hasDeck}
           hasSlides={hasSlides}
@@ -769,7 +750,6 @@ function App() {
           appearancePreference={preference}
           resolvedAppearance={resolvedAppearance}
           onClearVersionPreview={clearVersionPreview}
-          onDeleteDeck={handleDeleteDeck}
           onDownload={handleDownload}
           onHtmlUpload={handleHtmlUpload}
           onInspectVersion={inspectVersion}
@@ -777,7 +757,6 @@ function App() {
           onRefreshVersions={() => (deckId ? refreshVersions(deckId) : Promise.resolve([]))}
           onRenameDeck={handleRenameDeck}
           onRollbackVersion={handleRollbackVersion}
-          onSelectDeck={handleSelectDeck}
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onAppearanceChange={setPreference}

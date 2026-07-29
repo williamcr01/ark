@@ -34,7 +34,6 @@ function createDeckActionsOptions(
         html: '<html></html>',
         persistHtml: vi.fn(),
         rollbackToVersion: vi.fn(),
-        selectDeck: vi.fn(),
         startNewDeck,
         renameActiveDeck: vi.fn(),
         deleteActiveDeck,
