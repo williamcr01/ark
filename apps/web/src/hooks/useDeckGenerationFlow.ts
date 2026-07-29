@@ -166,6 +166,17 @@ export function useDeckGenerationFlow({
       setModelFailure(false)
       onGenerationSucceeded?.()
 
+      // Land the assistant turn before deck refresh so the live bubble does not
+      // disappear into an empty gap while the preview/deck id updates.
+      const assistantMessage = buildSucceededAssistantMessage(outcome)
+      setMessages((current) => {
+        if (current.some((message) => message.id === assistantMessage.id)) {
+          return current
+        }
+
+        return [...current, assistantMessage]
+      })
+
       if (outcome.deckChanged) {
         setIsPreviewUpdating(true)
       }
@@ -179,15 +190,6 @@ export function useDeckGenerationFlow({
           setIsPreviewUpdating(false)
         }
       }
-
-      const assistantMessage = buildSucceededAssistantMessage(outcome)
-      setMessages((current) => {
-        if (current.some((message) => message.id === assistantMessage.id)) {
-          return current
-        }
-
-        return [...current, assistantMessage]
-      })
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
@@ -418,6 +420,7 @@ export function useDeckGenerationFlow({
   ])
 
   return {
+    activeJobId: activeJob?.id ?? null,
     activeSteps,
     cancelGeneration: handleCancelGeneration,
     failedJobId: failedJob?.id ?? null,

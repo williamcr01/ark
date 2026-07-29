@@ -5,9 +5,11 @@ import {
   applyResolvedAssetAttachments,
   buildAssistantMessageContent,
   buildModelMessages,
-  chatAttachmentsToFileParts,
+  chatAttachmentsToModelParts,
   collectAssetIds,
   collectAssetIdsFromMessages,
+  isReadableTextMediaType,
+  MAX_INLINE_TEXT_ATTACHMENT_CHARS,
   parseGenerateMessages,
   MAX_PERSISTED_TOOL_VALUE_BYTES,
   wrapUserPromptForGeneration,
@@ -395,6 +397,35 @@ describe('buildAgentModelMessages', () => {
     expect(content[1]?.text).toContain('attached 1 file')
   })
 
+  it('inlines CSV attachments as text parts for model input', () => {
+    const csv = 'name,value\none,1'
+    const messages = buildAgentModelMessages(
+      [
+        {
+          role: 'user',
+          content: 'Build charts from this',
+          attachments: [
+            {
+              type: 'file',
+              mediaType: 'text/csv',
+              filename: 'data.csv',
+              url: `data:text/csv;base64,${Buffer.from(csv, 'utf8').toString('base64')}`,
+            },
+          ],
+        },
+      ],
+      '',
+    )
+
+    const content = messages[0]?.content as Array<{ type: string; text?: string }>
+    expect(content[0]).toMatchObject({
+      type: 'text',
+      text: `Attached file "data.csv" (text/csv):\n${csv}`,
+    })
+    expect(content[1]?.type).toBe('text')
+    expect(content[1]?.text).toContain('attached 1 file')
+  })
+
   it('injects editor selection context into the latest user turn', () => {
     const messages = buildAgentModelMessages(
       [{ role: 'user', content: 'make this punchier' }],
@@ -445,15 +476,83 @@ describe('buildAgentModelMessages', () => {
   })
 })
 
-describe('chatAttachmentsToFileParts', () => {
-  it('emits file parts only for inline data URLs', () => {
-    const parts = chatAttachmentsToFileParts([
+describe('isReadableTextMediaType', () => {
+  it('accepts text/* and application/json', () => {
+    expect(isReadableTextMediaType('text/csv')).toBe(true)
+    expect(isReadableTextMediaType('text/plain; charset=utf-8')).toBe(true)
+    expect(isReadableTextMediaType('application/json')).toBe(true)
+    expect(isReadableTextMediaType('image/png')).toBe(false)
+    expect(isReadableTextMediaType('application/pdf')).toBe(false)
+  })
+})
+
+describe('chatAttachmentsToModelParts', () => {
+  it('emits file parts for inline image data URLs and skips asset references', () => {
+    const parts = chatAttachmentsToModelParts([
       sampleAttachment,
       { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
     ])
 
     expect(parts).toHaveLength(1)
     expect(parts[0]).toMatchObject({ type: 'file', mediaType: 'image/png' })
+  })
+
+  it('converts CSV and plain-text data URLs into labeled text parts', () => {
+    const csv = 'name,value\none,1'
+    const plain = 'hello world'
+    const parts = chatAttachmentsToModelParts([
+      {
+        type: 'file',
+        mediaType: 'text/csv',
+        filename: 'data.csv',
+        url: `data:text/csv;base64,${Buffer.from(csv, 'utf8').toString('base64')}`,
+      },
+      {
+        type: 'file',
+        mediaType: 'text/plain',
+        filename: 'notes.txt',
+        url: `data:text/plain,${encodeURIComponent(plain)}`,
+      },
+      {
+        type: 'file',
+        mediaType: 'text/csv',
+        filename: 'prior.csv',
+        url: `/api/assets/${ASSET_ID}`,
+        assetId: ASSET_ID,
+      },
+    ])
+
+    expect(parts).toHaveLength(2)
+    expect(parts[0]).toMatchObject({
+      type: 'text',
+      text: `Attached file "data.csv" (text/csv):\n${csv}`,
+    })
+    expect(parts[1]).toMatchObject({
+      type: 'text',
+      text: `Attached file "notes.txt" (text/plain):\n${plain}`,
+    })
+  })
+
+  it('truncates oversized inline text attachments', () => {
+    const body = 'x'.repeat(MAX_INLINE_TEXT_ATTACHMENT_CHARS + 50)
+    const parts = chatAttachmentsToModelParts([
+      {
+        type: 'file',
+        mediaType: 'text/plain',
+        filename: 'big.txt',
+        url: `data:text/plain;base64,${Buffer.from(body, 'utf8').toString('base64')}`,
+      },
+    ])
+
+    expect(parts).toHaveLength(1)
+    expect(parts[0]?.type).toBe('text')
+    const text = (parts[0] as { type: 'text'; text: string }).text
+    expect(text).toContain('Attached file "big.txt" (text/plain):')
+    expect(text).toContain('x'.repeat(MAX_INLINE_TEXT_ATTACHMENT_CHARS))
+    expect(text).toContain(
+      `[Truncated: showing first ${MAX_INLINE_TEXT_ATTACHMENT_CHARS} characters of ${body.length}.]`,
+    )
+    expect(text).not.toContain('x'.repeat(MAX_INLINE_TEXT_ATTACHMENT_CHARS + 1))
   })
 })
 

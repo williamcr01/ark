@@ -32,7 +32,7 @@ const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   video: VideoIcon,
 }
 
-const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory => {
+export const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory => {
   if (data.type === 'source-document') {
     return 'source'
   }
@@ -53,6 +53,15 @@ const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory => {
   }
 
   return 'unknown'
+}
+
+export const getAttachmentLabel = (data: AttachmentData): string => {
+  if (data.type === 'source-document') {
+    return data.title || data.filename || 'Source'
+  }
+
+  const category = getMediaCategory(data)
+  return data.filename || (category === 'image' ? 'Image' : 'Attachment')
 }
 
 const renderAttachmentImage = (url: string, filename: string | undefined, isGrid: boolean) =>
@@ -210,6 +219,32 @@ export const AttachmentPreview = ({
       {...props}
     >
       {renderContent()}
+    </div>
+  )
+}
+
+export type AttachmentInfoProps = HTMLAttributes<HTMLDivElement> & {
+  showMediaType?: boolean
+}
+
+export const AttachmentInfo = ({
+  showMediaType = false,
+  className,
+  ...props
+}: AttachmentInfoProps) => {
+  const { data, variant } = useAttachmentContext()
+  const label = getAttachmentLabel(data)
+
+  if (variant === 'grid') {
+    return null
+  }
+
+  return (
+    <div className={cn('min-w-0 flex-1', className)} {...props}>
+      <span className="block truncate">{label}</span>
+      {showMediaType && data.mediaType ? (
+        <span className="block truncate text-muted-foreground text-xs">{data.mediaType}</span>
+      ) : null}
     </div>
   )
 }
