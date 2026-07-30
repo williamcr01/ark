@@ -1,4 +1,4 @@
-# Theme proposals (new decks)
+# Theme proposals
 
 For a brand-new deck (empty workspace), after any `ask_user` context round and before `write_deck`:
 
@@ -7,4 +7,4 @@ For a brand-new deck (empty workspace), after any `ask_user` context round and b
 3. Vary palette, typography, and layout density so the options feel meaningfully different — not four near-identical tweaks.
 4. Stop and wait. After the user picks a theme, build the full deck with `write_deck` in that direction. Do not re-propose themes unless the user explicitly asks for new options.
 
-Never call `propose_themes` when editing an existing deck.
+For an existing deck, call `propose_themes` only when the user explicitly asks to retheme the whole deck or requests new theme options. Base the samples on the deck's real content. After the user picks, apply that direction consistently across every slide while preserving the deck's content and structure unless they requested broader changes.

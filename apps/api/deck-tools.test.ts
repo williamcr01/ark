@@ -275,8 +275,11 @@ describe('propose_themes tool', () => {
     { id: 'd', name: 'Delta', description: 'Soft', sampleHtml },
   ]
 
-  it('awaits a choice for valid samples on an empty workspace', async () => {
-    const tools = createDeckTools(createDeckWorkspace(''))
+  it.each([
+    ['empty', ''],
+    ['existing', managedDeck],
+  ])('awaits a choice for valid samples on an %s workspace', async (_kind, html) => {
+    const tools = createDeckTools(createDeckWorkspace(html))
     const execute = tools.propose_themes!.execute as unknown as ToolExecute
     await expect(execute({ title: 'Pick a visual direction', themes }, {})).resolves.toMatchObject({
       ok: true,
@@ -284,7 +287,7 @@ describe('propose_themes tool', () => {
     })
   })
 
-  it('rejects invalid sampleHtml and is unavailable on existing decks', async () => {
+  it('rejects invalid sampleHtml', async () => {
     const tools = createDeckTools(createDeckWorkspace(''))
     const execute = tools.propose_themes!.execute as unknown as ToolExecute
     const invalid = themes.map((theme, index) =>
@@ -301,8 +304,5 @@ describe('propose_themes tool', () => {
       ok: false,
       themeId: 'a',
     })
-
-    const existing = createDeckTools(createDeckWorkspace(managedDeck))
-    expect(existing.propose_themes).toBeUndefined()
   })
 })

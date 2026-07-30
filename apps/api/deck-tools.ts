@@ -384,34 +384,30 @@ export function createDeckTools(
         message: `Waiting for answers to ${questions.length} question(s).`,
       }),
     }),
-    ...(!workspace.html.trim()
-      ? {
-          propose_themes: tool({
-            description:
-              'Propose exactly four visually distinct theme directions for a NEW deck as single-slide sample HTML documents. Call after any ask_user context round and before write_deck, then stop and wait for the user to pick one. Do not use when editing an existing deck.',
-            inputSchema: themeProposalRequestSchema,
-            execute: async ({ themes }) => {
-              for (const theme of themes) {
-                const validation = validateDeckHtmlOnServer(theme.sampleHtml, timingOptions)
-                if (!validation.valid) {
-                  const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
-                  return {
-                    ok: false,
-                    error: `Theme "${theme.name}" sampleHtml failed validation: ${primaryIssue?.message ?? 'invalid HTML'}`,
-                    themeId: theme.id,
-                  }
-                }
-              }
-
-              return {
-                ok: true,
-                awaitingUserResponse: true,
-                message: 'Waiting for the user to pick a theme.',
-              }
-            },
-          }),
+    propose_themes: tool({
+      description:
+        'Propose exactly four visually distinct theme directions as single-slide sample HTML documents. Use before creating a new deck, or when the user explicitly asks to retheme the whole existing deck, then stop and wait for the user to pick one.',
+      inputSchema: themeProposalRequestSchema,
+      execute: async ({ themes }) => {
+        for (const theme of themes) {
+          const validation = validateDeckHtmlOnServer(theme.sampleHtml, timingOptions)
+          if (!validation.valid) {
+            const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+            return {
+              ok: false,
+              error: `Theme "${theme.name}" sampleHtml failed validation: ${primaryIssue?.message ?? 'invalid HTML'}`,
+              themeId: theme.id,
+            }
+          }
         }
-      : {}),
+
+        return {
+          ok: true,
+          awaitingUserResponse: true,
+          message: 'Waiting for the user to pick a theme.',
+        }
+      },
+    }),
     ...(attachmentInspector
       ? {
           list_attachments: tool({

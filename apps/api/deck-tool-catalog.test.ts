@@ -43,7 +43,7 @@ describe('deck tool catalog', () => {
     ).toBe('2 question(s)')
   })
 
-  it('offers propose_themes only for empty workspaces and preserves sampleHtml', () => {
+  it('offers propose_themes for empty and existing workspaces and preserves sampleHtml', () => {
     const empty = createActiveDeckTools(createDeckWorkspace(''))
     expect(empty.tools.propose_themes?.description).toContain('four visually distinct')
     const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>${'Theme'.repeat(200)}</h1></section></body></html>`
@@ -70,7 +70,7 @@ describe('deck tool catalog', () => {
         '<!doctype html><html><body><section class="slide">Title</section></body></html>',
       ),
     )
-    expect(existing.tools.propose_themes).toBeUndefined()
+    expect(existing.tools.propose_themes?.description).toContain('retheme the whole existing deck')
   })
 
   it('projects complete deck HTML to a bounded hash marker', () => {

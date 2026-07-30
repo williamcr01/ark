@@ -79,6 +79,7 @@ describe('hasAwaitingUserToolResult', () => {
         steps: [
           {
             toolResults: [
+              undefined,
               {
                 type: 'tool-result',
                 toolCallId: 't1',

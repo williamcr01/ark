@@ -30,12 +30,12 @@ export function hasAwaitingUserToolResult(toolName: string) {
   return ({
     steps,
   }: {
-    steps: Array<{ toolResults: Array<{ toolName: string; output: unknown }> }>
+    steps: Array<{ toolResults: Array<{ toolName: string; output: unknown } | undefined> }>
   }) => {
     const last = steps[steps.length - 1]
     return (
       last?.toolResults.some((result) => {
-        if (result.toolName !== toolName) return false
+        if (!result || result.toolName !== toolName) return false
         const output = result.output
         return (
           !!output &&
@@ -56,8 +56,8 @@ When attachment tools are available, list and read the relevant files before des
 
 Use ask_user when critical context is missing — ask concise questions, then stop. Never re-ask information already present in the conversation.
 - New deck: before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, skip ask_user.
-- After context is clear for a NEW deck (and before write_deck), call propose_themes with exactly 4 lean single-slide title samples in distinct visual directions, then stop. After the user picks a theme, write the full deck in that look. Never re-propose unless asked. Never propose themes when editing an existing deck.
-- Existing deck: ask only when guessing would materially change the result.
+- After context is clear for a NEW deck (and before write_deck), call propose_themes with exactly 4 lean single-slide title samples in distinct visual directions, then stop. After the user picks a theme, write the full deck in that look. Never re-propose unless asked.
+- Existing deck: ask only when guessing would materially change the result. Call propose_themes only when the user explicitly asks to retheme the whole deck or requests new theme options. After they pick, apply that direction consistently across the deck while preserving its content and structure unless they requested broader changes.
 
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
