@@ -437,6 +437,32 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByText('Updating preview')).not.toBeInTheDocument()
   })
 
+  it('keeps the empty stage during new-deck generation instead of a fake slide skeleton', () => {
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      html: '',
+      deckAnalysis: analyzeDeckInBrowser(''),
+    })
+
+    expect(screen.getByText('Set the stage')).toBeVisible()
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          deckAnalysis={analyzeDeckInBrowser('')}
+          html=""
+          isGenerating
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Set the stage')).toBeVisible()
+    expect(screen.getByRole('status')).toHaveTextContent('Building your deck…')
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+  })
+
   it('reports editor selection to the shell while edit chrome is active', () => {
     const onEditorSelectionChange = vi.fn()
 
