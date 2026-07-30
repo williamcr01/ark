@@ -56,6 +56,10 @@ const clearStoredJobId = (deckKey: string) => {
   }
 }
 
+export const clearStoredGenerationJob = (deckId: string | null) => {
+  clearStoredJobId(deckId ?? 'new')
+}
+
 export type GenerationJobOutcome =
   | {
       status: 'succeeded'
