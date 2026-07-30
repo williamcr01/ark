@@ -38,6 +38,7 @@ describe('curated model catalog', () => {
       'openai:gpt-5.6-terra',
       'openai:gpt-5.6-luna',
       'openai:gpt-5.5',
+      'openai:gpt-5.4',
       'openai:gpt-5.4-mini',
       'anthropic:claude-fable-5',
       'anthropic:claude-opus-4-8',
@@ -109,6 +110,8 @@ describe('catalogModelAccessible', () => {
     )
     expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-5.4-mini']))).toBe(true)
     expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-4o']))).toBe(false)
+    expect(catalogModelAccessible('gpt-5.4', new Set(['gpt-5.4-mini']))).toBe(false)
+    expect(catalogModelAccessible('gpt-5.4-mini', new Set(['gpt-5.4']))).toBe(false)
   })
 })
 
