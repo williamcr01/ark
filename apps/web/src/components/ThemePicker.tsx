@@ -50,51 +50,46 @@ export function ThemePicker({
           return (
             <div
               className={cn(
-                'flex flex-col overflow-hidden rounded-lg border text-left transition-colors',
+                'relative flex flex-col overflow-hidden rounded-lg border text-left transition-colors',
                 isSelected
                   ? 'border-foreground/30 bg-muted/70 ring-1 ring-foreground/15'
                   : 'border-border/80 bg-background/40',
-                disabled && 'opacity-50',
+                disabled ? 'opacity-50' : 'hover:border-foreground/20',
               )}
               key={theme.id}
             >
               <button
                 aria-label={`Select ${theme.name}`}
                 aria-pressed={isSelected}
-                className="group relative block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group flex w-full flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={disabled}
                 onClick={() => setSelectedId(theme.id)}
                 onDoubleClick={() => setPreviewId(theme.id)}
                 type="button"
               >
-                <MiniHtmlPreview html={theme.sampleHtml} title={`${theme.name} preview`} />
-                {isSelected ? (
-                  <span className="absolute right-1.5 top-1.5 inline-flex size-5 items-center justify-center rounded-full bg-foreground text-background">
-                    <CheckIcon aria-hidden className="size-3" />
+                <span className="relative block w-full">
+                  <MiniHtmlPreview html={theme.sampleHtml} title={`${theme.name} preview`} />
+                  {isSelected ? (
+                    <span className="absolute right-1.5 top-1.5 inline-flex size-5 items-center justify-center rounded-full bg-foreground text-background">
+                      <CheckIcon aria-hidden className="size-3" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="flex flex-col gap-1 p-2 pb-7">
+                  <span className="text-sm font-medium text-foreground">{theme.name}</span>
+                  <span className="text-muted-foreground line-clamp-2 text-[11px] leading-snug">
+                    {theme.description}
                   </span>
-                ) : null}
+                </span>
               </button>
-              <div className="flex flex-col gap-1 p-2">
-                <button
-                  className="text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none"
-                  disabled={disabled}
-                  onClick={() => setSelectedId(theme.id)}
-                  type="button"
-                >
-                  {theme.name}
-                </button>
-                <p className="text-muted-foreground line-clamp-2 text-[11px] leading-snug">
-                  {theme.description}
-                </p>
-                <button
-                  className="text-muted-foreground w-fit text-[11px] underline-offset-2 hover:underline"
-                  disabled={disabled}
-                  onClick={() => setPreviewId(theme.id)}
-                  type="button"
-                >
-                  Enlarge
-                </button>
-              </div>
+              <button
+                className="text-muted-foreground absolute bottom-2 left-2 z-10 w-fit text-[11px] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={disabled}
+                onClick={() => setPreviewId(theme.id)}
+                type="button"
+              >
+                Enlarge
+              </button>
             </div>
           )
         })}
