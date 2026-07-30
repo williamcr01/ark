@@ -61,6 +61,7 @@ export type GenerationJobOutcome =
       status: 'succeeded'
       job: GenerationJobApi
       deckChanged: boolean
+      awaitingUserResponse: boolean
       assistantParts: ReturnType<typeof agentStepsToChatParts>
       assistantContent: string
     }
@@ -136,19 +137,29 @@ export function useGenerationJob({
 
   const buildOutcome = useCallback(
     (job: GenerationJobApi): GenerationJobOutcome => {
-      if (job.status === 'succeeded' && job.result) {
-        const steps = job.progress.steps
+      const steps = job.progress.steps
+      const awaitingUserResponse = steps.some(
+        (step) => step.type === 'tool-call' && step.toolName === 'ask_user',
+      )
+
+      if (job.status === 'succeeded' && (job.result || awaitingUserResponse)) {
+        const assistantText = job.result?.assistantText ?? job.progress.assistantText ?? ''
         const assistantContent = buildAssistantMessageContent(
-          job.result.assistantText,
+          assistantText,
           steps,
           job.editingExistingDeck ?? false,
         )
+        const transcriptParts = job.progress.transcriptParts
 
         return {
           status: 'succeeded',
           job,
-          deckChanged: Boolean(job.result.versionId) && job.result.versionId !== baseVersionId,
-          assistantParts: agentStepsToChatParts(steps),
+          deckChanged: Boolean(job.result?.versionId && job.result.versionId !== baseVersionId),
+          awaitingUserResponse,
+          assistantParts:
+            transcriptParts && transcriptParts.length > 0
+              ? transcriptParts
+              : agentStepsToChatParts(steps),
           assistantContent,
         }
       }
