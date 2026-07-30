@@ -692,6 +692,9 @@ function App() {
       onInputChange={setInput}
       onModelSelect={handleModelSelect}
       onPromptSubmit={handlePromptSubmit}
+      onQuestionSubmit={(content) => {
+        void generateDeck(content)
+      }}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}
       reducedMotion={reducedMotion}

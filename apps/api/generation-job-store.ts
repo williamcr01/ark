@@ -108,6 +108,9 @@ function parseStoredJob(parsed: unknown): StoredGenerationJobFile | null {
       stepCount: record.progress.stepCount,
       assistantText:
         typeof record.progress.assistantText === 'string' ? record.progress.assistantText : null,
+      ...(Array.isArray(record.progress.transcriptParts)
+        ? { transcriptParts: record.progress.transcriptParts }
+        : {}),
     },
     result: record.result ?? null,
     error: record.error ?? null,

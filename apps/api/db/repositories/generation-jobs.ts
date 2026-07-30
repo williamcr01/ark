@@ -94,6 +94,13 @@ function readProgressMetadata(metadata: Record<string, unknown> | null): Generat
     steps: Array.isArray(record.steps) ? (record.steps as GenerationJobProgress['steps']) : [],
     stepCount: typeof record.stepCount === 'number' ? record.stepCount : 0,
     assistantText: typeof record.assistantText === 'string' ? record.assistantText : null,
+    ...(Array.isArray(record.transcriptParts)
+      ? {
+          transcriptParts: record.transcriptParts as NonNullable<
+            GenerationJobProgress['transcriptParts']
+          >,
+        }
+      : {}),
   }
 }
 

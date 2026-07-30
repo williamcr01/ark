@@ -26,6 +26,23 @@ describe('deck tool catalog', () => {
     )
   })
 
+  it('offers structured user questions for new and existing decks', () => {
+    const empty = createActiveDeckTools(createDeckWorkspace(''))
+    expect(empty.tools.ask_user?.description).toContain('single choice')
+
+    const existing = createActiveDeckTools(
+      createDeckWorkspace(
+        '<!doctype html><html><body><section class="slide">Title</section></body></html>',
+      ),
+    )
+    expect(existing.tools.ask_user?.description).toContain('single choice')
+    expect(
+      existing.activeDefinitions
+        .find(({ name }) => name === 'ask_user')
+        ?.summarizeInput({ questions: [{}, {}] }),
+    ).toBe('2 question(s)')
+  })
+
   it('projects complete deck HTML to a bounded hash marker', () => {
     const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
     const writeDeck = activeDefinitions.find(({ name }) => name === 'write_deck')!

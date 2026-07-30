@@ -83,6 +83,8 @@ export function capTranscriptValue(value: JsonValue): JsonValue {
 
 const summarizeInput = (toolName: string, input: unknown) => {
   const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
+  if (toolName === 'ask_user')
+    return `${Array.isArray(record.questions) ? record.questions.length : 0} question(s)`
   if (toolName === 'read_deck')
     return typeof record.slideIndex === 'number'
       ? `slide ${record.slideIndex}`
@@ -102,6 +104,7 @@ const summarizeOutput = (toolName: string, output: unknown) => {
   if (typeof record.error === 'string') return record.error
   if (typeof record.message === 'string') return record.message
   if (typeof record.summary === 'string') return record.summary
+  if (toolName === 'ask_user') return 'Waiting for user answers'
   if (toolName === 'list_versions')
     return `${typeof record.versionCount === 'number' ? record.versionCount : 0} version(s)`
   if (toolName === 'read_deck')
@@ -245,6 +248,10 @@ const metadata = {
     mutating: false,
     snippet: 'read_attachment({ id, offset, limit })',
   },
+  ask_user: {
+    mutating: false,
+    snippet: 'ask_user({ title, description, questions })',
+  },
 } as const
 
 const transcriptProjectors = {
@@ -287,6 +294,10 @@ const transcriptProjectors = {
   read_attachment: {
     input: (value: unknown) => projectReadOnly('read_attachment', value),
     output: (value: unknown) => projectReadOnly('read_attachment', value),
+  },
+  ask_user: {
+    input: (value: unknown) => projectReadOnly('ask_user', value),
+    output: (value: unknown) => projectReadOnly('ask_user', value),
   },
 } satisfies Record<
   keyof typeof metadata,

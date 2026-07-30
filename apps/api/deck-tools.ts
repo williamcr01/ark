@@ -1,6 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
+import { agentQuestionRequestSchema } from '@ark/deck-core/agent-questions.ts'
 import { applyDeckEdits } from './deck-edit.ts'
 import {
   deckElementPatchOperationSchema,
@@ -372,6 +373,16 @@ export function createDeckTools(
 
   return {
     ...baseTools,
+    ask_user: tool({
+      description:
+        'Ask the user up to five concise questions when critical context is missing. Supports single choice, multiple choice, and free text. Call this instead of guessing, then stop and wait for the next user message.',
+      inputSchema: agentQuestionRequestSchema,
+      execute: async ({ questions }) => ({
+        ok: true,
+        awaitingUserResponse: true,
+        message: `Waiting for answers to ${questions.length} question(s).`,
+      }),
+    }),
     ...(attachmentInspector
       ? {
           list_attachments: tool({
