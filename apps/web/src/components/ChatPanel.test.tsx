@@ -217,12 +217,73 @@ describe('ChatPanel submit control', () => {
 
     expect(screen.getByText('Pick a visual direction')).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Pick a theme above/i)).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Midnight Editorial' }))
+    await user.click(screen.getByRole('button', { name: 'Select Midnight Editorial' }))
     await user.click(screen.getByRole('button', { name: /Use this theme: Midnight Editorial/i }))
 
     expect(onQuestionSubmit).toHaveBeenCalledWith(
       expect.stringContaining('Midnight Editorial (id: midnight)'),
     )
+  })
+
+  it('keeps the composer active ring while the theme picker is pending', () => {
+    const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          isGenerating={false}
+          messages={[
+            { id: 'u1', role: 'user', content: 'Build a product launch deck' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'Pick a direction',
+              parts: [
+                {
+                  type: 'tool-call',
+                  toolName: 'propose_themes',
+                  summary: '4 theme(s)',
+                  input: {
+                    title: 'Pick a visual direction',
+                    themes: [
+                      {
+                        id: 'midnight',
+                        name: 'Midnight Editorial',
+                        description: 'Dark and sharp',
+                        sampleHtml,
+                      },
+                      {
+                        id: 'sunlit',
+                        name: 'Sunlit Studio',
+                        description: 'Warm and airy',
+                        sampleHtml,
+                      },
+                      {
+                        id: 'signal',
+                        name: 'Signal Grid',
+                        description: 'Bold sans',
+                        sampleHtml,
+                      },
+                      {
+                        id: 'folio',
+                        name: 'Quiet Folio',
+                        description: 'Soft paper',
+                        sampleHtml,
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ]}
+          onQuestionSubmit={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    const textarea = screen.getByPlaceholderText(/Pick a theme above/i)
+    expect(textarea.closest('.ring-1')).not.toBeNull()
   })
 
   it('folds theme choices under the propose_themes tool call instead of a user bubble', () => {

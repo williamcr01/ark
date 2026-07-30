@@ -846,7 +846,7 @@ export function ChatPanel({
           ) : null}
 
           <ActiveComposer
-            active={isGenerating}
+            active={isGenerating || interactionActive}
             reducedMotion={reducedMotion}
             resolvedAppearance={resolvedAppearance}
           >
