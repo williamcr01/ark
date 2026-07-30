@@ -189,27 +189,31 @@ function ChatMessageAttachments({ attachments }: { attachments: ChatAttachment[]
   )
 }
 
-function PromptInputAttachmentsDisplay() {
+function PromptInputAttachmentsDisplay({ children }: { children?: ReactNode }) {
   const attachments = usePromptInputAttachments()
+  const hasFiles = attachments.files.length > 0
 
-  if (attachments.files.length === 0) {
+  if (!hasFiles && !children) {
     return null
   }
 
   return (
-    <Attachments variant="inline">
-      {attachments.files.map((attachment) => (
-        <Attachment
-          data={attachment}
-          key={attachment.id}
-          onRemove={() => attachments.remove(attachment.id)}
-        >
-          <AttachmentPreview />
-          <AttachmentInfo />
-          <AttachmentRemove />
-        </Attachment>
-      ))}
-    </Attachments>
+    <PromptInputHeader>
+      <Attachments variant="inline">
+        {attachments.files.map((attachment) => (
+          <Attachment
+            data={attachment}
+            key={attachment.id}
+            onRemove={() => attachments.remove(attachment.id)}
+          >
+            <AttachmentPreview />
+            <AttachmentInfo />
+            <AttachmentRemove />
+          </Attachment>
+        ))}
+        {children}
+      </Attachments>
+    </PromptInputHeader>
   )
 }
 
@@ -487,7 +491,7 @@ export type ChatPanelProps = {
   canGenerate: boolean
   selectedAssetIds?: string[]
   assetsSlot?: ReactNode
-  /** Context chips (selected element / attached slides) above the composer. */
+  /** Context chips (selected element / attached slides) in the composer attachment row. */
   contextSlot?: ReactNode
   onInputChange: (value: string) => void
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
@@ -676,7 +680,6 @@ export function ChatPanel({
             </div>
           ) : null}
           {assetsSlot}
-          {contextSlot}
           {activeQuestions && onQuestionSubmit ? (
             <AgentQuestions
               disabled={isGenerating || !canGenerate}
@@ -762,9 +765,7 @@ export function ChatPanel({
               onError={(error) => onAttachmentError(formatAttachmentError(error))}
               onSubmit={onPromptSubmit}
             >
-              <PromptInputHeader>
-                <PromptInputAttachmentsDisplay />
-              </PromptInputHeader>
+              <PromptInputAttachmentsDisplay>{contextSlot}</PromptInputAttachmentsDisplay>
               <PromptInputBody>
                 <PromptInputTextarea
                   className="min-h-24 resize-none bg-transparent"

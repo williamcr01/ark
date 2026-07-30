@@ -285,6 +285,22 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByRole('button', { name: 'Upload deck assets' })).not.toBeInTheDocument()
   })
 
+  it('renders slide context chips in the composer attachment row', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          contextSlot={<span data-testid="context-chip">Slide 1 — Title</span>}
+        />
+      </TooltipProvider>,
+    )
+
+    const chip = screen.getByTestId('context-chip')
+    const composer = chip.closest('[data-slot="input-group"]')
+    expect(composer).not.toBeNull()
+    expect(composer).toContainElement(screen.getByPlaceholderText(/Describe the deck/i))
+  })
+
   it('accepts all prompt attachments and revokes their blob URLs on unmount', async () => {
     const createObjectURL = vi.fn((file: File) => `blob:${file.name}`)
     const revokeObjectURL = vi.fn()

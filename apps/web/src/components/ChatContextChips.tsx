@@ -1,6 +1,13 @@
-import { BoxSelectIcon, PresentationIcon, XIcon } from 'lucide-react'
+import { BoxSelectIcon, PresentationIcon } from 'lucide-react'
 
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
+import {
+  Attachment,
+  AttachmentInfo,
+  AttachmentPreview,
+  AttachmentRemove,
+  Attachments,
+} from '@/components/ai-elements/attachments'
 import { cn } from '@/lib/utils'
 
 export type ContextChipElement = {
@@ -22,6 +29,11 @@ export type ContextChipListProps = {
   className?: string
   /** Accessible name for the chip list container. */
   label?: string
+  /**
+   * When true, render only attachment items (no wrapping `Attachments`).
+   * Use inside an existing inline attachments row (e.g. prompt composer).
+   */
+  nested?: boolean
 }
 
 function formatElementChipLabel(element: ContextChipElement): string {
@@ -33,6 +45,10 @@ function formatElementChipLabel(element: ContextChipElement): string {
   return `Slide ${element.slideIndex + 1} · ${kind}${previewNote}`
 }
 
+function formatSlideChipLabel(slide: ContextChipSlide): string {
+  return `Slide ${slide.slideIndex + 1}${slide.title ? ` — ${slide.title}` : ''}`
+}
+
 export function ContextChipList({
   element = null,
   slides = [],
@@ -40,6 +56,7 @@ export function ContextChipList({
   onRemoveSlide,
   className,
   label = 'Chat context',
+  nested = false,
 }: ContextChipListProps) {
   if (!element && slides.length === 0) {
     return null
@@ -47,59 +64,62 @@ export function ContextChipList({
 
   const dismissible = Boolean(onClearElement || onRemoveSlide)
 
-  return (
-    <section aria-label={label} className={cn(className)}>
-      <ul className="flex flex-wrap gap-1.5">
-        {element ? (
-          <li
-            className={cn(
-              'flex max-w-full items-center gap-1.5 rounded-md border border-[var(--ark-accent)]/40',
-              'bg-[var(--ark-accent)]/10 px-2 py-1 text-xs text-foreground',
-            )}
-          >
-            <BoxSelectIcon aria-hidden className="size-3.5 shrink-0 text-[var(--ark-accent)]" />
-            <span className="min-w-0 truncate font-medium">{formatElementChipLabel(element)}</span>
-            {onClearElement ? (
-              <button
-                aria-label="Remove selected element from chat context"
-                className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
-                onClick={onClearElement}
-                type="button"
-              >
-                <XIcon className="size-3.5" />
-              </button>
-            ) : null}
-          </li>
-        ) : null}
+  const items = (
+    <>
+      {element ? (
+        <Attachment
+          data={{
+            type: 'source-document',
+            id: `context-element-${element.slideIndex}`,
+            sourceId: `context-element-${element.slideIndex}`,
+            title: formatElementChipLabel(element),
+            mediaType: 'text/plain',
+          }}
+          onRemove={onClearElement}
+        >
+          <AttachmentPreview
+            fallbackIcon={<BoxSelectIcon className="size-3 text-muted-foreground" />}
+          />
+          <AttachmentInfo />
+          {onClearElement ? (
+            <AttachmentRemove label="Remove selected element from chat context" />
+          ) : null}
+        </Attachment>
+      ) : null}
 
-        {slides.map((slide) => (
-          <li
-            className={cn(
-              'flex max-w-full items-center gap-1.5 rounded-md border border-border/60',
-              'bg-background px-2 py-1 text-xs text-foreground',
-            )}
-            key={slide.slideIndex}
-          >
-            <PresentationIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 truncate font-medium">
-              Slide {slide.slideIndex + 1}
-              {slide.title ? ` — ${slide.title}` : ''}
-            </span>
-            {onRemoveSlide ? (
-              <button
-                aria-label={`Remove slide ${slide.slideIndex + 1} from chat context`}
-                className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
-                onClick={() => onRemoveSlide(slide.slideIndex)}
-                type="button"
-              >
-                <XIcon className="size-3.5" />
-              </button>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      {slides.map((slide) => (
+        <Attachment
+          data={{
+            type: 'source-document',
+            id: `context-slide-${slide.slideIndex}`,
+            sourceId: `context-slide-${slide.slideIndex}`,
+            title: formatSlideChipLabel(slide),
+            mediaType: 'text/html',
+          }}
+          key={slide.slideIndex}
+          onRemove={onRemoveSlide ? () => onRemoveSlide(slide.slideIndex) : undefined}
+        >
+          <AttachmentPreview
+            fallbackIcon={<PresentationIcon className="size-3 text-muted-foreground" />}
+          />
+          <AttachmentInfo />
+          {onRemoveSlide ? (
+            <AttachmentRemove label={`Remove slide ${slide.slideIndex + 1} from chat context`} />
+          ) : null}
+        </Attachment>
+      ))}
       {!dismissible ? <span className="sr-only">Read-only chat context</span> : null}
-    </section>
+    </>
+  )
+
+  if (nested) {
+    return items
+  }
+
+  return (
+    <Attachments aria-label={label} className={cn(className)} variant="inline">
+      {items}
+    </Attachments>
   )
 }
 
@@ -108,6 +128,8 @@ export type ChatContextChipsProps = {
   slides: ContextChipSlide[]
   onClearEditorSelection: () => void
   onRemoveSlide: (slideIndex: number) => void
+  /** Render items into a parent attachments row (composer). */
+  nested?: boolean
 }
 
 export function ChatContextChips({
@@ -115,6 +137,7 @@ export function ChatContextChips({
   slides,
   onClearEditorSelection,
   onRemoveSlide,
+  nested = false,
 }: ChatContextChipsProps) {
   const element: ContextChipElement | null = editorSelection
     ? {
@@ -126,8 +149,8 @@ export function ChatContextChips({
 
   return (
     <ContextChipList
-      className="mb-3"
       element={element}
+      nested={nested}
       onClearElement={onClearEditorSelection}
       onRemoveSlide={onRemoveSlide}
       slides={slides}
