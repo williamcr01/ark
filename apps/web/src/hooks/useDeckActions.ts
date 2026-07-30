@@ -20,6 +20,7 @@ import { newId } from '@/lib/id'
 
 import type { useChatSession } from './useChatSession'
 import type { useDeckPersistence } from './useDeckPersistence'
+import { clearStoredGenerationJob } from './useGenerationJob'
 
 type DeckPersistenceApi = ReturnType<typeof useDeckPersistence>
 type ChatSessionApi = ReturnType<typeof useChatSession>
@@ -169,6 +170,7 @@ export function useDeckActions({
 
   const handleNewDeck = useCallback(() => {
     startNewDeck()
+    clearStoredGenerationJob(null)
     void resetChat(null)
     setInput('')
     setError('')

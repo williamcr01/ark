@@ -31,6 +31,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppearance, type AppearancePreference } from '@/hooks/useAppearance'
+import { clearStoredGenerationJob } from '@/hooks/useGenerationJob'
+import { clearChatSession } from '@/lib/chat-session'
 import { createDeck, deleteDeck, listDecks, renameDeck, type DeckSummary } from '@/lib/deck-api'
 import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck-io'
 
@@ -140,6 +142,12 @@ export function DecksDashboard() {
     fileInputRef.current?.click()
   }, [])
 
+  const handleNewDeck = useCallback(() => {
+    clearChatSession(null)
+    clearStoredGenerationJob(null)
+    navigate('/decks/new')
+  }, [navigate])
+
   const handleRenameDeck = useCallback(async (deck: DeckSummary, title: string) => {
     try {
       const updated = await renameDeck(deck.id, title)
@@ -235,7 +243,7 @@ export function DecksDashboard() {
             <UploadIcon data-icon="inline-start" />
             Upload HTML
           </Button>
-          <Button onClick={() => navigate('/decks/new')} size="sm">
+          <Button onClick={handleNewDeck} size="sm">
             <FilePlus2Icon data-icon="inline-start" />
             New deck
           </Button>
@@ -273,7 +281,7 @@ export function DecksDashboard() {
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <Button onClick={() => navigate('/decks/new')}>
+                <Button onClick={handleNewDeck}>
                   <FilePlus2Icon data-icon="inline-start" />
                   New deck
                 </Button>

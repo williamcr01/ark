@@ -2,6 +2,8 @@ import { act, renderHook } from '@testing-library/react'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { getTestLocalStorage } from '@/test/storage'
+
 import { useDeckActions } from './useDeckActions'
 
 vi.mock('sonner', () => ({
@@ -56,6 +58,7 @@ function createDeckActionsOptions(
 
 describe('useDeckActions', () => {
   it('starts a new deck by resetting the unsaved chat session explicitly', () => {
+    getTestLocalStorage().setItem('ark:generation-job:new', 'job-old')
     const { options, resetChat, startNewDeck, setInput, setError } = createDeckActionsOptions()
     const { result } = renderHook(() => useDeckActions(options))
 
@@ -64,6 +67,7 @@ describe('useDeckActions', () => {
     })
 
     expect(startNewDeck).toHaveBeenCalledTimes(1)
+    expect(getTestLocalStorage().getItem('ark:generation-job:new')).toBeNull()
     expect(resetChat).toHaveBeenCalledExactlyOnceWith(null)
     expect(setInput).toHaveBeenCalledWith('')
     expect(setError).toHaveBeenCalledWith('')
