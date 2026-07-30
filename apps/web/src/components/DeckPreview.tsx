@@ -25,7 +25,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
@@ -818,10 +817,8 @@ export function DeckPreview({
                   usesStaticPreview={usesStaticPreview}
                 />
               </div>
-            ) : isGenerating || isPreviewUpdating ? (
-              <PreviewSkeleton scale={previewFrameScale} />
             ) : (
-              <EmptyPreview />
+              <EmptyPreview isGenerating={isGenerating} isPreviewUpdating={isPreviewUpdating} />
             )}
           </div>
         </div>
@@ -845,7 +842,15 @@ export function DeckPreview({
   )
 }
 
-function EmptyPreview() {
+function EmptyPreview({
+  isGenerating = false,
+  isPreviewUpdating = false,
+}: {
+  isGenerating?: boolean
+  isPreviewUpdating?: boolean
+}) {
+  const busy = isGenerating || isPreviewUpdating
+
   return (
     <Empty className="max-w-xl">
       <EmptyHeader>
@@ -854,40 +859,22 @@ function EmptyPreview() {
         </EmptyMedia>
         <EmptyTitle>Set the stage</EmptyTitle>
         <EmptyDescription>
-          Ask the agent to build a deck, or upload a self-contained HTML presentation from the
-          command strip.
+          {busy
+            ? 'The agent is building your deck. Progress shows in the chat panel.'
+            : 'Ask the agent to build a deck, or upload a self-contained HTML presentation from the command strip.'}
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <span className="font-mono text-xs text-muted-foreground">
-          Try: “Create a six-slide launch deck for a privacy-first notes app.”
-        </span>
+        {busy ? (
+          <span className="text-xs text-muted-foreground" role="status">
+            {isPreviewUpdating ? 'Updating preview…' : 'Building your deck…'}
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">
+            Try: “Create a six-slide launch deck for a privacy-first notes app.”
+          </span>
+        )}
       </EmptyContent>
     </Empty>
-  )
-}
-
-function PreviewSkeleton({ scale }: { scale: number }) {
-  return (
-    <div
-      className="max-h-full max-w-full bg-white p-8 shadow-[0_8px_28px_var(--ark-stage-shadow)]"
-      style={getPreviewStageStyle(scale)}
-    >
-      <div className="flex h-full flex-col gap-8">
-        <div className="flex items-center justify-between gap-8">
-          <Skeleton className="h-5 w-36" />
-          <Skeleton className="h-5 w-24" />
-        </div>
-        <div className="grid flex-1 grid-cols-[1.2fr_0.8fr] gap-8">
-          <div className="flex flex-col justify-center gap-4">
-            <Skeleton className="h-10 w-4/5" />
-            <Skeleton className="h-10 w-3/5" />
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-          <Skeleton className="h-full rounded-2xl" />
-        </div>
-      </div>
-    </div>
   )
 }
