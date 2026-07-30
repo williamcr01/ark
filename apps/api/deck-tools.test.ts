@@ -261,3 +261,48 @@ describe('list_versions tool', () => {
     expect(JSON.stringify(output)).not.toContain('base64,AAA')
   })
 })
+
+describe('propose_themes tool', () => {
+  const sampleHtml = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" /><title>Theme</title>
+<style>html,body{margin:0;height:100%} .slide{width:100vw;height:100vh}</style>
+</head><body><section class="slide"><h1>Title</h1></section></body></html>`
+
+  const themes = [
+    { id: 'a', name: 'Alpha', description: 'Dark', sampleHtml },
+    { id: 'b', name: 'Beta', description: 'Light', sampleHtml },
+    { id: 'c', name: 'Gamma', description: 'Bold', sampleHtml },
+    { id: 'd', name: 'Delta', description: 'Soft', sampleHtml },
+  ]
+
+  it('awaits a choice for valid samples on an empty workspace', async () => {
+    const tools = createDeckTools(createDeckWorkspace(''))
+    const execute = tools.propose_themes!.execute as unknown as ToolExecute
+    await expect(execute({ title: 'Pick a visual direction', themes }, {})).resolves.toMatchObject({
+      ok: true,
+      awaitingUserResponse: true,
+    })
+  })
+
+  it('rejects invalid sampleHtml and is unavailable on existing decks', async () => {
+    const tools = createDeckTools(createDeckWorkspace(''))
+    const execute = tools.propose_themes!.execute as unknown as ToolExecute
+    const invalid = themes.map((theme, index) =>
+      index === 0
+        ? {
+            ...theme,
+            sampleHtml: `<!DOCTYPE html><html><body><section class="slide"><img src="https://evil.example/x.png" /></section></body></html>`,
+          }
+        : theme,
+    )
+    await expect(
+      execute({ title: 'Pick a visual direction', themes: invalid }, {}),
+    ).resolves.toMatchObject({
+      ok: false,
+      themeId: 'a',
+    })
+
+    const existing = createDeckTools(createDeckWorkspace(managedDeck))
+    expect(existing.propose_themes).toBeUndefined()
+  })
+})

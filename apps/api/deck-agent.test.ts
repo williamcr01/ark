@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 
-import { extractAgentSteps, extractAgentTranscriptParts, runDeckAgent } from './deck-agent.ts'
+import {
+  extractAgentSteps,
+  extractAgentTranscriptParts,
+  hasAwaitingUserToolResult,
+  runDeckAgent,
+} from './deck-agent.ts'
 import { createActiveDeckTools } from './deck-tool-catalog.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 
@@ -63,6 +68,50 @@ const streamToolCallReply = (toolCallId: string, toolName: string, input: unknow
       },
     ],
   }),
+})
+
+describe('hasAwaitingUserToolResult', () => {
+  const stop = hasAwaitingUserToolResult('propose_themes')
+
+  it('stops only when propose_themes awaits a choice', () => {
+    expect(
+      stop({
+        steps: [
+          {
+            toolResults: [
+              {
+                type: 'tool-result',
+                toolCallId: 't1',
+                toolName: 'propose_themes',
+                input: {},
+                output: { ok: true, awaitingUserResponse: true },
+              },
+            ],
+          } as never,
+        ],
+      }),
+    ).toBe(true)
+  })
+
+  it('keeps the loop open when propose_themes validation fails', () => {
+    expect(
+      stop({
+        steps: [
+          {
+            toolResults: [
+              {
+                type: 'tool-result',
+                toolCallId: 't1',
+                toolName: 'propose_themes',
+                input: {},
+                output: { ok: false, error: 'invalid sample', themeId: 'a' },
+              },
+            ],
+          } as never,
+        ],
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('extractAgentSteps', () => {

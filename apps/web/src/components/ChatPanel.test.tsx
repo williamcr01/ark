@@ -6,6 +6,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { ChatPanel } from '@/components/ChatPanel'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
+vi.mock('@/components/MiniHtmlPreview', () => ({
+  MiniHtmlPreview: ({ title }: { title: string }) => (
+    <div data-testid="mini-html-preview">{title}</div>
+  ),
+}))
+
 const baseProps: ComponentProps<typeof ChatPanel> = {
   messages: [],
   input: '',
@@ -148,6 +154,148 @@ describe('ChatPanel submit control', () => {
 
     expect(screen.queryByText('Shape your presentation')).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Describe the deck you want/i)).toBeEnabled()
+  })
+
+  it('renders propose_themes picker above the composer and submits a choice', async () => {
+    const onQuestionSubmit = vi.fn()
+    const user = userEvent.setup()
+    const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
+    const themes = [
+      {
+        id: 'midnight',
+        name: 'Midnight Editorial',
+        description: 'Dark and sharp',
+        sampleHtml,
+      },
+      {
+        id: 'sunlit',
+        name: 'Sunlit Studio',
+        description: 'Warm and airy',
+        sampleHtml,
+      },
+      {
+        id: 'signal',
+        name: 'Signal Grid',
+        description: 'Bold sans',
+        sampleHtml,
+      },
+      {
+        id: 'folio',
+        name: 'Quiet Folio',
+        description: 'Soft paper',
+        sampleHtml,
+      },
+    ]
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            { id: 'u1', role: 'user', content: 'Build a product launch deck' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'Pick a direction',
+              parts: [
+                {
+                  type: 'tool-call',
+                  toolName: 'propose_themes',
+                  summary: '4 theme(s)',
+                  input: {
+                    title: 'Pick a visual direction',
+                    themes,
+                  },
+                },
+              ],
+            },
+          ]}
+          onQuestionSubmit={onQuestionSubmit}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Pick a visual direction')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Pick a theme above/i)).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Midnight Editorial' }))
+    await user.click(screen.getByRole('button', { name: /Use this theme: Midnight Editorial/i }))
+
+    expect(onQuestionSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('Midnight Editorial (id: midnight)'),
+    )
+  })
+
+  it('folds theme choices under the propose_themes tool call instead of a user bubble', () => {
+    const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            { id: 'u1', role: 'user', content: 'Build a product launch deck' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'Here are four directions.',
+              parts: [
+                {
+                  type: 'tool-call',
+                  toolName: 'propose_themes',
+                  summary: '4 theme(s)',
+                  input: {
+                    title: 'Pick a visual direction',
+                    themes: [
+                      {
+                        id: 'midnight',
+                        name: 'Midnight Editorial',
+                        description: 'Dark',
+                        sampleHtml,
+                      },
+                      {
+                        id: 'sunlit',
+                        name: 'Sunlit Studio',
+                        description: 'Warm',
+                        sampleHtml,
+                      },
+                      {
+                        id: 'signal',
+                        name: 'Signal Grid',
+                        description: 'Bold',
+                        sampleHtml,
+                      },
+                      {
+                        id: 'folio',
+                        name: 'Quiet Folio',
+                        description: 'Soft',
+                        sampleHtml,
+                      },
+                    ],
+                  },
+                },
+                {
+                  type: 'tool-result',
+                  toolName: 'propose_themes',
+                  summary: 'Waiting for theme choice',
+                },
+              ],
+            },
+            {
+              id: 'u2',
+              role: 'user',
+              content:
+                'Pick a visual direction — theme choice:\n- Theme: Midnight Editorial (id: midnight)',
+            },
+          ]}
+          onQuestionSubmit={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Chose theme: Midnight Editorial')).toBeInTheDocument()
+    expect(screen.queryByText(/Pick a visual direction — theme choice:/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Pick the visual direction for the first draft.'),
+    ).not.toBeInTheDocument()
   })
 
   it('folds ask_user answers under the tool call instead of a user bubble', () => {

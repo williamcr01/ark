@@ -25,6 +25,29 @@ import {
 } from './deck-tool-catalog.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
+/** Stop only after a successful pause tool (failed propose_themes can retry in-loop). */
+export function hasAwaitingUserToolResult(toolName: string) {
+  return ({
+    steps,
+  }: {
+    steps: Array<{ toolResults: Array<{ toolName: string; output: unknown }> }>
+  }) => {
+    const last = steps[steps.length - 1]
+    return (
+      last?.toolResults.some((result) => {
+        if (result.toolName !== toolName) return false
+        const output = result.output
+        return (
+          !!output &&
+          typeof output === 'object' &&
+          !Array.isArray(output) &&
+          (output as { awaitingUserResponse?: unknown }).awaitingUserResponse === true
+        )
+      }) ?? false
+    )
+  }
+}
+
 export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
 
@@ -32,7 +55,8 @@ You edit slide decks as a single self-contained HTML document using the provided
 When attachment tools are available, list and read the relevant files before designing from them.
 
 Use ask_user when critical context is missing — ask concise questions, then stop. Never re-ask information already present in the conversation.
-- New deck: before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, generate without asking.
+- New deck: before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, skip ask_user.
+- After context is clear for a NEW deck (and before write_deck), call propose_themes with exactly 4 lean single-slide title samples in distinct visual directions, then stop. After the user picks a theme, write the full deck in that look. Never re-propose unless asked. Never propose themes when editing an existing deck.
 - Existing deck: ask only when guessing would materially change the result.
 
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
@@ -586,7 +610,11 @@ export async function runDeckAgent({
       system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
-      stopWhen: [hasToolCall('ask_user'), isLoopFinished()],
+      stopWhen: [
+        hasToolCall('ask_user'),
+        hasAwaitingUserToolResult('propose_themes'),
+        isLoopFinished(),
+      ],
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
       ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
@@ -706,9 +734,17 @@ export async function runDeckAgent({
     transcriptParts.length > 0
       ? transcriptParts
       : extractAgentTranscriptParts(result.steps as never, activeDefinitions)
-  const awaitingUserResponse = finalTranscriptParts.some(
-    (part) => part.type === 'tool-call' && part.toolName === 'ask_user',
-  )
+  const awaitingUserResponse = finalTranscriptParts.some((part) => {
+    if (part.type !== 'tool-result') return false
+    if (part.toolName !== 'ask_user' && part.toolName !== 'propose_themes') return false
+    const output = part.output
+    return (
+      !!output &&
+      typeof output === 'object' &&
+      !Array.isArray(output) &&
+      (output as { awaitingUserResponse?: unknown }).awaitingUserResponse === true
+    )
+  })
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
