@@ -55,10 +55,12 @@ describe('ChatContextChips', () => {
     expect(screen.getByText('Slide 1 — Title')).toBeInTheDocument()
     expect(screen.getByText('Slide 3 — Market')).toBeInTheDocument()
 
-    await user.click(screen.getByLabelText('Remove selected element from chat context'))
+    await user.click(
+      screen.getByRole('button', { name: 'Remove selected element from chat context' }),
+    )
     expect(onClearEditorSelection).toHaveBeenCalledOnce()
 
-    await user.click(screen.getByLabelText('Remove slide 3 from chat context'))
+    await user.click(screen.getByRole('button', { name: 'Remove slide 3 from chat context' }))
     expect(onRemoveSlide).toHaveBeenCalledWith(2)
   })
 
@@ -78,6 +80,8 @@ describe('ChatContextChips', () => {
     expect(screen.getByLabelText('Attached context')).toBeInTheDocument()
     expect(screen.getByText(/Slide 1 · image/)).toBeInTheDocument()
     expect(screen.getByText('Slide 2 — Agenda')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Remove selected element from chat context')).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Remove selected element from chat context' }),
+    ).toBeNull()
   })
 })

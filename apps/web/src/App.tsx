@@ -394,14 +394,16 @@ function App() {
       }),
     [deckAnalysis.slides, resolvedContextSlides],
   )
-  const chatContextSlot = (
-    <ChatContextChips
-      editorSelection={editorSelection}
-      onClearEditorSelection={handleClearEditorSelection}
-      onRemoveSlide={handleRemoveContextSlide}
-      slides={contextSlidesForChips}
-    />
-  )
+  const chatContextSlot =
+    editorSelection || contextSlidesForChips.length > 0 ? (
+      <ChatContextChips
+        editorSelection={editorSelection}
+        nested
+        onClearEditorSelection={handleClearEditorSelection}
+        onRemoveSlide={handleRemoveContextSlide}
+        slides={contextSlidesForChips}
+      />
+    ) : null
   const chatDefaultSize = getChatPanelDefaultSize(mainSize.width)
   const deckDefaultSizeWithChat = getDeckPanelDefaultSizeWithChat(mainSize.width, chatDefaultSize)
 
