@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 
 import { AgentPresence } from '@/components/AgentPresence'
+import { AgentQuestions } from '@/components/AgentQuestions'
 import {
   Attachment,
   AttachmentInfo,
@@ -69,7 +70,18 @@ import type {
   ChatMessagePart,
 } from '@ark/deck-core/chat.ts'
 import { agentStepsToChatParts, MAX_CHAT_ATTACHMENT_BYTES } from '@ark/deck-core/chat.ts'
+import {
+  agentQuestionRequestSchema,
+  formatAgentQuestionAnswers,
+  parseAgentQuestionAnswerLines,
+  type AgentQuestionRequest,
+} from '@ark/deck-core/agent-questions.ts'
 import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
+import {
+  findAskUserAnswerAfter,
+  findPendingAgentQuestions,
+  isAskUserAnswerMessage,
+} from '@/lib/agent-questions'
 import { cn } from '@/lib/utils'
 
 const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
@@ -287,6 +299,41 @@ function ToolActivityLine({ part }: { part: IndexedToolPart['part'] }) {
   )
 }
 
+function AskUserTranscript({
+  request,
+  answersContent,
+}: {
+  request: AgentQuestionRequest
+  answersContent?: string | null
+}) {
+  const count = request.questions.length
+  const answered = Boolean(answersContent)
+  const answers = answersContent ? parseAgentQuestionAnswerLines(request, answersContent) : null
+
+  return (
+    <details className="text-xs" open={answered}>
+      <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+        {answered
+          ? `Answered ${count} question${count === 1 ? '' : 's'}`
+          : `Asked ${count} question${count === 1 ? '' : 's'}`}
+      </summary>
+      {answered && answers ? (
+        <div className="mt-1.5 flex flex-col gap-2 pl-4">
+          {request.title ? (
+            <p className="text-muted-foreground/80 text-[11px]">{request.title}</p>
+          ) : null}
+          {request.questions.map((question) => (
+            <div className="flex flex-col gap-0.5" key={question.id}>
+              <p className="text-foreground font-medium">{question.question}</p>
+              <p className="text-muted-foreground">{answers[question.id] ?? 'No answer'}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  )
+}
+
 function ChatMessageDeliveryStatus({
   status,
   onRetry,
@@ -336,25 +383,62 @@ function formatThinkingSummaryLabel(durationMs: number | undefined, live: boolea
   return seconds === 1 ? 'Thought for 1 second' : `Thought for ${seconds} seconds`
 }
 
-function ChatMessageParts({ parts, live = false }: { parts: ChatMessagePart[]; live?: boolean }) {
+function ChatMessageParts({
+  parts,
+  live = false,
+  askUserAnswers = null,
+}: {
+  parts: ChatMessagePart[]
+  live?: boolean
+  askUserAnswers?: string | null
+}) {
   const segments = segmentChatParts(parts)
 
   return (
     <div className="flex flex-col gap-2">
       {segments.map((segment) => {
         if (segment.type === 'tools') {
-          const callCount = segment.parts.filter(({ part }) => part.type === 'tool-call').length
+          const askUserParts = segment.parts.filter(
+            ({ part }) => part.type === 'tool-call' && part.toolName === 'ask_user',
+          )
+          const otherParts = segment.parts.filter(
+            ({ part }) =>
+              !(part.type === 'tool-call' && part.toolName === 'ask_user') &&
+              !(part.type === 'tool-result' && part.toolName === 'ask_user'),
+          )
+          const callCount = otherParts.filter(({ part }) => part.type === 'tool-call').length
+
           return (
-            <details className="text-xs" key={`tools-${segment.parts[0]?.index}`}>
-              <summary className="cursor-pointer select-none font-medium text-muted-foreground">
-                {callCount === 1 ? '1 tool call' : `${callCount} tool calls`}
-              </summary>
-              <div className="mt-1 flex flex-col gap-1 pl-4">
-                {segment.parts.map(({ index, part }) => (
-                  <ToolActivityLine key={`tool-${index}`} part={part} />
-                ))}
-              </div>
-            </details>
+            <div className="flex flex-col gap-2" key={`tools-${segment.parts[0]?.index}`}>
+              {askUserParts.map(({ index, part }) => {
+                const parsed =
+                  part.type === 'tool-call'
+                    ? agentQuestionRequestSchema.safeParse(part.input)
+                    : null
+                if (!parsed?.success) {
+                  return <ToolActivityLine key={`tool-${index}`} part={part} />
+                }
+                return (
+                  <AskUserTranscript
+                    answersContent={askUserAnswers}
+                    key={`ask-user-${index}`}
+                    request={parsed.data}
+                  />
+                )
+              })}
+              {callCount > 0 ? (
+                <details className="text-xs">
+                  <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+                    {callCount === 1 ? '1 tool call' : `${callCount} tool calls`}
+                  </summary>
+                  <div className="mt-1 flex flex-col gap-1 pl-4">
+                    {otherParts.map(({ index, part }) => (
+                      <ToolActivityLine key={`tool-${index}`} part={part} />
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
           )
         }
 
@@ -408,6 +492,7 @@ export type ChatPanelProps = {
   onInputChange: (value: string) => void
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
+  onQuestionSubmit?: (content: string) => void
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
   onRetryGeneration: () => void | Promise<void>
@@ -441,6 +526,7 @@ export function ChatPanel({
   onInputChange,
   onModelSelect,
   onPromptSubmit,
+  onQuestionSubmit,
   onAttachmentError,
   onCancelGeneration,
   onRetryGeneration,
@@ -451,7 +537,6 @@ export function ChatPanel({
   onRetryPersist,
   generationStatus,
 }: ChatPanelProps) {
-  const isSubmitDisabled = isGenerating || !canGenerate
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
   const supportsAttachments = selectedModelInfo?.supportsAttachments !== false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
@@ -485,13 +570,17 @@ export function ChatPanel({
     modelWarnings.length > 0 && !isAlertDismissed('model-warnings', modelWarningsKey)
   const hasFloatingAlerts =
     showGenerationError || showAttachmentError || showModelsError || showModelWarnings
+  const pendingAgentQuestions = onQuestionSubmit ? findPendingAgentQuestions(messages) : null
+  const activeQuestions = pendingAgentQuestions
+  const questionsActive = Boolean(activeQuestions)
+  const isSubmitDisabled = isGenerating || !canGenerate || questionsActive
 
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 bg-[var(--ark-panel)] py-0 shadow-none ring-0 [--card-spacing:0]">
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <Conversation>
           <ConversationContent className="gap-5 px-5 py-6">
-            {messages.length === 0 ? (
+            {messages.length === 0 && !questionsActive ? (
               <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 text-center">
                 <ConversationEmptyState
                   description="Start with an audience, raw notes, or one clear outcome."
@@ -516,39 +605,49 @@ export function ChatPanel({
                   ))}
                 </div>
               </div>
-            ) : (
-              messages.map((message) => (
-                <Message from={message.role} key={message.id}>
-                  <MessageContent>
-                    {message.parts?.length ? (
-                      <ChatMessageParts parts={message.parts} />
-                    ) : (
-                      <MessageResponse>{message.content}</MessageResponse>
-                    )}
-                    {message.attachments?.length ? (
-                      <ChatMessageAttachments attachments={message.attachments} />
-                    ) : null}
-                    {message.role === 'user' && message.context ? (
-                      <ContextChipList
-                        className="mt-2"
-                        label="Attached context"
-                        {...contextToChipProps(message.context)}
+            ) : messages.length > 0 ? (
+              messages.map((message, index) => {
+                // Answers stay in history for the model, but render under the ask_user tool call.
+                if (isAskUserAnswerMessage(messages, index)) return null
+
+                const askUserAnswers =
+                  message.role === 'assistant'
+                    ? (findAskUserAnswerAfter(messages, index)?.content ?? null)
+                    : null
+
+                return (
+                  <Message from={message.role} key={message.id}>
+                    <MessageContent>
+                      {message.parts?.length ? (
+                        <ChatMessageParts askUserAnswers={askUserAnswers} parts={message.parts} />
+                      ) : (
+                        <MessageResponse>{message.content}</MessageResponse>
+                      )}
+                      {message.attachments?.length ? (
+                        <ChatMessageAttachments attachments={message.attachments} />
+                      ) : null}
+                      {message.role === 'user' && message.context ? (
+                        <ContextChipList
+                          className="mt-2"
+                          label="Attached context"
+                          {...contextToChipProps(message.context)}
+                        />
+                      ) : null}
+                      <ChatMessageDeliveryStatus
+                        onRetry={
+                          onRetryPersist
+                            ? () => {
+                                void onRetryPersist(message.id)
+                              }
+                            : undefined
+                        }
+                        status={getMessageDeliveryStatus?.(message.id)}
                       />
-                    ) : null}
-                    <ChatMessageDeliveryStatus
-                      onRetry={
-                        onRetryPersist
-                          ? () => {
-                              void onRetryPersist(message.id)
-                            }
-                          : undefined
-                      }
-                      status={getMessageDeliveryStatus?.(message.id)}
-                    />
-                  </MessageContent>
-                </Message>
-              ))
-            )}
+                    </MessageContent>
+                  </Message>
+                )
+              })
+            ) : null}
             {showLiveAssistant ? (
               <Message from="assistant">
                 <MessageContent>
@@ -578,6 +677,16 @@ export function ChatPanel({
           ) : null}
           {assetsSlot}
           {contextSlot}
+          {activeQuestions && onQuestionSubmit ? (
+            <AgentQuestions
+              disabled={isGenerating || !canGenerate}
+              onSubmit={(answers) =>
+                onQuestionSubmit(formatAgentQuestionAnswers(activeQuestions, answers))
+              }
+              request={activeQuestions}
+              submitLabel="Send answers"
+            />
+          ) : null}
 
           {hasFloatingAlerts ? (
             <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">
@@ -659,9 +768,13 @@ export function ChatPanel({
               <PromptInputBody>
                 <PromptInputTextarea
                   className="min-h-24 resize-none bg-transparent"
-                  disabled={isGenerating}
+                  disabled={isGenerating || questionsActive}
                   onChange={(event) => onInputChange(event.currentTarget.value)}
-                  placeholder="Describe the deck you want, or ask for an edit…"
+                  placeholder={
+                    questionsActive
+                      ? 'Answer the questions above to continue…'
+                      : 'Describe the deck you want, or ask for an edit…'
+                  }
                   value={input}
                 />
               </PromptInputBody>
@@ -671,7 +784,7 @@ export function ChatPanel({
                     <PromptInputActionMenuTrigger
                       aria-label="Add attachments"
                       className={cn(morphMenuTriggerClassName, 'shrink-0')}
-                      disabled={!supportsAttachments || isGenerating}
+                      disabled={!supportsAttachments || isGenerating || questionsActive}
                     />
                     {supportsAttachments ? (
                       <MorphMenuContent className="w-48">

@@ -1,4 +1,10 @@
-import type { AgentStep, ApiChatMessage, EditorSelectionContext, SlideContext } from './chat.ts'
+import type {
+  AgentStep,
+  ApiChatMessage,
+  ChatMessagePart,
+  EditorSelectionContext,
+  SlideContext,
+} from './chat.ts'
 
 export type GenerationJobStatus =
   'queued' | 'running' | 'canceling' | 'succeeded' | 'failed' | 'canceled'
@@ -34,6 +40,8 @@ export type GenerationJobProgress = {
   steps: AgentStep[]
   stepCount: number
   assistantText?: string | null
+  /** Full assistant transcript for terminal turns that need tool inputs (e.g. ask_user). */
+  transcriptParts?: ChatMessagePart[]
 }
 
 export type GenerationJobError = {

@@ -169,6 +169,26 @@ export function useDeckGenerationFlow({
   const applySucceededOutcome = useCallback(
     async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) => {
       setModelFailure(false)
+
+      if (outcome.awaitingUserResponse) {
+        if (deckId) {
+          await reloadChat(deckId)
+          return
+        }
+
+        // New-deck ask_user: no server chat yet — land the assistant turn locally
+        // so the question stepper can read ask_user tool input from parts.
+        const assistantMessage = buildSucceededAssistantMessage(outcome)
+        setMessages((current) => {
+          if (current.some((message) => message.id === assistantMessage.id)) {
+            return current
+          }
+
+          return [...current, assistantMessage]
+        })
+        return
+      }
+
       onGenerationSucceeded?.()
 
       // Land the assistant turn before deck refresh so the live bubble does not
@@ -198,7 +218,7 @@ export function useDeckGenerationFlow({
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },
-    [onGenerationSucceeded, refreshActiveDeck, setMessages, setModelFailure],
+    [deckId, onGenerationSucceeded, refreshActiveDeck, reloadChat, setMessages, setModelFailure],
   )
 
   useEffect(() => {

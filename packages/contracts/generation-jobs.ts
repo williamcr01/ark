@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { apiChatMessageSchema } from './chat.ts'
+import { apiChatMessageSchema, chatMessagePartSchema } from './chat.ts'
 import {
   deckIdSchema,
   generationJobIdSchema,
@@ -46,6 +46,7 @@ export const generationJobProgressSchema = z.object({
   steps: z.array(agentStepSchema),
   stepCount: z.number().int().min(0),
   assistantText: z.string().nullable().optional(),
+  transcriptParts: z.array(chatMessagePartSchema).optional(),
 })
 
 export const generationJobErrorSchema = z.object({

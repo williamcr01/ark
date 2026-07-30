@@ -378,6 +378,35 @@ export function createGenerationJobRunner({
       const targetDeckId = refreshed.deckId
       const baseVersionId = refreshed.baseVersionId
 
+      if (
+        !targetDeckId &&
+        (agentResult.awaitingUserResponse ||
+          (agentResult.changed === false && !agentResult.html.trim()))
+      ) {
+        await jobStore.updateJob(jobId, {
+          status: 'succeeded',
+          progress: {
+            steps: agentResult.steps,
+            stepCount: agentResult.steps.length,
+            assistantText: agentResult.assistantText,
+            transcriptParts: agentResult.transcriptParts,
+          },
+          result: null,
+          observability,
+          completedAt: now().toISOString(),
+        })
+
+        jobLogger.info('generation.job.succeeded', {
+          changed: false,
+          awaitingUserResponse: true,
+          durationMs: observability.durationMs,
+          stepCount: agentResult.steps.length,
+          tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
+        })
+
+        return
+      }
+
       if (targetDeckId) {
         const existingDeck = await deckStore.getDeck(targetDeckId)
 
@@ -464,6 +493,9 @@ export function createGenerationJobRunner({
               steps: agentResult.steps,
               stepCount: agentResult.steps.length,
               assistantText: agentResult.assistantText,
+              ...(agentResult.awaitingUserResponse
+                ? { transcriptParts: agentResult.transcriptParts }
+                : {}),
             },
             result: {
               deckId: existingDeck.id,
@@ -478,6 +510,7 @@ export function createGenerationJobRunner({
 
           jobLogger.info('generation.job.succeeded', {
             changed: false,
+            awaitingUserResponse: Boolean(agentResult.awaitingUserResponse),
             durationMs: observability.durationMs,
             stepCount: agentResult.steps.length,
             tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,

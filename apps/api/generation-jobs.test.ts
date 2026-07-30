@@ -133,6 +133,72 @@ describe('generation job runner', () => {
     return { assetStore, assetStorage, chatStore, deckStore, jobStore, runner }
   }
 
+  it('succeeds a new-deck ask_user stop without creating a deck', async () => {
+    const askUserParts = [
+      {
+        type: 'tool-call' as const,
+        toolName: 'ask_user',
+        summary: '2 question(s)',
+        stepIndex: 0,
+        toolCallId: 'ask-1',
+        input: {
+          title: 'Shape your presentation',
+          questions: [
+            { id: 'audience', question: 'Who is the audience?', type: 'text' },
+            {
+              id: 'length',
+              question: 'How many slides?',
+              type: 'single',
+              options: ['5 slides', '10 slides'],
+            },
+          ],
+        },
+      },
+      {
+        type: 'tool-result' as const,
+        toolName: 'ask_user',
+        summary: 'Waiting for user answers',
+        stepIndex: 0,
+        toolCallId: 'ask-1',
+        output: { ok: true, awaitingUserResponse: true },
+      },
+    ]
+
+    const { deckStore, runner, jobStore } = await createRunner({
+      runAgent: async () => ({
+        ok: true,
+        html: '',
+        changed: false,
+        awaitingUserResponse: true,
+        validation: validateDeckHtmlOnServer(''),
+        steps: [
+          { type: 'tool-call', toolName: 'ask_user', summary: '2 question(s)' },
+          { type: 'tool-result', toolName: 'ask_user', summary: 'Waiting for user answers' },
+        ],
+        transcriptParts: askUserParts,
+        assistantText: 'A couple quick questions before I draft this.',
+        providerMetrics: stubProviderMetrics,
+      }),
+    })
+
+    const job = await runner.startJob({
+      body: {
+        messages: [{ role: 'user', content: 'Make a product launch deck' }],
+        currentHtml: '',
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+
+    const succeeded = await waitForTerminalJob((id) => jobStore.getJob(id), job.id, {
+      statuses: ['succeeded'],
+    })
+
+    expect(succeeded.result).toBeNull()
+    expect(succeeded.deckId).toBeNull()
+    expect(succeeded.progress.transcriptParts).toEqual(askUserParts)
+    expect(await deckStore.listDecks()).toHaveLength(0)
+  })
+
   it('marks canceled queued jobs without running the agent', async () => {
     const { runner, jobStore } = await createRunner({
       runAgent: () => new Promise(() => undefined),

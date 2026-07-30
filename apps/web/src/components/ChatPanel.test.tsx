@@ -57,6 +57,158 @@ describe('ChatPanel delivery status', () => {
 })
 
 describe('ChatPanel submit control', () => {
+  it('renders ask_user questions one at a time above the composer', async () => {
+    const onQuestionSubmit = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            { id: 'u1', role: 'user', content: 'Build a product launch deck' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'Waiting for answers',
+              parts: [
+                {
+                  type: 'tool-call',
+                  toolName: 'ask_user',
+                  summary: '3 question(s)',
+                  input: {
+                    title: 'Shape your presentation',
+                    questions: [
+                      {
+                        id: 'audience',
+                        question: 'Who is the audience?',
+                        type: 'text',
+                        placeholder: 'Investors…',
+                      },
+                      {
+                        id: 'slide_count',
+                        question: 'How many slides should it be?',
+                        type: 'single',
+                        options: ['5 slides', '8 slides', '10 slides'],
+                      },
+                      {
+                        id: 'priorities',
+                        question: 'What should the deck prioritize?',
+                        type: 'multiple',
+                        options: ['Concise', 'Story-led', 'Data-heavy'],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ]}
+          onQuestionSubmit={onQuestionSubmit}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Who is the audience?')).toBeInTheDocument()
+    expect(screen.queryByText('How many slides should it be?')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Answer the questions above/i)).toBeDisabled()
+
+    await user.type(screen.getByLabelText('Who is the audience?'), 'Customers')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(screen.getByText('How many slides should it be?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /8 slides/i }))
+
+    expect(screen.getByText('What should the deck prioritize?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Concise/i }))
+    await user.click(screen.getByRole('button', { name: /Write your own/i }))
+    await user.type(
+      screen.getByLabelText(/Write your own answer for What should the deck prioritize/i),
+      'Use bold product photography',
+    )
+    await user.click(screen.getByRole('button', { name: 'Send answers' }))
+
+    expect(onQuestionSubmit).toHaveBeenCalledWith(expect.stringContaining('Customers'))
+    expect(onQuestionSubmit).toHaveBeenCalledWith(expect.stringContaining('8 slides'))
+    expect(onQuestionSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('Use bold product photography'),
+    )
+  })
+
+  it('does not show hardcoded intake without an ask_user tool call', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[{ id: 'u1', role: 'user', content: 'Build a product launch deck' }]}
+          onQuestionSubmit={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('Shape your presentation')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Describe the deck you want/i)).toBeEnabled()
+  })
+
+  it('folds ask_user answers under the tool call instead of a user bubble', () => {
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          messages={[
+            { id: 'u1', role: 'user', content: 'Build a product launch deck' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: 'A couple of questions first.',
+              parts: [
+                {
+                  type: 'tool-call',
+                  toolName: 'ask_user',
+                  summary: '2 question(s)',
+                  input: {
+                    title: 'Shape your presentation',
+                    questions: [
+                      {
+                        id: 'audience',
+                        question: 'Who is the audience?',
+                        type: 'text',
+                      },
+                      {
+                        id: 'length',
+                        question: 'How many slides?',
+                        type: 'single',
+                        options: ['5 slides', '8 slides'],
+                      },
+                    ],
+                  },
+                },
+                {
+                  type: 'tool-result',
+                  toolName: 'ask_user',
+                  summary: 'Waiting for user answers',
+                },
+              ],
+            },
+            {
+              id: 'u2',
+              role: 'user',
+              content:
+                'Shape your presentation — answers:\n- Who is the audience?: Customers\n- How many slides?: 8 slides',
+            },
+          ]}
+          onQuestionSubmit={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Answered 2 questions')).toBeInTheDocument()
+    expect(screen.getByText('Customers')).toBeInTheDocument()
+    expect(screen.getByText('8 slides')).toBeInTheDocument()
+    // Answer content must not appear as its own user bubble.
+    expect(screen.queryByText(/Shape your presentation — answers:/)).not.toBeInTheDocument()
+  })
+
   it('shows a concise working status while generating', () => {
     render(
       <TooltipProvider>

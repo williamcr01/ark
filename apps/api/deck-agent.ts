@@ -1,4 +1,4 @@
-import { isLoopFinished, streamText, type LanguageModel } from 'ai'
+import { hasToolCall, isLoopFinished, streamText, type LanguageModel } from 'ai'
 
 import {
   type AgentStep,
@@ -30,6 +30,10 @@ export function buildDeckAgentSystemPrompt() {
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
 When attachment tools are available, list and read the relevant files before designing from them.
+
+Use ask_user when critical context is missing — ask concise questions, then stop. Never re-ask information already present in the conversation.
+- New deck: before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, generate without asking.
+- Existing deck: ask only when guessing would materially change the result.
 
 Approved runtime libraries (Ark-served only — use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
@@ -85,11 +89,33 @@ function buildProviderMetrics(input: {
   }
 }
 
+const EMPTY_AWAITING_VALIDATION: ReturnType<typeof validateDeckHtmlOnServer> = {
+  valid: true,
+  slideCount: 0,
+  scripts: [],
+  forms: 0,
+  iframes: 0,
+  externalUrls: [],
+  malformedSlides: [],
+  runtimeMarkers: {
+    runtimeMode: 'static',
+    arkDeck: null,
+    arkPreview: null,
+    arkRuntime: null,
+    arkRuntimeLib: null,
+    arkRuntimeVersion: null,
+    approvedRuntimeId: null,
+    approvedRuntimeVersion: null,
+  },
+  issues: [],
+}
+
 export type RunDeckAgentResult =
   | {
       ok: true
       html: string
       changed?: boolean
+      awaitingUserResponse?: boolean
       validation: ReturnType<typeof validateDeckHtmlOnServer>
       steps: AgentStep[]
       assistantText: string
@@ -560,7 +586,7 @@ export async function runDeckAgent({
       system: buildDeckAgentSystemPrompt(),
       messages: context.modelMessages,
       tools,
-      stopWhen: isLoopFinished(),
+      stopWhen: [hasToolCall('ask_user'), isLoopFinished()],
       // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
       ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
@@ -680,6 +706,9 @@ export async function runDeckAgent({
     transcriptParts.length > 0
       ? transcriptParts
       : extractAgentTranscriptParts(result.steps as never, activeDefinitions)
+  const awaitingUserResponse = finalTranscriptParts.some(
+    (part) => part.type === 'tool-call' && part.toolName === 'ask_user',
+  )
 
   if (workspace.changed && workspace.html.trim()) {
     const validation = validateDeckHtmlOnServer(workspace.html, logger ? { logger } : {})
@@ -708,6 +737,38 @@ export async function runDeckAgent({
       transcriptParts: finalTranscriptParts,
       assistantText,
       providerMetrics,
+    }
+  }
+
+  if (awaitingUserResponse) {
+    if (!currentHtml.trim()) {
+      return {
+        ok: true,
+        html: '',
+        changed: false,
+        awaitingUserResponse: true,
+        validation: EMPTY_AWAITING_VALIDATION,
+        steps,
+        transcriptParts: finalTranscriptParts,
+        assistantText,
+        providerMetrics,
+      }
+    }
+
+    const validation = validateDeckHtmlOnServer(currentHtml, logger ? { logger } : {})
+
+    if (validation.valid) {
+      return {
+        ok: true,
+        html: currentHtml,
+        changed: false,
+        awaitingUserResponse: true,
+        validation,
+        steps,
+        transcriptParts: finalTranscriptParts,
+        assistantText,
+        providerMetrics,
+      }
     }
   }
 
