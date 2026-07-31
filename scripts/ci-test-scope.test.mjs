@@ -95,6 +95,7 @@ test('forces full validation for shared and high-risk inputs', () => {
     'packages/contracts/tsconfig.json',
     'apps/web/src/test/setup.ts',
     'eslint.config.js',
+    '.oxlintrc.json',
   ]) {
     assert.deepEqual(decisions([filePath]), {
       full: true,

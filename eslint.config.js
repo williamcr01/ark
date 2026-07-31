@@ -47,17 +47,20 @@ const environmentOnlyPaths = [
 ]
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    '**/dist/**',
+    'data/**',
+    'artifacts/**',
+    'runtimes/**',
+    '.pnpm-store/**',
+    'coverage/**',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
-    ],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
-      globals: globals.browser,
+      globals: globals.node,
     },
     rules: {
       '@typescript-eslint/no-unused-vars': [
@@ -68,6 +71,24 @@ export default defineConfig([
           varsIgnorePattern: '^_',
         },
       ],
+    },
+  },
+  {
+    // React Compiler lint rules in eslint-plugin-react-hooks@7 dominate wall time
+    // (often >70% of rule cost) and are only needed when the compiler is enabled.
+    // Ark does not use React Compiler yet, so keep the classic hooks rules only,
+    // scoped to the web app.
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    extends: [reactRefresh.configs.vite],
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
   {

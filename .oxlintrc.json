@@ -1,0 +1,283 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "categories": {
+    "correctness": "off"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "dist",
+    "**/dist/**",
+    "data/**",
+    "artifacts/**",
+    "runtimes/**",
+    ".pnpm-store/**",
+    "coverage/**",
+    "**/vitest.config.ts",
+    "**/*.{js,mjs,cjs}"
+  ],
+  "rules": {
+    "no-unsafe-optional-chaining": "off",
+    "no-useless-assignment": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.{ts,tsx}"],
+      "rules": {
+        "constructor-super": "error",
+        "for-direction": "error",
+        "getter-return": "error",
+        "no-async-promise-executor": "error",
+        "no-case-declarations": "error",
+        "no-class-assign": "error",
+        "no-compare-neg-zero": "error",
+        "no-cond-assign": "error",
+        "no-const-assign": "error",
+        "no-constant-binary-expression": "error",
+        "no-constant-condition": "error",
+        "no-control-regex": "error",
+        "no-debugger": "error",
+        "no-delete-var": "error",
+        "no-dupe-class-members": "error",
+        "no-dupe-else-if": "error",
+        "no-dupe-keys": "error",
+        "no-duplicate-case": "error",
+        "no-empty": "error",
+        "no-empty-character-class": "error",
+        "no-empty-pattern": "error",
+        "no-empty-static-block": "error",
+        "no-ex-assign": "error",
+        "no-extra-boolean-cast": "error",
+        "no-fallthrough": "error",
+        "no-func-assign": "error",
+        "no-global-assign": "error",
+        "no-import-assign": "error",
+        "no-invalid-regexp": "error",
+        "no-irregular-whitespace": "error",
+        "no-loss-of-precision": "error",
+        "no-misleading-character-class": "error",
+        "no-new-native-nonconstructor": "error",
+        "no-nonoctal-decimal-escape": "error",
+        "no-obj-calls": "error",
+        "no-prototype-builtins": "error",
+        "no-redeclare": "error",
+        "no-regex-spaces": "error",
+        "no-self-assign": "error",
+        "no-setter-return": "error",
+        "no-shadow-restricted-names": "error",
+        "no-sparse-arrays": "error",
+        "no-this-before-super": "error",
+        "no-unassigned-vars": "error",
+        "no-unreachable": "error",
+        "no-unsafe-finally": "error",
+        "no-unsafe-negation": "error",
+        "no-unsafe-optional-chaining": "off",
+        "no-unused-labels": "error",
+        "no-unused-private-class-members": "error",
+        "no-unused-vars": [
+          "error",
+          {
+            "argsIgnorePattern": "^_",
+            "caughtErrorsIgnorePattern": "^_",
+            "varsIgnorePattern": "^_"
+          }
+        ],
+        "no-useless-backreference": "error",
+        "no-useless-catch": "error",
+        "no-useless-escape": "error",
+        "no-with": "error",
+        "preserve-caught-error": "error",
+        "require-yield": "error",
+        "use-isnan": "error",
+        "valid-typeof": "error",
+        "no-array-constructor": "error",
+        "no-unused-expressions": "error",
+        "typescript/ban-ts-comment": "error",
+        "typescript/no-duplicate-enum-values": "error",
+        "typescript/no-empty-object-type": "error",
+        "typescript/no-explicit-any": "error",
+        "typescript/no-extra-non-null-assertion": "error",
+        "typescript/no-misused-new": "error",
+        "typescript/no-namespace": "error",
+        "typescript/no-non-null-asserted-optional-chain": "error",
+        "typescript/no-require-imports": "error",
+        "typescript/no-this-alias": "error",
+        "typescript/no-unnecessary-type-constraint": "error",
+        "typescript/no-unsafe-declaration-merging": "error",
+        "typescript/no-unsafe-function-type": "error",
+        "typescript/no-wrapper-object-types": "error",
+        "typescript/prefer-as-const": "error",
+        "typescript/prefer-namespace-keyword": "error",
+        "typescript/triple-slash-reference": "error"
+      },
+      "plugins": ["typescript"],
+      "env": {
+        "node": true
+      },
+      "globals": {
+        "AsyncDisposableStack": "readonly",
+        "DisposableStack": "readonly",
+        "SuppressedError": "readonly"
+      }
+    },
+    {
+      "files": ["apps/web/src/**/*.{ts,tsx}"],
+      "rules": {
+        "react/only-export-components": [
+          "error",
+          {
+            "allowConstantExport": true
+          }
+        ],
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn"
+      },
+      "plugins": ["react"],
+      "env": {
+        "browser": true
+      },
+      "globals": {
+        "AsyncDisposableStack": "readonly",
+        "DisposableStack": "readonly",
+        "SuppressedError": "readonly"
+      }
+    },
+    {
+      "files": [
+        "apps/web/src/components/ui/**/*.{ts,tsx}",
+        "apps/web/src/components/ai-elements/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "react/only-export-components": "off"
+      },
+      "plugins": ["react"]
+    },
+    {
+      "files": ["apps/web/src/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/api/**", "@ark/api", "@ark/api/*"],
+                "message": "Frontend code must not import from apps/api. Use workspace packages instead."
+              },
+              {
+                "group": ["@ark/contracts/*", "**/packages/contracts/!(index)*"],
+                "message": "Import API contracts from @ark/contracts only."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/api/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/web/**", "@ark/web", "@ark/web/*"],
+                "message": "API code must not import from apps/web. Use workspace packages instead."
+              },
+              {
+                "group": ["@ark/contracts/*", "**/packages/contracts/!(index)*"],
+                "message": "Import API contracts from @ark/contracts only."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/sandbox/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/web/**", "@ark/web", "@ark/web/*"],
+                "message": "Sandbox code must not import from apps/web. Use workspace packages instead."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/web/**", "**/apps/api/**", "**/apps/sandbox/**"],
+                "message": "Packages must not import from apps/."
+              },
+              {
+                "group": ["node:*"],
+                "message": "Packages must not use Node built-ins unless the file name makes the environment explicit (e.g. *-disk.ts)."
+              }
+            ],
+            "paths": [
+              {
+                "name": "react",
+                "message": "Packages must not depend on React. Keep UI in apps/web."
+              },
+              {
+                "name": "react-dom",
+                "message": "Packages must not depend on React. Keep UI in apps/web."
+              },
+              {
+                "name": "express",
+                "message": "Packages must not depend on Express. Keep HTTP in apps/api."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/**/*-disk.ts",
+        "packages/contracts/**/*.ts",
+        "packages/**/*.test.ts",
+        "packages/**/*.spec.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/web/**", "**/apps/api/**", "**/apps/sandbox/**"],
+                "message": "Packages must not import from apps/."
+              }
+            ],
+            "paths": [
+              {
+                "name": "react",
+                "message": "Packages must not depend on React. Keep UI in apps/web."
+              },
+              {
+                "name": "react-dom",
+                "message": "Packages must not depend on React. Keep UI in apps/web."
+              },
+              {
+                "name": "express",
+                "message": "Packages must not depend on Express. Keep HTTP in apps/api."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
