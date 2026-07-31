@@ -49,7 +49,7 @@ const editorBridgeMock = vi.hoisted(() => ({
     slideIndex: number
     surface?: 'light' | 'dark'
   } | null,
-  hoverGeometry: null,
+  hoverGeometry: null as EditorNormalizedRect | null,
   hoverSlideBounds: null as EditorNormalizedRect | null,
   editorError: null,
   textEditActive: false,
