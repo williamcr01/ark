@@ -1075,11 +1075,14 @@ async function runSmoke() {
       servers,
       contexts,
       editPreviewSrc,
+      'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
-    // Order: insert → transform → delete on the fresh edit-mode iframe, then
-    // text edit. Undo/redo after each op reloads the preview; doing structural
-    // bridge ops first avoids racing a stale iframe after text undo/redo.
+    // Order: insert → transform → delete on the edit-mode iframe, then text
+    // edit. Every op and its undo/redo is a slide-only change, so the preview
+    // swaps the affected slides in place and the iframe is never reloaded.
     const afterInsert = await insertTextBoxViaTool(cdp, servers, contexts, apiPort, deckId)
 
     const insertVersion = await waitForNewestVersion(
@@ -1098,6 +1101,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Undo')
@@ -1121,6 +1126,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Redo')
@@ -1144,6 +1151,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     const textBoxIdMatch = afterInsertRedo.html.match(
@@ -1216,7 +1225,7 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
-      'reload',
+      'reuse',
       editPreview,
     ))
 
@@ -1241,6 +1250,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     await evaluate<boolean>(
@@ -1272,6 +1283,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Undo')
@@ -1295,6 +1308,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     await clickToolbarButton(cdp, 'Redo')
@@ -1318,6 +1333,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
+      'reuse',
+      editPreview,
     ))
 
     // --- Second-click text edit via real pointer events inside the sandbox iframe ---
@@ -1400,7 +1417,7 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       'Quarterly planning',
-      'reload',
+      'reuse',
       editPreview,
     ))
 
@@ -1425,6 +1442,8 @@ async function runSmoke() {
       contexts,
       editPreviewSrc,
       editedText,
+      'reuse',
+      editPreview,
     ))
 
     const finalDeck = await fetchDeck(apiPort, deckId)

@@ -49,7 +49,8 @@ type UseDeckEditorPatchCoordinatorOptions = {
   onUndo?: () => void | Promise<void>
   preserveRedoSlideIndex?: number | null
   preserveUndoSlideIndex?: number | null
-  previewHtml: string
+  /** Bumps whenever the preview content changed, by reload or by slide patch. */
+  previewContentRevision: number
   selection: EditorSelectionInfo | null
   scopeKey: string | null
   textEditActive: boolean
@@ -90,7 +91,7 @@ export function useDeckEditorPatchCoordinator({
   onUndo,
   preserveRedoSlideIndex,
   preserveUndoSlideIndex,
-  previewHtml,
+  previewContentRevision,
   selection,
   scopeKey,
   textEditActive,
@@ -642,7 +643,7 @@ export function useDeckEditorPatchCoordinator({
     const slideIndex = preserveSlideIndexRef.current
     preserveSlideIndexRef.current = null
     goToSlide(slideIndex)
-  }, [goToSlide, iframeKey, previewHtml])
+  }, [goToSlide, iframeKey, previewContentRevision])
 
   useEffect(() => {
     const pending = pendingReselectRef.current

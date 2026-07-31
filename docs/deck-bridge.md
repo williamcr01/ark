@@ -23,19 +23,54 @@ Protocol version: `DECK_BRIDGE_PROTOCOL_VERSION` (currently `1`).
 
 ### Parent → iframe
 
-| Type            | Payload             | Purpose                              |
-| --------------- | ------------------- | ------------------------------------ |
-| `ark:deck-goto` | `{ index: number }` | Navigate to a zero-based slide index |
+| Type                    | Payload                          | Purpose                                         |
+| ----------------------- | -------------------------------- | ----------------------------------------------- |
+| `ark:deck-goto`         | `{ index: number }`              | Navigate to a zero-based slide index            |
+| `ark:deck-patch-slides` | `{ patchId, operations, index }` | Swap individual slides without a preview reload |
 
 ### iframe → parent
 
-| Type                     | Payload                           | Purpose                                          |
-| ------------------------ | --------------------------------- | ------------------------------------------------ |
-| `ark:deck-ready`         | `{ index, slideCount, metadata }` | Bridge is listening; initial slide and deck info |
-| `ark:deck-slide-count`   | `{ slideCount }`                  | Slide count announcement or update               |
-| `ark:deck-slide-change`  | `{ index }`                       | Active slide changed                             |
-| `ark:deck-metadata`      | `{ metadata }`                    | Deck metadata announcement or update             |
-| `ark:deck-runtime-error` | `{ message, source? }`            | Uncaught error or unhandled rejection            |
+| Type                           | Payload                            | Purpose                                          |
+| ------------------------------ | ---------------------------------- | ------------------------------------------------ |
+| `ark:deck-ready`               | `{ index, slideCount, metadata }`  | Bridge is listening; initial slide and deck info |
+| `ark:deck-slide-count`         | `{ slideCount }`                   | Slide count announcement or update               |
+| `ark:deck-slide-change`        | `{ index }`                        | Active slide changed                             |
+| `ark:deck-metadata`            | `{ metadata }`                     | Deck metadata announcement or update             |
+| `ark:deck-patch-slides-result` | `{ patchId, applied, slideCount }` | Whether a slide patch landed                     |
+| `ark:deck-runtime-error`       | `{ message, source? }`             | Uncaught error or unhandled rejection            |
+
+### Slide patching
+
+When a deck edit only touches slide markup, the shell swaps the affected slides
+inside the loaded preview instead of creating a new preview session and
+reloading the iframe. Untouched slides keep their DOM nodes and the viewer stays
+on the slide they were watching: surviving identical slides are followed by
+content identity (so an insert/delete before the active slide does not jump the
+viewer), and a removed or replaced slide falls back to the same numeric index.
+
+`operations` is a positional edit script applied in order against the evolving
+slide list, so a changed slide is a `remove` followed by an `insert` at the same
+index:
+
+```ts
+{ op: 'remove'; index: number } | { op: 'insert'; index: number; html: string }
+```
+
+The patch also carries a `slideIndexMap` (previous index → next index, or `-1`
+when that slide was removed/replaced) so the shell can keep the viewer on the
+same content across inserts and deletes before the active position.
+
+The shell (`packages/deck-core/deck-slide-patch.ts`) only produces a patch when:
+
+- the deck's scripts are stripped in preview (plain decks and approved reveal
+  decks without the Chart.js addon) — replayed markup never re-runs deck script,
+- every slide shares one parent element, and
+- nothing outside the slide list changed (styles, head, scripts, containers).
+
+Anything else falls back to a full reload, as does a runtime that answers with
+`applied: false`, an unexpected `slideCount`, or no answer at all. `index` is the
+slide to show once the patch lands; the runtime re-applies its own active-slide
+state (`Reveal.sync()` for the reveal adapter) afterwards.
 
 ### Metadata shape
 
@@ -58,6 +93,7 @@ Ark strips deck scripts and injects `buildDeckCssNavRuntimeScript`. The shim:
 - Handles arrow-key navigation and parent `ark:deck-goto` messages
 - Posts `ark:deck-ready`, `ark:deck-slide-count`, and `ark:deck-metadata` on load
 - Posts `ark:deck-slide-change` after each navigation
+- Applies `ark:deck-patch-slides` and re-shows the requested slide
 - Forwards `window.error` and `unhandledrejection` as `ark:deck-runtime-error`
 
 ### Full-JS (explicit opt-in)
@@ -79,6 +115,7 @@ Decks with reveal runtime markers (`data-ark-runtime="reveal"`, etc.) and approv
 - Initializes Reveal once with preview-safe settings (`hash: false`, `keyboard: false`, `controls: false`, `progress: false`)
 - Maps parent `ark:deck-goto` messages to `Reveal.slide(h, v, 0)`
 - Reports `ark:deck-slide-change` using Reveal's flattened slide index (`getSlidePastCount`)
+- Applies `ark:deck-patch-slides`, then `Reveal.sync()` and returns to the requested slide
 - Announces `runtime: 'reveal'` and `previewMode: 'full-js'`
 
 **Slide index model:** Ark uses a flattened linear index that matches Reveal's slide order. Each top-level horizontal slide without nested sections counts as one slide. A horizontal slide with vertical child sections expands into one index per vertical child. Fragment steps are not included in Ark indexes; fragment-only Reveal navigation does not update Ark slide state.
