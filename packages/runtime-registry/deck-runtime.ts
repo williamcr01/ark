@@ -51,6 +51,7 @@ function buildDeckCsp(
     scriptSources?: string[]
     styleSources?: string[]
     fontSources?: string[]
+    imageSources?: string[]
     /**
      * When true, omit `'unsafe-inline'` from script-src (caller must supply a
      * nonce or other script allowlist entry). Style-src always keeps
@@ -65,6 +66,7 @@ function buildDeckCsp(
   ]
   const styleSources = ["'unsafe-inline'", ...(options.styleSources ?? [])]
   const fontSources = ['data:', ...(options.fontSources ?? [])]
+  const imageSources = ['data:', 'blob:', ...(options.imageSources ?? [])]
 
   if (scriptSources.length === 0) {
     scriptSources.push("'none'")
@@ -74,7 +76,7 @@ function buildDeckCsp(
     "default-src 'none'",
     `script-src ${scriptSources.join(' ')}`,
     `style-src ${styleSources.join(' ')}`,
-    'img-src data: blob:',
+    `img-src ${imageSources.join(' ')}`,
     `font-src ${fontSources.join(' ')}`,
     "connect-src 'none'",
     "frame-src 'none'",
@@ -276,11 +278,17 @@ export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspBuildOpt
   ]
   const useNonce = shouldUseScriptNonce(mode, options)
   const nonceSource = useNonce && options.nonce ? [`'nonce-${options.nonce}'`] : []
+  const imageSources = options.assetOrigin?.trim()
+    ? [toAbsoluteRuntimeAssetSource('/', options)?.replace(/\/$/, '')].filter(
+        (source): source is string => Boolean(source),
+      )
+    : []
 
   if (
     scriptSources.length === 0 &&
     styleSources.length === 0 &&
     fontSources.length === 0 &&
+    imageSources.length === 0 &&
     !useNonce
   ) {
     return STRICT_DECK_CSP
@@ -290,6 +298,7 @@ export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspBuildOpt
     scriptSources: [...nonceSource, ...scriptSources],
     styleSources,
     fontSources,
+    imageSources,
     omitUnsafeInlineScript: useNonce,
   })
 }

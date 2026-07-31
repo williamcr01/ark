@@ -347,6 +347,23 @@ export function createArkOpenApiRegistry() {
 
   registry.registerPath({
     method: 'post',
+    path: '/api/assets',
+    summary: 'Stage an asset for a new deck',
+    request: {
+      body: { content: { 'application/json': { schema: uploadAssetRequestSchema } } },
+    },
+    responses: {
+      201: {
+        description: 'Temporary unassigned asset metadata',
+        content: { 'application/json': { schema: uploadAssetResponseSchema } },
+      },
+      400: jsonError,
+      500: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'post',
     path: '/api/decks/{id}/assets',
     summary: 'Upload a deck asset',
     request: {
@@ -402,6 +419,7 @@ export function createArkOpenApiRegistry() {
       204: { description: 'Asset deleted' },
       400: jsonError,
       404: jsonError,
+      409: jsonError,
       500: jsonError,
     },
   })
@@ -411,7 +429,7 @@ export function createArkOpenApiRegistry() {
     path: '/api/generation-jobs',
     summary: 'Start an async generation job',
     description:
-      'Enqueue deck generation or editing. Optional `assetIds` attach uploaded deck assets to the latest user turn; requires `deckId`. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.',
+      'Enqueue deck generation or editing. Optional `assetIds` attach deck-owned assets, or unassigned temporary assets when `deckId` is omitted. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.',
     request: {
       body: { content: { 'application/json': { schema: startGenerationJobRequestSchema } } },
     },

@@ -1,7 +1,12 @@
 import express, { Router, type Request, type Response } from 'express'
 
-import { parseRequestBody, uploadAssetRequestSchema } from '@ark/contracts'
-import { getAssetCategory, isValidAssetId } from '@ark/deck-core/assets.ts'
+import { parseRequestBody, uploadAssetRequestSchema, type UploadAssetRequest } from '@ark/contracts'
+import {
+  buildAssetUrl,
+  buildTemporaryAssetUrl,
+  getAssetCategory,
+  isValidAssetId,
+} from '@ark/deck-core/assets.ts'
 import {
   type AssetRecord,
   type AssetSource,
@@ -25,6 +30,7 @@ export type AssetsRouterDeps = {
 // route parses its own body so the global (smaller) JSON limit does not reject
 // legitimate max-size uploads before validation runs.
 const ASSET_UPLOAD_JSON_LIMIT = '72mb'
+const TEMPORARY_ASSET_TTL_MS = 24 * 60 * 60 * 1000
 
 function sendAssetBytes(response: Response, record: AssetRecord, bytes: Buffer) {
   response.setHeader('Content-Type', record.mediaType)
@@ -70,9 +76,70 @@ async function getDeckScopedAsset(
   return { record, bytes }
 }
 
+async function persistUploadedAsset(
+  deps: AssetsRouterDeps,
+  input: UploadAssetRequest,
+  deckId: string | null,
+) {
+  const validation = validateAssetUpload(input)
+  if (!validation.ok) return validation
+
+  const storageKey = createAssetStorageKey()
+  await deps.assetStorage.write(storageKey, validation.bytes)
+
+  try {
+    const record = await deps.assetStore.createAsset({
+      deckId,
+      chatMessageId: input.chatMessageId ?? null,
+      filename: validation.filename,
+      mediaType: validation.mediaType,
+      category: getAssetCategory(validation.mediaType),
+      byteSize: validation.byteSize,
+      checksum: validation.checksum,
+      source: (input.source as AssetSource | undefined) ?? 'upload',
+      storageKind: deps.assetStorage.kind,
+      storageKey,
+    })
+    return { ok: true as const, record }
+  } catch (error) {
+    await deps.assetStorage.delete(storageKey)
+    throw error
+  }
+}
+
+async function cleanupExpiredTemporaryAssets(deps: AssetsRouterDeps) {
+  const cutoff = new Date(Date.now() - TEMPORARY_ASSET_TTL_MS).toISOString()
+  const expired = await deps.assetStore.deleteExpiredUnassignedAssets(cutoff)
+  await Promise.all(expired.map((record) => deps.assetStorage.delete(record.storageKey)))
+}
+
 export function createAssetsRouter(deps: AssetsRouterDeps): Router {
   const { assetStore, assetStorage, deckStore } = deps
   const router = Router()
+
+  router.post(
+    '/api/assets',
+    express.json({ limit: ASSET_UPLOAD_JSON_LIMIT }),
+    async (request: Request, response: Response) => {
+      const parsed = parseRequestBody(uploadAssetRequestSchema, request.body)
+      if (!parsed.ok) {
+        response.status(400).json({ error: parsed.error })
+        return
+      }
+
+      try {
+        await cleanupExpiredTemporaryAssets(deps)
+        const result = await persistUploadedAsset(deps, parsed.data, null)
+        if (!result.ok) {
+          response.status(400).json({ error: result.error.message, code: result.error.code })
+          return
+        }
+        response.status(201).json({ asset: toAssetMetadata(result.record) })
+      } catch (error) {
+        sendApiError(response, 500, getApiErrorFromUnknown(error))
+      }
+    },
+  )
 
   router.post(
     '/api/decks/:id/assets',
@@ -100,46 +167,19 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
           return
         }
 
-        const validation = validateAssetUpload({
-          filename: parsed.data.filename,
-          mediaType: parsed.data.mediaType,
-          data: parsed.data.data,
-        })
+        const result = await persistUploadedAsset(deps, parsed.data, deckId)
 
-        if (!validation.ok) {
+        if (!result.ok) {
           getRequestLogger(request).warn('asset.upload.rejected', {
             deckId,
-            errorCategory: validation.error.code,
+            errorCategory: result.error.code,
             statusCode: 400,
           })
-          response
-            .status(400)
-            .json({ error: validation.error.message, code: validation.error.code })
+          response.status(400).json({ error: result.error.message, code: result.error.code })
           return
         }
 
-        const storageKey = createAssetStorageKey()
-        await assetStorage.write(storageKey, validation.bytes)
-
-        let record: AssetRecord
-
-        try {
-          record = await assetStore.createAsset({
-            deckId,
-            chatMessageId: parsed.data.chatMessageId ?? null,
-            filename: validation.filename,
-            mediaType: validation.mediaType,
-            category: getAssetCategory(validation.mediaType),
-            byteSize: validation.byteSize,
-            checksum: validation.checksum,
-            source: (parsed.data.source as AssetSource | undefined) ?? 'upload',
-            storageKind: assetStorage.kind,
-            storageKey,
-          })
-        } catch (error) {
-          await assetStorage.delete(storageKey)
-          throw error
-        }
+        const record = result.record
 
         getRequestLogger(request).info('asset.uploaded', {
           deckId,
@@ -234,6 +274,24 @@ export function createAssetsRouter(deps: AssetsRouterDeps): Router {
 
         if (!existing || existing.deckId !== deckId) {
           response.status(404).json({ error: 'Asset not found.' })
+          return
+        }
+
+        const references = [buildAssetUrl(deckId, assetId), buildTemporaryAssetUrl(assetId)]
+        const versions = await deckStore.listVersions(deckId)
+        const versionDetails = await Promise.all(
+          (versions ?? []).map((version) => deckStore.getVersion(deckId, version.id)),
+        )
+        if (
+          versionDetails.some(
+            (version) =>
+              version && references.some((reference) => version.html.includes(reference)),
+          )
+        ) {
+          response.status(409).json({
+            error: 'This asset is used by a saved deck version and cannot be deleted.',
+            code: 'asset_in_use',
+          })
           return
         }
 

@@ -44,6 +44,14 @@ describe('sniffMatchesMediaType', () => {
     expect(sniffMatchesMediaType(PNG_BYTES, 'image/png')).toBe(true)
     expect(sniffMatchesMediaType(Buffer.from([0xff, 0xd8, 0xff, 0x00]), 'image/jpeg')).toBe(true)
     expect(sniffMatchesMediaType(Buffer.from('GIF89a....'), 'image/gif')).toBe(true)
+    expect(
+      sniffMatchesMediaType(Buffer.from('\0\0\0\u0018ftypavif\0\0\0\0avifmif1'), 'image/avif'),
+    ).toBe(true)
+    expect(sniffMatchesMediaType(Buffer.from('BM....'), 'image/x-ms-bmp')).toBe(true)
+    expect(
+      sniffMatchesMediaType(Buffer.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]), 'image/x-icon'),
+    ).toBe(true)
+    expect(sniffMatchesMediaType(PNG_BYTES, 'image/apng')).toBe(true)
     expect(sniffMatchesMediaType(Buffer.from('%PDF-1.7'), 'application/pdf')).toBe(true)
   })
 
@@ -79,6 +87,22 @@ describe('validateAssetUpload', () => {
       expect(result.checksum).toBe(computeChecksum(PNG_BYTES))
       expect(result.filename).toBe('logo.png')
     }
+  })
+
+  it('infers a canonical type when the browser omits or aliases it', () => {
+    const inferred = validateAssetUpload({
+      filename: 'logo.png',
+      mediaType: 'application/octet-stream',
+      data: pngDataUrl,
+    })
+    const aliased = validateAssetUpload({
+      filename: 'photo.jfif',
+      mediaType: 'image/pjpeg',
+      data: Buffer.from([0xff, 0xd8, 0xff, 0x00]).toString('base64'),
+    })
+
+    expect(inferred).toMatchObject({ ok: true, mediaType: 'image/png' })
+    expect(aliased).toMatchObject({ ok: true, mediaType: 'image/jpeg' })
   })
 
   it('rejects unsupported media types', () => {

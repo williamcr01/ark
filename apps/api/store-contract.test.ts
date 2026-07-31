@@ -183,6 +183,53 @@ describe.each([
     expect(await assetStore.listAssetsByDeck(deck.id)).toHaveLength(0)
   })
 
+  it('claims temporary assets atomically and expires unclaimed assets', async () => {
+    stores = await makeStores()
+    const { deckStore, assetStore } = stores
+    const requestedDeckId = '00000000-0000-4000-8000-0000000005c1'
+    const deck = await deckStore.createDeck(sampleHtml, {}, requestedDeckId)
+    const makeTemporary = (filename: string) =>
+      assetStore.createAsset({
+        deckId: null,
+        filename,
+        mediaType: 'image/png',
+        category: 'image',
+        byteSize: 1,
+        checksum: filename,
+        source: 'upload',
+        storageKind: 'local',
+        storageKey: filename,
+      })
+    const first = await makeTemporary('first.png')
+    const second = await makeTemporary('second.png')
+    const expiring = await makeTemporary('old.png')
+
+    expect(deck.id).toBe(requestedDeckId)
+    expect(await assetStore.claimAssetsForDeck([first.id, second.id], deck.id)).toHaveLength(2)
+    expect((await assetStore.getAsset(first.id))?.deckId).toBe(deck.id)
+    expect(await assetStore.claimAssetsForDeck([first.id, expiring.id], deck.id)).toBeNull()
+    expect((await assetStore.getAsset(expiring.id))?.deckId).toBeNull()
+
+    if (_name === 'json') {
+      const competing = await makeTemporary('competing.png')
+      const otherDeck = await deckStore.createDeck(sampleHtml)
+      const claims = await Promise.all([
+        assetStore.claimAssetsForDeck([competing.id], deck.id),
+        assetStore.claimAssetsForDeck([competing.id], otherDeck.id),
+      ])
+
+      expect(claims.filter(Boolean)).toHaveLength(1)
+      expect((await assetStore.getAsset(competing.id))?.deckId).toBe(
+        claims[0] ? deck.id : otherDeck.id,
+      )
+    }
+
+    const expired = await assetStore.deleteExpiredUnassignedAssets('9999-12-31T23:59:59.999Z')
+    expect(expired.map((asset) => asset.id)).toContain(expiring.id)
+    expect(await assetStore.getAsset(expiring.id)).toBeNull()
+    expect(await assetStore.getAsset(first.id)).not.toBeNull()
+  })
+
   it('cleans up every asset when a deck is deleted', async () => {
     stores = await makeStores()
     const { deckStore, assetStore } = stores

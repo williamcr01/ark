@@ -4,6 +4,7 @@ import {
   ALLOWED_ASSET_MEDIA_TYPES,
   MAX_ASSET_UPLOAD_BYTES,
   isAllowedAssetMediaType,
+  resolveAssetMediaType,
 } from '@ark/deck-core/assets.ts'
 import {
   deleteAsset as deleteAssetRequest,
@@ -66,7 +67,7 @@ function reduceAssetSelection(
 }
 
 function validateFile(file: File): string | null {
-  if (!isAllowedAssetMediaType(file.type)) {
+  if (!isAllowedAssetMediaType(resolveAssetMediaType(file.name, file.type))) {
     return `${file.name}: unsupported type (${file.type || 'unknown'}). Allowed: ${Object.keys(
       ALLOWED_ASSET_MEDIA_TYPES,
     ).join(', ')}.`
@@ -182,7 +183,7 @@ export function useDeckAssets(deckId: string | null) {
           const dataUrl = await readFileAsDataUrl(file)
           const asset = await uploadDeckAsset(targetDeckId, {
             filename: file.name,
-            mediaType: file.type,
+            mediaType: resolveAssetMediaType(file.name, file.type),
             data: dataUrl,
           })
 

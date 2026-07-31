@@ -198,6 +198,72 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
     return result.rows.map(mapAsset)
   }
 
+  const claimAssetsForDeck = async (rawIds: readonly string[], deckId: string) => {
+    const ids = [...new Set(rawIds)]
+    if (!isValidDeckId(deckId) || ids.some((id) => !isValidAssetId(id))) return null
+    if (ids.length === 0) return []
+
+    await ensureReady()
+    const client = await pool.connect()
+
+    try {
+      await client.query('BEGIN')
+      const candidates = await client.query<{ id: string }>(
+        `
+          SELECT id
+          FROM assets
+          WHERE id IN (${ids.map((_, index) => `$${index + 1}`).join(', ')})
+            AND deck_id IS NULL
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        ids,
+      )
+      if (candidates.rows.length !== ids.length) {
+        await client.query('ROLLBACK')
+        return null
+      }
+      const result = await client.query<AssetRow>(
+        `
+          UPDATE assets
+          SET deck_id = $1
+          WHERE id IN (${ids.map((_, index) => `$${index + 2}`).join(', ')})
+            AND deck_id IS NULL
+            AND deleted_at IS NULL
+          RETURNING ${SELECT_COLUMNS}
+        `,
+        [deckId, ...ids],
+      )
+      if (result.rows.length !== ids.length) {
+        await client.query('ROLLBACK')
+        return null
+      }
+      await client.query('COMMIT')
+      return result.rows.map(mapAsset)
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
+  const deleteExpiredUnassignedAssets = async (cutoff: string) => {
+    await ensureReady()
+    const result = await pool.query<AssetRow>(
+      `
+        UPDATE assets
+        SET deleted_at = $2
+        WHERE deck_id IS NULL
+          AND deleted_at IS NULL
+          AND created_at < $1
+        RETURNING ${SELECT_COLUMNS}
+      `,
+      [cutoff, now()],
+    )
+    return result.rows.map(mapAsset)
+  }
+
   const deleteAsset = async (id: string) => {
     if (!isValidAssetId(id)) {
       return null
@@ -261,6 +327,8 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
     createAsset,
     getAsset,
     listAssetsByDeck,
+    claimAssetsForDeck,
+    deleteExpiredUnassignedAssets,
     deleteAsset,
     deleteAssetsByDeck,
     deleteAssetsByChatMessage,

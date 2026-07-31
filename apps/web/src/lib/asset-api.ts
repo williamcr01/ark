@@ -51,6 +51,24 @@ export async function uploadDeckAsset(
   return data.asset
 }
 
+export async function uploadTemporaryAsset(
+  input: UploadAssetInput,
+  signal?: AbortSignal,
+): Promise<AssetMetadataResponse> {
+  const response = await fetch('/api/assets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  })
+
+  const data = await fetchApiJsonOrThrow(response, uploadAssetResponseSchema, {
+    fallbackMessage: 'Could not upload the file.',
+  })
+
+  return data.asset
+}
+
 export async function listDeckAssets(
   deckId: string,
   signal?: AbortSignal,

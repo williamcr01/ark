@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { toChatAttachments, type ChatAttachment } from '@ark/deck-core/chat.ts'
+import { type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
 
 import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
@@ -46,7 +46,7 @@ import {
   type ContextSlideEntry,
 } from '@/lib/slide-context'
 import type { PatchDeckResponse } from '@/lib/deck-api'
-import { uploadDeckAsset } from '@/lib/asset-api'
+import { uploadDeckAsset, uploadTemporaryAsset } from '@/lib/asset-api'
 import {
   startRevealThumbnailStylesPreload,
   waitForRevealThumbnailStylesPreload,
@@ -63,7 +63,7 @@ function parseInitialSlideIndex(value: string | null) {
 }
 
 async function uploadPromptAttachments(
-  deckId: string,
+  deckId: string | null,
   files: PromptInputMessage['files'],
 ): Promise<ChatAttachment[]> {
   const attachments = new Array<ChatAttachment>(files.length)
@@ -75,11 +75,12 @@ async function uploadPromptAttachments(
     const file = files[index]
     if (!file) return
 
-    const asset = await uploadDeckAsset(deckId, {
+    const input = {
       filename: file.filename ?? 'attachment',
       mediaType: file.mediaType,
       data: file.url,
-    })
+    }
+    const asset = deckId ? await uploadDeckAsset(deckId, input) : await uploadTemporaryAsset(input)
     attachments[index] = {
       type: 'file',
       mediaType: asset.mediaType,
@@ -468,21 +469,26 @@ function App() {
       return
     }
 
-    // Bound concurrency so large selections upload promptly without flooding the browser or API.
-    const promptAttachments = deckId
-      ? await uploadPromptAttachments(deckId, message.files)
-      : toChatAttachments(message.files)
+    let promptAttachments: ChatAttachment[]
+    try {
+      // Bound concurrency so large selections upload promptly without flooding the browser or API.
+      promptAttachments = await uploadPromptAttachments(deckId, message.files)
+      setAttachmentError('')
+    } catch (uploadError) {
+      setAttachmentError(
+        uploadError instanceof Error ? uploadError.message : 'Could not upload the attachment.',
+      )
+      return
+    }
 
     const attachments = [...selectedDeckAttachments, ...promptAttachments]
     setInput('')
-    const assetIds = deckId
-      ? [
-          ...new Set([
-            ...selectedAssetIds,
-            ...promptAttachments.flatMap((item) => (item.assetId ? [item.assetId] : [])),
-          ]),
-        ]
-      : []
+    const assetIds = [
+      ...new Set([
+        ...selectedAssetIds,
+        ...promptAttachments.flatMap((item) => (item.assetId ? [item.assetId] : [])),
+      ]),
+    ]
     const editorSelectionContext = toEditorSelectionContext(editorSelection)
     const slideContexts =
       resolvedContextSlides.length > 0

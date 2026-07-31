@@ -29,11 +29,18 @@ type AssetMediaTypeSpec = {
  * high-level category. Anything outside this list is rejected on upload.
  */
 export const ALLOWED_ASSET_MEDIA_TYPES: Record<string, AssetMediaTypeSpec> = {
-  'image/png': { extensions: ['.png'], category: 'image' },
-  'image/jpeg': { extensions: ['.jpg', '.jpeg'], category: 'image' },
+  'image/png': { extensions: ['.png', '.apng'], category: 'image' },
+  'image/apng': { extensions: ['.apng'], category: 'image' },
+  'image/jpeg': {
+    extensions: ['.jpg', '.jpeg', '.jfif', '.pjpeg', '.pjp'],
+    category: 'image',
+  },
   'image/gif': { extensions: ['.gif'], category: 'image' },
   'image/webp': { extensions: ['.webp'], category: 'image' },
+  'image/avif': { extensions: ['.avif'], category: 'image' },
   'image/svg+xml': { extensions: ['.svg'], category: 'image' },
+  'image/bmp': { extensions: ['.bmp'], category: 'image' },
+  'image/x-icon': { extensions: ['.ico'], category: 'image' },
   'text/csv': { extensions: ['.csv'], category: 'text' },
   'text/plain': { extensions: ['.txt', '.text'], category: 'text' },
   'text/markdown': { extensions: ['.md', '.markdown'], category: 'text' },
@@ -44,6 +51,12 @@ export const ALLOWED_ASSET_MEDIA_TYPES: Record<string, AssetMediaTypeSpec> = {
 /** `accept` attribute value for asset file inputs. */
 export const ASSET_UPLOAD_ACCEPT = Object.keys(ALLOWED_ASSET_MEDIA_TYPES).join(',')
 
+const ASSET_MEDIA_TYPE_ALIASES: Record<string, string> = {
+  'image/pjpeg': 'image/jpeg',
+  'image/x-ms-bmp': 'image/bmp',
+  'image/vnd.microsoft.icon': 'image/x-icon',
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function isValidAssetId(id: string) {
@@ -51,7 +64,31 @@ export function isValidAssetId(id: string) {
 }
 
 export function normalizeAssetMediaType(mediaType: string) {
-  return mediaType.split(';')[0]?.trim().toLowerCase() ?? ''
+  const normalized = mediaType.split(';')[0]?.trim().toLowerCase() ?? ''
+  return ASSET_MEDIA_TYPE_ALIASES[normalized] ?? normalized
+}
+
+/** Resolve an allowed canonical media type, falling back to a unique filename extension. */
+export function resolveAssetMediaType(filename: string, mediaType: string) {
+  const normalized = normalizeAssetMediaType(mediaType)
+  const lower = filename.toLowerCase()
+
+  if (
+    lower.endsWith('.apng') &&
+    (!normalized || normalized === 'image/png' || normalized === 'application/octet-stream')
+  ) {
+    return 'image/apng'
+  }
+
+  if (normalized in ALLOWED_ASSET_MEDIA_TYPES) {
+    return normalized
+  }
+
+  return (
+    Object.entries(ALLOWED_ASSET_MEDIA_TYPES).find(([, spec]) =>
+      spec.extensions.some((extension) => lower.endsWith(extension)),
+    )?.[0] ?? ''
+  )
 }
 
 export function isAllowedAssetMediaType(mediaType: string) {
@@ -69,6 +106,11 @@ export function getAssetExtensions(mediaType: string): readonly string[] {
 /** Build the stable, deck-scoped URL used to fetch an asset's bytes. */
 export function buildAssetUrl(deckId: string, id: string) {
   return `/api/decks/${deckId}/assets/${id}`
+}
+
+/** Build the lightweight reference used until a new deck owns the asset. */
+export function buildTemporaryAssetUrl(id: string) {
+  return `/api/assets/${id}`
 }
 
 const DECK_SCOPED_ASSET_URL_PATTERN =
@@ -107,6 +149,31 @@ export function parseDeckAssetFromUrl(url: string): { deckId: string; assetId: s
 /** True when a URL points at an Ark-owned asset (safe for preview/export). */
 export function isArkAssetUrl(url: string) {
   return parseAssetIdFromUrl(url) !== null
+}
+
+const ARK_DECK_ASSET_REFERENCE_PATTERN =
+  /(^|[("'=\s,])((?:\/api\/decks\/)[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi
+
+/** Absolutize only validated deck-scoped Ark asset paths embedded in HTML/CSS values. */
+export function absolutizeArkAssetReferences(
+  value: string,
+  assetOrigin: string | null | undefined,
+) {
+  if (!assetOrigin?.trim()) return value
+
+  let origin: string
+  try {
+    const parsed = new URL(assetOrigin)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return value
+    origin = parsed.origin
+  } catch {
+    return value
+  }
+
+  return value.replace(
+    ARK_DECK_ASSET_REFERENCE_PATTERN,
+    (_match, prefix: string, path: string) => `${prefix}${origin}${path}`,
+  )
 }
 
 // Intentionally matches control characters to strip them from filenames.

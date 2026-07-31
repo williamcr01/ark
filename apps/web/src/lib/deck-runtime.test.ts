@@ -119,6 +119,13 @@ describe('runtime policies', () => {
     expect(getRuntimeCsp('static')).not.toContain('/api/runtimes/')
   })
 
+  it('allows the configured Ark asset origin for deck images only', () => {
+    const csp = getRuntimeCsp('static', { assetOrigin: 'http://localhost:8787' })
+
+    expect(csp).toContain('img-src data: blob: http://localhost:8787')
+    expect(csp).toContain("connect-src 'none'")
+  })
+
   it('uses a nonce instead of unsafe-inline for static/reveal when provided', () => {
     const staticCsp = getRuntimeCsp('static', { nonce: 'test-nonce' })
     const revealCsp = getRuntimeCsp('reveal', { nonce: 'test-nonce' })

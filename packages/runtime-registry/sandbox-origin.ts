@@ -243,6 +243,7 @@ export function buildSandboxResponseCsp(
   appOrigin: string,
   options: SandboxResponseCspOptions = {},
 ) {
+  const normalizedAppOrigin = normalizeOrigin(appOrigin)
   const useNonce =
     Boolean(options.nonce) &&
     options.runtimeMode !== undefined &&
@@ -257,7 +258,9 @@ export function buildSandboxResponseCsp(
   ]
   const fontSources = ['data:', ...getSandboxRuntimeAssetSources(appOrigin, { kind: 'font' })]
 
-  return `default-src 'none'; script-src ${scriptSources.join(' ')}; style-src ${styleSources.join(' ')}; img-src data: blob:; font-src ${fontSources.join(' ')}; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; ${buildSandboxFrameAncestorsCsp(appOrigin)}`
+  const imageSources = ['data:', 'blob:', ...(normalizedAppOrigin ? [normalizedAppOrigin] : [])]
+
+  return `default-src 'none'; script-src ${scriptSources.join(' ')}; style-src ${styleSources.join(' ')}; img-src ${imageSources.join(' ')}; font-src ${fontSources.join(' ')}; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; ${buildSandboxFrameAncestorsCsp(appOrigin)}`
 }
 
 export const DECK_BRIDGE_POST_MESSAGE_TARGET = '*' as const

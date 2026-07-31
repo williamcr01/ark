@@ -396,7 +396,7 @@ export function createDeckTools(
           }),
           read_attachment: tool({
             description:
-              'Read a UTF-8 text, CSV, Markdown, or JSON attachment by byte offset. For binary files, returns metadata and the Ark URL that can be placed in the deck.',
+              'Read a UTF-8 text, CSV, Markdown, or JSON attachment by byte offset. For binary files, returns metadata and the exact Ark URL to place in the deck; do not copy bytes or invent a URL.',
             inputSchema: z.object({
               id: z.string().describe('Attachment id from list_attachments.'),
               offset: z.number().int().min(0).optional().describe('UTF-8 byte offset.'),
@@ -418,7 +418,7 @@ export function createDeckTools(
                 return {
                   ...attachment,
                   binary: true,
-                  message: 'Binary attachment. Use its Ark URL when placing it in the deck.',
+                  message: 'Binary attachment. Use this exact Ark URL when placing it in the deck.',
                 }
               }
               const bytes = await attachmentInspector.read(id)
