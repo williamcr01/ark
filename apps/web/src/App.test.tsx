@@ -9,9 +9,6 @@ const deckPreviewLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 const persistenceState = vi.hoisted(() => ({ deckId: 'deck-1' as string | null }))
 const generationState = vi.hoisted(() => ({ generateDeck: vi.fn() }))
 const assetApi = vi.hoisted(() => ({
-  deleteAsset: vi.fn(),
-  listDeckAssets: vi.fn().mockResolvedValue([]),
-  readFileAsDataUrl: vi.fn(),
   uploadDeckAsset: vi.fn(),
   uploadTemporaryAsset: vi.fn(),
 }))

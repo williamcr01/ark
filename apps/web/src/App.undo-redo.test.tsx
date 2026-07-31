@@ -133,20 +133,6 @@ vi.mock('@/hooks/useDeckGenerationFlow', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useDeckAssets', () => ({
-  useDeckAssets: () => ({
-    assets: [],
-    uploads: [],
-    selectedAssetIds: [],
-    error: '',
-    uploadFiles: vi.fn(),
-    removeAsset: vi.fn(),
-    dismissUpload: vi.fn(),
-    toggleAssetSelected: vi.fn(),
-    clearSelection: vi.fn(),
-  }),
-}))
-
 vi.mock('@/hooks/useDeckActions', () => ({
   useDeckActions: () => ({
     handleDeleteDeck: vi.fn(),
@@ -165,10 +151,6 @@ vi.mock('@/components/AppTitleBar', () => ({
 
 vi.mock('@/components/ChatPanel', () => ({
   ChatPanel: () => <div data-testid="chat-panel" />,
-}))
-
-vi.mock('@/components/DeckAssets', () => ({
-  DeckAssets: () => <div data-testid="deck-assets" />,
 }))
 
 vi.mock('@/components/DeckPreview', () => ({

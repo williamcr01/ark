@@ -234,18 +234,14 @@ function ChatPromptInputSubmit({
   isGenerating,
   isInputDisabled,
   onCancelGeneration,
-  selectedAssetIds,
 }: {
   input: string
   isGenerating: boolean
   isInputDisabled: boolean
   onCancelGeneration: () => void | Promise<void>
-  selectedAssetIds: string[]
 }) {
   const attachments = usePromptInputAttachments()
-  const canSubmit = Boolean(
-    input.trim() || attachments.files.length > 0 || selectedAssetIds.length > 0,
-  )
+  const canSubmit = Boolean(input.trim() || attachments.files.length > 0)
 
   return (
     <PromptInputSubmit
@@ -563,8 +559,6 @@ export type ChatPanelProps = {
   modelsError: string
   modelWarnings: string[]
   canGenerate: boolean
-  selectedAssetIds?: string[]
-  assetsSlot?: ReactNode
   /** Context chips (selected element / attached slides) in the composer attachment row. */
   contextSlot?: ReactNode
   onInputChange: (value: string) => void
@@ -598,8 +592,6 @@ export function ChatPanel({
   modelsError,
   modelWarnings,
   canGenerate,
-  selectedAssetIds = [],
-  assetsSlot,
   contextSlot,
   onInputChange,
   onModelSelect,
@@ -764,7 +756,6 @@ export function ChatPanel({
               />
             </div>
           ) : null}
-          {assetsSlot}
           {activeQuestions && onQuestionSubmit ? (
             <AgentQuestions
               disabled={isGenerating || !canGenerate}
@@ -915,7 +906,6 @@ export function ChatPanel({
                   isGenerating={isGenerating}
                   isInputDisabled={isSubmitDisabled}
                   onCancelGeneration={onCancelGeneration}
-                  selectedAssetIds={selectedAssetIds}
                 />
               </PromptInputFooter>
             </PromptInput>
