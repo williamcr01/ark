@@ -565,15 +565,47 @@
     min-height: 100svh;
   }
 
-  button:enabled,
-  [role='button']:not([aria-disabled='true']),
-  [role='menuitem']:not([data-disabled]),
-  [role='menuitemcheckbox']:not([data-disabled]),
-  [role='menuitemradio']:not([data-disabled]),
-  [role='option']:not([aria-disabled='true']),
-  [role='tab']:not([aria-disabled='true']),
-  [role='switch']:not([aria-disabled='true']),
-  summary {
+  /* Site-wide click affordance: native UA styles leave buttons as the arrow. */
+  :is(
+    a[href],
+    area[href],
+    button,
+    summary,
+    label[for],
+    select,
+    input[type='button'],
+    input[type='submit'],
+    input[type='reset'],
+    input[type='checkbox'],
+    input[type='radio'],
+    input[type='file'],
+    input[type='color'],
+    input[type='image'],
+    [role='button'],
+    [role='link'],
+    [role='menuitem'],
+    [role='menuitemcheckbox'],
+    [role='menuitemradio'],
+    [role='option'],
+    [role='tab'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    [role='combobox'],
+    [role='treeitem'],
+    [data-slot='button'],
+    [data-slot='dialog-trigger'],
+    [data-slot='dialog-close'],
+    [data-slot='sheet-trigger'],
+    [data-slot='dropdown-menu-trigger'],
+    [data-slot='dropdown-menu-item'],
+    [data-slot='dropdown-menu-checkbox-item'],
+    [data-slot='dropdown-menu-radio-item'],
+    [data-slot='dropdown-menu-sub-trigger'],
+    [data-slot='popover-trigger'],
+    [data-slot='toggle'],
+    [data-slot='toggle-group-item']
+  ):where(:not(:disabled):not([aria-disabled='true']):not([data-disabled])) {
     cursor: pointer;
   }
 }
