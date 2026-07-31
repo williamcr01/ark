@@ -24,7 +24,6 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
         <AppTitleBar
           activeDeckId={deck.id}
           activeVersionId="a0000000-0000-4000-8000-000000000001"
-          deckSaveStatus="saved"
           deckTitle={deck.title}
           fileInputRef={fileInputRef}
           hasDeck
@@ -38,6 +37,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           onHtmlUpload={vi.fn()}
           onInspectVersion={vi.fn()}
           onNewDeck={vi.fn()}
+          onPresent={vi.fn()}
           onRefreshVersions={vi.fn().mockResolvedValue([])}
           onRenameDeck={vi.fn()}
           onRollbackVersion={vi.fn()}
@@ -46,7 +46,6 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           onUploadClick={vi.fn()}
           previewVersion={null}
           showSanitizedDownload={false}
-          versionNumber={1}
           versions={[]}
           {...overrides}
         />
@@ -58,6 +57,14 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
 }
 
 describe('AppTitleBar accessibility', () => {
+  it('omits deck save status and version labels', () => {
+    renderTitleBar()
+
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    expect(screen.queryByText('New deck')).not.toBeInTheDocument()
+    expect(screen.queryByText(/v1/)).not.toBeInTheDocument()
+  })
+
   it('selects an appearance from the keyboard-accessible menu', async () => {
     const user = userEvent.setup()
     const onAppearanceChange = vi.fn()
@@ -85,21 +92,34 @@ describe('AppTitleBar accessibility', () => {
       'aria-pressed',
     )
     expect(screen.getByRole('button', { name: 'Upload HTML' })).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: 'Present fullscreen' })).not.toHaveAttribute(
+      'aria-pressed',
+    )
   })
 
-  it('exposes pressed and expanded state only on panel toggle buttons', () => {
+  it('does not visually change title-bar controls on hover', () => {
+    renderTitleBar()
+
+    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('!hover:bg-transparent')
+    expect(screen.getByRole('button', { name: 'Theme' })).toHaveClass('!hover:bg-transparent')
+    expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('!hover:bg-transparent')
+  })
+
+  it('keeps panel controls unhighlighted and removes their arrow when closed', () => {
     renderTitleBar({ isChatOpen: true, isStripOpen: false })
 
     const chatToggle = screen.getByRole('button', { name: 'Hide chat panel' })
     const stripToggle = screen.getByRole('button', { name: 'Show slide thumbnails' })
 
-    expect(chatToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(chatToggle).not.toHaveAttribute('aria-pressed')
     expect(chatToggle).toHaveAttribute('aria-expanded', 'true')
     expect(chatToggle).toHaveAttribute('aria-controls', 'ark-chat-panel')
+    expect(chatToggle.querySelector('svg')).toBeInTheDocument()
 
-    expect(stripToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(stripToggle).not.toHaveAttribute('aria-pressed')
     expect(stripToggle).toHaveAttribute('aria-expanded', 'false')
     expect(stripToggle).toHaveAttribute('aria-controls', 'ark-slide-strip')
+    expect(stripToggle.querySelector('svg')).not.toBeInTheDocument()
   })
 
   it('supports keyboard activation for titlebar icon buttons', async () => {
@@ -112,6 +132,16 @@ describe('AppTitleBar accessibility', () => {
     await user.keyboard('{Enter}')
 
     expect(onToggleChat).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens presentation mode from the title bar', async () => {
+    const user = userEvent.setup()
+    const onPresent = vi.fn()
+    renderTitleBar({ onPresent })
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(onPresent).toHaveBeenCalledOnce()
   })
 
   it('offers original and sanitized download choices when scripts are present', async () => {

@@ -96,11 +96,11 @@ async function runSmoke() {
       'uploaded full-js deck in shell',
       async () => {
         const text = await evaluate<string>(cdp!, 'document.body.innerText')
-        return (
-          text.includes('Full JS Deck') &&
-          text.includes('Slide 1 of 2') &&
-          text.includes('Scripts running')
+        const slideOneActive = await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('button[aria-label="Go to slide 1"][aria-current="true"]'))`,
         )
+        return text.includes('Full JS Deck') && slideOneActive
       },
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
@@ -176,7 +176,10 @@ async function runSmoke() {
     )
 
     await waitFor('preview navigation to slide 2', async () => {
-      const appText = await evaluate<string>(cdp!, 'document.body.innerText')
+      const slideTwoActive = await evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('button[aria-label="Go to slide 2"][aria-current="true"]'))`,
+      )
       const frameActive = await evaluate<boolean>(
         cdp!,
         `(() => {
@@ -186,7 +189,7 @@ async function runSmoke() {
         { contextId: mainPreview.id, sessionId: mainPreview.sessionId },
       )
 
-      return appText.includes('Slide 2 of 2') && frameActive
+      return slideTwoActive && frameActive
     })
 
     const thumbnails = await waitFor('full-js thumbnails', () =>
