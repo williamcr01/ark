@@ -34,6 +34,21 @@ describe('summarizeManualEditOperations', () => {
 })
 
 describe('buildManualEditProvenance', () => {
+  it('records slide reorder provenance', () => {
+    expect(
+      buildManualEditProvenance({
+        operations: [{ op: 'reorder_slide', slideIndex: 0, toIndex: 2 }],
+        slideIndexes: [0, 2],
+      }),
+    ).toMatchObject({
+      operation: 'reorder_slide',
+      operations: ['reorder_slide'],
+      slideIndexes: [0, 2],
+      elementIds: [],
+      summary: 'Reordered slide',
+    })
+  })
+
   it('uses server-reported slides and elements when provided', () => {
     const provenance = buildManualEditProvenance({
       operations: [{ op: 'replace_text', elementId: 'ark-el-0', slideIndex: 1, text: 'hi' }],

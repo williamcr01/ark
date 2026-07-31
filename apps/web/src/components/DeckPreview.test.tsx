@@ -99,6 +99,7 @@ const useDeckPreviewFrameMock = vi.hoisted(() =>
 
 const reportRuntimeErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'err-1' }))
 const deckSlideNavigationOptionsMock = vi.hoisted(() => vi.fn())
+const goToSlideMock = vi.hoisted(() => vi.fn())
 const useDeckThumbnailsMock = vi.hoisted(() =>
   vi.fn(() => ({
     status: null,
@@ -121,7 +122,7 @@ vi.mock('@/hooks/useDeckSlideNavigation', () => ({
     deckSlideNavigationOptionsMock(args[4])
     return {
       activeSlideIndex: 0,
-      goToSlide: vi.fn(),
+      goToSlide: goToSlideMock,
     }
   },
 }))
@@ -178,6 +179,7 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.startTextEdit.mockClear()
     editorBridgeMock.cancelTextEdit.mockClear()
     editorBridgeMock.setTool.mockClear()
+    goToSlideMock.mockClear()
     previewFrameMock.iframeKey = 'test-preview'
     previewFrameMock.handshake = 'test-handshake-value'
     previewFrameMock.isLoading = false
@@ -406,6 +408,33 @@ describe('DeckPreview script divergence UI', () => {
       'true',
     )
     expect(screen.getByRole('button', { name: 'Go to slide 3' })).toBeInTheDocument()
+  })
+
+  it('navigates to the server-remapped active slide after a reorder', async () => {
+    const onReorderSlide = vi.fn().mockResolvedValue({
+      patch: {
+        appliedCount: 1,
+        changedElementIds: [],
+        changedSlideIndexes: [0, 2],
+        suggestedActiveSlideIndex: 2,
+        summary: 'Moved slide from index 0 to 2.',
+      },
+    })
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      isStripOpen: true,
+      onReorderSlide,
+    })
+    goToSlideMock.mockClear()
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Go to slide 1' }), {
+      altKey: true,
+      key: 'ArrowDown',
+    })
+
+    await waitFor(() => expect(onReorderSlide).toHaveBeenCalledWith(0, 1, 0))
+    expect(goToSlideMock).toHaveBeenCalledWith(2)
   })
 
   it('pauses edit chrome when generation starts', () => {

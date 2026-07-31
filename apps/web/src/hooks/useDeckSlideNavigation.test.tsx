@@ -629,6 +629,24 @@ describe('useDeckSlideNavigation', () => {
     )
   })
 
+  it('leaves Alt+Arrow shortcuts to focused shell controls', () => {
+    render(<NavigationHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
+    const event = new KeyboardEvent('keydown', {
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+      key: 'ArrowRight',
+    })
+
+    act(() => window.dispatchEvent(event))
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(screen.getByLabelText('Active slide')).toHaveTextContent('0')
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
   it('keeps arrow keys for slide navigation when a resize separator is focused', async () => {
     render(
       <div>

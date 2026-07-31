@@ -5,6 +5,9 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
+  type KeyboardEvent,
+  type RefObject,
   type SyntheticEvent,
 } from 'react'
 import { MessageSquarePlusIcon } from 'lucide-react'
@@ -38,6 +41,7 @@ type SlideThumbnailStripProps = {
   contextSlideIndexes?: number[]
   id?: string
   isOpen: boolean
+  onReorder?: (fromIndex: number, toIndex: number) => void | Promise<unknown>
   onSelect: (index: number) => void
   /** Toggle a slide as chat context without changing the active slide. */
   onToggleContextSlide?: (index: number) => void
@@ -58,6 +62,7 @@ type LazyThumbnailProps = {
   index: number
   mountContent: boolean
   onSelect: (index: number) => void
+  onReorderByKeyboard?: (index: number, event: KeyboardEvent<HTMLButtonElement>) => void
   onThumbnailImageError: (index: number, url: string) => void
   onToggleContextSlide?: (index: number) => void
   onVisibilityChange: (index: number, isVisible: boolean) => void
@@ -155,6 +160,7 @@ function LazyThumbnail({
   index,
   mountContent,
   onSelect,
+  onReorderByKeyboard,
   onThumbnailImageError,
   onToggleContextSlide,
   onVisibilityChange,
@@ -212,6 +218,13 @@ function LazyThumbnail({
     <div className="group/thumb relative">
       <button
         aria-current={active ? 'true' : undefined}
+        aria-keyshortcuts={
+          onReorderByKeyboard
+            ? orientation === 'vertical'
+              ? 'Alt+ArrowUp Alt+ArrowDown'
+              : 'Alt+ArrowLeft Alt+ArrowRight'
+            : undefined
+        }
         aria-label={`Go to slide ${index + 1}`}
         className={cn(
           'relative shrink-0 overflow-hidden rounded-sm bg-white text-left ring-1 ring-[var(--ark-stage-border)]',
@@ -221,6 +234,7 @@ function LazyThumbnail({
           orientation === 'vertical' ? 'w-full' : 'w-[152px]',
         )}
         onClick={() => onSelect(index)}
+        onKeyDown={(event) => onReorderByKeyboard?.(index, event)}
         ref={containerRef}
         type="button"
       >
@@ -320,12 +334,129 @@ function LazyThumbnail({
   )
 }
 
+function useThumbnailReorder({
+  activeIndex,
+  activeItemRef,
+  onReorder,
+  orientation,
+  slideCount,
+}: {
+  activeIndex: number
+  activeItemRef: RefObject<HTMLDivElement | null>
+  onReorder?: SlideThumbnailStripProps['onReorder']
+  orientation: SlideThumbnailStripProps['orientation']
+  slideCount: number
+}) {
+  const thumbnailRefs = useRef<(HTMLDivElement | null)[]>([])
+  const reorderPendingRef = useRef(false)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const [isReordering, setIsReordering] = useState(false)
+
+  const commitReorder = useCallback(
+    async (fromIndex: number, toIndex: number, focusDestination = false) => {
+      if (!onReorder || reorderPendingRef.current || fromIndex === toIndex) return
+
+      reorderPendingRef.current = true
+      setIsReordering(true)
+
+      try {
+        await onReorder(fromIndex, toIndex)
+        if (focusDestination) {
+          thumbnailRefs.current[toIndex]
+            ?.querySelector<HTMLButtonElement>('button[aria-label^="Go to slide"]')
+            ?.focus()
+        }
+      } catch {
+        // The persistence owner reports the error; the strip only resets interaction state.
+      } finally {
+        reorderPendingRef.current = false
+        setIsReordering(false)
+      }
+    },
+    [onReorder],
+  )
+
+  const handleKeyboardReorder = useCallback(
+    (index: number, event: KeyboardEvent<HTMLButtonElement>) => {
+      if (!event.altKey || !onReorder) return
+
+      const direction =
+        orientation === 'vertical'
+          ? event.key === 'ArrowUp'
+            ? -1
+            : event.key === 'ArrowDown'
+              ? 1
+              : 0
+          : event.key === 'ArrowLeft'
+            ? -1
+            : event.key === 'ArrowRight'
+              ? 1
+              : 0
+
+      if (direction === 0) return
+
+      event.preventDefault()
+      const destination = Math.max(0, Math.min(slideCount - 1, index + direction))
+      void commitReorder(index, destination, true)
+    },
+    [commitReorder, onReorder, orientation, slideCount],
+  )
+
+  const clearDragState = useCallback(() => {
+    setDraggedIndex(null)
+    setDropIndex(null)
+  }, [])
+
+  const getDragProps = useCallback(
+    (index: number) => ({
+      draggable: Boolean(onReorder) && !isReordering,
+      onDragEnd: clearDragState,
+      onDragOver: (event: DragEvent<HTMLDivElement>) => {
+        if (draggedIndex === null || isReordering) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+        setDropIndex(index)
+      },
+      onDragStart: (event: DragEvent<HTMLDivElement>) => {
+        setDraggedIndex(index)
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('text/plain', String(index))
+      },
+      onDrop: (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault()
+        const transferredIndex = Number.parseInt(event.dataTransfer.getData('text/plain'), 10)
+        const fromIndex = draggedIndex ?? (Number.isNaN(transferredIndex) ? null : transferredIndex)
+
+        clearDragState()
+        if (fromIndex !== null) void commitReorder(fromIndex, index)
+      },
+      ref: (node: HTMLDivElement | null) => {
+        thumbnailRefs.current[index] = node
+        if (index === activeIndex) activeItemRef.current = node
+      },
+    }),
+    [
+      activeIndex,
+      activeItemRef,
+      clearDragState,
+      commitReorder,
+      draggedIndex,
+      isReordering,
+      onReorder,
+    ],
+  )
+
+  return { draggedIndex, dropIndex, getDragProps, handleKeyboardReorder, isReordering }
+}
+
 export function SlideThumbnailStrip({
   activeIndex,
   contentEnabled = true,
   contextSlideIndexes = [],
   id,
   isOpen,
+  onReorder,
   onSelect,
   onToggleContextSlide,
   orientation,
@@ -345,6 +476,8 @@ export function SlideThumbnailStrip({
     () => ({ entries: new Map<number, ThumbnailSrcDocCacheEntry>() }),
     [],
   )
+  const { draggedIndex, dropIndex, getDragProps, handleKeyboardReorder, isReordering } =
+    useThumbnailReorder({ activeIndex, activeItemRef, onReorder, orientation, slideCount })
 
   const computedMountedIndices = useMemo(
     () => computeMountedIndices(slideCount, activeIndex, visibleIndices),
@@ -565,13 +698,25 @@ export function SlideThumbnailStrip({
                 : null
 
             return (
-              <div key={index} ref={index === activeIndex ? activeItemRef : undefined}>
+              <div
+                className={cn(
+                  'relative rounded-sm',
+                  onReorder && !isReordering && 'cursor-grab active:cursor-grabbing',
+                  draggedIndex === index && 'opacity-50',
+                  dropIndex === index &&
+                    draggedIndex !== index &&
+                    'ring-2 ring-[var(--ark-accent)] ring-offset-2 ring-offset-[var(--ark-panel)]',
+                )}
+                {...getDragProps(index)}
+                key={index}
+              >
                 <LazyThumbnail
                   active={index === activeIndex}
                   contextAttached={contextSlideIndexes.includes(index)}
                   index={index}
                   mountContent={mountContent}
                   onSelect={onSelect}
+                  onReorderByKeyboard={onReorder ? handleKeyboardReorder : undefined}
                   onThumbnailImageError={handleThumbnailImageError}
                   onToggleContextSlide={onToggleContextSlide}
                   onVisibilityChange={handleVisibilityChange}
