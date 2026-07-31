@@ -27,6 +27,16 @@ function createParsedDeck(
   }
 }
 
+function createDataTransfer() {
+  const data = new Map<string, string>()
+  return {
+    dropEffect: 'none',
+    effectAllowed: 'none',
+    getData: vi.fn((type: string) => data.get(type) ?? ''),
+    setData: vi.fn((type: string, value: string) => data.set(type, value)),
+  } as unknown as DataTransfer
+}
+
 describe('SlideThumbnailStrip', () => {
   it('renders sandboxed fallback iframes from parsed thumbnail builders', async () => {
     const user = userEvent.setup()
@@ -68,6 +78,9 @@ describe('SlideThumbnailStrip', () => {
       'aria-current',
       'true',
     )
+    expect(
+      screen.getByRole('button', { name: 'Go to slide 2' }).closest('[draggable]'),
+    ).toHaveAttribute('draggable', 'false')
 
     await user.click(screen.getByRole('button', { name: 'Go to slide 3' }))
 
@@ -390,6 +403,84 @@ describe('SlideThumbnailStrip', () => {
 
     expect(strip).toHaveAttribute('aria-hidden', 'true')
     expect(strip).toHaveClass('hidden')
+  })
+
+  it('reorders a slide when its thumbnail is dropped on another thumbnail', async () => {
+    const onReorder = vi.fn().mockResolvedValue(undefined)
+    const dataTransfer = createDataTransfer()
+    render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onReorder={onReorder}
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={createParsedDeck(3)}
+      />,
+    )
+
+    const source = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
+    const target = screen.getByRole('button', { name: 'Go to slide 3' }).closest('[draggable]')!
+
+    fireEvent.dragStart(source, { dataTransfer })
+    expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '0')
+    fireEvent.dragOver(target, { dataTransfer })
+    expect(target).toHaveClass('ring-2')
+    fireEvent.drop(target, { dataTransfer })
+
+    await waitFor(() => expect(onReorder).toHaveBeenCalledWith(0, 2))
+    expect(onReorder).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not send a same-index reorder', () => {
+    const onReorder = vi.fn()
+    const dataTransfer = createDataTransfer()
+    render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onReorder={onReorder}
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={createParsedDeck(2)}
+      />,
+    )
+
+    const thumbnail = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
+    fireEvent.dragStart(thumbnail, { dataTransfer })
+    fireEvent.drop(thumbnail, { dataTransfer })
+
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('reorders repeatedly by keyboard, keeps focus, and traps matching edge shortcuts', async () => {
+    const onReorder = vi.fn().mockResolvedValue(undefined)
+    render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onReorder={onReorder}
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={createParsedDeck(3)}
+      />,
+    )
+
+    const first = screen.getByRole('button', { name: 'Go to slide 1' })
+    expect(first).toHaveAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown')
+    first.focus()
+    expect(fireEvent.keyDown(first, { altKey: true, key: 'ArrowDown' })).toBe(false)
+
+    const second = screen.getByRole('button', { name: 'Go to slide 2' })
+    await waitFor(() => expect(second).toHaveFocus())
+    expect(onReorder).toHaveBeenLastCalledWith(0, 1)
+    expect(fireEvent.keyDown(second, { altKey: true, key: 'ArrowDown' })).toBe(false)
+
+    const third = screen.getByRole('button', { name: 'Go to slide 3' })
+    await waitFor(() => expect(third).toHaveFocus())
+    expect(onReorder).toHaveBeenLastCalledWith(1, 2)
+    expect(fireEvent.keyDown(third, { altKey: true, key: 'ArrowDown' })).toBe(false)
+    expect(onReorder).toHaveBeenCalledTimes(2)
   })
 
   it('toggles slide chat context without changing the active slide', async () => {

@@ -103,6 +103,11 @@ export type DeckPreviewProps = {
   onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
   /** Toggle a slide as chat context without changing the active slide. */
   onToggleContextSlide?: (index: number) => void
+  onReorderSlide?: (
+    fromIndex: number,
+    toIndex: number,
+    activeSlideIndex: number,
+  ) => Promise<DeckPreviewPatchResult | undefined>
   onPatchEditorOperations?: (
     operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
     activeSlideIndex: number,
@@ -137,6 +142,7 @@ export function DeckPreview({
   onCommitTextEdit,
   onEditorSelectionChange,
   onToggleContextSlide,
+  onReorderSlide,
   onPatchEditorOperations,
   presentHandleRef,
 }: DeckPreviewProps) {
@@ -320,6 +326,19 @@ export function DeckPreview({
       onRuntimeError: captureRuntimeError,
       onSlidePatchFailed: reloadCanonicalPreview,
     },
+  )
+  const handleReorderSlide = useCallback(
+    async (fromIndex: number, toIndex: number) => {
+      const result = await onReorderSlide?.(fromIndex, toIndex, activeSlideIndex)
+      const suggestedIndex = result?.patch.suggestedActiveSlideIndex
+
+      if (typeof suggestedIndex === 'number') {
+        goToSlide(suggestedIndex)
+      }
+
+      return result
+    },
+    [activeSlideIndex, goToSlide, onReorderSlide],
   )
 
   useLayoutEffect(() => {
@@ -716,6 +735,11 @@ export function DeckPreview({
             contextSlideIndexes={contextSlideIndexes}
             id="ark-slide-strip"
             isOpen={isStripOpen}
+            onReorder={
+              onReorderSlide && editChromeActive && !isPreviewUpdating && !isTextEditSaving
+                ? handleReorderSlide
+                : undefined
+            }
             onSelect={goToSlide}
             onToggleContextSlide={onToggleContextSlide}
             orientation={stripOrientation}

@@ -29,7 +29,7 @@ import {
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat-panel-layout'
 import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
 import { buildUndoRedoVersionOptions } from '@/lib/undo-redo-version-options'
@@ -456,7 +456,7 @@ function App() {
     (
       beforeHtml: string,
       result: (PatchDeckResponse & { suggestedSlideIndex?: number }) | undefined,
-      operations: DeckElementPatchOperation[],
+      operations: DeckPatchOperation[],
       summary: string,
       slideIndex: number,
     ) => {
@@ -556,6 +556,40 @@ function App() {
       }
     },
     [deckId, patchDeckOperations, recordManualEdit, refreshActiveDeck],
+  )
+
+  const handleReorderSlide = useCallback(
+    async (fromIndex: number, toIndex: number, activeSlideIndex: number) => {
+      if (fromIndex === toIndex) {
+        return undefined
+      }
+
+      const operations: DeckPatchOperation[] = [
+        { op: 'reorder_slide', slideIndex: fromIndex, toIndex },
+      ]
+      const summary = `Moved slide ${fromIndex + 1} to position ${toIndex + 1}`
+
+      try {
+        const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
+        recordManualEdit(
+          result?.beforeHtml ?? generatedHtmlRef.current,
+          result,
+          operations,
+          summary,
+          result?.suggestedSlideIndex ?? activeSlideIndex,
+        )
+        return result
+      } catch (patchError) {
+        toast.error('Could not reorder slide')
+        try {
+          await refreshActiveDeck()
+        } catch {
+          // Ignore refresh failures after a failed patch.
+        }
+        throw patchError
+      }
+    },
+    [patchDeckOperations, recordManualEdit, refreshActiveDeck],
   )
 
   const handleUndoEdit = useCallback(async () => {
@@ -681,6 +715,7 @@ function App() {
       onCommitTextEdit={handleCommitTextEdit}
       onEditorSelectionChange={handleEditorSelectionChange}
       onPatchEditorOperations={handlePatchEditorOperations}
+      onReorderSlide={handleReorderSlide}
       presentHandleRef={deckPreviewRef}
       onRedo={handleRedoEdit}
       onToggleContextSlide={handleToggleContextSlide}

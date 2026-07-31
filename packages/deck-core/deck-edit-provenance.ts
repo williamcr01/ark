@@ -1,4 +1,4 @@
-import type { DeckElementPatchOperation } from './deck-patch.ts'
+import type { DeckPatchOperation } from './deck-patch.ts'
 
 /**
  * Provenance metadata for a manual editor operation (issue #82).
@@ -12,9 +12,9 @@ export type ManualEditProvenance = {
   /** Always `manual` for editor-originated edits. */
   source: 'manual'
   /** Primary operation kind (first operation in the batch). */
-  operation: DeckElementPatchOperation['op']
+  operation: DeckPatchOperation['op']
   /** All operation kinds applied in this edit, in order. */
-  operations: DeckElementPatchOperation['op'][]
+  operations: DeckPatchOperation['op'][]
   /** Zero-based indexes of slides changed by the edit. */
   slideIndexes: number[]
   /** Ark element ids affected by the edit. */
@@ -25,7 +25,13 @@ export type ManualEditProvenance = {
   createdAt: string
 }
 
-const OPERATION_LABELS: Record<DeckElementPatchOperation['op'], string> = {
+const OPERATION_LABELS: Record<DeckPatchOperation['op'], string> = {
+  add_slide: 'Added slide',
+  delete_slide: 'Deleted slide',
+  replace_slide: 'Replaced slide',
+  reorder_slide: 'Reordered slide',
+  update_slide_title: 'Updated slide title',
+  update_slide_notes: 'Updated slide notes',
   replace_text: 'Edited text',
   insert_element: 'Inserted element',
   delete_element: 'Deleted element',
@@ -37,15 +43,16 @@ const OPERATION_LABELS: Record<DeckElementPatchOperation['op'], string> = {
   reorder_element: 'Reordered element',
   lock_element: 'Locked element',
   unlock_element: 'Unlocked element',
+  text_replace: 'Replaced text',
 }
 
 /**
- * Build a concise, human-readable summary from a batch of element operations.
+ * Build a concise, human-readable summary from a batch of manual operations.
  *
  * Move + resize commits from a single drag are coalesced into one label so the
  * derived summary matches the single history item they produce.
  */
-export function summarizeManualEditOperations(operations: DeckElementPatchOperation[]): string {
+export function summarizeManualEditOperations(operations: DeckPatchOperation[]): string {
   if (operations.length === 0) {
     return 'Edited deck'
   }
@@ -68,11 +75,11 @@ export function summarizeManualEditOperations(operations: DeckElementPatchOperat
   return `Applied ${operations.length} edits`
 }
 
-function collectSlideIndexes(operations: DeckElementPatchOperation[]): number[] {
+function collectSlideIndexes(operations: DeckPatchOperation[]): number[] {
   const indexes = new Set<number>()
 
   for (const operation of operations) {
-    if (typeof operation.slideIndex === 'number') {
+    if ('slideIndex' in operation && typeof operation.slideIndex === 'number') {
       indexes.add(operation.slideIndex)
     }
   }
@@ -80,7 +87,7 @@ function collectSlideIndexes(operations: DeckElementPatchOperation[]): number[] 
   return [...indexes].sort((left, right) => left - right)
 }
 
-function collectElementIds(operations: DeckElementPatchOperation[]): string[] {
+function collectElementIds(operations: DeckPatchOperation[]): string[] {
   const ids = new Set<string>()
 
   for (const operation of operations) {
@@ -93,7 +100,7 @@ function collectElementIds(operations: DeckElementPatchOperation[]): string[] {
 }
 
 export type BuildManualEditProvenanceInput = {
-  operations: DeckElementPatchOperation[]
+  operations: DeckPatchOperation[]
   /** Optional contextual summary; falls back to a derived operation summary. */
   summary?: string
   /** Slide indexes reported by the server patch result (preferred when known). */
