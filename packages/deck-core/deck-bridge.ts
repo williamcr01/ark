@@ -9,6 +9,10 @@
 export const DECK_BRIDGE_PROTOCOL_VERSION = 1 as const
 
 export const DECK_GOTO_MESSAGE_TYPE = 'ark:deck-goto' as const
+/** Parent → frame: swap individual slides in place instead of reloading the deck. */
+export const DECK_PATCH_SLIDES_MESSAGE_TYPE = 'ark:deck-patch-slides' as const
+/** Frame → parent: whether the slide patch applied, so the shell can fall back to a reload. */
+export const DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE = 'ark:deck-patch-slides-result' as const
 export const DECK_READY_MESSAGE_TYPE = 'ark:deck-ready' as const
 export const DECK_SLIDE_COUNT_MESSAGE_TYPE = 'ark:deck-slide-count' as const
 export const DECK_SLIDE_CHANGE_MESSAGE_TYPE = 'ark:deck-slide-change' as const
@@ -23,6 +27,8 @@ export const DECK_METADATA_EVENT = DECK_METADATA_MESSAGE_TYPE
 
 export const DECK_BRIDGE_MESSAGE_TYPES = [
   DECK_GOTO_MESSAGE_TYPE,
+  DECK_PATCH_SLIDES_MESSAGE_TYPE,
+  DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE,
   DECK_READY_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
@@ -48,6 +54,32 @@ export type DeckMetadata = {
 export type DeckGotoMessage = {
   type: typeof DECK_GOTO_MESSAGE_TYPE
   index: number
+}
+
+/**
+ * Slide-list edit script applied against the live preview DOM.
+ *
+ * Operations are positional and applied in order against the evolving slide
+ * list, so `remove` + `insert` at the same index is an in-place swap.
+ */
+export type DeckSlidePatchOperation =
+  { op: 'remove'; index: number } | { op: 'insert'; index: number; html: string }
+
+export type DeckPatchSlidesMessage = {
+  type: typeof DECK_PATCH_SLIDES_MESSAGE_TYPE
+  /** Correlates the runtime's result so a stale reply cannot force a reload. */
+  patchId: string
+  operations: DeckSlidePatchOperation[]
+  /** Slide to show once the patch lands (the shell's preserved active slide). */
+  index: number
+}
+
+export type DeckPatchSlidesResultMessage = {
+  type: typeof DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE
+  patchId: string
+  applied: boolean
+  /** Slide count after the patch; the shell reloads when it disagrees. */
+  slideCount: number
 }
 
 export type DeckReadyMessage = {
@@ -91,13 +123,18 @@ export type DeckHandshakeMessage = {
 
 export type DeckBridgeMessage =
   | DeckGotoMessage
+  | DeckPatchSlidesMessage
+  | DeckPatchSlidesResultMessage
   | DeckReadyMessage
   | DeckSlideCountMessage
   | DeckSlideChangeMessage
   | DeckMetadataMessage
   | DeckRuntimeErrorMessage
 
-export type DeckBridgeMessageFromRuntime = Exclude<DeckBridgeMessage, DeckGotoMessage>
+export type DeckBridgeMessageFromRuntime = Exclude<
+  DeckBridgeMessage,
+  DeckGotoMessage | DeckPatchSlidesMessage
+>
 
 const DECK_BRIDGE_MESSAGE_TYPE_SET = new Set<string>(DECK_BRIDGE_MESSAGE_TYPES)
 
@@ -136,6 +173,41 @@ export function isDeckMetadata(value: unknown): value is DeckMetadata {
 
 export function isDeckGotoMessage(value: unknown): value is DeckGotoMessage {
   return isRecord(value) && value.type === DECK_GOTO_MESSAGE_TYPE && isFiniteNumber(value.index)
+}
+
+function isDeckSlidePatchOperation(value: unknown): value is DeckSlidePatchOperation {
+  if (!isRecord(value) || !isFiniteNumber(value.index) || value.index < 0) {
+    return false
+  }
+
+  if (value.op === 'remove') {
+    return true
+  }
+
+  return value.op === 'insert' && typeof value.html === 'string'
+}
+
+export function isDeckPatchSlidesMessage(value: unknown): value is DeckPatchSlidesMessage {
+  return (
+    isRecord(value) &&
+    value.type === DECK_PATCH_SLIDES_MESSAGE_TYPE &&
+    typeof value.patchId === 'string' &&
+    isFiniteNumber(value.index) &&
+    Array.isArray(value.operations) &&
+    value.operations.every(isDeckSlidePatchOperation)
+  )
+}
+
+export function isDeckPatchSlidesResultMessage(
+  value: unknown,
+): value is DeckPatchSlidesResultMessage {
+  return (
+    isRecord(value) &&
+    value.type === DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE &&
+    typeof value.patchId === 'string' &&
+    typeof value.applied === 'boolean' &&
+    isFiniteNumber(value.slideCount)
+  )
 }
 
 export function isDeckReadyMessage(value: unknown): value is DeckReadyMessage {
@@ -190,6 +262,8 @@ export function isDeckHandshakeMessage(value: unknown): value is DeckHandshakeMe
 export function isDeckBridgeMessage(value: unknown): value is DeckBridgeMessage {
   return (
     isDeckGotoMessage(value) ||
+    isDeckPatchSlidesMessage(value) ||
+    isDeckPatchSlidesResultMessage(value) ||
     isDeckReadyMessage(value) ||
     isDeckSlideCountMessage(value) ||
     isDeckSlideChangeMessage(value) ||
@@ -201,7 +275,11 @@ export function isDeckBridgeMessage(value: unknown): value is DeckBridgeMessage 
 export function isDeckBridgeMessageFromRuntime(
   value: unknown,
 ): value is DeckBridgeMessageFromRuntime {
-  return isDeckBridgeMessage(value) && value.type !== DECK_GOTO_MESSAGE_TYPE
+  return (
+    isDeckBridgeMessage(value) &&
+    value.type !== DECK_GOTO_MESSAGE_TYPE &&
+    value.type !== DECK_PATCH_SLIDES_MESSAGE_TYPE
+  )
 }
 
 export function parseDeckBridgeMessage(value: unknown): DeckBridgeMessage | null {
@@ -229,6 +307,22 @@ export function createDeckMetadata(
 
 export function createDeckGotoMessage(index: number): DeckGotoMessage {
   return { type: DECK_GOTO_MESSAGE_TYPE, index }
+}
+
+export function createDeckPatchSlidesMessage(
+  patchId: string,
+  operations: DeckSlidePatchOperation[],
+  index: number,
+): DeckPatchSlidesMessage {
+  return { type: DECK_PATCH_SLIDES_MESSAGE_TYPE, patchId, operations, index }
+}
+
+export function createDeckPatchSlidesResultMessage(
+  patchId: string,
+  applied: boolean,
+  slideCount: number,
+): DeckPatchSlidesResultMessage {
+  return { type: DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE, patchId, applied, slideCount }
 }
 
 export function createDeckReadyMessage(
@@ -380,6 +474,82 @@ export type DeckBridgeRuntimeScriptOptions = {
   slideSelectors: readonly string[]
   previewMode: DeckPreviewMode
   parentOrigin?: string
+}
+
+/**
+ * Shared slide-patch applier for the Ark-injected navigation runtimes.
+ *
+ * Expects a `findSlides()` function in scope. Returns the new slide count, or
+ * `null` when the live DOM does not match what the patch assumes — the shell
+ * then falls back to a full preview reload.
+ */
+function buildSlidePatchRuntimeSource() {
+  return `
+  function arkParseSlide(html) {
+    // <template> parses without running scripts or losing <section> context.
+    var template = document.createElement('template');
+    template.innerHTML = html;
+    return template.content.firstElementChild;
+  }
+
+  function arkApplySlidePatch(operations) {
+    var list = findSlides();
+
+    if (!list.length) {
+      return null;
+    }
+
+    var parent = list[0].parentNode;
+
+    if (!parent) {
+      return null;
+    }
+
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].parentNode !== parent) {
+        return null;
+      }
+    }
+
+    // Stable anchor for appends: never a slide, so removals cannot detach it.
+    var tail = list[list.length - 1].nextSibling;
+
+    for (var o = 0; o < operations.length; o++) {
+      var operation = operations[o];
+
+      if (!operation || typeof operation.index !== 'number') {
+        return null;
+      }
+
+      if (operation.op === 'remove') {
+        var removed = list[operation.index];
+
+        if (!removed) {
+          return null;
+        }
+
+        parent.removeChild(removed);
+        list.splice(operation.index, 1);
+        continue;
+      }
+
+      if (operation.op !== 'insert' || typeof operation.html !== 'string') {
+        return null;
+      }
+
+      var inserted = arkParseSlide(operation.html);
+
+      if (!inserted || operation.index > list.length) {
+        return null;
+      }
+
+      parent.insertBefore(inserted, operation.index < list.length ? list[operation.index] : tail);
+      list.splice(operation.index, 0, inserted);
+    }
+
+    return findSlides().length;
+  }
+`
 }
 
 export function buildDeckBridgeRuntimeScript(options: DeckBridgeRuntimeScriptOptions): string {
@@ -550,6 +720,8 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
   const constants = {
     PROTOCOL_VERSION: DECK_BRIDGE_PROTOCOL_VERSION,
     GOTO: DECK_GOTO_MESSAGE_TYPE,
+    PATCH: DECK_PATCH_SLIDES_MESSAGE_TYPE,
+    PATCH_RESULT: DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE,
     READY: DECK_READY_MESSAGE_TYPE,
     SLIDE_COUNT: DECK_SLIDE_COUNT_MESSAGE_TYPE,
     CHANGE: DECK_SLIDE_CHANGE_MESSAGE_TYPE,
@@ -694,7 +866,7 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
 
     return [];
   }
-
+${buildSlidePatchRuntimeSource()}
   function showSlide(index) {
     slides = findSlides();
 
@@ -786,6 +958,24 @@ export function buildDeckCssNavRuntimeScript(options: DeckBridgeRuntimeScriptOpt
 
     if (isRecord(data) && data.type === C.GOTO && typeof data.index === 'number') {
       showSlide(data.index);
+      return;
+    }
+
+    if (isRecord(data) && data.type === C.PATCH && Array.isArray(data.operations)) {
+      var patched = arkApplySlidePatch(data.operations);
+
+      if (patched !== null) {
+        slides = findSlides();
+        showSlide(typeof data.index === 'number' ? data.index : currentIndex);
+        postToParent({ type: C.SLIDE_COUNT, slideCount: slides.length });
+      }
+
+      postToParent({
+        type: C.PATCH_RESULT,
+        patchId: String(data.patchId),
+        applied: patched !== null,
+        slideCount: patched === null ? 0 : patched,
+      });
     }
   });
 
@@ -822,11 +1012,14 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
   const constants = {
     PROTOCOL_VERSION: DECK_BRIDGE_PROTOCOL_VERSION,
     GOTO: DECK_GOTO_MESSAGE_TYPE,
+    PATCH: DECK_PATCH_SLIDES_MESSAGE_TYPE,
+    PATCH_RESULT: DECK_PATCH_SLIDES_RESULT_MESSAGE_TYPE,
     READY: DECK_READY_MESSAGE_TYPE,
     SLIDE_COUNT: DECK_SLIDE_COUNT_MESSAGE_TYPE,
     CHANGE: DECK_SLIDE_CHANGE_MESSAGE_TYPE,
     METADATA: DECK_METADATA_MESSAGE_TYPE,
     ERROR: DECK_RUNTIME_ERROR_MESSAGE_TYPE,
+    SELECTORS: [...(options.slideSelectors ?? [])],
     PREVIEW_MODE: options.previewMode,
     PARENT_ORIGIN: options.parentOrigin?.trim() || '',
   }
@@ -878,6 +1071,19 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
       ? window.Reveal.getTotalSlides()
       : 0;
   }
+
+  function findSlides() {
+    for (var i = 0; i < C.SELECTORS.length; i++) {
+      var found = document.querySelectorAll(C.SELECTORS[i]);
+
+      if (found.length) {
+        return Array.prototype.slice.call(found);
+      }
+    }
+
+    return [];
+  }
+${buildSlidePatchRuntimeSource()}
 
   function getLinearIndex() {
     if (!window.Reveal || typeof window.Reveal.getCurrentSlide !== 'function') {
@@ -1028,6 +1234,28 @@ export function buildRevealNavRuntimeScript(options: DeckBridgeRuntimeScriptOpti
 
     if (isRecord(data) && data.type === C.GOTO && typeof data.index === 'number') {
       gotoLinearIndex(data.index);
+      return;
+    }
+
+    if (isRecord(data) && data.type === C.PATCH && Array.isArray(data.operations)) {
+      // Reveal owns slide layout, so patching before it is initialized would
+      // leave the deck unsynced. Report failure and let the shell reload.
+      var patched = revealReady ? arkApplySlidePatch(data.operations) : null;
+
+      if (patched !== null) {
+        window.Reveal.sync();
+        lastReportedIndex = -1;
+        gotoLinearIndex(typeof data.index === 'number' ? data.index : getLinearIndex());
+        postToParent({ type: C.SLIDE_COUNT, slideCount: getSlideCount() });
+        postSlideChange(getLinearIndex(), getSlideCount());
+      }
+
+      postToParent({
+        type: C.PATCH_RESULT,
+        patchId: String(data.patchId),
+        applied: patched !== null,
+        slideCount: patched === null ? 0 : getSlideCount(),
+      });
     }
   });
 

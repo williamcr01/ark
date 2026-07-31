@@ -2,6 +2,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -52,6 +53,7 @@ import { clientPointToNormalizedSlidePoint } from '@/lib/deck-image-insert'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
 import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { DeckSlidePatch } from '@ark/deck-core/deck-slide-patch.ts'
 
 export type { DeckTextEditCommit } from '@/hooks/useDeckEditorPatchCoordinator'
 
@@ -160,13 +162,30 @@ export function DeckPreview({
   const previewEnabled = html.length > 0 && hasSlides
   const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
+  // Slide patching runs from useDeckPreviewSource's layout effect, before the
+  // frame/bridge hooks below exist for this render — go through refs holding
+  // last committed state so a patch is only sent to a settled, armed frame.
+  const dispatchSlidePatchRef = useRef<((patch: DeckSlidePatch) => boolean) | null>(null)
+  const canPatchSlidesRef = useRef(false)
+  const clearSelectionRef = useRef<(() => boolean) | null>(null)
+  const dispatchSlidePatch = useCallback((patch: DeckSlidePatch) => {
+    if (!canPatchSlidesRef.current || !dispatchSlidePatchRef.current?.(patch)) {
+      return false
+    }
+
+    // Replaced slides detach the selected node; the shell reloads today, so
+    // dropping the selection matches what an agent edit already does.
+    clearSelectionRef.current?.()
+    return true
+  }, [])
   const {
     previewHtml,
     previewReloadRevision,
+    previewContentRevision,
     beginLivePatch: beginLivePreviewPatch,
     finishLivePatch: finishPreviewSourcePatch,
     rollbackLivePatch: reloadCanonicalPreview,
-  } = useDeckPreviewSource(deckId, html)
+  } = useDeckPreviewSource(deckId, html, { onSlidePatch: dispatchSlidePatch })
   const previewFrame = useDeckPreviewFrame(previewHtml, previewEnabled, previewReloadRevision)
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
@@ -276,7 +295,7 @@ export function DeckPreview({
     previewCompromised ||
     Boolean(previewFrame.error) ||
     (bridgeSession.armed && !previewFrame.isLoading && !previewFrame.isStale)
-  const { activeSlideIndex, goToSlide } = useDeckSlideNavigation(
+  const { activeSlideIndex, goToSlide, patchSlides } = useDeckSlideNavigation(
     iframeRef,
     parsedDeck.slideCount,
     previewHtml,
@@ -287,12 +306,27 @@ export function DeckPreview({
       keyboardMode: previewCompromised ? 'off' : isPresentOpen ? 'present' : 'preview',
       shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,
+      reloadRevision: previewReloadRevision,
       syncOnLoad: false,
       canPostToFrame: bridgeSession.canPostToFrame,
       shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
       onRuntimeError: captureRuntimeError,
+      onSlidePatchFailed: reloadCanonicalPreview,
     },
   )
+
+  useLayoutEffect(() => {
+    dispatchSlidePatchRef.current = patchSlides
+    canPatchSlidesRef.current =
+      previewEnabled &&
+      bridgeEnabled &&
+      bridgeSession.armed &&
+      !previewFrame.isLoading &&
+      !previewFrame.isStale &&
+      // An in-flight text edit owns a live contenteditable node; leave that
+      // case on the reload path the editor coordinator already handles.
+      !textEditActiveRef.current
+  })
   const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
     // Always-on edit chrome stays active while previewing; only wait for the
     // main frame so thumbnail polling does not compete with first paint.
@@ -389,6 +423,10 @@ export function DeckPreview({
     textEditActiveRef.current = textEditActive
   }, [textEditActive])
 
+  useLayoutEffect(() => {
+    clearSelectionRef.current = clearSelection
+  }, [clearSelection])
+
   const handleToolChange = useCallback(
     (tool: EditorTool) => {
       setActiveTool(tool)
@@ -432,7 +470,7 @@ export function DeckPreview({
     onUndo,
     preserveRedoSlideIndex: redoSlideIndex,
     preserveUndoSlideIndex: undoSlideIndex,
-    previewHtml,
+    previewContentRevision,
     selection,
     scopeKey: deckId,
     textEditActive,

@@ -242,13 +242,18 @@ function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string 
   return output
 }
 
-function absolutizeApprovedRuntimeAssetReferences(doc: Document, assetOrigin?: string | null) {
+/**
+ * Rewrite Ark asset and approved-runtime URLs to absolute app-origin URLs.
+ * Exported so live slide patches sanitize replacement markup exactly like the
+ * full preview document does.
+ */
+export function absolutizePreviewAssetReferences(root: Element, assetOrigin?: string | null) {
   if (!assetOrigin?.trim()) {
     return
   }
 
-  const walker = doc.createTreeWalker(
-    doc.documentElement,
+  const walker = (root.ownerDocument ?? document).createTreeWalker(
+    root,
     NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
   )
   let node: Node | null = walker.currentNode
@@ -395,6 +400,19 @@ function stripScripts(
   })
 }
 
+/**
+ * Remove deck scripts and inline `on*` handlers from a preview subtree.
+ * Exported so live slide patches sanitize replacement markup exactly like the
+ * full preview document does.
+ */
+export function stripPreviewScriptsAndHandlers(
+  root: ParentNode & Element,
+  options: { preserveApprovedRuntimeScripts?: boolean } = {},
+) {
+  stripScripts(root, options)
+  stripInlineHandlers(root)
+}
+
 function stripDeckScriptsAndHandlers(
   doc: Document,
   options: { preserveApprovedRuntimeScripts?: boolean } = {},
@@ -403,8 +421,7 @@ function stripDeckScriptsAndHandlers(
     return
   }
 
-  stripScripts(doc.documentElement, options)
-  stripInlineHandlers(doc.documentElement)
+  stripPreviewScriptsAndHandlers(doc.documentElement, options)
 }
 
 function serializePreviewDocument(doc: Document) {
@@ -483,7 +500,7 @@ export function buildPreviewDocument(
   const body = ensureBody(doc)
 
   if (runtimeModeAllowsDeckScripts(mode)) {
-    absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
+    absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
     appendPreviewFill(doc, { historyShim: true, nonce })
     appendScript(
@@ -509,7 +526,7 @@ export function buildPreviewDocument(
     } else {
       stripDeckScriptsAndHandlers(doc, { preserveApprovedRuntimeScripts: true })
     }
-    absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
+    absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
     appendPreviewFill(doc, { historyShim: true, nonce })
     appendScript(
@@ -532,7 +549,7 @@ export function buildPreviewDocument(
   stripDeckScriptsAndHandlers(doc, {
     preserveApprovedRuntimeScripts: mode === 'reveal',
   })
-  absolutizeApprovedRuntimeAssetReferences(doc, assetOrigin)
+  absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
   injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
   appendPreviewFill(doc, { nonce })
   activateInitialCssNavSlide(doc)

@@ -37,7 +37,7 @@ function options() {
     onUndo: vi.fn(),
     preserveRedoSlideIndex: null,
     preserveUndoSlideIndex: null,
-    previewHtml: '<section>Before</section>',
+    previewContentRevision: 0,
     selection,
     scopeKey: 'deck-a',
     textEditActive: false,
@@ -122,13 +122,13 @@ describe('useDeckEditorPatchCoordinator', () => {
       originalText: 'Before',
     }
     const view = renderHook(
-      ({ activeSlideIndex, iframeKey, lastTextCommit, previewHtml, currentSelection }) =>
+      ({ activeSlideIndex, iframeKey, lastTextCommit, previewContentRevision, currentSelection }) =>
         useDeckEditorPatchCoordinator({
           ...callbacks,
           activeSlideIndex,
           iframeKey,
           lastTextCommit,
-          previewHtml,
+          previewContentRevision,
           selection: currentSelection,
         }),
       {
@@ -136,7 +136,7 @@ describe('useDeckEditorPatchCoordinator', () => {
           activeSlideIndex: 0,
           iframeKey: 'frame-a',
           lastTextCommit: null as typeof commit | null,
-          previewHtml: '<section>Before</section>',
+          previewContentRevision: 0,
           currentSelection: selection as EditorSelectionInfo | null,
         },
       },
@@ -146,7 +146,7 @@ describe('useDeckEditorPatchCoordinator', () => {
       activeSlideIndex: 0,
       iframeKey: 'frame-a',
       lastTextCommit: commit,
-      previewHtml: '<section>Before</section>',
+      previewContentRevision: 0,
       currentSelection: selection,
     })
     await waitFor(() => expect(callbacks.finishLivePatch).toHaveBeenCalledOnce())
@@ -156,14 +156,14 @@ describe('useDeckEditorPatchCoordinator', () => {
       activeSlideIndex: 1,
       iframeKey: 'frame-a',
       lastTextCommit: null,
-      previewHtml: '<section>Before</section>',
+      previewContentRevision: 0,
       currentSelection: null,
     })
     view.rerender({
       activeSlideIndex: 1,
       iframeKey: 'frame-b',
       lastTextCommit: null,
-      previewHtml: '<section>Unrelated update</section>',
+      previewContentRevision: 1,
       currentSelection: null,
     })
 

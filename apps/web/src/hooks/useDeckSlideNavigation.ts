@@ -2,15 +2,23 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 import {
   createDeckGotoMessage,
+  createDeckPatchSlidesMessage,
   isDeckBridgeMessageFromRuntime,
+  isDeckPatchSlidesResultMessage,
   isDeckReadyMessage,
   isDeckRuntimeErrorMessage,
   isDeckSlideChangeMessage,
   type DeckMetadata,
 } from '@ark/deck-core/deck-bridge.ts'
 import {
+  mapPreservedSlideIndexFromHtml,
+  resolvePatchActiveSlideIndex,
+  type DeckSlidePatch,
+} from '@ark/deck-core/deck-slide-patch.ts'
+import {
   DECK_BRIDGE_POST_MESSAGE_TARGET,
   isAllowedBridgeMessageOrigin,
+  resolveAppOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
 import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
@@ -20,15 +28,30 @@ const PRESENT_PREV_KEYS = new Set(['ArrowLeft', 'ArrowUp', 'Backspace', 'PageUp'
 
 type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
 
+/** How long a dispatched slide patch may stay unacknowledged before reloading. */
+const SLIDE_PATCH_TIMEOUT_MS = 2_000
+
 export type DeckNavOptions = {
   runtimeMode?: DeckRuntimeMode
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
   shouldSuspendKeyboard?: () => boolean
   sandboxOrigin?: string | null
+  /**
+   * Bumps when the preview frame must reload even if `html` is unchanged
+   * (rollback, failed live patch, same-HTML remount). Arms the pending-slide
+   * sync so the reloaded frame does not stick on slide 0.
+   */
+  reloadRevision?: number
   onSlideChange?: (index: number) => void
   onDeckReady?: (payload: { index: number; slideCount: number; metadata: DeckMetadata }) => void
   onRuntimeError?: (message: string, source?: string) => void
+  /**
+   * Called when a dispatched slide patch did not land (runtime refused it,
+   * produced an unexpected slide count, or never replied). The shell should
+   * fall back to a full preview reload.
+   */
+  onSlidePatchFailed?: () => void
   /**
    * @deprecated Independent load sync races the bridge session. Prefer
    * calling goToSlide from the session-gated onFrameLoad path when armed.
@@ -116,9 +139,11 @@ export function useDeckSlideNavigation(
     keyboardMode = 'preview',
     shouldSuspendKeyboard,
     sandboxOrigin = null,
+    reloadRevision = 0,
     onSlideChange,
     onDeckReady,
     onRuntimeError,
+    onSlidePatchFailed,
     syncOnLoad = false,
     canPostToFrame,
     shouldAcceptInbound,
@@ -127,6 +152,7 @@ export function useDeckSlideNavigation(
     clampSlideIndex(initialSlideIndex, slideCount),
   )
   const prevHtmlRef = useRef(html)
+  const prevReloadRevisionRef = useRef(reloadRevision)
   const appliedInitialSlideRef = useRef(html.length > 0)
   const activeSlideIndexRef = useRef(activeSlideIndex)
   const iframeGenerationRef = useRef(0)
@@ -135,11 +161,31 @@ export function useDeckSlideNavigation(
   const pendingFrameSyncIndexRef = useRef<number | null>(
     syncOnLoad ? clampSlideIndex(initialSlideIndex, slideCount) : null,
   )
+  const onSlidePatchFailedRef = useRef(onSlidePatchFailed)
+  const patchSequenceRef = useRef(0)
+  const pendingSlidePatchRef = useRef<{ patchId: string; slideCount: number } | null>(null)
+  const patchTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+
+  const clearPatchTimeout = useCallback(() => {
+    if (patchTimeoutRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(patchTimeoutRef.current)
+    patchTimeoutRef.current = null
+  }, [])
 
   useEffect(() => {
     canPostToFrameRef.current = canPostToFrame
     shouldAcceptInboundRef.current = shouldAcceptInbound
-  }, [canPostToFrame, shouldAcceptInbound])
+    onSlidePatchFailedRef.current = onSlidePatchFailed
+  }, [canPostToFrame, onSlidePatchFailed, shouldAcceptInbound])
+
+  useEffect(() => {
+    return () => {
+      clearPatchTimeout()
+    }
+  }, [clearPatchTimeout])
 
   const commitSlideIndex = useCallback(
     (index: number) => {
@@ -166,7 +212,14 @@ export function useDeckSlideNavigation(
     pendingFrameSyncIndexRef.current = syncOnLoad
       ? clampSlideIndex(activeSlideIndexRef.current, slideCount)
       : null
-  }, [html, sandboxOrigin, slideCount, syncOnLoad])
+  }, [html, reloadRevision, sandboxOrigin, slideCount, syncOnLoad])
+
+  // Only a real frame reload drops an in-flight patch. A live patch changes
+  // slideCount without reloading, and its reply still has to be honoured.
+  useEffect(() => {
+    pendingSlidePatchRef.current = null
+    clearPatchTimeout()
+  }, [clearPatchTimeout, html, reloadRevision, sandboxOrigin])
 
   useEffect(() => {
     if (prevHtmlRef.current === html) {
@@ -184,15 +237,51 @@ export function useDeckSlideNavigation(
     }
 
     // DeckPreview mounts empty while the route deck loads. Apply ?slide= on the
-    // first empty→content transition; later HTML edits reset to slide 0.
+    // first empty→content transition.
     if (!previousHtml && !appliedInitialSlideRef.current) {
       appliedInitialSlideRef.current = true
       commitSlideIndex(initialSlideIndex)
       return
     }
 
-    commitSlideIndex(0)
-  }, [commitSlideIndex, html, initialSlideIndex])
+    // Later HTML replacements keep the viewer on the same slide content when it
+    // still exists. When it doesn't, clamping lands on whatever now holds that
+    // numeric position. The frame reloads at slide 0, so arm the sync that
+    // pushes it back.
+    const preservedIndex = mapPreservedSlideIndexFromHtml(
+      previousHtml,
+      html,
+      activeSlideIndexRef.current,
+      slideCount,
+      { assetOrigin: resolveAppOrigin() },
+    )
+    commitSlideIndex(preservedIndex)
+    pendingFrameSyncIndexRef.current = preservedIndex
+  }, [commitSlideIndex, html, initialSlideIndex, slideCount])
+
+  // Same-HTML remounts (rollback / failed patch) still need the preserved index
+  // pushed back after the frame boots at slide 0.
+  useEffect(() => {
+    if (prevReloadRevisionRef.current === reloadRevision) {
+      return
+    }
+
+    prevReloadRevisionRef.current = reloadRevision
+
+    if (!html) {
+      return
+    }
+
+    const preservedIndex = clampSlideIndex(activeSlideIndexRef.current, slideCount)
+    commitSlideIndex(preservedIndex)
+    pendingFrameSyncIndexRef.current = preservedIndex
+  }, [commitSlideIndex, html, reloadRevision, slideCount])
+
+  // Slides added or removed in place (live patch) can strand the active index
+  // past the end of the deck.
+  useEffect(() => {
+    commitSlideIndex(activeSlideIndexRef.current)
+  }, [commitSlideIndex, slideCount])
 
   const goToSlide = useCallback(
     (index: number) => {
@@ -221,6 +310,58 @@ export function useDeckSlideNavigation(
       iframeWindow.postMessage(createDeckGotoMessage(clampedIndex), DECK_BRIDGE_POST_MESSAGE_TARGET)
     },
     [commitSlideIndex, iframeRef, slideCount],
+  )
+
+  /**
+   * Ask the loaded preview to swap individual slides instead of reloading.
+   * Returns false when the frame cannot be reached, so the caller can reload.
+   */
+  const patchSlides = useCallback(
+    (patch: DeckSlidePatch) => {
+      if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
+        return false
+      }
+
+      const iframeWindow = iframeRef.current?.contentWindow
+
+      if (!iframeWindow) {
+        return false
+      }
+
+      // Use the patch's predicted count so an insert can move the viewer past
+      // the previous end before React commits the updated slideCount prop.
+      const targetIndex = resolvePatchActiveSlideIndex(patch, activeSlideIndexRef.current)
+
+      if (activeSlideIndexRef.current !== targetIndex) {
+        activeSlideIndexRef.current = targetIndex
+        setActiveSlideIndex(targetIndex)
+        onSlideChange?.(targetIndex)
+      }
+
+      patchSequenceRef.current += 1
+      const patchId = `slide-patch-${patchSequenceRef.current}`
+      pendingSlidePatchRef.current = { patchId, slideCount: patch.slideCount }
+      clearPatchTimeout()
+      iframeWindow.postMessage(
+        createDeckPatchSlidesMessage(patchId, patch.operations, targetIndex),
+        DECK_BRIDGE_POST_MESSAGE_TARGET,
+      )
+
+      // A deck that never answers must not leave the preview showing stale slides.
+      patchTimeoutRef.current = window.setTimeout(() => {
+        patchTimeoutRef.current = null
+
+        if (pendingSlidePatchRef.current?.patchId !== patchId) {
+          return
+        }
+
+        pendingSlidePatchRef.current = null
+        onSlidePatchFailedRef.current?.()
+      }, SLIDE_PATCH_TIMEOUT_MS)
+
+      return true
+    },
+    [clearPatchTimeout, iframeRef, onSlideChange],
   )
 
   useEffect(() => {
@@ -252,6 +393,38 @@ export function useDeckSlideNavigation(
       const data = event.data
 
       if (!isDeckBridgeMessageFromRuntime(data)) {
+        return
+      }
+
+      if (isDeckPatchSlidesResultMessage(data)) {
+        const pending = pendingSlidePatchRef.current
+
+        // A refused patch may have partially mutated the live DOM even when it
+        // is no longer the pending id (a later patch already replaced it). Any
+        // failure is enough to force a reload.
+        if (!data.applied) {
+          if (pending?.patchId === data.patchId) {
+            pendingSlidePatchRef.current = null
+            clearPatchTimeout()
+          }
+
+          onSlidePatchFailedRef.current?.()
+          return
+        }
+
+        if (!pending || pending.patchId !== data.patchId) {
+          return
+        }
+
+        pendingSlidePatchRef.current = null
+        clearPatchTimeout()
+
+        // A slide count the shell did not predict means the runtime and the
+        // canonical deck have diverged; only a reload can resolve that.
+        if (data.slideCount !== pending.slideCount) {
+          onSlidePatchFailedRef.current?.()
+        }
+
         return
       }
 
@@ -317,12 +490,18 @@ export function useDeckSlideNavigation(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
+    // `html` / `reloadRevision` are dependencies because they bump the iframe
+    // generation above; without them this listener keeps a stale generation and
+    // drops every message the reloaded frame sends.
   }, [
+    clearPatchTimeout,
     commitSlideIndex,
     enabled,
+    html,
     iframeRef,
     onDeckReady,
     onRuntimeError,
+    reloadRevision,
     sandboxOrigin,
     slideCount,
     syncOnLoad,
@@ -375,5 +554,5 @@ export function useDeckSlideNavigation(
   // sync must go through usePreviewBridgeSession.onFrameLoad so compromise
   // flips the send gate before any outbound command.
 
-  return { activeSlideIndex, goToSlide }
+  return { activeSlideIndex, goToSlide, patchSlides }
 }
