@@ -17,20 +17,38 @@ export type MigrationResult = {
 
 const MIGRATIONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations')
 
-export async function readMigrationFiles(migrationsDir = MIGRATIONS_DIR): Promise<Migration[]> {
-  const entries = await readdir(migrationsDir, { withFileTypes: true })
-  const filenames = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b))
+const migrationFileCache = new Map<string, Promise<Migration[]>>()
 
-  return Promise.all(
-    filenames.map(async (filename) => ({
-      id: filename.replace(/\.sql$/i, ''),
-      filename,
-      sql: await readFile(path.join(migrationsDir, filename), 'utf8'),
-    })),
-  )
+export async function readMigrationFiles(migrationsDir = MIGRATIONS_DIR): Promise<Migration[]> {
+  const cacheKey = path.resolve(migrationsDir)
+  const cached = migrationFileCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  const pending = (async () => {
+    const entries = await readdir(migrationsDir, { withFileTypes: true })
+    const filenames = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b))
+
+    return Promise.all(
+      filenames.map(async (filename) => ({
+        id: filename.replace(/\.sql$/i, ''),
+        filename,
+        sql: await readFile(path.join(migrationsDir, filename), 'utf8'),
+      })),
+    )
+  })()
+
+  migrationFileCache.set(cacheKey, pending)
+  try {
+    return await pending
+  } catch (error) {
+    migrationFileCache.delete(cacheKey)
+    throw error
+  }
 }
 
 async function ensureMigrationTable(pool: ConnectablePool) {

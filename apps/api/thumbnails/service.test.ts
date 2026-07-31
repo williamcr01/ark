@@ -23,8 +23,14 @@ const sampleHtml = `<!DOCTYPE html>
 </body>
 </html>`
 
-/** Drain waits for a full saturated queue (20 serial jobs + cache I/O) under CI load. */
-const QUEUE_DRAIN_WAIT_MS = 10_000
+/**
+ * Saturation / eviction coverage uses a small injectable bound so tests exercise
+ * the same queue policy without creating 20 decks and draining them serially.
+ * Production still defaults to THUMBNAIL_QUEUE_MAX_PENDING.
+ */
+const TEST_QUEUE_MAX_PENDING = 3
+/** Drain waits for a saturated test queue (serial jobs + cache I/O) under CI load. */
+const QUEUE_DRAIN_WAIT_MS = 5_000
 
 function renderRequestedSlides(
   request: ThumbnailRenderRequest,
@@ -73,6 +79,10 @@ function createTestLogger(entries: CapturedLogEntry[]): Logger {
 }
 
 describe('thumbnail service', () => {
+  it('keeps the production queue bound at the documented default', () => {
+    expect(THUMBNAIL_QUEUE_MAX_PENDING).toBe(20)
+  })
+
   let dataDir = ''
   let cacheDir = ''
   const openServices: Array<{ close: () => Promise<void> }> = []
@@ -127,16 +137,20 @@ describe('thumbnail service', () => {
 
   it('enqueues a render, dedupes concurrent requests, and returns ready urls', async () => {
     let renderCount = 0
+    let releaseRender!: () => void
+    const renderGate = new Promise<void>((resolve) => {
+      releaseRender = resolve
+    })
     const { service } = await setup(async () => {
       renderCount += 1
-      await new Promise((resolve) => setTimeout(resolve, 40))
+      await renderGate
       return {
         ok: true,
         slides: [Buffer.from('one'), Buffer.from('two')],
         slideCount: 2,
         width: 480,
         height: 270,
-        durationMs: 40,
+        durationMs: 1,
       }
     })
 
@@ -156,6 +170,7 @@ describe('thumbnail service', () => {
     const [firstStatus, secondStatus] = await Promise.all([first, second])
     expect(firstStatus.status).toBe(THUMBNAIL_STATUS.pending)
     expect(secondStatus.status).toBe(THUMBNAIL_STATUS.pending)
+    releaseRender()
 
     await vi.waitFor(async () => {
       const ready = await service.getStatus({
@@ -233,20 +248,24 @@ describe('thumbnail service', () => {
   it('long-polls a local in-flight render and loads html lazily', async () => {
     let renderCount = 0
     let loadHtmlCount = 0
+    let releaseRender!: () => void
+    const renderGate = new Promise<void>((resolve) => {
+      releaseRender = resolve
+    })
     const { service } = await setup(async () => {
       renderCount += 1
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      await renderGate
       return {
         ok: true,
         slides: [Buffer.from('one'), Buffer.from('two')],
         slideCount: 2,
         width: 480,
         height: 270,
-        durationMs: 20,
+        durationMs: 1,
       }
     })
 
-    const status = await service.getStatus({
+    const statusPromise = service.getStatus({
       deckId: 'b0000000-0000-4000-8000-000000000001',
       versionId: 'a0000000-0000-4000-8000-000000000001',
       manifestHash: 'abc123',
@@ -257,6 +276,10 @@ describe('thumbnail service', () => {
         return sampleHtml
       },
     })
+    // Let the long-poll attach to the in-flight job, then finish the render.
+    await Promise.resolve()
+    releaseRender()
+    const status = await statusPromise
 
     expect(status.status).toBe(THUMBNAIL_STATUS.ready)
     expect(status.slides).toHaveLength(2)
@@ -654,6 +677,7 @@ describe('thumbnail service', () => {
       createThumbnailService({
         cache: createThumbnailCache(cacheDir),
         deckStore,
+        queueMaxPending: TEST_QUEUE_MAX_PENDING,
         logger: createTestLogger(logs),
         renderer: {
           isAvailable: () => true,
@@ -1089,6 +1113,7 @@ describe('thumbnail service', () => {
       createThumbnailService({
         cache: createThumbnailCache(cacheDir),
         deckStore,
+        queueMaxPending: TEST_QUEUE_MAX_PENDING,
         logger: createTestLogger(logs),
         renderer: {
           isAvailable: () => true,
@@ -1110,7 +1135,7 @@ describe('thumbnail service', () => {
     )
 
     const warmVersionIds: string[] = []
-    for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
+    for (let index = 0; index < TEST_QUEUE_MAX_PENDING; index += 1) {
       const created = await deckStore.createDeck(
         sampleHtml.replace('<h1>One</h1>', `<h1>One warm ${index}</h1>`),
         { source: 'upload' },
@@ -1144,7 +1169,7 @@ describe('thumbnail service', () => {
 
     await vi.waitFor(
       () => {
-        expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+        expect(renderedVersions).toHaveLength(TEST_QUEUE_MAX_PENDING)
         expect(renderedVersions).toContain(foregroundVersionId)
       },
       { timeout: QUEUE_DRAIN_WAIT_MS },
@@ -1205,6 +1230,7 @@ describe('thumbnail service', () => {
       createThumbnailService({
         cache: createThumbnailCache(cacheDir),
         deckStore: createDeckStore(dataDir),
+        queueMaxPending: TEST_QUEUE_MAX_PENDING,
         renderer: {
           isAvailable: () => true,
           close: async () => undefined,
@@ -1236,30 +1262,30 @@ describe('thumbnail service', () => {
         manifestHash: 'abc123',
       })
 
-    // Fill the queue to its bound (THUMBNAIL_QUEUE_MAX_PENDING = 20).
-    for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
+    // Fill the injectable queue bound (same policy as production's larger default).
+    for (let index = 0; index < TEST_QUEUE_MAX_PENDING; index += 1) {
       await enqueueVersion(index)
     }
 
     // One more while saturated: skipped, reported as pending.
-    const overflow = await enqueueVersion(THUMBNAIL_QUEUE_MAX_PENDING)
+    const overflow = await enqueueVersion(TEST_QUEUE_MAX_PENDING)
     expect(overflow.status).toBe(THUMBNAIL_STATUS.pending)
 
     releaseGate?.()
 
     await vi.waitFor(
       () => {
-        expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+        expect(renderedVersions).toHaveLength(TEST_QUEUE_MAX_PENDING)
       },
       { timeout: QUEUE_DRAIN_WAIT_MS },
     )
-    expect(renderedVersions).not.toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
+    expect(renderedVersions).not.toContain(versionId(TEST_QUEUE_MAX_PENDING))
 
     // Once drained, re-enqueueing the skipped version renders it.
-    await enqueueVersion(THUMBNAIL_QUEUE_MAX_PENDING)
+    await enqueueVersion(TEST_QUEUE_MAX_PENDING)
     await vi.waitFor(
       () => {
-        expect(renderedVersions).toContain(versionId(THUMBNAIL_QUEUE_MAX_PENDING))
+        expect(renderedVersions).toContain(versionId(TEST_QUEUE_MAX_PENDING))
       },
       { timeout: QUEUE_DRAIN_WAIT_MS },
     )
@@ -1278,6 +1304,7 @@ describe('thumbnail service', () => {
       createThumbnailService({
         cache: createThumbnailCache(cacheDir),
         deckStore: createDeckStore(dataDir),
+        queueMaxPending: TEST_QUEUE_MAX_PENDING,
         renderer: {
           isAvailable: () => true,
           close: async () => undefined,
@@ -1301,7 +1328,7 @@ describe('thumbnail service', () => {
       `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`
     const htmlForVersion = (index: number) =>
       sampleHtml.replace('<h1>Two</h1>', `<h1>Two ${index}</h1>`)
-    for (let index = 0; index < THUMBNAIL_QUEUE_MAX_PENDING; index += 1) {
+    for (let index = 0; index < TEST_QUEUE_MAX_PENDING; index += 1) {
       await service.enqueue({
         deckId: 'b0000000-0000-4000-8000-000000000001',
         versionId: versionId(index),
@@ -1313,7 +1340,7 @@ describe('thumbnail service', () => {
     let loadHtmlCount = 0
     const overflow = await service.getStatus({
       deckId: 'b0000000-0000-4000-8000-000000000001',
-      versionId: versionId(THUMBNAIL_QUEUE_MAX_PENDING),
+      versionId: versionId(TEST_QUEUE_MAX_PENDING),
       manifestHash: 'abc123',
       enqueueIfMissing: true,
       waitMs: 25,
@@ -1329,7 +1356,7 @@ describe('thumbnail service', () => {
     releaseGate?.()
     await vi.waitFor(
       () => {
-        expect(renderedVersions).toHaveLength(THUMBNAIL_QUEUE_MAX_PENDING)
+        expect(renderedVersions).toHaveLength(TEST_QUEUE_MAX_PENDING)
       },
       { timeout: QUEUE_DRAIN_WAIT_MS },
     )
@@ -1342,6 +1369,7 @@ describe('thumbnail service', () => {
       createThumbnailService({
         cache: createThumbnailCache(cacheDir),
         deckStore: createDeckStore(dataDir),
+        queueMaxPending: TEST_QUEUE_MAX_PENDING,
         renderer: {
           isAvailable: () => false,
           render: async () => ({ ok: false, error: 'disabled', durationMs: 0 }),

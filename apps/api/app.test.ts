@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   assertApiContract,
@@ -41,37 +41,26 @@ const sampleHtml = `<!DOCTYPE html>
 
 describe('deck API routes', () => {
   let dataDir = ''
-  let server: Server | null = null
+  let server: Server
+  let baseUrl = ''
 
-  afterEach(async () => {
-    if (server) {
-      await new Promise<void>((resolve, reject) => {
-        server?.close((error) => (error ? reject(error) : resolve()))
-      })
-      server = null
-    }
-
-    if (dataDir) {
-      await rm(dataDir, { recursive: true, force: true })
-      dataDir = ''
-    }
-  })
-
-  async function startApi() {
+  beforeAll(async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-decks-'))
     const app = createApp({ deckStore: createDeckStore(dataDir) })
-
     server = app.listen(0)
-    await new Promise<void>((resolve) => server?.once('listening', resolve))
-
+    await new Promise<void>((resolve) => server.once('listening', resolve))
     const address = server.address() as AddressInfo
+    baseUrl = `http://127.0.0.1:${address.port}`
+  })
 
-    return `http://127.0.0.1:${address.port}`
-  }
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    await rm(dataDir, { recursive: true, force: true })
+  })
 
   it('creates, lists, reads, updates, and deletes decks', async () => {
-    const baseUrl = await startApi()
-
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -89,13 +78,13 @@ describe('deck API routes', () => {
 
     expect(listResponse.status).toBe(200)
     assertApiContract(deckListResponseSchema, list)
-    expect(list.decks).toHaveLength(1)
-    expect(list.decks?.[0]).toMatchObject({
+    const listed = list.decks?.find((deck: { id: string }) => deck.id === created.deck?.id)
+    expect(listed).toMatchObject({
       id: created.deck?.id,
       title: 'Quarterly Review',
       versionNumber: 1,
     })
-    expect('html' in list.decks![0]).toBe(false)
+    expect(listed && 'html' in listed).toBe(false)
 
     const fetchResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`)
     const fetched = await fetchResponse.json()
@@ -126,7 +115,6 @@ describe('deck API routes', () => {
   })
 
   it('applies structured slide patches and persists a new version', async () => {
-    const baseUrl = await startApi()
     const multiSlideHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -186,8 +174,6 @@ describe('deck API routes', () => {
   })
 
   it('persists manual provenance from PUT and ignores forged agent provenance', async () => {
-    const baseUrl = await startApi()
-
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -293,8 +279,6 @@ describe('deck API routes', () => {
   })
 
   it('lists versions, fetches one version, and rolls back without losing history', async () => {
-    const baseUrl = await startApi()
-
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -364,8 +348,6 @@ describe('deck API routes', () => {
   })
 
   it('returns consistent validation errors for invalid create payloads', async () => {
-    const baseUrl = await startApi()
-
     const response = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -379,8 +361,6 @@ describe('deck API routes', () => {
   })
 
   it('rejects invalid version and rollback requests', async () => {
-    const baseUrl = await startApi()
-
     expect((await fetch(`${baseUrl}/api/decks/not-a-uuid/versions`)).status).toBe(400)
     expect(
       (await fetch(`${baseUrl}/api/decks/not-a-uuid/versions/be4b3f4e-d05b-45d1-9da6-89d6df227b54`))
@@ -399,47 +379,30 @@ describe('deck API routes', () => {
 })
 
 describe('deck chat API routes', () => {
-  let deckDir = ''
-  let chatDir = ''
-  let server: Server | null = null
+  let root = ''
+  let server: Server
+  let baseUrl = ''
 
-  afterEach(async () => {
-    if (server) {
-      await new Promise<void>((resolve, reject) => {
-        server?.close((error) => (error ? reject(error) : resolve()))
-      })
-      server = null
-    }
-
-    for (const dir of [deckDir, chatDir]) {
-      if (dir) {
-        await rm(dir, { recursive: true, force: true })
-      }
-    }
-
-    deckDir = ''
-    chatDir = ''
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'ark-api-chat-'))
+    const app = createApp({
+      deckStore: createDeckStore(path.join(root, 'decks')),
+      chatStore: createChatStore(path.join(root, 'chat')),
+    })
+    server = app.listen(0)
+    await new Promise<void>((resolve) => server.once('listening', resolve))
+    const address = server.address() as AddressInfo
+    baseUrl = `http://127.0.0.1:${address.port}`
   })
 
-  async function startApi() {
-    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-decks-'))
-    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-chat-'))
-    const app = createApp({
-      deckStore: createDeckStore(deckDir),
-      chatStore: createChatStore(chatDir),
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
     })
-
-    server = app.listen(0)
-    await new Promise<void>((resolve) => server?.once('listening', resolve))
-
-    const address = server.address() as AddressInfo
-
-    return `http://127.0.0.1:${address.port}`
-  }
+    await rm(root, { recursive: true, force: true })
+  })
 
   it('returns empty chat for a new deck and persists appended messages', async () => {
-    const baseUrl = await startApi()
-
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -489,8 +452,6 @@ describe('deck chat API routes', () => {
   })
 
   it('stores assistant tool activity without full deck html', async () => {
-    const baseUrl = await startApi()
-
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -524,8 +485,6 @@ describe('deck chat API routes', () => {
   })
 
   it('returns 404 when appending chat to a missing deck', async () => {
-    const baseUrl = await startApi()
-
     const response = await fetch(
       `${baseUrl}/api/decks/00000000-0000-4000-8000-000000000099/chat/messages`,
       {
@@ -541,37 +500,26 @@ describe('deck chat API routes', () => {
 
 describe('shared API route contracts', () => {
   let dataDir = ''
-  let server: Server | null = null
+  let server: Server
+  let baseUrl = ''
 
-  afterEach(async () => {
-    if (server) {
-      await new Promise<void>((resolve, reject) => {
-        server?.close((error) => (error ? reject(error) : resolve()))
-      })
-      server = null
-    }
-
-    if (dataDir) {
-      await rm(dataDir, { recursive: true, force: true })
-      dataDir = ''
-    }
-  })
-
-  async function startApi() {
+  beforeAll(async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-api-contracts-'))
     const app = createApp({ deckStore: createDeckStore(dataDir) })
-
     server = app.listen(0)
-    await new Promise<void>((resolve) => server?.once('listening', resolve))
-
+    await new Promise<void>((resolve) => server.once('listening', resolve))
     const address = server.address() as AddressInfo
+    baseUrl = `http://127.0.0.1:${address.port}`
+  })
 
-    return `http://127.0.0.1:${address.port}`
-  }
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    await rm(dataDir, { recursive: true, force: true })
+  })
 
   it('returns health and models payloads that match shared contracts', async () => {
-    const baseUrl = await startApi()
-
     const healthResponse = await fetch(`${baseUrl}/api/health`)
     const health = await healthResponse.json()
 
@@ -586,8 +534,6 @@ describe('shared API route contracts', () => {
   })
 
   it('returns preview session payloads that match shared contracts', async () => {
-    const baseUrl = await startApi()
-
     const invalidResponse = await fetch(`${baseUrl}/api/preview-sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -610,7 +556,6 @@ describe('shared API route contracts', () => {
   })
 
   it('rejects oversized preview session bodies before the global JSON limit', async () => {
-    const baseUrl = await startApi()
     // Preview-sessions uses a 12mb JSON limit aligned with deck save; a ~13mb body must be rejected.
     const oversizedHtml = `<html><body>${'x'.repeat(13 * 1024 * 1024)}</body></html>`
 
@@ -624,8 +569,6 @@ describe('shared API route contracts', () => {
   })
 
   it('returns generation job error payloads that match shared contracts', async () => {
-    const baseUrl = await startApi()
-
     const missingKeyResponse = await fetch(`${baseUrl}/api/generation-jobs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

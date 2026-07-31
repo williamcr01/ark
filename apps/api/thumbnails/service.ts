@@ -206,6 +206,8 @@ export function createThumbnailService(options: {
   deckStore: DeckStore
   /** Internal tuning seam; production defaults to serialized rendering. */
   queueConcurrency?: number
+  /** Internal tuning seam; production defaults to THUMBNAIL_QUEUE_MAX_PENDING. */
+  queueMaxPending?: number
   logger?: Logger
 }): ThumbnailService {
   const logger = options.logger ?? createLogger({ service: 'ark-api' })
@@ -213,6 +215,10 @@ export function createThumbnailService(options: {
   const queueConcurrency = Number.isFinite(configuredConcurrency)
     ? Math.max(1, configuredConcurrency)
     : THUMBNAIL_QUEUE_CONCURRENCY
+  const configuredMaxPending = Math.floor(options.queueMaxPending ?? THUMBNAIL_QUEUE_MAX_PENDING)
+  const queueMaxPending = Number.isFinite(configuredMaxPending)
+    ? Math.max(1, configuredMaxPending)
+    : THUMBNAIL_QUEUE_MAX_PENDING
   const jobsById = new Map<string, ThumbnailQueueJob>()
   const queuedJobs: ThumbnailQueueJob[] = []
   let activeCount = 0
@@ -520,7 +526,7 @@ export function createThumbnailService(options: {
     // saturated queue skips new jobs instead of growing without limit. Clients
     // keep polling `pending` and re-enqueue once it drains. Foreground polls
     // may evict one queued background warm to stay responsive.
-    if (jobsById.size >= THUMBNAIL_QUEUE_MAX_PENDING) {
+    if (jobsById.size >= queueMaxPending) {
       if (priority === 'foreground' && evictQueuedBackgroundJob(input)) {
         // Room freed for the foreground job below.
       } else {

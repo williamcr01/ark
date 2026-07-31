@@ -154,7 +154,6 @@ describe('thumbnail API routes', () => {
       isAvailable: () => true,
       close: async () => undefined,
       render: async (request) => {
-        await new Promise((resolve) => setTimeout(resolve, 20))
         const slideIndexes = request.slideIndexes ?? [0, 1]
         const values = new Map([
           [0, 'png-one'],
@@ -167,7 +166,7 @@ describe('thumbnail API routes', () => {
           slideCount: 2,
           width: 480,
           height: 270,
-          durationMs: 20,
+          durationMs: 1,
         }
       },
     })

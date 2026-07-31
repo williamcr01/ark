@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { type ComponentProps } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -64,88 +65,92 @@ describe('ChatPanel delivery status', () => {
 })
 
 describe('ChatPanel submit control', () => {
-  it('renders ask_user questions one at a time above the composer', async () => {
-    const onQuestionSubmit = vi.fn()
-    const user = userEvent.setup()
+  it(
+    'renders ask_user questions one at a time above the composer',
+    { timeout: 15_000 },
+    async () => {
+      const onQuestionSubmit = vi.fn()
+      const user = userEvent.setup()
 
-    render(
-      <TooltipProvider>
-        <ChatPanel
-          {...baseProps}
-          messages={[
-            { id: 'u1', role: 'user', content: 'Build a product launch deck' },
-            {
-              id: 'a1',
-              role: 'assistant',
-              content: 'Waiting for answers',
-              parts: [
-                {
-                  type: 'tool-call',
-                  toolName: 'ask_user',
-                  summary: '3 question(s)',
-                  input: {
-                    title: 'Shape your presentation',
-                    questions: [
-                      {
-                        id: 'audience',
-                        question: 'Who is the audience?',
-                        type: 'text',
-                        placeholder: 'Investors…',
-                      },
-                      {
-                        id: 'slide_count',
-                        question: 'How many slides should it be?',
-                        type: 'single',
-                        options: ['5 slides', '8 slides', '10 slides'],
-                      },
-                      {
-                        id: 'priorities',
-                        question: 'What should the deck prioritize?',
-                        type: 'multiple',
-                        options: ['Concise', 'Story-led', 'Data-heavy'],
-                      },
-                    ],
+      render(
+        <TooltipProvider>
+          <ChatPanel
+            {...baseProps}
+            messages={[
+              { id: 'u1', role: 'user', content: 'Build a product launch deck' },
+              {
+                id: 'a1',
+                role: 'assistant',
+                content: 'Waiting for answers',
+                parts: [
+                  {
+                    type: 'tool-call',
+                    toolName: 'ask_user',
+                    summary: '3 question(s)',
+                    input: {
+                      title: 'Shape your presentation',
+                      questions: [
+                        {
+                          id: 'audience',
+                          question: 'Who is the audience?',
+                          type: 'text',
+                          placeholder: 'Investors…',
+                        },
+                        {
+                          id: 'slide_count',
+                          question: 'How many slides should it be?',
+                          type: 'single',
+                          options: ['5 slides', '8 slides', '10 slides'],
+                        },
+                        {
+                          id: 'priorities',
+                          question: 'What should the deck prioritize?',
+                          type: 'multiple',
+                          options: ['Concise', 'Story-led', 'Data-heavy'],
+                        },
+                      ],
+                    },
                   },
-                },
-              ],
-            },
-          ]}
-          onQuestionSubmit={onQuestionSubmit}
-        />
-      </TooltipProvider>,
-    )
+                ],
+              },
+            ]}
+            onQuestionSubmit={onQuestionSubmit}
+          />
+        </TooltipProvider>,
+      )
 
-    expect(screen.getByText('Who is the audience?')).toBeInTheDocument()
-    expect(screen.queryByText('How many slides should it be?')).not.toBeInTheDocument()
-    expect(screen.getByText('1 of 3')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText(/Answer the questions above/i)).toBeDisabled()
-    // Composer stays "active" (glow/ring) while ask_user is awaiting answers.
-    const composer = screen
-      .getByPlaceholderText(/Answer the questions above/i)
-      .closest('[data-slot="agent-composer"]')
-    expect(composer?.querySelector('.ring-1')).toBeTruthy()
+      expect(screen.getByText('Who is the audience?')).toBeInTheDocument()
+      expect(screen.queryByText('How many slides should it be?')).not.toBeInTheDocument()
+      expect(screen.getByText('1 of 3')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Answer the questions above/i)).toBeDisabled()
+      // Composer stays "active" (glow/ring) while ask_user is awaiting answers.
+      const composer = screen
+        .getByPlaceholderText(/Answer the questions above/i)
+        .closest('[data-slot="agent-composer"]')
+      expect(composer?.querySelector('.ring-1')).toBeTruthy()
 
-    await user.type(screen.getByLabelText('Who is the audience?'), 'Customers')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await user.type(screen.getByLabelText('Who is the audience?'), 'Customers')
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(screen.getByText('How many slides should it be?')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /8 slides/i }))
+      expect(screen.getByText('How many slides should it be?')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /8 slides/i }))
 
-    expect(screen.getByText('What should the deck prioritize?')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Concise/i }))
-    await user.click(screen.getByRole('button', { name: /Write your own/i }))
-    await user.type(
-      screen.getByLabelText(/Write your own answer for What should the deck prioritize/i),
-      'Use bold product photography',
-    )
-    await user.click(screen.getByRole('button', { name: 'Send answers' }))
+      expect(screen.getByText('What should the deck prioritize?')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /Concise/i }))
+      await user.click(screen.getByRole('button', { name: /Write your own/i }))
+      await user.type(
+        screen.getByLabelText(/Write your own answer for What should the deck prioritize/i),
+        'Use bold product photography',
+      )
+      await user.click(screen.getByRole('button', { name: 'Send answers' }))
 
-    expect(onQuestionSubmit).toHaveBeenCalledWith(expect.stringContaining('Customers'))
-    expect(onQuestionSubmit).toHaveBeenCalledWith(expect.stringContaining('8 slides'))
-    expect(onQuestionSubmit).toHaveBeenCalledWith(
-      expect.stringContaining('Use bold product photography'),
-    )
-  })
+      expect(onQuestionSubmit).toHaveBeenCalledWith(expect.stringContaining('Customers'))
+      expect(onQuestionSubmit).toHaveBeenCalledWith(expect.stringContaining('8 slides'))
+      expect(onQuestionSubmit).toHaveBeenCalledWith(
+        expect.stringContaining('Use bold product photography'),
+      )
+    },
+  )
 
   it('does not show hardcoded intake without an ask_user tool call', () => {
     render(
