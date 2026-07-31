@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 

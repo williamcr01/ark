@@ -53,10 +53,16 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
 
 async function loadEditorRuntime(
   markup: string,
-  options: { slideIndex?: number; slideSelectors?: string[] } = {},
+  options: {
+    slideIndex?: number
+    slideSelectors?: string[]
+    /** Collapse the 400ms nudge idle timer. Disable for settle-sensitive cases. */
+    accelerateNudgeTimer?: boolean
+  } = {},
 ) {
   const messages: RuntimeMessage[] = []
   let parentWindow: { postMessage: (message: RuntimeMessage) => void }
+  const accelerateNudgeTimer = options.accelerateNudgeTimer !== false
   const script = buildDeckEditorBridgeRuntimeScript({
     slideSelectors: options.slideSelectors ?? ['section.slide'],
   })
@@ -67,6 +73,18 @@ async function loadEditorRuntime(
     beforeParse(window) {
       parentWindow = { postMessage: (message) => messages.push(message) }
       Object.defineProperty(window, 'parent', { configurable: true, value: parentWindow })
+      // Nudge commit uses an exact 400ms idle timer; collapse only that delay so
+      // coverage stays the same without sleeping wall-clock time per assertion.
+      if (!accelerateNudgeTimer) {
+        return
+      }
+      const nativeSetTimeout = window.setTimeout.bind(window) as typeof window.setTimeout
+      window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
+        nativeSetTimeout(
+          handler,
+          timeout === 400 ? 0 : (timeout ?? 0),
+          ...args,
+        )) as typeof window.setTimeout
     },
   })
 
@@ -82,7 +100,12 @@ async function loadEditorRuntime(
     }),
   )
 
-  return { dom, messages }
+  const flushNudgeTimer = () =>
+    new Promise<void>((resolve) => {
+      dom.window.setTimeout(resolve, accelerateNudgeTimer ? 0 : 450)
+    })
+
+  return { dom, messages, flushNudgeTimer }
 }
 
 function pointerEvent(dom: JSDOM, type: string, pointerId: number, clientX = 0, clientY = 0) {
@@ -601,7 +624,7 @@ describe('deck editor bridge protocol', () => {
   })
 
   it('flattens vertical Reveal slides to Ark linear indexes', async () => {
-    const { dom, messages } = await loadEditorRuntime(
+    const { dom, messages, flushNudgeTimer } = await loadEditorRuntime(
       '<div class="reveal"><div class="slides"><section><section><h2 id="a">A</h2></section><section><h2 id="b">B</h2></section></section><section><h2 id="c">C</h2></section></div></div>',
       {
         slideIndex: 1,
@@ -635,7 +658,7 @@ describe('deck editor bridge protocol', () => {
     dom.window.document.dispatchEvent(
       new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
     )
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 450))
+    await flushNudgeTimer()
 
     const selection = messages.find(
       (message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
@@ -914,8 +937,9 @@ describe('deck editor bridge protocol', () => {
   })
 
   it('commits intended nudge geometry after Reveal recenters a collapsed section', async () => {
-    const { dom, messages } = await loadEditorRuntime(
+    const { dom, messages, flushNudgeTimer } = await loadEditorRuntime(
       '<div class="reveal"><div class="slides"><section class="slide"><h1 id="heading">Title</h1></section></div></div>',
+      { accelerateNudgeTimer: false },
     )
     const canvas = dom.window.document.querySelector<HTMLElement>('.slides')!
     const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
@@ -971,7 +995,7 @@ describe('deck editor bridge protocol', () => {
     )
     await new Promise((resolve) => dom.window.setTimeout(resolve, 20))
     expect(heading.getBoundingClientRect().top).toBe(110)
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 450))
+    await flushNudgeTimer()
 
     const commit = messages.find(
       (message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
@@ -985,7 +1009,7 @@ describe('deck editor bridge protocol', () => {
   })
 
   it('cancels an uncommitted nudge locally instead of forwarding undo', async () => {
-    const { dom, messages } = await loadEditorRuntime(
+    const { dom, messages, flushNudgeTimer } = await loadEditorRuntime(
       '<section class="slide"><h1 id="heading">Title</h1></section>',
     )
     const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
@@ -1012,7 +1036,7 @@ describe('deck editor bridge protocol', () => {
     dom.window.document.dispatchEvent(
       new dom.window.KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }),
     )
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 450))
+    await flushNudgeTimer()
 
     expect(heading.hasAttribute('style')).toBe(false)
     expect(messages.some((message) => message.type === EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE)).toBe(
@@ -1026,7 +1050,7 @@ describe('deck editor bridge protocol', () => {
   })
 
   it('cancels an uncommitted nudge on Escape', async () => {
-    const { dom, messages } = await loadEditorRuntime(
+    const { dom, messages, flushNudgeTimer } = await loadEditorRuntime(
       '<section class="slide"><h1 id="heading">Title</h1></section>',
     )
     const slide = dom.window.document.querySelector<HTMLElement>('section')!
@@ -1053,7 +1077,7 @@ describe('deck editor bridge protocol', () => {
     dom.window.document.dispatchEvent(
       new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     )
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 450))
+    await flushNudgeTimer()
 
     expect(heading.hasAttribute('style')).toBe(false)
     expect(messages.some((message) => message.type === EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE)).toBe(

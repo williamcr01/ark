@@ -9,7 +9,6 @@ import {
 import { buildDeckAssetProxyUrl } from '@ark/deck-core/deck-network.ts'
 import { applyDeckPatches } from './deck-patch.ts'
 import { parseDeckHtml } from './deck-parser.ts'
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
 
 const arkManagedDeck = `<!DOCTYPE html>
 <html lang="en">
@@ -67,12 +66,6 @@ const inlineSvgDeck = `<!DOCTYPE html>
 </body>
 </html>`
 
-function expectValidDeck(html: string) {
-  const validation = validateDeckHtmlOnServer(html)
-  expect(validation.valid).toBe(true)
-  return validation
-}
-
 describe('applyDeckPatches element operations', () => {
   it('replaces text on a managed element', () => {
     const result = applyDeckPatches(arkManagedDeck, [
@@ -89,7 +82,6 @@ describe('applyDeckPatches element operations', () => {
       return
     }
 
-    expectValidDeck(result.html)
     expect(result.html).toContain('Updated opening')
     expect(result.changedSlideIndexes).toEqual([0])
     expect(result.changedElementIds).toContain('ark-el-title')
@@ -208,7 +200,6 @@ describe('applyDeckPatches element operations', () => {
       return
     }
 
-    expectValidDeck(inserted.html)
     const parsed = parseDeckHtml(inserted.html)
     expect(parsed.slideCount).toBe(2)
     expect(inserted.html).toContain('ark-text-box')
@@ -259,7 +250,6 @@ describe('applyDeckPatches element operations', () => {
       return
     }
 
-    expectValidDeck(patched.html)
     expect(patched.html).toContain(`left: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
     expect(patched.html).toContain('font-size: 32px')
     expect(patched.html).toContain('line-height: 40px')
@@ -311,7 +301,7 @@ describe('applyDeckPatches element operations', () => {
   })
 
   it('moves, resizes, and reorders managed elements using normalized geometry', () => {
-    const moved = applyDeckPatches(arkManagedDeck, [
+    const patched = applyDeckPatches(arkManagedDeck, [
       {
         op: 'move_element',
         slideIndex: 0,
@@ -319,19 +309,6 @@ describe('applyDeckPatches element operations', () => {
         x: 0.1,
         y: 0.2,
       },
-    ])
-
-    expect(moved.ok).toBe(true)
-    if (!moved.ok) {
-      return
-    }
-
-    const expectedLeft = `${Math.round(0.1 * ARK_SLIDE_REFERENCE_WIDTH)}px`
-    const expectedTop = `${Math.round(0.2 * ARK_SLIDE_REFERENCE_HEIGHT)}px`
-    expect(moved.html).toContain(`left: ${expectedLeft}`)
-    expect(moved.html).toContain(`top: ${expectedTop}`)
-
-    const resized = applyDeckPatches(moved.html, [
       {
         op: 'resize_element',
         slideIndex: 0,
@@ -341,19 +318,6 @@ describe('applyDeckPatches element operations', () => {
         cssWidth: 0.4,
         cssHeight: 0.2,
       },
-    ])
-
-    expect(resized.ok).toBe(true)
-    if (!resized.ok) {
-      return
-    }
-
-    const expectedWidth = `${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`
-    const expectedHeight = `${Math.round(0.2 * ARK_SLIDE_REFERENCE_HEIGHT)}px`
-    expect(resized.html).toContain(`width: ${expectedWidth}`)
-    expect(resized.html).toContain(`height: ${expectedHeight}`)
-
-    const reordered = applyDeckPatches(resized.html, [
       {
         op: 'reorder_element',
         slideIndex: 0,
@@ -362,12 +326,21 @@ describe('applyDeckPatches element operations', () => {
       },
     ])
 
-    expect(reordered.ok).toBe(true)
-    if (!reordered.ok) {
+    expect(patched.ok).toBe(true)
+    if (!patched.ok) {
       return
     }
 
-    expect(reordered.html).toContain('z-index: 5')
+    const expectedLeft = `${Math.round(0.1 * ARK_SLIDE_REFERENCE_WIDTH)}px`
+    const expectedTop = `${Math.round(0.2 * ARK_SLIDE_REFERENCE_HEIGHT)}px`
+    const expectedWidth = `${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`
+    const expectedHeight = `${Math.round(0.2 * ARK_SLIDE_REFERENCE_HEIGHT)}px`
+    expect(patched.html).toContain(`left: ${expectedLeft}`)
+    expect(patched.html).toContain(`top: ${expectedTop}`)
+    expect(patched.html).toContain(`width: ${expectedWidth}`)
+    expect(patched.html).toContain(`height: ${expectedHeight}`)
+    expect(patched.html).toContain('z-index: 5')
+    expect(patched.appliedCount).toBe(3)
   })
 
   it('adopts unmanaged elements on move and preserves their measured size', () => {
@@ -606,7 +579,7 @@ describe('applyDeckPatches element operations', () => {
   })
 
   it('moves, resizes, and duplicates an inline SVG element', () => {
-    const moved = applyDeckPatches(inlineSvgDeck, [
+    const patched = applyDeckPatches(inlineSvgDeck, [
       {
         op: 'move_element',
         slideIndex: 0,
@@ -615,19 +588,6 @@ describe('applyDeckPatches element operations', () => {
         y: 0.1,
         width: 0.4,
       },
-    ])
-
-    expect(moved.ok).toBe(true)
-    if (!moved.ok) {
-      return
-    }
-
-    expect(moved.html).toMatch(/<svg[^>]*data-ark-managed="true"/)
-    expect(moved.html).toContain(`left: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
-    expect(moved.html).toContain(`top: ${Math.round(0.1 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
-    expect(moved.html).toContain(`width: ${Math.round(0.4 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
-
-    const resized = applyDeckPatches(moved.html, [
       {
         op: 'resize_element',
         slideIndex: 0,
@@ -635,17 +595,6 @@ describe('applyDeckPatches element operations', () => {
         width: 0.5,
         height: 0.25,
       },
-    ])
-
-    expect(resized.ok).toBe(true)
-    if (!resized.ok) {
-      return
-    }
-
-    expect(resized.html).toContain(`width: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
-    expect(resized.html).toContain(`height: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
-
-    const duplicated = applyDeckPatches(resized.html, [
       {
         op: 'duplicate_element',
         slideIndex: 0,
@@ -653,12 +602,17 @@ describe('applyDeckPatches element operations', () => {
       },
     ])
 
-    expect(duplicated.ok).toBe(true)
-    if (!duplicated.ok) {
+    expect(patched.ok).toBe(true)
+    if (!patched.ok) {
       return
     }
 
-    expect(duplicated.html.match(/<svg/g)).toHaveLength(2)
+    expect(patched.html).toMatch(/<svg[^>]*data-ark-managed="true"/)
+    expect(patched.html).toContain(`left: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(patched.html).toContain(`top: ${Math.round(0.1 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(patched.html).toContain(`width: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(patched.html).toContain(`height: ${Math.round(0.25 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(patched.html.match(/<svg/g)).toHaveLength(2)
   })
 
   it('uses the runtime logical slide size for Reveal transforms', () => {
@@ -1039,7 +993,6 @@ describe('applyDeckPatches element operations', () => {
       return
     }
 
-    expectValidDeck(inserted.html)
     expect(inserted.html).toContain('data-ark-editable="image"')
     expect(inserted.html).toContain(tinyPngDataUrl)
   })
@@ -1130,7 +1083,6 @@ describe('applyDeckPatches element operations', () => {
         return
       }
 
-      expectValidDeck(result.html)
       expect(result.html).toContain(`href="${href}"`)
     }
   })

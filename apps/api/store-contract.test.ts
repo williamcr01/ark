@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import type { AssetStore } from './asset-record.ts'
 import { createAssetStore } from './asset-store.ts'
@@ -10,11 +10,16 @@ import type { ChatStore } from './chat-record.ts'
 import { createChatStore } from './chat-store.ts'
 import type { DeckStore } from './deck-record.ts'
 import { createDeckStore } from './deck-store.ts'
+import type { ConnectablePool } from './db/client.ts'
 import { createPostgresAssetStore } from './db/repositories/assets.ts'
 import { createPostgresChatStore } from './db/repositories/chat.ts'
 import { createPostgresDeckStore } from './db/repositories/decks.ts'
 import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
-import { createMemoryPostgresPool } from './db/test-utils.ts'
+import {
+  createMigratedMemoryPostgresPool,
+  stubStaticRuntimeManifest,
+  truncateMemoryPostgresAppTables,
+} from './db/test-utils.ts'
 import type { GenerationJobStore } from './generation-job-record.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 
@@ -53,40 +58,64 @@ async function makeJsonStores(): Promise<TestStores> {
   }
 }
 
-function makePgMemStores(): TestStores {
-  const pool = createMemoryPostgresPool()
-
+function makePgMemStores(pool: ConnectablePool): TestStores {
   return {
-    deckStore: createPostgresDeckStore({ pool }),
-    chatStore: createPostgresChatStore({ pool }),
-    assetStore: createPostgresAssetStore({ pool }),
-    generationJobStore: createPostgresGenerationJobStore({ pool }),
-    cleanup: async () => pool.end?.(),
+    deckStore: createPostgresDeckStore({ pool, migrate: false }),
+    chatStore: createPostgresChatStore({ pool, migrate: false }),
+    assetStore: createPostgresAssetStore({ pool, migrate: false }),
+    generationJobStore: createPostgresGenerationJobStore({ pool, migrate: false }),
+    cleanup: async () => undefined,
   }
 }
 
-describe.each([
-  ['json', makeJsonStores],
-  ['postgres', makePgMemStores],
-])('%s backend contract', (_name, makeStores) => {
-  let stores: TestStores | null = null
+const fastDeckOptions = { runtimeManifest: stubStaticRuntimeManifest } as const
 
-  afterEach(async () => {
-    if (stores) {
-      await stores.cleanup()
-      stores = null
+describe.each([['json'], ['postgres']] as const)('%s backend contract', (backend) => {
+  let stores: TestStores | null = null
+  let sharedPool: ConnectablePool | null = null
+
+  beforeAll(async () => {
+    if (backend === 'postgres') {
+      sharedPool = await createMigratedMemoryPostgresPool()
     }
   })
+
+  afterAll(async () => {
+    await sharedPool?.end?.()
+    sharedPool = null
+  })
+
+  afterEach(async () => {
+    if (backend === 'json' && stores) {
+      await stores.cleanup()
+    }
+    stores = null
+  })
+
+  async function makeStores(): Promise<TestStores> {
+    if (backend === 'json') {
+      return makeJsonStores()
+    }
+
+    if (!sharedPool) {
+      throw new Error('Postgres contract suite pool was not initialized.')
+    }
+
+    await truncateMemoryPostgresAppTables(sharedPool)
+    return makePgMemStores(sharedPool)
+  }
 
   it('creates decks, versions them, and rolls back', async () => {
     stores = await makeStores()
     const { deckStore } = stores
 
     const created = await deckStore.createDeck(sampleHtml, {
+      ...fastDeckOptions,
       source: 'upload',
       summary: 'Initial upload',
     })
     const updated = await deckStore.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'), {
+      ...fastDeckOptions,
       source: 'agent',
       summary: 'AI edit',
       modelName: 'gpt-4.1',
@@ -118,7 +147,7 @@ describe.each([
     stores = await makeStores()
     const { deckStore, chatStore } = stores
 
-    const deck = await deckStore.createDeck(sampleHtml)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     await chatStore.getOrCreateActiveThread(deck.id, deck.activeVersionId ?? null)
 
     await chatStore.appendMessage(deck.id, {
@@ -153,7 +182,7 @@ describe.each([
     stores = await makeStores()
     const { deckStore, assetStore } = stores
 
-    const deck = await deckStore.createDeck(sampleHtml)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     const created = await assetStore.createAsset({
       deckId: deck.id,
       chatMessageId: null,
@@ -187,7 +216,7 @@ describe.each([
     stores = await makeStores()
     const { deckStore, assetStore } = stores
     const requestedDeckId = '00000000-0000-4000-8000-0000000005c1'
-    const deck = await deckStore.createDeck(sampleHtml, {}, requestedDeckId)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions, requestedDeckId)
     const makeTemporary = (filename: string) =>
       assetStore.createAsset({
         deckId: null,
@@ -210,9 +239,9 @@ describe.each([
     expect(await assetStore.claimAssetsForDeck([first.id, expiring.id], deck.id)).toBeNull()
     expect((await assetStore.getAsset(expiring.id))?.deckId).toBeNull()
 
-    if (_name === 'json') {
+    if (backend === 'json') {
       const competing = await makeTemporary('competing.png')
-      const otherDeck = await deckStore.createDeck(sampleHtml)
+      const otherDeck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
       const claims = await Promise.all([
         assetStore.claimAssetsForDeck([competing.id], deck.id),
         assetStore.claimAssetsForDeck([competing.id], otherDeck.id),
@@ -234,7 +263,7 @@ describe.each([
     stores = await makeStores()
     const { deckStore, assetStore } = stores
 
-    const deck = await deckStore.createDeck(sampleHtml)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     await assetStore.createAsset({
       deckId: deck.id,
       chatMessageId: null,
@@ -270,6 +299,7 @@ describe.each([
     const { deckStore } = stores
 
     const created = await deckStore.createDeck(sampleHtml, {
+      ...fastDeckOptions,
       source: 'upload',
       summary: 'Initial upload',
       modelProvider: 'openai',
@@ -289,6 +319,7 @@ describe.each([
     }
 
     await deckStore.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'), {
+      ...fastDeckOptions,
       source: 'manual',
       summary: 'Manual title edit',
       modelProvider: 'openai',
@@ -340,7 +371,7 @@ describe.each([
     stores = await makeStores()
     const { deckStore, generationJobStore: jobStore } = stores
 
-    const deck = await deckStore.createDeck(sampleHtml)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     const created = await jobStore.createJob({
       deckId: deck.id,
       baseVersionId: deck.activeVersionId,

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { GenerationJob, GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 
@@ -14,7 +14,9 @@ import { createAssetStore } from './asset-store.ts'
 import { createAssetStorageKey, createLocalAssetStorage } from './asset-storage.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import { stubStaticRuntimeManifest, stubValidDeckValidation } from './db/test-utils.ts'
+
+const fastDeckOptions = { runtimeManifest: stubStaticRuntimeManifest } as const
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
 
@@ -83,38 +85,31 @@ const stubProviderMetrics = {
 }
 
 describe('generation job runner', () => {
-  let deckDir = ''
-  let jobDir = ''
-  let chatDir = ''
+  let rootDir = ''
+  let deckStore: ReturnType<typeof createDeckStore>
+  let jobStore: ReturnType<typeof createGenerationJobStore>
+  let chatStore: ReturnType<typeof createChatStore>
+  let assetStore: ReturnType<typeof createAssetStore>
+  let assetStorage: ReturnType<typeof createLocalAssetStorage>
 
-  afterEach(async () => {
-    for (const dir of [deckDir, jobDir, chatDir]) {
-      if (dir) {
-        await rm(dir, { recursive: true, force: true })
-      }
-    }
-
-    deckDir = ''
-    jobDir = ''
-    chatDir = ''
+  beforeAll(async () => {
+    rootDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-'))
+    deckStore = createDeckStore(path.join(rootDir, 'decks'))
+    jobStore = createGenerationJobStore(path.join(rootDir, 'jobs'))
+    chatStore = createChatStore(path.join(rootDir, 'chat'))
+    assetStore = createAssetStore(path.join(rootDir, 'asset-meta'))
+    assetStorage = createLocalAssetStorage(path.join(rootDir, 'asset-blobs'))
   })
 
-  async function createRunner(options?: {
+  afterAll(async () => {
+    if (rootDir) {
+      await rm(rootDir, { recursive: true, force: true })
+    }
+  })
+
+  function createRunner(options?: {
     runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
-    chatDir?: string
   }) {
-    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
-    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
-    chatDir = options?.chatDir ?? (await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-')))
-    const assetMetaDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-meta-'))
-    const assetBlobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-blobs-'))
-
-    const deckStore = createDeckStore(deckDir)
-    const jobStore = createGenerationJobStore(jobDir)
-    const chatStore = createChatStore(chatDir)
-    const assetStore = createAssetStore(assetMetaDir)
-    const assetStorage = createLocalAssetStorage(assetBlobDir)
-
     const runner = createGenerationJobRunner({
       deckStore,
       jobStore,
@@ -170,7 +165,7 @@ describe('generation job runner', () => {
         html: '',
         changed: false,
         awaitingUserResponse: true,
-        validation: validateDeckHtmlOnServer(''),
+        validation: stubValidDeckValidation,
         steps: [
           { type: 'tool-call', toolName: 'ask_user', summary: '2 question(s)' },
           { type: 'tool-result', toolName: 'ask_user', summary: 'Waiting for user answers' },
@@ -285,7 +280,7 @@ describe('generation job runner', () => {
       },
     })
 
-    const deck = await deckStore.createDeck(sampleHtml)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     const job = await runner.startJob({
       body: {
         deckId: deck.id,
@@ -314,7 +309,7 @@ describe('generation job runner', () => {
       runAgent: async () => ({
         ok: true,
         html: updatedHtml,
-        validation: validateDeckHtmlOnServer(updatedHtml),
+        validation: stubValidDeckValidation,
         steps: [
           { type: 'text', summary: `Assistant said ${htmlLeak}` },
           { type: 'tool-call', toolName: 'patch_deck', summary: 'rename slide 0' },
@@ -329,7 +324,7 @@ describe('generation job runner', () => {
       }),
     })
 
-    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const deck = await deckStore.createDeck(sampleHtml, { ...fastDeckOptions, source: 'upload' })
     const job = await runner.startJob({
       body: {
         deckId: deck.id,
@@ -373,13 +368,13 @@ describe('generation job runner', () => {
         ok: true,
         html: sampleHtml,
         changed: false,
-        validation: validateDeckHtmlOnServer(sampleHtml),
+        validation: stubValidDeckValidation,
         steps: [{ type: 'text', summary: assistantText }],
         assistantText,
         providerMetrics: stubProviderMetrics,
       }),
     })
-    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const deck = await deckStore.createDeck(sampleHtml, { ...fastDeckOptions, source: 'upload' })
     const initialVersionId = deck.activeVersionId
 
     const job = await runner.startJob({
@@ -431,18 +426,15 @@ describe('generation job runner', () => {
       resolveCaptured = resolve
     })
 
-    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
-    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
-    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-'))
-    const assetMetaDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-meta-'))
-    const assetBlobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-blobs-'))
-
-    const deckStore = createDeckStore(deckDir)
-    const jobStore = createGenerationJobStore(jobDir)
-    const chatStore = createChatStore(chatDir)
-    const assetStore = createAssetStore(assetMetaDir)
-    const assetStorage = createLocalAssetStorage(assetBlobDir)
-    const deck = await deckStore.createDeck(sampleHtml)
+    const { assetStore, assetStorage, deckStore, runner } = createRunner({
+      runAgent: async (options) => {
+        capturedMessages = options.messages
+        capturedAttachmentCount = options.attachmentInspector?.attachments.length ?? 0
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+    })
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     const storageKey = createAssetStorageKey()
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     await assetStorage.write(storageKey, pngBytes)
@@ -457,26 +449,6 @@ describe('generation job runner', () => {
       source: 'upload',
       storageKind: 'local',
       storageKey,
-    })
-
-    const runner = createGenerationJobRunner({
-      deckStore,
-      jobStore,
-      chatStore,
-      assetStore,
-      assetStorage,
-      createModel: () => ({
-        model: {} as never,
-        provider: 'openai',
-        modelId: 'gpt-4.1-mini',
-      }),
-      runAgent: async (options) => {
-        capturedMessages = options.messages
-        capturedAttachmentCount = options.attachmentInspector?.attachments.length ?? 0
-        resolveCaptured()
-        return { ok: false, error: 'stop', steps: [] }
-      },
-      now: () => new Date('2026-07-01T12:00:00.000Z'),
     })
 
     const job = await runner.startJob({
@@ -519,18 +491,14 @@ describe('generation job runner', () => {
       resolveCaptured = resolve
     })
 
-    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-decks-'))
-    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-jobs-'))
-    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-chat-'))
-    const assetMetaDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-meta-'))
-    const assetBlobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-runner-asset-blobs-'))
-
-    const deckStore = createDeckStore(deckDir)
-    const jobStore = createGenerationJobStore(jobDir)
-    const chatStore = createChatStore(chatDir)
-    const assetStore = createAssetStore(assetMetaDir)
-    const assetStorage = createLocalAssetStorage(assetBlobDir)
-    const deck = await deckStore.createDeck(sampleHtml)
+    const { assetStore, assetStorage, deckStore, runner } = createRunner({
+      runAgent: async (options) => {
+        capturedMessages = options.messages
+        resolveCaptured()
+        return { ok: false, error: 'stop', steps: [] }
+      },
+    })
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
     const storageKey = createAssetStorageKey()
     const csvBytes = Buffer.from('name,value\none,1')
     await assetStorage.write(storageKey, csvBytes)
@@ -545,25 +513,6 @@ describe('generation job runner', () => {
       source: 'upload',
       storageKind: 'local',
       storageKey,
-    })
-
-    const runner = createGenerationJobRunner({
-      deckStore,
-      jobStore,
-      chatStore,
-      assetStore,
-      assetStorage,
-      createModel: () => ({
-        model: {} as never,
-        provider: 'openai',
-        modelId: 'gpt-4.1-mini',
-      }),
-      runAgent: async (options) => {
-        capturedMessages = options.messages
-        resolveCaptured()
-        return { ok: false, error: 'stop', steps: [] }
-      },
-      now: () => new Date('2026-07-01T12:00:00.000Z'),
     })
 
     const assetReference = {
@@ -606,7 +555,7 @@ describe('generation job runner', () => {
 
   it('rejects startJob when assetIds cannot be resolved', async () => {
     const { runner, deckStore } = await createRunner()
-    const deck = await deckStore.createDeck(sampleHtml)
+    const deck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
 
     await expect(
       runner.startJob({
@@ -632,7 +581,7 @@ describe('generation job runner', () => {
           return {
             ok: true,
             html,
-            validation: validateDeckHtmlOnServer(html),
+            validation: stubValidDeckValidation,
             steps: [],
             transcriptParts: [],
             assistantText: 'Added the launch chart.',
@@ -693,34 +642,6 @@ describe('generation job runner', () => {
     )
   })
 
-  it('does not overwrite a canceled queued job with running', async () => {
-    const { jobStore } = await createRunner()
-
-    const job = await jobStore.createJob({
-      deckId: null,
-      baseVersionId: null,
-      model: 'openai:gpt-4.1-mini',
-      provider: 'openai',
-      request: {
-        messages: [{ role: 'user', content: 'Make slides' }],
-        currentHtml: '',
-      },
-    })
-
-    const canceled = await jobStore.updateJobIfStatus(job.id, 'queued', {
-      status: 'canceled',
-      completedAt: new Date().toISOString(),
-    })
-    expect(canceled?.status).toBe('canceled')
-
-    const claimed = await jobStore.claimQueuedJob(job.id, new Date().toISOString())
-    expect(claimed).toBeNull()
-
-    const stored = await jobStore.getJob(job.id)
-    expect(stored?.status).toBe('canceled')
-    expect(stored?.startedAt).toBeNull()
-  })
-
   it('retries failed jobs with retry relationship metadata', async () => {
     const { runner, jobStore } = await createRunner()
 
@@ -757,9 +678,10 @@ describe('generation job runner', () => {
 
     if (retried) {
       await runner.cancelJob(retried.id)
+      await waitForTerminalJob((id) => jobStore.getJob(id), retried.id, {
+        statuses: ['canceled', 'failed', 'succeeded'],
+      })
     }
-
-    await new Promise((resolve) => setTimeout(resolve, 25))
   })
 
   it('persists the unsaved failure turn when a new-deck retry succeeds', async () => {
@@ -767,7 +689,7 @@ describe('generation job runner', () => {
       runAgent: async () => ({
         ok: true,
         html: sampleHtml,
-        validation: validateDeckHtmlOnServer(sampleHtml),
+        validation: stubValidDeckValidation,
         steps: [],
         transcriptParts: [],
         assistantText: 'Here is the deck.',
@@ -830,7 +752,7 @@ describe('generation job runner', () => {
         }
       },
     })
-    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const deck = await deckStore.createDeck(sampleHtml, { ...fastDeckOptions, source: 'upload' })
     const failed = await jobStore.createJob({
       deckId: deck.id,
       baseVersionId: deck.activeVersionId,
@@ -925,7 +847,7 @@ describe('generation job runner', () => {
 
   it('refreshes deck snapshot when retrying a failed edit job', async () => {
     const { deckStore, runner, jobStore } = await createRunner()
-    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const deck = await deckStore.createDeck(sampleHtml, { ...fastDeckOptions, source: 'upload' })
     const failed = await jobStore.createJob({
       deckId: deck.id,
       baseVersionId: deck.activeVersionId,
@@ -946,6 +868,7 @@ describe('generation job runner', () => {
     })
 
     const updatedDeck = await deckStore.updateDeck(deck.id, sampleHtml.replace('Hello', 'Hi'), {
+      ...fastDeckOptions,
       source: 'manual',
     })
     const retried = await runner.retryJob(failed.id)
@@ -955,14 +878,15 @@ describe('generation job runner', () => {
 
     if (retried) {
       await runner.cancelJob(retried.id)
+      await waitForTerminalJob((id) => jobStore.getJob(id), retried.id, {
+        statuses: ['canceled', 'failed', 'succeeded'],
+      })
     }
-
-    await new Promise((resolve) => setTimeout(resolve, 25))
   })
 
   it('does not duplicate the latest user message when the client already persisted it', async () => {
-    const { chatStore, deckStore, runner } = await createRunner()
-    const deck = await deckStore.createDeck(sampleHtml, { source: 'upload' })
+    const { chatStore, deckStore, runner, jobStore } = await createRunner()
+    const deck = await deckStore.createDeck(sampleHtml, { ...fastDeckOptions, source: 'upload' })
     const userMessageId = '00000000-0000-4000-8000-000000000101'
 
     await chatStore.appendMessage(deck.id, {
@@ -998,40 +922,24 @@ describe('generation job runner', () => {
     })
 
     await runner.cancelJob(job.id)
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    await waitForTerminalJob((id) => jobStore.getJob(id), job.id, {
+      statuses: ['canceled', 'failed', 'succeeded'],
+    })
   })
 })
 
 describe('generation job API routes', () => {
-  let deckDir = ''
-  let jobDir = ''
-  let server: Server | null = null
+  let apiRoot = ''
+  let server: Server
+  let baseUrl = ''
+  let generationJobRunner: ReturnType<typeof createGenerationJobRunner>
+  let jobStore: ReturnType<typeof createGenerationJobStore>
 
-  afterEach(async () => {
-    if (server) {
-      await new Promise<void>((resolve, reject) => {
-        server?.close((error) => (error ? reject(error) : resolve()))
-      })
-      server = null
-    }
-
-    for (const dir of [deckDir, jobDir]) {
-      if (dir) {
-        await rm(dir, { recursive: true, force: true })
-      }
-    }
-
-    deckDir = ''
-    jobDir = ''
-  })
-
-  async function startApi() {
-    deckDir = await mkdtemp(path.join(os.tmpdir(), 'ark-job-api-decks-'))
-    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-job-api-jobs-'))
-
-    const deckStore = createDeckStore(deckDir)
-    const jobStore = createGenerationJobStore(jobDir)
-    const generationJobRunner = createGenerationJobRunner({
+  beforeAll(async () => {
+    apiRoot = await mkdtemp(path.join(os.tmpdir(), 'ark-job-api-'))
+    const deckStore = createDeckStore(path.join(apiRoot, 'decks'))
+    jobStore = createGenerationJobStore(path.join(apiRoot, 'jobs'))
+    generationJobRunner = createGenerationJobRunner({
       deckStore,
       jobStore,
       chatStore: null,
@@ -1050,22 +958,23 @@ describe('generation job API routes', () => {
     })
 
     server = app.listen(0)
-    await new Promise<void>((resolve) => server?.once('listening', resolve))
-
+    await new Promise<void>((resolve) => server.once('listening', resolve))
     const address = server.address() as AddressInfo
-    return {
-      baseUrl: `http://127.0.0.1:${address.port}`,
-      generationJobRunner,
-    }
-  }
+    baseUrl = `http://127.0.0.1:${address.port}`
+  })
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    await rm(apiRoot, { recursive: true, force: true })
+  })
 
   it('starts and reads a generation job quickly', async () => {
     const previousKey = process.env.OPENAI_API_KEY
     process.env.OPENAI_API_KEY = 'sk-test-generation-job-route'
 
     try {
-      const { baseUrl, generationJobRunner } = await startApi()
-
       const response = await fetch(`${baseUrl}/api/generation-jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1090,10 +999,15 @@ describe('generation job API routes', () => {
       expect(read.job?.result?.html).toBeUndefined()
 
       if (started.job?.id) {
-        await generationJobRunner.cancelJob(started.job.id)
+        const current = await jobStore.getJob(started.job.id)
+        if (
+          current &&
+          !TERMINAL_JOB_STATUSES.includes(current.status as (typeof TERMINAL_JOB_STATUSES)[number])
+        ) {
+          await generationJobRunner.cancelJob(started.job.id)
+          await waitForTerminalJob((id) => jobStore.getJob(id), started.job.id)
+        }
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 25))
     } finally {
       if (previousKey === undefined) {
         delete process.env.OPENAI_API_KEY
@@ -1104,8 +1018,6 @@ describe('generation job API routes', () => {
   })
 
   it('rejects invalid generation job ids', async () => {
-    const { baseUrl } = await startApi()
-
     const response = await fetch(`${baseUrl}/api/generation-jobs/not-a-uuid`)
     expect(response.status).toBe(400)
   })

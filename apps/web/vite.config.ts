@@ -45,6 +45,22 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
       setupFiles: ['./src/test/setup.ts'],
+      // Pure lib unit tests do not need a DOM; skip jsdom boot for those files.
+      environmentMatchGlobs: [
+        ['src/lib/agent-themes.test.ts', 'node'],
+        ['src/lib/asset-api.test.ts', 'node'],
+        ['src/lib/chat-reconcile.test.ts', 'node'],
+        ['src/lib/deck-api.test.ts', 'node'],
+        ['src/lib/deck-editor-patches.test.ts', 'node'],
+        ['src/lib/deck-text-edit.test.ts', 'node'],
+        ['src/lib/editor-overlay-geometry.test.ts', 'node'],
+        ['src/lib/editor-selection-context.test.ts', 'node'],
+        ['src/lib/element-inspector.test.ts', 'node'],
+        ['src/lib/generation-job-api.test.ts', 'node'],
+        ['src/lib/slide-context.test.ts', 'node'],
+        ['src/lib/undo-redo-version-options.test.ts', 'node'],
+        ['src/lib/version-history-display.test.ts', 'node'],
+      ],
       environmentOptions: {
         jsdom: {
           url: 'http://localhost:5173',

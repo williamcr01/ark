@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   assertApiContract,
@@ -36,25 +36,12 @@ const pngDataUrl = `data:image/png;base64,${PNG_BYTES.toString('base64')}`
 
 describe('asset API routes', () => {
   let root = ''
-  let server: Server | null = null
+  let server: Server
+  let baseUrl = ''
   let assetStore = createAssetStore()
   let assetStorage = createLocalAssetStorage()
 
-  afterEach(async () => {
-    if (server) {
-      await new Promise<void>((resolve, reject) => {
-        server?.close((error) => (error ? reject(error) : resolve()))
-      })
-      server = null
-    }
-
-    if (root) {
-      await rm(root, { recursive: true, force: true })
-      root = ''
-    }
-  })
-
-  async function startApi() {
+  beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'ark-api-assets-'))
     const deckStore = createDeckStore(path.join(root, 'decks'))
     assetStore = createAssetStore(path.join(root, 'assets', 'meta'))
@@ -62,29 +49,37 @@ describe('asset API routes', () => {
     const app = createApp({ deckStore, assetStore, assetStorage })
 
     server = app.listen(0)
-    await new Promise<void>((resolve) => server?.once('listening', resolve))
+    await new Promise<void>((resolve) => server.once('listening', resolve))
 
     const address = server.address() as AddressInfo
-    const baseUrl = `http://127.0.0.1:${address.port}`
+    baseUrl = `http://127.0.0.1:${address.port}`
+  })
 
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    await rm(root, { recursive: true, force: true })
+  })
+
+  async function createDeck() {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
     })
     const created = await createResponse.json()
-
-    return { baseUrl, deckId: created.deck.id as string }
+    return created.deck.id as string
   }
 
-  const upload = (baseUrl: string, deckId: string, body: Record<string, unknown>) =>
+  const upload = (deckId: string, body: Record<string, unknown>) =>
     fetch(`${baseUrl}/api/decks/${deckId}/assets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
 
-  const uploadTemporary = (baseUrl: string, body: Record<string, unknown>) =>
+  const uploadTemporary = (body: Record<string, unknown>) =>
     fetch(`${baseUrl}/api/assets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,9 +87,9 @@ describe('asset API routes', () => {
     })
 
   it('uploads a valid asset and serves it through an Ark-owned URL', async () => {
-    const { baseUrl, deckId } = await startApi()
+    const deckId = await createDeck()
 
-    const response = await upload(baseUrl, deckId, {
+    const response = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -117,8 +112,7 @@ describe('asset API routes', () => {
   })
 
   it('stages and resolves an unassigned asset for a new deck job', async () => {
-    const { baseUrl } = await startApi()
-    const response = await uploadTemporary(baseUrl, {
+    const response = await uploadTemporary({
       filename: 'logo.png',
       mediaType: '',
       data: pngDataUrl,
@@ -143,9 +137,9 @@ describe('asset API routes', () => {
   })
 
   it('lists assets for a deck', async () => {
-    const { baseUrl, deckId } = await startApi()
+    const deckId = await createDeck()
 
-    await upload(baseUrl, deckId, {
+    await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -161,9 +155,9 @@ describe('asset API routes', () => {
   })
 
   it('rejects unsupported MIME types', async () => {
-    const { baseUrl, deckId } = await startApi()
+    const deckId = await createDeck()
 
-    const response = await upload(baseUrl, deckId, {
+    const response = await upload(deckId, {
       filename: 'app.exe',
       mediaType: 'application/x-msdownload',
       data: Buffer.from('MZ').toString('base64'),
@@ -175,11 +169,11 @@ describe('asset API routes', () => {
   })
 
   it('accepts payloads above the former 10 MiB cap', async () => {
-    const { baseUrl, deckId } = await startApi()
+    const deckId = await createDeck()
     const payload = Buffer.alloc(11 * 1024 * 1024)
     PNG_BYTES.copy(payload)
 
-    const response = await upload(baseUrl, deckId, {
+    const response = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: payload.toString('base64'),
@@ -190,9 +184,9 @@ describe('asset API routes', () => {
   })
 
   it('rejects suspicious filenames', async () => {
-    const { baseUrl, deckId } = await startApi()
+    const deckId = await createDeck()
 
-    const response = await upload(baseUrl, deckId, {
+    const response = await upload(deckId, {
       filename: '../../evil.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -204,9 +198,7 @@ describe('asset API routes', () => {
   })
 
   it('returns 404 when uploading to a missing deck', async () => {
-    const { baseUrl } = await startApi()
-
-    const response = await upload(baseUrl, '00000000-0000-4000-8000-0000000000ff', {
+    const response = await upload('00000000-0000-4000-8000-0000000000ff', {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -217,15 +209,15 @@ describe('asset API routes', () => {
   })
 
   it('rejects malformed upload payloads', async () => {
-    const { baseUrl, deckId } = await startApi()
+    const deckId = await createDeck()
 
-    const response = await upload(baseUrl, deckId, { filename: 'logo.png' })
+    const response = await upload(deckId, { filename: 'logo.png' })
     expect(response.status).toBe(400)
   })
 
   it('deletes an asset and its bytes', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -246,8 +238,8 @@ describe('asset API routes', () => {
   })
 
   it('refuses to delete an asset referenced by any immutable deck version', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -285,8 +277,8 @@ describe('asset API routes', () => {
   })
 
   it('cleans up deck assets when the deck is deleted', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -303,8 +295,8 @@ describe('asset API routes', () => {
   })
 
   it('resolves asset ids into inline data-url attachments scoped to the deck', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -332,8 +324,8 @@ describe('asset API routes', () => {
   })
 
   it('rejects cross-deck asset resolution when deck ids differ', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -352,8 +344,8 @@ describe('asset API routes', () => {
   })
 
   it('does not resolve a deck-owned attachment without its deck id', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
@@ -368,7 +360,7 @@ describe('asset API routes', () => {
   })
 
   it('reports unresolved asset ids in strict mode', async () => {
-    const { deckId } = await startApi()
+    const deckId = await createDeck()
     const missingId = '00000000-0000-4000-8000-0000000000aa'
 
     expect(
@@ -379,8 +371,8 @@ describe('asset API routes', () => {
   })
 
   it('rejects unscoped asset fetch from another deck', async () => {
-    const { baseUrl, deckId } = await startApi()
-    const uploadResponse = await upload(baseUrl, deckId, {
+    const deckId = await createDeck()
+    const uploadResponse = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,

@@ -444,39 +444,53 @@ export function applyDeckPatches(
   const aggregateSummaries: string[] = []
   let activeSlideIndex = options.activeSlideIndex
   let appliedCount = 0
+  let dom: JSDOM | null = null
+
+  const flushDom = () => {
+    if (!dom) {
+      return
+    }
+
+    workingHtml = serializeDeckHtml(dom)
+    // Release the jsdom window when available; ignore environments without close().
+    const maybeClose = (dom.window as unknown as { close?: () => void }).close
+    maybeClose?.()
+    dom = null
+  }
+
+  const getDomContext = (): PatchContext => {
+    if (!dom) {
+      dom = new JSDOM(workingHtml)
+    }
+
+    return {
+      dom,
+      doc: dom.window.document,
+      slides: findSlideElements(dom.window.document),
+      changedSlideIndexes: aggregateChangedSlides,
+      changedElementIds: aggregateChangedElements,
+      summaries: aggregateSummaries,
+      activeSlideIndex,
+    }
+  }
 
   for (const [operationIndex, operation] of operations.entries()) {
     if (isElementPatchOperation(operation)) {
-      const dom = new JSDOM(workingHtml)
-      const context: PatchContext = {
-        dom,
-        doc: dom.window.document,
-        slides: findSlideElements(dom.window.document),
-        changedSlideIndexes: new Set<number>(),
-        changedElementIds: new Set<string>(),
-        summaries: [],
-        activeSlideIndex,
-      }
-
+      const context = getDomContext()
       const result = applyElementPatch(context, operation)
 
       if ('error' in result) {
+        flushDom()
         return { ok: false, error: result.error ?? 'Patch operation failed.', operationIndex }
       }
 
-      workingHtml = serializeDeckHtml(context.dom)
-      for (const index of context.changedSlideIndexes) {
-        aggregateChangedSlides.add(index)
-      }
-      for (const elementId of context.changedElementIds) {
-        aggregateChangedElements.add(elementId)
-      }
-      aggregateSummaries.push(...context.summaries)
+      activeSlideIndex = context.activeSlideIndex
       appliedCount += 1
       continue
     }
 
     if (isTextReplacePatchOperation(operation)) {
+      flushDom()
       const replaced = applyDeckEdits(workingHtml, [
         { oldText: operation.oldText, newText: operation.newText },
       ])
@@ -492,6 +506,7 @@ export function applyDeckPatches(
     }
 
     if (!isSlidePatchOperation(operation)) {
+      flushDom()
       return {
         ok: false,
         error: `operations[${operationIndex}] is not a recognized patch operation.`,
@@ -499,34 +514,19 @@ export function applyDeckPatches(
       }
     }
 
-    const dom = new JSDOM(workingHtml)
-    const context: PatchContext = {
-      dom,
-      doc: dom.window.document,
-      slides: findSlideElements(dom.window.document),
-      changedSlideIndexes: new Set<number>(),
-      changedElementIds: new Set<string>(),
-      summaries: [],
-      activeSlideIndex,
-    }
-
+    const context = getDomContext()
     const result = applySlidePatch(context, operation)
 
     if ('error' in result) {
+      flushDom()
       return { ok: false, error: result.error ?? 'Patch operation failed.', operationIndex }
     }
 
-    workingHtml = serializeDeckHtml(context.dom)
-    for (const index of context.changedSlideIndexes) {
-      aggregateChangedSlides.add(index)
-    }
-    for (const elementId of context.changedElementIds) {
-      aggregateChangedElements.add(elementId)
-    }
-    aggregateSummaries.push(...context.summaries)
     activeSlideIndex = context.activeSlideIndex
     appliedCount += 1
   }
+
+  flushDom()
 
   if (workingHtml === html) {
     return { ok: false, error: 'Patch operations did not change the deck.' }
