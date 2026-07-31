@@ -164,7 +164,7 @@ export function useDeckSlideNavigation(
   const onSlidePatchFailedRef = useRef(onSlidePatchFailed)
   const patchSequenceRef = useRef(0)
   const pendingSlidePatchRef = useRef<{ patchId: string; slideCount: number } | null>(null)
-  const patchTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  const patchTimeoutRef = useRef<number | null>(null)
 
   const clearPatchTimeout = useCallback(() => {
     if (patchTimeoutRef.current === null) {
