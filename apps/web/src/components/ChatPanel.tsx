@@ -753,7 +753,7 @@ export function ChatPanel({
           ) : null}
 
           <ActiveComposer
-            active={isGenerating}
+            active={isGenerating || questionsActive}
             reducedMotion={reducedMotion}
             resolvedAppearance={resolvedAppearance}
           >
