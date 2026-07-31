@@ -6,13 +6,13 @@ import {
   useState,
   type ChangeEvent,
   type MutableRefObject,
+  type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { WandSparklesIcon } from 'lucide-react'
 
 import { EditModeToolbar } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
-import { DeckPreviewHeader } from '@/components/DeckPreviewHeader'
 import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlays'
 import { PresentMode } from '@/components/PresentMode'
 import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
@@ -67,6 +67,10 @@ type RuntimeErrorNotice = {
   versionId: string | null
 }
 
+export type DeckPreviewHandle = {
+  openPresent: () => void
+}
+
 export type DeckPreviewProps = {
   html: string
   deckId?: string | null
@@ -102,6 +106,8 @@ export type DeckPreviewProps = {
     activeSlideIndex: number,
     summary: string,
   ) => Promise<DeckPreviewPatchResult | undefined>
+  /** Imperative present-mode handle for the title bar (prop, not forwardRef). */
+  presentHandleRef?: RefObject<DeckPreviewHandle | null>
 }
 
 export function DeckPreview({
@@ -130,6 +136,7 @@ export function DeckPreview({
   onEditorSelectionChange,
   onToggleContextSlide,
   onPatchEditorOperations,
+  presentHandleRef,
 }: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previewStageRef = useRef<HTMLDivElement>(null)
@@ -601,55 +608,50 @@ export function DeckPreview({
     })
     setIsPresentOpen(true)
   }, [])
+  useEffect(() => {
+    if (!presentHandleRef) {
+      return
+    }
+
+    presentHandleRef.current = { openPresent: openPresentMode }
+    return () => {
+      presentHandleRef.current = null
+    }
+  }, [openPresentMode, presentHandleRef])
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const hasStrip = hasSlides
   const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
-  const canPresent = html.length > 0 && hasSlides && !isGenerating
-
-  const previewChrome = (
-    <>
-      <DeckPreviewHeader
-        activeSlideIndex={activeSlideIndex}
-        analysis={deckAnalysis}
-        canPresent={canPresent}
-        isPresentOpen={isPresentOpen}
-        isTextEditSaving={isTextEditSaving}
-        onPresent={openPresentMode}
-        usesSandboxHost={previewFrame.usesSandboxHost}
+  const previewChrome =
+    editorBridgeEnabled && editChromeActive ? (
+      <EditModeToolbar
+        activeTool={activeTool}
+        canEditText={canEditSelectedText}
+        canRedo={canRedo}
+        canUndo={canUndo}
+        hasDeck={html.length > 0 && hasSlides}
+        hasSelection={Boolean(selection?.elementId)}
+        imageAlt={selectedImageAlt}
+        imageFit={selectedImageFit}
+        isGenerating={isGenerating}
+        isSaving={isTextEditSaving}
+        onBringForward={() => handleReorderSelection('front')}
+        onDelete={handleDeleteSelection}
+        onDuplicate={handleDuplicateSelection}
+        onEditText={beginTextEdit}
+        onImageAltChange={handleImageAltChange}
+        onImageFitChange={handleImageFitChange}
+        onPickImage={openImagePicker}
+        onRedo={handleRedo}
+        onSendBackward={() => handleReorderSelection('back')}
+        onToolChange={handleToolChange}
+        onUndo={handleUndo}
+        selectedImage={selectedImage}
+        selectionLocked={selection?.locked ?? false}
+        selectionManaged={selection?.managed ?? false}
+        textEditActive={textEditActive}
       />
-
-      {editorBridgeEnabled && editChromeActive ? (
-        <EditModeToolbar
-          activeTool={activeTool}
-          canEditText={canEditSelectedText}
-          canRedo={canRedo}
-          canUndo={canUndo}
-          hasDeck={html.length > 0 && hasSlides}
-          hasSelection={Boolean(selection?.elementId)}
-          imageAlt={selectedImageAlt}
-          imageFit={selectedImageFit}
-          isGenerating={isGenerating}
-          isSaving={isTextEditSaving}
-          onBringForward={() => handleReorderSelection('front')}
-          onDelete={handleDeleteSelection}
-          onDuplicate={handleDuplicateSelection}
-          onEditText={beginTextEdit}
-          onImageAltChange={handleImageAltChange}
-          onImageFitChange={handleImageFitChange}
-          onPickImage={openImagePicker}
-          onRedo={handleRedo}
-          onSendBackward={() => handleReorderSelection('back')}
-          onToolChange={handleToolChange}
-          onUndo={handleUndo}
-          selectedImage={selectedImage}
-          selectionLocked={selection?.locked ?? false}
-          selectionManaged={selection?.managed ?? false}
-          textEditActive={textEditActive}
-        />
-      ) : null}
-    </>
-  )
+    ) : null
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-stage)]">

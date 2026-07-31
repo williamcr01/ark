@@ -774,7 +774,11 @@ async function runSmoke() {
       'uploaded manual-edit deck in shell',
       async () => {
         const text = await evaluate<string>(cdp!, 'document.body.innerText')
-        return text.includes('Manual Edit Deck') && text.includes('Slide 1 of 3')
+        const slideOneActive = await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('button[aria-label="Go to slide 1"][aria-current="true"]'))`,
+        )
+        return text.includes('Manual Edit Deck') && slideOneActive
       },
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
@@ -1440,7 +1444,11 @@ async function runSmoke() {
     await setUploadFile(cdp, revealFixturePath)
     await waitFor('uploaded Reveal manual-edit deck in shell', async () => {
       const text = await evaluate<string>(cdp!, 'document.body.innerText')
-      return text.includes('Reveal Vertical Deck') && text.includes('Slide 1 of 4')
+      const slideOneActive = await evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('button[aria-label="Go to slide 1"][aria-current="true"]'))`,
+      )
+      return text.includes('Reveal Vertical Deck') && slideOneActive
     })
     const revealDeck = await waitFor('uploaded Reveal deck in API', async () => {
       const listed = await listDecks(apiPort)
@@ -1568,7 +1576,6 @@ async function runSmoke() {
       const text = await evaluate<string>(cdp!, 'document.body.innerText')
       return (
         text.includes('Hostile Editor PostMessage Deck') &&
-        text.includes('Scripts running') &&
         (await evaluate<boolean>(
           cdp!,
           `Boolean(document.querySelector('button[aria-label="Select"]'))`,

@@ -441,24 +441,10 @@ describe('ChatPanel submit control', () => {
     expect(screen.queryByText(/Designing the deck/i)).not.toBeInTheDocument()
   })
 
-  it('enables submit when only deck assets are selected', () => {
+  it('keeps submit disabled with no prompt or attachments', () => {
     render(
       <TooltipProvider>
-        <ChatPanel
-          {...baseProps}
-          input=""
-          selectedAssetIds={['00000000-0000-4000-8000-000000000001']}
-        />
-      </TooltipProvider>,
-    )
-
-    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
-  })
-
-  it('keeps submit disabled with no prompt, attachments, or selected assets', () => {
-    render(
-      <TooltipProvider>
-        <ChatPanel {...baseProps} input="" selectedAssetIds={[]} />
+        <ChatPanel {...baseProps} input="" />
       </TooltipProvider>,
     )
 
@@ -526,7 +512,7 @@ describe('ChatPanel submit control', () => {
     const user = userEvent.setup()
     const { unmount } = render(
       <TooltipProvider>
-        <ChatPanel {...baseProps} onAttachmentError={onAttachmentError} selectedAssetIds={[]} />
+        <ChatPanel {...baseProps} onAttachmentError={onAttachmentError} />
       </TooltipProvider>,
     )
     const files = Array.from(
