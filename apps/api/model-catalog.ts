@@ -112,6 +112,14 @@ export const MODEL_CATALOG: readonly ModelCatalogEntry[] = [
   },
   {
     provider: 'openai',
+    modelId: 'gpt-5.4',
+    name: 'GPT-5.4',
+    reasoningEfforts: OPENAI_STANDARD_EFFORTS,
+    defaultReasoningEffort: 'medium',
+    reasoningTransport: 'openai-effort',
+  },
+  {
+    provider: 'openai',
     modelId: 'gpt-5.4-mini',
     name: 'GPT-5.4 Mini',
     reasoningEfforts: OPENAI_STANDARD_EFFORTS,
