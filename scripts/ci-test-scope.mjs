@@ -19,7 +19,7 @@ const forceFullPaths = [
   /^scripts\/(?!benchmark-|lib\/renderer-benchmark\.)/,
   /(^|\/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/,
   /(^|\/)(tsconfig(?:\.[^/]*)?\.json|vitest\.config\.[cm]?[jt]s|vite\.config\.[cm]?[jt]s)$/,
-  /^(eslint\.config\.[cm]?[jt]s|\.prettier[^/]*|prettier\.config\.[cm]?[jt]s)$/,
+  /^(eslint\.config\.[cm]?[jt]s|\.oxlintrc\.json|\.prettier[^/]*|prettier\.config\.[cm]?[jt]s)$/,
   /^apps\/web\/src\/test\/setup\.ts$/,
 ]
 
