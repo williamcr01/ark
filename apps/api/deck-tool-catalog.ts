@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { THEME_SAMPLE_HTML_MAX_BYTES } from '@ark/deck-core/agent-themes.ts'
 import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/deck-core/chat.ts'
 import type { Logger } from './observability/logger.ts'
 import {
@@ -85,6 +86,8 @@ const summarizeInput = (toolName: string, input: unknown) => {
   const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
   if (toolName === 'ask_user')
     return `${Array.isArray(record.questions) ? record.questions.length : 0} question(s)`
+  if (toolName === 'propose_themes')
+    return `${Array.isArray(record.themes) ? record.themes.length : 0} theme(s)`
   if (toolName === 'read_deck')
     return typeof record.slideIndex === 'number'
       ? `slide ${record.slideIndex}`
@@ -105,6 +108,7 @@ const summarizeOutput = (toolName: string, output: unknown) => {
   if (typeof record.message === 'string') return record.message
   if (typeof record.summary === 'string') return record.summary
   if (toolName === 'ask_user') return 'Waiting for user answers'
+  if (toolName === 'propose_themes') return 'Waiting for theme choice'
   if (toolName === 'list_versions')
     return `${typeof record.versionCount === 'number' ? record.versionCount : 0} version(s)`
   if (toolName === 'read_deck')
@@ -207,6 +211,34 @@ function projectReadOnly(toolName: string, value: unknown): TranscriptProjection
   }
 }
 
+/** Preserve lean sampleHtml for client theme previews (default projector strips HTML). */
+function projectProposeThemesInput(value: unknown): TranscriptProjection {
+  const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  const themes = Array.isArray(source.themes) ? source.themes : []
+  let sampleTruncated = false
+  const projectedThemes = themes.slice(0, 4).map((theme) => {
+    if (!theme || typeof theme !== 'object') return theme as JsonValue
+    const record = theme as Record<string, unknown>
+    const sampleHtml = typeof record.sampleHtml === 'string' ? record.sampleHtml : ''
+    const page = utf8Prefix(sampleHtml, THEME_SAMPLE_HTML_MAX_BYTES)
+    if (page.content !== sampleHtml) sampleTruncated = true
+    return {
+      id: typeof record.id === 'string' ? record.id : '',
+      name: typeof record.name === 'string' ? truncateString(record.name, 80) : '',
+      description:
+        typeof record.description === 'string' ? truncateString(record.description, 200) : '',
+      sampleHtml: page.content,
+    }
+  })
+  const projected = {
+    title: typeof source.title === 'string' ? truncateString(source.title, 120) : '',
+    themes: projectedThemes,
+  } as JsonValue
+  const capped = capTranscriptValue(projected)
+  const truncated = sampleTruncated || JSON.stringify(capped) !== JSON.stringify(projected)
+  return { value: capped, truncated }
+}
+
 const metadata = {
   parse_deck: {
     mutating: false,
@@ -251,6 +283,10 @@ const metadata = {
   ask_user: {
     mutating: false,
     snippet: 'ask_user({ title, description, questions })',
+  },
+  propose_themes: {
+    mutating: false,
+    snippet: 'propose_themes({ title, themes })',
   },
 } as const
 
@@ -298,6 +334,10 @@ const transcriptProjectors = {
   ask_user: {
     input: (value: unknown) => projectReadOnly('ask_user', value),
     output: (value: unknown) => projectReadOnly('ask_user', value),
+  },
+  propose_themes: {
+    input: projectProposeThemesInput,
+    output: (value: unknown) => projectReadOnly('propose_themes', value),
   },
 } satisfies Record<
   keyof typeof metadata,

@@ -18,6 +18,7 @@ import {
 
 import { AgentPresence } from '@/components/AgentPresence'
 import { AgentQuestions } from '@/components/AgentQuestions'
+import { ThemePicker } from '@/components/ThemePicker'
 import {
   Attachment,
   AttachmentInfo,
@@ -76,12 +77,23 @@ import {
   parseAgentQuestionAnswerLines,
   type AgentQuestionRequest,
 } from '@ark/deck-core/agent-questions.ts'
+import {
+  formatThemeChoice,
+  parseThemeChoiceName,
+  themeProposalRequestSchema,
+  type ThemeProposalRequest,
+} from '@ark/deck-core/agent-themes.ts'
 import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
 import {
   findAskUserAnswerAfter,
   findPendingAgentQuestions,
   isAskUserAnswerMessage,
 } from '@/lib/agent-questions'
+import {
+  findPendingThemeProposal,
+  findThemeChoiceAfter,
+  isThemeChoiceMessage,
+} from '@/lib/agent-themes'
 import { cn } from '@/lib/utils'
 
 const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
@@ -338,6 +350,43 @@ function AskUserTranscript({
   )
 }
 
+function ThemeProposalTranscript({
+  request,
+  choiceContent,
+}: {
+  request: ThemeProposalRequest
+  choiceContent?: string | null
+}) {
+  const chosenName = choiceContent ? parseThemeChoiceName(request, choiceContent) : null
+  const answered = Boolean(chosenName)
+
+  return (
+    <details className="text-xs" open={answered}>
+      <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+        {answered ? `Chose theme: ${chosenName}` : `Proposed ${request.themes.length} themes`}
+      </summary>
+      {answered ? (
+        <div className="mt-1.5 flex flex-col gap-1.5 pl-4">
+          {request.title ? (
+            <p className="text-muted-foreground/80 text-[11px]">{request.title}</p>
+          ) : null}
+          <ul className="flex flex-col gap-0.5 text-muted-foreground">
+            {request.themes.map((theme) => (
+              <li
+                className={cn(theme.name === chosenName && 'font-medium text-foreground')}
+                key={theme.id}
+              >
+                {theme.name}
+                {theme.name === chosenName ? ' (selected)' : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </details>
+  )
+}
+
 function ChatMessageDeliveryStatus({
   status,
   onRetry,
@@ -387,14 +436,20 @@ function formatThinkingSummaryLabel(durationMs: number | undefined, live: boolea
   return seconds === 1 ? 'Thought for 1 second' : `Thought for ${seconds} seconds`
 }
 
+function isInteractiveToolPart(part: ChatMessagePart, toolName: string) {
+  return (part.type === 'tool-call' || part.type === 'tool-result') && part.toolName === toolName
+}
+
 function ChatMessageParts({
   parts,
   live = false,
   askUserAnswers = null,
+  themeChoice = null,
 }: {
   parts: ChatMessagePart[]
   live?: boolean
   askUserAnswers?: string | null
+  themeChoice?: string | null
 }) {
   const segments = segmentChatParts(parts)
 
@@ -405,10 +460,13 @@ function ChatMessageParts({
           const askUserParts = segment.parts.filter(
             ({ part }) => part.type === 'tool-call' && part.toolName === 'ask_user',
           )
+          const themeParts = segment.parts.filter(
+            ({ part }) => part.type === 'tool-call' && part.toolName === 'propose_themes',
+          )
           const otherParts = segment.parts.filter(
             ({ part }) =>
-              !(part.type === 'tool-call' && part.toolName === 'ask_user') &&
-              !(part.type === 'tool-result' && part.toolName === 'ask_user'),
+              !isInteractiveToolPart(part, 'ask_user') &&
+              !isInteractiveToolPart(part, 'propose_themes'),
           )
           const callCount = otherParts.filter(({ part }) => part.type === 'tool-call').length
 
@@ -426,6 +484,22 @@ function ChatMessageParts({
                   <AskUserTranscript
                     answersContent={askUserAnswers}
                     key={`ask-user-${index}`}
+                    request={parsed.data}
+                  />
+                )
+              })}
+              {themeParts.map(({ index, part }) => {
+                const parsed =
+                  part.type === 'tool-call'
+                    ? themeProposalRequestSchema.safeParse(part.input)
+                    : null
+                if (!parsed?.success) {
+                  return <ToolActivityLine key={`tool-${index}`} part={part} />
+                }
+                return (
+                  <ThemeProposalTranscript
+                    choiceContent={themeChoice}
+                    key={`propose-themes-${index}`}
                     request={parsed.data}
                   />
                 )
@@ -575,16 +649,18 @@ export function ChatPanel({
   const hasFloatingAlerts =
     showGenerationError || showAttachmentError || showModelsError || showModelWarnings
   const pendingAgentQuestions = onQuestionSubmit ? findPendingAgentQuestions(messages) : null
+  const pendingThemeProposal = onQuestionSubmit ? findPendingThemeProposal(messages) : null
   const activeQuestions = pendingAgentQuestions
-  const questionsActive = Boolean(activeQuestions)
-  const isSubmitDisabled = isGenerating || !canGenerate || questionsActive
+  const activeThemes = pendingThemeProposal
+  const interactionActive = Boolean(activeQuestions || activeThemes)
+  const isSubmitDisabled = isGenerating || !canGenerate || interactionActive
 
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 bg-[var(--ark-panel)] py-0 shadow-none ring-0 [--card-spacing:0]">
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <Conversation>
           <ConversationContent className="gap-5 px-5 py-6">
-            {messages.length === 0 && !questionsActive ? (
+            {messages.length === 0 && !interactionActive ? (
               <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 text-center">
                 <ConversationEmptyState
                   description="Start with an audience, raw notes, or one clear outcome."
@@ -611,19 +687,28 @@ export function ChatPanel({
               </div>
             ) : messages.length > 0 ? (
               messages.map((message, index) => {
-                // Answers stay in history for the model, but render under the ask_user tool call.
+                // Answers stay in history for the model, but render under the matching tool call.
                 if (isAskUserAnswerMessage(messages, index)) return null
+                if (isThemeChoiceMessage(messages, index)) return null
 
                 const askUserAnswers =
                   message.role === 'assistant'
                     ? (findAskUserAnswerAfter(messages, index)?.content ?? null)
+                    : null
+                const themeChoice =
+                  message.role === 'assistant'
+                    ? (findThemeChoiceAfter(messages, index)?.content ?? null)
                     : null
 
                 return (
                   <Message from={message.role} key={message.id}>
                     <MessageContent>
                       {message.parts?.length ? (
-                        <ChatMessageParts askUserAnswers={askUserAnswers} parts={message.parts} />
+                        <ChatMessageParts
+                          askUserAnswers={askUserAnswers}
+                          parts={message.parts}
+                          themeChoice={themeChoice}
+                        />
                       ) : (
                         <MessageResponse>{message.content}</MessageResponse>
                       )}
@@ -690,6 +775,14 @@ export function ChatPanel({
               submitLabel="Send answers"
             />
           ) : null}
+          {activeThemes && onQuestionSubmit ? (
+            <ThemePicker
+              disabled={isGenerating || !canGenerate}
+              onSubmit={(themeId) => onQuestionSubmit(formatThemeChoice(activeThemes, themeId))}
+              request={activeThemes}
+              submitLabel="Use this theme"
+            />
+          ) : null}
 
           {hasFloatingAlerts ? (
             <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">
@@ -753,7 +846,7 @@ export function ChatPanel({
           ) : null}
 
           <ActiveComposer
-            active={isGenerating || questionsActive}
+            active={isGenerating || interactionActive}
             reducedMotion={reducedMotion}
             resolvedAppearance={resolvedAppearance}
           >
@@ -769,12 +862,14 @@ export function ChatPanel({
               <PromptInputBody>
                 <PromptInputTextarea
                   className="min-h-24 resize-none bg-transparent"
-                  disabled={isGenerating || questionsActive}
+                  disabled={isGenerating || interactionActive}
                   onChange={(event) => onInputChange(event.currentTarget.value)}
                   placeholder={
-                    questionsActive
-                      ? 'Answer the questions above to continue…'
-                      : 'Describe the deck you want, or ask for an edit…'
+                    activeThemes
+                      ? 'Pick a theme above to continue…'
+                      : activeQuestions
+                        ? 'Answer the questions above to continue…'
+                        : 'Describe the deck you want, or ask for an edit…'
                   }
                   value={input}
                 />
@@ -785,7 +880,7 @@ export function ChatPanel({
                     <PromptInputActionMenuTrigger
                       aria-label="Add attachments"
                       className={cn(morphMenuTriggerClassName, 'shrink-0')}
-                      disabled={!supportsAttachments || isGenerating || questionsActive}
+                      disabled={!supportsAttachments || isGenerating || interactionActive}
                     />
                     {supportsAttachments ? (
                       <MorphMenuContent className="w-48">

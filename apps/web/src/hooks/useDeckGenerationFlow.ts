@@ -176,8 +176,8 @@ export function useDeckGenerationFlow({
           return
         }
 
-        // New-deck ask_user: no server chat yet — land the assistant turn locally
-        // so the question stepper can read ask_user tool input from parts.
+        // New-deck ask_user / propose_themes: no server chat yet — land the
+        // assistant turn locally so interactive UI can read tool input from parts.
         const assistantMessage = buildSucceededAssistantMessage(outcome)
         setMessages((current) => {
           if (current.some((message) => message.id === assistantMessage.id)) {
