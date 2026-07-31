@@ -453,7 +453,8 @@ export function applyDeckPatches(
 
     workingHtml = serializeDeckHtml(dom)
     // Release the jsdom window when available; ignore environments without close().
-    ;(dom.window as Window & { close?: () => void }).close?.()
+    const maybeClose = (dom.window as unknown as { close?: () => void }).close
+    maybeClose?.()
     dom = null
   }
 
