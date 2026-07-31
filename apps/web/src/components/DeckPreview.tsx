@@ -778,7 +778,7 @@ export function DeckPreview({
                 {editChromeActive ? (
                   <EditorSelectionOverlay
                     geometry={selection ? geometry : null}
-                    hoverGeometry={hoverGeometry}
+                    hoverGeometry={hover?.elementId === selection?.elementId ? null : hoverGeometry}
                     hoverSlideBounds={hoverSlideBounds}
                     hoverSurface={hover?.surface}
                     isEditing={textEditActive}
