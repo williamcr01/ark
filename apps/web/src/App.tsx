@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { type ChatAttachment } from '@ark/deck-core/chat.ts'
@@ -93,6 +93,8 @@ async function uploadPromptAttachments(
   await Promise.all(Array.from({ length: workerCount }, uploadNext))
   return attachments
 }
+
+const MemoizedDeckPreview = memo(DeckPreview)
 
 function App() {
   const navigate = useNavigate()
@@ -301,21 +303,19 @@ function App() {
 
   const handleToggleContextSlide = useCallback(
     (slideIndex: number) => {
-      setContextSlideEntries((current) => {
-        const result = toggleContextSlideEntry(
-          current,
-          slideIndex,
-          deckAnalysis.slides,
-          MAX_SLIDE_CONTEXTS,
-        )
-        if (result.capped) {
-          toast.warning(`You can attach up to ${MAX_SLIDE_CONTEXTS} slides to the chat`)
-          return current
-        }
-        return result.entries
-      })
+      const result = toggleContextSlideEntry(
+        contextSlideEntries,
+        slideIndex,
+        deckAnalysis.slides,
+        MAX_SLIDE_CONTEXTS,
+      )
+      if (result.capped) {
+        toast.warning(`You can attach up to ${MAX_SLIDE_CONTEXTS} slides to the chat`)
+        return
+      }
+      setContextSlideEntries(result.entries)
     },
-    [deckAnalysis.slides],
+    [contextSlideEntries, deckAnalysis.slides],
   )
 
   const handleRemoveContextSlide = useCallback(
@@ -330,12 +330,18 @@ function App() {
   )
 
   // Keep attached-slide state aligned with the live deck (reorder/delete/rollback).
-  const resolvedContextSlides = resolveContextSlides(contextSlideEntries, deckAnalysis.slides)
+  const resolvedContextSlides = useMemo(
+    () => resolveContextSlides(contextSlideEntries, deckAnalysis.slides),
+    [contextSlideEntries, deckAnalysis.slides],
+  )
   if (!sameContextSlideEntries(resolvedContextSlides, contextSlideEntries)) {
     setContextSlideEntries(resolvedContextSlides)
   }
 
-  const contextSlideIndexes = resolvedContextSlides.map((entry) => entry.slideIndex)
+  const contextSlideIndexes = useMemo(
+    () => resolvedContextSlides.map((entry) => entry.slideIndex),
+    [resolvedContextSlides],
+  )
 
   const showSanitizedDownload = deckAnalysis.hasExecutableContent
   const hasSlides = deckAnalysis.slideCount > 0
@@ -657,7 +663,7 @@ function App() {
     />
   )
   const deckPreview = (
-    <DeckPreview
+    <MemoizedDeckPreview
       canRedo={canRedo}
       canUndo={canUndo}
       chromeHost={deckChromeHost}
