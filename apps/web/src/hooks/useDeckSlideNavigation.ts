@@ -517,6 +517,11 @@ export function useDeckSlideNavigation(
         return
       }
 
+      // Leave Alt+Arrow available to focused shell controls such as thumbnail sorting.
+      if (event.altKey) {
+        return
+      }
+
       if (isTypingTarget(event.target)) {
         return
       }

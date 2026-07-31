@@ -164,6 +164,11 @@ vi.mock('@/components/DeckPreview', () => ({
       slideIndex: number,
       summary: string,
     ) => Promise<unknown>
+    onReorderSlide?: (
+      fromIndex: number,
+      toIndex: number,
+      activeSlideIndex: number,
+    ) => Promise<unknown>
   }) => (
     <div data-testid="deck-preview">
       <button disabled={!props.canUndo} onClick={() => void props.onUndo?.()} type="button">
@@ -182,6 +187,9 @@ vi.mock('@/components/DeckPreview', () => ({
         type="button"
       >
         Drag then duplicate
+      </button>
+      <button onClick={() => void props.onReorderSlide?.(0, 2, 0)} type="button">
+        Reorder slide
       </button>
     </div>
   ),
@@ -267,5 +275,42 @@ describe('App undo/redo version provenance', () => {
       beforeHtml: '<html>dragged</html>',
       afterHtml: '<html>duplicated</html>',
     })
+  })
+
+  it('persists a reorder and records one undo snapshot at the remapped active slide', async () => {
+    patchDeckOperations.mockResolvedValueOnce({
+      beforeHtml: '<html>before reorder</html>',
+      deck: { html: '<html>reordered</html>' },
+      patch: {
+        changedSlideIndexes: [0, 2],
+        changedElementIds: [],
+        suggestedActiveSlideIndex: 2,
+      },
+      suggestedSlideIndex: 2,
+    })
+    const user = userEvent.setup()
+    renderWithRouter(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Reorder slide' }))
+    await waitFor(() => expect(historyState.record).toHaveBeenCalledTimes(1))
+
+    expect(patchDeckOperations).toHaveBeenCalledWith(
+      [{ op: 'reorder_slide', slideIndex: 0, toIndex: 2 }],
+      0,
+      { summary: 'Moved slide 1 to position 3' },
+    )
+    expect(historyState.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        beforeHtml: '<html>before reorder</html>',
+        afterHtml: '<html>reordered</html>',
+        slideIndex: 2,
+        provenance: expect.objectContaining({
+          operation: 'reorder_slide',
+          operations: ['reorder_slide'],
+          slideIndexes: [0, 2],
+          elementIds: [],
+        }),
+      }),
+    )
   })
 })
