@@ -731,6 +731,13 @@ export function isReadableTextMediaType(mediaType: string) {
 /** Max characters of decoded text inlined into a model TextPart per attachment. */
 export const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 256 * 1024
 
+const PROVIDER_SAFE_IMAGE_MEDIA_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+])
+
 function decodeBase64ToUtf8(base64: string): string {
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(base64, 'base64').toString('utf8')
@@ -810,6 +817,16 @@ export function chatAttachmentsToModelParts(
 
     if (isReadableTextMediaType(attachment.mediaType)) {
       parts.push(formatInlineTextAttachmentPart(attachment))
+      continue
+    }
+
+    const normalized = attachment.mediaType.split(';')[0]?.trim().toLowerCase() ?? ''
+    if (normalized.startsWith('image/') && !PROVIDER_SAFE_IMAGE_MEDIA_TYPES.has(normalized)) {
+      const label = attachment.filename ? `"${attachment.filename}"` : 'the attached image'
+      parts.push({
+        type: 'text',
+        text: `Attached image ${label} (${attachment.mediaType}) is available through list_attachments for placement, but this provider may not support visual preview of its format.`,
+      })
       continue
     }
 

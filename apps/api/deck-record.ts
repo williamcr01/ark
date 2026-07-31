@@ -35,7 +35,7 @@ export type DeckVersionOptions = SharedDeckVersionOptions & {
 }
 
 export type DeckStore = {
-  createDeck: (html: string, options?: DeckVersionOptions) => Promise<StoredDeck>
+  createDeck: (html: string, options?: DeckVersionOptions, id?: string) => Promise<StoredDeck>
   getDeck: (id: string) => Promise<StoredDeck | null>
   listDecks: () => Promise<DeckSummary[]>
   updateDeck: (id: string, html: string, options?: DeckVersionOptions) => Promise<StoredDeck | null>

@@ -352,11 +352,16 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     return nextIndex
   }
 
-  const createDeck = async (html: string, options: DeckVersionOptions = {}) => {
+  const createDeck = async (
+    html: string,
+    options: DeckVersionOptions = {},
+    requestedId?: string,
+  ) => {
     await ensureDataDir(dataDir)
 
     const now = new Date().toISOString()
-    const deckId = randomUUID()
+    const deckId = requestedId ?? randomUUID()
+    if (!isValidDeckId(deckId)) throw new Error('Requested deck id is invalid.')
     const title = extractDeckTitle(html)
     const version = createVersion(1, html, title, now, options)
     const file: StoredDeckFile = {

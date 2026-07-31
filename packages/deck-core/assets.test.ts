@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  absolutizeArkAssetReferences,
   buildAssetUrl,
   getAssetCategory,
   isAllowedAssetMediaType,
   isArkAssetUrl,
   isSuspiciousAssetFilename,
   parseAssetIdFromUrl,
+  resolveAssetMediaType,
   sanitizeAssetFilename,
 } from './assets.ts'
 
@@ -17,7 +19,17 @@ describe('media type helpers', () => {
   it('allows known types and rejects others', () => {
     expect(isAllowedAssetMediaType('image/png')).toBe(true)
     expect(isAllowedAssetMediaType('image/png; charset=binary')).toBe(true)
+    expect(isAllowedAssetMediaType('image/x-ms-bmp')).toBe(true)
+    expect(isAllowedAssetMediaType('image/vnd.microsoft.icon')).toBe(true)
     expect(isAllowedAssetMediaType('application/x-msdownload')).toBe(false)
+  })
+
+  it('normalizes aliases and infers missing browser media types from filenames', () => {
+    expect(resolveAssetMediaType('photo.jfif', 'image/pjpeg')).toBe('image/jpeg')
+    expect(resolveAssetMediaType('animation.apng', 'image/png')).toBe('image/apng')
+    expect(resolveAssetMediaType('icon.ico', 'application/octet-stream')).toBe('image/x-icon')
+    expect(resolveAssetMediaType('camera.heic', '')).toBe('')
+    expect(resolveAssetMediaType('raw.dib', '')).toBe('')
   })
 
   it('classifies categories', () => {
@@ -52,6 +64,19 @@ describe('asset URLs', () => {
       false,
     )
     expect(parseAssetIdFromUrl(`//evil.example/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBeNull()
+  })
+
+  it('absolutizes only validated deck-scoped references', () => {
+    const path = buildAssetUrl(DECK_ID, ASSET_ID)
+    expect(absolutizeArkAssetReferences(`url("${path}")`, 'http://localhost:8787')).toBe(
+      `url("http://localhost:8787${path}")`,
+    )
+    expect(
+      absolutizeArkAssetReferences(`https://evil.example${path}`, 'http://localhost:8787'),
+    ).toBe(`https://evil.example${path}`)
+    expect(absolutizeArkAssetReferences('/images/logo.png', 'http://localhost:8787')).toBe(
+      '/images/logo.png',
+    )
   })
 })
 

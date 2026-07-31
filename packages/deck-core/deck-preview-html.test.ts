@@ -34,6 +34,26 @@ function hostileNulMetaRefreshDeck(options: { customJs?: boolean } = {}) {
 }
 
 describe('buildPreviewDocument', () => {
+  it('absolutizes Ark image assets in attributes and CSS and permits only the app origin', () => {
+    const deckId = '00000000-0000-4000-8000-000000000101'
+    const assetId = '00000000-0000-4000-8000-000000000102'
+    const path = `/api/decks/${deckId}/assets/${assetId}`
+    const { html } = buildPreviewDocument(
+      `<!DOCTYPE html><html><head><style>.hero{background-image:url("${path}")}</style></head><body><section class="slide"><img src="${path}" srcset="${path} 2x" alt="Hero"></section></body></html>`,
+      { parentOrigin: 'http://localhost:5173' },
+    )
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const csp = doc
+      .querySelector('meta[http-equiv="Content-Security-Policy"]')
+      ?.getAttribute('content')
+
+    expect(doc.querySelector('img')?.getAttribute('src')).toBe(`http://localhost:5173${path}`)
+    expect(doc.querySelector('img')?.getAttribute('srcset')).toBe(`http://localhost:5173${path} 2x`)
+    expect(doc.querySelector('style')?.textContent).toContain(`url("http://localhost:5173${path}")`)
+    expect(csp).toContain('img-src data: blob: http://localhost:5173')
+    expect(csp).toContain("connect-src 'none'")
+  })
+
   it('pre-activates slide 0 for css-only decks before nav script runs', () => {
     const { html, runtimeMode } = buildPreviewDocument(`<!DOCTYPE html>
 <html lang="en">

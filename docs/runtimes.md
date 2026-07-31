@@ -124,6 +124,16 @@ Validation checks:
 
 Optional assets (e.g. `reset.css`, theme fonts) may be referenced when listed in the manifest.
 
+Uploaded deck images use validated deck-scoped URLs:
+
+```
+/api/decks/<deckId>/assets/<assetId>
+```
+
+Preview processing absolutizes only this exact URL shape in HTML image attributes, SVG references,
+inline styles, and stylesheet `url(...)` values. The preview CSP permits images from the configured
+app/API origin while keeping network connections and arbitrary external resources blocked.
+
 ## Preview behavior
 
 Preview processing lives in `packages/deck-core/deck-preview-html.ts` and `apps/sandbox/render-preview-html.ts`.
@@ -136,7 +146,7 @@ Preview processing lives in `packages/deck-core/deck-preview-html.ts` and `apps/
 | Reveal with approved assets + markers    | Full-JS (reveal adapter) | Approved `reveal.js` kept; Ark injects reveal nav adapter |
 | Reveal structure without approved assets | CSS-only                 | Scripts stripped; CSS shim navigates static sections      |
 
-For approved reveal decks, preview **absolutizes** `/api/runtimes/...` URLs to the app origin (e.g. `http://localhost:5173/api/runtimes/...`) so the sandbox iframe can fetch assets from the API while the deck document stays on the sandbox origin. Deck source on disk still uses root-relative `/api/runtimes/...` paths.
+For approved reveal decks, preview **absolutizes** `/api/runtimes/...` URLs to the app origin (e.g. `http://localhost:5173/api/runtimes/...`) so the sandbox iframe can fetch assets from the API while the deck document stays on the sandbox origin. Validated deck asset URLs are absolutized the same way. Deck source on disk still uses root-relative `/api/...` paths.
 
 Thumbnails prefer sandbox-rendered PNGs from `GET /api/decks/:id/thumbnails`
 (see [thumbnails.md](./thumbnails.md)). When the renderer is disabled, pending,

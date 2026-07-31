@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { type LanguageModel } from 'ai'
 
 import {
@@ -14,9 +15,10 @@ import type {
 } from '@ark/deck-core/generation-job.ts'
 import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark/contracts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
-import { buildAssetUrl } from '@ark/deck-core/assets.ts'
+import { buildAssetUrl, buildTemporaryAssetUrl } from '@ark/deck-core/assets.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
+import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import { computeDeckVersionDiff } from './deck-diff.ts'
 import { buildAgentVersionProvenance } from './deck-provenance.ts'
 import { type DeckStore } from './deck-record.ts'
@@ -47,6 +49,48 @@ function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | unde
   if (errorCategory === 'invalid_api_key' || errorCategory === 'missing_api_key') {
     clearModelCatalogCache()
   }
+}
+
+const TEMPORARY_ASSET_URL_PATTERN =
+  /\/api\/assets\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi
+const TEMPORARY_ASSET_TTL_MS = 24 * 60 * 60 * 1000
+
+function finalizeTemporaryAssetUrls(
+  html: string,
+  deckId: string,
+  allowedAssetIds: ReadonlySet<string>,
+) {
+  TEMPORARY_ASSET_URL_PATTERN.lastIndex = 0
+  const rewritten = html.replace(TEMPORARY_ASSET_URL_PATTERN, (match, rawId: string) => {
+    const id = rawId.toLowerCase()
+    return allowedAssetIds.has(id) ? buildAssetUrl(deckId, id) : match
+  })
+
+  TEMPORARY_ASSET_URL_PATTERN.lastIndex = 0
+  if (TEMPORARY_ASSET_URL_PATTERN.test(rewritten)) {
+    throw new Error('Generated deck contains an unrecognized temporary asset reference.')
+  }
+  return rewritten
+}
+
+function finalizeTemporaryMessageUrls(
+  messages: ApiChatMessage[],
+  deckId: string,
+  allowedAssetIds: ReadonlySet<string>,
+) {
+  return messages.map((message) => ({
+    ...message,
+    ...(message.attachments
+      ? {
+          attachments: message.attachments.map((attachment) => {
+            const id = attachment.assetId?.toLowerCase()
+            return id && allowedAssetIds.has(id)
+              ? { ...attachment, url: buildAssetUrl(deckId, id) }
+              : attachment
+          }),
+        }
+      : {}),
+  }))
 }
 
 export type GenerationJobRunnerOptions = {
@@ -204,12 +248,13 @@ export function createGenerationJobRunner({
 
       let modelMessages = currentJob.request.messages
       let attachmentInspector: Parameters<typeof runDeckAgent>[0]['attachmentInspector']
+      let jobAssetRecords: AssetRecord[] = []
 
       const historyAssetIds = collectAssetIdsFromMessages(currentJob.request.messages)
       const latestTurnAssetIds = currentJob.assetIds ?? []
       const allAssetIds = [...new Set([...historyAssetIds, ...latestTurnAssetIds])]
 
-      if (allAssetIds.length > 0 && assetStore && assetStorage && currentJob.deckId) {
+      if (allAssetIds.length > 0 && assetStore && assetStorage) {
         const resolved = await resolveAssetAttachments(
           { assetStore, assetStorage },
           currentJob.deckId,
@@ -220,6 +265,7 @@ export function createGenerationJobRunner({
           const records = (
             await Promise.all(allAssetIds.map(async (id) => assetStore.getAsset(id)))
           ).filter((record): record is AssetRecord => Boolean(record?.deckId === currentJob.deckId))
+          jobAssetRecords = records
           const recordsById = new Map(records.map((record) => [record.id, record]))
           attachmentInspector = {
             attachments: records.map((record) => ({
@@ -227,7 +273,9 @@ export function createGenerationJobRunner({
               filename: record.filename,
               mediaType: record.mediaType,
               byteSize: record.byteSize,
-              url: buildAssetUrl(currentJob.deckId!, record.id),
+              url: record.deckId
+                ? buildAssetUrl(record.deckId, record.id)
+                : buildTemporaryAssetUrl(record.id),
             })),
             read: async (id) => {
               const record = recordsById.get(id)
@@ -240,7 +288,12 @@ export function createGenerationJobRunner({
               return [
                 id,
                 record && isReadableTextMediaType(record.mediaType)
-                  ? { ...attachment, url: buildAssetUrl(currentJob.deckId!, id) }
+                  ? {
+                      ...attachment,
+                      url: record.deckId
+                        ? buildAssetUrl(record.deckId, id)
+                        : buildTemporaryAssetUrl(id),
+                    }
                   : attachment,
               ]
             }),
@@ -603,9 +656,24 @@ export function createGenerationJobRunner({
         return
       }
 
-      const createdDeck = await deckStore.createDeck(
+      const newDeckId = randomUUID()
+      const temporaryAssetIds = new Set(jobAssetRecords.map((record) => record.id.toLowerCase()))
+      const finalizedHtml = finalizeTemporaryAssetUrls(
         agentResult.html,
-        buildDeckVersionOptions(agentResult.html, {
+        newDeckId,
+        temporaryAssetIds,
+      )
+      const finalValidation = validateDeckHtmlOnServer(finalizedHtml, { logger: jobLogger })
+      if (!finalValidation.valid) {
+        throw new Error(
+          finalValidation.issues.find((issue) => issue.severity === 'error')?.message ??
+            'Finalized deck HTML is invalid.',
+        )
+      }
+
+      const createdDeck = await deckStore.createDeck(
+        finalizedHtml,
+        buildDeckVersionOptions(finalizedHtml, {
           source: 'agent',
           summary: 'AI generation',
           modelProvider: provider,
@@ -615,13 +683,26 @@ export function createGenerationJobRunner({
             steps: agentResult.steps,
           }),
         }),
+        newDeckId,
       )
+
+      if (temporaryAssetIds.size > 0) {
+        const claimed = await assetStore?.claimAssetsForDeck([...temporaryAssetIds], createdDeck.id)
+        if (!claimed || claimed.length !== temporaryAssetIds.size) {
+          await deckStore.deleteDeck(createdDeck.id)
+          throw new Error('Could not attach uploaded images to the new deck.')
+        }
+      }
 
       if (chatStore) {
         await persistInitialDeckChatHistory(
           chatStore,
           createdDeck.id,
-          refreshed.request.messages,
+          finalizeTemporaryMessageUrls(
+            refreshed.request.messages,
+            createdDeck.id,
+            temporaryAssetIds,
+          ),
           createdDeck.activeVersionId ?? null,
         )
       }
@@ -637,7 +718,7 @@ export function createGenerationJobRunner({
           deckId: createdDeck.id,
           versionId: createdDeck.activeVersionId ?? '',
           html: createdDeck.html,
-          validation: agentResult.validation,
+          validation: finalValidation,
           assistantText: agentResult.assistantText,
         },
         observability,
@@ -814,15 +895,6 @@ export function createGenerationJobRunner({
       })
     }
 
-    if (assetIds.length > 0 && !deckId) {
-      throw Object.assign(new Error('assetIds require a saved deck id.'), {
-        apiError: {
-          code: 'provider_error',
-          error: 'assetIds require a saved deck id.',
-        },
-      })
-    }
-
     if (assetIds.length > 0) {
       if (!assetStore || !assetStorage) {
         throw Object.assign(new Error('Asset storage is not configured.'), {
@@ -831,6 +903,12 @@ export function createGenerationJobRunner({
             error: 'Asset storage is not configured.',
           },
         })
+      }
+
+      if (!deckId) {
+        const cutoff = new Date(now().getTime() - TEMPORARY_ASSET_TTL_MS).toISOString()
+        const expired = await assetStore.deleteExpiredUnassignedAssets(cutoff)
+        await Promise.all(expired.map((record) => assetStorage.delete(record.storageKey)))
       }
 
       const resolved = await resolveAssetAttachments(

@@ -267,10 +267,15 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     return versionId
   }
 
-  const createDeck = async (html: string, versionOptions: DeckVersionOptions = {}) => {
+  const createDeck = async (
+    html: string,
+    versionOptions: DeckVersionOptions = {},
+    requestedId?: string,
+  ) => {
     await ensureReady()
 
-    const deckId = randomUUID()
+    const deckId = requestedId ?? randomUUID()
+    if (!isValidDeckId(deckId)) throw new Error('Requested deck id is invalid.')
     const createdAt = now()
     const title = extractDeckTitle(html)
 

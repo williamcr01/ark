@@ -3,6 +3,7 @@ import {
   type AssetMetadata,
   type AssetSource,
   buildAssetUrl,
+  buildTemporaryAssetUrl,
   isValidAssetId,
 } from '@ark/deck-core/assets.ts'
 
@@ -47,6 +48,10 @@ export type AssetStore = {
   createAsset: (input: CreateAssetInput) => Promise<AssetRecord>
   getAsset: (id: string) => Promise<AssetRecord | null>
   listAssetsByDeck: (deckId: string) => Promise<AssetRecord[]>
+  /** Assign every requested unowned asset to a deck, or return null without claiming any. */
+  claimAssetsForDeck: (ids: readonly string[], deckId: string) => Promise<AssetRecord[] | null>
+  /** Soft-delete unowned assets created before the cutoff. */
+  deleteExpiredUnassignedAssets: (cutoff: string) => Promise<AssetRecord[]>
   /** Soft-delete a single asset, returning the record (incl. storage key) or null. */
   deleteAsset: (id: string) => Promise<AssetRecord | null>
   /** Soft-delete every asset for a deck (orphan cleanup on deck delete). */
@@ -68,7 +73,9 @@ export function toAssetMetadata(record: AssetRecord): AssetMetadata {
     checksum: record.checksum,
     source: record.source,
     storageKind: record.storageKind,
-    url: buildAssetUrl(record.deckId ?? '', record.id),
+    url: record.deckId
+      ? buildAssetUrl(record.deckId, record.id)
+      : buildTemporaryAssetUrl(record.id),
     createdAt: record.createdAt,
   }
 }

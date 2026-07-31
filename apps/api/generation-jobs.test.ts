@@ -620,6 +620,79 @@ describe('generation job runner', () => {
     ).rejects.toThrow('One or more asset ids could not be resolved.')
   })
 
+  it('claims temporary image assets and rewrites them when creating a deck', async () => {
+    let temporaryUrl = ''
+    const { assetStore, assetStorage, chatStore, deckStore, jobStore, runner } = await createRunner(
+      {
+        runAgent: async () => {
+          const html = sampleHtml.replace(
+            '<h1>Hello</h1>',
+            `<h1>Hello</h1><img src="${temporaryUrl}" alt="Launch chart">`,
+          )
+          return {
+            ok: true,
+            html,
+            validation: validateDeckHtmlOnServer(html),
+            steps: [],
+            transcriptParts: [],
+            assistantText: 'Added the launch chart.',
+            providerMetrics: stubProviderMetrics,
+          }
+        },
+      },
+    )
+    const storageKey = createAssetStorageKey()
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await assetStorage.write(storageKey, pngBytes)
+    const asset = await assetStore.createAsset({
+      deckId: null,
+      filename: 'launch.png',
+      mediaType: 'image/png',
+      category: 'image',
+      byteSize: pngBytes.length,
+      checksum: 'temporary-checksum',
+      source: 'upload',
+      storageKind: 'local',
+      storageKey,
+    })
+    temporaryUrl = `/api/assets/${asset.id}`
+
+    const job = await runner.startJob({
+      body: {
+        messages: [
+          {
+            role: 'user',
+            content: 'Use this chart',
+            attachments: [
+              {
+                type: 'file',
+                mediaType: 'image/png',
+                filename: 'launch.png',
+                url: temporaryUrl,
+                assetId: asset.id,
+              },
+            ],
+          },
+        ],
+        assetIds: [asset.id],
+      },
+      defaultModel: 'openai:gpt-4.1-mini',
+    })
+    const succeeded = await waitForTerminalJob((id) => jobStore.getJob(id), job.id, {
+      statuses: ['succeeded'],
+    })
+    const deck = await deckStore.getDeck(succeeded.deckId!)
+    const claimed = await assetStore.getAsset(asset.id)
+    const chat = await chatStore.listMessages(succeeded.deckId!, { limit: 20 })
+
+    expect(deck?.html).toContain(`/api/decks/${succeeded.deckId}/assets/${asset.id}`)
+    expect(deck?.html).not.toContain(temporaryUrl)
+    expect(claimed?.deckId).toBe(succeeded.deckId)
+    expect(chat.messages[0]?.attachments?.[0]?.url).toBe(
+      `/api/decks/${succeeded.deckId}/assets/${asset.id}`,
+    )
+  })
+
   it('does not overwrite a canceled queued job with running', async () => {
     const { jobStore } = await createRunner()
 

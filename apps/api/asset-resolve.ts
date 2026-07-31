@@ -30,7 +30,7 @@ export async function resolveAssetAttachments(
 ): Promise<ResolveAssetAttachmentsResult> {
   const empty = { ok: true as const, attachments: [], byId: new Map<string, ChatAttachment>() }
 
-  if (!deckId || !isValidDeckId(deckId) || assetIds.length === 0) {
+  if ((deckId !== null && !isValidDeckId(deckId)) || assetIds.length === 0) {
     return empty
   }
 

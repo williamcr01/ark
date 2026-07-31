@@ -32,6 +32,7 @@ import {
   hasApprovedRevealRuntimeInDocument,
   isApprovedRuntimeAssetUrl,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
+import { absolutizeArkAssetReferences } from './assets.ts'
 
 export type PreviewHtmlOptions = {
   parentOrigin?: string
@@ -257,14 +258,20 @@ function absolutizeApprovedRuntimeAssetReferences(doc: Document, assetOrigin?: s
       const element = node as Element
 
       for (const attribute of [...element.attributes]) {
-        const rewritten = absolutizeApprovedRuntimeAssetAttribute(attribute.value, assetOrigin)
+        const rewritten = absolutizeArkAssetReferences(
+          absolutizeApprovedRuntimeAssetAttribute(attribute.value, assetOrigin),
+          assetOrigin,
+        )
 
         if (rewritten !== attribute.value) {
           element.setAttribute(attribute.name, rewritten)
         }
       }
     } else if (node.nodeValue) {
-      const rewritten = absolutizeApprovedRuntimeAssetText(node.nodeValue, assetOrigin)
+      const rewritten = absolutizeArkAssetReferences(
+        absolutizeApprovedRuntimeAssetText(node.nodeValue, assetOrigin),
+        assetOrigin,
+      )
 
       if (rewritten !== node.nodeValue) {
         node.nodeValue = rewritten

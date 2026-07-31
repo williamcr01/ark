@@ -3046,6 +3046,109 @@
         }
       }
     },
+    "/api/assets": {
+      "post": {
+        "summary": "Stage an asset for a new deck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filename": { "type": "string", "minLength": 1, "maxLength": 1024 },
+                  "mediaType": { "type": "string" },
+                  "data": { "type": "string", "minLength": 1, "maxLength": 69905323 },
+                  "chatMessageId": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                  },
+                  "source": { "type": "string", "enum": ["upload", "screenshot", "proxy"] }
+                },
+                "required": ["filename", "mediaType", "data"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Temporary unassigned asset metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "asset": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string", "minLength": 1 },
+                        "deckId": { "type": "string", "nullable": true, "minLength": 1 },
+                        "chatMessageId": { "type": "string", "nullable": true, "minLength": 1 },
+                        "filename": { "type": "string" },
+                        "mediaType": { "type": "string" },
+                        "category": { "type": "string", "enum": ["image", "text", "pdf", "other"] },
+                        "byteSize": { "type": "integer", "minimum": 0 },
+                        "checksum": { "type": "string" },
+                        "source": { "type": "string", "enum": ["upload", "screenshot", "proxy"] },
+                        "storageKind": { "type": "string" },
+                        "url": { "type": "string" },
+                        "createdAt": { "type": "string" }
+                      },
+                      "required": [
+                        "id",
+                        "deckId",
+                        "chatMessageId",
+                        "filename",
+                        "mediaType",
+                        "category",
+                        "byteSize",
+                        "checksum",
+                        "source",
+                        "storageKind",
+                        "url",
+                        "createdAt"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["asset"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/decks/{id}/assets": {
       "post": {
         "summary": "Upload a deck asset",
@@ -3067,7 +3170,7 @@
                 "type": "object",
                 "properties": {
                   "filename": { "type": "string", "minLength": 1, "maxLength": 1024 },
-                  "mediaType": { "type": "string", "minLength": 1 },
+                  "mediaType": { "type": "string" },
                   "data": { "type": "string", "minLength": 1, "maxLength": 69905323 },
                   "chatMessageId": {
                     "type": "string",
@@ -3407,6 +3510,21 @@
               }
             }
           },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error response",
             "content": {
@@ -3428,7 +3546,7 @@
     "/api/generation-jobs": {
       "post": {
         "summary": "Start an async generation job",
-        "description": "Enqueue deck generation or editing. Optional `assetIds` attach uploaded deck assets to the latest user turn; requires `deckId`. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.",
+        "description": "Enqueue deck generation or editing. Optional `assetIds` attach deck-owned assets, or unassigned temporary assets when `deckId` is omitted. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.",
         "requestBody": {
           "content": {
             "application/json": {

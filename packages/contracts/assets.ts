@@ -38,7 +38,8 @@ const chatMessageIdSchema = z
  */
 export const uploadAssetRequestSchema = z.object({
   filename: z.string().min(1, 'A filename is required.').max(1024),
-  mediaType: z.string().min(1, 'A media type is required.'),
+  // Browsers may leave File.type empty for otherwise valid image extensions.
+  mediaType: z.string(),
   data: z
     .string()
     .min(1, 'File data is required.')

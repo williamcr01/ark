@@ -84,6 +84,13 @@ describe('asset API routes', () => {
       body: JSON.stringify(body),
     })
 
+  const uploadTemporary = (baseUrl: string, body: Record<string, unknown>) =>
+    fetch(`${baseUrl}/api/assets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
   it('uploads a valid asset and serves it through an Ark-owned URL', async () => {
     const { baseUrl, deckId } = await startApi()
 
@@ -107,6 +114,32 @@ describe('asset API routes', () => {
     expect(bytesResponse.headers.get('x-content-type-options')).toBe('nosniff')
     const bytes = Buffer.from(await bytesResponse.arrayBuffer())
     expect(bytes.equals(PNG_BYTES)).toBe(true)
+  })
+
+  it('stages and resolves an unassigned asset for a new deck job', async () => {
+    const { baseUrl } = await startApi()
+    const response = await uploadTemporary(baseUrl, {
+      filename: 'logo.png',
+      mediaType: '',
+      data: pngDataUrl,
+    })
+    const json = await response.json()
+
+    expect(response.status).toBe(201)
+    expect(json.asset.deckId).toBeNull()
+    expect(json.asset.mediaType).toBe('image/png')
+    expect(json.asset.url).toBe(`/api/assets/${json.asset.id}`)
+
+    const resolved = await resolveAssetAttachments(
+      { assetStore, assetStorage },
+      null,
+      [json.asset.id],
+      { strict: true },
+    )
+    expect(resolved.ok).toBe(true)
+    if (resolved.ok) {
+      expect(resolved.attachments[0]?.url).toMatch(/^data:image\/png;base64,/)
+    }
   })
 
   it('lists assets for a deck', async () => {
@@ -212,6 +245,45 @@ describe('asset API routes', () => {
     expect(list.assets).toHaveLength(0)
   })
 
+  it('refuses to delete an asset referenced by any immutable deck version', async () => {
+    const { baseUrl, deckId } = await startApi()
+    const uploadResponse = await upload(baseUrl, deckId, {
+      filename: 'logo.png',
+      mediaType: 'image/png',
+      data: pngDataUrl,
+    })
+    const { asset } = await uploadResponse.json()
+    const withImage = sampleHtml.replace(
+      '<h1>Hello</h1>',
+      `<h1>Hello</h1><img src="${asset.url}" alt="Logo">`,
+    )
+
+    expect(
+      (
+        await fetch(`${baseUrl}/api/decks/${deckId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: withImage }),
+        })
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await fetch(`${baseUrl}/api/decks/${deckId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: sampleHtml }),
+        })
+      ).status,
+    ).toBe(200)
+
+    const deleteResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`, {
+      method: 'DELETE',
+    })
+    expect(deleteResponse.status).toBe(409)
+    expect(await deleteResponse.json()).toMatchObject({ code: 'asset_in_use' })
+  })
+
   it('cleans up deck assets when the deck is deleted', async () => {
     const { baseUrl, deckId } = await startApi()
     const uploadResponse = await upload(baseUrl, deckId, {
@@ -279,7 +351,7 @@ describe('asset API routes', () => {
     expect(resolved).toEqual({ ok: false, assetIds: [asset.id] })
   })
 
-  it('returns no attachments when deck id is missing', async () => {
+  it('does not resolve a deck-owned attachment without its deck id', async () => {
     const { baseUrl, deckId } = await startApi()
     const uploadResponse = await upload(baseUrl, deckId, {
       filename: 'logo.png',

@@ -6,7 +6,7 @@ import {
   getAssetExtensions,
   isAllowedAssetMediaType,
   isSuspiciousAssetFilename,
-  normalizeAssetMediaType,
+  resolveAssetMediaType,
   sanitizeAssetFilename,
 } from '@ark/deck-core/assets.ts'
 
@@ -120,10 +120,11 @@ function startsWith(bytes: Buffer, prefix: Buffer, offset = 0): boolean {
  * bytes rather than by magic number.
  */
 export function sniffMatchesMediaType(bytes: Buffer, mediaType: string): boolean {
-  const normalized = normalizeAssetMediaType(mediaType)
+  const normalized = resolveAssetMediaType('', mediaType)
 
   switch (normalized) {
     case 'image/png':
+    case 'image/apng':
       return startsWith(bytes, PNG_MAGIC)
     case 'image/jpeg':
       return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
@@ -131,6 +132,15 @@ export function sniffMatchesMediaType(bytes: Buffer, mediaType: string): boolean
       return startsWith(bytes, GIF_MAGIC_87) || startsWith(bytes, GIF_MAGIC_89)
     case 'image/webp':
       return startsWith(bytes, Buffer.from('RIFF')) && startsWith(bytes, Buffer.from('WEBP'), 8)
+    case 'image/avif':
+      return (
+        startsWith(bytes, Buffer.from('ftyp'), 4) &&
+        /(?:avif|avis)/.test(bytes.subarray(8, 40).toString('ascii'))
+      )
+    case 'image/bmp':
+      return startsWith(bytes, Buffer.from('BM'))
+    case 'image/x-icon':
+      return startsWith(bytes, Buffer.from([0x00, 0x00, 0x01, 0x00]))
     case 'application/pdf':
       return startsWith(bytes, PDF_MAGIC)
     case 'image/svg+xml':
@@ -150,8 +160,8 @@ function looksLikeSvg(bytes: Buffer): boolean {
     return false
   }
 
-  const head = bytes.subarray(0, 1024).toString('utf8').trimStart().toLowerCase()
-  return head.startsWith('<?xml') || head.startsWith('<svg')
+  const head = bytes.subarray(0, 4096).toString('utf8').trimStart().toLowerCase()
+  return /^<svg(?:\s|>)/.test(head) || (head.startsWith('<?xml') && /<svg(?:\s|>)/.test(head))
 }
 
 function isProbablyText(bytes: Buffer): boolean {
@@ -201,7 +211,7 @@ export function validateAssetUpload(input: ValidateAssetInput): AssetValidationR
     }
   }
 
-  const mediaType = normalizeAssetMediaType(input.mediaType)
+  const mediaType = resolveAssetMediaType(filename, input.mediaType)
 
   if (!isAllowedAssetMediaType(mediaType)) {
     return {

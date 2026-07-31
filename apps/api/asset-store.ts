@@ -107,6 +107,8 @@ async function readAllAssets(dataDir: string): Promise<AssetRecord[]> {
 }
 
 export function createAssetStore(dataDir = DEFAULT_DATA_DIR): AssetStore {
+  let claimQueue = Promise.resolve()
+
   const createAsset = async (input: CreateAssetInput): Promise<AssetRecord> => {
     await ensureDataDir(dataDir)
 
@@ -176,6 +178,53 @@ export function createAssetStore(dataDir = DEFAULT_DATA_DIR): AssetStore {
     await writeAssetFile(filePath, { ...record, deletedAt: new Date().toISOString() })
   }
 
+  const claimAssetsForDeck = async (rawIds: readonly string[], deckId: string) => {
+    if (!isValidDeckId(deckId)) return null
+
+    const previousClaim = claimQueue
+    let releaseClaim!: () => void
+    claimQueue = new Promise<void>((resolve) => {
+      releaseClaim = resolve
+    })
+    await previousClaim
+
+    try {
+      const ids = [...new Set(rawIds)]
+      const records = await Promise.all(ids.map((id) => getAsset(id)))
+      if (records.some((record) => !record || record.deckId !== null)) return null
+
+      const claimed = records as AssetRecord[]
+      const written: AssetRecord[] = []
+      try {
+        for (const record of claimed) {
+          const filePath = resolveAssetPath(dataDir, record.id)
+          if (!filePath) throw new Error('Asset id is invalid.')
+          await writeAssetFile(filePath, { ...record, deckId })
+          written.push(record)
+        }
+      } catch (error) {
+        await Promise.all(
+          written.map(async (record) => {
+            const filePath = resolveAssetPath(dataDir, record.id)
+            if (filePath) await writeAssetFile(filePath, record)
+          }),
+        )
+        throw error
+      }
+      return claimed.map((record) => ({ ...record, deckId }))
+    } finally {
+      releaseClaim()
+    }
+  }
+
+  const deleteExpiredUnassignedAssets = async (cutoff: string) => {
+    const records = (await readAllAssets(dataDir)).filter(
+      (record) => record.deckId === null && !record.deletedAt && record.createdAt < cutoff,
+    )
+    await Promise.all(records.map((record) => softDelete(record)))
+    return records
+  }
+
   const deleteAsset = async (id: string) => {
     const record = await getAsset(id)
 
@@ -216,6 +265,8 @@ export function createAssetStore(dataDir = DEFAULT_DATA_DIR): AssetStore {
     createAsset,
     getAsset,
     listAssetsByDeck,
+    claimAssetsForDeck,
+    deleteExpiredUnassignedAssets,
     deleteAsset,
     deleteAssetsByDeck,
     deleteAssetsByChatMessage,

@@ -499,6 +499,26 @@ describe('chatAttachmentsToModelParts', () => {
     expect(parts[0]).toMatchObject({ type: 'file', mediaType: 'image/png' })
   })
 
+  it('describes browser-native images that providers may reject instead of sending bytes', () => {
+    const parts = chatAttachmentsToModelParts([
+      {
+        type: 'file',
+        mediaType: 'image/avif',
+        filename: 'hero.avif',
+        url: 'data:image/avif;base64,AAAA',
+      },
+    ])
+
+    expect(parts).toEqual([
+      {
+        type: 'text',
+        text: expect.stringContaining(
+          'available through list_attachments for placement, but this provider may not support visual preview',
+        ),
+      },
+    ])
+  })
+
   it('converts CSV and plain-text data URLs into labeled text parts', () => {
     const csv = 'name,value\none,1'
     const plain = 'hello world'
