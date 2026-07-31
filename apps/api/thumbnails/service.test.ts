@@ -1174,22 +1174,21 @@ describe('thumbnail service', () => {
 
     await service.enqueue({ ...statusInput, html: sampleHtml })
 
-    await vi.waitFor(async () => {
-      const status = await service.getStatus(statusInput)
-      expect(status.status).toBe(THUMBNAIL_STATUS.ready)
-    })
-
-    const completed = logs.find((entry) => entry.event === 'thumbnail.queue.completed')
-    expect(completed?.fields.durationMs).toEqual(expect.any(Number))
-    expect(completed?.fields.fields).toMatchObject({
-      versionId: statusInput.versionId,
-      manifestHash: statusInput.manifestHash,
-      priority: 'foreground',
-      queueWaitMs: expect.any(Number),
-      renderMs: 7,
-      cacheWriteMs: expect.any(Number),
-      status: THUMBNAIL_STATUS.ready,
-      slideCount: 2,
+    // Ready status is written before the completed log; wait for the log so
+    // assertions do not race the queue worker's post-run logging.
+    await vi.waitFor(() => {
+      const completed = logs.find((entry) => entry.event === 'thumbnail.queue.completed')
+      expect(completed?.fields.durationMs).toEqual(expect.any(Number))
+      expect(completed?.fields.fields).toMatchObject({
+        versionId: statusInput.versionId,
+        manifestHash: statusInput.manifestHash,
+        priority: 'foreground',
+        queueWaitMs: expect.any(Number),
+        renderMs: 7,
+        cacheWriteMs: expect.any(Number),
+        status: THUMBNAIL_STATUS.ready,
+        slideCount: 2,
+      })
     })
   })
 

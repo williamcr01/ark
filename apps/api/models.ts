@@ -83,6 +83,9 @@ export type ModelCatalog = {
   warnings: string[]
 }
 
+/** True when the suffix looks like a dated/versioned alias (e.g. claude-sonnet-5-20250514). */
+const isVersionedAliasSuffix = (suffix: string) => /^\d/.test(suffix)
+
 /** True when a catalog SKU is present in a provider list (exact or versioned alias). */
 export function catalogModelAccessible(modelId: string, accessibleIds: ReadonlySet<string>) {
   if (accessibleIds.has(modelId)) {
@@ -90,7 +93,10 @@ export function catalogModelAccessible(modelId: string, accessibleIds: ReadonlyS
   }
 
   for (const id of accessibleIds) {
-    if (id.startsWith(`${modelId}-`) || modelId.startsWith(`${id}-`)) {
+    if (id.startsWith(`${modelId}-`) && isVersionedAliasSuffix(id.slice(modelId.length + 1))) {
+      return true
+    }
+    if (modelId.startsWith(`${id}-`) && isVersionedAliasSuffix(modelId.slice(id.length + 1))) {
       return true
     }
   }
