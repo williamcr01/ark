@@ -1,13 +1,12 @@
 import {
-  forwardRef,
   useCallback,
   useDeferredValue,
   useEffect,
-  useImperativeHandle,
   useRef,
   useState,
   type ChangeEvent,
   type MutableRefObject,
+  type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { WandSparklesIcon } from 'lucide-react'
@@ -68,6 +67,10 @@ type RuntimeErrorNotice = {
   versionId: string | null
 }
 
+export type DeckPreviewHandle = {
+  openPresent: () => void
+}
+
 export type DeckPreviewProps = {
   html: string
   deckId?: string | null
@@ -103,42 +106,38 @@ export type DeckPreviewProps = {
     activeSlideIndex: number,
     summary: string,
   ) => Promise<DeckPreviewPatchResult | undefined>
+  /** Imperative present-mode handle for the title bar (prop, not forwardRef). */
+  presentHandleRef?: RefObject<DeckPreviewHandle | null>
 }
 
-export type DeckPreviewHandle = {
-  openPresent: () => void
-}
-
-export const DeckPreview = forwardRef<DeckPreviewHandle, DeckPreviewProps>(function DeckPreview(
-  {
-    html,
-    deckId = null,
-    versionId = null,
-    recentGenerationJobId = null,
-    isGenerating,
-    isPreviewUpdating = false,
-    isStripOpen,
-    layout,
-    deckAnalysis,
-    chromeHost = null,
-    editorBridgeEnabled = false,
-    isTextEditSaving = false,
-    initialSlideIndex = 0,
-    canUndo = false,
-    canRedo = false,
-    undoSlideIndex = null,
-    redoSlideIndex = null,
-    contextSlideIndexes,
-    clearEditorSelectionRef,
-    onUndo,
-    onRedo,
-    onCommitTextEdit,
-    onEditorSelectionChange,
-    onToggleContextSlide,
-    onPatchEditorOperations,
-  }: DeckPreviewProps,
-  ref,
-) {
+export function DeckPreview({
+  html,
+  deckId = null,
+  versionId = null,
+  recentGenerationJobId = null,
+  isGenerating,
+  isPreviewUpdating = false,
+  isStripOpen,
+  layout,
+  deckAnalysis,
+  chromeHost = null,
+  editorBridgeEnabled = false,
+  isTextEditSaving = false,
+  initialSlideIndex = 0,
+  canUndo = false,
+  canRedo = false,
+  undoSlideIndex = null,
+  redoSlideIndex = null,
+  contextSlideIndexes,
+  clearEditorSelectionRef,
+  onUndo,
+  onRedo,
+  onCommitTextEdit,
+  onEditorSelectionChange,
+  onToggleContextSlide,
+  onPatchEditorOperations,
+  presentHandleRef,
+}: DeckPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previewStageRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -609,7 +608,16 @@ export const DeckPreview = forwardRef<DeckPreviewHandle, DeckPreviewProps>(funct
     })
     setIsPresentOpen(true)
   }, [])
-  useImperativeHandle(ref, () => ({ openPresent: openPresentMode }), [openPresentMode])
+  useEffect(() => {
+    if (!presentHandleRef) {
+      return
+    }
+
+    presentHandleRef.current = { openPresent: openPresentMode }
+    return () => {
+      presentHandleRef.current = null
+    }
+  }, [openPresentMode, presentHandleRef])
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const hasStrip = hasSlides
@@ -834,7 +842,7 @@ export const DeckPreview = forwardRef<DeckPreviewHandle, DeckPreviewProps>(funct
       ) : null}
     </section>
   )
-})
+}
 
 function EmptyPreview({
   isGenerating = false,

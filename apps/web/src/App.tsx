@@ -717,7 +717,7 @@ function App() {
       onCommitTextEdit={handleCommitTextEdit}
       onEditorSelectionChange={handleEditorSelectionChange}
       onPatchEditorOperations={handlePatchEditorOperations}
-      ref={deckPreviewRef}
+      presentHandleRef={deckPreviewRef}
       onRedo={handleRedoEdit}
       onToggleContextSlide={handleToggleContextSlide}
       onUndo={handleUndoEdit}

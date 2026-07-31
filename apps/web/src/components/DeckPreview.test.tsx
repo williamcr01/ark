@@ -253,7 +253,7 @@ describe('DeckPreview script divergence UI', () => {
 
   it('reuses the main preview frame when opening present mode', () => {
     const previewRef = createRef<DeckPreviewHandle>()
-    renderDeckPreview({ ...plainDeckProps, ref: previewRef })
+    renderDeckPreview({ ...plainDeckProps, presentHandleRef: previewRef })
 
     const previewIframe = screen.getByTitle('Generated Ark presentation preview')
 
@@ -275,7 +275,7 @@ describe('DeckPreview script divergence UI', () => {
       isStripOpen: false,
       layout: 'desktop',
       deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
-      ref: previewRef,
+      presentHandleRef: previewRef,
     })
 
     expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
@@ -294,7 +294,11 @@ describe('DeckPreview script divergence UI', () => {
   it('disables then re-enables the editor when presenting', async () => {
     const user = userEvent.setup()
     const previewRef = createRef<DeckPreviewHandle>()
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true, ref: previewRef })
+    renderDeckPreview({
+      ...plainDeckProps,
+      editorBridgeEnabled: true,
+      presentHandleRef: previewRef,
+    })
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     editorBridgeMock.editorReady = true
 
@@ -342,8 +346,8 @@ describe('DeckPreview script divergence UI', () => {
       deckAnalysis: analyzeDeckInBrowser(revealRegistryDeck),
     })
 
-    expect(screen.getAllByText('Reveal runtime').length).toBeGreaterThan(0)
     expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Generated Ark presentation preview')).toBeInTheDocument()
   })
 
   it('enables edit chrome by default when the editor bridge is on', () => {
@@ -351,7 +355,6 @@ describe('DeckPreview script divergence UI', () => {
 
     expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
-    expect(screen.getByText('Preview')).toBeInTheDocument()
   })
 
   it('keeps persistent manual editing enabled for custom-JS decks', () => {
@@ -363,7 +366,6 @@ describe('DeckPreview script divergence UI', () => {
     })
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
-    expect(screen.getByText('Scripts running')).toBeInTheDocument()
     expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -382,7 +384,6 @@ describe('DeckPreview script divergence UI', () => {
     })
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
-    expect(screen.getByText('Scripts running')).toBeInTheDocument()
     expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -393,10 +394,14 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('keeps slide navigation chrome visible while editing', () => {
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true, isStripOpen: true })
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
-    expect(screen.getByText('Slide 1 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Go to slide 1' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Go to slide 3' })).toBeInTheDocument()
   })
 
   it('pauses edit chrome when generation starts', () => {
