@@ -564,4 +564,16 @@
   #root {
     min-height: 100svh;
   }
+
+  button:enabled,
+  [role='button']:not([aria-disabled='true']),
+  [role='menuitem']:not([data-disabled]),
+  [role='menuitemcheckbox']:not([data-disabled]),
+  [role='menuitemradio']:not([data-disabled]),
+  [role='option']:not([aria-disabled='true']),
+  [role='tab']:not([aria-disabled='true']),
+  [role='switch']:not([aria-disabled='true']),
+  summary {
+    cursor: pointer;
+  }
 }
