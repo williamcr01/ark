@@ -6,7 +6,12 @@ import { renderWithRouter } from '@/test/render-with-router'
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const chatPanelProps = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }))
 const deckPreviewLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
+const deckPreviewRenders = vi.hoisted(() => ({ count: 0 }))
 const persistenceState = vi.hoisted(() => ({ deckId: 'deck-1' as string | null }))
+const persistenceCallbacks = vi.hoisted(() => ({
+  patchDeckOperations: vi.fn(),
+  refreshActiveDeck: vi.fn(),
+}))
 const generationState = vi.hoisted(() => ({ generateDeck: vi.fn() }))
 const assetApi = vi.hoisted(() => ({
   uploadDeckAsset: vi.fn(),
@@ -39,10 +44,10 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     deckTitle: 'Deck',
     decks: [],
     deleteActiveDeck: vi.fn(),
-    patchDeckOperations: vi.fn(),
+    patchDeckOperations: persistenceCallbacks.patchDeckOperations,
     persistHtml: vi.fn(),
     previewVersion: null,
-    refreshActiveDeck: vi.fn(),
+    refreshActiveDeck: persistenceCallbacks.refreshActiveDeck,
     refreshVersions: vi.fn(),
     renameActiveDeck: vi.fn(),
     rollbackToVersion: vi.fn(),
@@ -106,6 +111,7 @@ vi.mock('@/components/DeckPreview', async () => {
 
   return {
     DeckPreview: () => {
+      deckPreviewRenders.count += 1
       React.useEffect(() => {
         deckPreviewLifecycle.mounts += 1
 
@@ -134,6 +140,7 @@ describe('App chat panel layout', () => {
     chatPanelProps.calls = []
     deckPreviewLifecycle.mounts = 0
     deckPreviewLifecycle.unmounts = 0
+    deckPreviewRenders.count = 0
   })
 
   afterEach(() => {
@@ -189,6 +196,17 @@ describe('App chat panel layout', () => {
     expect(getByTestId('chat-panel')).toBeInTheDocument()
     expect(getByTestId('deck-preview')).toBeInTheDocument()
     expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
+  })
+
+  it('does not rerender the preview while typing in chat', () => {
+    mediaState.isDesktop = true
+    renderWithRouter(<App />)
+    const renderCount = deckPreviewRenders.count
+    const onInputChange = chatPanelProps.calls.at(-1)?.onInputChange as (value: string) => void
+
+    act(() => onInputChange('Make the title shorter'))
+
+    expect(deckPreviewRenders.count).toBe(renderCount)
   })
 
   it('keeps the mobile preview and agent instance mounted while the sheet closes', () => {
