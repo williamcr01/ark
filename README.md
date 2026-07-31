@@ -111,6 +111,7 @@ pnpm lockfile:check
 pnpm lint          # includes frontend/backend import boundary checks
 pnpm format:check
 pnpm audit
+pnpm typecheck     # parallel native TypeScript check (also runs inside pnpm build)
 pnpm build
 pnpm test
 pnpm smoke:plain-css   # Browser smoke selected for runtime-affecting PRs

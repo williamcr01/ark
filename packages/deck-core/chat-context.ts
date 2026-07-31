@@ -367,7 +367,7 @@ function replayAssistant(message: ApiChatMessage, limits?: { maxAssistantTurnByt
 }
 
 export function convertChatHistoryToModelMessages(messages: ApiChatMessage[]): ModelMessage[] {
-  return messages.flatMap((message) =>
+  return messages.flatMap((message): ModelMessage[] =>
     message.role === 'user'
       ? [{ role: 'user' as const, content: buildUserModelContent(message) }]
       : replayAssistant(message).messages,
@@ -392,7 +392,7 @@ export function assembleDeckAgentContext({
   let bytesAfter = 0
   const last = messages.at(-1)
   const prior = last?.role === 'user' ? messages.slice(0, -1) : messages
-  const modelMessages = prior.flatMap((message) => {
+  const modelMessages = prior.flatMap((message): ModelMessage[] => {
     if (message.role === 'user')
       return [{ role: 'user' as const, content: buildUserModelContent(message) }]
     const replay = replayAssistant(message, projectionLimits)
