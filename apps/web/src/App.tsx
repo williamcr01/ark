@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
 
-import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
+import { AppTitleBar } from '@/components/AppTitleBar'
 import { ChatContextChips } from '@/components/ChatContextChips'
 import { ChatPanel } from '@/components/ChatPanel'
 import { DeckAssets } from '@/components/DeckAssets'
@@ -109,7 +109,6 @@ function App() {
     hasDeck,
     html: generatedHtml,
     inspectVersion,
-    isDirty,
     isLoading: isDeckLoading,
     isLoadingVersions,
     isSaving: isDeckSaving,
@@ -125,9 +124,7 @@ function App() {
     renameActiveDeck,
     restoreHtmlSnapshot,
     rollbackToVersion,
-    saveError,
     startNewDeck,
-    versionNumber,
     versions,
   } = useDeckPersistence(routeDeckId)
 
@@ -355,19 +352,6 @@ function App() {
 
   const showSanitizedDownload = deckAnalysis.hasExecutableContent
   const hasSlides = deckAnalysis.slideCount > 0
-  const deckSaveStatus: DeckSaveStatus = isDeckLoading
-    ? 'loading'
-    : isGenerating
-      ? 'generating'
-      : isDeckSaving
-        ? 'saving'
-        : saveError
-          ? 'error'
-          : isDirty
-            ? 'dirty'
-            : hasDeck
-              ? 'saved'
-              : 'new'
   const displayError = error || generationError
   const deckAssetsSlot = deckId ? (
     <DeckAssets
@@ -752,7 +736,6 @@ function App() {
           activeDeckId={deckId}
           activeVersionId={activeVersionId}
           deckTitle={deckTitle}
-          deckSaveStatus={deckSaveStatus}
           fileInputRef={fileInputRef}
           hasDeck={hasDeck}
           hasSlides={hasSlides}
@@ -777,7 +760,6 @@ function App() {
           onUploadClick={handleUploadClick}
           previewVersion={previewVersion}
           showSanitizedDownload={showSanitizedDownload}
-          versionNumber={versionNumber}
           versions={versions}
         />
 

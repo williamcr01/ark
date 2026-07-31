@@ -24,7 +24,6 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
         <AppTitleBar
           activeDeckId={deck.id}
           activeVersionId="a0000000-0000-4000-8000-000000000001"
-          deckSaveStatus="saved"
           deckTitle={deck.title}
           fileInputRef={fileInputRef}
           hasDeck
@@ -47,7 +46,6 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           onUploadClick={vi.fn()}
           previewVersion={null}
           showSanitizedDownload={false}
-          versionNumber={1}
           versions={[]}
           {...overrides}
         />
@@ -59,6 +57,14 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
 }
 
 describe('AppTitleBar accessibility', () => {
+  it('omits deck save status and version labels', () => {
+    renderTitleBar()
+
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    expect(screen.queryByText('New deck')).not.toBeInTheDocument()
+    expect(screen.queryByText(/v1/)).not.toBeInTheDocument()
+  })
+
   it('selects an appearance from the keyboard-accessible menu', async () => {
     const user = userEvent.setup()
     const onAppearanceChange = vi.fn()
@@ -91,19 +97,29 @@ describe('AppTitleBar accessibility', () => {
     )
   })
 
-  it('exposes pressed and expanded state only on panel toggle buttons', () => {
+  it('does not visually change title-bar controls on hover', () => {
+    renderTitleBar()
+
+    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('!hover:bg-transparent')
+    expect(screen.getByRole('button', { name: 'Theme' })).toHaveClass('!hover:bg-transparent')
+    expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('!hover:bg-transparent')
+  })
+
+  it('keeps panel controls unhighlighted and removes their arrow when closed', () => {
     renderTitleBar({ isChatOpen: true, isStripOpen: false })
 
     const chatToggle = screen.getByRole('button', { name: 'Hide chat panel' })
     const stripToggle = screen.getByRole('button', { name: 'Show slide thumbnails' })
 
-    expect(chatToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(chatToggle).not.toHaveAttribute('aria-pressed')
     expect(chatToggle).toHaveAttribute('aria-expanded', 'true')
     expect(chatToggle).toHaveAttribute('aria-controls', 'ark-chat-panel')
+    expect(chatToggle.querySelector('svg')).toBeInTheDocument()
 
-    expect(stripToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(stripToggle).not.toHaveAttribute('aria-pressed')
     expect(stripToggle).toHaveAttribute('aria-expanded', 'false')
     expect(stripToggle).toHaveAttribute('aria-controls', 'ark-slide-strip')
+    expect(stripToggle.querySelector('svg')).not.toBeInTheDocument()
   })
 
   it('supports keyboard activation for titlebar icon buttons', async () => {
