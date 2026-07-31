@@ -142,9 +142,26 @@ export function useGenerationJob({
   const buildOutcome = useCallback(
     (job: GenerationJobApi): GenerationJobOutcome => {
       const steps = job.progress.steps
-      const awaitingUserResponse = steps.some(
-        (step) => step.type === 'tool-call' && step.toolName === 'ask_user',
-      )
+      const transcriptParts = job.progress.transcriptParts
+      const awaitingUserResponse =
+        transcriptParts && transcriptParts.length > 0
+          ? transcriptParts.some((part) => {
+              if (part.type !== 'tool-result') return false
+              if (part.toolName !== 'ask_user' && part.toolName !== 'propose_themes') return false
+              const output = part.output
+              return (
+                !!output &&
+                typeof output === 'object' &&
+                !Array.isArray(output) &&
+                (output as { awaitingUserResponse?: unknown }).awaitingUserResponse === true
+              )
+            })
+          : steps.some(
+              (step) =>
+                step.type === 'tool-result' &&
+                (step.toolName === 'ask_user' || step.toolName === 'propose_themes') &&
+                !step.error,
+            )
 
       if (job.status === 'succeeded' && (job.result || awaitingUserResponse)) {
         const assistantText = job.result?.assistantText ?? job.progress.assistantText ?? ''
@@ -153,7 +170,6 @@ export function useGenerationJob({
           steps,
           job.editingExistingDeck ?? false,
         )
-        const transcriptParts = job.progress.transcriptParts
 
         return {
           status: 'succeeded',

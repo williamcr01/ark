@@ -43,6 +43,36 @@ describe('deck tool catalog', () => {
     ).toBe('2 question(s)')
   })
 
+  it('offers propose_themes for empty and existing workspaces and preserves sampleHtml', () => {
+    const empty = createActiveDeckTools(createDeckWorkspace(''))
+    expect(empty.tools.propose_themes?.description).toContain('four visually distinct')
+    const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>${'Theme'.repeat(200)}</h1></section></body></html>`
+    const proposeThemes = empty.activeDefinitions.find(({ name }) => name === 'propose_themes')!
+    expect(proposeThemes.summarizeInput({ themes: [{}, {}, {}, {}] })).toBe('4 theme(s)')
+    const projected = proposeThemes.projectInputForTranscript({
+      title: 'Pick a visual direction',
+      themes: [
+        {
+          id: 'midnight',
+          name: 'Midnight Editorial',
+          description: 'Dark and sharp',
+          sampleHtml,
+        },
+      ],
+    })
+    expect(JSON.stringify(projected.value)).toContain('<!DOCTYPE html>')
+    expect(JSON.stringify(projected.value)).toContain('Midnight Editorial')
+    expect(JSON.stringify(projected.value)).not.toContain('sha256:')
+    expect(projected.truncated).toBe(false)
+
+    const existing = createActiveDeckTools(
+      createDeckWorkspace(
+        '<!doctype html><html><body><section class="slide">Title</section></body></html>',
+      ),
+    )
+    expect(existing.tools.propose_themes?.description).toContain('retheme the whole existing deck')
+  })
+
   it('projects complete deck HTML to a bounded hash marker', () => {
     const { activeDefinitions } = createActiveDeckTools(createDeckWorkspace(''))
     const writeDeck = activeDefinitions.find(({ name }) => name === 'write_deck')!
