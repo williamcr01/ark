@@ -44,7 +44,11 @@ const editorBridgeMock = vi.hoisted(() => ({
   geometry: null as EditorNormalizedRect | null,
   slideBounds: null as EditorNormalizedRect | null,
   selectionZIndex: null,
-  hover: null,
+  hover: null as {
+    elementId: string | null
+    slideIndex: number
+    surface?: 'light' | 'dark'
+  } | null,
   hoverGeometry: null,
   hoverSlideBounds: null as EditorNormalizedRect | null,
   editorError: null,
@@ -894,6 +898,30 @@ describe('DeckPreview script divergence UI', () => {
         y: endGeometry.y,
       },
     ])
+  })
+
+  it('does not leave a stale hover outline behind the selected element while dragging', () => {
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'New text',
+    }
+    editorBridgeMock.geometry = { x: 0.4, y: 0.35, width: 0.3, height: 0.1 }
+    editorBridgeMock.hover = { elementId: 'ark-el-box', slideIndex: 0 }
+    editorBridgeMock.hoverGeometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+
+    const { container } = renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+
+    expect(
+      container.querySelector(
+        '.pointer-events-none.absolute.left-0.top-0.rounded-sm.border:not(.border-2)',
+      ),
+    ).not.toBeInTheDocument()
   })
 
   it('drops the drag baseline after a runtime transform cancellation', () => {
