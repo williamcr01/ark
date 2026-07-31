@@ -4,6 +4,7 @@ import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import {
   Attachment,
   AttachmentInfo,
+  AttachmentPresence,
   AttachmentPreview,
   AttachmentRemove,
   Attachments,
@@ -65,7 +66,7 @@ export function ContextChipList({
   const dismissible = Boolean(onClearElement || onRemoveSlide)
 
   const items = (
-    <>
+    <AttachmentPresence>
       {element ? (
         <Attachment
           data={{
@@ -109,7 +110,7 @@ export function ContextChipList({
         </Attachment>
       ))}
       {!dismissible ? <span className="sr-only">Read-only chat context</span> : null}
-    </>
+    </AttachmentPresence>
   )
 
   if (nested) {

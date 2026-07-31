@@ -12,6 +12,10 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from '@/components/ui/input-group'
+import {
+  AttachmentInteractionProvider,
+  useAttachmentInteractions,
+} from '@/components/ai-elements/attachments'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -519,21 +523,23 @@ export const PromptInput = ({
 
   return (
     <LocalAttachmentsContext.Provider value={attachmentsCtx}>
-      <input
-        accept={accept}
-        aria-label="Upload files"
-        className="hidden"
-        multiple={multiple}
-        onChange={handleChange}
-        ref={inputRef}
-        title="Upload files"
-        type="file"
-      />
-      <form className={cn('w-full', className)} onSubmit={handleSubmit} ref={formRef} {...props}>
-        <InputGroup className="overflow-hidden transition-colors focus-within:border-foreground/25">
-          {children}
-        </InputGroup>
-      </form>
+      <AttachmentInteractionProvider>
+        <input
+          accept={accept}
+          aria-label="Upload files"
+          className="hidden"
+          multiple={multiple}
+          onChange={handleChange}
+          ref={inputRef}
+          title="Upload files"
+          type="file"
+        />
+        <form className={cn('w-full', className)} onSubmit={handleSubmit} ref={formRef} {...props}>
+          <InputGroup className="overflow-hidden transition-colors focus-within:border-foreground/25">
+            {children}
+          </InputGroup>
+        </form>
+      </AttachmentInteractionProvider>
     </LocalAttachmentsContext.Provider>
   )
 }
@@ -547,6 +553,7 @@ export const PromptInputBody = ({ className, ...props }: PromptInputBodyProps) =
 export type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea>
 
 export const PromptInputTextarea = ({
+  onBlur,
   onChange,
   onKeyDown,
   className,
@@ -554,7 +561,19 @@ export const PromptInputTextarea = ({
   ...props
 }: PromptInputTextareaProps) => {
   const attachments = usePromptInputAttachments()
+  const interactions = useAttachmentInteractions()
   const isComposingRef = useRef(false)
+
+  const getAttachmentIds = useCallback(
+    (textarea: HTMLTextAreaElement) =>
+      [
+        ...(textarea.form?.querySelectorAll<HTMLElement>('[data-attachment-dismissible="true"]') ??
+          []),
+      ]
+        .map((item) => item.dataset.attachmentId)
+        .filter((id): id is string => Boolean(id)),
+    [],
+  )
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
     (e) => {
@@ -587,16 +606,82 @@ export const PromptInputTextarea = ({
         form?.requestSubmit()
       }
 
-      // Remove last attachment when Backspace is pressed and textarea is empty
-      if (e.key === 'Backspace' && e.currentTarget.value === '' && attachments.files.length > 0) {
+      if (!interactions || e.currentTarget.value !== '') {
+        return
+      }
+
+      const ids = getAttachmentIds(e.currentTarget)
+
+      if (e.key === 'Backspace' && ids.length > 0) {
         e.preventDefault()
-        const lastAttachment = attachments.files.at(-1)
-        if (lastAttachment) {
-          attachments.remove(lastAttachment.id)
+        if (e.repeat) {
+          return
         }
+        if (interactions.armedId) {
+          interactions.remove(interactions.armedId)
+        } else {
+          interactions.arm(ids.at(-1)!)
+        }
+        return
+      }
+
+      if (e.key === 'Delete' && interactions.armedId) {
+        e.preventDefault()
+        if (e.repeat) {
+          return
+        }
+        interactions.remove(interactions.armedId)
+        return
+      }
+
+      if (
+        e.key === 'ArrowLeft' &&
+        e.currentTarget.selectionStart === 0 &&
+        e.currentTarget.selectionEnd === 0
+      ) {
+        if (ids.length === 0) {
+          return
+        }
+        e.preventDefault()
+        const currentIndex = interactions.armedId ? ids.indexOf(interactions.armedId) : ids.length
+        interactions.arm(ids[Math.max(0, currentIndex - 1)])
+        return
+      }
+
+      if (e.key === 'ArrowRight' && interactions.armedId) {
+        e.preventDefault()
+        const currentIndex = ids.indexOf(interactions.armedId)
+        const nextId = ids[currentIndex + 1]
+        if (nextId) {
+          interactions.arm(nextId)
+        } else {
+          interactions.clearArmed()
+        }
+        return
+      }
+
+      if (e.key === 'Escape' && interactions.armedId) {
+        e.preventDefault()
+        interactions.clearArmed()
       }
     },
-    [onKeyDown, attachments],
+    [getAttachmentIds, interactions, onKeyDown],
+  )
+
+  const handleBlur = useCallback<NonNullable<PromptInputTextareaProps['onBlur']>>(
+    (event) => {
+      interactions?.clearArmed()
+      onBlur?.(event)
+    },
+    [interactions, onBlur],
+  )
+
+  const handleChange = useCallback<NonNullable<PromptInputTextareaProps['onChange']>>(
+    (event) => {
+      interactions?.clearArmed()
+      onChange?.(event)
+    },
+    [interactions, onChange],
   )
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = useCallback(
@@ -637,7 +722,8 @@ export const PromptInputTextarea = ({
     <InputGroupTextarea
       className={cn('field-sizing-content max-h-48 min-h-16', className)}
       name="message"
-      onChange={onChange}
+      onBlur={handleBlur}
+      onChange={handleChange}
       onCompositionEnd={handleCompositionEnd}
       onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}

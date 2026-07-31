@@ -10,8 +10,10 @@ import {
   VideoIcon,
   XIcon,
 } from 'lucide-react'
+import { AnimatePresence, LayoutGroup, LazyMotion, m, useReducedMotion } from 'motion/react'
+import type { HTMLMotionProps } from 'motion/react'
 import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -22,6 +24,11 @@ export type AttachmentMediaCategory =
   'image' | 'video' | 'audio' | 'document' | 'source' | 'unknown'
 
 export type AttachmentVariant = 'grid' | 'inline' | 'list'
+
+const CHIP_SPRING = { type: 'spring', stiffness: 700, damping: 46, mass: 0.5 } as const
+const CHIP_EXIT = { duration: 0.18, ease: [0.4, 0, 1, 1] } as const
+const INSTANT = { duration: 0 } as const
+const loadMotionFeatures = () => import('@/lib/motion-features').then((module) => module.default)
 
 const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   audio: Music2Icon,
@@ -98,6 +105,68 @@ interface AttachmentContextValue {
 
 const AttachmentContext = createContext<AttachmentContextValue | null>(null)
 
+type AttachmentInteractionContextValue = {
+  armedId: string | null
+  arm: (id: string) => void
+  clearArmed: () => void
+  register: (id: string, label: string, remove: () => void) => () => void
+  remove: (id: string) => boolean
+}
+
+const AttachmentInteractionContext = createContext<AttachmentInteractionContextValue | null>(null)
+
+export function AttachmentInteractionProvider({ children }: { children: ReactNode }) {
+  const [armedId, setArmedId] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState('')
+  const registrations = useRef(new Map<string, { label: string; remove: () => void }>())
+
+  const register = useCallback((id: string, label: string, remove: () => void) => {
+    registrations.current.set(id, { label, remove })
+    return () => {
+      registrations.current.delete(id)
+      setArmedId((current) => (current === id ? null : current))
+    }
+  }, [])
+
+  const arm = useCallback((id: string) => {
+    const registration = registrations.current.get(id)
+    if (!registration) {
+      return
+    }
+    setArmedId(id)
+    setAnnouncement(`${registration.label} selected. Press Backspace again to remove it.`)
+  }, [])
+
+  const clearArmed = useCallback(() => setArmedId(null), [])
+
+  const remove = useCallback((id: string) => {
+    const registration = registrations.current.get(id)
+    if (!registration) {
+      return false
+    }
+    registration.remove()
+    setArmedId(null)
+    setAnnouncement(`${registration.label} removed.`)
+    return true
+  }, [])
+
+  const value = useMemo(
+    () => ({ armedId, arm, clearArmed, register, remove }),
+    [armedId, arm, clearArmed, register, remove],
+  )
+
+  return (
+    <AttachmentInteractionContext.Provider value={value}>
+      {children}
+      <span aria-atomic="true" aria-live="polite" className="sr-only" role="status">
+        {announcement}
+      </span>
+    </AttachmentInteractionContext.Provider>
+  )
+}
+
+export const useAttachmentInteractions = () => useContext(AttachmentInteractionContext)
+
 const useAttachmentsContext = () => useContext(AttachmentsContext) ?? { variant: 'grid' as const }
 
 const useAttachmentContext = () => {
@@ -122,22 +191,34 @@ export const Attachments = ({
 
   return (
     <AttachmentsContext.Provider value={contextValue}>
-      <div
-        className={cn(
-          'flex items-start',
-          variant === 'list' ? 'flex-col gap-2' : 'flex-wrap gap-2',
-          variant === 'grid' && 'ml-auto w-fit',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </div>
+      <LazyMotion features={loadMotionFeatures} strict>
+        <LayoutGroup>
+          <div
+            className={cn(
+              'flex items-start',
+              variant === 'list' ? 'flex-col gap-2' : 'flex-wrap gap-2',
+              variant === 'grid' && 'ml-auto w-fit',
+              className,
+            )}
+            {...props}
+          >
+            {children}
+          </div>
+        </LayoutGroup>
+      </LazyMotion>
     </AttachmentsContext.Provider>
   )
 }
 
-export type AttachmentProps = HTMLAttributes<HTMLDivElement> & {
+export function AttachmentPresence({ children }: { children: ReactNode }) {
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      {children}
+    </AnimatePresence>
+  )
+}
+
+export type AttachmentProps = HTMLMotionProps<'div'> & {
   data: AttachmentData
   onRemove?: () => void
 }
@@ -145,6 +226,18 @@ export type AttachmentProps = HTMLAttributes<HTMLDivElement> & {
 export const Attachment = ({ data, onRemove, className, children, ...props }: AttachmentProps) => {
   const { variant } = useAttachmentsContext()
   const mediaCategory = getMediaCategory(data)
+  const interactions = useAttachmentInteractions()
+  const registerInteraction = interactions?.register
+  const reducedMotion = useReducedMotion()
+  const label = getAttachmentLabel(data)
+  const armed = interactions?.armedId === data.id
+
+  useEffect(() => {
+    if (!onRemove || !registerInteraction) {
+      return
+    }
+    return registerInteraction(data.id, label, onRemove)
+  }, [data.id, label, onRemove, registerInteraction])
 
   const contextValue = useMemo<AttachmentContextValue>(
     () => ({ data, mediaCategory, onRemove, variant }),
@@ -153,15 +246,17 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
 
   return (
     <AttachmentContext.Provider value={contextValue}>
-      <div
+      <m.div
+        animate={{ opacity: 1, scale: 1 }}
         className={cn(
           'group relative',
           variant === 'grid' && 'size-24 overflow-hidden rounded-lg',
           variant === 'inline' && [
             'flex h-8 cursor-pointer select-none items-center gap-1.5',
             'rounded-md border border-border px-1.5',
-            'text-sm font-medium transition-all',
+            'text-sm font-medium transition-[background-color,border-color,box-shadow,color] duration-150',
             'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
+            armed && 'border-foreground bg-accent text-accent-foreground shadow-sm',
           ],
           variant === 'list' && [
             'flex w-full items-center gap-3 rounded-lg border p-3',
@@ -169,10 +264,21 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
           ],
           className,
         )}
+        data-armed={armed || undefined}
+        data-attachment-dismissible={onRemove ? 'true' : undefined}
+        data-attachment-id={data.id}
+        exit={
+          reducedMotion
+            ? { opacity: 0, transition: INSTANT }
+            : { opacity: 0, scale: 0.9, transition: CHIP_EXIT }
+        }
+        initial={reducedMotion ? false : { opacity: 0, scale: 0.9 }}
+        layout={reducedMotion ? false : 'position'}
+        transition={reducedMotion ? INSTANT : { default: CHIP_SPRING, layout: CHIP_SPRING }}
         {...props}
       >
         {children}
-      </div>
+      </m.div>
     </AttachmentContext.Provider>
   )
 }
@@ -259,14 +365,17 @@ export const AttachmentRemove = ({
   children,
   ...props
 }: AttachmentRemoveProps) => {
-  const { onRemove, variant } = useAttachmentContext()
+  const { data, onRemove, variant } = useAttachmentContext()
+  const interactions = useAttachmentInteractions()
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      onRemove?.()
+      if (!interactions?.remove(data.id)) {
+        onRemove?.()
+      }
     },
-    [onRemove],
+    [data.id, interactions, onRemove],
   )
 
   if (!onRemove) {
@@ -286,7 +395,7 @@ export const AttachmentRemove = ({
         ],
         variant === 'inline' && [
           'size-5 rounded p-0',
-          'opacity-0 transition-opacity group-hover:opacity-100',
+          'opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
           '[&>svg]:size-2.5',
         ],
         variant === 'list' && ['size-8 shrink-0 rounded p-0', '[&>svg]:size-4'],

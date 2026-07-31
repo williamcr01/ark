@@ -22,6 +22,7 @@ import { ThemePicker } from '@/components/ThemePicker'
 import {
   Attachment,
   AttachmentInfo,
+  AttachmentPresence,
   AttachmentPreview,
   AttachmentRemove,
   Attachments,
@@ -212,17 +213,19 @@ function PromptInputAttachmentsDisplay({ children }: { children?: ReactNode }) {
   return (
     <PromptInputHeader>
       <Attachments variant="inline">
-        {attachments.files.map((attachment) => (
-          <Attachment
-            data={attachment}
-            key={attachment.id}
-            onRemove={() => attachments.remove(attachment.id)}
-          >
-            <AttachmentPreview />
-            <AttachmentInfo />
-            <AttachmentRemove />
-          </Attachment>
-        ))}
+        <AttachmentPresence>
+          {attachments.files.map((attachment) => (
+            <Attachment
+              data={attachment}
+              key={attachment.id}
+              onRemove={() => attachments.remove(attachment.id)}
+            >
+              <AttachmentPreview />
+              <AttachmentInfo />
+              <AttachmentRemove />
+            </Attachment>
+          ))}
+        </AttachmentPresence>
         {children}
       </Attachments>
     </PromptInputHeader>
