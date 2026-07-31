@@ -1,7 +1,9 @@
 import {
+  forwardRef,
   useCallback,
   useDeferredValue,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type ChangeEvent,
@@ -12,7 +14,6 @@ import { WandSparklesIcon } from 'lucide-react'
 
 import { EditModeToolbar } from '@/components/EditModeToolbar'
 import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
-import { DeckPreviewHeader } from '@/components/DeckPreviewHeader'
 import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlays'
 import { PresentMode } from '@/components/PresentMode'
 import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
@@ -104,33 +105,40 @@ export type DeckPreviewProps = {
   ) => Promise<DeckPreviewPatchResult | undefined>
 }
 
-export function DeckPreview({
-  html,
-  deckId = null,
-  versionId = null,
-  recentGenerationJobId = null,
-  isGenerating,
-  isPreviewUpdating = false,
-  isStripOpen,
-  layout,
-  deckAnalysis,
-  chromeHost = null,
-  editorBridgeEnabled = false,
-  isTextEditSaving = false,
-  initialSlideIndex = 0,
-  canUndo = false,
-  canRedo = false,
-  undoSlideIndex = null,
-  redoSlideIndex = null,
-  contextSlideIndexes,
-  clearEditorSelectionRef,
-  onUndo,
-  onRedo,
-  onCommitTextEdit,
-  onEditorSelectionChange,
-  onToggleContextSlide,
-  onPatchEditorOperations,
-}: DeckPreviewProps) {
+export type DeckPreviewHandle = {
+  openPresent: () => void
+}
+
+export const DeckPreview = forwardRef<DeckPreviewHandle, DeckPreviewProps>(function DeckPreview(
+  {
+    html,
+    deckId = null,
+    versionId = null,
+    recentGenerationJobId = null,
+    isGenerating,
+    isPreviewUpdating = false,
+    isStripOpen,
+    layout,
+    deckAnalysis,
+    chromeHost = null,
+    editorBridgeEnabled = false,
+    isTextEditSaving = false,
+    initialSlideIndex = 0,
+    canUndo = false,
+    canRedo = false,
+    undoSlideIndex = null,
+    redoSlideIndex = null,
+    contextSlideIndexes,
+    clearEditorSelectionRef,
+    onUndo,
+    onRedo,
+    onCommitTextEdit,
+    onEditorSelectionChange,
+    onToggleContextSlide,
+    onPatchEditorOperations,
+  }: DeckPreviewProps,
+  ref,
+) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previewStageRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -601,55 +609,41 @@ export function DeckPreview({
     })
     setIsPresentOpen(true)
   }, [])
+  useImperativeHandle(ref, () => ({ openPresent: openPresentMode }), [openPresentMode])
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const hasStrip = hasSlides
   const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
-  const canPresent = html.length > 0 && hasSlides && !isGenerating
-
-  const previewChrome = (
-    <>
-      <DeckPreviewHeader
-        activeSlideIndex={activeSlideIndex}
-        analysis={deckAnalysis}
-        canPresent={canPresent}
-        isPresentOpen={isPresentOpen}
-        isTextEditSaving={isTextEditSaving}
-        onPresent={openPresentMode}
-        usesSandboxHost={previewFrame.usesSandboxHost}
+  const previewChrome =
+    editorBridgeEnabled && editChromeActive ? (
+      <EditModeToolbar
+        activeTool={activeTool}
+        canEditText={canEditSelectedText}
+        canRedo={canRedo}
+        canUndo={canUndo}
+        hasDeck={html.length > 0 && hasSlides}
+        hasSelection={Boolean(selection?.elementId)}
+        imageAlt={selectedImageAlt}
+        imageFit={selectedImageFit}
+        isGenerating={isGenerating}
+        isSaving={isTextEditSaving}
+        onBringForward={() => handleReorderSelection('front')}
+        onDelete={handleDeleteSelection}
+        onDuplicate={handleDuplicateSelection}
+        onEditText={beginTextEdit}
+        onImageAltChange={handleImageAltChange}
+        onImageFitChange={handleImageFitChange}
+        onPickImage={openImagePicker}
+        onRedo={handleRedo}
+        onSendBackward={() => handleReorderSelection('back')}
+        onToolChange={handleToolChange}
+        onUndo={handleUndo}
+        selectedImage={selectedImage}
+        selectionLocked={selection?.locked ?? false}
+        selectionManaged={selection?.managed ?? false}
+        textEditActive={textEditActive}
       />
-
-      {editorBridgeEnabled && editChromeActive ? (
-        <EditModeToolbar
-          activeTool={activeTool}
-          canEditText={canEditSelectedText}
-          canRedo={canRedo}
-          canUndo={canUndo}
-          hasDeck={html.length > 0 && hasSlides}
-          hasSelection={Boolean(selection?.elementId)}
-          imageAlt={selectedImageAlt}
-          imageFit={selectedImageFit}
-          isGenerating={isGenerating}
-          isSaving={isTextEditSaving}
-          onBringForward={() => handleReorderSelection('front')}
-          onDelete={handleDeleteSelection}
-          onDuplicate={handleDuplicateSelection}
-          onEditText={beginTextEdit}
-          onImageAltChange={handleImageAltChange}
-          onImageFitChange={handleImageFitChange}
-          onPickImage={openImagePicker}
-          onRedo={handleRedo}
-          onSendBackward={() => handleReorderSelection('back')}
-          onToolChange={handleToolChange}
-          onUndo={handleUndo}
-          selectedImage={selectedImage}
-          selectionLocked={selection?.locked ?? false}
-          selectionManaged={selection?.managed ?? false}
-          textEditActive={textEditActive}
-        />
-      ) : null}
-    </>
-  )
+    ) : null
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-stage)]">
@@ -840,7 +834,7 @@ export function DeckPreview({
       ) : null}
     </section>
   )
-}
+})
 
 function EmptyPreview({
   isGenerating = false,

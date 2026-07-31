@@ -9,7 +9,7 @@ import { ChatContextChips } from '@/components/ChatContextChips'
 import { ChatPanel } from '@/components/ChatPanel'
 import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
-import { DeckPreview } from '@/components/DeckPreview'
+import { DeckPreview, type DeckPreviewHandle } from '@/components/DeckPreview'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Toaster } from '@/components/ui/sonner'
@@ -175,6 +175,7 @@ function App() {
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  const deckPreviewRef = useRef<DeckPreviewHandle>(null)
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -732,6 +733,7 @@ function App() {
       onCommitTextEdit={handleCommitTextEdit}
       onEditorSelectionChange={handleEditorSelectionChange}
       onPatchEditorOperations={handlePatchEditorOperations}
+      ref={deckPreviewRef}
       onRedo={handleRedoEdit}
       onToggleContextSlide={handleToggleContextSlide}
       onUndo={handleUndoEdit}
@@ -765,6 +767,7 @@ function App() {
           onHtmlUpload={handleHtmlUpload}
           onInspectVersion={inspectVersion}
           onNewDeck={handleNewDeck}
+          onPresent={() => deckPreviewRef.current?.openPresent()}
           onRefreshVersions={() => (deckId ? refreshVersions(deckId) : Promise.resolve([]))}
           onRenameDeck={handleRenameDeck}
           onRollbackVersion={handleRollbackVersion}

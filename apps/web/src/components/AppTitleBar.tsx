@@ -10,6 +10,7 @@ import { Link } from 'react-router'
 import {
   HistoryIcon,
   LaptopIcon,
+  Maximize2Icon,
   MoonIcon,
   DownloadIcon,
   FilePlus2Icon,
@@ -388,6 +389,7 @@ export type AppTitleBarProps = {
   isGenerating: boolean
   isLoadingVersions: boolean
   isStripOpen: boolean
+  onPresent: () => void
   onClearVersionPreview: () => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
@@ -426,6 +428,7 @@ export function AppTitleBar({
   onHtmlUpload,
   onInspectVersion,
   onNewDeck,
+  onPresent,
   onRefreshVersions,
   onRenameDeck,
   onRollbackVersion,
@@ -524,6 +527,14 @@ export function AppTitleBar({
         />
         <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
           <UploadIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={!hasSlides || isGenerating}
+          label="Present fullscreen"
+          onClick={onPresent}
+          primary
+        >
+          <Maximize2Icon />
         </TitleBarButton>
         {hasSlides ? (
           <TitleBarButton

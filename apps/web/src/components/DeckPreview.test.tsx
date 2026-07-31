@@ -1,4 +1,4 @@
-import { type ComponentProps } from 'react'
+import { createRef, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -18,7 +18,7 @@ import {
   type EditorTransformPreviewMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 
-import { DeckPreview } from './DeckPreview'
+import { DeckPreview, type DeckPreviewHandle } from './DeckPreview'
 
 function renderDeckPreview(props: ComponentProps<typeof DeckPreview>) {
   return render(
@@ -251,13 +251,13 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
   })
 
-  it('reuses the main preview frame when opening present mode', async () => {
-    const user = userEvent.setup()
-    renderDeckPreview(plainDeckProps)
+  it('reuses the main preview frame when opening present mode', () => {
+    const previewRef = createRef<DeckPreviewHandle>()
+    renderDeckPreview({ ...plainDeckProps, ref: previewRef })
 
     const previewIframe = screen.getByTitle('Generated Ark presentation preview')
 
-    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+    act(() => previewRef.current?.openPresent())
 
     expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
     expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
@@ -267,19 +267,20 @@ describe('DeckPreview script divergence UI', () => {
     expect(useDeckPreviewFrameMock.mock.calls.every((call) => call[1] === true)).toBe(true)
   })
 
-  it('hides preview chrome overlays while present mode is open', async () => {
-    const user = userEvent.setup()
+  it('hides preview chrome overlays while present mode is open', () => {
+    const previewRef = createRef<DeckPreviewHandle>()
     renderDeckPreview({
       html: hostileScriptsDeck,
       isGenerating: false,
       isStripOpen: false,
       layout: 'desktop',
       deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
+      ref: previewRef,
     })
 
     expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
 
-    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+    act(() => previewRef.current?.openPresent())
 
     expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
     expect(
@@ -292,14 +293,15 @@ describe('DeckPreview script divergence UI', () => {
 
   it('disables then re-enables the editor when presenting', async () => {
     const user = userEvent.setup()
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    const previewRef = createRef<DeckPreviewHandle>()
+    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true, ref: previewRef })
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     editorBridgeMock.editorReady = true
 
     editorBridgeMock.disableEditor.mockClear()
     editorBridgeMock.enableEditor.mockClear()
 
-    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+    act(() => previewRef.current?.openPresent())
 
     expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
     expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()

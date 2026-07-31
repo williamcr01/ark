@@ -38,6 +38,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           onHtmlUpload={vi.fn()}
           onInspectVersion={vi.fn()}
           onNewDeck={vi.fn()}
+          onPresent={vi.fn()}
           onRefreshVersions={vi.fn().mockResolvedValue([])}
           onRenameDeck={vi.fn()}
           onRollbackVersion={vi.fn()}
@@ -85,6 +86,9 @@ describe('AppTitleBar accessibility', () => {
       'aria-pressed',
     )
     expect(screen.getByRole('button', { name: 'Upload HTML' })).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: 'Present fullscreen' })).not.toHaveAttribute(
+      'aria-pressed',
+    )
   })
 
   it('exposes pressed and expanded state only on panel toggle buttons', () => {
@@ -112,6 +116,16 @@ describe('AppTitleBar accessibility', () => {
     await user.keyboard('{Enter}')
 
     expect(onToggleChat).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens presentation mode from the title bar', async () => {
+    const user = userEvent.setup()
+    const onPresent = vi.fn()
+    renderTitleBar({ onPresent })
+
+    await user.click(screen.getByRole('button', { name: 'Present fullscreen' }))
+
+    expect(onPresent).toHaveBeenCalledOnce()
   })
 
   it('offers original and sanitized download choices when scripts are present', async () => {
