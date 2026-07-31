@@ -26,6 +26,7 @@ Ark is a presentation builder: a PowerPoint-like app where each presentation is 
 ```bash
 pnpm install    # install dependencies
 pnpm dev        # start dev server
+pnpm typecheck  # parallel native TypeScript check (all apps/packages)
 pnpm build      # typecheck + production build
 pnpm lint       # run ESLint
 pnpm test       # Vitest: packages in parallel, apps serial
