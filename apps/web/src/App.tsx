@@ -4,12 +4,11 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
 
-import { AppTitleBar, type DeckSaveStatus } from '@/components/AppTitleBar'
+import { AppTitleBar } from '@/components/AppTitleBar'
 import { ChatContextChips } from '@/components/ChatContextChips'
 import { ChatPanel } from '@/components/ChatPanel'
-import { DeckAssets } from '@/components/DeckAssets'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
-import { DeckPreview } from '@/components/DeckPreview'
+import { DeckPreview, type DeckPreviewHandle } from '@/components/DeckPreview'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Toaster } from '@/components/ui/sonner'
@@ -18,7 +17,6 @@ import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useAppearance } from '@/hooks/useAppearance'
 import { useReasoningEffort, type ReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useChatSession } from '@/hooks/useChatSession'
-import { useDeckAssets } from '@/hooks/useDeckAssets'
 import { useDeckActions } from '@/hooks/useDeckActions'
 import { useDeckEditHistory } from '@/hooks/useDeckEditHistory'
 import { useDeckGenerationFlow } from '@/hooks/useDeckGenerationFlow'
@@ -109,7 +107,6 @@ function App() {
     hasDeck,
     html: generatedHtml,
     inspectVersion,
-    isDirty,
     isLoading: isDeckLoading,
     isLoadingVersions,
     isSaving: isDeckSaving,
@@ -125,9 +122,7 @@ function App() {
     renameActiveDeck,
     restoreHtmlSnapshot,
     rollbackToVersion,
-    saveError,
     startNewDeck,
-    versionNumber,
     versions,
   } = useDeckPersistence(routeDeckId)
 
@@ -159,22 +154,13 @@ function App() {
       toast.warning('Could not refresh chat from server — showing cached messages')
     }, []),
   })
-  const {
-    assets: deckAssets,
-    uploads: assetUploads,
-    selectedAssetIds,
-    error: assetError,
-    removeAsset,
-    dismissUpload,
-    toggleAssetSelected,
-    clearSelection: clearAssetSelection,
-  } = useDeckAssets(deckId)
   const [input, setInput] = useState('')
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
   const [isChatOpen, setIsChatOpen] = useState(true)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  const deckPreviewRef = useRef<DeckPreviewHandle>(null)
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -255,10 +241,9 @@ function App() {
     onError: setError,
     onGenerationStart: useCallback(() => setAttachmentError(''), []),
     onGenerationSucceeded: useCallback(() => {
-      clearAssetSelection()
       setContextSlideEntries([])
       resetEditHistory()
-    }, [clearAssetSelection, resetEditHistory]),
+    }, [resetEditHistory]),
   })
 
   useEffect(() => {
@@ -354,31 +339,7 @@ function App() {
 
   const showSanitizedDownload = deckAnalysis.hasExecutableContent
   const hasSlides = deckAnalysis.slideCount > 0
-  const deckSaveStatus: DeckSaveStatus = isDeckLoading
-    ? 'loading'
-    : isGenerating
-      ? 'generating'
-      : isDeckSaving
-        ? 'saving'
-        : saveError
-          ? 'error'
-          : isDirty
-            ? 'dirty'
-            : hasDeck
-              ? 'saved'
-              : 'new'
   const displayError = error || generationError
-  const deckAssetsSlot = deckId ? (
-    <DeckAssets
-      assets={deckAssets}
-      error={assetError}
-      onDismissUpload={dismissUpload}
-      onRemoveAsset={removeAsset}
-      onToggleSelected={toggleAssetSelected}
-      selectedAssetIds={selectedAssetIds}
-      uploads={assetUploads}
-    />
-  ) : null
   const contextSlidesForChips = useMemo(
     () =>
       resolvedContextSlides.flatMap((entry) => {
@@ -442,19 +403,7 @@ function App() {
   }, [navigate, newDeckAction])
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
-    const selectedDeckAttachments: ChatAttachment[] = deckId
-      ? selectedAssetIds
-          .map((id) => deckAssets.find((asset) => asset.id === id))
-          .filter((asset): asset is (typeof deckAssets)[number] => Boolean(asset))
-          .map((asset) => ({
-            type: 'file' as const,
-            mediaType: asset.mediaType,
-            filename: asset.filename,
-            url: asset.url,
-            assetId: asset.id,
-          }))
-      : []
-    const hasAttachments = selectedDeckAttachments.length > 0 || message.files.length > 0
+    const hasAttachments = message.files.length > 0
     const hasContent = Boolean(message.text.trim() || hasAttachments)
 
     if (!hasContent || !canGenerate) {
@@ -469,10 +418,10 @@ function App() {
       return
     }
 
-    let promptAttachments: ChatAttachment[]
+    let attachments: ChatAttachment[]
     try {
       // Bound concurrency so large selections upload promptly without flooding the browser or API.
-      promptAttachments = await uploadPromptAttachments(deckId, message.files)
+      attachments = await uploadPromptAttachments(deckId, message.files)
       setAttachmentError('')
     } catch (uploadError) {
       setAttachmentError(
@@ -481,13 +430,9 @@ function App() {
       return
     }
 
-    const attachments = [...selectedDeckAttachments, ...promptAttachments]
     setInput('')
     const assetIds = [
-      ...new Set([
-        ...selectedAssetIds,
-        ...promptAttachments.flatMap((item) => (item.assetId ? [item.assetId] : [])),
-      ]),
+      ...new Set(attachments.flatMap((item) => (item.assetId ? [item.assetId] : []))),
     ]
     const editorSelectionContext = toEditorSelectionContext(editorSelection)
     const slideContexts =
@@ -679,7 +624,6 @@ function App() {
     <ChatPanel
       activeJobId={activeJobId}
       activeSteps={activeSteps}
-      assetsSlot={deckAssetsSlot}
       attachmentError={attachmentError}
       canGenerate={canGenerate}
       contextSlot={chatContextSlot}
@@ -708,7 +652,6 @@ function App() {
       reducedMotion={reducedMotion}
       reasoningEffort={reasoningEffort}
       resolvedAppearance={resolvedAppearance}
-      selectedAssetIds={selectedAssetIds}
       selectedModel={selectedModel}
       showGenerationErrorAlert={!isModelFailure}
     />
@@ -732,6 +675,7 @@ function App() {
       onCommitTextEdit={handleCommitTextEdit}
       onEditorSelectionChange={handleEditorSelectionChange}
       onPatchEditorOperations={handlePatchEditorOperations}
+      presentHandleRef={deckPreviewRef}
       onRedo={handleRedoEdit}
       onToggleContextSlide={handleToggleContextSlide}
       onUndo={handleUndoEdit}
@@ -750,7 +694,6 @@ function App() {
           activeDeckId={deckId}
           activeVersionId={activeVersionId}
           deckTitle={deckTitle}
-          deckSaveStatus={deckSaveStatus}
           fileInputRef={fileInputRef}
           hasDeck={hasDeck}
           hasSlides={hasSlides}
@@ -765,6 +708,7 @@ function App() {
           onHtmlUpload={handleHtmlUpload}
           onInspectVersion={inspectVersion}
           onNewDeck={handleNewDeck}
+          onPresent={() => deckPreviewRef.current?.openPresent()}
           onRefreshVersions={() => (deckId ? refreshVersions(deckId) : Promise.resolve([]))}
           onRenameDeck={handleRenameDeck}
           onRollbackVersion={handleRollbackVersion}
@@ -774,7 +718,6 @@ function App() {
           onUploadClick={handleUploadClick}
           previewVersion={previewVersion}
           showSanitizedDownload={showSanitizedDownload}
-          versionNumber={versionNumber}
           versions={versions}
         />
 

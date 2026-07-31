@@ -89,7 +89,11 @@ async function runSmoke() {
       'uploaded plain CSS deck in shell',
       async () => {
         const text = await evaluate<string>(cdp!, 'document.body.innerText')
-        return text.includes('Plain CSS Deck') && text.includes('Slide 1 of 3')
+        const slideOneActive = await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('button[aria-label="Go to slide 1"][aria-current="true"]'))`,
+        )
+        return text.includes('Plain CSS Deck') && slideOneActive
       },
       { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
     )
@@ -188,10 +192,12 @@ async function runSmoke() {
       `Boolean(document.querySelector('button[aria-label="Go to slide 2"]')?.click())`,
     )
 
-    await waitFor('thumbnail click navigates shell to slide 2', async () => {
-      const text = await evaluate<string>(cdp!, 'document.body.innerText')
-      return text.includes('Slide 2 of 3')
-    })
+    await waitFor('thumbnail click navigates shell to slide 2', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('button[aria-label="Go to slide 2"][aria-current="true"]'))`,
+      ),
+    )
 
     console.log('smoke:thumbnails passed')
   } catch (error) {

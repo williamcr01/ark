@@ -10,19 +10,17 @@ import { Link } from 'react-router'
 import {
   HistoryIcon,
   LaptopIcon,
+  Maximize2Icon,
   MoonIcon,
   DownloadIcon,
   FilePlus2Icon,
   PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
   PanelRightCloseIcon,
-  PanelRightOpenIcon,
   PresentationIcon,
   UploadIcon,
   SunIcon,
 } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
@@ -41,7 +39,6 @@ import {
   MorphMenuFooter,
   morphMenuTriggerMotionClassName,
 } from '@/components/ui/morph-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { DeckVersionDetail, DeckVersionSummary } from '@/lib/deck-api'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
@@ -69,31 +66,27 @@ function TitleBarButton({
   ...props
 }: TitleBarButtonProps) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          aria-label={label}
-          aria-pressed={toggle ? active : undefined}
-          className={cn(
-            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
-            'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
-            'hover:bg-[var(--ark-titlebar-hover)]',
-            'disabled:text-[var(--ark-titlebar-muted)]/50',
-            active && 'bg-[var(--ark-titlebar-active)]',
-            primary && !disabled && 'text-[var(--ark-accent)] hover:bg-[var(--ark-accent-soft)]',
-          )}
-          disabled={disabled}
-          onClick={onClick}
-          type="button"
-          {...props}
-        >
-          <span aria-hidden className="inline-flex">
-            {children}
-          </span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
-    </Tooltip>
+    <button
+      aria-label={label}
+      aria-pressed={toggle ? active : undefined}
+      className={cn(
+        buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+        'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
+        '!hover:bg-transparent',
+        'disabled:text-[var(--ark-titlebar-muted)]/50',
+        active && 'bg-[var(--ark-titlebar-active)]',
+        primary && !disabled && 'text-[var(--ark-accent)] !hover:text-[var(--ark-accent)]',
+        !primary && !disabled && '!hover:text-[var(--ark-titlebar-fg)]',
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+      {...props}
+    >
+      <span aria-hidden className="inline-flex">
+        {children}
+      </span>
+    </button>
   )
 }
 
@@ -123,29 +116,24 @@ function DownloadTitleBarButton({
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label="Download HTML"
-              className={cn(
-                buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
-                morphMenuTriggerMotionClassName,
-                'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
-                'hover:bg-[var(--ark-accent-soft)]',
-                'disabled:text-[var(--ark-titlebar-muted)]/50',
-              )}
-              disabled={disabled}
-              type="button"
-            >
-              <span aria-hidden className="inline-flex">
-                <DownloadIcon />
-              </span>
-            </button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Download HTML</TooltipContent>
-      </Tooltip>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-label="Download HTML"
+          className={cn(
+            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+            morphMenuTriggerMotionClassName,
+            'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
+            '!hover:bg-transparent !hover:text-[var(--ark-accent)]',
+            'disabled:text-[var(--ark-titlebar-muted)]/50',
+          )}
+          disabled={disabled}
+          type="button"
+        >
+          <span aria-hidden className="inline-flex">
+            <DownloadIcon />
+          </span>
+        </button>
+      </DropdownMenuTrigger>
       <MorphMenuContent
         align="end"
         className="w-64"
@@ -208,7 +196,10 @@ function AppearanceMenu({
         <Button
           aria-expanded={open}
           aria-label="Theme"
-          className={cn(morphMenuTriggerMotionClassName, 'h-7 px-2 text-xs')}
+          className={cn(
+            morphMenuTriggerMotionClassName,
+            'h-7 px-2 text-xs !hover:bg-transparent !hover:text-[var(--ark-titlebar-fg)]',
+          )}
           size="sm"
           variant="ghost"
         >
@@ -359,7 +350,7 @@ function DeckTitleEditor({
       className={cn(
         buttonVariants({ variant: 'ghost' }),
         titleClassName,
-        'inline-flex justify-start hover:bg-[var(--ark-titlebar-hover)]',
+        'inline-flex justify-start !hover:bg-transparent',
       )}
       disabled={!canEdit}
       onClick={startEditing}
@@ -371,9 +362,6 @@ function DeckTitleEditor({
   )
 }
 
-export type DeckSaveStatus =
-  'loading' | 'new' | 'generating' | 'saving' | 'dirty' | 'saved' | 'error'
-
 export type AppTitleBarProps = {
   appearancePreference?: AppearancePreference
   resolvedAppearance?: ResolvedAppearance
@@ -381,13 +369,13 @@ export type AppTitleBarProps = {
   activeVersionId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
   deckTitle: string
-  deckSaveStatus: DeckSaveStatus
   hasDeck: boolean
   hasSlides: boolean
   isChatOpen: boolean
   isGenerating: boolean
   isLoadingVersions: boolean
   isStripOpen: boolean
+  onPresent: () => void
   onClearVersionPreview: () => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
@@ -402,7 +390,6 @@ export type AppTitleBarProps = {
   onUploadClick: () => void
   previewVersion: DeckVersionDetail | null
   showSanitizedDownload: boolean
-  versionNumber: number | null
   versions: DeckVersionSummary[]
 }
 
@@ -413,7 +400,6 @@ export function AppTitleBar({
   activeVersionId,
   fileInputRef,
   deckTitle,
-  deckSaveStatus,
   hasDeck,
   hasSlides,
   isChatOpen,
@@ -426,6 +412,7 @@ export function AppTitleBar({
   onHtmlUpload,
   onInspectVersion,
   onNewDeck,
+  onPresent,
   onRefreshVersions,
   onRenameDeck,
   onRollbackVersion,
@@ -434,25 +421,9 @@ export function AppTitleBar({
   onUploadClick,
   previewVersion,
   showSanitizedDownload,
-  versionNumber,
   versions,
 }: AppTitleBarProps) {
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
-  const statusLabel =
-    deckSaveStatus === 'loading'
-      ? 'Restoring…'
-      : deckSaveStatus === 'generating'
-        ? 'Generating…'
-        : deckSaveStatus === 'saving'
-          ? 'Saving…'
-          : deckSaveStatus === 'dirty'
-            ? 'Unsaved changes'
-            : deckSaveStatus === 'error'
-              ? 'Save failed'
-              : hasDeck
-                ? 'Saved'
-                : 'New deck'
-
   return (
     <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-2 text-foreground">
       <input
@@ -462,6 +433,18 @@ export function AppTitleBar({
         ref={fileInputRef}
         type="file"
       />
+      {hasSlides ? (
+        <ButtonGroup className="shrink-0">
+          <TitleBarButton
+            aria-controls="ark-slide-strip"
+            aria-expanded={isStripOpen}
+            label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
+            onClick={onToggleStrip}
+          >
+            {isStripOpen ? <PanelLeftCloseIcon /> : null}
+          </TitleBarButton>
+        </ButtonGroup>
+      ) : null}
       <div className="flex min-w-0 items-center gap-2 px-1">
         <Link
           aria-label="All decks"
@@ -485,18 +468,6 @@ export function AppTitleBar({
           disabled={isGenerating}
           onRenameDeck={onRenameDeck}
         />
-        <Badge
-          variant={
-            deckSaveStatus === 'error'
-              ? 'destructive'
-              : deckSaveStatus === 'dirty'
-                ? 'outline'
-                : 'secondary'
-          }
-        >
-          {statusLabel}
-          {versionNumber ? <span>· v{versionNumber}</span> : null}
-        </Badge>
       </div>
 
       <div className="min-w-0 flex-1" aria-hidden />
@@ -525,28 +496,22 @@ export function AppTitleBar({
         <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
           <UploadIcon />
         </TitleBarButton>
-        {hasSlides ? (
-          <TitleBarButton
-            active={isStripOpen}
-            aria-controls="ark-slide-strip"
-            aria-expanded={isStripOpen}
-            label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
-            onClick={onToggleStrip}
-            toggle
-          >
-            {isStripOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
-          </TitleBarButton>
-        ) : null}
+        <TitleBarButton
+          disabled={!hasSlides || isGenerating}
+          label="Present fullscreen"
+          onClick={onPresent}
+          primary
+        >
+          <Maximize2Icon />
+        </TitleBarButton>
         <ButtonGroupSeparator className="mx-0.5 h-4 bg-[var(--ark-titlebar-border)]" />
         <TitleBarButton
-          active={isChatOpen}
           aria-controls="ark-chat-panel"
           aria-expanded={isChatOpen}
           label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
           onClick={onToggleChat}
-          toggle
         >
-          {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+          {isChatOpen ? <PanelRightCloseIcon /> : null}
         </TitleBarButton>
       </ButtonGroup>
 
