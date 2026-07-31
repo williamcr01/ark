@@ -1,9 +1,10 @@
 import { type ComponentProps } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ChatPanel } from '@/components/ChatPanel'
+import { ContextChipList } from '@/components/ChatContextChips'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
 vi.mock('@/components/MiniHtmlPreview', () => ({
@@ -528,6 +529,73 @@ describe('ChatPanel submit control', () => {
 
     unmount()
     expect(revokeObjectURL).toHaveBeenCalledTimes(6)
+  })
+
+  it('arms an attachment before Backspace removes it', async () => {
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: vi.fn(() => 'blob:brief.pdf') },
+      revokeObjectURL: { configurable: true, value: vi.fn() },
+    })
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} />
+      </TooltipProvider>,
+    )
+
+    await user.upload(
+      screen.getByLabelText('Upload files'),
+      new File(['brief'], 'brief.pdf', { type: 'application/pdf' }),
+    )
+
+    const textarea = screen.getByPlaceholderText(/Describe the deck/i)
+    await user.click(textarea)
+    await user.keyboard('{Backspace}')
+
+    expect(screen.getByText('brief.pdf').closest('[data-attachment-id]')).toHaveAttribute(
+      'data-armed',
+      'true',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'brief.pdf selected. Press Backspace again to remove it.',
+    )
+
+    await user.keyboard('{Backspace}')
+
+    await waitFor(() => expect(screen.queryByText('brief.pdf')).not.toBeInTheDocument())
+    expect(screen.getByRole('status')).toHaveTextContent('brief.pdf removed.')
+  })
+
+  it('includes slide context in armed keyboard removal', async () => {
+    const onRemoveSlide = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          contextSlot={
+            <ContextChipList
+              nested
+              onRemoveSlide={onRemoveSlide}
+              slides={[{ slideIndex: 2, title: 'Agenda' }]}
+            />
+          }
+        />
+      </TooltipProvider>,
+    )
+
+    const textarea = screen.getByPlaceholderText(/Describe the deck/i)
+    await user.click(textarea)
+    await user.keyboard('{Backspace}')
+
+    expect(screen.getByText('Slide 3 — Agenda').closest('[data-attachment-id]')).toHaveAttribute(
+      'data-armed',
+      'true',
+    )
+
+    await user.keyboard('{Backspace}')
+
+    expect(onRemoveSlide).toHaveBeenCalledWith(2)
   })
 
   it('disables attachments for text-only models', () => {
