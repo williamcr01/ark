@@ -113,9 +113,9 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByText('1 of 3')).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Answer the questions above/i)).toBeDisabled()
     // Composer stays "active" (glow/ring) while ask_user is awaiting answers.
-    const composer = screen.getByPlaceholderText(/Answer the questions above/i).closest(
-      '[data-slot="agent-composer"]',
-    )
+    const composer = screen
+      .getByPlaceholderText(/Answer the questions above/i)
+      .closest('[data-slot="agent-composer"]')
     expect(composer?.querySelector('.ring-1')).toBeTruthy()
 
     await user.type(screen.getByLabelText('Who is the audience?'), 'Customers')
