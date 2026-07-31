@@ -100,12 +100,13 @@ describe('AppTitleBar accessibility', () => {
   it('does not visually change title-bar controls on hover', () => {
     renderTitleBar()
 
-    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('!hover:bg-transparent')
-    expect(screen.getByRole('button', { name: 'Theme' })).toHaveClass('!hover:bg-transparent')
-    expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('!hover:bg-transparent')
+    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('hover:!bg-transparent')
+    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('active:!translate-y-0')
+    expect(screen.getByRole('button', { name: 'Theme' })).toHaveClass('hover:!bg-transparent')
+    expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('hover:!bg-transparent')
   })
 
-  it('keeps panel controls unhighlighted and removes their arrow when closed', () => {
+  it('keeps panel controls unhighlighted and swaps to the icon without an arrow when closed', () => {
     renderTitleBar({ isChatOpen: true, isStripOpen: false })
 
     const chatToggle = screen.getByRole('button', { name: 'Hide chat panel' })
@@ -114,12 +115,16 @@ describe('AppTitleBar accessibility', () => {
     expect(chatToggle).not.toHaveAttribute('aria-pressed')
     expect(chatToggle).toHaveAttribute('aria-expanded', 'true')
     expect(chatToggle).toHaveAttribute('aria-controls', 'ark-chat-panel')
+    expect(chatToggle).toHaveClass('aria-expanded:!bg-transparent')
+    expect(chatToggle).toHaveClass('hover:!bg-transparent')
     expect(chatToggle.querySelector('svg')).toBeInTheDocument()
 
     expect(stripToggle).not.toHaveAttribute('aria-pressed')
     expect(stripToggle).toHaveAttribute('aria-expanded', 'false')
     expect(stripToggle).toHaveAttribute('aria-controls', 'ark-slide-strip')
-    expect(stripToggle.querySelector('svg')).not.toBeInTheDocument()
+    expect(stripToggle).toHaveClass('aria-expanded:!bg-transparent')
+    expect(stripToggle).toHaveClass('hover:!bg-transparent')
+    expect(stripToggle.querySelector('svg')).toBeInTheDocument()
   })
 
   it('supports keyboard activation for titlebar icon buttons', async () => {

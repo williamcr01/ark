@@ -15,7 +15,9 @@ import {
   DownloadIcon,
   FilePlus2Icon,
   PanelLeftCloseIcon,
+  PanelLeftIcon,
   PanelRightCloseIcon,
+  PanelRightIcon,
   PresentationIcon,
   UploadIcon,
   SunIcon,
@@ -23,7 +25,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
-import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
+import { ButtonGroup } from '@/components/ui/button-group'
 import {
   DropdownMenu,
   DropdownMenuGroup,
@@ -72,11 +74,12 @@ function TitleBarButton({
       className={cn(
         buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
         'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
-        '!hover:bg-transparent',
+        'hover:!bg-transparent dark:hover:!bg-transparent active:!translate-y-0',
+        'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-titlebar-fg)]',
         'disabled:text-[var(--ark-titlebar-muted)]/50',
         active && 'bg-[var(--ark-titlebar-active)]',
-        primary && !disabled && 'text-[var(--ark-accent)] !hover:text-[var(--ark-accent)]',
-        !primary && !disabled && '!hover:text-[var(--ark-titlebar-fg)]',
+        primary && !disabled && 'text-[var(--ark-accent)] hover:!text-[var(--ark-accent)]',
+        !primary && !disabled && 'hover:!text-[var(--ark-titlebar-fg)]',
       )}
       disabled={disabled}
       onClick={onClick}
@@ -123,7 +126,8 @@ function DownloadTitleBarButton({
             buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
             morphMenuTriggerMotionClassName,
             'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
-            '!hover:bg-transparent !hover:text-[var(--ark-accent)]',
+            'hover:!bg-transparent hover:!text-[var(--ark-accent)] dark:hover:!bg-transparent active:!translate-y-0',
+            'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-accent)]',
             'disabled:text-[var(--ark-titlebar-muted)]/50',
           )}
           disabled={disabled}
@@ -198,7 +202,8 @@ function AppearanceMenu({
           aria-label="Theme"
           className={cn(
             morphMenuTriggerMotionClassName,
-            'h-7 px-2 text-xs !hover:bg-transparent !hover:text-[var(--ark-titlebar-fg)]',
+            'h-7 px-2 text-xs hover:!bg-transparent hover:!text-[var(--ark-titlebar-fg)] dark:hover:!bg-transparent active:!translate-y-0',
+            'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-titlebar-fg)]',
           )}
           size="sm"
           variant="ghost"
@@ -350,7 +355,7 @@ function DeckTitleEditor({
       className={cn(
         buttonVariants({ variant: 'ghost' }),
         titleClassName,
-        'inline-flex justify-start !hover:bg-transparent',
+        'inline-flex justify-start hover:!bg-transparent dark:hover:!bg-transparent active:!translate-y-0',
       )}
       disabled={!canEdit}
       onClick={startEditing}
@@ -441,7 +446,7 @@ export function AppTitleBar({
             label={isStripOpen ? 'Hide slide thumbnails' : 'Show slide thumbnails'}
             onClick={onToggleStrip}
           >
-            {isStripOpen ? <PanelLeftCloseIcon /> : null}
+            {isStripOpen ? <PanelLeftCloseIcon /> : <PanelLeftIcon />}
           </TitleBarButton>
         </ButtonGroup>
       ) : null}
@@ -504,14 +509,13 @@ export function AppTitleBar({
         >
           <Maximize2Icon />
         </TitleBarButton>
-        <ButtonGroupSeparator className="mx-0.5 h-4 bg-[var(--ark-titlebar-border)]" />
         <TitleBarButton
           aria-controls="ark-chat-panel"
           aria-expanded={isChatOpen}
           label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
           onClick={onToggleChat}
         >
-          {isChatOpen ? <PanelRightCloseIcon /> : null}
+          {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightIcon />}
         </TitleBarButton>
       </ButtonGroup>
 
