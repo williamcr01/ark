@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -35,6 +35,38 @@ function createDataTransfer() {
     getData: vi.fn((type: string) => data.get(type) ?? ''),
     setData: vi.fn((type: string, value: string) => data.set(type, value)),
   } as unknown as DataTransfer
+}
+
+const THUMBNAIL_HEIGHT = 100
+const THUMBNAIL_GAP = 8
+
+/** Stacks thumbnail rects vertically so pointer-geometry hit detection works in jsdom. */
+function mockThumbnailBounds(container: HTMLElement) {
+  container.querySelectorAll<HTMLElement>('[draggable]').forEach((thumbnail, index) => {
+    const top = index * (THUMBNAIL_HEIGHT + THUMBNAIL_GAP)
+    vi.spyOn(thumbnail, 'getBoundingClientRect').mockReturnValue({
+      bottom: top + THUMBNAIL_HEIGHT,
+      height: THUMBNAIL_HEIGHT,
+      left: 0,
+      right: 152,
+      toJSON: () => ({}),
+      top,
+      width: 152,
+      x: 0,
+      y: top,
+    } as DOMRect)
+  })
+}
+
+function fireDragAt(
+  element: Element,
+  type: 'dragOver' | 'drop',
+  dataTransfer: DataTransfer,
+  clientY: number,
+) {
+  const event = createEvent[type](element, { dataTransfer })
+  Object.defineProperty(event, 'clientY', { value: clientY })
+  fireEvent(element, event)
 }
 
 describe('SlideThumbnailStrip', () => {
@@ -406,9 +438,15 @@ describe('SlideThumbnailStrip', () => {
   })
 
   it('reorders a slide when its thumbnail is dropped on another thumbnail', async () => {
-    const onReorder = vi.fn().mockResolvedValue(undefined)
+    let finishReorder: () => void = () => undefined
+    const onReorder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishReorder = resolve
+        }),
+    )
     const dataTransfer = createDataTransfer()
-    render(
+    const { container } = render(
       <SlideThumbnailStrip
         activeIndex={0}
         isOpen
@@ -418,24 +456,132 @@ describe('SlideThumbnailStrip', () => {
         parsedDeck={createParsedDeck(3)}
       />,
     )
+    mockThumbnailBounds(container)
 
     const source = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
     const target = screen.getByRole('button', { name: 'Go to slide 3' }).closest('[draggable]')!
 
     fireEvent.dragStart(source, { dataTransfer })
     expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '0')
-    fireEvent.dragOver(target, { dataTransfer })
-    expect(target).toHaveClass('ring-2')
-    fireEvent.drop(target, { dataTransfer })
+    // Below the midpoint of slide 3 (top 216, midpoint 266) → insert after it.
+    fireDragAt(target, 'dragOver', dataTransfer, 300)
+    expect(source).toHaveStyle({ transform: 'translateY(calc(200% + 1rem))' })
+    expect(target).toHaveStyle({ transform: 'translateY(calc(-100% - 0.5rem))' })
+    fireDragAt(target, 'drop', dataTransfer, 300)
 
     await waitFor(() => expect(onReorder).toHaveBeenCalledWith(0, 2))
+    expect(source).toHaveStyle({ transform: 'translateY(calc(200% + 1rem))' })
+
+    finishReorder()
+    await waitFor(() =>
+      expect(source).not.toHaveStyle({ transform: 'translateY(calc(200% + 1rem))' }),
+    )
     expect(onReorder).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the preview transforms as soon as the reordered deck renders', async () => {
+    let finishReorder: () => void = () => undefined
+    const onReorder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishReorder = resolve
+        }),
+    )
+    const dataTransfer = createDataTransfer()
+    const props = {
+      activeIndex: 0,
+      isOpen: true,
+      onReorder,
+      onSelect: vi.fn(),
+      orientation: 'vertical',
+    } as const
+    const { container, rerender } = render(
+      <SlideThumbnailStrip {...props} parsedDeck={createParsedDeck(3)} />,
+    )
+    mockThumbnailBounds(container)
+
+    const source = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
+    fireEvent.dragStart(source, { dataTransfer })
+    fireDragAt(source, 'dragOver', dataTransfer, 300)
+    fireDragAt(source, 'drop', dataTransfer, 300)
+
+    await waitFor(() => expect(onReorder).toHaveBeenCalledWith(0, 2))
+    expect(source).toHaveStyle({ transform: 'translateY(calc(200% + 1rem))' })
+
+    // The reordered deck HTML arrives before the reorder promise resolves;
+    // index-based transforms must not be applied on top of the new order.
+    rerender(<SlideThumbnailStrip {...props} parsedDeck={createParsedDeck(3)} />)
+    expect(source).not.toHaveStyle({ transform: 'translateY(calc(200% + 1rem))' })
+
+    finishReorder()
+    await waitFor(() => expect(onReorder).toHaveBeenCalledTimes(1))
+  })
+
+  it('previews and drops at the exact side of a thumbnail', async () => {
+    const onReorder = vi.fn().mockResolvedValue(undefined)
+    const dataTransfer = createDataTransfer()
+    const { container } = render(
+      <SlideThumbnailStrip
+        activeIndex={2}
+        isOpen
+        onReorder={onReorder}
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={createParsedDeck(3)}
+      />,
+    )
+    mockThumbnailBounds(container)
+
+    const source = screen.getByRole('button', { name: 'Go to slide 3' }).closest('[draggable]')!
+    const target = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
+
+    fireEvent.dragStart(source, { dataTransfer })
+
+    // Bottom half of slide 1 (midpoint 50) → insert after it; slide 1 stays put.
+    fireDragAt(target, 'dragOver', dataTransfer, 60)
+    expect(source).toHaveStyle({ transform: 'translateY(calc(-100% - 0.5rem))' })
+    expect(target).not.toHaveStyle({ transform: 'translateY(calc(100% + 0.5rem))' })
+
+    // Top half of slide 1 → insert before it; slide 1 shifts down.
+    fireDragAt(target, 'dragOver', dataTransfer, 20)
+    expect(source).toHaveStyle({ transform: 'translateY(calc(-200% - 1rem))' })
+    expect(target).toHaveStyle({ transform: 'translateY(calc(100% + 0.5rem))' })
+
+    fireDragAt(target, 'drop', dataTransfer, 20)
+    await waitFor(() => expect(onReorder).toHaveBeenCalledWith(2, 0))
+  })
+
+  it('accepts drops in the thumbnail strip gaps', async () => {
+    const onReorder = vi.fn().mockResolvedValue(undefined)
+    const dataTransfer = createDataTransfer()
+    const { container } = render(
+      <SlideThumbnailStrip
+        activeIndex={0}
+        isOpen
+        onReorder={onReorder}
+        onSelect={vi.fn()}
+        orientation="vertical"
+        parsedDeck={createParsedDeck(3)}
+      />,
+    )
+    mockThumbnailBounds(container)
+
+    const source = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
+    const dropZone = container.querySelector<HTMLElement>('[data-slot="slide-reorder-zone"]')!
+
+    fireEvent.dragStart(source, { dataTransfer })
+    fireDragAt(dropZone, 'dragOver', dataTransfer, 1_000)
+
+    expect(source).toHaveStyle({ transform: 'translateY(calc(200% + 1rem))' })
+
+    fireDragAt(dropZone, 'drop', dataTransfer, 1_000)
+    await waitFor(() => expect(onReorder).toHaveBeenCalledWith(0, 2))
   })
 
   it('does not send a same-index reorder', () => {
     const onReorder = vi.fn()
     const dataTransfer = createDataTransfer()
-    render(
+    const { container } = render(
       <SlideThumbnailStrip
         activeIndex={0}
         isOpen
@@ -445,10 +591,12 @@ describe('SlideThumbnailStrip', () => {
         parsedDeck={createParsedDeck(2)}
       />,
     )
+    mockThumbnailBounds(container)
 
     const thumbnail = screen.getByRole('button', { name: 'Go to slide 1' }).closest('[draggable]')!
     fireEvent.dragStart(thumbnail, { dataTransfer })
-    fireEvent.drop(thumbnail, { dataTransfer })
+    // Bottom half of the dragged slide → insertion collapses back to its own index.
+    fireDragAt(thumbnail, 'drop', dataTransfer, 60)
 
     expect(onReorder).not.toHaveBeenCalled()
   })

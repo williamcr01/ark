@@ -33,6 +33,7 @@ import {
   usePreviewBridgeSession,
   type PreviewBridgeCompromiseReason,
 } from '@/hooks/usePreviewBridgeSession'
+import { useAlignedThumbnailUrls } from '@/hooks/useAlignedThumbnailUrls'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
 import { useElementSize } from '@/hooks/useElementSize'
 import { useDeckPreviewSource, type DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
@@ -365,7 +366,12 @@ export function DeckPreview({
     deferredParsedDeck.slideCount === 0 && parsedDeck.slideCount > 0
       ? parsedDeck
       : deferredParsedDeck
-  const deferredThumbnailUrls = useDeferredValue(thumbnailUrls)
+  // Align against the deferred pair the strip renders so stale per-index PNGs
+  // follow their slides through reorders instead of showing the old order.
+  const deferredThumbnailUrls = useAlignedThumbnailUrls(
+    stripParsedDeck,
+    useDeferredValue(thumbnailUrls),
+  )
 
   useEffect(() => {
     activeSlideIndexRef.current = activeSlideIndex

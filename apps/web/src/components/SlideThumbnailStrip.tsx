@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -154,7 +155,7 @@ function computeMountedIndices(
   return new Set(selected)
 }
 
-function LazyThumbnail({
+const LazyThumbnail = memo(function LazyThumbnail({
   active,
   contextAttached,
   index,
@@ -332,25 +333,31 @@ function LazyThumbnail({
       ) : null}
     </div>
   )
-}
+})
 
 function useThumbnailReorder({
   activeIndex,
   activeItemRef,
   onReorder,
   orientation,
+  parsedDeck,
   slideCount,
 }: {
   activeIndex: number
   activeItemRef: RefObject<HTMLDivElement | null>
   onReorder?: SlideThumbnailStripProps['onReorder']
   orientation: SlideThumbnailStripProps['orientation']
+  parsedDeck: ParsedDeck
   slideCount: number
 }) {
   const thumbnailRefs = useRef<(HTMLDivElement | null)[]>([])
+  const thumbnailBoundsRef = useRef<(DOMRect | null)[]>([])
+  const dragScrollRef = useRef<{ element: HTMLElement; left: number; top: number } | null>(null)
+  const dragDeckRef = useRef<ParsedDeck | null>(null)
   const reorderPendingRef = useRef(false)
+  const draggedIndexRef = useRef<number | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const [insertionIndex, setInsertionIndex] = useState<number | null>(null)
   const [isReordering, setIsReordering] = useState(false)
 
   const commitReorder = useCallback(
@@ -404,50 +411,129 @@ function useThumbnailReorder({
   )
 
   const clearDragState = useCallback(() => {
+    draggedIndexRef.current = null
+    thumbnailBoundsRef.current = []
+    dragScrollRef.current = null
+    dragDeckRef.current = null
     setDraggedIndex(null)
-    setDropIndex(null)
+    setInsertionIndex(null)
   }, [])
+
+  // The reordered deck HTML propagates before the reorder promise resolves.
+  // Index-based preview transforms applied on top of the already-reordered deck
+  // would visually re-shuffle it, so drop the preview as soon as the strip
+  // renders a deck other than the one this drag started on.
+  if (draggedIndex !== null && dragDeckRef.current !== parsedDeck) {
+    clearDragState()
+  }
+
+  // Insertion point is derived purely from the pointer position against bounds
+  // captured at drag start. The preview translates thumbnails under the cursor,
+  // so the event's target element must not participate in hit detection —
+  // otherwise the computed index oscillates as thumbnails shift.
+  const getInsertionIndex = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const dragScroll = dragScrollRef.current
+      const scrollOffset = dragScroll
+        ? orientation === 'vertical'
+          ? dragScroll.element.scrollTop - dragScroll.top
+          : dragScroll.element.scrollLeft - dragScroll.left
+        : 0
+      const coordinate = (orientation === 'vertical' ? event.clientY : event.clientX) + scrollOffset
+
+      for (let slideIndex = 0; slideIndex < slideCount; slideIndex += 1) {
+        const bounds = thumbnailBoundsRef.current[slideIndex]
+        if (!bounds) continue
+
+        const midpoint =
+          orientation === 'vertical'
+            ? bounds.top + bounds.height / 2
+            : bounds.left + bounds.width / 2
+        if (coordinate < midpoint) return slideIndex
+      }
+
+      return slideCount
+    },
+    [orientation, slideCount],
+  )
+
+  const handleZoneDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (draggedIndexRef.current === null || isReordering) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      setInsertionIndex(getInsertionIndex(event))
+    },
+    [getInsertionIndex, isReordering],
+  )
+
+  const handleZoneDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const fromIndex = draggedIndexRef.current
+      if (fromIndex === null) return
+
+      event.preventDefault()
+      const insertion = getInsertionIndex(event)
+      const toIndex = insertion > fromIndex ? insertion - 1 : insertion
+
+      draggedIndexRef.current = null
+      if (toIndex === fromIndex) {
+        clearDragState()
+        return
+      }
+
+      void commitReorder(fromIndex, toIndex).finally(clearDragState)
+    },
+    [clearDragState, commitReorder, getInsertionIndex],
+  )
 
   const getDragProps = useCallback(
     (index: number) => ({
       draggable: Boolean(onReorder) && !isReordering,
-      onDragEnd: clearDragState,
-      onDragOver: (event: DragEvent<HTMLDivElement>) => {
-        if (draggedIndex === null || isReordering) return
-        event.preventDefault()
-        event.dataTransfer.dropEffect = 'move'
-        setDropIndex(index)
+      onDragEnd: () => {
+        if (!reorderPendingRef.current) clearDragState()
       },
       onDragStart: (event: DragEvent<HTMLDivElement>) => {
+        const scrollViewport = event.currentTarget.closest<HTMLElement>(
+          '[data-slot="scroll-area-viewport"]',
+        )
+        dragScrollRef.current = scrollViewport
+          ? {
+              element: scrollViewport,
+              left: scrollViewport.scrollLeft,
+              top: scrollViewport.scrollTop,
+            }
+          : null
+        thumbnailBoundsRef.current = thumbnailRefs.current.map(
+          (thumbnail) => thumbnail?.getBoundingClientRect() ?? null,
+        )
+        dragDeckRef.current = parsedDeck
+        draggedIndexRef.current = index
         setDraggedIndex(index)
         event.dataTransfer.effectAllowed = 'move'
         event.dataTransfer.setData('text/plain', String(index))
-      },
-      onDrop: (event: DragEvent<HTMLDivElement>) => {
-        event.preventDefault()
-        const transferredIndex = Number.parseInt(event.dataTransfer.getData('text/plain'), 10)
-        const fromIndex = draggedIndex ?? (Number.isNaN(transferredIndex) ? null : transferredIndex)
-
-        clearDragState()
-        if (fromIndex !== null) void commitReorder(fromIndex, index)
       },
       ref: (node: HTMLDivElement | null) => {
         thumbnailRefs.current[index] = node
         if (index === activeIndex) activeItemRef.current = node
       },
     }),
-    [
-      activeIndex,
-      activeItemRef,
-      clearDragState,
-      commitReorder,
-      draggedIndex,
-      isReordering,
-      onReorder,
-    ],
+    [activeIndex, activeItemRef, clearDragState, isReordering, onReorder, parsedDeck],
   )
 
-  return { draggedIndex, dropIndex, getDragProps, handleKeyboardReorder, isReordering }
+  const dropZoneProps = {
+    onDragOver: handleZoneDragOver,
+    onDrop: handleZoneDrop,
+  }
+
+  return {
+    draggedIndex,
+    dropZoneProps,
+    getDragProps,
+    handleKeyboardReorder,
+    insertionIndex,
+    isReordering,
+  }
 }
 
 export function SlideThumbnailStrip({
@@ -476,8 +562,29 @@ export function SlideThumbnailStrip({
     () => ({ entries: new Map<number, ThumbnailSrcDocCacheEntry>() }),
     [],
   )
-  const { draggedIndex, dropIndex, getDragProps, handleKeyboardReorder, isReordering } =
-    useThumbnailReorder({ activeIndex, activeItemRef, onReorder, orientation, slideCount })
+  const {
+    draggedIndex,
+    dropZoneProps,
+    getDragProps,
+    handleKeyboardReorder,
+    insertionIndex,
+    isReordering,
+  } = useThumbnailReorder({
+    activeIndex,
+    activeItemRef,
+    onReorder,
+    orientation,
+    parsedDeck,
+    slideCount,
+  })
+  const reorderDestination =
+    draggedIndex !== null && insertionIndex !== null
+      ? insertionIndex > draggedIndex
+        ? insertionIndex - 1
+        : insertionIndex
+      : null
+  const showDropPreview =
+    reorderDestination !== null && draggedIndex !== null && reorderDestination !== draggedIndex
 
   const computedMountedIndices = useMemo(
     () => computeMountedIndices(slideCount, activeIndex, visibleIndices),
@@ -686,6 +793,8 @@ export function SlideThumbnailStrip({
       <ScrollArea className="min-h-0 flex-1">
         <div
           className={cn('p-2', orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2')}
+          data-slot="slide-reorder-zone"
+          {...dropZoneProps}
         >
           {Array.from({ length: slideCount }, (_, index) => {
             const mountContent = contentEnabled && mountedIndices.has(index)
@@ -696,19 +805,45 @@ export function SlideThumbnailStrip({
                   ? getCachedThumbnailSrcDoc(index)
                   : getExistingThumbnailSrcDoc(index)
                 : null
+            const previewOffset =
+              !showDropPreview || draggedIndex === null || reorderDestination === null
+                ? 0
+                : index === draggedIndex
+                  ? reorderDestination - draggedIndex
+                  : draggedIndex < reorderDestination &&
+                      index > draggedIndex &&
+                      index <= reorderDestination
+                    ? -1
+                    : draggedIndex > reorderDestination &&
+                        index >= reorderDestination &&
+                        index < draggedIndex
+                      ? 1
+                      : 0
+            const previewDistance = Math.abs(previewOffset)
+            const previewTranslation = previewOffset
+              ? `calc(${previewOffset < 0 ? '-' : ''}${previewDistance * 100}% ${previewOffset < 0 ? '-' : '+'} ${previewDistance * 0.5}rem)`
+              : null
 
             return (
               <div
                 className={cn(
                   'relative rounded-sm',
                   onReorder && !isReordering && 'cursor-grab active:cursor-grabbing',
-                  draggedIndex === index && 'opacity-50',
-                  dropIndex === index &&
-                    draggedIndex !== index &&
-                    'ring-2 ring-[var(--ark-accent)] ring-offset-2 ring-offset-[var(--ark-panel)]',
+                  draggedIndex !== null && 'transition-transform duration-100 ease-out',
+                  draggedIndex === index && 'z-20 opacity-70',
                 )}
                 {...getDragProps(index)}
                 key={index}
+                style={
+                  previewTranslation
+                    ? {
+                        transform:
+                          orientation === 'vertical'
+                            ? `translateY(${previewTranslation})`
+                            : `translateX(${previewTranslation})`,
+                      }
+                    : undefined
+                }
               >
                 <LazyThumbnail
                   active={index === activeIndex}
@@ -724,7 +859,7 @@ export function SlideThumbnailStrip({
                   prioritizeLoad={index < INITIAL_EAGER_THUMBNAILS || index === activeIndex}
                   srcDoc={srcDoc}
                   thumbnailUrl={thumbnailUrl}
-                  trackVisibility={isOpen}
+                  trackVisibility={isOpen && draggedIndex === null}
                 />
               </div>
             )
