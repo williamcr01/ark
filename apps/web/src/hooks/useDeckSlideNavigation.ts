@@ -20,7 +20,6 @@ import {
   isAllowedBridgeMessageOrigin,
   resolveAppOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
-import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 
 const PREVIEW_NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 const PRESENT_NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown', ' ', 'Spacebar', 'Enter', 'PageDown'])
@@ -32,7 +31,6 @@ type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
 const SLIDE_PATCH_TIMEOUT_MS = 2_000
 
 export type DeckNavOptions = {
-  runtimeMode?: DeckRuntimeMode
   initialSlideIndex?: number
   keyboardMode?: DeckNavKeyboardMode
   shouldSuspendKeyboard?: () => boolean
@@ -52,11 +50,6 @@ export type DeckNavOptions = {
    * fall back to a full preview reload.
    */
   onSlidePatchFailed?: () => void
-  /**
-   * @deprecated Independent load sync races the bridge session. Prefer
-   * calling goToSlide from the session-gated onFrameLoad path when armed.
-   */
-  syncOnLoad?: boolean
   /** Synchronous send gate from usePreviewBridgeSession.canPostToFrame. */
   canPostToFrame?: () => boolean
   /** When false, ignore inbound bridge messages (session not armed). */
@@ -144,7 +137,6 @@ export function useDeckSlideNavigation(
     onDeckReady,
     onRuntimeError,
     onSlidePatchFailed,
-    syncOnLoad = false,
     canPostToFrame,
     shouldAcceptInbound,
   } = options
@@ -158,9 +150,7 @@ export function useDeckSlideNavigation(
   const iframeGenerationRef = useRef(0)
   const canPostToFrameRef = useRef(canPostToFrame)
   const shouldAcceptInboundRef = useRef(shouldAcceptInbound)
-  const pendingFrameSyncIndexRef = useRef<number | null>(
-    syncOnLoad ? clampSlideIndex(initialSlideIndex, slideCount) : null,
-  )
+  const pendingFrameSyncIndexRef = useRef<number | null>(null)
   const onSlidePatchFailedRef = useRef(onSlidePatchFailed)
   const patchSequenceRef = useRef(0)
   const pendingSlidePatchRef = useRef<{ patchId: string; slideCount: number } | null>(null)
@@ -209,10 +199,8 @@ export function useDeckSlideNavigation(
 
   useEffect(() => {
     iframeGenerationRef.current += 1
-    pendingFrameSyncIndexRef.current = syncOnLoad
-      ? clampSlideIndex(activeSlideIndexRef.current, slideCount)
-      : null
-  }, [html, reloadRevision, sandboxOrigin, slideCount, syncOnLoad])
+    pendingFrameSyncIndexRef.current = null
+  }, [html, reloadRevision, sandboxOrigin, slideCount])
 
   // Only a real frame reload drops an in-flight patch. A live patch changes
   // slideCount without reloading, and its reply still has to be honoured.
@@ -504,7 +492,6 @@ export function useDeckSlideNavigation(
     reloadRevision,
     sandboxOrigin,
     slideCount,
-    syncOnLoad,
   ])
 
   useEffect(() => {

@@ -115,7 +115,7 @@ export function buildTemporaryAssetUrl(id: string) {
 
 const DECK_SCOPED_ASSET_URL_PATTERN =
   /^\/api\/decks\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
-const LEGACY_ASSET_URL_PATTERN = /^\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
+const TEMPORARY_ASSET_URL_PATTERN = /^\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
 
 /** Extract an asset id from an Ark-owned asset URL, if present. */
 export function parseAssetIdFromUrl(url: string): string | null {
@@ -124,7 +124,7 @@ export function parseAssetIdFromUrl(url: string): string | null {
     return null
   }
   const deckScoped = DECK_SCOPED_ASSET_URL_PATTERN.exec(trimmed)
-  const id = deckScoped?.[2] ?? LEGACY_ASSET_URL_PATTERN.exec(trimmed)?.[1]
+  const id = deckScoped?.[2] ?? TEMPORARY_ASSET_URL_PATTERN.exec(trimmed)?.[1]
 
   return id && isValidAssetId(id) ? id : null
 }

@@ -20,7 +20,6 @@ const catalogEntryToModelInfo = (
   unavailableReason?: ModelUnavailableReason,
 ): ModelInfo => {
   const reasoningEfforts = [...entry.reasoningEfforts] as ReasoningEffort[]
-  const supportsReasoning = reasoningEfforts.length > 0
 
   return {
     id: toModelRef(entry.provider, entry.modelId),
@@ -33,7 +32,6 @@ const catalogEntryToModelInfo = (
     ...(entry.defaultReasoningEffort
       ? { defaultReasoningEffort: entry.defaultReasoningEffort }
       : {}),
-    supportsReasoning,
     supportsAttachments: entry.supportsAttachments !== false,
   }
 }
@@ -68,11 +66,6 @@ export const getDefaultModel = () => {
   if (configured) {
     const { provider, modelId } = parseModelRef(configured)
     return `${provider}:${modelId}`
-  }
-
-  const openaiModel = process.env.OPENAI_MODEL?.trim()
-  if (openaiModel) {
-    return `openai:${openaiModel}`
   }
 
   return DEFAULT_MODEL_REF
@@ -356,7 +349,6 @@ export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelI
       available: false,
       unavailableReason,
       reasoningEfforts: [],
-      supportsReasoning: false,
       supportsAttachments: true,
     },
   ]

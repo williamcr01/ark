@@ -13,6 +13,7 @@ import {
   createEditorTransformCommitMessage,
   createEditorTransformCancelMessage,
   createEditorAssignIdMessage,
+  createEditorConnectAckMessage,
   createEditorTransformEndMessage,
   createEditorTransformPreviewMessage,
   EDITOR_TRANSFORM_END_MESSAGE_TYPE,
@@ -27,6 +28,9 @@ import {
   EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
   EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE,
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
+  EDITOR_BRIDGE_PROTOCOL_VERSION,
+  EDITOR_CONNECT_MESSAGE_TYPE,
+  EDITOR_SESSION_HANDOFF_KEY,
   isEditorMessage,
   isEditorRuntimeMessage,
   isEditorSelectionInfo,
@@ -36,6 +40,34 @@ import {
 import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable'
 
 type RuntimeMessage = Record<string, unknown>
+
+type TestMessageEvent = { data: unknown }
+
+class TestMessagePort {
+  peer: TestMessagePort | null = null
+  onmessage: ((event: TestMessageEvent) => void) | null = null
+
+  postMessage(data: unknown) {
+    this.peer?.onmessage?.({ data })
+  }
+
+  start() {}
+
+  close() {
+    this.peer = null
+    this.onmessage = null
+  }
+}
+
+class TestMessageChannel {
+  port1 = new TestMessagePort()
+  port2 = new TestMessagePort()
+
+  constructor() {
+    this.port1.peer = this.port2
+    this.port2.peer = this.port1
+  }
+}
 
 function rect(left: number, top: number, width: number, height: number): DOMRect {
   return {
@@ -61,17 +93,51 @@ async function loadEditorRuntime(
   } = {},
 ) {
   const messages: RuntimeMessage[] = []
-  let parentWindow: { postMessage: (message: RuntimeMessage) => void }
+  let parentWindow: {
+    postMessage: (
+      message: RuntimeMessage,
+      targetOrigin?: string,
+      transfer?: TestMessagePort[],
+    ) => void
+  }
+  let shellPort: TestMessagePort | null = null
+  let resolveConnected: (() => void) | null = null
+  const connected = new Promise<void>((resolve) => {
+    resolveConnected = resolve
+  })
   const accelerateNudgeTimer = options.accelerateNudgeTimer !== false
   const script = buildDeckEditorBridgeRuntimeScript({
     slideSelectors: options.slideSelectors ?? ['section.slide'],
+    parentOrigin: 'https://ark.test',
   })
   const dom = new JSDOM(`<!doctype html><body>${markup}<script>${script}</script></body>`, {
     pretendToBeVisual: true,
     runScripts: 'dangerously',
     url: 'https://ark.test/preview',
     beforeParse(window) {
-      parentWindow = { postMessage: (message) => messages.push(message) }
+      Object.defineProperty(window, EDITOR_SESSION_HANDOFF_KEY, {
+        configurable: true,
+        value: 'test-editor-session',
+      })
+      Object.defineProperty(window, 'MessageChannel', {
+        configurable: true,
+        value: TestMessageChannel,
+      })
+      parentWindow = {
+        postMessage: (message, _targetOrigin, transfer) => {
+          if (message.type !== EDITOR_CONNECT_MESSAGE_TYPE || !transfer?.[0]) {
+            return
+          }
+
+          shellPort = transfer[0]
+          shellPort.onmessage = (event) => {
+            messages.push(event.data as RuntimeMessage)
+          }
+          shellPort.start()
+          shellPort.postMessage(createEditorConnectAckMessage())
+          resolveConnected?.()
+        },
+      }
       Object.defineProperty(window, 'parent', { configurable: true, value: parentWindow })
       // Nudge commit uses an exact 400ms idle timer; collapse only that delay so
       // coverage stays the same without sleeping wall-clock time per assertion.
@@ -89,23 +155,20 @@ async function loadEditorRuntime(
   })
 
   await new Promise<void>((resolve) => dom.window.addEventListener('load', () => resolve()))
-  dom.window.dispatchEvent(
-    new dom.window.MessageEvent('message', {
-      data: {
-        type: EDITOR_ENABLE_MESSAGE_TYPE,
-        slideIndex: options.slideIndex ?? 0,
-        tool: 'select',
-      },
-      source: parentWindow! as unknown as Window,
-    }),
-  )
+  await connected
+  shellPort?.postMessage({
+    type: EDITOR_ENABLE_MESSAGE_TYPE,
+    slideIndex: options.slideIndex ?? 0,
+    tool: 'select',
+    protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+  })
 
   const flushNudgeTimer = () =>
     new Promise<void>((resolve) => {
       dom.window.setTimeout(resolve, accelerateNudgeTimer ? 0 : 450)
     })
 
-  return { dom, messages, flushNudgeTimer }
+  return { dom, messages, flushNudgeTimer, shellPort: shellPort! }
 }
 
 function pointerEvent(dom: JSDOM, type: string, pointerId: number, clientX = 0, clientY = 0) {
@@ -1290,7 +1353,7 @@ describe('deck editor bridge protocol', () => {
   })
 
   it('ark:editor-transform-end commits a started gesture at the last preview geometry', async () => {
-    const { dom, messages } = await loadEditorRuntime(
+    const { dom, messages, shellPort } = await loadEditorRuntime(
       '<section class="slide"><h1 id="heading">Title</h1></section>',
     )
     const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
@@ -1322,12 +1385,7 @@ describe('deck editor bridge protocol', () => {
     )
     messages.length = 0
 
-    dom.window.dispatchEvent(
-      new dom.window.MessageEvent('message', {
-        data: createEditorTransformEndMessage(),
-        source: (dom.window as unknown as { parent: Window }).parent,
-      }),
-    )
+    shellPort.postMessage(createEditorTransformEndMessage())
 
     const commit = messages.find((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)
     expect(commit).toMatchObject({
@@ -1385,7 +1443,7 @@ describe('deck editor bridge protocol', () => {
   })
 
   it('assigns a stable id onto a transient live element', async () => {
-    const { dom, messages } = await loadEditorRuntime(
+    const { dom, messages, shellPort } = await loadEditorRuntime(
       '<section class="slide"><h1 id="heading">Title</h1></section>',
     )
     const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
@@ -1401,18 +1459,13 @@ describe('deck editor bridge protocol', () => {
     )?.selection as { elementId: string }
     expect(selection.elementId).toMatch(/^transient-el-/)
 
-    dom.window.dispatchEvent(
-      new dom.window.MessageEvent('message', {
-        data: {
-          type: 'ark:editor-assign-id',
-          fromElementId: selection.elementId,
-          toElementId: 'ark-el-title',
-          slideIndex: 0,
-          managed: true,
-        },
-        source: (dom.window as unknown as { parent: Window }).parent,
-      }),
-    )
+    shellPort.postMessage({
+      type: 'ark:editor-assign-id',
+      fromElementId: selection.elementId,
+      toElementId: 'ark-el-title',
+      slideIndex: 0,
+      managed: true,
+    })
 
     expect(heading.getAttribute('data-ark-id')).toBe('ark-el-title')
     expect(heading.getAttribute('data-ark-managed')).toBe('true')

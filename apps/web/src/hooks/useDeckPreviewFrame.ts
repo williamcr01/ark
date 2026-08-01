@@ -1,16 +1,10 @@
 import { useMemo, useState } from 'react'
 
-import {
-  fingerprintPreviewHtml,
-  useMemoizedClientHandshake,
-  useSandboxPreview,
-} from '@/hooks/useSandboxPreview'
-import { getPreviewHtml, useSrcDocPreviewFallback } from '@/lib/deck-preview'
+import { fingerprintPreviewHtml, useSandboxPreview } from '@/hooks/useSandboxPreview'
 
 export type DeckPreviewFrameModel = {
   iframeKey: string
   iframeSrc?: string
-  iframeSrcDoc?: string
   sandboxOrigin: string | null
   isLoading: boolean
   /** True while the iframe still shows an older successful session. */
@@ -26,16 +20,10 @@ export function useDeckPreviewFrame(
   enabled: boolean,
   reloadRevision = 0,
 ): DeckPreviewFrameModel {
-  const usesSrcDocFallback = useSrcDocPreviewFallback()
-  const sandboxPreview = useSandboxPreview(html, enabled && !usesSrcDocFallback, reloadRevision)
-
-  const srcDocHtml =
-    usesSrcDocFallback && enabled && html.trim() ? getPreviewHtml(html, { editorBridge: true }) : ''
-  const contentFingerprint = fingerprintPreviewHtml(usesSrcDocFallback ? srcDocHtml || html : html)
+  const sandboxPreview = useSandboxPreview(html, enabled, reloadRevision)
+  const contentFingerprint = fingerprintPreviewHtml(html)
   const sandboxSessionIdentity = sandboxPreview.sessionToken ?? sandboxPreview.previewUrl
-  const contentIdentity = usesSrcDocFallback
-    ? `srcdoc:${contentFingerprint}:r${reloadRevision}`
-    : `sandbox:${sandboxSessionIdentity ?? `pending:${contentFingerprint}`}:r${reloadRevision}`
+  const contentIdentity = `sandbox:${sandboxSessionIdentity ?? `pending:${contentFingerprint}`}:r${reloadRevision}`
 
   const [generationState, setGenerationState] = useState({
     identity: contentIdentity,
@@ -54,30 +42,16 @@ export function useDeckPreviewFrame(
       ? generationState.generation
       : generationState.generation + 1
 
-  const srcDocHandshake = useMemoizedClientHandshake(
-    usesSrcDocFallback ? `${contentIdentity}:${generation}` : '',
-  )
-
   return useMemo(() => {
-    if (usesSrcDocFallback || !enabled || !html.trim()) {
-      const handshake = usesSrcDocFallback && enabled && html.trim() ? srcDocHandshake : null
-      const iframeSrcDoc =
-        enabled && html.trim()
-          ? getPreviewHtml(html, {
-              editorBridge: true,
-              handshake: handshake ?? undefined,
-            })
-          : undefined
-
+    if (!enabled || !html.trim()) {
       return {
-        iframeKey: usesSrcDocFallback ? `srcdoc:${generation}:${contentFingerprint}` : 'empty',
-        iframeSrcDoc,
+        iframeKey: 'empty',
         sandboxOrigin: null,
         isLoading: false,
         isStale: false,
         error: null,
         usesSandboxHost: false,
-        handshake,
+        handshake: null,
       }
     }
 
@@ -92,7 +66,6 @@ export function useDeckPreviewFrame(
       handshake: sandboxPreview.handshake,
     }
   }, [
-    contentFingerprint,
     contentIdentity,
     enabled,
     generation,
@@ -103,7 +76,5 @@ export function useDeckPreviewFrame(
     sandboxPreview.isStale,
     sandboxPreview.previewUrl,
     sandboxPreview.sandboxOrigin,
-    srcDocHandshake,
-    usesSrcDocFallback,
   ])
 }

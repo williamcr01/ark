@@ -14,7 +14,7 @@ const models: AvailableModel[] = [
     available: true,
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
     defaultReasoningEffort: 'medium',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'openai:gpt-5.4-mini',
@@ -24,7 +24,7 @@ const models: AvailableModel[] = [
     available: true,
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
     defaultReasoningEffort: 'none',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'openai:gpt-5.5',
@@ -35,7 +35,7 @@ const models: AvailableModel[] = [
     unavailableReason: 'missing_api_key',
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
     defaultReasoningEffort: 'medium',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'anthropic:claude-sonnet-5',
@@ -46,7 +46,7 @@ const models: AvailableModel[] = [
     unavailableReason: 'missing_api_key',
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     defaultReasoningEffort: 'high',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'google:gemini-3.5-flash',
@@ -56,7 +56,7 @@ const models: AvailableModel[] = [
     available: true,
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     defaultReasoningEffort: 'medium',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'openai:text-only-fixture',
@@ -65,7 +65,6 @@ const models: AvailableModel[] = [
     name: 'Text Only Fixture',
     available: true,
     reasoningEfforts: [],
-    supportsReasoning: false,
     supportsAttachments: false,
   },
 ]

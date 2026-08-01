@@ -354,11 +354,6 @@ export function renderThumbnailPreviewDocument(
   }
 }
 
-/** @deprecated Prefer {@link renderThumbnailPreviewDocument} when CSP headers need the nonce. */
-export function renderThumbnailPreviewHtml(html: string, options: { parentOrigin?: string } = {}) {
-  return renderThumbnailPreviewDocument(html, options).html
-}
-
 /**
  * The parent origin is derived from the Host header (so ephemeral-port test
  * servers work); parse and re-serialize it through URL so malformed values
@@ -551,20 +546,6 @@ export function createThumbnailRenderAccessGuard(renderSecret: string) {
 
     next()
   }
-}
-
-/** @deprecated Prefer createThumbnailRenderAccessGuard — kept for older call sites/tests. */
-export function thumbnailRenderLoopbackGuard(
-  request: Request,
-  response: Response,
-  next: NextFunction,
-) {
-  if (!isLoopbackAddress(request.socket.remoteAddress)) {
-    response.status(403).send('Thumbnail render routes are only available on loopback.')
-    return
-  }
-
-  next()
 }
 
 /**

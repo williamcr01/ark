@@ -31,7 +31,7 @@ You can pick the model in two ways:
 ARK_DEFAULT_MODEL=anthropic:claude-sonnet-5
 ```
 
-`OPENAI_MODEL` is still supported as a legacy OpenAI-only default. Defaults should reference a curated catalog entry (for example `openai:gpt-5.6-luna`).
+Defaults should reference a curated catalog entry (for example `openai:gpt-5.6-luna`).
 
 Optional API port (default `8787`). Both the Express API and Vite's `/api` proxy read `PORT` from `.env` or your shell environment — keep them in sync by setting it once and restarting `pnpm dev`:
 
@@ -84,7 +84,6 @@ Optional env vars (see `.env.example`):
 
 - `ARK_SANDBOX_ORIGIN` / `SANDBOX_PORT` — sandbox host origin (default `http://localhost:5174`)
 - `ARK_APP_ORIGIN` — app shell origin used for parent/deck `postMessage` scoping (default `http://localhost:5173`)
-- `VITE_ARK_PREVIEW_SRCDOC=true` — force legacy inline `srcDoc` preview instead of the sandbox host
 - `ARK_THUMBNAIL_RENDERER=off` — disable sandbox-backed PNG thumbnails (clients keep `srcDoc` fallback)
 - `ARK_CHROMIUM_PATH` — Chromium/Chrome binary for thumbnail rendering and browser smoke
 - `ARK_CHROMIUM_NO_SANDBOX=true` — always launch thumbnail Chromium with `--no-sandbox` (skip sandboxed probe; also `1`/`yes`/`on`)

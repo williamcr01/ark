@@ -308,4 +308,26 @@ describe('createDeckStore', () => {
       }),
     ).toBeNull()
   })
+  it('ignores pre-versioned deck files', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+    const preVersionedDeck = {
+      id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+      html: sampleHtml,
+      title: 'Quarterly Review',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    const { writeFile, mkdir } = await import('node:fs/promises')
+    await mkdir(dataDir, { recursive: true })
+    await writeFile(
+      path.join(dataDir, `${preVersionedDeck.id}.json`),
+      JSON.stringify(preVersionedDeck),
+      'utf8',
+    )
+
+    expect(await store.getDeck(preVersionedDeck.id)).toBeNull()
+    expect(await store.listVersions(preVersionedDeck.id)).toBeNull()
+  })
 })

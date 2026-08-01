@@ -4,18 +4,16 @@ import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
 describe('buildReasoningProviderOptions', () => {
   it('maps OpenAI effort with reasoning summary except for none', () => {
-    expect(buildReasoningProviderOptions('openai', 'high', 'openai:gpt-5.6-sol')).toEqual({
+    expect(buildReasoningProviderOptions('high', 'openai:gpt-5.6-sol')).toEqual({
       openai: { reasoningEffort: 'high', reasoningSummary: 'auto' },
     })
-    expect(buildReasoningProviderOptions('openai', 'none', 'openai:gpt-5.5')).toEqual({
+    expect(buildReasoningProviderOptions('none', 'openai:gpt-5.5')).toEqual({
       openai: { reasoningEffort: 'none' },
     })
   })
 
   it('maps Claude adaptive models to adaptive thinking + effort', () => {
-    expect(
-      buildReasoningProviderOptions('anthropic', 'xhigh', 'anthropic:claude-opus-4-8'),
-    ).toEqual({
+    expect(buildReasoningProviderOptions('xhigh', 'anthropic:claude-opus-4-8')).toEqual({
       anthropic: {
         thinking: { type: 'adaptive', display: 'summarized' },
         effort: 'xhigh',
@@ -24,15 +22,13 @@ describe('buildReasoningProviderOptions', () => {
   })
 
   it('maps Claude Haiku to budget-based thinking', () => {
-    expect(
-      buildReasoningProviderOptions('anthropic', 'medium', 'anthropic:claude-haiku-4-5'),
-    ).toEqual({
+    expect(buildReasoningProviderOptions('medium', 'anthropic:claude-haiku-4-5')).toEqual({
       anthropic: { thinking: { type: 'enabled', budgetTokens: 8192 } },
     })
   })
 
   it('maps Gemini 3.x models to thinkingLevel', () => {
-    expect(buildReasoningProviderOptions('google', 'minimal', 'google:gemini-3.6-flash')).toEqual({
+    expect(buildReasoningProviderOptions('minimal', 'google:gemini-3.6-flash')).toEqual({
       google: {
         thinkingConfig: { includeThoughts: true, thinkingLevel: 'minimal' },
       },
@@ -40,6 +36,6 @@ describe('buildReasoningProviderOptions', () => {
   })
 
   it('returns empty options for unknown providers', () => {
-    expect(buildReasoningProviderOptions('unknown', 'low')).toEqual({})
+    expect(buildReasoningProviderOptions('low', 'unknown:model')).toEqual({})
   })
 })

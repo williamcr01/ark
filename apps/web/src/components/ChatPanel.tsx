@@ -611,7 +611,7 @@ export function ChatPanel({
   generationStatus,
 }: ChatPanelProps) {
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
-  const supportsAttachments = selectedModelInfo?.supportsAttachments !== false
+  const supportsAttachments = selectedModelInfo?.supportsAttachments ?? false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const modelWarningsKey = modelWarnings.join('\n')

@@ -1,17 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-import { fingerprintPreviewHtml } from '@/hooks/useSandboxPreview'
-
-vi.mock('@/lib/deck-preview', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/deck-preview')>('@/lib/deck-preview')
+vi.mock('@/hooks/useSandboxPreview', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useSandboxPreview')>(
+    '@/hooks/useSandboxPreview',
+  )
   return {
     ...actual,
-    useSrcDocPreviewFallback: () => true,
-    getPreviewHtml: (html: string, options: { handshake?: string; editorBridge?: boolean } = {}) =>
-      `<!--preview:${options.handshake ?? ''}:${options.editorBridge ? 'edit' : 'view'}-->${html}`,
+    useSandboxPreview: () => ({
+      previewUrl: 'http://localhost:5174/preview/test',
+      sandboxOrigin: 'http://localhost:5174',
+      sessionToken: 'test-token',
+      handshake: 'test-handshake',
+      isLoading: false,
+      isStale: false,
+      error: null,
+    }),
   }
 })
+
+import { fingerprintPreviewHtml } from '@/hooks/useSandboxPreview'
 
 import { useDeckPreviewFrame } from './useDeckPreviewFrame'
 
@@ -24,20 +32,20 @@ describe('fingerprintPreviewHtml', () => {
   })
 })
 
-describe('useDeckPreviewFrame srcDoc keying', () => {
-  it('changes iframeKey for equal-length HTML edits', () => {
+describe('useDeckPreviewFrame sandbox keying', () => {
+  it('keeps the current sandbox iframe while an updated session is pending', () => {
     const first = renderHook(({ html }) => useDeckPreviewFrame(html, true), {
       initialProps: { html: '<section class="slide">AAAA</section>' },
     })
 
     const firstKey = first.result.current.iframeKey
-    expect(firstKey).toContain('srcdoc:')
+    expect(firstKey).toContain('sandbox:')
     expect(first.result.current.handshake).toBeTruthy()
 
     first.rerender({ html: '<section class="slide">BBBB</section>' })
 
-    expect(first.result.current.iframeKey).not.toBe(firstKey)
-    expect(first.result.current.iframeKey).toContain('srcdoc:')
+    expect(first.result.current.iframeKey).toBe(firstKey)
+    expect(first.result.current.iframeKey).toContain('sandbox:')
   })
 
   it('keeps iframeKey stable across same-HTML rerenders', () => {
@@ -63,10 +71,9 @@ describe('useDeckPreviewFrame srcDoc keying', () => {
     expect(view.result.current.iframeKey).not.toBe(viewKey)
   })
 
-  it('always injects the dormant editor runtime for interactive previews', () => {
+  it('uses the sandbox host for interactive previews', () => {
     const view = renderHook(() => useDeckPreviewFrame('<section class="slide">Hi</section>', true))
 
-    expect(view.result.current.iframeSrcDoc).toContain(':edit')
-    expect(view.result.current.iframeSrcDoc).not.toContain(':view')
+    expect(view.result.current.iframeSrc).toBe('http://localhost:5174/preview/test')
   })
 })

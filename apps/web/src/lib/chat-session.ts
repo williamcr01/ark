@@ -1,8 +1,6 @@
 import type { ChatMessage } from '@ark/deck-core/chat.ts'
 
 const CHAT_SESSION_STORAGE_PREFIX = 'ark:chat-session:'
-const LEGACY_CHAT_SESSION_STORAGE_KEY = 'ark:chat-session'
-const LEGACY_DECK_SESSION_STORAGE_KEY = 'ark:deck-session'
 
 export type ChatSession = {
   messages: ChatMessage[]
@@ -49,22 +47,6 @@ const parseStoredSession = (raw: string | null): ChatSession | null => {
         failedPersistIds: readFailedPersistIds(parsed),
       }
     }
-
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      Array.isArray((parsed as { messages?: unknown }).messages) &&
-      (parsed as { messages: unknown[] }).messages.every(isChatMessage)
-    ) {
-      return {
-        messages: (parsed as { messages: ChatMessage[] }).messages,
-        updatedAt:
-          typeof (parsed as { updatedAt?: unknown }).updatedAt === 'string'
-            ? (parsed as { updatedAt: string }).updatedAt
-            : new Date().toISOString(),
-        failedPersistIds: readFailedPersistIds(parsed as { failedPersistIds?: unknown }),
-      }
-    }
   } catch {
     return null
   }
@@ -93,13 +75,6 @@ export const readChatSession = (deckId: string | null = null): ChatSession | nul
       return current
     }
 
-    if (deckId === null) {
-      return (
-        parseStoredSession(localStorage.getItem(LEGACY_CHAT_SESSION_STORAGE_KEY)) ??
-        parseStoredSession(localStorage.getItem(LEGACY_DECK_SESSION_STORAGE_KEY))
-      )
-    }
-
     return null
   } catch {
     return null
@@ -119,11 +94,6 @@ export const writeChatSession = (deckId: string | null, session: ChatSession) =>
         updatedAt: new Date().toISOString(),
       }),
     )
-
-    if (deckId === null) {
-      localStorage.removeItem(LEGACY_CHAT_SESSION_STORAGE_KEY)
-      localStorage.removeItem(LEGACY_DECK_SESSION_STORAGE_KEY)
-    }
   } catch {
     // Ignore storage failures (private mode, quota, etc.)
   }
@@ -136,11 +106,6 @@ export const clearChatSession = (deckId: string | null = null) => {
     }
 
     localStorage.removeItem(getChatSessionStorageKey(deckId))
-
-    if (deckId === null) {
-      localStorage.removeItem(LEGACY_CHAT_SESSION_STORAGE_KEY)
-      localStorage.removeItem(LEGACY_DECK_SESSION_STORAGE_KEY)
-    }
   } catch {
     // Ignore storage failures (private mode, quota, etc.)
   }

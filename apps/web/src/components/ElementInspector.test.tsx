@@ -72,13 +72,6 @@ describe('ElementInspector', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('shows an empty state in the sidebar variant when nothing is selected', () => {
-    renderInspector({ selection: null, variant: 'sidebar' })
-
-    expect(screen.getByRole('complementary', { name: 'Element inspector' })).toBeInTheDocument()
-    expect(screen.getByText(/select an element on the slide/i)).toBeInTheDocument()
-  })
-
   it('renders identity, geometry, layer, text, and state sections for a text box', () => {
     renderInspector()
 

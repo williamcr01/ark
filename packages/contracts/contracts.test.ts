@@ -70,7 +70,7 @@ describe('shared API contracts', () => {
             available: true,
             reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
             defaultReasoningEffort: 'medium',
-            supportsReasoning: true,
+            supportsAttachments: true,
           },
         ],
         warnings: [],
@@ -93,6 +93,8 @@ describe('shared API contracts', () => {
       title: 'Deck',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
+      activeVersionId: deckId,
+      versionNumber: 1,
     }
 
     expect(deckResponseSchema.parse({ deck })).toEqual({ deck })
@@ -104,6 +106,8 @@ describe('shared API contracts', () => {
             title: deck.title,
             createdAt: deck.createdAt,
             updatedAt: deck.updatedAt,
+            activeVersionId: deck.activeVersionId,
+            versionNumber: deck.versionNumber,
           },
         ],
       }),
@@ -114,6 +118,8 @@ describe('shared API contracts', () => {
           title: deck.title,
           createdAt: deck.createdAt,
           updatedAt: deck.updatedAt,
+          activeVersionId: deck.activeVersionId,
+          versionNumber: deck.versionNumber,
         },
       ],
     })
@@ -436,7 +442,6 @@ describe('shared API contracts', () => {
             id: 'reveal.js',
             version: '5.1.0',
             runtimeMode: 'reveal',
-            deprecated: false,
             previewMode: 'css-only',
             allowsDeckScripts: true,
             assets: [
@@ -522,23 +527,6 @@ describe('shared API contracts', () => {
       provenance: { operations: ['replace_text', 'undo'] },
       diff: { kind: 'structural', slideCountAfter: 3 },
     })
-  })
-
-  it('accepts legacy version summaries without provenance fields', () => {
-    expect(
-      deckVersionSummarySchema.parse({
-        id: deckId,
-        deckId,
-        versionNumber: 1,
-        title: 'Deck',
-        source: 'upload',
-        summary: null,
-        validationStatus: 'valid',
-        runtimeManifest: null,
-        createdAt: '2026-01-01T00:00:00.000Z',
-        isActive: true,
-      }),
-    ).toMatchObject({ versionNumber: 1 })
   })
 
   it('rejects oversized provenance arrays', () => {

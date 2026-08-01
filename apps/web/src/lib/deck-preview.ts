@@ -6,8 +6,6 @@ import {
 } from '@ark/deck-core/deck-metadata.ts'
 import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-core/deck-preview-html.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
-import type { DeckRuntimeMode } from '@/lib/deck-runtime'
-import { detectRuntimeMode } from '@/lib/deck-runtime'
 
 /**
  * Defense-in-depth attrs for main/version preview iframes (not thumbnails):
@@ -72,21 +70,11 @@ export function getPreviewFrameStyle(scale: number): CSSProperties {
 }
 
 export type { DeckRuntimeMode } from '@/lib/deck-runtime'
-
 export { detectRuntimeMode, getPreviewSandbox, getThumbnailSandbox } from '@/lib/deck-runtime'
-
-/** @deprecated Use {@link detectRuntimeMode} instead. */
-export function detectPreviewMode(html: string): DeckRuntimeMode {
-  return detectRuntimeMode(html)
-}
 
 export function getPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   return buildPreviewHtml(html, {
     ...options,
     parentOrigin: options.parentOrigin ?? resolveAppOrigin(),
   })
-}
-
-export function useSrcDocPreviewFallback() {
-  return import.meta.env.VITE_ARK_PREVIEW_SRCDOC === 'true'
 }

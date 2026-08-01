@@ -18,6 +18,8 @@ function summary(overrides: Partial<DeckVersionSummary> = {}): DeckVersionSummar
     summary: 'Uploaded HTML',
     validationStatus: 'valid',
     runtimeManifest: null,
+    modelProvider: null,
+    modelName: null,
     createdAt: '2026-01-01T12:00:00.000Z',
     isActive: false,
     provenance: null,
@@ -87,7 +89,7 @@ const versions: DeckVersionSummary[] = [
     versionNumber: 1,
     source: 'upload',
     summary: 'Uploaded HTML',
-    // Legacy: no provenance/diff fields
+    // Uploads can have no provenance/diff metadata.
   }),
 ]
 
@@ -127,7 +129,7 @@ describe('VersionHistoryDialog', () => {
     expect(screen.getByText('Undo')).toBeInTheDocument()
     expect(screen.getAllByText('1 slide changed').length).toBeGreaterThanOrEqual(1)
 
-    // Legacy upload row still lists without provenance chips crashing.
+    // Upload rows still list without provenance chips.
     expect(screen.getAllByText('Uploaded HTML').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByTitle(/preview/i)).not.toBeInTheDocument()
   })
@@ -162,7 +164,7 @@ describe('VersionHistoryDialog', () => {
     expect(onInspectVersion).toHaveBeenCalledWith('a0000000-0000-4000-8000-000000000002')
   })
 
-  it('handles legacy versions with null provenance gracefully in the detail pane', async () => {
+  it('handles versions with null provenance gracefully in the detail pane', async () => {
     const user = userEvent.setup()
     renderDialog()
 

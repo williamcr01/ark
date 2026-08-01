@@ -47,20 +47,6 @@ describe('chat-session storage', () => {
     expect(readChatSession('deck-1')?.messages[0]?.content).toBe('saved deck prompt')
   })
 
-  it('migrates messages from the legacy deck-session key for new decks', () => {
-    getTestLocalStorage().setItem(
-      'ark:deck-session',
-      JSON.stringify({
-        id: 'legacy',
-        html: '<html></html>',
-        messages: [{ id: 'm1', role: 'user', content: 'hello' }],
-        updatedAt: '2026-01-01T00:00:00.000Z',
-      }),
-    )
-
-    expect(readChatSession(null)?.messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
-  })
-
   it('round-trips failed persist ids for saved decks', () => {
     const session = {
       ...createChatSession(),

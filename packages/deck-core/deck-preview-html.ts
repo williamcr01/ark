@@ -665,6 +665,3 @@ function tryInjectPreviewHandshakeFast(
   next = `${next.slice(0, insertAt)}${scriptTag}${next.slice(insertAt)}`
   return next
 }
-
-/** @deprecated Use {@link buildPreviewHtml} */
-export const getPreviewHtml = buildPreviewHtml

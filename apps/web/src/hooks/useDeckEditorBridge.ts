@@ -40,12 +40,8 @@ import {
   type EditorDeleteRequestMessage,
   type EditorRuntimeMessage,
   type EditorShellMessage,
-  postEditorShellMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
-import {
-  DECK_BRIDGE_POST_MESSAGE_TARGET,
-  isAllowedBridgeMessageOrigin,
-} from '@ark/runtime-registry/sandbox-origin.ts'
+import { isAllowedBridgeMessageOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 export type DeckEditorBridgeState = {
   editorReady: boolean
@@ -78,7 +74,6 @@ export type UseDeckEditorBridgeOptions = {
   enabled: boolean
   activeSlideIndex: number
   sandboxOrigin?: string | null
-  parentOrigin?: string | null
   iframeGenerationKey?: string
   /** Per-preview capability used to authenticate the private editor MessagePort. */
   sessionHandshake?: string | null
@@ -118,7 +113,6 @@ export function useDeckEditorBridge(
     enabled,
     activeSlideIndex,
     sandboxOrigin = null,
-    parentOrigin: _parentOrigin = null,
     iframeGenerationKey = '',
     sessionHandshake = null,
     canPostToFrame,
@@ -170,30 +164,23 @@ export function useDeckEditorBridge(
         return false
       }
 
-      const iframeWindow = iframeRef.current?.contentWindow
-
-      if (!iframeWindow) {
+      if (!iframeRef.current?.contentWindow) {
         return false
       }
 
-      if (sessionHandshake?.trim()) {
-        const port = editorPortRef.current
+      const port = editorPortRef.current
 
-        if (port) {
-          port.postMessage(message)
-        } else {
-          // The head bootstrap normally connects before the frame handshake
-          // arms. Keep a small bounded queue for srcDoc/fast-cache races.
-          queuedShellMessagesRef.current = [...queuedShellMessagesRef.current.slice(-31), message]
-        }
-
-        return true
+      if (port) {
+        port.postMessage(message)
+      } else {
+        // The head bootstrap normally connects before the frame handshake
+        // arms. Keep a small bounded queue for fast-cache races.
+        queuedShellMessagesRef.current = [...queuedShellMessagesRef.current.slice(-31), message]
       }
 
-      postEditorShellMessage(iframeWindow, message, DECK_BRIDGE_POST_MESSAGE_TARGET)
       return true
     },
-    [iframeRef, sessionHandshake],
+    [iframeRef],
   )
 
   useEffect(() => {
@@ -559,39 +546,6 @@ export function useDeckEditorBridge(
       queuedShellMessagesRef.current = []
     }
   }, [iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
-
-  useEffect(() => {
-    if (!enabled || sessionHandshake?.trim()) {
-      return
-    }
-
-    const messageGeneration = iframeGenerationRef.current
-
-    const handleLegacyMessage = (event: MessageEvent) => {
-      if (messageGeneration !== iframeGenerationRef.current) {
-        return
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-
-      if (
-        !iframeWindow ||
-        event.source !== iframeWindow ||
-        !isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin) ||
-        !isEditorRuntimeMessage(event.data)
-      ) {
-        return
-      }
-
-      runtimeMessageHandlerRef.current(event.data)
-    }
-
-    window.addEventListener('message', handleLegacyMessage)
-
-    return () => {
-      window.removeEventListener('message', handleLegacyMessage)
-    }
-  }, [enabled, iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
 
   return {
     ...state,

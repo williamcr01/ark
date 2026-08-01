@@ -33,8 +33,8 @@ type DeckRow = {
   html: string
   created_at: Date | string
   updated_at: Date | string
-  active_version_id: string | null
-  version_number: number | string | null
+  active_version_id: string
+  version_number: number | string
 }
 
 type DeckSummaryRow = Omit<DeckRow, 'html'>
@@ -69,11 +69,7 @@ function toIsoString(value: Date | string) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 }
 
-function toVersionNumber(value: number | string | null) {
-  if (value === null) {
-    return null
-  }
-
+function toVersionNumber(value: number | string) {
   return typeof value === 'number' ? value : Number(value)
 }
 
@@ -83,7 +79,7 @@ function readVersionSummary(row: DeckVersionRow): DeckVersionSummary {
   return {
     id: row.id,
     deckId: row.deck_id,
-    versionNumber: toVersionNumber(row.version_number) ?? 0,
+    versionNumber: toVersionNumber(row.version_number),
     title: row.title,
     source: normalizeDeckVersionSource(row.source),
     summary: typeof metadata.summary === 'string' ? metadata.summary : null,
@@ -346,7 +342,7 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
           d.active_version_id,
           v.version_number
         FROM decks d
-        LEFT JOIN deck_versions v ON v.id = d.active_version_id
+        JOIN deck_versions v ON v.id = d.active_version_id
         WHERE d.deleted_at IS NULL
         ORDER BY d.updated_at DESC, d.created_at DESC
       `,

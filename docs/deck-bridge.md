@@ -188,7 +188,7 @@ Approved reveal registry decks only need runtime markers and registry asset URLs
 
 New reveal decks should use the **approved registry path** documented in [reveal-runtime.md](./reveal-runtime.md). Ark injects the reveal adapter automatically; no deck-authored bridge script is required.
 
-For legacy hand-written decks that opt into full-JS mode with `data-ark-deck="nav"`, wire Reveal events to the bridge yourself. **CDN URLs are invalid** — use approved runtime assets only:
+For hand-written decks that opt into full-JS mode with `data-ark-deck="nav"`, wire Reveal events to the bridge yourself. **CDN URLs are invalid** — use approved runtime assets only:
 
 ```html
 <html data-ark-deck="nav" data-ark-runtime-lib="reveal.js" data-ark-runtime-version="5.1.0">
@@ -263,5 +263,3 @@ Main preview and Present mode load decks from a separate sandbox origin (default
 3. Sandbox host applies strict CSP/COOP/CORP response headers and serves processed preview HTML (handshake sentinel injected first in `<head>`)
 4. Bridge scripts receive the parent app origin and reject parent messages from other origins
 5. Shell arms the bridge session only after the expected handshake + trusted load lifecycle
-
-Set `VITE_ARK_PREVIEW_SRCDOC=true` to force the legacy inline `srcDoc` preview path during migration.

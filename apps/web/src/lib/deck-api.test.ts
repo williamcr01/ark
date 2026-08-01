@@ -17,6 +17,8 @@ const deck = {
   title: 'Deck',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  activeVersionId: 'a0000000-0000-4000-8000-000000000001',
+  versionNumber: 1,
 }
 
 const deckSummary = {
@@ -24,6 +26,8 @@ const deckSummary = {
   title: deck.title,
   createdAt: deck.createdAt,
   updatedAt: deck.updatedAt,
+  activeVersionId: deck.activeVersionId,
+  versionNumber: deck.versionNumber,
 }
 
 const jsonResponse = (body: unknown, options: { ok?: boolean; status?: number } = {}) => ({
@@ -114,6 +118,10 @@ describe('deck-api', () => {
       summary: null,
       validationStatus: 'valid' as const,
       runtimeManifest: null,
+      modelProvider: null,
+      modelName: null,
+      provenance: null,
+      diff: null,
       createdAt: deck.createdAt,
       isActive: true,
       html: deck.html,
@@ -135,6 +143,10 @@ describe('deck-api', () => {
         summary: version.summary,
         validationStatus: version.validationStatus,
         runtimeManifest: version.runtimeManifest,
+        modelProvider: version.modelProvider,
+        modelName: version.modelName,
+        provenance: version.provenance,
+        diff: version.diff,
         createdAt: version.createdAt,
         isActive: version.isActive,
       },

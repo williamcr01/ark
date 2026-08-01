@@ -442,7 +442,7 @@ function App() {
     }
 
     const selectedModelInfo = models.find((model) => model.id === selectedModel)
-    if (selectedModelInfo?.supportsAttachments === false && hasAttachments) {
+    if (selectedModelInfo && !selectedModelInfo.supportsAttachments && hasAttachments) {
       setAttachmentError(
         `${selectedModelInfo.name ?? selectedModelInfo.modelId} is text-only and does not support attachments.`,
       )
