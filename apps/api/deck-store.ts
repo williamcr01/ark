@@ -22,8 +22,10 @@ import {
   normalizeDeckVersionSource,
 } from './deck-record.ts'
 import {
+  deckVersionSummarySchema,
   normalizeDeckVersionDiff,
   normalizeDeckVersionProvenance,
+  storedDeckSchema,
   truncateDeckVersionSummary,
   type DeckVersionDiff,
   type DeckVersionProvenance,
@@ -79,6 +81,13 @@ type DeckMetadataIndex = {
   mtimeMs: number
   size: number
   versions: Map<string, DeckVersionSummary>
+}
+
+type ActiveDeckSnapshot = {
+  sourceMtimeMs: number
+  sourceSize: number
+  deck: StoredDeck
+  versions: DeckVersionSummary[]
 }
 
 function resolveDeckPath(dataDir: string, id: string) {
@@ -155,49 +164,8 @@ function toStoredDeck(file: StoredDeckFile): StoredDeck | null {
   }
 }
 
-function migrateLegacyDeck(parsed: StoredDeck): StoredDeckFile | null {
-  if (
-    typeof parsed.id !== 'string' ||
-    typeof parsed.html !== 'string' ||
-    typeof parsed.createdAt !== 'string' ||
-    typeof parsed.updatedAt !== 'string'
-  ) {
-    return null
-  }
-
-  const title = normalizeDeckTitle(
-    typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
-  )
-  const versionId = parsed.activeVersionId ?? randomUUID()
-
-  return {
-    id: parsed.id,
-    title,
-    createdAt: parsed.createdAt,
-    updatedAt: parsed.updatedAt,
-    activeVersionId: versionId,
-    versions: [
-      {
-        id: versionId,
-        versionNumber: parsed.versionNumber ?? 1,
-        html: parsed.html,
-        title,
-        source: 'manual',
-        summary: null,
-        modelProvider: null,
-        modelName: null,
-        provenance: null,
-        diff: null,
-        validationStatus: 'valid',
-        runtimeManifest: null,
-        createdAt: parsed.createdAt,
-      },
-    ],
-  }
-}
-
 function parseDeckFile(raw: string): StoredDeckFile | null {
-  const parsed = JSON.parse(raw) as StoredDeck & StoredDeckFile
+  const parsed = JSON.parse(raw) as StoredDeckFile
 
   if (Array.isArray(parsed.versions) && typeof parsed.activeVersionId === 'string') {
     const versions = parsed.versions
@@ -241,7 +209,7 @@ function parseDeckFile(raw: string): StoredDeckFile | null {
     }
   }
 
-  return migrateLegacyDeck(parsed)
+  return null
 }
 
 async function readDeckFile(filePath: string): Promise<StoredDeckFile | null> {
@@ -267,6 +235,77 @@ async function writeDeckFile(filePath: string, file: StoredDeckFile) {
     await unlink(tempPath).catch(() => undefined)
     throw error
   }
+}
+
+function resolveActiveDeckSnapshotPath(filePath: string) {
+  return `${filePath}.active`
+}
+
+async function readActiveDeckSnapshot(filePath: string): Promise<ActiveDeckSnapshot | null> {
+  try {
+    const [fileStat, raw] = await Promise.all([
+      stat(filePath),
+      readFile(resolveActiveDeckSnapshotPath(filePath), 'utf8'),
+    ])
+    const parsed = JSON.parse(raw) as ActiveDeckSnapshot
+
+    if (parsed.sourceMtimeMs !== fileStat.mtimeMs || parsed.sourceSize !== fileStat.size) {
+      return null
+    }
+
+    const deck = storedDeckSchema.safeParse(parsed.deck)
+    const versions = deckVersionSummarySchema.array().safeParse(parsed.versions)
+
+    if (!deck.success || !versions.success) {
+      return null
+    }
+
+    return { ...parsed, deck: deck.data, versions: versions.data }
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null
+    }
+
+    if (error instanceof SyntaxError) {
+      return null
+    }
+
+    throw error
+  }
+}
+
+async function writeActiveDeckSnapshot(filePath: string, file: StoredDeckFile) {
+  const deck = toStoredDeck(file)
+
+  if (!deck) {
+    return
+  }
+
+  const fileStat = await stat(filePath)
+
+  const snapshot: ActiveDeckSnapshot = {
+    sourceMtimeMs: fileStat.mtimeMs,
+    sourceSize: fileStat.size,
+    deck,
+    versions: file.versions.map((version) =>
+      toVersionSummary(file.id, version, file.activeVersionId),
+    ),
+  }
+  const snapshotPath = resolveActiveDeckSnapshotPath(filePath)
+  const tempPath = `${snapshotPath}.${randomUUID()}.tmp`
+
+  try {
+    await writeFile(tempPath, JSON.stringify(snapshot), 'utf8')
+    await rename(tempPath, snapshotPath)
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined)
+    throw error
+  }
+}
+
+async function writeDeckFileWithSnapshot(filePath: string, file: StoredDeckFile) {
+  await writeDeckFile(filePath, file)
+  await writeActiveDeckSnapshot(filePath, file)
 }
 
 function resolveVersionManifest(html: string, options: DeckVersionOptions = {}) {
@@ -307,10 +346,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     }
   }
 
-  const readVersionMetadataIndex = async (
-    deckId: string,
-    filePath: string,
-  ): Promise<DeckMetadataIndex | null> => {
+  const readVersionMetadataIndex = async (filePath: string): Promise<DeckMetadataIndex | null> => {
     let fileStat: Awaited<ReturnType<typeof stat>>
 
     try {
@@ -330,26 +366,21 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       return cached
     }
 
-    const file = await readDeckFile(filePath)
+    const snapshot = await readActiveDeckSnapshot(filePath)
 
-    if (!file) {
-      metadataIndex.delete(filePath)
-      return null
+    if (snapshot) {
+      const nextIndex: DeckMetadataIndex = {
+        mtimeMs: snapshot.sourceMtimeMs,
+        size: snapshot.sourceSize,
+        versions: new Map(snapshot.versions.map((version) => [version.id, version])),
+      }
+
+      metadataIndex.set(filePath, nextIndex)
+      return nextIndex
     }
 
-    const nextIndex: DeckMetadataIndex = {
-      mtimeMs: fileStat.mtimeMs,
-      size: fileStat.size,
-      versions: new Map(
-        file.versions.map((version) => [
-          version.id,
-          toVersionSummary(deckId, version, file.activeVersionId),
-        ]),
-      ),
-    }
-
-    metadataIndex.set(filePath, nextIndex)
-    return nextIndex
+    metadataIndex.delete(filePath)
+    return null
   }
 
   const createDeck = async (
@@ -379,7 +410,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       throw new Error('Generated deck id is invalid.')
     }
 
-    await writeDeckFile(filePath, file)
+    await writeDeckFileWithSnapshot(filePath, file)
     invalidateMetadataIndex(filePath)
 
     const deck = toStoredDeck(file)
@@ -398,9 +429,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       return null
     }
 
-    const file = await readDeckFile(filePath)
-
-    return file ? toStoredDeck(file) : null
+    return (await readActiveDeckSnapshot(filePath))?.deck ?? null
   }
 
   const listDecks = async () => {
@@ -417,28 +446,22 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
               return null
             }
 
-            const file = await readDeckFile(filePath)
+            const snapshot = await readActiveDeckSnapshot(filePath)
 
-            if (!file) {
-              return null
+            if (snapshot) {
+              const summary: DeckSummary = {
+                id: snapshot.deck.id,
+                title: snapshot.deck.title,
+                createdAt: snapshot.deck.createdAt,
+                updatedAt: snapshot.deck.updatedAt,
+                activeVersionId: snapshot.deck.activeVersionId,
+                versionNumber: snapshot.deck.versionNumber,
+              }
+
+              return summary
             }
 
-            const deck = toStoredDeck(file)
-
-            if (!deck) {
-              return null
-            }
-
-            const summary: DeckSummary = {
-              id: deck.id,
-              title: deck.title,
-              createdAt: deck.createdAt,
-              updatedAt: deck.updatedAt,
-              activeVersionId: deck.activeVersionId,
-              versionNumber: deck.versionNumber,
-            }
-
-            return summary
+            return null
           }),
       )
 
@@ -486,7 +509,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       versions: [...existing.versions, version],
     }
 
-    await writeDeckFile(filePath, updated)
+    await writeDeckFileWithSnapshot(filePath, updated)
     invalidateMetadataIndex(filePath)
 
     return toStoredDeck(updated)
@@ -511,7 +534,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       updatedAt: new Date().toISOString(),
     }
 
-    await writeDeckFile(filePath, updated)
+    await writeDeckFileWithSnapshot(filePath, updated)
     invalidateMetadataIndex(filePath)
 
     return toStoredDeck(updated)
@@ -526,6 +549,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
 
     try {
       await unlink(filePath)
+      await unlink(resolveActiveDeckSnapshotPath(filePath)).catch(() => undefined)
       invalidateMetadataIndex(filePath)
       return true
     } catch (error) {
@@ -545,15 +569,10 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       return null
     }
 
-    const file = await readDeckFile(filePath)
-
-    if (!file) {
-      return null
-    }
-
-    return [...file.versions]
-      .sort((left, right) => right.versionNumber - left.versionNumber)
-      .map((version) => toVersionSummary(deckId, version, file.activeVersionId))
+    const snapshot = await readActiveDeckSnapshot(filePath)
+    return (
+      snapshot?.versions.toSorted((left, right) => right.versionNumber - left.versionNumber) ?? null
+    )
   }
 
   const getVersion = async (deckId: string, versionId: string) => {
@@ -589,7 +608,7 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
       return null
     }
 
-    const index = await readVersionMetadataIndex(deckId, filePath)
+    const index = await readVersionMetadataIndex(filePath)
 
     return index?.versions.get(versionId) ?? null
   }
