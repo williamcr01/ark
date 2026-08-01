@@ -16,7 +16,6 @@ export const runtimeSummarySchema = z.object({
   id: z.string(),
   version: z.string(),
   runtimeMode: z.enum(['static', 'reveal', 'custom-js']),
-  deprecated: z.boolean(),
   previewMode: z.enum(['css-only', 'full-js']),
   allowsDeckScripts: z.boolean(),
   assets: z.array(runtimeAssetSummarySchema),

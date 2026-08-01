@@ -53,8 +53,7 @@ const resolveStoredModel = (models: AvailableModel[], storedModel: string | null
     return storedModel
   }
 
-  const legacyMatch = models.find((model) => model.modelId === storedModel)
-  return legacyMatch?.id ?? null
+  return null
 }
 
 /** Prefer faster/cheaper models when auto-picking a fallback. */

@@ -181,9 +181,6 @@ describe('fetchAllAvailableModels', () => {
     )
     expect(otherModels.every((model) => !model.available)).toBe(true)
     expect(
-      openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.supportsReasoning,
-    ).toBe(true)
-    expect(
       openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.defaultReasoningEffort,
     ).toBe('none')
   })
@@ -192,7 +189,6 @@ describe('fetchAllAvailableModels', () => {
 describe('default model helpers', () => {
   it('defaults to GPT-5.6 Luna', () => {
     delete process.env.ARK_DEFAULT_MODEL
-    delete process.env.OPENAI_MODEL
     expect(getDefaultModel()).toBe(DEFAULT_MODEL_REF)
   })
 
@@ -203,7 +199,7 @@ describe('default model helpers', () => {
       id: 'openai:not-a-real-model',
       available: false,
       unavailableReason: 'not_found',
-      supportsReasoning: false,
+      supportsAttachments: true,
     })
   })
 })

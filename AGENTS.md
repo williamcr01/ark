@@ -100,13 +100,13 @@ Deck preview blocks external **fetches and resource loads** from generated or up
 
 ### Preview JavaScript
 
-The shell uses preview modes based on runtime detection (see `detectPreviewMode` in `src/lib/deck-preview.ts`). The parent ↔ iframe contract is defined in `packages/deck-core/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`packages/deck-core/deck-editor-bridge.ts`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
+The shell uses preview modes based on runtime detection (see `detectRuntimeMode` in `src/lib/deck-runtime.ts`). The parent ↔ iframe contract is defined in `packages/deck-core/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`packages/deck-core/deck-editor-bridge.ts`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
 
 - **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for plain decks and reveal decks without approved runtime assets.
 - **Full-JS (custom)** — deck scripts run when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set. Ark injects a bridge (`postMessage` ↔ DOM `CustomEvent`); the deck owns navigation.
 - **Full-JS (reveal adapter)** — reveal decks with approved registry markers and `/api/runtimes/reveal.js/5.1.0/reveal.js` get Ark's reveal navigation adapter automatically. No deck-authored bridge script. See [docs/reveal-runtime.md](docs/reveal-runtime.md).
 
-Thumbnails prefer sandbox-rendered PNGs from the API Chromium pipeline; the strip falls back to script-stripped `srcDoc` iframes (`sandbox=""`) when the renderer is disabled, pending, or failed. Main preview uses `sandbox="allow-scripts"` without `allow-same-origin`, loaded from the sandbox host URL by default (`VITE_ARK_PREVIEW_SRCDOC=true` restores legacy `srcDoc`). Approved runtime asset URLs are absolutized to the app origin in preview. Parent ↔ deck `postMessage` is scoped to the configured app/sandbox origins. Ark injects a strict CSP so deck scripts cannot make network requests; the UI shows a "Scripts running" indicator in full-JS mode.
+Thumbnails prefer sandbox-rendered PNGs from the API Chromium pipeline; the strip falls back to script-stripped `srcDoc` iframes (`sandbox=""`) when the renderer is disabled, pending, or failed. Main preview uses `sandbox="allow-scripts"` without `allow-same-origin`, loaded from the sandbox host URL. Approved runtime asset URLs are absolutized to the app origin in preview. Parent ↔ deck `postMessage` is scoped to the configured app/sandbox origins. Ark injects a strict CSP so deck scripts cannot make network requests; the UI shows a "Scripts running" indicator in full-JS mode.
 
 Custom scripted decks with navigation must use `data-ark-deck="nav"` and the Ark bridge protocol (`ark:deck-goto`, `ark:deck-slide-change`, `ark:deck-ready`, etc.).
 

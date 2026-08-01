@@ -1155,17 +1155,11 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function postToParent(message) {
-    if (activePortPostMessage) {
-      activePortPostMessage(message);
+    if (!activePortPostMessage) {
       return;
     }
 
-    // Standalone bridge scripts without a preview session retain the legacy
-    // transport for tests and non-interactive consumers. Ark previews always
-    // provide a session handshake and therefore never take this branch.
-    if (!sessionHandshake && safeParentPostMessage) {
-      safeParentPostMessage(message, C.PARENT_ORIGIN || '*');
-    }
+    activePortPostMessage(message);
   }
 
   function closePortCandidate(candidate) {
@@ -3972,20 +3966,6 @@ export function buildDeckEditorBridgeRuntimeScript(
     } catch (error) {
       postError(error && error.message ? error.message : String(error), 'editor-runtime');
     }
-  }
-
-  if (!sessionHandshake) {
-    window.addEventListener('message', function (event) {
-      if (event.source !== window.parent) {
-        return;
-      }
-
-      if (C.PARENT_ORIGIN && event.origin !== C.PARENT_ORIGIN) {
-        return;
-      }
-
-      handleShellMessage(event.data);
-    });
   }
 
   // Register before deck-authored listeners. The handlers stay dormant while

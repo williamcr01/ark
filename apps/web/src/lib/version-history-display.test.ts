@@ -16,6 +16,10 @@ const baseVersion = {
   summary: 'Edited text',
   validationStatus: 'valid' as const,
   runtimeManifest: null,
+  modelProvider: null,
+  modelName: null,
+  provenance: null,
+  diff: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   isActive: true,
 }
@@ -29,7 +33,7 @@ function version(overrides: Partial<DeckVersionSummary> = {}): DeckVersionSummar
 }
 
 describe('getVersionHistoryChips', () => {
-  it('returns empty chips for legacy versions without provenance or diff', () => {
+  it('returns empty chips when a version has no provenance or diff', () => {
     expect(getVersionHistoryChips(version({ provenance: null, diff: null }))).toEqual([])
   })
 
@@ -108,7 +112,7 @@ describe('getVersionHistoryChips', () => {
 })
 
 describe('getVersionHistoryDetailSections', () => {
-  it('returns no sections for legacy null provenance/diff', () => {
+  it('returns no sections for null provenance/diff', () => {
     expect(getVersionHistoryDetailSections(version({ provenance: null, diff: null }))).toEqual([])
   })
 

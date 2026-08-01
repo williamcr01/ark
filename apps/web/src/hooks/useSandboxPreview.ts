@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { previewSessionResponseSchema, fetchApiJsonOrThrow } from '@ark/contracts'
 import {
@@ -20,8 +20,6 @@ export type SandboxPreviewState = {
 }
 
 const PREVIEW_SESSION_COALESCE_MS = 100
-/** Interactive shell previews always inject a dormant editor runtime. */
-const INTERACTIVE_EDITOR_BRIDGE = true
 
 type PreviewSessionSnapshot = {
   previewUrl: string | null
@@ -124,7 +122,7 @@ export function useSandboxPreview(
           },
           body: JSON.stringify({
             html: requestHtml,
-            editorBridge: INTERACTIVE_EDITOR_BRIDGE,
+            editorBridge: true,
           }),
           signal: controller.signal,
         })
@@ -252,15 +250,6 @@ export function useSandboxPreview(
   }
 }
 
-/** Client-side generation handshake and editor-channel capability for srcDoc fallback. */
-export function createClientPreviewHandshake(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().replace(/-/g, '')
-  }
-
-  return `srcdoc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-
 /**
  * Cheap content fingerprint so equal-length HTML edits remount the iframe.
  * Not cryptographic — only needs to change when preview HTML changes.
@@ -276,14 +265,4 @@ export function fingerprintPreviewHtml(html: string): string {
   // Mix in length so empty/short strings still differ from collisions.
   hash ^= html.length
   return (hash >>> 0).toString(36)
-}
-
-export function useMemoizedClientHandshake(iframeIdentity: string): string {
-  return useMemo(() => {
-    if (!iframeIdentity) {
-      return ''
-    }
-
-    return createClientPreviewHandshake()
-  }, [iframeIdentity])
 }

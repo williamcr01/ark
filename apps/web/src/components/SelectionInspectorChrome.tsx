@@ -139,7 +139,6 @@ export function SelectionInspectorChrome({
           onApplyOperations={onApplyOperations}
           selection={selection}
           textEditActive={textEditActive}
-          variant="floating"
           zIndex={zIndex}
         />
       </PopoverContent>

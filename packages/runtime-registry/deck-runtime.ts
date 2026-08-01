@@ -89,7 +89,7 @@ function buildDeckCsp(
   ].join('; ')
 }
 
-/** Baseline CSP for static decks without a per-render nonce (legacy / export). */
+/** Baseline CSP for static decks without a per-render nonce. */
 export const STRICT_DECK_CSP = buildDeckCsp()
 
 export function detectRuntimeModeFromDocument(doc: Document): DeckRuntimeMode {

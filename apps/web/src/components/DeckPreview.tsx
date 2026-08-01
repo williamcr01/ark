@@ -240,7 +240,6 @@ export function DeckPreview({
         deckId,
         versionId,
         slideIndex,
-        runtimeMode,
         severity: 'error',
         message,
         source,
@@ -267,11 +266,11 @@ export function DeckPreview({
     [
       deckId,
       recentGenerationJobId,
+      runtimeMode,
       runtimeManifest.approvedRuntime,
       runtimeManifest.previewMode,
       runtimeManifest.validation.errors,
       runtimeManifest.validation.warnings,
-      runtimeMode,
       validation.valid,
       versionId,
     ],
@@ -314,13 +313,11 @@ export function DeckPreview({
     previewHtml,
     bridgeEnabled,
     {
-      runtimeMode,
       initialSlideIndex,
       keyboardMode: previewCompromised ? 'off' : isPresentOpen ? 'present' : 'preview',
       shouldSuspendKeyboard: () => textEditActiveRef.current,
       sandboxOrigin: previewFrame.sandboxOrigin,
       reloadRevision: previewReloadRevision,
-      syncOnLoad: false,
       canPostToFrame: bridgeSession.canPostToFrame,
       shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
       onRuntimeError: captureRuntimeError,
@@ -805,8 +802,7 @@ export function DeckPreview({
                 ref={previewStageRef}
                 style={previewStageStyle}
               >
-                {previewCompromised ||
-                (!previewFrame.iframeSrc && !previewFrame.iframeSrcDoc) ? null : (
+                {previewCompromised || !previewFrame.iframeSrc ? null : (
                   <iframe
                     className="absolute left-0 top-0 block border-0 bg-white"
                     key={previewFrame.iframeKey}
@@ -831,7 +827,6 @@ export function DeckPreview({
                     referrerPolicy="no-referrer"
                     sandbox={getPreviewSandbox(runtimeMode)}
                     src={previewFrame.iframeSrc}
-                    srcDoc={previewFrame.iframeSrcDoc}
                     style={previewFrameStyle}
                     title="Generated Ark presentation preview"
                     {...PREVIEW_IFRAME_SECURITY_PROPS}

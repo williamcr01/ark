@@ -145,8 +145,3 @@ export const parseProviderError = (error: unknown): ApiErrorPayload => {
     error: 'Unknown generation error.',
   }
 }
-
-// Backward compatibility for older imports.
-export const getConfiguredApiKey = () => getProviderApiKey('openai')
-export const parseOpenAIHttpError = (status: number, body: string) =>
-  parseProviderHttpError('openai', status, body)

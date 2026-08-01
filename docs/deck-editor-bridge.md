@@ -123,7 +123,7 @@ type EditorSelectionInfo = {
   textPreview: string | null // collapsed whitespace text or alt text
   imageFit?: 'contain' | 'cover' | 'fill' | null // images only
   surface?: 'light' | 'dark' // local background tone for adaptive chrome
-  // Inspector metadata (issue #84); optional for protocol compatibility.
+  // Inspector metadata (issue #84).
   role?: string | null // data-ark-role
   textStyle?: {
     fontSize: number // computed px

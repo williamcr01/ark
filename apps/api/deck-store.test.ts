@@ -245,10 +245,10 @@ describe('createDeckStore', () => {
     ).toBeNull()
   })
 
-  it('migrates legacy single-file decks on read and preserves history on update', async () => {
+  it('ignores pre-versioned deck files', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
     const store = createDeckStore(dataDir)
-    const legacyDeck = {
+    const preVersionedDeck = {
       id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
       html: sampleHtml,
       title: 'Quarterly Review',
@@ -258,15 +258,13 @@ describe('createDeckStore', () => {
 
     const { writeFile, mkdir } = await import('node:fs/promises')
     await mkdir(dataDir, { recursive: true })
-    await writeFile(path.join(dataDir, `${legacyDeck.id}.json`), JSON.stringify(legacyDeck), 'utf8')
+    await writeFile(
+      path.join(dataDir, `${preVersionedDeck.id}.json`),
+      JSON.stringify(preVersionedDeck),
+      'utf8',
+    )
 
-    const loaded = await store.getDeck(legacyDeck.id)
-    expect(loaded?.html).toBe(sampleHtml)
-
-    const updated = await store.updateDeck(legacyDeck.id, sampleHtml.replace('Hello', 'Migrated'))
-    expect(updated?.versionNumber).toBe(2)
-
-    const versions = await store.listVersions(legacyDeck.id)
-    expect(versions).toHaveLength(2)
+    expect(await store.getDeck(preVersionedDeck.id)).toBeNull()
+    expect(await store.listVersions(preVersionedDeck.id)).toBeNull()
   })
 })

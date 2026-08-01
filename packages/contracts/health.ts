@@ -40,16 +40,8 @@ export const modelInfoSchema = z.object({
   reasoningEfforts: z.array(reasoningEffortSchema).optional(),
   /** Default effort when the model supports reasoning and the client has no preference. */
   defaultReasoningEffort: reasoningEffortSchema.optional(),
-  /**
-   * Compatibility flag derived from reasoningEfforts.length > 0.
-   * Prefer reasoningEfforts for new clients.
-   */
-  supportsReasoning: z.boolean().optional(),
-  /**
-   * Whether chat attachments / deck assets may be sent to this model.
-   * Defaults to true when omitted (older servers).
-   */
-  supportsAttachments: z.boolean().optional(),
+  /** Whether chat attachments / deck assets may be sent to this model. */
+  supportsAttachments: z.boolean(),
 })
 
 export type ModelInfo = z.infer<typeof modelInfoSchema>

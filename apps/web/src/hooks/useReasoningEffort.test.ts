@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { AvailableModel } from '@/hooks/useAvailableModels'
@@ -13,7 +13,7 @@ const models: AvailableModel[] = [
     available: true,
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
     defaultReasoningEffort: 'medium',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'google:gemini-3.1-pro-preview',
@@ -23,7 +23,7 @@ const models: AvailableModel[] = [
     available: true,
     reasoningEfforts: ['low', 'medium', 'high'],
     defaultReasoningEffort: 'high',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'openai:gpt-5.4-mini',
@@ -33,7 +33,7 @@ const models: AvailableModel[] = [
     available: true,
     reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
     defaultReasoningEffort: 'none',
-    supportsReasoning: true,
+    supportsAttachments: true,
   },
   {
     id: 'openai:text-only-fixture',
@@ -42,7 +42,7 @@ const models: AvailableModel[] = [
     name: 'Text Only Fixture',
     available: true,
     reasoningEfforts: [],
-    supportsReasoning: false,
+    supportsAttachments: true,
   },
 ]
 
@@ -52,39 +52,15 @@ afterEach(() => {
 
 describe('resolveEffortForModel', () => {
   it('prefers stored effort, then clamps invalid values to the model default', () => {
-    expect(resolveEffortForModel(models[0], { 'openai:gpt-5.6-luna': 'xhigh' }, 'low')).toBe(
-      'xhigh',
-    )
-    expect(resolveEffortForModel(models[1], { 'google:gemini-3.1-pro-preview': 'max' }, null)).toBe(
+    expect(resolveEffortForModel(models[0], { 'openai:gpt-5.6-luna': 'xhigh' })).toBe('xhigh')
+    expect(resolveEffortForModel(models[1], { 'google:gemini-3.1-pro-preview': 'max' })).toBe(
       'high',
     )
-    expect(resolveEffortForModel(models[3], {}, 'high')).toBeUndefined()
-  })
-
-  it('migrates a legacy global effort when valid for the model', () => {
-    expect(resolveEffortForModel(models[0], {}, 'low')).toBe('low')
-    expect(resolveEffortForModel(models[1], {}, 'minimal')).toBe('high')
+    expect(resolveEffortForModel(models[3], {})).toBeUndefined()
   })
 })
 
 describe('useReasoningEffort', () => {
-  it('migrates legacy per-model preferences to the versioned key', async () => {
-    localStorage.setItem(
-      'ark:reasoning-effort-by-model',
-      JSON.stringify({ 'openai:gpt-5.6-luna': 'high' }),
-    )
-
-    const { result } = renderHook(() => useReasoningEffort('openai:gpt-5.6-luna', models))
-
-    expect(result.current.reasoningEffort).toBe('high')
-    await waitFor(() => {
-      expect(localStorage.getItem('ark:reasoning-effort-by-model:v1')).toBe(
-        JSON.stringify({ 'openai:gpt-5.6-luna': 'high' }),
-      )
-    })
-    expect(localStorage.getItem('ark:reasoning-effort-by-model')).toBeNull()
-  })
-
   it('stores effort per model and restores it when switching back', () => {
     const { result, rerender } = renderHook(
       ({ selectedModel }) => useReasoningEffort(selectedModel, models),

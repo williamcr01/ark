@@ -87,7 +87,7 @@ const previewFrameMock = vi.hoisted(() => ({
 const useDeckPreviewFrameMock = vi.hoisted(() =>
   vi.fn((_html: string, _enabled: boolean, _reloadRevision = 0) => ({
     iframeKey: previewFrameMock.iframeKey,
-    iframeSrcDoc: '<html></html>',
+    iframeSrc: 'http://localhost:5174/preview/test',
     sandboxOrigin: null,
     isLoading: previewFrameMock.isLoading,
     isStale: previewFrameMock.isStale,

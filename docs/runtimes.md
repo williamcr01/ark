@@ -155,7 +155,7 @@ or failed, the strip falls back to script-stripped `srcDoc` iframes
 available. See [reveal-runtime.md](./reveal-runtime.md) for thumbnail
 limitations.
 
-Main preview and Present mode load processed HTML from the sandbox host (default `http://localhost:5174`) via short-lived render tokens. Set `VITE_ARK_PREVIEW_SRCDOC=true` to use legacy inline `srcDoc` preview.
+Main preview and Present mode load processed HTML from the sandbox host (default `http://localhost:5174`) via short-lived render tokens.
 
 ## Security constraints
 

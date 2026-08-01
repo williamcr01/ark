@@ -38,6 +38,7 @@ const modelsResponse = {
       modelId: 'gpt-5.6-luna',
       name: 'GPT-5.6 Luna',
       available: true,
+      supportsAttachments: true,
     },
   ],
   warnings: [],
@@ -166,6 +167,7 @@ const model = (
 ): AvailableModel => ({
   name: partial.name,
   unavailableReason: partial.unavailableReason,
+  supportsAttachments: partial.supportsAttachments ?? true,
   ...partial,
 })
 

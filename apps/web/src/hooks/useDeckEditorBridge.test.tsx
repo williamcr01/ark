@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useEffect, useRef } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { useEffect, useRef, type RefObject } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   EDITOR_BRIDGE_PROTOCOL_VERSION,
@@ -24,18 +24,21 @@ import {
   createEditorTransformPreviewMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 import {
-  DECK_BRIDGE_POST_MESSAGE_TARGET,
   OPAQUE_SANDBOX_ORIGIN,
   resolveSandboxOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
 
 import { useDeckEditorBridge } from './useDeckEditorBridge'
 
+const TEST_SESSION_HANDSHAKE = 'test-editor-session'
+let testRuntimeMessages: unknown[] = []
+
 function EditorHarness({
   enabled = true,
   sandboxOrigin = null,
   iframeGenerationKey = 'test-frame',
-  sessionHandshake = null,
+  sessionHandshake = TEST_SESSION_HANDSHAKE,
+  forwardPublicMessages = sessionHandshake === TEST_SESSION_HANDSHAKE,
   canPostToFrame,
   shouldAcceptInbound,
   onSelectionChange,
@@ -44,6 +47,7 @@ function EditorHarness({
   sandboxOrigin?: string | null
   iframeGenerationKey?: string
   sessionHandshake?: string | null
+  forwardPublicMessages?: boolean
   canPostToFrame?: () => boolean
   shouldAcceptInbound?: () => boolean
   onSelectionChange?: (selection: { elementId: string } | null) => void
@@ -77,6 +81,13 @@ function EditorHarness({
   return (
     <div>
       <iframe key={iframeGenerationKey} ref={iframeRef} title="Deck preview" />
+      <TestEditorRuntimeConnection
+        forwardPublicMessages={forwardPublicMessages}
+        iframeGenerationKey={iframeGenerationKey}
+        iframeRef={iframeRef}
+        sandboxOrigin={sandboxOrigin}
+        sessionHandshake={sessionHandshake}
+      />
       <output aria-label="Editor ready">{bridge.editorReady ? 'ready' : 'pending'}</output>
       <output aria-label="Selection">{bridge.selection?.elementId ?? 'none'}</output>
       <output aria-label="Geometry">{bridge.geometry ? 'geometry' : 'none'}</output>
@@ -102,6 +113,72 @@ function EditorHarness({
   )
 }
 
+function TestEditorRuntimeConnection({
+  forwardPublicMessages,
+  iframeGenerationKey,
+  iframeRef,
+  sandboxOrigin,
+  sessionHandshake,
+}: {
+  forwardPublicMessages: boolean
+  iframeGenerationKey: string
+  iframeRef: RefObject<HTMLIFrameElement | null>
+  sandboxOrigin: string | null
+  sessionHandshake: string | null
+}) {
+  useEffect(() => {
+    if (sessionHandshake !== TEST_SESSION_HANDSHAKE || !sandboxOrigin) {
+      return
+    }
+
+    const iframeWindow = iframeRef.current?.contentWindow
+
+    if (!iframeWindow) {
+      return
+    }
+
+    const channel = new MessageChannel()
+    const runtimePort = channel.port1
+    runtimePort.onmessage = (event) => {
+      testRuntimeMessages.push(event.data)
+    }
+    runtimePort.start()
+
+    const forwardMessage = (event: MessageEvent) => {
+      if (
+        !forwardPublicMessages ||
+        event.source !== iframeWindow ||
+        event.origin !== sandboxOrigin
+      ) {
+        return
+      }
+
+      runtimePort.postMessage(event.data)
+    }
+
+    window.addEventListener('message', forwardMessage)
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: EDITOR_CONNECT_MESSAGE_TYPE,
+          handshake: sessionHandshake,
+          protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+        },
+        origin: sandboxOrigin,
+        source: iframeWindow,
+        ports: [channel.port2],
+      }),
+    )
+
+    return () => {
+      window.removeEventListener('message', forwardMessage)
+      runtimePort.close()
+    }
+  }, [forwardPublicMessages, iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
+
+  return null
+}
+
 function getIframeWindow() {
   const iframe = screen.getByTitle('Deck preview') as HTMLIFrameElement
   const iframeWindow = iframe.contentWindow
@@ -115,6 +192,10 @@ function getIframeWindow() {
 
 describe('useDeckEditorBridge', () => {
   const sandboxOrigin = resolveSandboxOrigin()
+
+  beforeEach(() => {
+    testRuntimeMessages = []
+  })
 
   it('accepts editor runtime messages from the active iframe only', async () => {
     render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
@@ -130,7 +211,9 @@ describe('useDeckEditorBridge', () => {
       )
     })
 
-    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    })
 
     await act(async () => {
       window.dispatchEvent(
@@ -442,43 +525,36 @@ describe('useDeckEditorBridge', () => {
   it('posts validated shell messages to an opaque sandbox iframe', async () => {
     const user = userEvent.setup()
     render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
-    const iframeWindow = getIframeWindow()
-    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
     await user.click(screen.getByRole('button', { name: 'Enable editor' }))
 
-    expect(postMessage).toHaveBeenCalledWith(
-      createEditorEnableMessage(0),
-      DECK_BRIDGE_POST_MESSAGE_TARGET,
-    )
+    await waitFor(() => {
+      expect(testRuntimeMessages).toContainEqual(createEditorEnableMessage(0))
+    })
   })
 
-  it('ends an iframe transform when the pointer is released in the shell', () => {
+  it('ends an iframe transform when the pointer is released in the shell', async () => {
     render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
-    const postMessage = vi.spyOn(getIframeWindow(), 'postMessage')
 
     act(() => {
       window.dispatchEvent(new Event('pointerup'))
     })
 
-    expect(postMessage).toHaveBeenCalledWith(
-      createEditorTransformEndMessage(),
-      DECK_BRIDGE_POST_MESSAGE_TARGET,
-    )
+    await waitFor(() => {
+      expect(testRuntimeMessages).toContainEqual(createEditorTransformEndMessage())
+    })
   })
 
-  it('cancels an iframe transform when the shell pointer is cancelled', () => {
+  it('cancels an iframe transform when the shell pointer is cancelled', async () => {
     render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
-    const postMessage = vi.spyOn(getIframeWindow(), 'postMessage')
 
     act(() => {
       window.dispatchEvent(new Event('pointercancel'))
     })
 
-    expect(postMessage).toHaveBeenCalledWith(
-      createEditorTransformCancelMessage(),
-      DECK_BRIDGE_POST_MESSAGE_TARGET,
-    )
+    await waitFor(() => {
+      expect(testRuntimeMessages).toContainEqual(createEditorTransformCancelMessage())
+    })
   })
 
   it('surfaces bridge errors without throwing', async () => {
@@ -711,7 +787,9 @@ describe('useDeckEditorBridge', () => {
       )
     })
 
-    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    })
 
     rerender(<EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-2" />)
 
@@ -729,7 +807,9 @@ describe('useDeckEditorBridge', () => {
       )
     })
 
-    expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Editor ready')).toHaveTextContent('ready')
+    })
 
     await act(async () => {
       window.dispatchEvent(
@@ -893,11 +973,19 @@ describe('useDeckEditorBridge', () => {
         activeSlideIndex: 0,
         sandboxOrigin,
         iframeGenerationKey: 'test-frame',
+        sessionHandshake: TEST_SESSION_HANDSHAKE,
       })
 
       return (
         <div>
           <iframe ref={iframeRef} title="Deck preview" />
+          <TestEditorRuntimeConnection
+            forwardPublicMessages
+            iframeGenerationKey="test-frame"
+            iframeRef={iframeRef}
+            sandboxOrigin={sandboxOrigin}
+            sessionHandshake={TEST_SESSION_HANDSHAKE}
+          />
           <output aria-label="Text edit active">{bridge.textEditActive ? 'yes' : 'no'}</output>
         </div>
       )

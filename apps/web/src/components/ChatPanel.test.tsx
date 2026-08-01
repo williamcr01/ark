@@ -616,7 +616,6 @@ describe('ChatPanel submit control', () => {
               name: 'Text Only Fixture',
               available: true,
               reasoningEfforts: [],
-              supportsReasoning: false,
               supportsAttachments: false,
             },
           ]}
@@ -713,7 +712,7 @@ describe('ChatPanel submit control', () => {
               unavailableReason: 'missing_api_key',
               reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
               defaultReasoningEffort: 'medium',
-              supportsReasoning: true,
+              supportsAttachments: true,
             },
           ]}
           selectedModel="openai:gpt-5.6-luna"
@@ -738,7 +737,7 @@ describe('ChatPanel submit control', () => {
               available: true,
               reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
               defaultReasoningEffort: 'medium',
-              supportsReasoning: true,
+              supportsAttachments: true,
             },
           ]}
           reasoningEffort="high"
@@ -797,7 +796,7 @@ describe('ChatPanel submit control', () => {
               role: 'assistant',
               content: 'Updated the title.',
               parts: [
-                { type: 'thinking', content: 'Legacy thinking without timing.' },
+                { type: 'thinking', content: 'Thinking without timing metadata.' },
                 { type: 'text', content: 'Updated the title.' },
               ],
             },

@@ -155,93 +155,58 @@ function toStoredDeck(file: StoredDeckFile): StoredDeck | null {
   }
 }
 
-function migrateLegacyDeck(parsed: StoredDeck): StoredDeckFile | null {
+function parseDeckFile(raw: string): StoredDeckFile | null {
+  const parsed = JSON.parse(raw) as StoredDeck & StoredDeckFile
+
   if (
+    !Array.isArray(parsed.versions) ||
+    typeof parsed.activeVersionId !== 'string' ||
     typeof parsed.id !== 'string' ||
-    typeof parsed.html !== 'string' ||
     typeof parsed.createdAt !== 'string' ||
     typeof parsed.updatedAt !== 'string'
   ) {
     return null
   }
 
-  const title = normalizeDeckTitle(
-    typeof parsed.title === 'string' ? parsed.title : extractDeckTitle(parsed.html),
-  )
-  const versionId = parsed.activeVersionId ?? randomUUID()
+  const versions = parsed.versions
+    .filter(
+      (version): version is StoredDeckVersion =>
+        typeof version === 'object' &&
+        version !== null &&
+        typeof version.id === 'string' &&
+        typeof version.versionNumber === 'number' &&
+        typeof version.html === 'string' &&
+        typeof version.title === 'string' &&
+        typeof version.createdAt === 'string',
+    )
+    .map((version) => ({
+      id: version.id,
+      versionNumber: version.versionNumber,
+      html: version.html,
+      title: normalizeDeckTitle(version.title),
+      source: normalizeDeckVersionSource(version.source),
+      summary: typeof version.summary === 'string' ? version.summary : null,
+      modelProvider: typeof version.modelProvider === 'string' ? version.modelProvider : null,
+      modelName: typeof version.modelName === 'string' ? version.modelName : null,
+      provenance: normalizeDeckVersionProvenance(version.provenance),
+      diff: normalizeDeckVersionDiff(version.diff),
+      validationStatus: normalizeDeckValidationStatus(version.validationStatus),
+      runtimeManifest: parseDeckRuntimeManifest(version.runtimeManifest),
+      createdAt: version.createdAt,
+    }))
+
+  if (versions.length === 0) {
+    return null
+  }
 
   return {
     id: parsed.id,
-    title,
+    title: normalizeDeckTitle(parsed.title),
     createdAt: parsed.createdAt,
     updatedAt: parsed.updatedAt,
-    activeVersionId: versionId,
-    versions: [
-      {
-        id: versionId,
-        versionNumber: parsed.versionNumber ?? 1,
-        html: parsed.html,
-        title,
-        source: 'manual',
-        summary: null,
-        modelProvider: null,
-        modelName: null,
-        provenance: null,
-        diff: null,
-        validationStatus: 'valid',
-        runtimeManifest: null,
-        createdAt: parsed.createdAt,
-      },
-    ],
+    activeVersionId: parsed.activeVersionId,
+    versions,
   }
-}
-
-function parseDeckFile(raw: string): StoredDeckFile | null {
-  const parsed = JSON.parse(raw) as StoredDeck & StoredDeckFile
-
-  if (Array.isArray(parsed.versions) && typeof parsed.activeVersionId === 'string') {
-    const versions = parsed.versions
-      .filter(
-        (version): version is StoredDeckVersion =>
-          typeof version === 'object' &&
-          version !== null &&
-          typeof version.id === 'string' &&
-          typeof version.versionNumber === 'number' &&
-          typeof version.html === 'string' &&
-          typeof version.title === 'string' &&
-          typeof version.createdAt === 'string',
-      )
-      .map((version) => ({
-        id: version.id,
-        versionNumber: version.versionNumber,
-        html: version.html,
-        title: normalizeDeckTitle(version.title),
-        source: normalizeDeckVersionSource(version.source),
-        summary: typeof version.summary === 'string' ? version.summary : null,
-        modelProvider: typeof version.modelProvider === 'string' ? version.modelProvider : null,
-        modelName: typeof version.modelName === 'string' ? version.modelName : null,
-        provenance: normalizeDeckVersionProvenance(version.provenance),
-        diff: normalizeDeckVersionDiff(version.diff),
-        validationStatus: normalizeDeckValidationStatus(version.validationStatus),
-        runtimeManifest: parseDeckRuntimeManifest(version.runtimeManifest),
-        createdAt: version.createdAt,
-      }))
-
-    if (versions.length === 0) {
-      return null
-    }
-
-    return {
-      id: parsed.id,
-      title: normalizeDeckTitle(parsed.title),
-      createdAt: parsed.createdAt,
-      updatedAt: parsed.updatedAt,
-      activeVersionId: parsed.activeVersionId,
-      versions,
-    }
-  }
-
-  return migrateLegacyDeck(parsed)
 }
 
 async function readDeckFile(filePath: string): Promise<StoredDeckFile | null> {

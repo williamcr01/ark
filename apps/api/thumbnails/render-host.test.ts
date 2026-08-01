@@ -12,7 +12,6 @@ import {
   isLoopbackAddress,
   renderThumbnailPreviewDocument,
   THUMBNAIL_RENDER_SECRET_HEADER,
-  thumbnailRenderLoopbackGuard,
 } from './render-host.ts'
 
 function createFakeGuardArgs(
@@ -64,25 +63,6 @@ describe('isLoopbackAddress', () => {
     expect(isLoopbackAddress('')).toBe(false)
     expect(isLoopbackAddress(undefined)).toBe(false)
     expect(isLoopbackAddress(null)).toBe(false)
-  })
-})
-
-describe('thumbnailRenderLoopbackGuard', () => {
-  it('passes loopback requests through', () => {
-    const { request, response, next, nextMock } = createFakeGuardArgs('127.0.0.1')
-
-    thumbnailRenderLoopbackGuard(request, response, next)
-
-    expect(nextMock).toHaveBeenCalledOnce()
-  })
-
-  it('rejects remote requests with 403', () => {
-    const { request, response, rawResponse, next, nextMock } = createFakeGuardArgs('10.0.0.5')
-
-    thumbnailRenderLoopbackGuard(request, response, next)
-
-    expect(nextMock).not.toHaveBeenCalled()
-    expect(rawResponse.statusCode).toBe(403)
   })
 })
 

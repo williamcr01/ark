@@ -17,7 +17,6 @@ import {
   OPAQUE_SANDBOX_ORIGIN,
   resolveSandboxOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
-import type { DeckRuntimeMode } from '@/lib/deck-runtime'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
@@ -33,9 +32,7 @@ type HarnessProps = {
   onSlideChange?: (index: number) => void
   onSlidePatchFailed?: () => void
   reloadRevision?: number
-  runtimeMode?: DeckRuntimeMode
   slideCount?: number
-  syncOnLoad?: boolean
   sandboxOrigin?: string | null
   canPostToFrame?: () => boolean
   shouldAcceptInbound?: () => boolean
@@ -51,9 +48,7 @@ function NavigationHarness({
   onSlideChange,
   onSlidePatchFailed,
   reloadRevision = 0,
-  runtimeMode = 'static',
   slideCount = 3,
-  syncOnLoad = false,
   sandboxOrigin = null,
   canPostToFrame,
   shouldAcceptInbound,
@@ -72,8 +67,6 @@ function NavigationHarness({
       onSlideChange,
       onSlidePatchFailed,
       reloadRevision,
-      runtimeMode,
-      syncOnLoad,
       sandboxOrigin,
       canPostToFrame,
       shouldAcceptInbound,
@@ -244,46 +237,6 @@ describe('useDeckSlideNavigation', () => {
       slideCount: 3,
       metadata,
     })
-  })
-
-  it('syncs the requested initial slide when a new iframe reports ready at slide 0', async () => {
-    const metadata = createDeckMetadata({
-      runtime: 'plain',
-      title: 'Demo',
-      previewMode: 'css-only',
-    })
-    render(
-      <NavigationHarness initialSlideIndex={1} sandboxOrigin={sandboxOrigin} syncOnLoad={true} />,
-    )
-    const iframeWindow = getIframeWindow()
-    const postMessage = vi.spyOn(iframeWindow, 'postMessage')
-
-    expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
-
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: createDeckSlideChangeMessage(0),
-          origin: sandboxOrigin,
-          source: iframeWindow,
-        }),
-      )
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: createDeckReadyMessage(0, 3, metadata),
-          origin: sandboxOrigin,
-          source: iframeWindow,
-        }),
-      )
-    })
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Active slide')).toHaveTextContent('1')
-    })
-    expect(postMessage).toHaveBeenCalledWith(
-      createDeckGotoMessage(1),
-      DECK_BRIDGE_POST_MESSAGE_TARGET,
-    )
   })
 
   it('applies initialSlideIndex when html first arrives after an empty mount', () => {
@@ -763,7 +716,6 @@ describe('useDeckSlideNavigation', () => {
       <NavigationHarness
         html={revealRegistryDeck}
         onSlideChange={onSlideChange}
-        runtimeMode="reveal"
         sandboxOrigin={sandboxOrigin}
         slideCount={2}
       />,

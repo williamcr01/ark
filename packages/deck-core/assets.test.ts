@@ -48,7 +48,7 @@ describe('asset URLs', () => {
     expect(isArkAssetUrl(`/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBe(true)
   })
 
-  it('still parses legacy /api/assets/:id URLs for chat replay', () => {
+  it('parses temporary /api/assets/:id URLs for unsaved decks', () => {
     expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}`)).toBe(ASSET_ID)
     expect(isArkAssetUrl(`/api/assets/${ASSET_ID}`)).toBe(true)
   })

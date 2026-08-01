@@ -1,10 +1,6 @@
 import type { ReasoningEffort } from '@ark/contracts'
 
-import {
-  findCatalogEntryByRef,
-  type ModelCatalogEntry,
-  type ReasoningTransport,
-} from './model-catalog.ts'
+import { findCatalogEntryByRef, type ReasoningTransport } from './model-catalog.ts'
 
 const ANTHROPIC_THINKING_BUDGET: Record<
   Extract<ReasoningEffort, 'low' | 'medium' | 'high' | 'xhigh'>,
@@ -20,38 +16,17 @@ type JsonPrimitive = string | number | boolean | null
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 type ProviderOptions = Record<string, { [key: string]: JsonValue }>
 
-const resolveTransport = (
-  provider: string,
-  modelRef?: string | null,
-): { transport: ReasoningTransport; entry?: ModelCatalogEntry } => {
-  if (modelRef) {
-    const entry = findCatalogEntryByRef(modelRef)
-    if (entry) {
-      return { transport: entry.reasoningTransport, entry }
-    }
-  }
-
-  // Legacy fallback when only the provider is known (tests / older callers).
-  if (provider === 'openai') {
-    return { transport: 'openai-effort' }
-  }
-  if (provider === 'anthropic') {
-    return { transport: 'anthropic-adaptive' }
-  }
-  if (provider === 'google') {
-    return { transport: 'google-thinking-level' }
-  }
-
-  return { transport: 'none' }
+const resolveTransport = (modelRef: string): ReasoningTransport => {
+  const entry = findCatalogEntryByRef(modelRef)
+  return entry?.reasoningTransport ?? 'none'
 }
 
 /** Build AI SDK providerOptions for reasoning effort (ai@6 has no portable `reasoning` param). */
 export const buildReasoningProviderOptions = (
-  provider: string,
   effort: ReasoningEffort,
-  modelRef?: string | null,
+  modelRef: string,
 ): ProviderOptions => {
-  const { transport } = resolveTransport(provider, modelRef)
+  const transport = resolveTransport(modelRef)
 
   switch (transport) {
     case 'openai-effort':

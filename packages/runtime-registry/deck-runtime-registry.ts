@@ -22,8 +22,6 @@ export type ApprovedRuntimeEntry = {
   runtimeMode: 'reveal' | 'custom-js'
   license: string
   source: string
-  deprecated?: boolean
-  supersededBy?: { id: string; version: string }
   previewMode: 'css-only' | 'full-js'
   allowsDeckScripts: boolean
   allowedGlobals?: string[]
@@ -414,9 +412,7 @@ export function resolveDeckApprovedRuntime(doc: Document): ApprovedRuntimeEntry 
   }
 
   if (hasRevealMarker(doc) || hasRevealStructure(doc)) {
-    return (
-      APPROVED_RUNTIMES.find((entry) => entry.runtimeMode === 'reveal' && !entry.deprecated) ?? null
-    )
+    return APPROVED_RUNTIMES.find((entry) => entry.runtimeMode === 'reveal') ?? null
   }
 
   return null
@@ -666,7 +662,6 @@ export function getRuntimeRegistrySummary() {
     id: runtime.id,
     version: runtime.version,
     runtimeMode: runtime.runtimeMode,
-    deprecated: runtime.deprecated ?? false,
     previewMode: runtime.previewMode,
     allowsDeckScripts: runtime.allowsDeckScripts,
     assets: runtime.assets.map((asset) => ({

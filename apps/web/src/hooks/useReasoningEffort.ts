@@ -6,8 +6,6 @@ import type { AvailableModel } from '@/hooks/useAvailableModels'
 
 export type { ReasoningEffort }
 
-const REASONING_EFFORT_STORAGE_KEY = 'ark:reasoning-effort'
-const LEGACY_REASONING_EFFORT_BY_MODEL_STORAGE_KEY = 'ark:reasoning-effort-by-model'
 const REASONING_EFFORT_BY_MODEL_STORAGE_KEY = 'ark:reasoning-effort-by-model:v1'
 
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
@@ -19,20 +17,9 @@ const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   value === 'xhigh' ||
   value === 'max'
 
-const readLegacyEffort = (): ReasoningEffort | null => {
-  try {
-    const stored = localStorage.getItem(REASONING_EFFORT_STORAGE_KEY)
-    return isReasoningEffort(stored) ? stored : null
-  } catch {
-    return null
-  }
-}
-
 const readStoredEffortMap = (): Record<string, ReasoningEffort> => {
   try {
-    const raw =
-      localStorage.getItem(REASONING_EFFORT_BY_MODEL_STORAGE_KEY) ??
-      localStorage.getItem(LEGACY_REASONING_EFFORT_BY_MODEL_STORAGE_KEY)
+    const raw = localStorage.getItem(REASONING_EFFORT_BY_MODEL_STORAGE_KEY)
     if (!raw) {
       return {}
     }
@@ -55,7 +42,6 @@ const readStoredEffortMap = (): Record<string, ReasoningEffort> => {
 const writeStoredEffortMap = (map: Record<string, ReasoningEffort>) => {
   try {
     localStorage.setItem(REASONING_EFFORT_BY_MODEL_STORAGE_KEY, JSON.stringify(map))
-    localStorage.removeItem(LEGACY_REASONING_EFFORT_BY_MODEL_STORAGE_KEY)
   } catch {
     // Ignore storage failures.
   }
@@ -68,14 +54,13 @@ export function formatReasoningEffortLabel(effort: ReasoningEffort) {
 export function resolveEffortForModel(
   model: AvailableModel | undefined,
   storedByModel: Record<string, ReasoningEffort>,
-  legacyEffort: ReasoningEffort | null = null,
 ): ReasoningEffort | undefined {
   const supported = model?.reasoningEfforts ?? []
   if (!model || supported.length === 0) {
     return undefined
   }
 
-  const preferred = storedByModel[model.id] ?? legacyEffort
+  const preferred = storedByModel[model.id]
   if (preferred && supported.includes(preferred)) {
     return preferred
   }
@@ -90,16 +75,14 @@ export function resolveEffortForModel(
 export function useReasoningEffort(selectedModel: string, models: AvailableModel[]) {
   const [effortByModel, setEffortByModel] =
     useState<Record<string, ReasoningEffort>>(readStoredEffortMap)
-  const [legacyEffort] = useState<ReasoningEffort | null>(readLegacyEffort)
 
   const getReasoningEffort = useCallback(
     (modelId: string) =>
       resolveEffortForModel(
         models.find((model) => model.id === modelId),
         effortByModel,
-        legacyEffort,
       ),
-    [effortByModel, legacyEffort, models],
+    [effortByModel, models],
   )
   const reasoningEffort = getReasoningEffort(selectedModel)
 

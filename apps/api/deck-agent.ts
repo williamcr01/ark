@@ -600,7 +600,7 @@ export async function runDeckAgent({
     ...guideMetadata,
   })
   const providerOptions = reasoningEffort
-    ? buildReasoningProviderOptions(provider, reasoningEffort, modelRef)
+    ? buildReasoningProviderOptions(reasoningEffort, modelRef)
     : undefined
 
   let result
@@ -617,7 +617,7 @@ export async function runDeckAgent({
         hasAwaitingUserToolResult('propose_themes'),
         isLoopFinished(),
       ],
-      // Legacy fallback for callers that omit reasoningEffort (the UI always sends one).
+      // Use stable sampling for models without a reasoning-effort control.
       ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
       abortSignal,

@@ -278,12 +278,12 @@ describe('buildModelMessages', () => {
 })
 
 describe('buildAgentModelMessages', () => {
-  it('replays bounded transcript omission text instead of the legacy summary', () => {
+  it('replays bounded transcript omission text instead of the prior summary', () => {
     expect(
       convertChatHistoryToModelMessages([
         {
           role: 'assistant',
-          content: 'Legacy summary',
+          content: 'Prior summary',
           parts: [{ type: 'text', content: '[earlier steps omitted]', stepIndex: 0 }],
         },
       ]),
@@ -347,7 +347,7 @@ describe('buildAgentModelMessages', () => {
       convertChatHistoryToModelMessages([
         {
           role: 'assistant',
-          content: 'Legacy summary',
+          content: 'Prior summary',
           parts: [
             {
               type: 'tool-call',
@@ -360,7 +360,7 @@ describe('buildAgentModelMessages', () => {
           ],
         },
       ]),
-    ).toEqual([{ role: 'assistant', content: 'Legacy summary' }])
+    ).toEqual([{ role: 'assistant', content: 'Prior summary' }])
   })
 
   it('does not embed full HTML in the latest user turn', () => {

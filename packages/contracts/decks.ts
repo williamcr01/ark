@@ -20,8 +20,8 @@ export const storedDeckSchema = z.object({
   title: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  activeVersionId: deckIdSchema.nullable().optional(),
-  versionNumber: z.number().int().nullable().optional(),
+  activeVersionId: deckIdSchema,
+  versionNumber: z.number().int().min(1),
 })
 
 export type StoredDeck = z.infer<typeof storedDeckSchema>
@@ -186,10 +186,10 @@ export const deckVersionSummarySchema = z.object({
   summary: z.string().nullable(),
   validationStatus: deckValidationStatusSchema,
   runtimeManifest: deckRuntimeManifestSchema.nullable(),
-  modelProvider: z.string().nullable().optional(),
-  modelName: z.string().nullable().optional(),
-  provenance: deckVersionProvenanceSchema.nullable().optional(),
-  diff: deckVersionDiffSchema.nullable().optional(),
+  modelProvider: z.string().nullable(),
+  modelName: z.string().nullable(),
+  provenance: deckVersionProvenanceSchema.nullable(),
+  diff: deckVersionDiffSchema.nullable(),
   createdAt: z.string(),
   isActive: z.boolean(),
 })

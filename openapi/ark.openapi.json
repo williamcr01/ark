@@ -104,10 +104,15 @@
                             "type": "string",
                             "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
                           },
-                          "supportsReasoning": { "type": "boolean" },
                           "supportsAttachments": { "type": "boolean" }
                         },
-                        "required": ["id", "provider", "modelId", "available"]
+                        "required": [
+                          "id",
+                          "provider",
+                          "modelId",
+                          "available",
+                          "supportsAttachments"
+                        ]
                       }
                     },
                     "warnings": { "type": "array", "items": { "type": "string" } },
@@ -164,12 +169,18 @@
                           "updatedAt": { "type": "string" },
                           "activeVersionId": {
                             "type": "string",
-                            "nullable": true,
                             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                           },
-                          "versionNumber": { "type": "integer", "nullable": true }
+                          "versionNumber": { "type": "integer", "minimum": 1 }
                         },
-                        "required": ["id", "title", "createdAt", "updatedAt"]
+                        "required": [
+                          "id",
+                          "title",
+                          "createdAt",
+                          "updatedAt",
+                          "activeVersionId",
+                          "versionNumber"
+                        ]
                       }
                     },
                     "requestId": { "type": "string", "format": "uuid" }
@@ -278,12 +289,19 @@
                         "updatedAt": { "type": "string" },
                         "activeVersionId": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "versionNumber": { "type": "integer", "nullable": true }
+                        "versionNumber": { "type": "integer", "minimum": 1 }
                       },
-                      "required": ["id", "html", "title", "createdAt", "updatedAt"]
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "activeVersionId",
+                        "versionNumber"
+                      ]
                     },
                     "validation": {
                       "type": "object",
@@ -498,12 +516,19 @@
                         "updatedAt": { "type": "string" },
                         "activeVersionId": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "versionNumber": { "type": "integer", "nullable": true }
+                        "versionNumber": { "type": "integer", "minimum": 1 }
                       },
-                      "required": ["id", "html", "title", "createdAt", "updatedAt"]
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "activeVersionId",
+                        "versionNumber"
+                      ]
                     },
                     "requestId": { "type": "string", "format": "uuid" }
                   },
@@ -652,12 +677,19 @@
                         "updatedAt": { "type": "string" },
                         "activeVersionId": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "versionNumber": { "type": "integer", "nullable": true }
+                        "versionNumber": { "type": "integer", "minimum": 1 }
                       },
-                      "required": ["id", "html", "title", "createdAt", "updatedAt"]
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "activeVersionId",
+                        "versionNumber"
+                      ]
                     },
                     "validation": {
                       "type": "object",
@@ -896,12 +928,19 @@
                         "updatedAt": { "type": "string" },
                         "activeVersionId": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "versionNumber": { "type": "integer", "nullable": true }
+                        "versionNumber": { "type": "integer", "minimum": 1 }
                       },
-                      "required": ["id", "html", "title", "createdAt", "updatedAt"]
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "activeVersionId",
+                        "versionNumber"
+                      ]
                     },
                     "requestId": { "type": "string", "format": "uuid" }
                   },
@@ -1430,12 +1469,19 @@
                         "updatedAt": { "type": "string" },
                         "activeVersionId": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "versionNumber": { "type": "integer", "nullable": true }
+                        "versionNumber": { "type": "integer", "minimum": 1 }
                       },
-                      "required": ["id", "html", "title", "createdAt", "updatedAt"]
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "activeVersionId",
+                        "versionNumber"
+                      ]
                     },
                     "validation": {
                       "type": "object",
@@ -1791,6 +1837,10 @@
                           "summary",
                           "validationStatus",
                           "runtimeManifest",
+                          "modelProvider",
+                          "modelName",
+                          "provenance",
+                          "diff",
                           "createdAt",
                           "isActive"
                         ]
@@ -2076,6 +2126,10 @@
                         "summary",
                         "validationStatus",
                         "runtimeManifest",
+                        "modelProvider",
+                        "modelName",
+                        "provenance",
+                        "diff",
                         "createdAt",
                         "isActive",
                         "html"
@@ -2187,12 +2241,19 @@
                         "updatedAt": { "type": "string" },
                         "activeVersionId": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "versionNumber": { "type": "integer", "nullable": true }
+                        "versionNumber": { "type": "integer", "minimum": 1 }
                       },
-                      "required": ["id", "html", "title", "createdAt", "updatedAt"]
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "activeVersionId",
+                        "versionNumber"
+                      ]
                     },
                     "validation": {
                       "type": "object",
@@ -5732,7 +5793,6 @@
                             "type": "string",
                             "enum": ["static", "reveal", "custom-js"]
                           },
-                          "deprecated": { "type": "boolean" },
                           "previewMode": { "type": "string", "enum": ["css-only", "full-js"] },
                           "allowsDeckScripts": { "type": "boolean" },
                           "assets": {
@@ -5757,7 +5817,6 @@
                           "id",
                           "version",
                           "runtimeMode",
-                          "deprecated",
                           "previewMode",
                           "allowsDeckScripts",
                           "assets"

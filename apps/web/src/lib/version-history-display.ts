@@ -11,7 +11,7 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
 
 /**
  * Compact chips for a version list row — derived only from summary metadata
- * (no HTML fetch). Legacy versions with null provenance/diff still render
+ * (no HTML fetch). Versions with null provenance/diff still render
  * source-aware chips when possible.
  */
 export function getVersionHistoryChips(version: DeckVersionSummary): VersionHistoryChip[] {
@@ -83,7 +83,7 @@ export type VersionHistoryDetailSection = {
 
 /**
  * Detail-pane fields for provenance + diff. Returns an empty list when the
- * version has no structured metadata (legacy rows).
+ * version has no structured metadata.
  */
 export function getVersionHistoryDetailSections(
   version: DeckVersionSummary,
