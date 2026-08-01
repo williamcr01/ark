@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -65,6 +65,17 @@ function EditorHarness({
     onSelectionChange,
   })
   const { enableEditor } = bridge
+  const selectionIdentityRef = useRef(bridge.selection)
+  const [selectionIdentityVersion, setSelectionIdentityVersion] = useState(0)
+
+  useEffect(() => {
+    if (selectionIdentityRef.current === bridge.selection) {
+      return
+    }
+
+    selectionIdentityRef.current = bridge.selection
+    setSelectionIdentityVersion((version) => version + 1)
+  }, [bridge.selection])
 
   useEffect(() => {
     if (previousGenerationKeyRef.current === iframeGenerationKey) {
@@ -90,6 +101,7 @@ function EditorHarness({
       />
       <output aria-label="Editor ready">{bridge.editorReady ? 'ready' : 'pending'}</output>
       <output aria-label="Selection">{bridge.selection?.elementId ?? 'none'}</output>
+      <output aria-label="Selection identity">{selectionIdentityVersion}</output>
       <output aria-label="Geometry">{bridge.geometry ? 'geometry' : 'none'}</output>
       <output aria-label="Selection surface">{bridge.selection?.surface ?? 'light'}</output>
       <output aria-label="Hover geometry">{bridge.hoverGeometry ? 'geometry' : 'none'}</output>
@@ -611,6 +623,68 @@ describe('useDeckEditorBridge', () => {
 
     expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('geometry')
+  })
+
+  it('keeps selection object identity when geometry repeats the same surface', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-title',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Title',
+            surface: 'dark',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    const identityAfterSelect = screen.getByLabelText('Selection identity').textContent
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage(
+            'ark-el-title',
+            0,
+            { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
+            null,
+            undefined,
+            'dark',
+          ),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage(
+            'ark-el-title',
+            0,
+            { x: 0.12, y: 0.22, width: 0.5, height: 0.1 },
+            null,
+            undefined,
+            'dark',
+          ),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-title')
+    expect(screen.getByLabelText('Selection surface')).toHaveTextContent('dark')
+    expect(screen.getByLabelText('Selection identity')).toHaveTextContent(identityAfterSelect ?? '')
   })
 
   it('stores inline hover geometry, adaptive surfaces, and shortcut requests', async () => {

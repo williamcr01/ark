@@ -588,20 +588,25 @@ export function DeckPreview({
     }
   }, [configureEditor, editorBridgeActive, editorReady, previewFrameScale])
 
+  const selectedElementId = selection?.elementId ?? null
+  const selectedSlideIndex = selection?.slideIndex ?? null
+
   useEffect(() => {
-    if (!editChromeActive || !selection?.elementId) {
+    if (!editChromeActive || selectedElementId === null || selectedSlideIndex === null) {
       return
     }
 
-    requestGeometry(selection.elementId, selection.slideIndex)
+    requestGeometry(selectedElementId, selectedSlideIndex)
     // Re-measure when the preview viewport resizes so letterboxed slides keep
-    // the parent overlay aligned after scale changes.
+    // the parent overlay aligned after scale changes. Depend on selection
+    // identity fields only — geometry replies must not retrigger this effect.
   }, [
     editChromeActive,
     previewViewportSize.height,
     previewViewportSize.width,
     requestGeometry,
-    selection,
+    selectedElementId,
+    selectedSlideIndex,
   ])
 
   // Mirror the live selection up to the shell so chat requests can target the

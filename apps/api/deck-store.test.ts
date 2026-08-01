@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, unlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -86,6 +86,70 @@ describe('createDeckStore', () => {
     const deleted = await store.deleteDeck(created.id)
     expect(deleted).toBe(true)
     expect(await store.getDeck(created.id)).toBeNull()
+  })
+
+  it('persists a compact active-deck read model for cold loads', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+    const largeHtml = sampleHtml.replace('</body>', `<p>${'x'.repeat(4 * 1024)}</p></body>`)
+    const created = await store.createDeck(largeHtml)
+
+    for (let index = 0; index < 8; index += 1) {
+      await store.updateDeck(created.id, largeHtml.replace('Hello', `Version ${index + 2}`))
+    }
+
+    const deckPath = path.join(dataDir, `${created.id}.json`)
+    const snapshotPath = `${deckPath}.active`
+    const [deckStat, snapshotStat, snapshotRaw] = await Promise.all([
+      stat(deckPath),
+      stat(snapshotPath),
+      readFile(snapshotPath, 'utf8'),
+    ])
+    const snapshot = JSON.parse(snapshotRaw)
+
+    expect(snapshotStat.size).toBeLessThan(deckStat.size / 2)
+    expect(snapshot).toMatchObject({
+      sourceMtimeMs: deckStat.mtimeMs,
+      sourceSize: deckStat.size,
+      deck: {
+        id: created.id,
+        versionNumber: 9,
+      },
+      versions: expect.arrayContaining([
+        expect.objectContaining({ deckId: created.id, versionNumber: 9, isActive: true }),
+      ]),
+    })
+
+    const restartedStore = createDeckStore(dataDir)
+    await expect(restartedStore.getDeck(created.id)).resolves.toMatchObject({
+      id: created.id,
+      html: expect.stringContaining('Version 9'),
+      versionNumber: 9,
+    })
+    await expect(restartedStore.listDecks()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, versionNumber: 9 }),
+    ])
+    await expect(restartedStore.listVersions(created.id)).resolves.toHaveLength(9)
+    await expect(
+      restartedStore.getVersionMetadata(created.id, created.activeVersionId!),
+    ).resolves.toMatchObject({ id: created.activeVersionId, versionNumber: 1, isActive: false })
+  })
+
+  it('requires a current active-deck read model', async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
+    const store = createDeckStore(dataDir)
+    const created = await store.createDeck(sampleHtml)
+    const deckPath = path.join(dataDir, `${created.id}.json`)
+
+    await unlink(`${deckPath}.active`)
+
+    const restartedStore = createDeckStore(dataDir)
+    await expect(restartedStore.getDeck(created.id)).resolves.toBeNull()
+    await expect(restartedStore.listDecks()).resolves.toEqual([])
+    await expect(restartedStore.listVersions(created.id)).resolves.toBeNull()
+    await expect(
+      restartedStore.getVersionMetadata(created.id, created.activeVersionId!),
+    ).resolves.toBeNull()
   })
 
   it('creates immutable versions with source metadata', async () => {
@@ -244,7 +308,6 @@ describe('createDeckStore', () => {
       }),
     ).toBeNull()
   })
-
   it('ignores pre-versioned deck files', async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-decks-'))
     const store = createDeckStore(dataDir)

@@ -137,7 +137,7 @@ The required `quality`, `build`, `test`, and `smoke` checks always report a resu
 
 `quality` always runs for normal PR updates. Scope decisions and selected workspaces are written to the Actions job summary. Unknown paths fall back to full validation; classifier test or execution failures fail the required checks closed.
 
-Every `main` push and manual workflow dispatch runs comprehensive validation: the full unit suite, live Chromium renderer tests, plain-CSS smoke, Reveal, full-JS bridge, manual-edit, and thumbnail smokes. Pull requests never run the non-required live-Chromium or extended browser jobs; high-risk PR inputs still select the full unit suite and required plain-CSS smoke. Because this repository cannot use GitHub Merge Queue, comprehensive browser coverage is a post-merge guarantee and may temporarily make `main` red when it catches a regression.
+Every `main` push and manual workflow dispatch runs comprehensive validation: the full unit suite, live Chromium renderer tests, and plain-CSS smoke. Extended browser smokes (Reveal, full-JS bridge, manual-edit, thumbnails) are disabled in CI for now — run them locally with `pnpm smoke:browser:extended`; re-enable via [#265](https://github.com/williamcr01/ark/issues/265) (nightly, prod/release branch, or path filters). Pull requests never run the non-required live-Chromium job; high-risk PR inputs still select the full unit suite and required plain-CSS smoke.
 
 Format before pushing substantive changes:
 

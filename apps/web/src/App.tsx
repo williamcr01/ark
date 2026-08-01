@@ -284,7 +284,32 @@ function App() {
   }
 
   const handleEditorSelectionChange = useCallback((selection: EditorSelectionInfo | null) => {
-    setEditorSelection(selection)
+    setEditorSelection((current) => {
+      if (current === selection) {
+        return current
+      }
+
+      if (
+        current &&
+        selection &&
+        current.elementId === selection.elementId &&
+        current.slideIndex === selection.slideIndex &&
+        current.slideId === selection.slideId &&
+        current.tagName === selection.tagName &&
+        current.locked === selection.locked &&
+        current.managed === selection.managed &&
+        current.editableKind === selection.editableKind &&
+        current.textPreview === selection.textPreview &&
+        current.surface === selection.surface &&
+        current.geometryEditable === selection.geometryEditable &&
+        current.role === selection.role &&
+        current.imageFit === selection.imageFit
+      ) {
+        return current
+      }
+
+      return selection
+    })
   }, [])
 
   const handleClearEditorSelection = useCallback(() => {
