@@ -354,11 +354,17 @@ export function useDeckEditorBridge(
       if (isEditorGeometryMessage(data)) {
         setState((current) => {
           if (current.selection?.elementId === data.elementId) {
+            // Keep the selection object identity stable when surface is unchanged.
+            // Recreating it on every geometry reply re-fires requestGeometry effects
+            // and can stack into "Maximum update depth exceeded".
+            const selection =
+              data.surface && data.surface !== current.selection.surface
+                ? { ...current.selection, surface: data.surface }
+                : current.selection
+
             return {
               ...current,
-              selection: data.surface
-                ? { ...current.selection, surface: data.surface }
-                : current.selection,
+              selection,
               geometry: data.geometry,
               slideBounds: data.slideBounds ?? null,
               selectionZIndex: data.zIndex,
