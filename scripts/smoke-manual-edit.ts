@@ -14,6 +14,7 @@ import {
   readContext,
   repoRoot,
   setUploadFile,
+  sleep,
   SMOKE_SLOW_TIMEOUT_MS,
   spawnChromium,
   startServers,
@@ -225,6 +226,7 @@ async function refreshEditPreviewContext(
             const href = await evaluate<string>(cdp!, 'location.href', {
               contextId: candidate.id,
               sessionId: candidate.sessionId,
+              timeoutMs: 2_000,
             }).catch(() => '')
 
             if (href === src) {
@@ -249,8 +251,8 @@ async function refreshEditPreviewContext(
             hasRuntime: Boolean(document.querySelector('style[data-ark-editor="true"]')),
           };
         })()`,
-          { contextId: context.id, sessionId: context.sessionId },
-        )
+          { contextId: context.id, sessionId: context.sessionId, timeoutMs: 2_000 },
+        ).catch(() => ({ activeText: '', hasRuntime: false }))
         const ready = readiness.hasRuntime && readiness.activeText.includes(expectedSlideText)
         lastState = `runtime=${readiness.hasRuntime}, active=${JSON.stringify(readiness.activeText.slice(0, 80))}`
 
@@ -264,6 +266,7 @@ async function refreshEditPreviewContext(
         const stableContextSrc = await evaluate<string>(cdp!, 'location.href', {
           contextId: context.id,
           sessionId: context.sessionId,
+          timeoutMs: 2_000,
         }).catch(() => '')
 
         return stableSrc === src && stableContextSrc === src
@@ -287,36 +290,62 @@ async function getCurrentEditPreview(
   requiredSelector = 'style[data-ark-editor="true"]',
   previousSrc = '',
 ) {
-  return waitFor(
-    'current ready editor sandbox preview',
-    async () => {
-      const src = await evaluate<string>(
-        cdp!,
-        `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
-      )
+  let lastState = 'not polled'
 
-      if (!src.startsWith(`${servers.sandboxOrigin}/render/`) || src === previousSrc) {
-        return null
-      }
-
-      const exact = await findContextByUrl(cdp!, contexts, src)
-      const candidates = [
-        exact,
-        ...[...contexts.values()].reverse().filter((context) => context.isDefault),
-      ].filter((context): context is RuntimeContext => Boolean(context))
-
-      for (const editPreview of candidates) {
-        const state = await evaluate<{ href: string; ready: boolean }>(
+  try {
+    return await waitFor(
+      'current ready editor sandbox preview',
+      async () => {
+        const src = await evaluate<string>(
           cdp!,
-          `({
+          `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
+        )
+
+        if (!src.startsWith(`${servers.sandboxOrigin}/render/`)) {
+          lastState = `unexpected URL: ${src || '(missing)'}`
+          return null
+        }
+
+        // Only require a URL change when the caller expects a reload. Deck
+        // uploads and in-place slide patches often keep or briefly reuse the
+        // prior sandbox URL while the new session arms.
+        if (previousSrc && src === previousSrc) {
+          lastState = 'waiting for a new iframe URL'
+          return null
+        }
+
+        const exact = await findContextByUrl(cdp!, contexts, src)
+        const candidates = [
+          exact,
+          ...[...contexts.values()].reverse().filter((context) => context.isDefault),
+        ].filter((context): context is RuntimeContext => Boolean(context))
+
+        if (candidates.length === 0) {
+          lastState = `no execution context for ${src}`
+          return null
+        }
+
+        for (const editPreview of candidates) {
+          const state = await evaluate<{ href: string; ready: boolean }>(
+            cdp!,
+            `({
             href: location.href,
             ready: Boolean(document.querySelector('style[data-ark-editor="true"]')) && Boolean(document.querySelector(${JSON.stringify(requiredSelector)})),
           })`,
-          { contextId: editPreview.id, sessionId: editPreview.sessionId },
-        ).catch(() => null)
+            { contextId: editPreview.id, sessionId: editPreview.sessionId, timeoutMs: 2_000 },
+          ).catch(() => null)
 
-        if (state?.ready && state.href === src) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
+          if (!state) {
+            lastState = `context probe failed for ${src}`
+            continue
+          }
+
+          if (!state.ready || state.href !== src) {
+            lastState = `runtime=${state.ready}, href=${state.href === src ? 'match' : state.href}`
+            continue
+          }
+
+          await sleep(500)
           const stableSrc = await evaluate<string>(
             cdp!,
             `document.querySelector('iframe[title="Generated Ark presentation preview"]')?.src || ''`,
@@ -324,18 +353,26 @@ async function getCurrentEditPreview(
           const stableContextSrc = await evaluate<string>(cdp!, 'location.href', {
             contextId: editPreview.id,
             sessionId: editPreview.sessionId,
+            timeoutMs: 2_000,
           }).catch(() => '')
 
           if (stableSrc === src && stableContextSrc === src) {
             return { editPreviewSrc: state.href, editPreview }
           }
-        }
-      }
 
-      return null
-    },
-    { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
-  )
+          lastState = `unstable src (${stableSrc} / ${stableContextSrc})`
+        }
+
+        return null
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)} Last state: ${lastState}`,
+      { cause: error },
+    )
+  }
 }
 
 async function dispatchPointerSequence(
@@ -384,13 +421,9 @@ async function dispatchPointerSequence(
 
     assert(dispatched, `Could not dispatch ${step.type} in edit preview`)
 
-    // Let the editor bridge process the pointer event before the next one.
-    // Fixed sleeps are flaky under CI load; wait for two animation frames instead.
-    await evaluate(
-      cdp,
-      `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
+    // Node-side yield only. Page-side rAF awaitPromise can hang if the iframe
+    // context is destroyed mid-gesture (common with in-place preview patches).
+    await sleep(50)
 
     if (step.type === 'pointerdown') {
       await waitFor(
@@ -454,15 +487,18 @@ async function cancelPendingNudgeViaUndo(
       { contextId: context.id, sessionId: context.sessionId },
     ),
   )
+  // Keep delays on the Node side. Page-side awaitPromise timers hang forever if
+  // the iframe context is destroyed mid-nudge/undo (common with in-place preview patches).
   await evaluate(
     cdp,
     `(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-      return new Promise((resolve) => setTimeout(resolve, 1000));
+      return true;
     })()`,
     { contextId: context.id, sessionId: context.sessionId },
   )
+  await sleep(1_000)
 }
 
 async function moveTextBoxViaPointer(
@@ -865,11 +901,7 @@ async function runSmoke() {
       button: 'left',
       buttons: 1,
     })
-    await evaluate(
-      cdp,
-      `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
-      { contextId: editPreview.id, sessionId: editPreview.sessionId },
-    )
+    await sleep(50)
     let liveAdoptedRect = await getElementRect(cdp, editPreview, headingSelector)
     assert(liveAdoptedRect, 'Adopted heading is missing before commit')
     assert(
@@ -938,11 +970,7 @@ async function runSmoke() {
         button: 'left',
         buttons: 1,
       })
-      await evaluate(
-        cdp,
-        `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
-        { contextId: editPreview.id, sessionId: editPreview.sessionId },
-      )
+      await sleep(50)
       liveAdoptedRect = await getElementRect(cdp, editPreview, headingSelector)
       assert(liveAdoptedRect, 'Adopted heading is missing before in-frame commit')
       await cdp.send('Input.dispatchMouseEvent', {
@@ -1473,13 +1501,9 @@ async function runSmoke() {
       const listed = await listDecks(apiPort)
       return listed.find((deck) => deck.title.includes('Reveal Vertical Deck')) ?? null
     })
-    let revealPreview = await getCurrentEditPreview(
-      cdp,
-      servers,
-      contexts,
-      'style[data-ark-editor="true"]',
-      editPreviewSrc,
-    )
+    // Upload replaces deck HTML; the sandbox URL may change or briefly reuse
+    // the prior token. Do not require a new src — wait for a ready editor frame.
+    let revealPreview = await getCurrentEditPreview(cdp, servers, contexts)
     const revealHeadingSelector = '.reveal .slides > section.present > section.present > h2'
     for (const [expectedSlide, expectedHeading] of [
       [2, 'Vertical one'],
@@ -1490,7 +1514,10 @@ async function runSmoke() {
         `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
       )
       await waitFor(`Reveal navigated to linear slide ${expectedSlide}`, async () => {
-        const text = await evaluate<string>(cdp!, 'document.body.innerText')
+        const slideActive = await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('button[aria-label="Go to slide ${expectedSlide}"][aria-current="true"]'))`,
+        )
         const activeHeading = await evaluate<string>(
           cdp!,
           `document.querySelector(${JSON.stringify(revealHeadingSelector)})?.textContent?.trim() || ''`,
@@ -1499,9 +1526,9 @@ async function runSmoke() {
             sessionId: revealPreview.editPreview.sessionId,
           },
         ).catch(() => '')
-        return text.includes(`Slide ${expectedSlide} of 4`) && activeHeading === expectedHeading
+        return slideActive && activeHeading === expectedHeading
       })
-      await new Promise((resolve) => setTimeout(resolve, 900))
+      await sleep(900)
     }
     await waitFor('Reveal editor ready for selection', async () =>
       evaluate<boolean>(
@@ -1569,14 +1596,9 @@ async function runSmoke() {
       const deck = await fetchDeck(apiPort, revealDeck.id)
       return deck.html.includes('data-ark-managed="true"') ? deck : null
     })
-    revealPreview = await getCurrentEditPreview(
-      cdp,
-      servers,
-      contexts,
-      revealHeadingSelector,
-      revealPreview.editPreviewSrc,
-    )
-    await new Promise((resolve) => setTimeout(resolve, 900))
+    // In-place slide patches keep the sandbox URL; only require a ready frame.
+    revealPreview = await getCurrentEditPreview(cdp, servers, contexts, revealHeadingSelector)
+    await sleep(900)
     const revealPersisted = await getElementRect(
       cdp,
       revealPreview.editPreview,
@@ -1589,6 +1611,17 @@ async function runSmoke() {
         `Reveal heading ${axis} drifted after persistence: ${revealLive[axis]} → ${revealPersisted[axis]}`,
       )
     }
+
+    // Reveal editing can leave the preview bridge compromised or with a stale
+    // editor port. Reload the shell so the hostile full-JS checks start clean —
+    // matching the isolation case where selection works immediately.
+    await openApp(cdp, servers.appOrigin)
+    await waitFor('shell ready after reveal section', async () =>
+      evaluate<boolean>(
+        cdp!,
+        `Boolean(document.querySelector('[aria-label="Edit mode toolbar"], body'))`,
+      ),
+    )
 
     await setUploadFile(cdp, hostileEditorFixturePath)
     await waitFor('uploaded hostile full-JS deck with edit chrome', async () => {
@@ -1606,43 +1639,137 @@ async function runSmoke() {
       return listed.find((deck) => deck.title.includes('Hostile Editor PostMessage Deck')) ?? null
     })
     const fullJsHeadingSelector = 'h1[data-ark-id="ark-el-title"]'
-    const fullJsPreview = await getCurrentEditPreview(
-      cdp,
-      servers,
-      contexts,
-      fullJsHeadingSelector,
-      revealPreview.editPreviewSrc,
-    )
 
     // The fixture posts well-formed forged mutation requests on the public
     // window channel. They must not enter the private editor channel.
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await sleep(500)
     const fullJsBefore = await fetchDeck(apiPort, fullJsDeck.id)
     assert(
       fullJsBefore.html.includes('Editor bridge hijack'),
       'Full-JS deck forged a public editor delete request',
     )
 
-    await dispatchPointerSequence(cdp, fullJsPreview.editPreview, [
-      { type: 'pointerdown', selector: fullJsHeadingSelector },
-      { type: 'pointerup', selector: fullJsHeadingSelector },
-    ])
-    await waitFor('full-JS heading selected', async () =>
+    await evaluate<boolean>(
+      cdp,
+      `Boolean(document.querySelector('button[aria-label="Select"]')?.click())`,
+    )
+    await waitFor('select tool active before full-JS selection', async () =>
       evaluate<boolean>(
         cdp!,
-        `document.querySelector(${JSON.stringify(fullJsHeadingSelector)})?.hasAttribute('data-ark-editor-selected') === true`,
-        {
-          contextId: fullJsPreview.editPreview.id,
-          sessionId: fullJsPreview.editPreview.sessionId,
-        },
+        `document.querySelector('button[aria-label="Select"]')?.getAttribute('aria-pressed') === 'true'`,
       ),
+    )
+
+    const presentOpen = await evaluate<boolean>(
+      cdp,
+      `Boolean(document.querySelector('[aria-labelledby="ark-present-mode-title"]'))`,
+    )
+    if (presentOpen) {
+      await evaluate(
+        cdp,
+        `document.querySelector('button[aria-label="Exit presentation"]')?.click()
+          || document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`,
+      )
+      await waitFor('present mode closed before full-JS selection', async () =>
+        evaluate<boolean>(
+          cdp!,
+          `!document.querySelector('[aria-labelledby="ark-present-mode-title"]')`,
+        ),
+      )
+    }
+
+    // Wait until the private editor channel is armed and hover works. A
+    // compromised/stale frame can still expose leftover editor CSS.
+    const armedFullJsPreview = await waitFor(
+      'armed hostile full-JS editor sandbox preview',
+      async () => {
+        const shellOk = await evaluate<boolean>(
+          cdp!,
+          `Boolean(document.querySelector('[aria-label="Edit mode toolbar"]')) &&
+            !document.body.innerText.includes('Preview stopped')`,
+        )
+        if (!shellOk) {
+          return null
+        }
+
+        const ready = await getCurrentEditPreview(
+          cdp,
+          servers,
+          contexts,
+          fullJsHeadingSelector,
+        ).catch(() => null)
+        if (!ready) {
+          return null
+        }
+
+        const frame = await evaluate<{ heading: string; canHover: boolean }>(
+          cdp!,
+          `(() => {
+            const target = document.querySelector(${JSON.stringify(fullJsHeadingSelector)});
+            if (!target) return { heading: '', canHover: false };
+            const rect = target.getBoundingClientRect();
+            target.dispatchEvent(new PointerEvent('pointermove', {
+              bubbles: true, cancelable: true, composed: true, pointerId: 1,
+              pointerType: 'mouse', isPrimary: true, clientX: rect.left + 2, clientY: rect.top + 2,
+            }));
+            return {
+              heading: target.textContent?.trim() || '',
+              canHover: target.hasAttribute('data-ark-editor-movable'),
+            };
+          })()`,
+          {
+            contextId: ready.editPreview.id,
+            sessionId: ready.editPreview.sessionId,
+            timeoutMs: 2_000,
+          },
+        ).catch(() => ({ heading: '', canHover: false }))
+
+        return frame.heading.includes('Editor bridge hijack') && frame.canHover ? ready : null
+      },
+      { timeoutMs: SMOKE_SLOW_TIMEOUT_MS },
+    )
+
+    const fullJsClick = await evaluate<{ selected: boolean; hasEditor: boolean; movable: boolean }>(
+      cdp,
+      `(() => {
+        const target = document.querySelector(${JSON.stringify(fullJsHeadingSelector)});
+        if (!target) return { selected: false, hasEditor: false, movable: false };
+        const rect = target.getBoundingClientRect();
+        const common = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          view: window,
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          button: 0,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        };
+        target.dispatchEvent(new PointerEvent('pointerdown', { ...common, buttons: 1 }));
+        target.dispatchEvent(new PointerEvent('pointerup', { ...common, buttons: 0 }));
+        return {
+          selected: target.hasAttribute('data-ark-editor-selected'),
+          hasEditor: Boolean(document.querySelector('style[data-ark-editor="true"]')),
+          movable: target.hasAttribute('data-ark-editor-movable'),
+        };
+      })()`,
+      {
+        contextId: armedFullJsPreview.editPreview.id,
+        sessionId: armedFullJsPreview.editPreview.sessionId,
+      },
+    )
+    assert(
+      fullJsClick.selected,
+      `Full-JS heading click did not select the element (${JSON.stringify(fullJsClick)})`,
     )
     await evaluate(
       cdp,
       `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`,
       {
-        contextId: fullJsPreview.editPreview.id,
-        sessionId: fullJsPreview.editPreview.sessionId,
+        contextId: armedFullJsPreview.editPreview.id,
+        sessionId: armedFullJsPreview.editPreview.sessionId,
       },
     )
     await waitFor('full-JS nudge persisted through the private editor channel', async () => {

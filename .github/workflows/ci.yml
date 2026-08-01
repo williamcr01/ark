@@ -276,12 +276,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # Disabled: flaky/expensive on every main push (especially smoke:manual-edit).
+  # Scripts kept for local use (`pnpm smoke:browser:extended`). Re-enable via
+  # nightly, prod/release branch, or path filters — see #265.
   smoke-extended:
+    if: false
     needs: changes
-    # Non-blocking comprehensive coverage runs after merge or by manual dispatch.
-    if: needs.changes.result == 'success' && needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Fail fast if re-enabled: hung CDP awaits previously burned ~30m/merge.
+    timeout-minutes: 25
     env:
       ARK_CHROMIUM_PATH: /usr/bin/google-chrome
       ARK_CHROMIUM_NO_SANDBOX: 'true'
@@ -310,33 +313,34 @@ jobs:
       - name: Smoke - Reveal runtime
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
-          timeout_minutes: 8
-          max_attempts: 3
-          retry_wait_seconds: 15
+          timeout_minutes: 4
+          max_attempts: 2
+          retry_wait_seconds: 10
           command: pnpm smoke:reveal-runtime
 
       - name: Smoke - full-JS bridge
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
-          timeout_minutes: 8
-          max_attempts: 3
-          retry_wait_seconds: 15
+          timeout_minutes: 4
+          max_attempts: 2
+          retry_wait_seconds: 10
           command: pnpm smoke:full-js-bridge
 
       - name: Smoke - manual edit
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 15
+          # One attempt only: deterministic regressions previously retried into a
+          # 3×10m hang (~30m) with no new signal.
+          timeout_minutes: 5
+          max_attempts: 1
           command: pnpm smoke:manual-edit
 
       - name: Smoke - thumbnails
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 15
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 10
           command: pnpm smoke:thumbnails
 
       - name: Upload browser smoke artifacts (on failure)

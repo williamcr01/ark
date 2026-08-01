@@ -310,17 +310,54 @@ export class CdpClient {
     method: string,
     params: Record<string, unknown> = {},
     sessionId: string | null = null,
+    timeoutMs = SMOKE_SLOW_TIMEOUT_MS,
   ) {
     const id = this.nextId
     this.nextId += 1
 
     return new Promise<T>((resolve, reject) => {
+      const timer =
+        timeoutMs > 0
+          ? setTimeout(() => {
+              if (!this.callbacks.delete(id)) {
+                return
+              }
+
+              reject(
+                new Error(`Timed out waiting for CDP response to ${method} after ${timeoutMs}ms.`),
+              )
+            }, timeoutMs)
+          : null
+
       this.callbacks.set(id, {
-        resolve: (value) => resolve(value as T),
-        reject,
+        resolve: (value) => {
+          if (timer) {
+            clearTimeout(timer)
+          }
+
+          resolve(value as T)
+        },
+        reject: (error) => {
+          if (timer) {
+            clearTimeout(timer)
+          }
+
+          reject(error)
+        },
       })
 
-      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }))
+      try {
+        this.socket.send(
+          JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }),
+        )
+      } catch (error) {
+        if (timer) {
+          clearTimeout(timer)
+        }
+
+        this.callbacks.delete(id)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 
@@ -401,7 +438,7 @@ export async function createPage(debugPort: number) {
 export async function evaluate<T>(
   cdp: CdpClient,
   expression: string,
-  options: { contextId?: number; sessionId?: string | null } = {},
+  options: { contextId?: number; sessionId?: string | null; timeoutMs?: number } = {},
 ) {
   const result = await cdp.send<{
     result: { value?: unknown; description?: string }
@@ -415,6 +452,7 @@ export async function evaluate<T>(
       ...(options.contextId ? { contextId: options.contextId } : {}),
     },
     options.sessionId ?? null,
+    options.timeoutMs,
   )
 
   if (result.exceptionDetails) {
@@ -456,9 +494,11 @@ export async function findContextByUrl(
 
   for (const context of defaultContexts) {
     try {
+      // Probe stale contexts quickly — a full smoke timeout here starves waitFor loops.
       const href = await evaluate<string>(cdp, 'location.href', {
         contextId: context.id,
         sessionId: context.sessionId,
+        timeoutMs: 2_000,
       })
 
       if (href === url) {
