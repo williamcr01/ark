@@ -20,7 +20,7 @@
     "format:check": "prettier --check .",
     "audit": "pnpm audit --audit-level=high",
     "preview": "pnpm --filter @ark/web preview",
-    "test": "pnpm --parallel --filter './packages/**' test && pnpm -r --workspace-concurrency=1 --filter './apps/**' test",
+    "test": "NODE_COMPILE_CACHE=node_modules/.cache/ark-test-compile vitest run --config vitest.config.ts",
     "test:affected": "node scripts/ci-run-affected-tests.mjs",
     "test:ci-scope": "node --test scripts/ci-test-scope.test.mjs scripts/typecheck.test.mjs",
     "test:live-chromium": "pnpm --filter @ark/api test:live-chromium",

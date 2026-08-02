@@ -8,7 +8,7 @@
     "typecheck": "node ../../scripts/typecheck.mjs apps/web/tsconfig.app.json apps/web/tsconfig.node.json",
     "build": "pnpm typecheck && vite build",
     "preview": "vite preview",
-    "test": "vitest run --config vite.config.ts"
+    "test": "NODE_COMPILE_CACHE=node_modules/.cache/ark-test-compile pnpm --dir ../.. exec vitest run --config vitest.config.ts --project '@ark/web-*'"
   },
   "dependencies": {
     "@ark/contracts": "workspace:*",

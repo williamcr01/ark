@@ -2,15 +2,15 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { relative, resolve } from 'node:path'
 
-const workspaceKinds = new Map([
-  ['apps/api', 'app'],
-  ['apps/sandbox', 'app'],
-  ['apps/web', 'app'],
-  ['packages/contracts', 'package'],
-  ['packages/deck-core', 'package'],
-  ['packages/runtime-registry', 'package'],
+const workspaceProjects = new Map([
+  ['apps/api', '@ark/api-*'],
+  ['apps/sandbox', '@ark/sandbox'],
+  ['apps/web', '@ark/web-*'],
+  ['packages/contracts', '@ark/contracts'],
+  ['packages/deck-core', '@ark/deck-core'],
+  ['packages/runtime-registry', '@ark/runtime-registry'],
 ])
 
 function parseArguments(argv) {
@@ -51,28 +51,32 @@ function resolveAffectedWorkspaces(base) {
       const workspace = relative(process.cwd(), project.path).replaceAll('\\', '/')
       if (!workspace) return null
 
-      const kind = workspaceKinds.get(workspace)
+      const vitestProject = workspaceProjects.get(workspace)
 
-      if (!kind || !project.name) {
+      if (!vitestProject || !project.name) {
         throw new Error(`pnpm selected an unknown workspace: ${workspace || project.path}`)
       }
 
-      return { name: project.name, workspace, kind }
+      return { name: project.name, workspace, project: vitestProject }
     })
     .filter(Boolean)
     .sort((left, right) => left.workspace.localeCompare(right.workspace))
 }
 
-function runWorkspaceTests(projects, kind) {
-  const selected = projects.filter((project) => project.kind === kind)
-  if (selected.length === 0) return
-
-  const filters = selected.flatMap((project) => ['--filter', project.name])
-  const argumentsForKind =
-    kind === 'package'
-      ? ['--parallel', ...filters, 'test']
-      : ['-r', '--workspace-concurrency=1', ...filters, 'test']
-  const result = spawnSync('pnpm', argumentsForKind, { stdio: 'inherit' })
+function runWorkspaceTests(projects) {
+  const projectFilters = projects.flatMap(({ project }) => ['--project', project])
+  const result = spawnSync(
+    'pnpm',
+    ['exec', 'vitest', 'run', '--config', 'vitest.config.ts', ...projectFilters],
+    {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        NODE_COMPILE_CACHE:
+          process.env.NODE_COMPILE_CACHE ?? resolve('node_modules/.cache/ark-test-compile'),
+      },
+    },
+  )
 
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -109,8 +113,7 @@ function main() {
   process.stdout.write(
     `Affected workspaces: ${projects.map((project) => project.name).join(', ')}\n`,
   )
-  runWorkspaceTests(projects, 'package')
-  runWorkspaceTests(projects, 'app')
+  runWorkspaceTests(projects)
 }
 
 main()
