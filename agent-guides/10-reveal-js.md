@@ -1,6 +1,6 @@
 # reveal.js
 
-Prefer reveal.js for new decks unless the user asks for a plain deck or the content is a simple static slide sequence with no motion or nesting. Use vertical stacks, fragments, and reveal layout when they help; keep it professional and creative.
+Prefer not to use reveal.js for new decks unless the user asks for it. Keep it professional but also creative.
 
 ## Hard rules
 
