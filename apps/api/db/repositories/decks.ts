@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { createPostgresPool, type ConnectablePool, type Queryable } from '../client.ts'
-import { runMigrations } from '../migrate.ts'
+import { type ConnectablePool, type Queryable } from '../client.ts'
 import { parseDeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { buildDeckRuntimeManifestFromHtml } from '../../deck-manifest.ts'
 import {
@@ -58,8 +57,7 @@ type DeckVersionDetailRow = DeckVersionRow & {
 }
 
 type PostgresDeckStoreOptions = {
-  pool?: ConnectablePool
-  migrate?: boolean
+  pool: ConnectablePool
   now?: () => Date
   defaultOwnerUserId?: string
   defaultWorkspaceId?: string
@@ -188,22 +186,11 @@ function buildValidationReport(options: DeckVersionOptions) {
   return options.validationReport ?? {}
 }
 
-export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}): DeckStore {
-  const pool = options.pool ?? createPostgresPool()
-  const shouldMigrate = options.migrate ?? true
+export function createPostgresDeckStore(options: PostgresDeckStoreOptions): DeckStore {
+  const pool = options.pool
   const now = options.now ?? (() => new Date())
   const ownerUserId = options.defaultOwnerUserId ?? SYSTEM_USER_ID
   const workspaceId = options.defaultWorkspaceId ?? DEFAULT_WORKSPACE_ID
-  let readyPromise: Promise<void> | null = null
-
-  const ensureReady = async () => {
-    if (!shouldMigrate) {
-      return
-    }
-
-    readyPromise ??= runMigrations(pool).then(() => undefined)
-    await readyPromise
-  }
 
   const insertVersion = async (
     client: Queryable,
@@ -268,8 +255,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     versionOptions: DeckVersionOptions = {},
     requestedId?: string,
   ) => {
-    await ensureReady()
-
     const deckId = requestedId ?? randomUUID()
     if (!isValidDeckId(deckId)) throw new Error('Requested deck id is invalid.')
     const createdAt = now()
@@ -324,14 +309,10 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
       return null
     }
 
-    await ensureReady()
-
     return readDeckById(pool, id)
   }
 
   const listDecks = async () => {
-    await ensureReady()
-
     const result = await pool.query<DeckSummaryRow>(
       `
         SELECT
@@ -355,8 +336,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     if (!isValidDeckId(id)) {
       return null
     }
-
-    await ensureReady()
 
     const updatedAt = now()
 
@@ -408,8 +387,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
       return null
     }
 
-    await ensureReady()
-
     const updatedAt = now()
     const title = normalizeDeckTitle(metadata.title)
     const result = await pool.query<DeckRow>(
@@ -448,8 +425,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
       return false
     }
 
-    await ensureReady()
-
     const deletedAt = now()
     const result = await pool.query<{ id: string }>(
       `
@@ -470,8 +445,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     if (!isValidDeckId(deckId)) {
       return null
     }
-
-    await ensureReady()
 
     const deckResult = await pool.query<{ active_version_id: string | null }>(
       `
@@ -517,8 +490,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
       return null
     }
 
-    await ensureReady()
-
     const result = await pool.query<DeckVersionDetailRow>(
       `
         SELECT
@@ -561,8 +532,6 @@ export function createPostgresDeckStore(options: PostgresDeckStoreOptions = {}):
     if (!isValidDeckId(deckId) || !isValidDeckId(versionId)) {
       return null
     }
-
-    await ensureReady()
 
     const result = await pool.query<DeckVersionRow>(
       `

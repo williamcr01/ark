@@ -1,12 +1,12 @@
-import { createPostgresPool } from './db/client.ts'
+import { createPostgresPool, type ConnectablePool } from './db/client.ts'
 import { runMigrations } from './db/migrate.ts'
 
-export async function runStartupMigrations(env = process.env) {
+export async function runStartupMigrations(env = process.env, existingPool?: ConnectablePool) {
   if (!env.DATABASE_URL?.trim()) {
     return { skipped: true as const }
   }
 
-  const pool = createPostgresPool()
+  const pool = existingPool ?? createPostgresPool({ env })
   try {
     const result = await runMigrations(pool)
     return { skipped: false as const, result }
@@ -14,6 +14,8 @@ export async function runStartupMigrations(env = process.env) {
     const message = error instanceof Error ? error.message : 'Unknown migration error'
     throw new Error(`Postgres migration failed on startup: ${message}`, { cause: error })
   } finally {
-    await pool.end?.()
+    if (!existingPool) {
+      await pool.end?.()
+    }
   }
 }

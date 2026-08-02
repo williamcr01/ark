@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { createPostgresPool, type ConnectablePool } from '../client.ts'
-import { runMigrations } from '../migrate.ts'
+import { type ConnectablePool } from '../client.ts'
 import {
   type AssetCategory,
   type AssetRecord,
@@ -31,8 +30,7 @@ type AssetRow = {
 }
 
 type PostgresAssetStoreOptions = {
-  pool?: ConnectablePool
-  migrate?: boolean
+  pool: ConnectablePool
   now?: () => Date
   defaultOwnerUserId?: string
   defaultWorkspaceId?: string
@@ -91,26 +89,13 @@ const SELECT_COLUMNS = `
   deleted_at
 `
 
-export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}): AssetStore {
-  const pool = options.pool ?? createPostgresPool()
-  const shouldMigrate = options.migrate ?? true
+export function createPostgresAssetStore(options: PostgresAssetStoreOptions): AssetStore {
+  const pool = options.pool
   const now = options.now ?? (() => new Date())
   const ownerUserId = options.defaultOwnerUserId ?? SYSTEM_USER_ID
   const workspaceId = options.defaultWorkspaceId ?? DEFAULT_WORKSPACE_ID
-  let readyPromise: Promise<void> | null = null
-
-  const ensureReady = async () => {
-    if (!shouldMigrate) {
-      return
-    }
-
-    readyPromise ??= runMigrations(pool).then(() => undefined)
-    await readyPromise
-  }
 
   const createAsset = async (input: CreateAssetInput): Promise<AssetRecord> => {
-    await ensureReady()
-
     const id = randomUUID()
     const createdAt = now()
     const metadata = { category: input.category }
@@ -162,8 +147,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
       return null
     }
 
-    await ensureReady()
-
     const result = await pool.query<AssetRow>(
       `
         SELECT ${SELECT_COLUMNS}
@@ -181,8 +164,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
     if (!isValidDeckId(deckId)) {
       return []
     }
-
-    await ensureReady()
 
     const result = await pool.query<AssetRow>(
       `
@@ -203,7 +184,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
     if (!isValidDeckId(deckId) || ids.some((id) => !isValidAssetId(id))) return null
     if (ids.length === 0) return []
 
-    await ensureReady()
     const client = await pool.connect()
 
     try {
@@ -249,7 +229,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
   }
 
   const deleteExpiredUnassignedAssets = async (cutoff: string) => {
-    await ensureReady()
     const result = await pool.query<AssetRow>(
       `
         UPDATE assets
@@ -268,8 +247,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
     if (!isValidAssetId(id)) {
       return null
     }
-
-    await ensureReady()
 
     const result = await pool.query<AssetRow>(
       `
@@ -290,8 +267,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
       return []
     }
 
-    await ensureReady()
-
     const result = await pool.query<AssetRow>(
       `
         UPDATE assets
@@ -307,8 +282,6 @@ export function createPostgresAssetStore(options: PostgresAssetStoreOptions = {}
   }
 
   const deleteAssetsByChatMessage = async (chatMessageId: string) => {
-    await ensureReady()
-
     const result = await pool.query<AssetRow>(
       `
         UPDATE assets

@@ -12,8 +12,7 @@ import {
   normalizeGenerationJobStatusForStorage,
   normalizeGenerationJobStatusFromStorage,
 } from '@ark/deck-core/generation-job.ts'
-import { createPostgresPool, type ConnectablePool } from '../client.ts'
-import { runMigrations } from '../migrate.ts'
+import { type ConnectablePool } from '../client.ts'
 import {
   type GenerationJobStore,
   cloneGenerationJobRequest,
@@ -41,8 +40,7 @@ type GenerationJobRow = {
 }
 
 type PostgresGenerationJobStoreOptions = {
-  pool?: ConnectablePool
-  migrate?: boolean
+  pool: ConnectablePool
   now?: () => Date
   defaultOwnerUserId?: string
   defaultWorkspaceId?: string
@@ -187,26 +185,14 @@ function rowToJob(row: GenerationJobRow): GenerationJob {
 }
 
 export function createPostgresGenerationJobStore(
-  options: PostgresGenerationJobStoreOptions = {},
+  options: PostgresGenerationJobStoreOptions,
 ): GenerationJobStore {
-  const pool = options.pool ?? createPostgresPool()
+  const pool = options.pool
   const now = options.now ?? (() => new Date())
   const defaultOwnerUserId = options.defaultOwnerUserId ?? SYSTEM_USER_ID
   const defaultWorkspaceId = options.defaultWorkspaceId ?? DEFAULT_WORKSPACE_ID
-  let migrated = false
-
-  const ensureMigrated = async () => {
-    if (migrated || options.migrate === false) {
-      return
-    }
-
-    await runMigrations(pool)
-    migrated = true
-  }
 
   const createJob = async (input: CreateGenerationJobInput) => {
-    await ensureMigrated()
-
     const id = randomUUID()
     const timestamp = now()
     const request = cloneGenerationJobRequest(input.request)
@@ -267,8 +253,6 @@ export function createPostgresGenerationJobStore(
       return null
     }
 
-    await ensureMigrated()
-
     const result = await pool.query<GenerationJobRow>(
       `
         SELECT
@@ -314,8 +298,6 @@ export function createPostgresGenerationJobStore(
     if (!isValidGenerationJobId(id)) {
       return null
     }
-
-    await ensureMigrated()
 
     const existing = await getJob(id)
 
@@ -429,8 +411,6 @@ export function createPostgresGenerationJobStore(
       return null
     }
 
-    await ensureMigrated()
-
     const existing = await getJob(id)
 
     if (!existing) {
@@ -519,8 +499,6 @@ export function createPostgresGenerationJobStore(
   }
 
   const listJobsForDeck = async (deckId: string) => {
-    await ensureMigrated()
-
     const result = await pool.query<GenerationJobRow>(
       `
         SELECT

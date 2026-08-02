@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createPostgresPool, type ConnectablePool } from './client.ts'
+import { createPostgresPool, type ConnectablePool, type Queryable } from './client.ts'
 
 export type Migration = {
   id: string
@@ -16,6 +16,7 @@ export type MigrationResult = {
 }
 
 const MIGRATIONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations')
+const MIGRATION_LOCK_KEYS = [0x41524b, 1] as const
 
 const migrationFileCache = new Map<string, Promise<Migration[]>>()
 
@@ -51,8 +52,8 @@ export async function readMigrationFiles(migrationsDir = MIGRATIONS_DIR): Promis
   }
 }
 
-async function ensureMigrationTable(pool: ConnectablePool) {
-  await pool.query(`
+async function ensureMigrationTable(database: Queryable) {
+  await database.query(`
     CREATE TABLE IF NOT EXISTS ark_schema_migrations (
       id text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
@@ -60,8 +61,8 @@ async function ensureMigrationTable(pool: ConnectablePool) {
   `)
 }
 
-async function readAppliedMigrations(pool: ConnectablePool) {
-  const result = await pool.query<{ id: string }>(
+async function readAppliedMigrations(database: Queryable) {
+  const result = await database.query<{ id: string }>(
     'SELECT id FROM ark_schema_migrations ORDER BY id ASC',
   )
 
@@ -69,38 +70,48 @@ async function readAppliedMigrations(pool: ConnectablePool) {
 }
 
 export async function runMigrations(pool: ConnectablePool): Promise<MigrationResult> {
-  await ensureMigrationTable(pool)
+  const client = await pool.connect()
+  let locked = false
 
-  const migrations = await readMigrationFiles()
-  const appliedMigrations = await readAppliedMigrations(pool)
-  const result: MigrationResult = {
-    applied: [],
-    skipped: [],
-  }
+  try {
+    await client.query('SELECT pg_advisory_lock($1, $2)', [...MIGRATION_LOCK_KEYS])
+    locked = true
+    await ensureMigrationTable(client)
 
-  for (const migration of migrations) {
-    if (appliedMigrations.has(migration.id)) {
-      result.skipped.push(migration.id)
-      continue
+    const migrations = await readMigrationFiles()
+    const appliedMigrations = await readAppliedMigrations(client)
+    const result: MigrationResult = {
+      applied: [],
+      skipped: [],
     }
 
-    const client = await pool.connect()
+    for (const migration of migrations) {
+      if (appliedMigrations.has(migration.id)) {
+        result.skipped.push(migration.id)
+        continue
+      }
 
-    try {
-      await client.query('BEGIN')
-      await client.query(migration.sql)
-      await client.query('INSERT INTO ark_schema_migrations (id) VALUES ($1)', [migration.id])
-      await client.query('COMMIT')
-      result.applied.push(migration.id)
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined)
-      throw error
-    } finally {
-      client.release()
+      try {
+        await client.query('BEGIN')
+        await client.query(migration.sql)
+        await client.query('INSERT INTO ark_schema_migrations (id) VALUES ($1)', [migration.id])
+        await client.query('COMMIT')
+        result.applied.push(migration.id)
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined)
+        throw error
+      }
     }
-  }
 
-  return result
+    return result
+  } finally {
+    if (locked) {
+      await client
+        .query('SELECT pg_advisory_unlock($1, $2)', [...MIGRATION_LOCK_KEYS])
+        .catch(() => undefined)
+    }
+    client.release()
+  }
 }
 
 async function runCli() {

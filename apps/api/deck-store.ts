@@ -2,7 +2,6 @@ import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { createPostgresDeckStore } from './db/repositories/decks.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { parseDeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { buildDeckRuntimeManifestFromHtml } from './deck-manifest.ts'
@@ -662,13 +661,3 @@ export function createDeckStore(dataDir = DEFAULT_DATA_DIR): DeckStore {
     rollbackToVersion,
   }
 }
-
-export function createDefaultDeckStore(env = process.env): DeckStore {
-  if (env.DATABASE_URL?.trim()) {
-    return createPostgresDeckStore()
-  }
-
-  return createDeckStore()
-}
-
-export const deckStore = createDefaultDeckStore()

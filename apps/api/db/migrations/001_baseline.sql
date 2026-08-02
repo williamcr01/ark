@@ -84,6 +84,7 @@ CREATE TABLE chat_messages (
   tool_activity jsonb NOT NULL DEFAULT '[]'::jsonb,
   attachments_metadata jsonb NOT NULL DEFAULT '[]'::jsonb,
   generation_status text,
+  message_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   error_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -93,11 +94,15 @@ CREATE TABLE assets (
   deck_id uuid REFERENCES decks(id) ON DELETE CASCADE,
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
   owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  chat_message_id uuid,
+  filename text,
   source_url text,
+  source text NOT NULL DEFAULT 'upload',
   storage_kind text NOT NULL DEFAULT 'local',
   storage_key text,
   media_type text,
   byte_size bigint,
+  checksum text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz
@@ -110,7 +115,7 @@ CREATE TABLE generation_jobs (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   chat_thread_id uuid REFERENCES chat_threads(id) ON DELETE SET NULL,
   status text NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+    CHECK (status IN ('queued', 'running', 'canceling', 'succeeded', 'failed', 'cancelled')),
   request_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   provider text,
   model text,
@@ -126,6 +131,12 @@ CREATE INDEX decks_workspace_updated_at_idx ON decks (workspace_id, updated_at D
 CREATE INDEX decks_owner_updated_at_idx ON decks (owner_user_id, updated_at DESC);
 CREATE INDEX deck_versions_deck_created_at_idx ON deck_versions (deck_id, created_at DESC);
 CREATE INDEX chat_threads_deck_updated_at_idx ON chat_threads (deck_id, updated_at DESC);
+CREATE UNIQUE INDEX chat_threads_one_active_per_deck_idx
+  ON chat_threads (deck_id)
+  WHERE status = 'active';
 CREATE INDEX chat_messages_thread_created_at_idx ON chat_messages (thread_id, created_at ASC);
 CREATE INDEX assets_deck_created_at_idx ON assets (deck_id, created_at DESC);
+CREATE INDEX assets_chat_message_id_idx
+  ON assets (chat_message_id)
+  WHERE chat_message_id IS NOT NULL;
 CREATE INDEX generation_jobs_deck_created_at_idx ON generation_jobs (deck_id, created_at DESC);

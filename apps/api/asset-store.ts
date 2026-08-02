@@ -2,7 +2,6 @@ import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { createPostgresAssetStore } from './db/repositories/assets.ts'
 import {
   type AssetRecord,
   type AssetStore,
@@ -272,13 +271,3 @@ export function createAssetStore(dataDir = DEFAULT_DATA_DIR): AssetStore {
     deleteAssetsByChatMessage,
   }
 }
-
-export function createDefaultAssetStore(env = process.env): AssetStore {
-  if (env.DATABASE_URL?.trim()) {
-    return createPostgresAssetStore()
-  }
-
-  return createAssetStore()
-}
-
-export const assetStore = createDefaultAssetStore()

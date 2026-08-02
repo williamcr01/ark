@@ -2,9 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ConnectablePool } from '../client.ts'
 import {
-  createMigratedMemoryPostgresPool,
+  createMigratedTestPostgresPool,
   stubStaticRuntimeManifest,
-  truncateMemoryPostgresAppTables,
+  truncatePostgresAppTables,
 } from '../test-utils.ts'
 import { createPostgresChatStore } from './chat.ts'
 import { createPostgresDeckStore } from './decks.ts'
@@ -37,19 +37,18 @@ describe('createPostgresGenerationJobStore', () => {
   let currentTime = new Date('2026-07-01T11:00:00.000Z')
 
   beforeAll(async () => {
-    pool = await createMigratedMemoryPostgresPool()
-    deckStore = createPostgresDeckStore({ pool, migrate: false })
-    chatStore = createPostgresChatStore({ pool, migrate: false })
+    pool = await createMigratedTestPostgresPool()
+    deckStore = createPostgresDeckStore({ pool })
+    chatStore = createPostgresChatStore({ pool })
     jobStore = createPostgresGenerationJobStore({
       pool,
-      migrate: false,
       now: () => currentTime,
     })
   })
 
   beforeEach(async () => {
     currentTime = new Date('2026-07-01T11:00:00.000Z')
-    await truncateMemoryPostgresAppTables(pool)
+    await truncatePostgresAppTables(pool)
   })
 
   afterAll(async () => {

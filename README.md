@@ -41,7 +41,15 @@ PORT=8787
 
 ### Optional Postgres persistence
 
-By default, Ark stores decks as local JSON files under `data/decks` so development works without a database. To use the hosted-SaaS persistence path, set `DATABASE_URL` and run migrations:
+Postgres is Ark's production persistence path. Local JSON files remain the zero-setup development fallback when `DATABASE_URL` is unset.
+
+For local Postgres development, start the included Postgres 17 container:
+
+```bash
+pnpm db:up
+```
+
+Then enable Postgres in `.env`:
 
 ```env
 DATABASE_URL=postgres://ark:ark@localhost:5432/ark
@@ -50,7 +58,10 @@ PGSSLMODE=disable
 
 ```bash
 pnpm db:migrate
+pnpm dev
 ```
+
+Use `pnpm db:down` to stop the container; its named volume preserves database data.
 
 `PGSSLMODE=require` enables verified TLS for managed Postgres providers. `PGSSLMODE=no-verify` is available for providers that require TLS but do not expose a locally trusted certificate chain. The schema uses standard Postgres tables, UUIDs, constraints, indexes, and `jsonb`, so it can run on local Postgres, Supabase Postgres, Neon, AWS RDS/Aurora Postgres, Azure Database for PostgreSQL, and similar hosted Postgres services.
 
