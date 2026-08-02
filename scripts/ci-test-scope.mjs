@@ -5,10 +5,9 @@ import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const workspacePath =
-  /^(apps\/(api|sandbox|web)|packages\/(contracts|deck-core|runtime-registry))\//
+  /^(apps\/(api|sandbox|desktop)|packages\/(contracts|deck-core|runtime-registry))\//
 const documentationPath =
   /(^|\/)(README|AGENTS|CLAUDE|CONTRIBUTING|CHANGELOG|LICENSE|NOTICE)(\.[^/]*)?$|\.md$/i
-const benchmarkPath = /^(benchmarks\/|scripts\/benchmark-|scripts\/lib\/renderer-benchmark\.)/
 const testOnlyPath = /(^|\/)(test|tests|__tests__)\/|[./](test|spec)\.[cm]?[jt]sx?$/
 
 const forceFullPaths = [
@@ -16,11 +15,11 @@ const forceFullPaths = [
   /^test\/fixtures\//,
   /^runtimes\//,
   /^openapi\//,
-  /^scripts\/(?!benchmark-|lib\/renderer-benchmark\.)/,
+  /^scripts\//,
   /(^|\/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/,
   /(^|\/)(tsconfig(?:\.[^/]*)?\.json|vitest\.config\.[cm]?[jt]s|vite\.config\.[cm]?[jt]s)$/,
   /^(eslint\.config\.[cm]?[jt]s|\.oxlintrc\.json|\.prettier[^/]*|prettier\.config\.[cm]?[jt]s)$/,
-  /^apps\/web\/src\/test\/setup\.ts$/,
+  /^apps\/desktop\/src\/test\/setup\.ts$/,
 ]
 
 function normalizePath(filePath) {
@@ -76,9 +75,7 @@ export function classifyPaths(inputPaths, options = {}) {
     }
   }
 
-  const relevantPaths = paths.filter(
-    (filePath) => !isDocumentation(filePath) && !benchmarkPath.test(filePath),
-  )
+  const relevantPaths = paths.filter((filePath) => !isDocumentation(filePath))
 
   if (relevantPaths.length === 0) {
     return {
@@ -87,7 +84,7 @@ export function classifyPaths(inputPaths, options = {}) {
       build: false,
       test: false,
       smoke: false,
-      reason: 'Only documentation, agent-guide, or benchmark files changed.',
+      reason: 'Only documentation or agent-guide files changed.',
     }
   }
 
@@ -112,7 +109,7 @@ export function classifyPaths(inputPaths, options = {}) {
     smoke: Boolean(runtimePath),
     reason: runtimePath
       ? `Runtime workspace code changed: ${runtimePath}`
-      : 'Only workspace tests changed; browser smoke is not required.',
+      : 'Only workspace tests changed; desktop smoke is not required.',
   }
 }
 
@@ -192,7 +189,7 @@ function writeSummary(filePath, result) {
       `- Full validation: **${result.full ? 'yes' : 'no'}**`,
       `- Build: **${result.build ? 'run' : 'skip'}**`,
       `- Unit tests: **${result.test ? (result.full ? 'full' : 'affected') : 'skip'}**`,
-      `- Plain CSS smoke: **${result.smoke ? 'run' : 'skip'}**`,
+      `- Desktop smoke: **${result.smoke ? 'run' : 'skip'}**`,
       `- Reason: ${result.reason}`,
       '',
       '<details><summary>Changed paths</summary>',
