@@ -6,8 +6,8 @@ import { DEFAULT_CONCURRENCY, PROJECTS, resolveTscBin } from './typecheck.mjs'
 
 test('typecheck covers every workspace tsconfig used by build', () => {
   assert.deepEqual(PROJECTS, [
-    'apps/web/tsconfig.app.json',
-    'apps/web/tsconfig.node.json',
+    'apps/desktop/tsconfig.app.json',
+    'apps/desktop/tsconfig.node.json',
     'apps/api/tsconfig.json',
     'apps/sandbox/tsconfig.json',
     'packages/contracts/tsconfig.json',

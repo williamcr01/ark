@@ -24,8 +24,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(path.join(root, 'package.json'))
 
 const PROJECTS = [
-  'apps/web/tsconfig.app.json',
-  'apps/web/tsconfig.node.json',
+  'apps/desktop/tsconfig.app.json',
+  'apps/desktop/tsconfig.node.json',
   'apps/api/tsconfig.json',
   'apps/sandbox/tsconfig.json',
   'packages/contracts/tsconfig.json',

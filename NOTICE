@@ -7,6 +7,18 @@ Other npm dependencies remain under the licenses declared in their package
 metadata and recorded in pnpm-lock.yaml (primarily MIT, Apache-2.0, BSD, and
 ISC).
 
+Electron
+--------
+Copyright (c) Electron contributors and GitHub Inc.
+License: MIT
+Packaged license files: LICENSE.electron.txt and LICENSES.chromium.html
+
+electron-updater
+----------------
+Copyright (c) LoopBack contributors
+License: MIT
+Distributed in Ark desktop packages for signed application updates.
+
 reveal.js
 ---------
 Copyright (C) Hakim El Hattab and contributors

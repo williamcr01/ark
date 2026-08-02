@@ -17,13 +17,13 @@ dist-ssr
 .worktrees/
 .env
 .env.*
-!.env.example
 
 # Local deck persistence
 data/
 
-# Local renderer benchmark outputs (machine-specific)
-artifacts/renderer-benchmarks/
+# Desktop package outputs
+release/
+*.tgz
 
 # Editor directories and files
 .vscode/*

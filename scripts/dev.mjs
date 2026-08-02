@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const desktop = resolve(root, 'apps/desktop')
 
 let interrupted = false
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -14,7 +15,6 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 const logger = new Logger({ prefixFormat: 'name' })
 const logCommandEvent = logger.logCommandEvent.bind(logger)
 logger.logCommandEvent = (text, command) => {
-  // Ctrl+C / terminate — not a real failure; skip the noisy exit lines.
   if (interrupted && /exited with code /.test(text)) return
   if (/exited with code (SIGINT|SIGTERM|SIGHUP|130)\b/i.test(text)) return
   logCommandEvent(text, command)
@@ -23,22 +23,28 @@ logger.logCommandEvent = (text, command) => {
 const { result } = concurrently(
   [
     {
-      name: 'api',
-      cwd: resolve(root, 'apps/api'),
-      command: 'tsx watch index.ts',
+      name: 'renderer',
+      cwd: desktop,
+      command: 'vite --host 127.0.0.1 --port 5173 --strictPort',
+      prefixColor: 'cyan',
+    },
+    {
+      name: 'main',
+      cwd: desktop,
+      command: 'vite build --watch --config vite.electron.config.ts',
       prefixColor: 'magenta',
     },
     {
-      name: 'sandbox',
-      cwd: resolve(root, 'apps/sandbox'),
-      command: 'tsx watch sandbox-index.ts',
+      name: 'preload',
+      cwd: desktop,
+      command: 'vite build --watch --config vite.preload.config.ts',
       prefixColor: 'yellow',
     },
     {
-      name: 'web',
-      cwd: resolve(root, 'apps/web'),
-      command: 'node ../../scripts/wait-for-api.mjs && vite',
-      prefixColor: 'cyan',
+      name: 'electron',
+      cwd: root,
+      command: 'node scripts/run-electron.mjs',
+      prefixColor: 'blue',
     },
   ],
   { logger },

@@ -1,0 +1,36 @@
+import type { ProviderId, ReasoningEffort } from '@ark/contracts'
+
+type CredentialStatus = Record<
+  ProviderId,
+  { configured: boolean; storage: 'persistent' | 'session' | null }
+>
+type DesktopResult = { ok: true; modelCount?: number } | { ok: false; error: string }
+type DesktopSettings = {
+  appearance: 'system' | 'light' | 'dark'
+  migratedLegacyRendererPreferences: boolean
+  reasoningEffortByModel: Record<string, ReasoningEffort>
+  selectedModel: string | null
+}
+
+declare global {
+  interface Window {
+    arkDesktop: {
+      credentials: {
+        list: () => Promise<CredentialStatus>
+        save: (provider: ProviderId, apiKey: string) => Promise<DesktopResult>
+        saveSession: (provider: ProviderId, apiKey: string) => Promise<DesktopResult>
+        remove: (provider: ProviderId) => Promise<DesktopResult>
+        test: (provider: ProviderId, apiKey: string) => Promise<DesktopResult>
+      }
+      settings: {
+        get: () => Promise<DesktopSettings>
+        update: (patch: Partial<DesktopSettings>) => Promise<DesktopSettings>
+      }
+      updates: {
+        check: () => Promise<DesktopResult>
+      }
+    }
+  }
+}
+
+export {}
