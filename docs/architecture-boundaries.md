@@ -1,44 +1,42 @@
 # Architecture boundaries
 
-Ark splits the codebase into workspace apps and shared packages. Import rules keep the React shell, Express API, sandbox host, and shared libraries decoupled.
+Ark is one Electron desktop application split into a trusted main process, an untrusted renderer, an internal local API, a hostile-deck sandbox origin, and shared packages.
 
 ## Layers
 
-| Location                    | Role                                           | May import from                                             |
-| --------------------------- | ---------------------------------------------- | ----------------------------------------------------------- |
-| `apps/web`                  | React shell (Vite client)                      | `@ark/contracts`, `@ark/deck-core`, `@ark/runtime-registry` |
-| `apps/api`                  | Express API, agent loop, persistence           | workspace packages                                          |
-| `apps/sandbox`              | Preview sandbox host                           | `@ark/api/preview-sessions`, workspace packages             |
-| `packages/contracts`        | HTTP API Zod schemas and client helpers        | `@ark/deck-core`, `@ark/runtime-registry`                   |
-| `packages/deck-core`        | Deck helpers, bridge protocols, validation     | `@ark/runtime-registry`                                     |
-| `packages/runtime-registry` | Approved runtime manifest and registry helpers | other `packages/runtime-registry` modules only              |
-| `test/`                     | Cross-layer HTML fixtures                      | not part of the app graph (tests/scripts only)              |
+| Location                    | Role                                               | May import from                                             |
+| --------------------------- | -------------------------------------------------- | ----------------------------------------------------------- |
+| `apps/desktop/electron`     | Trusted Electron main/preload and process wiring   | `@ark/api`, `@ark/sandbox`, workspace packages, Electron    |
+| `apps/desktop/src`          | Sandboxed React renderer                           | `@ark/contracts`, `@ark/deck-core`, `@ark/runtime-registry` |
+| `apps/api`                  | Embedded local API, agent loop, filesystem storage | workspace packages                                          |
+| `apps/sandbox`              | Separate-origin hostile deck preview host          | `@ark/api/preview-sessions`, workspace packages             |
+| `packages/contracts`        | Local HTTP API Zod schemas and renderer helpers    | `@ark/deck-core`, `@ark/runtime-registry`                   |
+| `packages/deck-core`        | Deck helpers, bridge protocols, validation         | `@ark/runtime-registry`                                     |
+| `packages/runtime-registry` | Approved runtime manifest and registry helpers     | other `packages/runtime-registry` modules only              |
 
-Neutral directories (`test/`, `scripts/`, `docs/`, `runtimes/`, `data/`) are not import targets for production code except where noted (e.g. `packages/runtime-registry/deck-runtime-registry.ts` reads `runtimes/manifest.json`).
+The Electron main process is the composition root. It is the only layer allowed to combine the local API, sandbox host, safe credential storage, updater, and native thumbnail capture.
 
 ## Rules
 
-1. **`apps/web` must not import from `apps/api`.** The browser talks to the API over HTTP; shared types and helpers live in workspace packages.
-2. **`apps/api` must not import from `apps/web`.** Server code must not depend on React components or client-only helpers.
-3. **`packages/*` must not import from `apps/`.** Packages are the contract both apps import.
-4. **HTTP API contracts live in `packages/contracts/`.** Import from `@ark/contracts` only in application code — not from individual files under `packages/contracts/`. See [packages/contracts/README.md](../packages/contracts/README.md).
-5. **Packages must not depend on React, Express, or environment-specific APIs** unless the file name makes the environment explicit (e.g. `packages/runtime-registry/runtime-stylesheet-disk.ts`).
+1. **The renderer must not import Node, Electron, `apps/api`, or `apps/sandbox`.** It talks to the local API over HTTP and native capabilities through the narrow preload bridge.
+2. **The Electron main process may import the internal apps.** It owns their lifetime, dynamic ports, data directory, and shutdown.
+3. **`apps/api` and `apps/sandbox` must not import renderer code.** React and DOM UI state stay in `apps/desktop/src`.
+4. **`packages/*` must not import from `apps/`.** Packages remain neutral shared contracts and deck logic.
+5. **HTTP contracts live in `packages/contracts/`.** Application code imports them from `@ark/contracts`.
 
-Package dependency direction (no cycles):
-
-```txt
-apps/web ──► @ark/contracts, @ark/deck-core, @ark/runtime-registry
+```text
+apps/desktop/electron ──► apps/api, apps/sandbox, packages/*
+apps/desktop/src ──► @ark/contracts, @ark/deck-core, @ark/runtime-registry
 apps/api ──► @ark/contracts, @ark/deck-core, @ark/runtime-registry
-apps/sandbox ──► @ark/api/preview-sessions, @ark/contracts, @ark/deck-core, @ark/runtime-registry
+apps/sandbox ──► @ark/api/preview-sessions, @ark/deck-core, @ark/runtime-registry
 @ark/contracts ──► @ark/deck-core, @ark/runtime-registry
 @ark/deck-core ──► @ark/runtime-registry
 ```
 
-## Enforcement
+Boundary violations fail `pnpm lint:eslint` through `no-restricted-imports` rules in `eslint.config.js`.
 
-Boundary violations fail `pnpm lint` via ESLint `no-restricted-imports` rules in `eslint.config.js`. CI runs the same check on every push and pull request.
+## Runtime boundary
 
-## Related docs
+Electron starts two servers on dynamically allocated `127.0.0.1` ports. The app origin serves the renderer and `/api`; the sandbox origin serves processed deck HTML. These are internal origins, not public deployment surfaces.
 
-- [AGENTS.md](../AGENTS.md) — agent and contributor guide
-- [packages/contracts/README.md](../packages/contracts/README.md) — HTTP API contract boundary
+The preload bridge exposes only credential and update operations. Deck HTML never receives preload or Node access.

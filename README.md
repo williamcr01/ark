@@ -1,159 +1,106 @@
 # Ark
 
-Ark is an AI-first presentation builder. Describe a deck in plain language, and Ark generates a portable single-page HTML presentation that previews in an iframe and can be downloaded as `.html`.
+Ark is a local-first Electron presentation builder. Describe a deck in the side chat, edit it on the canvas, and export a portable single-page HTML presentation.
 
-## Setup
+Ark is a desktop application only. The React renderer, local Express API, and isolated deck sandbox are packaged into one Electron app; there is no hosted web client or separately deployed backend.
 
-```bash
-pnpm install
-cp .env.example .env
-```
+## Installation
 
-Add at least one provider API key to `.env`:
-
-```env
-OPENAI_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
-GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
-```
-
-You only need one key to get started. Add more providers to unlock their models in the UI.
-
-### Choosing a model
-
-You can pick the model in two ways:
-
-1. **In the UI (recommended)** — Open the chat panel and use the model dropdown in the prompt input footer. Ark shows a curated catalog of OpenAI, Claude, and Gemini models. Hover a reasoning model to pick thinking effort from that model's supported levels. Your model and effort choices are saved in the browser.
-
-2. **In `.env` (default fallback)** — Set `ARK_DEFAULT_MODEL` using `provider:model-id` syntax when no model is saved in the UI yet:
-
-```env
-ARK_DEFAULT_MODEL=anthropic:claude-sonnet-5
-```
-
-Defaults should reference a curated catalog entry (for example `openai:gpt-5.6-luna`).
-
-Optional API port (default `8787`). Both the Express API and Vite's `/api` proxy read `PORT` from `.env` or your shell environment — keep them in sync by setting it once and restarting `pnpm dev`:
-
-```env
-PORT=8787
-```
-
-### Optional Postgres persistence
-
-Postgres is Ark's production persistence path. Local JSON files remain the zero-setup development fallback when `DATABASE_URL` is unset.
-
-For local Postgres development, start the included Postgres 17 container:
-
-```bash
-pnpm db:up
-```
-
-Then enable Postgres in `.env`:
-
-```env
-DATABASE_URL=postgres://ark:ark@localhost:5432/ark
-PGSSLMODE=disable
-```
-
-```bash
-pnpm db:migrate
-pnpm dev
-```
-
-Use `pnpm db:down` to stop the container; its named volume preserves database data.
-
-`PGSSLMODE=require` enables verified TLS for managed Postgres providers. `PGSSLMODE=no-verify` is available for providers that require TLS but do not expose a locally trusted certificate chain. The schema uses standard Postgres tables, UUIDs, constraints, indexes, and `jsonb`, so it can run on local Postgres, Supabase Postgres, Neon, AWS RDS/Aurora Postgres, Azure Database for PostgreSQL, and similar hosted Postgres services.
-
-### Supported providers
-
-| Provider | Env var                        | Models source                                                   |
-| -------- | ------------------------------ | --------------------------------------------------------------- |
-| OpenAI   | `OPENAI_API_KEY`               | Curated catalog (GPT-5.6 Sol/Terra/Luna, GPT-5.5, GPT-5.4 Mini) |
-| Claude   | `ANTHROPIC_API_KEY`            | Curated catalog (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5)        |
-| Gemini   | `GOOGLE_GENERATIVE_AI_API_KEY` | Curated catalog (3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Pro) |
-
-### API key errors
-
-If `.env` has no provider keys, still has placeholder values, or a key is rejected, generation stays disabled for that provider's models until you fix it. Models for providers without a key appear in the picker as unavailable. After updating `.env`, restart `pnpm dev`.
+Download the installer for your platform from the official GitHub Releases page. On Linux, persistently saving AI provider keys requires a running, unlocked Secret Service keyring such as GNOME Keyring, KWallet, or KeePassXC; package names and startup steps vary by distribution and desktop environment.
 
 ## Development
 
+Requirements:
+
+- Node.js 22 or newer
+- pnpm 11.5.3 through Corepack
+
 ```bash
+pnpm install
 pnpm dev
 ```
 
-This starts:
+`pnpm dev` opens Ark in Electron and watches the renderer, main process, and preload bundle. The loopback HTTP services are private implementation details; open the Electron window, not their ports.
 
-- Vite app: `http://localhost:5173` (proxies `/api` to the port below)
-- local API server: `http://localhost:${PORT:-8787}`
-- sandbox preview host: `http://localhost:${SANDBOX_PORT:-5174}`
+Add OpenAI, Anthropic, or Google Gemini keys from **Settings** inside Ark. Keys are encrypted with Electron `safeStorage` and remain on the local device. Ark does not read provider keys from `.env`.
 
-Deck previews load from the sandbox origin via short-lived render tokens. The shell creates sessions through `/api/preview-sessions` and embeds `{sandboxOrigin}/render/{token}?parent={appOrigin}` in the preview iframe.
+## Local data
 
-Optional env vars (see `.env.example`):
+Decks, versions, chat, assets, generation jobs, thumbnails, preferences, and encrypted credentials live under Electron's per-user `userData` directory:
 
-- `ARK_SANDBOX_ORIGIN` / `SANDBOX_PORT` — sandbox host origin (default `http://localhost:5174`)
-- `ARK_APP_ORIGIN` — app shell origin used for parent/deck `postMessage` scoping (default `http://localhost:5173`)
-- `ARK_THUMBNAIL_RENDERER=off` — disable sandbox-backed PNG thumbnails (clients keep `srcDoc` fallback)
-- `ARK_CHROMIUM_PATH` — Chromium/Chrome binary for thumbnail rendering and browser smoke
-- `ARK_CHROMIUM_NO_SANDBOX=true` — always launch thumbnail Chromium with `--no-sandbox` (skip sandboxed probe; also `1`/`yes`/`on`)
-- `ARK_THUMBNAIL_CACHE_DIR` — thumbnail PNG cache directory (default `data/thumbnails`)
+- Linux: `~/.config/Ark`
+- macOS: `~/Library/Application Support/Ark`
+- Windows: `%APPDATA%\Ark`
 
-To use a custom API port, set `PORT` in `.env` or run `PORT=9000 pnpm dev`, then open the app on port `5173` — not the API port directly.
+Ark uses the local filesystem only. PostgreSQL and cloud persistence are not part of the desktop application.
 
-## Production API + sandbox host
+Provider keys are stored as encrypted values in `auth.json`. Appearance, selected model, and reasoning preferences are stored separately in `settings.json`. If operating-system secure storage is unavailable, a provider key can be kept in memory for the current Ark session without writing it to disk.
 
-After building the client (`pnpm build`), serve the static app however you prefer (for example `pnpm preview` or your CDN) and run the backend processes:
+## Architecture
 
-```bash
-pnpm start
+Electron owns two dynamically allocated loopback origins:
+
+1. The app origin serves the built React renderer and internal `/api` routes.
+2. The sandbox origin serves deck preview documents with strict CSP isolation.
+
+The main process imports `apps/api` and `apps/sandbox` directly, points storage at `app.getPath('userData')`, and opens a hardened `BrowserWindow`. Deck HTML only runs inside the existing sandboxed preview iframe. Thumbnail PNGs are rendered by a hidden sandboxed Electron `BrowserWindow` and captured with `webContents.capturePage()`.
+
+```text
+apps/desktop/   Electron main/preload processes and React renderer
+apps/api/       Internal local API and persistence services
+apps/sandbox/   Separate-origin hostile deck renderer
+packages/       Shared contracts, deck helpers, and runtime registry
+runtimes/       Vendored approved deck runtimes
+agent-guides/   Always-on deck generation guidance
 ```
 
-This starts the API server and sandbox preview host together. Set `PORT`, `SANDBOX_PORT`, `ARK_APP_ORIGIN`, and `ARK_SANDBOX_ORIGIN` to match your deployed origins before starting. For sandbox-rendered thumbnails, install Chromium/Chrome on the API host (or set `ARK_CHROMIUM_PATH`); without it the shell falls back to script-stripped `srcDoc` thumbnails. See [docs/thumbnails.md](docs/thumbnails.md).
-
-## Checks
-
-Run these locally before opening a pull request (CI runs the same gates on `ubuntu-latest`):
+## Commands
 
 ```bash
-pnpm lockfile:check
-pnpm lint          # includes frontend/backend import boundary checks
-pnpm format:check
-pnpm audit
-pnpm typecheck     # parallel native TypeScript check (also runs inside pnpm build)
-pnpm build
-pnpm test
-pnpm smoke:plain-css   # Browser smoke selected for runtime-affecting PRs
-# Optional fuller local suites:
-# pnpm smoke:browser           # plain + Reveal + full-JS + manual-edit
-# pnpm smoke:browser:extended  # Reveal + full-JS + manual-edit + thumbnails
-# pnpm test:live-chromium      # API-level Chromium thumbnail renderer
+pnpm dev          # open the watched Electron development app
+pnpm typecheck    # check every TypeScript project
+pnpm lint         # run all lint checks
+pnpm lint:eslint  # run ESLint alone
+pnpm format       # format the repository
+pnpm test         # run Vitest
+pnpm build        # build renderer, main, and preload bundles
+pnpm package                # create an unpacked app for the current platform
+pnpm package:installers     # create installers for the current platform
 ```
 
-Import boundaries between `apps/*` and `packages/*` are enforced by ESLint (`eslint.config.js`). See [docs/architecture-boundaries.md](docs/architecture-boundaries.md) for allowed dependency directions.
+Run `pnpm format` before committing.
 
-`pnpm test` runs Vitest in two phases: **packages in parallel** (`pnpm --parallel --filter './packages/**' test`, ignoring the package dependency graph so suites overlap), then **apps serially** (`--workspace-concurrency=1`). Running `apps/api` and `apps/web` together overloads a single runner and causes Vitest timeouts — keep apps serial unless those suites get much lighter. `pnpm test:affected --base <sha>` uses pnpm's workspace dependency graph to run changed workspaces and all downstream dependents with the same package/app concurrency policy. Live Chromium thumbnail coverage remains separate (`pnpm test:live-chromium`). Coverage includes hostile deck and manual editor security fixtures (`apps/web/src/test/sandbox-fixtures.test.ts`, `apps/web/src/test/editor-security-fixtures.test.ts`). Browser smoke tests use headless Chromium via CDP. Set `ARK_CHROMIUM_PATH` if Chromium is not on your `PATH` (CI uses `/usr/bin/google-chrome`).
+## Desktop security
 
-### CI selection policy
+- Every `BrowserWindow` uses `contextIsolation: true`, `sandbox: true`, and `nodeIntegration: false`.
+- The preload exposes only narrow credential and updater IPC methods.
+- Renderer sessions allow only Ark's exact loopback origins. Provider traffic originates from the local Node service, not deck or renderer frames.
+- Deck previews use a separate loopback origin, short-lived render tokens, `sandbox="allow-scripts"`, and a strict CSP with `connect-src 'none'`.
+- The Electron session blocks the residual frame self-navigation request that browsers cannot prevent with CSP alone.
+- Provider keys are encrypted with the operating system's secure storage through Electron `safeStorage`.
 
-The required `quality`, `build`, `test`, and `smoke` checks always report a result, but ordinary pull requests only perform work relevant to their complete base-to-head diff:
+See [docs/deck-bridge.md](docs/deck-bridge.md), [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), and [docs/runtimes.md](docs/runtimes.md) for deck isolation and bridge details.
 
-| Change                                                                         | Build                | Unit tests                      | Plain CSS smoke |
-| ------------------------------------------------------------------------------ | -------------------- | ------------------------------- | --------------- |
-| Documentation, agent guides, benchmarks                                        | Skip                 | Skip                            | Skip            |
-| Workspace test files only                                                      | Full typecheck/build | Changed workspaces + dependents | Skip            |
-| Runtime workspace code                                                         | Full typecheck/build | Changed workspaces + dependents | Run             |
-| Fixtures, runtimes, dependency manifests, CI/test configuration, unknown paths | Full                 | Full                            | Run             |
+## Packaging and releases
 
-`quality` always runs for normal PR updates. Scope decisions and selected workspaces are written to the Actions job summary. Unknown paths fall back to full validation; classifier test or execution failures fail the required checks closed.
+Electron Builder creates:
 
-Every `main` push and manual workflow dispatch runs comprehensive validation: the full unit suite, live Chromium renderer tests, and plain-CSS smoke. Extended browser smokes (Reveal, full-JS bridge, manual-edit, thumbnails) are disabled in CI for now — run them locally with `pnpm smoke:browser:extended`; re-enable via [#265](https://github.com/williamcr01/ark/issues/265) (nightly, prod/release branch, or path filters). Pull requests never run the non-required live-Chromium job; high-risk PR inputs still select the full unit suite and required plain-CSS smoke.
+- Linux AppImage and Debian packages
+- macOS DMG and ZIP packages
+- Windows NSIS installers
 
-Format before pushing substantive changes:
+Pushing a `v*` tag runs the three-platform release matrix in [release.yml](.github/workflows/release.yml) and publishes artifacts to GitHub Releases. Configure these repository secrets for signed releases:
 
-```bash
-pnpm format
-```
+- `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
+- `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`
 
-GitHub Actions (`.github/workflows/ci.yml`) consolidates cheap static checks into one `quality` job and skips setup for irrelevant PR gates. Superseded runs are cancelled, browser retries are capped at three attempts, and all third-party actions are commit-pinned. No API keys or `.env` file are required for CI.
+macOS builds use hardened runtime and notarization. Electron Builder consumes the configured certificates for macOS and Windows signing. Packaged builds use `electron-updater` to check GitHub Releases.
+
+macOS and Windows updates retain their platform code-signing trust chain. Linux AppImage updates rely on GitHub HTTPS plus the release metadata checksum and do not have an independent platform signature; verify the first installation from the official GitHub Releases page.
+
+Electron, Electron Builder, and Electron Updater are MIT-licensed.
+
+## Deck format
+
+Each presentation remains one self-contained HTML document with inline styles and optional approved runtimes. External HTTP resources are rejected. Decks can be exported from Ark and opened independently in a browser or presentation environment; only the Ark editor itself is Electron-only.
