@@ -16,7 +16,7 @@ import {
 import { buildSandboxResponseCsp } from '@ark/runtime-registry/sandbox-origin.ts'
 import { type PreviewSessionStore } from '../preview-sessions.ts'
 
-/** Header the headless Chromium renderer must send on every render-host request. */
+/** Header the hidden Electron renderer must send on every render-host request. */
 export const THUMBNAIL_RENDER_SECRET_HEADER = 'x-ark-thumbnail-render-secret'
 const THUMBNAIL_SETTLE_REQUEST_MESSAGE_TYPE = 'ark:thumbnail-settle'
 const THUMBNAIL_SETTLED_MESSAGE_TYPE = 'ark:thumbnail-settled'
@@ -132,7 +132,7 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
 
   return `(function () {
   var C = ${JSON.stringify(constants)};
-  // Thumbnail Chromium navigates this document as a top-level page (not the
+  // Thumbnail Electron window navigates this document as a top-level page (not the
   // host iframe) so Page.captureScreenshot is allowed. Expose the same control
   // surface the host page used to provide.
   window.__arkThumbReady = false;
@@ -516,7 +516,7 @@ export function isLoopbackAddress(address: string | null | undefined) {
 }
 
 /**
- * Only the local headless Chromium ever needs the thumbnail render routes.
+ * Only the local hidden Electron window ever needs the thumbnail render routes.
  * Untrusted deck HTML would otherwise be served (and executed) on the API
  * origin for any remote client holding a preview token, weakening the
  * separate-origin isolation model.
@@ -550,7 +550,7 @@ export function createThumbnailRenderAccessGuard(renderSecret: string) {
 
 /**
  * Serves deck HTML through the same preview pipeline and sandbox CSP as the
- * sandbox host, but on the API origin so headless Chromium can load approved
+ * sandbox host, but on the API origin so Electron can load approved
  * runtime assets same-origin. A thin host page iframes the deck so the Ark
  * bridge sees a real parent window (matching production preview). Access is
  * restricted to loopback clients that present the process-local render secret
@@ -642,7 +642,7 @@ export function createThumbnailRenderRouter(deps: {
 }
 
 export function buildThumbnailRenderUrl(apiOrigin: string, token: string) {
-  // Navigate Chromium to the deck document itself. Capturing an attached iframe
+  // Navigate Electron to the deck document itself. Capturing an attached iframe
   // session fails on Chrome with "Command can only be executed on top-level targets".
   return `${apiOrigin.replace(/\/+$/, '')}/api/thumbnail-render/${encodeURIComponent(token)}`
 }

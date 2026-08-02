@@ -10,11 +10,6 @@ import { type DeckStore } from './deck-record.ts'
 import { type GenerationJobStore } from './generation-job-record.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner, type GenerationJobRunner } from './generation-job-runner.ts'
-import { type ConnectablePool } from './db/client.ts'
-import { createPostgresAssetStore } from './db/repositories/assets.ts'
-import { createPostgresChatStore } from './db/repositories/chat.ts'
-import { createPostgresDeckStore } from './db/repositories/decks.ts'
-import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
 import { getDefaultModel } from './models.ts'
 import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
 import {
@@ -32,12 +27,12 @@ import { createPreviewSessionsRouter } from './routes/preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './routes/runtimes-and-assets.ts'
 import { createThumbnailsRouter } from './routes/thumbnails.ts'
 import { createDefaultThumbnailCache } from './thumbnails/cache.ts'
-import { THUMBNAIL_QUEUE_CONCURRENCY, THUMBNAIL_SETTLE_MS } from './thumbnails/constants.ts'
+import { THUMBNAIL_QUEUE_CONCURRENCY } from './thumbnails/constants.ts'
 import {
   createThumbnailRenderRouter,
   createThumbnailRenderSecret,
 } from './thumbnails/render-host.ts'
-import { createThumbnailRenderer } from './thumbnails/renderer.ts'
+import { createDisabledThumbnailRenderer, type ThumbnailRenderer } from './thumbnails/renderer.ts'
 import { createThumbnailService, type ThumbnailService } from './thumbnails/service.ts'
 
 type CreateAppOptions = {
@@ -50,7 +45,7 @@ type CreateAppOptions = {
   previewSessionStore?: PreviewSessionStore
   runtimeErrorStore?: RuntimeErrorStore
   thumbnailService?: ThumbnailService
-  databasePool?: ConnectablePool | null
+  thumbnailRenderer?: ThumbnailRenderer
   /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
   thumbnailRenderSecret?: string
 }
@@ -58,11 +53,6 @@ type CreateAppOptions = {
 function readPositiveIntEnv(name: string, fallback: number) {
   const parsed = Number(process.env[name])
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
-}
-
-function readNonNegativeIntEnv(name: string, fallback: number) {
-  const parsed = Number(process.env[name])
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 function scheduleThumbnailWarm(
@@ -79,22 +69,11 @@ function scheduleThumbnailWarm(
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = express()
-  const databasePool = options.databasePool ?? null
-  const deckStore =
-    options.deckStore ??
-    (databasePool ? createPostgresDeckStore({ pool: databasePool }) : createDeckStore())
-  const chatStore =
-    options.chatStore ??
-    (databasePool ? createPostgresChatStore({ pool: databasePool }) : createChatStore())
-  const assetStore =
-    options.assetStore ??
-    (databasePool ? createPostgresAssetStore({ pool: databasePool }) : createAssetStore())
+  const deckStore = options.deckStore ?? createDeckStore()
+  const chatStore = options.chatStore ?? createChatStore()
+  const assetStore = options.assetStore ?? createAssetStore()
   const assetStorage = options.assetStorage ?? createDefaultAssetStorage()
-  const jobStore =
-    options.generationJobStore ??
-    (databasePool
-      ? createPostgresGenerationJobStore({ pool: databasePool })
-      : createGenerationJobStore())
+  const jobStore = options.generationJobStore ?? createGenerationJobStore()
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
@@ -103,17 +82,11 @@ export function createApp(options: CreateAppOptions = {}) {
     'ARK_THUMBNAIL_QUEUE_CONCURRENCY',
     THUMBNAIL_QUEUE_CONCURRENCY,
   )
-  const thumbnailSettleMs = readNonNegativeIntEnv('ARK_THUMBNAIL_SETTLE_MS', THUMBNAIL_SETTLE_MS)
-
   const thumbnailService =
     options.thumbnailService ??
     createThumbnailService({
       cache: createDefaultThumbnailCache(),
-      renderer: createThumbnailRenderer({
-        previewSessionStore,
-        renderSecret: thumbnailRenderSecret,
-        limits: { settleMs: thumbnailSettleMs },
-      }),
+      renderer: options.thumbnailRenderer ?? createDisabledThumbnailRenderer(),
       deckStore,
       queueConcurrency: thumbnailQueueConcurrency,
     })
@@ -178,11 +151,8 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   )
 
-  // Exposed for the server entrypoint's shutdown hook (closing the Chromium pool)
-  // and for live renderer tests that need to authenticate against the render host.
+  // Exposed for the Electron main process shutdown hook.
   app.locals.thumbnailService = thumbnailService
   app.locals.thumbnailRenderSecret = thumbnailRenderSecret
-  app.locals.databasePool = databasePool
-
   return app
 }

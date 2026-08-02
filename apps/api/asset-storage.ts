@@ -17,9 +17,9 @@ export type AssetStorage = {
   delete: (key: string) => Promise<boolean>
 }
 
-import { REPO_ROOT } from './repo-root.ts'
+import { resolveArkDataDir } from './data-dir.ts'
 
-const DEFAULT_STORAGE_DIR = path.resolve(REPO_ROOT, 'data', 'assets', 'blobs')
+const DEFAULT_STORAGE_DIR = resolveArkDataDir('assets', 'blobs')
 
 /** Opaque storage keys are UUID basenames — never derived from user input. */
 export function createAssetStorageKey() {

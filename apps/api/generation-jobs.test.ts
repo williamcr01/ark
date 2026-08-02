@@ -14,7 +14,7 @@ import { createAssetStore } from './asset-store.ts'
 import { createAssetStorageKey, createLocalAssetStorage } from './asset-storage.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
-import { stubStaticRuntimeManifest, stubValidDeckValidation } from './db/test-utils.ts'
+import { stubStaticRuntimeManifest, stubValidDeckValidation } from './test-utils.ts'
 
 const fastDeckOptions = { runtimeManifest: stubStaticRuntimeManifest } as const
 import { createGenerationJobStore } from './generation-job-store.ts'

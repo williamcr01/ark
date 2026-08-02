@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 
 import type { AssetStore } from './asset-record.ts'
 import { createAssetStore } from './asset-store.ts'
@@ -10,16 +11,6 @@ import type { ChatStore } from './chat-record.ts'
 import { createChatStore } from './chat-store.ts'
 import type { DeckStore } from './deck-record.ts'
 import { createDeckStore } from './deck-store.ts'
-import type { ConnectablePool } from './db/client.ts'
-import { createPostgresAssetStore } from './db/repositories/assets.ts'
-import { createPostgresChatStore } from './db/repositories/chat.ts'
-import { createPostgresDeckStore } from './db/repositories/decks.ts'
-import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
-import {
-  createMigratedTestPostgresPool,
-  stubStaticRuntimeManifest,
-  truncatePostgresAppTables,
-} from './db/test-utils.ts'
 import type { GenerationJobStore } from './generation-job-record.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 
@@ -58,52 +49,33 @@ async function makeJsonStores(): Promise<TestStores> {
   }
 }
 
-function makePgMemStores(pool: ConnectablePool): TestStores {
-  return {
-    deckStore: createPostgresDeckStore({ pool }),
-    chatStore: createPostgresChatStore({ pool }),
-    assetStore: createPostgresAssetStore({ pool }),
-    generationJobStore: createPostgresGenerationJobStore({ pool }),
-    cleanup: async () => undefined,
-  }
-}
+const stubStaticRuntimeManifest = {
+  schemaVersion: 1,
+  runtimeMode: 'static',
+  previewMode: 'css-only',
+  structure: 'plain',
+  slideSelector: 'section.slide',
+  slideCount: 1,
+  aspectRatio: '16:9',
+  scripts: { inline: 0, external: 0, allowed: false },
+  assets: [],
+  network: { externalUrls: [], connectAllowed: false },
+  validation: { valid: true, warnings: 0, errors: 0 },
+  usesRevealAdapter: false,
+  warnings: [],
+} satisfies DeckRuntimeManifest
 
 const fastDeckOptions = { runtimeManifest: stubStaticRuntimeManifest } as const
 
-describe.each([['json'], ['postgres']] as const)('%s backend contract', (backend) => {
+describe('local filesystem backend contract', () => {
   let stores: TestStores | null = null
-  let sharedPool: ConnectablePool | null = null
-
-  beforeAll(async () => {
-    if (backend === 'postgres') {
-      sharedPool = await createMigratedTestPostgresPool()
-    }
-  })
-
-  afterAll(async () => {
-    await sharedPool?.end?.()
-    sharedPool = null
-  })
 
   afterEach(async () => {
-    if (backend === 'json' && stores) {
-      await stores.cleanup()
-    }
+    if (stores) await stores.cleanup()
     stores = null
   })
 
-  async function makeStores(): Promise<TestStores> {
-    if (backend === 'json') {
-      return makeJsonStores()
-    }
-
-    if (!sharedPool) {
-      throw new Error('Postgres contract suite pool was not initialized.')
-    }
-
-    await truncatePostgresAppTables(sharedPool)
-    return makePgMemStores(sharedPool)
-  }
+  const makeStores = makeJsonStores
 
   it('creates decks, versions them, and rolls back', async () => {
     stores = await makeStores()
@@ -239,19 +211,17 @@ describe.each([['json'], ['postgres']] as const)('%s backend contract', (backend
     expect(await assetStore.claimAssetsForDeck([first.id, expiring.id], deck.id)).toBeNull()
     expect((await assetStore.getAsset(expiring.id))?.deckId).toBeNull()
 
-    if (backend === 'json') {
-      const competing = await makeTemporary('competing.png')
-      const otherDeck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
-      const claims = await Promise.all([
-        assetStore.claimAssetsForDeck([competing.id], deck.id),
-        assetStore.claimAssetsForDeck([competing.id], otherDeck.id),
-      ])
+    const competing = await makeTemporary('competing.png')
+    const otherDeck = await deckStore.createDeck(sampleHtml, fastDeckOptions)
+    const claims = await Promise.all([
+      assetStore.claimAssetsForDeck([competing.id], deck.id),
+      assetStore.claimAssetsForDeck([competing.id], otherDeck.id),
+    ])
 
-      expect(claims.filter(Boolean)).toHaveLength(1)
-      expect((await assetStore.getAsset(competing.id))?.deckId).toBe(
-        claims[0] ? deck.id : otherDeck.id,
-      )
-    }
+    expect(claims.filter(Boolean)).toHaveLength(1)
+    expect((await assetStore.getAsset(competing.id))?.deckId).toBe(
+      claims[0] ? deck.id : otherDeck.id,
+    )
 
     const expired = await assetStore.deleteExpiredUnassignedAssets('9999-12-31T23:59:59.999Z')
     expect(expired.map((asset) => asset.id)).toContain(expiring.id)
@@ -294,7 +264,7 @@ describe.each([['json'], ['postgres']] as const)('%s backend contract', (backend
     expect(await assetStore.listAssetsByDeck(deck.id)).toHaveLength(0)
   })
 
-  it('persists provenance, diff, and model fields identically across backends', async () => {
+  it('persists provenance, diff, and model fields', async () => {
     stores = await makeStores()
     const { deckStore } = stores
 

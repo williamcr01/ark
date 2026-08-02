@@ -201,7 +201,7 @@ export function createPreviewSessionStore(
       const editorBridge = sessionOptions.editorBridge === true
       const isThumbnailSession = Boolean(sessionOptions.thumbnailPreview)
 
-      // Thumbnail sessions own a unique token lifecycle (create → Chromium GET
+      // Thumbnail sessions own a unique token lifecycle (create → Electron GET
       // → delete in renderer finally). Never share them with interactive
       // previews or other thumbnail renders.
       if (!isThumbnailSession) {

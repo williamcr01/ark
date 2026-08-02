@@ -7,11 +7,7 @@
     "./*": "./*"
   },
   "scripts": {
-    "dev": "tsx watch index.ts",
-    "start": "tsx index.ts",
-    "db:migrate": "tsx db/migrate.ts",
-    "test": "NODE_COMPILE_CACHE=node_modules/.cache/ark-test-compile pnpm --dir ../.. exec vitest run --config vitest.config.ts --project '@ark/api-*'",
-    "test:live-chromium": "ARK_LIVE_CHROMIUM_TESTS=1 vitest run --config vitest.config.ts thumbnails/renderer.test.ts"
+    "test": "NODE_COMPILE_CACHE=node_modules/.cache/ark-test-compile pnpm --dir ../.. exec vitest run --config vitest.config.ts --project '@ark/api-*'"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.99",
@@ -21,19 +17,15 @@
     "@ark/deck-core": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "ai": "^6.0.233",
-    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsdom": "^29.1.1",
     "nanoid": "^5.1.11",
-    "pg": "^8.22.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^24.12.3",
-    "@types/pg": "^8.20.0",
-    "pg-mem": "^3.0.14",
     "tsx": "^4.22.4",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.9"

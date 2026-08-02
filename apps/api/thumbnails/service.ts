@@ -930,7 +930,7 @@ export function createThumbnailService(options: {
       }
 
       if (meta?.status === THUMBNAIL_STATUS.failed) {
-        // Transient failures (e.g. Chromium cold-start timeouts) get a bounded
+        // Transient failures (e.g. Electron renderer timeouts) get a bounded
         // retry budget; once exhausted the failure is terminal for this key.
         if (
           input.enqueueIfMissing &&
