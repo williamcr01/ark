@@ -2,7 +2,6 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { createPostgresChatStore } from './db/repositories/chat.ts'
 import {
   type AppendChatMessageInput,
   type ChatStore,
@@ -334,13 +333,3 @@ export function createChatStore(dataDir = DEFAULT_DATA_DIR): ChatStore {
     clearThread,
   }
 }
-
-export function createDefaultChatStore(env = process.env): ChatStore {
-  if (env.DATABASE_URL?.trim()) {
-    return createPostgresChatStore()
-  }
-
-  return createChatStore()
-}
-
-export const chatStore = createDefaultChatStore()

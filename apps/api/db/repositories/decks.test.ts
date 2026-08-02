@@ -3,9 +3,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { ConnectablePool } from '../client.ts'
 import {
   createMemoryPostgresPool,
-  createMigratedMemoryPostgresPool,
+  createMigratedTestPostgresPool,
   stubStaticRuntimeManifest,
-  truncateMemoryPostgresAppTables,
+  truncatePostgresAppTables,
 } from '../test-utils.ts'
 import { createPostgresDeckStore } from './decks.ts'
 
@@ -27,12 +27,12 @@ describe('createPostgresDeckStore', () => {
   let store: ReturnType<typeof createPostgresDeckStore>
 
   beforeAll(async () => {
-    pool = await createMigratedMemoryPostgresPool()
-    store = createPostgresDeckStore({ pool, migrate: false })
+    pool = await createMigratedTestPostgresPool()
+    store = createPostgresDeckStore({ pool })
   })
 
   beforeEach(async () => {
-    await truncateMemoryPostgresAppTables(pool)
+    await truncatePostgresAppTables(pool)
   })
 
   afterAll(async () => {
@@ -96,7 +96,7 @@ describe('createPostgresDeckStore', () => {
 
   it('rejects invalid deck ids before querying Postgres', async () => {
     const invalidPool = createMemoryPostgresPool()
-    const invalidStore = createPostgresDeckStore({ pool: invalidPool, migrate: false })
+    const invalidStore = createPostgresDeckStore({ pool: invalidPool })
 
     try {
       expect(await invalidStore.getDeck('../escape')).toBeNull()

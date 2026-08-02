@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { ChatAttachment, ChatMessagePart } from '@ark/deck-core/chat.ts'
-import { createPostgresPool, type ConnectablePool } from '../client.ts'
-import { runMigrations } from '../migrate.ts'
+import { type ConnectablePool } from '../client.ts'
 import { isValidDeckId } from '../../deck-record.ts'
 import {
   type AppendChatMessageInput,
@@ -45,8 +44,7 @@ type ChatMessageRow = {
 }
 
 type PostgresChatStoreOptions = {
-  pool?: ConnectablePool
-  migrate?: boolean
+  pool: ConnectablePool
   now?: () => Date
   defaultWorkspaceId?: string
 }
@@ -168,20 +166,10 @@ function buildErrorMetadata(input: AppendChatMessageInput) {
   }
 }
 
-export function createPostgresChatStore(options: PostgresChatStoreOptions = {}): ChatStore {
-  const pool = options.pool ?? createPostgresPool()
+export function createPostgresChatStore(options: PostgresChatStoreOptions): ChatStore {
+  const pool = options.pool
   const now = options.now ?? (() => new Date())
   const defaultWorkspaceId = options.defaultWorkspaceId ?? DEFAULT_WORKSPACE_ID
-  let migrated = false
-
-  const ensureMigrated = async () => {
-    if (migrated || options.migrate === false) {
-      return
-    }
-
-    await runMigrations(pool)
-    migrated = true
-  }
 
   const deckExists = async (deckId: string) => {
     const result = await pool.query<{ id: string }>(
@@ -201,8 +189,6 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
     if (!isValidDeckId(deckId)) {
       return null
     }
-
-    await ensureMigrated()
 
     const result = await pool.query<ChatThreadRow>(
       `
@@ -235,8 +221,6 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
     if (!isValidDeckId(deckId)) {
       throw new Error('Invalid deck id.')
     }
-
-    await ensureMigrated()
 
     if (!(await deckExists(deckId))) {
       throw new Error('Deck not found.')
@@ -360,8 +344,6 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
       return { thread: null, messages: [], hasMore: false }
     }
 
-    await ensureMigrated()
-
     const thread = await getActiveThread(deckId)
 
     if (!thread) {
@@ -428,8 +410,6 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
     if (!isValidDeckId(deckId)) {
       throw new Error('Invalid deck id.')
     }
-
-    await ensureMigrated()
 
     const thread = await getOrCreateActiveThread(deckId, input.deckVersionId ?? null)
     const id =
@@ -559,8 +539,6 @@ export function createPostgresChatStore(options: PostgresChatStoreOptions = {}):
     if (!isValidDeckId(deckId)) {
       return false
     }
-
-    await ensureMigrated()
 
     const thread = await getActiveThread(deckId)
 

@@ -2,7 +2,6 @@ import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
 import {
   type CreateGenerationJobInput,
   type GenerationJob,
@@ -322,13 +321,3 @@ export function createGenerationJobStore(dataDir = DEFAULT_DATA_DIR): Generation
     listJobsForDeck,
   }
 }
-
-export function createDefaultGenerationJobStore(env = process.env): GenerationJobStore {
-  if (env.DATABASE_URL?.trim()) {
-    return createPostgresGenerationJobStore()
-  }
-
-  return createGenerationJobStore()
-}
-
-export const generationJobStore = createDefaultGenerationJobStore()

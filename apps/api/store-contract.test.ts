@@ -16,9 +16,9 @@ import { createPostgresChatStore } from './db/repositories/chat.ts'
 import { createPostgresDeckStore } from './db/repositories/decks.ts'
 import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
 import {
-  createMigratedMemoryPostgresPool,
+  createMigratedTestPostgresPool,
   stubStaticRuntimeManifest,
-  truncateMemoryPostgresAppTables,
+  truncatePostgresAppTables,
 } from './db/test-utils.ts'
 import type { GenerationJobStore } from './generation-job-record.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
@@ -60,10 +60,10 @@ async function makeJsonStores(): Promise<TestStores> {
 
 function makePgMemStores(pool: ConnectablePool): TestStores {
   return {
-    deckStore: createPostgresDeckStore({ pool, migrate: false }),
-    chatStore: createPostgresChatStore({ pool, migrate: false }),
-    assetStore: createPostgresAssetStore({ pool, migrate: false }),
-    generationJobStore: createPostgresGenerationJobStore({ pool, migrate: false }),
+    deckStore: createPostgresDeckStore({ pool }),
+    chatStore: createPostgresChatStore({ pool }),
+    assetStore: createPostgresAssetStore({ pool }),
+    generationJobStore: createPostgresGenerationJobStore({ pool }),
     cleanup: async () => undefined,
   }
 }
@@ -76,7 +76,7 @@ describe.each([['json'], ['postgres']] as const)('%s backend contract', (backend
 
   beforeAll(async () => {
     if (backend === 'postgres') {
-      sharedPool = await createMigratedMemoryPostgresPool()
+      sharedPool = await createMigratedTestPostgresPool()
     }
   })
 
@@ -101,7 +101,7 @@ describe.each([['json'], ['postgres']] as const)('%s backend contract', (backend
       throw new Error('Postgres contract suite pool was not initialized.')
     }
 
-    await truncateMemoryPostgresAppTables(sharedPool)
+    await truncatePostgresAppTables(sharedPool)
     return makePgMemStores(sharedPool)
   }
 

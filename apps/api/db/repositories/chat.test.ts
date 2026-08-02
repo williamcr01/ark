@@ -2,9 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ConnectablePool } from '../client.ts'
 import {
-  createMigratedMemoryPostgresPool,
+  createMigratedTestPostgresPool,
   stubStaticRuntimeManifest,
-  truncateMemoryPostgresAppTables,
+  truncatePostgresAppTables,
 } from '../test-utils.ts'
 import { createPostgresChatStore } from './chat.ts'
 import { createPostgresDeckStore } from './decks.ts'
@@ -28,13 +28,13 @@ describe('createPostgresChatStore', () => {
   let chatStore: ReturnType<typeof createPostgresChatStore>
 
   beforeAll(async () => {
-    pool = await createMigratedMemoryPostgresPool()
-    deckStore = createPostgresDeckStore({ pool, migrate: false })
-    chatStore = createPostgresChatStore({ pool, migrate: false })
+    pool = await createMigratedTestPostgresPool()
+    deckStore = createPostgresDeckStore({ pool })
+    chatStore = createPostgresChatStore({ pool })
   })
 
   beforeEach(async () => {
-    await truncateMemoryPostgresAppTables(pool)
+    await truncatePostgresAppTables(pool)
   })
 
   afterAll(async () => {

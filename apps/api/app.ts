@@ -1,15 +1,20 @@
 import express from 'express'
 
-import { createDefaultDeckStore } from './deck-store.ts'
-import { createDefaultChatStore } from './chat-store.ts'
-import { createDefaultAssetStore } from './asset-store.ts'
+import { createDeckStore } from './deck-store.ts'
+import { createChatStore } from './chat-store.ts'
+import { createAssetStore } from './asset-store.ts'
 import { createDefaultAssetStorage, type AssetStorage } from './asset-storage.ts'
 import { type AssetStore } from './asset-record.ts'
 import { type ChatStore } from './chat-record.ts'
 import { type DeckStore } from './deck-record.ts'
 import { type GenerationJobStore } from './generation-job-record.ts'
-import { createDefaultGenerationJobStore } from './generation-job-store.ts'
+import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner, type GenerationJobRunner } from './generation-job-runner.ts'
+import { type ConnectablePool } from './db/client.ts'
+import { createPostgresAssetStore } from './db/repositories/assets.ts'
+import { createPostgresChatStore } from './db/repositories/chat.ts'
+import { createPostgresDeckStore } from './db/repositories/decks.ts'
+import { createPostgresGenerationJobStore } from './db/repositories/generation-jobs.ts'
 import { getDefaultModel } from './models.ts'
 import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
 import {
@@ -45,6 +50,7 @@ type CreateAppOptions = {
   previewSessionStore?: PreviewSessionStore
   runtimeErrorStore?: RuntimeErrorStore
   thumbnailService?: ThumbnailService
+  databasePool?: ConnectablePool | null
   /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
   thumbnailRenderSecret?: string
 }
@@ -73,11 +79,22 @@ function scheduleThumbnailWarm(
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = express()
-  const deckStore = options.deckStore ?? createDefaultDeckStore()
-  const chatStore = options.chatStore ?? createDefaultChatStore()
-  const assetStore = options.assetStore ?? createDefaultAssetStore()
+  const databasePool = options.databasePool ?? null
+  const deckStore =
+    options.deckStore ??
+    (databasePool ? createPostgresDeckStore({ pool: databasePool }) : createDeckStore())
+  const chatStore =
+    options.chatStore ??
+    (databasePool ? createPostgresChatStore({ pool: databasePool }) : createChatStore())
+  const assetStore =
+    options.assetStore ??
+    (databasePool ? createPostgresAssetStore({ pool: databasePool }) : createAssetStore())
   const assetStorage = options.assetStorage ?? createDefaultAssetStorage()
-  const jobStore = options.generationJobStore ?? createDefaultGenerationJobStore()
+  const jobStore =
+    options.generationJobStore ??
+    (databasePool
+      ? createPostgresGenerationJobStore({ pool: databasePool })
+      : createGenerationJobStore())
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
@@ -165,6 +182,7 @@ export function createApp(options: CreateAppOptions = {}) {
   // and for live renderer tests that need to authenticate against the render host.
   app.locals.thumbnailService = thumbnailService
   app.locals.thumbnailRenderSecret = thumbnailRenderSecret
+  app.locals.databasePool = databasePool
 
   return app
 }

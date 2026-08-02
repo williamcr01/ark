@@ -11,6 +11,8 @@
     "server": "pnpm --filter @ark/api start",
     "sandbox": "pnpm --filter @ark/sandbox start",
     "start": "concurrently -n api,sandbox -c magenta,yellow \"pnpm server\" \"pnpm sandbox\"",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @ark/api db:migrate",
     "typecheck": "node scripts/typecheck.mjs",
     "build": "pnpm typecheck && pnpm --filter @ark/web exec vite build",
