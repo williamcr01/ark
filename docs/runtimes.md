@@ -146,7 +146,7 @@ Preview processing lives in `packages/deck-core/deck-preview-html.ts` and `apps/
 | Reveal with approved assets + markers    | Full-JS (reveal adapter) | Approved `reveal.js` kept; Ark injects reveal nav adapter |
 | Reveal structure without approved assets | CSS-only                 | Scripts stripped; CSS shim navigates static sections      |
 
-For approved reveal decks, preview **absolutizes** `/api/runtimes/...` URLs to the app origin (e.g. `http://localhost:5173/api/runtimes/...`) so the sandbox iframe can fetch assets from the API while the deck document stays on the sandbox origin. Validated deck asset URLs are absolutized the same way. Deck source on disk still uses root-relative `/api/...` paths.
+For approved reveal decks, preview **absolutizes** `/api/runtimes/...` URLs to Electron's dynamic app origin so the sandbox iframe can fetch assets from the local API while the deck document stays on the sandbox origin. Validated deck asset URLs are absolutized the same way. Stored deck source still uses root-relative `/api/...` paths.
 
 Thumbnails prefer sandbox-rendered PNGs from `GET /api/decks/:id/thumbnails`
 (see [thumbnails.md](./thumbnails.md)). When the renderer is disabled, pending,
@@ -155,7 +155,7 @@ or failed, the strip falls back to script-stripped `srcDoc` iframes
 available. See [reveal-runtime.md](./reveal-runtime.md) for thumbnail
 limitations.
 
-Main preview and Present mode load processed HTML from the sandbox host (default `http://localhost:5174`) via short-lived render tokens.
+Main preview and Present mode load processed HTML from Electron's dynamic sandbox origin via short-lived render tokens.
 
 ## Security constraints
 
@@ -188,8 +188,8 @@ Minimum checklist for contributors:
 3. **Registry types** — Extend `ApprovedRuntimeEntry` in `packages/runtime-registry/deck-runtime-registry.ts` if new fields are needed.
 4. **Validation tests** — Cover marker checks, required assets, version mismatch, and CDN rejection (`packages/deck-core/deck-validate.test.ts`, `packages/runtime-registry/deck-runtime-registry.test.ts`).
 5. **Server route tests** — List and serve assets (`apps/api/deck-runtimes.test.ts`).
-6. **Preview tests** — Asset preservation, CSP, adapter injection (`apps/sandbox/render-preview-html.test.ts`, `apps/web/src/lib/deck-preview.test.ts`).
-7. **Thumbnail tests** — server renderer coverage under `apps/api/thumbnails/*.test.ts`, plus CSS inlining / slide selection for the `srcDoc` fallback (`apps/web/src/lib/deck-slides.test.ts`).
+6. **Preview tests** — Asset preservation, CSP, adapter injection (`apps/sandbox/render-preview-html.test.ts`, `apps/desktop/src/lib/deck-preview.test.ts`).
+7. **Thumbnail tests** — server renderer coverage under `apps/api/thumbnails/*.test.ts`, plus CSS inlining / slide selection for the `srcDoc` fallback (`apps/desktop/src/lib/deck-slides.test.ts`).
 8. **Smoke test** — Add or extend `scripts/smoke-reveal-runtime.ts` / `scripts/smoke-thumbnails.ts` for end-to-end preview and rendered thumbnails when the runtime runs scripts.
 9. **Agent prompt** — Registry section updates automatically from manifest; add a numbered guide under `agent-guides/` (e.g. `20-chart-js.md`) for runtime-specific authoring rules.
 10. **Documentation** — Add or update a runtime guide under `docs/` and link from this file.
@@ -214,5 +214,5 @@ Implementation references:
 - `runtimes/manifest.json` — Source of truth for approved assets
 - `packages/runtime-registry/deck-runtime-registry.ts` — Registry lookup and validation helpers
 - `apps/api/deck-runtimes.ts` — `/api/runtimes` route handlers
-- `packages/deck-core/deck-validate.ts` — Portable deck validation (`validateDeckHtml`); browser wrapper in `apps/web/src/lib/deck-validate.ts`, server wrapper in `apps/api/deck-validate.ts`
+- `packages/deck-core/deck-validate.ts` — Portable deck validation (`validateDeckHtml`); browser wrapper in `apps/desktop/src/lib/deck-validate.ts`, server wrapper in `apps/api/deck-validate.ts`
 - `docs/deck-bridge.md` — Parent ↔ iframe protocol including reveal adapter

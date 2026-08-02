@@ -21,7 +21,7 @@ Do **not** duplicate the live approved-runtime URL list here — that is generat
 
 In development (`NODE_ENV !== 'production'`), the API re-reads files when mtimes change, so you can edit guides without restarting `pnpm dev`.
 
-Optional env overrides (see `.env.example`):
+The Electron main process sets the packaged guide directory. Internal development overrides:
 
 - `ARK_AGENT_GUIDES_DIR` — alternate directory
 - `ARK_AGENT_GUIDES_MAX_BYTES` — truncate concatenated guides past this size (default 131072)
