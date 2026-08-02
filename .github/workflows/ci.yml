@@ -164,6 +164,14 @@ jobs:
       - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
         run: pnpm install --frozen-lockfile
 
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true'
+        with:
+          path: node_modules/.cache/ark-test-compile
+          key: ${{ runner.os }}-node22-vitest-compile-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node22-vitest-compile-
+
       - name: Full unit test suite
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.test == 'true' && needs.changes.outputs.full == 'true'
         run: pnpm test
