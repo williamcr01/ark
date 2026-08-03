@@ -732,6 +732,7 @@ function App() {
       editorBridgeEnabled
       html={generatedHtml}
       initialSlideIndex={initialSlideIndex}
+      isDeckLoading={Boolean(routeDeckId && isDeckLoading)}
       isGenerating={isGenerating}
       isPreviewUpdating={isPreviewUpdating}
       isStripOpen={isStripOpen}

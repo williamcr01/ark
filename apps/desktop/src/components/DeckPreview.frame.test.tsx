@@ -501,6 +501,32 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
   })
 
+  it('uses size-locked preview and thumbnail skeletons while opening a deck', () => {
+    const { container } = renderDeckPreview({
+      ...plainDeckProps,
+      deckAnalysis: analyzeDeckInBrowser(''),
+      html: '',
+      editorBridgeEnabled: true,
+      isDeckLoading: true,
+      isStripOpen: true,
+    })
+
+    const preview = screen.getByRole('status', { name: 'Loading deck preview' })
+    const strip = screen.getByLabelText('Loading slide thumbnails')
+    const thumbnailSkeletons = strip.querySelectorAll(
+      '[data-slot="slide-reorder-zone"] [data-slot="skeleton"]',
+    )
+
+    expect(preview).toHaveStyle({ height: '720px', width: '1280px' })
+    expect(container.querySelector('[data-slot="deck-toolbar-skeleton"]')).toHaveClass('h-9')
+    expect(strip).toHaveClass('w-[168px]')
+    expect(thumbnailSkeletons).toHaveLength(5)
+    expect(thumbnailSkeletons[0]).toHaveAttribute('style', 'aspect-ratio: 1280 / 720;')
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument()
+    expect(screen.queryByText('Set the stage')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+  })
+
   it('reports editor selection to the shell while edit chrome is active', () => {
     const onEditorSelectionChange = vi.fn()
 

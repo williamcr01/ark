@@ -26,6 +26,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckPreviewFrame } from '@/hooks/useDeckPreviewFrame'
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckSlideNavigation } from '@/hooks/useDeckSlideNavigation'
@@ -79,6 +80,7 @@ export type DeckPreviewProps = {
   deckId?: string | null
   versionId?: string | null
   recentGenerationJobId?: string | null
+  isDeckLoading?: boolean
   isGenerating: boolean
   isPreviewUpdating?: boolean
   isStripOpen: boolean
@@ -123,6 +125,7 @@ export function DeckPreview({
   deckId = null,
   versionId = null,
   recentGenerationJobId = null,
+  isDeckLoading = false,
   isGenerating,
   isPreviewUpdating = false,
   isStripOpen,
@@ -173,7 +176,7 @@ export function DeckPreview({
     (issue) => issue.code === 'external_url' && issue.severity === 'error',
   )
   const hasSlides = parsedDeck.slideCount > 0
-  const previewEnabled = html.length > 0 && hasSlides
+  const previewEnabled = !isDeckLoading && html.length > 0 && hasSlides
   const editChromeActive = previewEnabled && !isGenerating && !isPresentOpen
   const editorBridgeActive = editorBridgeEnabled && editChromeActive
   // Slide patching runs from useDeckPreviewSource's layout effect, before the
@@ -685,10 +688,22 @@ export function DeckPreview({
   }, [openPresentMode, presentHandleRef])
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
-  const hasStrip = hasSlides
+  const hasStrip = isDeckLoading || hasSlides
   const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
   const previewChrome =
-    editorBridgeEnabled && editChromeActive ? (
+    editorBridgeEnabled && isDeckLoading ? (
+      <div
+        aria-hidden
+        className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar)] px-3"
+        data-slot="deck-toolbar-skeleton"
+      >
+        {['select', 'text', 'image'].map((tool) => (
+          <Skeleton className="size-7 rounded-sm motion-reduce:animate-none" key={tool} />
+        ))}
+        <Skeleton className="h-5 w-px rounded-none motion-reduce:animate-none" />
+        <Skeleton className="size-7 rounded-sm motion-reduce:animate-none" />
+      </div>
+    ) : editorBridgeEnabled && editChromeActive ? (
       <EditModeToolbar
         activeTool={activeTool}
         canEditText={canEditSelectedText}
@@ -753,6 +768,7 @@ export function DeckPreview({
             orientation={stripOrientation}
             parsedDeck={stripParsedDeck}
             thumbnailUrls={deferredThumbnailUrls}
+            isLoading={isDeckLoading}
           />
         ) : null}
 
@@ -803,7 +819,16 @@ export function DeckPreview({
             }}
             ref={previewViewportRef}
           >
-            {html ? (
+            {isDeckLoading ? (
+              <div
+                aria-label="Loading deck preview"
+                className="relative max-h-full max-w-full overflow-hidden shadow-[0_8px_28px_var(--ark-stage-shadow)]"
+                role="status"
+                style={previewStageStyle}
+              >
+                <Skeleton className="absolute inset-0 rounded-none motion-reduce:animate-none" />
+              </div>
+            ) : html ? (
               <div
                 className={cn(
                   'relative max-h-full max-w-full overflow-hidden bg-white shadow-[0_8px_28px_var(--ark-stage-shadow)]',
