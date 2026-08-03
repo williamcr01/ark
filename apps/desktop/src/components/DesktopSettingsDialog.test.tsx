@@ -34,6 +34,7 @@ describe('DesktopSettingsDialog', () => {
         open
       />,
     )
+    expect(document.querySelectorAll('[data-provider-logo]')).toHaveLength(3)
     const user = userEvent.setup()
     await user.type(screen.getByLabelText('OpenAI'), 'sk-test')
     await user.click(screen.getAllByRole('button', { name: 'Test' })[0]!)

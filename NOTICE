@@ -54,6 +54,13 @@ License: SIL Open Font License 1.1 (OFL-1.1)
 Distributed via: @fontsource-variable/bricolage-grotesque
 License file: third_party/fonts/bricolage-grotesque/LICENSE
 
+Lobe Icons
+----------
+Copyright (c) 2023 LobeHub
+License: MIT
+Location: apps/desktop/src/assets/providers/
+License file: apps/desktop/src/assets/providers/LICENSE
+
 DOMPurify
 ---------
 License: MPL-2.0 OR Apache-2.0

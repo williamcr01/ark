@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { ProviderLogo } from '@/components/ProviderLogo'
 import {
   DropdownMenu,
   DropdownMenuGroup,
@@ -252,7 +253,10 @@ export function ModelSelector({
           {isLoading ? (
             <Skeleton className="h-3.5 w-24" />
           ) : (
-            <ModelSelectorTriggerLabel effortLabel={effortLabel} modelName={selectedName} />
+            <>
+              {selected ? <ProviderLogo className="size-4" provider={selected.provider} /> : null}
+              <ModelSelectorTriggerLabel effortLabel={effortLabel} modelName={selectedName} />
+            </>
           )}
           <ChevronsUpDownIcon className="opacity-50" data-icon="inline-end" />
         </Button>
@@ -290,8 +294,11 @@ export function ModelSelector({
                 groups.map((group, groupIndex) => (
                   <div key={group.provider}>
                     {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-                    <DropdownMenuLabel className="text-[var(--ark-muted-ink)]">
-                      {group.label} · {group.readyCount} ready
+                    <DropdownMenuLabel className="flex items-center gap-2 text-[var(--ark-muted-ink)]">
+                      <ProviderLogo className="size-4" provider={group.provider} />
+                      <span>
+                        {group.label} · {group.readyCount} ready
+                      </span>
                     </DropdownMenuLabel>
                     <DropdownMenuGroup>
                       {group.models.map((model) => {

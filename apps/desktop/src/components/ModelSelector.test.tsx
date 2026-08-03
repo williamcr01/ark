@@ -86,8 +86,14 @@ describe('ModelSelector', () => {
       />,
     )
 
+    expect(document.querySelectorAll('[data-provider-logo="openai"]')).toHaveLength(1)
+
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
+    const menu = screen.getByRole('menu')
+    expect(menu.querySelectorAll('[data-provider-logo="openai"]')).toHaveLength(1)
+    expect(menu.querySelectorAll('[data-provider-logo="anthropic"]')).toHaveLength(1)
+    expect(menu.querySelectorAll('[data-provider-logo="google"]')).toHaveLength(1)
     expect(screen.getByText('OpenAI · 3 ready')).toBeInTheDocument()
     expect(screen.getByText('Anthropic · 0 ready')).toBeInTheDocument()
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()

@@ -3,6 +3,7 @@ import type { ProviderId } from '@ark/contracts'
 import { LaptopIcon, MoonIcon, SunIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { ProviderLogo } from '@/components/ProviderLogo'
 import {
   Dialog,
   DialogContent,
@@ -150,8 +151,9 @@ export function DesktopSettingsDialog({
             return (
               <section className="rounded-lg border p-3" key={id}>
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <label className="font-medium" htmlFor={`ark-key-${id}`}>
-                    {label}
+                  <label className="flex items-center gap-2 font-medium" htmlFor={`ark-key-${id}`}>
+                    <ProviderLogo className="size-5" provider={id} />
+                    <span>{label}</span>
                   </label>
                   <span className="text-xs text-muted-foreground">
                     {configured
