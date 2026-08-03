@@ -91,6 +91,10 @@ function shouldRetryFailedRender(meta: ThumbnailCacheMeta, now = Date.now()) {
     return false
   }
 
+  if (meta.rendererVersion !== THUMBNAIL_RENDERER_VERSION) {
+    return true
+  }
+
   if ((meta.attempts ?? 1) >= THUMBNAIL_MAX_RENDER_ATTEMPTS) {
     return false
   }
@@ -177,7 +181,8 @@ function toClientStatusResult(
   if (
     result.status === THUMBNAIL_STATUS.failed &&
     meta &&
-    (meta.attempts ?? 1) < THUMBNAIL_MAX_RENDER_ATTEMPTS
+    (meta.rendererVersion !== THUMBNAIL_RENDERER_VERSION ||
+      (meta.attempts ?? 1) < THUMBNAIL_MAX_RENDER_ATTEMPTS)
   ) {
     return { status: THUMBNAIL_STATUS.pending, slides: [] }
   }
@@ -817,6 +822,7 @@ export function createThumbnailService(options: {
       // broken deck cannot burn render time on every warm/poll.
       if (
         meta?.status === THUMBNAIL_STATUS.failed &&
+        meta.rendererVersion === THUMBNAIL_RENDERER_VERSION &&
         (meta.attempts ?? 1) >= THUMBNAIL_MAX_RENDER_ATTEMPTS
       ) {
         logSkippedJob(job, queueWaitMs, 'failed_attempt_budget_exhausted')

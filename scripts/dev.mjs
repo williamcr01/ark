@@ -6,11 +6,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const desktop = resolve(root, 'apps/desktop')
 
 let interrupted = false
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    interrupted = true
-  })
-}
 
 const logger = new Logger({ prefixFormat: 'name' })
 const logCommandEvent = logger.logCommandEvent.bind(logger)
@@ -20,7 +15,7 @@ logger.logCommandEvent = (text, command) => {
   logCommandEvent(text, command)
 }
 
-const { result } = concurrently(
+const { commands, result } = concurrently(
   [
     {
       name: 'renderer',
@@ -49,6 +44,14 @@ const { result } = concurrently(
   ],
   { logger },
 )
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    if (interrupted) return
+    interrupted = true
+    for (const command of commands) command.kill(signal)
+  })
+}
 
 try {
   await result

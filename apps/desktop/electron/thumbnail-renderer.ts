@@ -209,6 +209,7 @@ export function createElectronThumbnailRenderer(options: {
             backgroundThrottling: false,
             contextIsolation: true,
             nodeIntegration: false,
+            offscreen: true,
             partition,
             sandbox: true,
             webSecurity: true,

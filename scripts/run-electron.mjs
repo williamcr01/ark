@@ -13,6 +13,7 @@ const rendererUrl = 'http://127.0.0.1:5173'
 let child = null
 let stopping = false
 let restartTimer = null
+const watchers = []
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -62,17 +63,22 @@ function restart() {
   }, 150)
 }
 
-await waitUntilReady()
-if (!stopping) launch()
-
-for (const directory of [path.dirname(mainEntry), path.dirname(preloadEntry)]) {
-  watch(directory, { persistent: true }, restart)
+function stop(signal) {
+  if (stopping) return
+  stopping = true
+  if (restartTimer) clearTimeout(restartTimer)
+  for (const watcher of watchers) watcher.close()
+  child?.kill(signal)
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    stopping = true
-    if (restartTimer) clearTimeout(restartTimer)
-    child?.kill(signal)
-  })
+  process.on(signal, () => stop(signal))
+}
+
+await waitUntilReady()
+if (!stopping) {
+  launch()
+  for (const directory of [path.dirname(mainEntry), path.dirname(preloadEntry)]) {
+    watchers.push(watch(directory, { persistent: true }, restart))
+  }
 }

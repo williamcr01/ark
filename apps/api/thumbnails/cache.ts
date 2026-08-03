@@ -296,7 +296,10 @@ export function createThumbnailCache(
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.pending,
-      attempts: (existing?.attempts ?? 0) + 1,
+      attempts:
+        existing && existing.rendererVersion === input.rendererVersion
+          ? (existing.attempts ?? 0) + 1
+          : 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
