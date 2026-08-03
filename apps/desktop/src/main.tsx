@@ -31,6 +31,7 @@ void initializeDesktopSettings()
               <Route path="/" element={<Navigate replace to="/decks" />} />
               <Route path="/decks" element={<DecksDashboard />} />
               <Route path="/decks/:deckId" element={<App />} />
+              <Route path="/deck/:deckId" element={<App />} />
               <Route path="*" element={<Navigate replace to="/decks" />} />
             </Routes>
           </Suspense>
