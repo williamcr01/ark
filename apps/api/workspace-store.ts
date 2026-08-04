@@ -9,6 +9,7 @@ import type { EmbeddedAsset } from './embedded-assets.ts'
 
 export const ARK_WORKSPACE_FORMAT_VERSION = 1
 export const ARK_APPLICATION_ID = 0x41524b31
+const ASSET_GC_GRACE_MS = 60_000
 
 const defaultWorkspaceDir = () =>
   process.env.ARK_WORKSPACES_DIR?.trim() || resolveArkDataDir('workspaces')
@@ -148,11 +149,18 @@ function syncDocumentAssetReferences(database: DatabaseSync, html: string) {
 }
 
 function garbageCollectUnreferencedAssets(database: DatabaseSync) {
-  database.exec(`
+  const cutoff = new Date(Date.now() - ASSET_GC_GRACE_MS).toISOString()
+  database
+    .prepare(
+      `
     DELETE FROM assets
     WHERE NOT EXISTS (
       SELECT 1 FROM asset_references WHERE asset_references.asset_id = assets.id
-    );
+    ) AND created_at <= ?
+  `,
+    )
+    .run(cutoff)
+  database.exec(`
     DELETE FROM blobs
     WHERE NOT EXISTS (
       SELECT 1 FROM assets WHERE assets.blob_checksum = blobs.checksum
@@ -393,9 +401,13 @@ export class WorkspaceStore {
     if (existing) return existing
     const recent = this.recent.get(id)
     if (!recent) return null
-    const metadata = inspectWorkspaceFile(recent.path)
-    if (metadata.id !== id) return null
-    return this.openFile(recent.path)
+    try {
+      const metadata = inspectWorkspaceFile(recent.path)
+      if (metadata.id !== id) return null
+      return this.openFile(recent.path)
+    } catch {
+      return null
+    }
   }
 
   private async persistRecent() {

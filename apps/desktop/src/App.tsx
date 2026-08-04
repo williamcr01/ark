@@ -48,6 +48,7 @@ import {
   startRevealThumbnailStylesPreload,
   waitForRevealThumbnailStylesPreload,
 } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
+import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 /** Parse `?slide=` — 0-based index (slide=0 is the first slide). */
 function parseInitialSlideIndex(value: string | null) {
@@ -320,8 +321,8 @@ function App() {
 
   const deckAnalysis = useMemo(() => {
     void thumbnailStylesRevision
-    return analyzeDeckInBrowser(generatedHtml)
-  }, [generatedHtml, thumbnailStylesRevision])
+    return analyzeDeckInBrowser(generatedHtml, { assetOrigin: resolveAppOrigin(), deckId })
+  }, [deckId, generatedHtml, thumbnailStylesRevision])
 
   const handleToggleContextSlide = useCallback(
     (slideIndex: number) => {

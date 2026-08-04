@@ -105,6 +105,25 @@ describe('WorkspaceStore file operations', () => {
     ])
   })
 
+  it.each(['deleted', 'corrupted'] as const)(
+    'treats externally %s recent workspaces as missing',
+    async (state) => {
+      const workspaces = await setup()
+      const created = await workspaces.create(html)
+      workspaces.close()
+
+      if (state === 'deleted') {
+        await rm(created.path)
+      } else {
+        await writeFile(created.path, 'not a workspace', 'utf8')
+      }
+
+      store = createWorkspaceStore(root)
+      await expect(store.get(created.id)).resolves.toBeNull()
+      await expect(store.database(created.id)).resolves.toBeNull()
+    },
+  )
+
   it('does not close another live workspace when Locate selects the wrong file', async () => {
     const workspaces = await setup()
     const first = await workspaces.create(html.replace('Workspace', 'First'))
@@ -143,6 +162,8 @@ describe('WorkspaceStore file operations', () => {
       source: 'upload',
       bytes: Buffer.from('orphan'),
     })
+    const database = await workspaces.database(created.id)
+    database?.prepare('UPDATE assets SET created_at = ?').run('2020-01-01T00:00:00.000Z')
 
     await workspaces.updateDocument(
       created.id,
@@ -154,8 +175,39 @@ describe('WorkspaceStore file operations', () => {
 
     await workspaces.updateDocument(created.id, html)
     await expect(assets.listAssetsByDeck(created.id)).resolves.toEqual([])
-    const database = await workspaces.database(created.id)
     expect(database?.prepare('SELECT COUNT(*) AS count FROM blobs').get()).toEqual({ count: 0 })
+  })
+
+  it('keeps fresh unreferenced attachments through a concurrent document save', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const assets = createAssetStore(workspaces)
+    const chat = createChatStore(workspaces)
+    const attachment = await assets.createAsset({
+      deckId: created.id,
+      filename: 'prompt.csv',
+      mediaType: 'text/csv',
+      category: 'text',
+      source: 'upload',
+      bytes: Buffer.from('quarter,revenue'),
+    })
+
+    await workspaces.updateDocument(created.id, html)
+    await expect(
+      chat.appendMessage(created.id, {
+        role: 'user',
+        content: 'Start a deck from this CSV',
+        attachments: [
+          {
+            type: 'file',
+            mediaType: attachment.mediaType,
+            filename: attachment.filename,
+            url: `ark-asset:${attachment.id}`,
+            assetId: attachment.id,
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ content: 'Start a deck from this CSV' })
   })
 
   it('prunes stale thumbnails and does not copy thumbnail history', async () => {

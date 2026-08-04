@@ -251,6 +251,19 @@ describe('HTTP API contract drift prevention', () => {
     assertApiContract(simpleErrorResponseSchema, missingBody)
   })
 
+  it('returns 404 when a recent workspace file was deleted outside Ark', async () => {
+    const { baseUrl } = await startContractApi()
+    const deck = await createDeck(baseUrl)
+    workspaces?.close()
+    await rm(deck.filePath)
+
+    const response = await fetch(`${baseUrl}/api/decks/${deck.id}`)
+    const body = await response.json()
+
+    expect(response.status).toBe(404)
+    assertApiContract(simpleErrorResponseSchema, body)
+  })
+
   it('returns a conflict for workspace actions that would overwrite a file', async () => {
     const { baseUrl } = await startContractApi()
     const deck = await createDeck(baseUrl)

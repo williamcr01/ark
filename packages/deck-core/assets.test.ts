@@ -11,6 +11,7 @@ import {
   parseAssetIdFromUrl,
   resolveAssetMediaType,
   sanitizeAssetFilename,
+  scopeArkAssetReferences,
 } from './assets.ts'
 
 const ASSET_ID = '00000000-0000-4000-8000-000000000001'
@@ -53,6 +54,12 @@ describe('asset URLs', () => {
     expect(buildArkAssetUrl(ASSET_ID)).toBe(`ark-asset:${ASSET_ID}`)
     expect(parseAssetIdFromUrl(`ark-asset:${ASSET_ID}`)).toBe(ASSET_ID)
     expect(isArkAssetUrl(`ark-asset:${ASSET_ID}`)).toBe(true)
+  })
+
+  it('scopes canonical workspace asset references to a deck', () => {
+    expect(scopeArkAssetReferences(`url("ark-asset:${ASSET_ID}")`, DECK_ID)).toBe(
+      `url("${buildAssetUrl(DECK_ID, ASSET_ID)}")`,
+    )
   })
 
   it('rejects non-asset and external URLs', () => {

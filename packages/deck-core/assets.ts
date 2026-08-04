@@ -114,9 +114,17 @@ export function buildArkAssetUrl(id: string) {
 }
 
 const ARK_ASSET_URL_PATTERN = /^ark-asset:([0-9a-f-]{36})$/i
+const ARK_ASSET_REFERENCE_PATTERN = /ark-asset:([0-9a-f-]{36})/gi
 
 export function parseArkAssetUrl(value: string) {
   return ARK_ASSET_URL_PATTERN.exec(value.trim())?.[1]?.toLowerCase() ?? null
+}
+
+/** Scope canonical workspace asset references to a deck's HTTP asset route. */
+export function scopeArkAssetReferences(value: string, deckId: string) {
+  return value.replace(ARK_ASSET_REFERENCE_PATTERN, (reference, assetId: string) =>
+    isValidAssetId(assetId) ? buildAssetUrl(deckId, assetId.toLowerCase()) : reference,
+  )
 }
 
 const DECK_SCOPED_ASSET_URL_PATTERN =

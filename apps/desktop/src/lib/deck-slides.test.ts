@@ -182,6 +182,19 @@ describe('parseDeckSlides', () => {
     })
   })
 
+  it('resolves workspace assets in fallback thumbnail documents', () => {
+    const deckId = '00000000-0000-4000-8000-000000000002'
+    const assetId = '00000000-0000-4000-8000-000000000001'
+    const parsed = parseDeckSlides(
+      `<section class="slide"><img src="ark-asset:${assetId}" alt="Chart"></section>`,
+      { assetOrigin: 'http://localhost:8787', deckId },
+    )
+
+    const srcDoc = parsed.getThumbnailSrcDoc(0)
+    expect(srcDoc).not.toContain('ark-asset:')
+    expect(srcDoc).toContain(`http://localhost:8787/api/decks/${deckId}/assets/${assetId}`)
+  })
+
   it('recognizes Reveal-style slide markup and preserves wrapper structure', () => {
     const parsed = parseDeckSlides(revealDeck)
 
