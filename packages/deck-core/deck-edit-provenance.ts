@@ -3,10 +3,8 @@ import type { DeckPatchOperation } from './deck-patch.ts'
 /**
  * Provenance metadata for a manual editor operation (issue #82).
  *
- * Manual edits are persisted as immutable deck versions with `source: 'manual'`
- * and a human-readable `summary`. This structure captures the richer,
- * operation-level provenance the client keeps alongside undo/redo history so it
- * can be surfaced in version history and future diff/provenance work (#36).
+ * This structure captures operation-level details in the in-memory undo/redo
+ * history. It is not persisted in the `.ark` workspace.
  */
 export type ManualEditProvenance = {
   /** Always `manual` for editor-originated edits. */

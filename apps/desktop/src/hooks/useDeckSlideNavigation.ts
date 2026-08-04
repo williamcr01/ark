@@ -37,7 +37,7 @@ export type DeckNavOptions = {
   sandboxOrigin?: string | null
   /**
    * Bumps when the preview frame must reload even if `html` is unchanged
-   * (rollback, failed live patch, same-HTML remount). Arms the pending-slide
+   * (snapshot restore, failed live patch, same-HTML remount). Arms the pending-slide
    * sync so the reloaded frame does not stick on slide 0.
    */
   reloadRevision?: number
@@ -247,7 +247,7 @@ export function useDeckSlideNavigation(
     pendingFrameSyncIndexRef.current = preservedIndex
   }, [commitSlideIndex, html, initialSlideIndex, slideCount])
 
-  // Same-HTML remounts (rollback / failed patch) still need the preserved index
+  // Same-HTML remounts (snapshot restore / failed patch) still need the preserved index
   // pushed back after the frame boots at slide 0.
   useEffect(() => {
     if (prevReloadRevisionRef.current === reloadRevision) {

@@ -19,10 +19,9 @@ owns continuation between tool steps inside one generation job.
 
 ## Attachments
 
-Ark does not impose a fixed attachment-count limit. Files attached to a saved deck are uploaded as
-deck assets and persisted in chat as lightweight references. Files attached before the first deck
-save are staged as temporary assets, then claimed and rewritten to deck-scoped URLs when generation
-succeeds. The agent receives attachment metadata through `list_attachments` and can page through
+Ark does not impose a fixed attachment-count limit. Every new deck has a real `.ark` workspace
+immediately, so attached files are uploaded into that workspace and persisted in chat as lightweight
+references. The agent receives attachment metadata through `list_attachments` and can page through
 text, CSV, Markdown, and JSON content with `read_attachment`, so those files are not copied into
 every model request.
 

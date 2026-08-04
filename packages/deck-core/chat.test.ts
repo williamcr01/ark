@@ -186,7 +186,7 @@ describe('parseGenerateMessages', () => {
             type: 'file',
             mediaType: 'image/png',
             filename: 'chart.png',
-            url: `/api/assets/${ASSET_ID}`,
+            url: `ark-asset:${ASSET_ID}`,
             assetId: ASSET_ID,
           },
         ],
@@ -204,7 +204,7 @@ describe('parseGenerateMessages', () => {
       {
         role: 'user',
         content: 'ref',
-        attachments: [{ type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}` }],
+        attachments: [{ type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}` }],
       },
     ])
 
@@ -492,7 +492,7 @@ describe('chatAttachmentsToModelParts', () => {
   it('emits file parts for inline image data URLs and skips asset references', () => {
     const parts = chatAttachmentsToModelParts([
       sampleAttachment,
-      { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
+      { type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}`, assetId: ASSET_ID },
     ])
 
     expect(parts).toHaveLength(1)
@@ -539,7 +539,7 @@ describe('chatAttachmentsToModelParts', () => {
         type: 'file',
         mediaType: 'text/csv',
         filename: 'prior.csv',
-        url: `/api/assets/${ASSET_ID}`,
+        url: `ark-asset:${ASSET_ID}`,
         assetId: ASSET_ID,
       },
     ])
@@ -582,8 +582,8 @@ describe('collectAssetIds', () => {
   it('collects unique asset ids from references and URLs', () => {
     expect(
       collectAssetIds([
-        { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
-        { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}` },
+        { type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}`, assetId: ASSET_ID },
+        { type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}` },
         sampleAttachment,
       ]),
     ).toEqual([ASSET_ID])

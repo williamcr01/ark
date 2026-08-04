@@ -84,6 +84,7 @@ if (isJsdomEnvironment) {
       migratedLegacyRendererPreferences: true,
       reasoningEffortByModel: {},
       selectedModel: null,
+      defaultWorkspaceDirectory: null,
     }
     window.arkDesktop = {
       credentials: {
@@ -102,6 +103,12 @@ if (isJsdomEnvironment) {
         update: vi.fn().mockImplementation(async (patch) => ({ ...settings, ...patch })),
       },
       updates: { check: vi.fn() },
+      files: {
+        openWorkspace: vi.fn(),
+        chooseWorkspacePath: vi.fn(),
+        chooseDirectory: vi.fn(),
+        reveal: vi.fn(),
+      },
     }
   })
 

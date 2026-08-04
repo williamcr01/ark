@@ -8,7 +8,7 @@ import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-core/deck-p
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 /**
- * Defense-in-depth attrs for main/version preview iframes (not thumbnails):
+ * Defense-in-depth attrs for main deck preview iframes (not thumbnails):
  * empty Permissions-Policy allowlist + credentialless storage isolation.
  * `credentialless` is not yet in React's iframe attribute typings, so it is
  * passed as an empty string (boolean-attribute presence in the DOM).

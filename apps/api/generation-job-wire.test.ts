@@ -10,7 +10,7 @@ describe('toGenerationJobApi', () => {
     const api = toGenerationJobApi({
       id: jobId,
       deckId,
-      baseVersionId: null,
+      baseDocumentRevision: null,
       chatThreadId: 'thread-1',
       assetIds: ['00000000-0000-4000-8000-000000000099'],
       status: 'succeeded',
@@ -24,7 +24,7 @@ describe('toGenerationJobApi', () => {
       progress: { steps: [], stepCount: 0, assistantText: 'Done.' },
       result: {
         deckId,
-        versionId: deckId,
+        documentRevision: 1,
         html: '<html><body>slides</body></html>',
         validation: {
           valid: true,

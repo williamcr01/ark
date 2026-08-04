@@ -40,8 +40,8 @@ export function alignThumbnailUrls(
 }
 
 /**
- * Thumbnail URLs lag the deck: after a version change the poller keeps the
- * previous version's URLs until the renderer produces new ones. Anchor each
+ * Thumbnail URLs lag the deck: after a revision change the poller keeps the
+ * previous revision's URLs until the renderer produces new ones. Anchor each
  * incoming URL array to the deck that was current when it arrived; when the
  * deck changes while the URLs are still the anchored (stale) ones, re-align
  * them by slide content so the strip shows the new arrangement immediately.
@@ -52,10 +52,13 @@ export function useAlignedThumbnailUrls(
 ): (string | null)[] | null {
   const anchorRef = useRef<{ deck: AlignableDeck; urls: (string | null)[] } | null>(null)
   const parsedDeckRef = useRef(parsedDeck)
-  parsedDeckRef.current = parsedDeck
+
+  useEffect(() => {
+    parsedDeckRef.current = parsedDeck
+  }, [parsedDeck])
 
   // Anchor only when the URL array itself changes: fresh URLs are rendered
-  // from the deck version that is current at arrival time. Deck changes with
+  // from the document revision that is current at arrival time. Deck changes with
   // unchanged URLs are exactly the stale window this hook re-aligns.
   useEffect(() => {
     anchorRef.current = thumbnailUrls ? { deck: parsedDeckRef.current, urls: thumbnailUrls } : null

@@ -352,7 +352,7 @@ describe('DeckPreview script divergence UI', () => {
       </TooltipProvider>,
     )
 
-    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(beforeHtml, true, 0)
+    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(beforeHtml, true, 0, 'deck-1')
   })
 
   it('forwards forged text commits to onCommitTextEdit without client-side element validation', () => {

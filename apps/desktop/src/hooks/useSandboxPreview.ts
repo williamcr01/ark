@@ -43,6 +43,7 @@ export function useSandboxPreview(
   html: string,
   enabled: boolean,
   reloadRevision = 0,
+  deckId?: string | null,
 ): SandboxPreviewState {
   const sandboxOrigin = resolveSandboxOrigin()
   const appOrigin = resolveAppOrigin()
@@ -124,6 +125,7 @@ export function useSandboxPreview(
           },
           body: JSON.stringify({
             html: requestHtml,
+            ...(deckId ? { deckId } : {}),
             editorBridge: true,
           }),
           signal: controller.signal,
@@ -220,7 +222,7 @@ export function useSandboxPreview(
       clearPendingTimer()
       abortActiveRequest()
     }
-  }, [appOrigin, html, reloadRevision, sandboxOrigin, shouldLoad])
+  }, [appOrigin, deckId, html, reloadRevision, sandboxOrigin, shouldLoad])
 
   if (!shouldLoad) {
     return {

@@ -11,6 +11,7 @@ export type DesktopSettings = {
   migratedLegacyRendererPreferences: boolean
   reasoningEffortByModel: Record<string, ReasoningEffort>
   selectedModel: string | null
+  defaultWorkspaceDirectory: string | null
 }
 
 type SettingsFile = DesktopSettings & { version: 1 }
@@ -30,6 +31,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   migratedLegacyRendererPreferences: false,
   reasoningEffortByModel: {},
   selectedModel: null,
+  defaultWorkspaceDirectory: null,
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,6 +44,10 @@ function parseAppearance(value: unknown): AppearancePreference {
 
 function parseSelectedModel(value: unknown): string | null {
   return typeof value === 'string' && value.length <= 1_000 ? value : null
+}
+
+function parseWorkspaceDirectory(value: unknown): string | null {
+  return typeof value === 'string' && value.length <= 4_096 ? value : null
 }
 
 function parseReasoningEfforts(value: unknown): Record<string, ReasoningEffort> {
@@ -65,6 +71,7 @@ function parseSettings(value: unknown): DesktopSettings {
     migratedLegacyRendererPreferences: value.migratedLegacyRendererPreferences === true,
     reasoningEffortByModel: parseReasoningEfforts(value.reasoningEffortByModel),
     selectedModel: parseSelectedModel(value.selectedModel),
+    defaultWorkspaceDirectory: parseWorkspaceDirectory(value.defaultWorkspaceDirectory),
   }
 }
 
@@ -92,6 +99,15 @@ function parsePatch(value: unknown): Partial<DesktopSettings> {
       throw new Error('Invalid selected model.')
     }
     patch.selectedModel = value.selectedModel
+  }
+  if ('defaultWorkspaceDirectory' in value) {
+    if (
+      value.defaultWorkspaceDirectory !== null &&
+      (typeof value.defaultWorkspaceDirectory !== 'string' ||
+        value.defaultWorkspaceDirectory.length > 4_096)
+    )
+      throw new Error('Invalid workspace directory.')
+    patch.defaultWorkspaceDirectory = value.defaultWorkspaceDirectory
   }
   if ('reasoningEffortByModel' in value) {
     const parsed = parseReasoningEfforts(value.reasoningEffortByModel)

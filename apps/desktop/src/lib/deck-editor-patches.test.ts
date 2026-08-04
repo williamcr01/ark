@@ -7,8 +7,7 @@ import {
 } from './deck-editor-patches.ts'
 import { buildImageInsertOperation } from './deck-image-insert.ts'
 
-const tinyPngDataUrl =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const assetId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 
 describe('deck-editor-patches', () => {
   it('builds insert_element operations for text boxes', () => {
@@ -27,7 +26,7 @@ describe('deck-editor-patches', () => {
       buildImageInsertOperation(
         0,
         {
-          asset: { kind: 'data-url', mimeType: 'image/png', dataUrl: tinyPngDataUrl },
+          asset: { kind: 'asset-id', id: assetId, url: `ark-asset:${assetId}` },
           geometry: { x: 0.1, y: 0.15, width: 0.4, height: 0.225 },
           aspectRatio: 16 / 9,
         },

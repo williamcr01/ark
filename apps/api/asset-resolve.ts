@@ -1,7 +1,6 @@
 import type { ChatAttachment } from '@ark/deck-core/chat.ts'
 import { isValidAssetId } from '@ark/deck-core/assets.ts'
 import { isValidDeckId } from '@ark/contracts'
-import { type AssetStorage } from './asset-storage.ts'
 import { type AssetStore } from './asset-record.ts'
 
 export type ResolveAssetAttachmentsResult =
@@ -17,13 +16,31 @@ export type ResolveAssetAttachmentsOptions = {
   strict?: boolean
 }
 
+/** Inline canonical `ark-asset:` references for sandbox rendering and export. */
+export async function resolveArkAssetUrls(assetStore: AssetStore, deckId: string, html: string) {
+  const ids = [
+    ...new Set(
+      [...html.matchAll(/ark-asset:([0-9a-f-]{36})/gi)].map((match) => match[1]!.toLowerCase()),
+    ),
+  ]
+  let resolved = html
+  for (const id of ids) {
+    const record = await assetStore.getAsset(deckId, id)
+    const bytes = record ? await assetStore.readBytes(deckId, id) : null
+    if (!record || !bytes) throw new Error(`Unknown Ark asset: ${id}`)
+    const dataUrl = `data:${record.mediaType};base64,${bytes.toString('base64')}`
+    resolved = resolved.replaceAll(new RegExp(`ark-asset:${id}`, 'gi'), dataUrl)
+  }
+  return resolved
+}
+
 /**
  * Resolve uploaded asset ids into inline `data:` URL attachments for a
  * generation run. Only assets scoped to the given deck are resolved, keeping
  * chat history lightweight (references) while giving the model the bytes.
  */
 export async function resolveAssetAttachments(
-  deps: { assetStore: AssetStore; assetStorage: AssetStorage },
+  deps: { assetStore: AssetStore },
   deckId: string | null,
   assetIds: readonly string[],
   options: ResolveAssetAttachmentsOptions = {},
@@ -56,7 +73,7 @@ export async function resolveAssetAttachments(
       continue
     }
 
-    const record = await deps.assetStore.getAsset(id)
+    const record = deckId ? await deps.assetStore.getAsset(deckId, id) : null
 
     if (!record || record.deckId !== deckId) {
       if (options.strict) {
@@ -66,7 +83,7 @@ export async function resolveAssetAttachments(
       continue
     }
 
-    const bytes = await deps.assetStorage.read(record.storageKey)
+    const bytes = await deps.assetStore.readBytes(deckId!, record.id)
 
     if (!bytes) {
       if (options.strict) {

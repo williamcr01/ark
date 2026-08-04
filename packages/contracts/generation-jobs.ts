@@ -81,7 +81,7 @@ export const generationJobObservabilitySchema = z.object({
 /** Wire-format job result — omits full deck HTML returned only in storage. */
 export const generationJobApiResultSchema = z.object({
   deckId: deckIdSchema,
-  versionId: deckIdSchema,
+  documentRevision: z.number().int().min(1),
   validation: deckValidationReportSchema,
   assistantText: z.string(),
 })
@@ -92,7 +92,7 @@ export type GenerationJobApiResult = z.infer<typeof generationJobApiResultSchema
 export const generationJobApiSchema = z.object({
   id: generationJobIdSchema,
   deckId: deckIdSchema.nullable(),
-  baseVersionId: deckIdSchema.nullable(),
+  baseDocumentRevision: z.number().int().min(1).nullable(),
   editingExistingDeck: z.boolean().optional(),
   status: generationJobStatusSchema,
   model: z.string(),
@@ -124,14 +124,14 @@ export const startGenerationJobRequestSchema = z.object({
   /** Reasoning effort for models that support thinking (Cursor-style levels). */
   reasoningEffort: reasoningEffortSchema.optional(),
   deckId: deckIdSchema.nullable().optional(),
-  baseVersionId: deckIdSchema.nullable().optional(),
+  baseDocumentRevision: z.number().int().min(1).nullable().optional(),
   /** Current manual-editor selection so the agent can target the selected element. */
   editorSelection: editorSelectionContextSchema.optional(),
   /** Slides the user attached as context for this generation turn. */
   slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
   /**
    * Uploaded asset ids to resolve into file inputs for the latest user turn.
-   * Assets must belong to `deckId`, or be unassigned when creating a new deck.
+   * Assets must belong to `deckId`.
    * Omitted from job poll responses.
    */
   assetIds: z.array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.')).optional(),

@@ -267,7 +267,7 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
     expect(screen.getByTitle('Generated Ark presentation preview')).toBe(previewIframe)
     expect(screen.getAllByTitle('Generated Ark presentation preview')).toHaveLength(1)
-    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(plainCssDeck, true, 0)
+    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(plainCssDeck, true, 0, null)
     expect(useDeckPreviewFrameMock.mock.calls.every((call) => call[1] === true)).toBe(true)
   })
 
@@ -597,13 +597,18 @@ describe('DeckPreview script divergence UI', () => {
     const props = {
       ...plainDeckProps,
       deckId: 'b0000000-0000-4000-8000-000000000001',
-      versionId: 'a0000000-0000-4000-8000-000000000001',
+      documentRevision: 1,
     }
     const { rerender } = renderDeckPreview(props)
 
-    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(props.deckId, props.versionId, 3, {
-      enabled: false,
-    })
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(
+      props.deckId,
+      props.documentRevision,
+      3,
+      {
+        enabled: false,
+      },
+    )
 
     act(() => {
       window.dispatchEvent(
@@ -619,9 +624,14 @@ describe('DeckPreview script divergence UI', () => {
     })
     fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
 
-    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(props.deckId, props.versionId, 3, {
-      enabled: true,
-    })
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(
+      props.deckId,
+      props.documentRevision,
+      3,
+      {
+        enabled: true,
+      },
+    )
 
     previewFrameMock.isStale = true
     rerender(
@@ -630,8 +640,13 @@ describe('DeckPreview script divergence UI', () => {
       </TooltipProvider>,
     )
 
-    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(props.deckId, props.versionId, 3, {
-      enabled: false,
-    })
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(
+      props.deckId,
+      props.documentRevision,
+      3,
+      {
+        enabled: false,
+      },
+    )
   })
 })

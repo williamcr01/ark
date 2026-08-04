@@ -1,273 +1,153 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
-import {
-  type AssetRecord,
-  type AssetStore,
-  type CreateAssetInput,
-  isValidAssetId,
-} from './asset-record.ts'
-import { isValidDeckId } from './deck-record.ts'
-import { getAssetCategory } from '@ark/deck-core/assets.ts'
-import { resolveArkDataDir } from './data-dir.ts'
+import type { AssetRecord, AssetStore, CreateAssetInput } from './asset-record.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
-const DEFAULT_DATA_DIR = resolveArkDataDir('assets', 'meta')
-
-function resolveAssetPath(dataDir: string, id: string) {
-  if (!isValidAssetId(id)) {
-    return null
-  }
-
-  const resolvedDataDir = path.resolve(dataDir)
-  const resolvedPath = path.resolve(resolvedDataDir, `${id}.json`)
-  const prefix = resolvedDataDir.endsWith(path.sep)
-    ? resolvedDataDir
-    : `${resolvedDataDir}${path.sep}`
-
-  if (!resolvedPath.startsWith(prefix)) {
-    return null
-  }
-
-  return resolvedPath
-}
-
-async function ensureDataDir(dataDir: string) {
-  await mkdir(dataDir, { recursive: true })
-}
-
-function parseAssetRecord(raw: string): AssetRecord | null {
-  const parsed = JSON.parse(raw) as Partial<AssetRecord>
-
-  if (
-    typeof parsed.id !== 'string' ||
-    typeof parsed.storageKey !== 'string' ||
-    typeof parsed.createdAt !== 'string'
-  ) {
-    return null
-  }
-
+function toRecord(deckId: string, row: Record<string, unknown>): AssetRecord {
   return {
-    id: parsed.id,
-    deckId: typeof parsed.deckId === 'string' ? parsed.deckId : null,
-    chatMessageId: typeof parsed.chatMessageId === 'string' ? parsed.chatMessageId : null,
-    filename: typeof parsed.filename === 'string' ? parsed.filename : '',
-    mediaType: typeof parsed.mediaType === 'string' ? parsed.mediaType : 'application/octet-stream',
-    category: parsed.category ?? getAssetCategory(parsed.mediaType ?? ''),
-    byteSize: typeof parsed.byteSize === 'number' ? parsed.byteSize : 0,
-    checksum: typeof parsed.checksum === 'string' ? parsed.checksum : '',
-    source: parsed.source ?? 'upload',
-    storageKind: typeof parsed.storageKind === 'string' ? parsed.storageKind : 'local',
-    storageKey: parsed.storageKey,
-    createdAt: parsed.createdAt,
-    deletedAt: typeof parsed.deletedAt === 'string' ? parsed.deletedAt : null,
+    id: String(row.id),
+    deckId,
+    chatMessageId: null,
+    filename: String(row.filename),
+    mediaType: String(row.media_type),
+    category: row.category as AssetRecord['category'],
+    byteSize: Number(row.byte_size),
+    checksum: String(row.blob_checksum),
+    source: row.source as AssetRecord['source'],
+    createdAt: String(row.created_at),
   }
 }
 
-async function readAssetFile(filePath: string): Promise<AssetRecord | null> {
-  try {
-    const raw = await readFile(filePath, 'utf8')
-    return parseAssetRecord(raw)
-  } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-      return null
-    }
+export function createAssetStore(
+  workspaceOrDirectory: WorkspaceStore | string = createWorkspaceStore(),
+): AssetStore {
+  const workspaces =
+    typeof workspaceOrDirectory === 'string'
+      ? createWorkspaceStore(workspaceOrDirectory)
+      : workspaceOrDirectory
 
-    throw error
-  }
-}
-
-async function writeAssetFile(filePath: string, record: AssetRecord) {
-  const tempPath = `${filePath}.${randomUUID()}.tmp`
-  await writeFile(tempPath, JSON.stringify(record, null, 2), 'utf8')
-  await rename(tempPath, filePath)
-}
-
-async function readAllAssets(dataDir: string): Promise<AssetRecord[]> {
-  try {
-    const entries = await readdir(dataDir, { withFileTypes: true })
-    const records = await Promise.all(
-      entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-        .map(async (entry) => {
-          const filePath = path.resolve(dataDir, entry.name)
-          return readAssetFile(filePath)
-        }),
-    )
-
-    return records.filter((record): record is AssetRecord => Boolean(record))
-  } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-      return []
-    }
-
-    throw error
-  }
-}
-
-export function createAssetStore(dataDir = DEFAULT_DATA_DIR): AssetStore {
-  let claimQueue = Promise.resolve()
-
-  const createAsset = async (input: CreateAssetInput): Promise<AssetRecord> => {
-    await ensureDataDir(dataDir)
-
+  const createAsset = async (input: CreateAssetInput) => {
+    const database = await workspaces.database(input.deckId)
+    if (!database) throw new Error('Deck not found.')
+    const checksum = createHash('sha256').update(input.bytes).digest('hex')
     const id = randomUUID()
-    const filePath = resolveAssetPath(dataDir, id)
-
-    if (!filePath) {
-      throw new Error('Generated asset id is invalid.')
+    const now = new Date().toISOString()
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO blobs
+           (checksum, media_type, byte_size, bytes, created_at) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(checksum, input.mediaType, input.bytes.byteLength, input.bytes, now)
+      database
+        .prepare(
+          `INSERT INTO assets
+           (id, blob_checksum, filename, media_type, category, source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(id, checksum, input.filename, input.mediaType, input.category, input.source, now)
+      if (input.chatMessageId) {
+        database
+          .prepare(
+            `INSERT OR IGNORE INTO asset_references
+             (asset_id, owner_type, owner_id, purpose) VALUES (?, 'message', ?, 'attachment')`,
+          )
+          .run(id, input.chatMessageId)
+      }
+      database.exec('COMMIT')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
     }
-
-    const record: AssetRecord = {
+    return {
       id,
       deckId: input.deckId,
       chatMessageId: input.chatMessageId ?? null,
       filename: input.filename,
       mediaType: input.mediaType,
       category: input.category,
-      byteSize: input.byteSize,
-      checksum: input.checksum,
+      byteSize: input.bytes.byteLength,
+      checksum,
       source: input.source,
-      storageKind: input.storageKind,
-      storageKey: input.storageKey,
-      createdAt: new Date().toISOString(),
-      deletedAt: null,
+      createdAt: now,
     }
-
-    await writeAssetFile(filePath, record)
-
-    return record
   }
 
-  const getAsset = async (id: string) => {
-    const filePath = resolveAssetPath(dataDir, id)
+  const getAsset = async (deckId: string, id: string) => {
+    const database = await workspaces.database(deckId)
+    if (!database) return null
+    const row = database
+      .prepare(
+        `SELECT a.*, b.byte_size FROM assets a
+         JOIN blobs b ON b.checksum = a.blob_checksum WHERE a.id = ?`,
+      )
+      .get(id) as Record<string, unknown> | undefined
+    return row ? toRecord(deckId, row) : null
+  }
 
-    if (!filePath) {
-      return null
-    }
-
-    const record = await readAssetFile(filePath)
-
-    if (!record || record.deletedAt) {
-      return null
-    }
-
-    return record
+  const readBytes = async (deckId: string, id: string) => {
+    const database = await workspaces.database(deckId)
+    if (!database) return null
+    const row = database
+      .prepare(
+        `SELECT b.bytes FROM assets a JOIN blobs b ON b.checksum = a.blob_checksum WHERE a.id = ?`,
+      )
+      .get(id) as { bytes: Uint8Array } | undefined
+    return row ? Buffer.from(row.bytes) : null
   }
 
   const listAssetsByDeck = async (deckId: string) => {
-    if (!isValidDeckId(deckId)) {
-      return []
-    }
-
-    const records = await readAllAssets(dataDir)
-
-    return records
-      .filter((record) => record.deckId === deckId && !record.deletedAt)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }
-
-  const softDelete = async (record: AssetRecord) => {
-    const filePath = resolveAssetPath(dataDir, record.id)
-
-    if (!filePath) {
-      return
-    }
-
-    await writeAssetFile(filePath, { ...record, deletedAt: new Date().toISOString() })
-  }
-
-  const claimAssetsForDeck = async (rawIds: readonly string[], deckId: string) => {
-    if (!isValidDeckId(deckId)) return null
-
-    const previousClaim = claimQueue
-    let releaseClaim!: () => void
-    claimQueue = new Promise<void>((resolve) => {
-      releaseClaim = resolve
-    })
-    await previousClaim
-
-    try {
-      const ids = [...new Set(rawIds)]
-      const records = await Promise.all(ids.map((id) => getAsset(id)))
-      if (records.some((record) => !record || record.deckId !== null)) return null
-
-      const claimed = records as AssetRecord[]
-      const written: AssetRecord[] = []
-      try {
-        for (const record of claimed) {
-          const filePath = resolveAssetPath(dataDir, record.id)
-          if (!filePath) throw new Error('Asset id is invalid.')
-          await writeAssetFile(filePath, { ...record, deckId })
-          written.push(record)
-        }
-      } catch (error) {
-        await Promise.all(
-          written.map(async (record) => {
-            const filePath = resolveAssetPath(dataDir, record.id)
-            if (filePath) await writeAssetFile(filePath, record)
-          }),
+    const database = await workspaces.database(deckId)
+    if (!database) return []
+    return (
+      database
+        .prepare(
+          `SELECT a.*, b.byte_size FROM assets a JOIN blobs b ON b.checksum = a.blob_checksum
+           ORDER BY a.created_at DESC`,
         )
-        throw error
-      }
-      return claimed.map((record) => ({ ...record, deckId }))
-    } finally {
-      releaseClaim()
-    }
+        .all() as Array<Record<string, unknown>>
+    ).map((row) => toRecord(deckId, row))
   }
 
-  const deleteExpiredUnassignedAssets = async (cutoff: string) => {
-    const records = (await readAllAssets(dataDir)).filter(
-      (record) => record.deckId === null && !record.deletedAt && record.createdAt < cutoff,
-    )
-    await Promise.all(records.map((record) => softDelete(record)))
-    return records
+  const addReference: AssetStore['addReference'] = async (
+    deckId,
+    assetId,
+    ownerType,
+    ownerId,
+    purpose,
+  ) => {
+    const database = await workspaces.database(deckId)
+    if (!database) return false
+    const exists = database.prepare('SELECT 1 FROM assets WHERE id = ?').get(assetId)
+    if (!exists) return false
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO asset_references
+         (asset_id, owner_type, owner_id, purpose) VALUES (?, ?, ?, ?)`,
+      )
+      .run(assetId, ownerType, ownerId, purpose)
+    return true
   }
 
-  const deleteAsset = async (id: string) => {
-    const record = await getAsset(id)
-
-    if (!record) {
-      return null
-    }
-
-    await softDelete(record)
-
+  const deleteAsset = async (deckId: string, id: string) => {
+    const database = await workspaces.database(deckId)
+    if (!database) return null
+    const record = await getAsset(deckId, id)
+    if (!record) return null
+    const referenced = database
+      .prepare('SELECT 1 FROM asset_references WHERE asset_id = ? LIMIT 1')
+      .get(id)
+    if (referenced) return null
+    database.prepare('DELETE FROM assets WHERE id = ?').run(id)
+    database
+      .prepare(
+        `DELETE FROM blobs WHERE checksum = ?
+         AND NOT EXISTS (SELECT 1 FROM assets WHERE blob_checksum = ?)`,
+      )
+      .run(record.checksum, record.checksum)
     return record
   }
 
-  const deleteAssetsByDeck = async (deckId: string) => {
-    if (!isValidDeckId(deckId)) {
-      return []
-    }
-
-    const records = (await readAllAssets(dataDir)).filter(
-      (record) => record.deckId === deckId && !record.deletedAt,
-    )
-
-    await Promise.all(records.map((record) => softDelete(record)))
-
-    return records
-  }
-
-  const deleteAssetsByChatMessage = async (chatMessageId: string) => {
-    const records = (await readAllAssets(dataDir)).filter(
-      (record) => record.chatMessageId === chatMessageId && !record.deletedAt,
-    )
-
-    await Promise.all(records.map((record) => softDelete(record)))
-
-    return records
-  }
-
-  return {
-    createAsset,
-    getAsset,
-    listAssetsByDeck,
-    claimAssetsForDeck,
-    deleteExpiredUnassignedAssets,
-    deleteAsset,
-    deleteAssetsByDeck,
-    deleteAssetsByChatMessage,
-  }
+  return { createAsset, getAsset, readBytes, listAssetsByDeck, addReference, deleteAsset }
 }

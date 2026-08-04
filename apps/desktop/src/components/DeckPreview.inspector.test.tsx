@@ -547,7 +547,7 @@ describe('DeckPreview script divergence UI', () => {
       ...plainDeckProps,
       deckId: '11111111-1111-4111-8111-111111111111',
       recentGenerationJobId: '22222222-2222-4222-8222-222222222222',
-      versionId: '33333333-3333-4333-8333-333333333333',
+      documentRevision: 3,
     })
 
     const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
@@ -566,7 +566,7 @@ describe('DeckPreview script divergence UI', () => {
           errorSummary: 'Reveal failed to initialize',
           relatedJobId: '22222222-2222-4222-8222-222222222222',
           validation: expect.objectContaining({ status: 'valid' }),
-          versionId: '33333333-3333-4333-8333-333333333333',
+          documentRevision: 3,
         }),
       }),
     )
@@ -584,7 +584,7 @@ describe('DeckPreview script divergence UI', () => {
     renderDeckPreview({
       ...plainDeckProps,
       deckId: '11111111-1111-4111-8111-111111111111',
-      versionId: '33333333-3333-4333-8333-333333333333',
+      documentRevision: 3,
     })
 
     const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
@@ -638,11 +638,11 @@ describe('DeckPreview script divergence UI', () => {
     )
   })
 
-  it('caps hostile runtime error reports per deck version', () => {
+  it('caps hostile runtime error reports per document revision', () => {
     renderDeckPreview({
       ...plainDeckProps,
       deckId: '11111111-1111-4111-8111-111111111111',
-      versionId: '33333333-3333-4333-8333-333333333333',
+      documentRevision: 3,
     })
 
     for (let index = 0; index < 25; index += 1) {

@@ -10,6 +10,7 @@ type DesktopSettings = {
   migratedLegacyRendererPreferences: boolean
   reasoningEffortByModel: Record<string, ReasoningEffort>
   selectedModel: string | null
+  defaultWorkspaceDirectory: string | null
 }
 
 declare global {
@@ -28,6 +29,12 @@ declare global {
       }
       updates: {
         check: () => Promise<DesktopResult>
+      }
+      files: {
+        openWorkspace: () => Promise<string | null>
+        chooseWorkspacePath: (suggestedName: string) => Promise<string | null>
+        chooseDirectory: () => Promise<string | null>
+        reveal: (path: string) => Promise<void>
       }
     }
   }

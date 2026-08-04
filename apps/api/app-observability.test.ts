@@ -15,6 +15,7 @@ import { type RunDeckAgentResult } from './deck-agent.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import { REQUEST_ID_HEADER } from './observability/request-id.ts'
 import { createRuntimeErrorStore } from './observability/runtime-errors.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -31,9 +32,8 @@ const deckId = '22222222-2222-4222-8222-222222222222'
 
 describe('API observability', () => {
   let dataDir = ''
-  let jobDir = ''
-  let chatDir = ''
   let server: Server | null = null
+  let workspaces: WorkspaceStore | null = null
 
   afterEach(async () => {
     if (server) {
@@ -43,27 +43,25 @@ describe('API observability', () => {
       server = null
     }
 
-    for (const dir of [dataDir, jobDir, chatDir]) {
-      if (dir) {
-        await rm(dir, { recursive: true, force: true })
-      }
-    }
+    workspaces?.close()
+    workspaces = null
+    if (dataDir) await rm(dataDir, { recursive: true, force: true })
 
     dataDir = ''
-    jobDir = ''
-    chatDir = ''
   })
 
   async function startServer(options?: { runAgent?: () => Promise<RunDeckAgentResult> }) {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-obs-decks-'))
-    jobDir = await mkdtemp(path.join(os.tmpdir(), 'ark-obs-jobs-'))
-    chatDir = await mkdtemp(path.join(os.tmpdir(), 'ark-obs-chat-'))
     const runtimeErrorStore = createRuntimeErrorStore()
+    workspaces = createWorkspaceStore(dataDir)
+    const deckStore = createDeckStore(workspaces)
+    const chatStore = createChatStore(workspaces)
+    const jobStore = createGenerationJobStore()
 
     const runner = createGenerationJobRunner({
-      deckStore: createDeckStore(dataDir),
-      jobStore: createGenerationJobStore(jobDir),
-      chatStore: createChatStore(chatDir),
+      deckStore,
+      jobStore,
+      chatStore,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
@@ -95,9 +93,10 @@ describe('API observability', () => {
     })
 
     const app = createApp({
-      deckStore: createDeckStore(dataDir),
-      chatStore: createChatStore(chatDir),
-      generationJobStore: createGenerationJobStore(jobDir),
+      deckStore,
+      chatStore,
+      workspaceStore: workspaces,
+      generationJobStore: jobStore,
       generationJobRunner: runner,
       runtimeErrorStore,
     })

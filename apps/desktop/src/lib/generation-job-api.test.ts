@@ -15,7 +15,7 @@ describe('generation-job-api', () => {
     const job = {
       id: '00000000-0000-4000-8000-000000000010',
       deckId: null,
-      baseVersionId: null,
+      baseDocumentRevision: null,
       status: 'queued' as const,
       model: 'openai:gpt-4.1-mini',
       provider: 'openai',

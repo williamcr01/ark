@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   absolutizeArkAssetReferences,
+  buildArkAssetUrl,
   buildAssetUrl,
   getAssetCategory,
   isAllowedAssetMediaType,
@@ -48,14 +49,16 @@ describe('asset URLs', () => {
     expect(isArkAssetUrl(`/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBe(true)
   })
 
-  it('parses temporary /api/assets/:id URLs for unsaved decks', () => {
-    expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}`)).toBe(ASSET_ID)
-    expect(isArkAssetUrl(`/api/assets/${ASSET_ID}`)).toBe(true)
+  it('builds and parses canonical workspace asset references', () => {
+    expect(buildArkAssetUrl(ASSET_ID)).toBe(`ark-asset:${ASSET_ID}`)
+    expect(parseAssetIdFromUrl(`ark-asset:${ASSET_ID}`)).toBe(ASSET_ID)
+    expect(isArkAssetUrl(`ark-asset:${ASSET_ID}`)).toBe(true)
   })
 
   it('rejects non-asset and external URLs', () => {
     expect(parseAssetIdFromUrl('https://example.com/logo.png')).toBeNull()
     expect(parseAssetIdFromUrl('/api/assets/not-a-uuid')).toBeNull()
+    expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}`)).toBeNull()
     expect(isArkAssetUrl('https://evil.example/api/assets/x')).toBe(false)
     expect(
       parseAssetIdFromUrl(`https://evil.example/api/decks/${DECK_ID}/assets/${ASSET_ID}`),

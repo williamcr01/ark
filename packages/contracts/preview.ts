@@ -1,9 +1,11 @@
 import { z } from 'zod'
 
 import { withRequestId } from './common.ts'
+import { deckIdSchema } from './common.ts'
 
 export const createPreviewSessionRequestSchema = z.object({
   html: z.string().refine((value) => value.trim().length > 0, 'HTML is required.'),
+  deckId: deckIdSchema.optional(),
   editorBridge: z.boolean().optional(),
 })
 

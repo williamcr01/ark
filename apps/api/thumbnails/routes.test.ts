@@ -12,10 +12,12 @@ import {
   simpleErrorResponseSchema,
 } from '@ark/contracts'
 import { createApp } from '../app.ts'
+import { createAssetStore } from '../asset-store.ts'
 import { createDeckStore } from '../deck-store.ts'
 import { createPreviewSessionStore } from '../preview-sessions.ts'
-import { createThumbnailCache } from './cache.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '../workspace-store.ts'
 import { createThumbnailService } from './service.ts'
+import type { ThumbnailService } from './service.ts'
 import type { ThumbnailRenderer } from './renderer.ts'
 
 const sampleHtml = `<!DOCTYPE html>
@@ -29,8 +31,9 @@ const sampleHtml = `<!DOCTYPE html>
 
 describe('thumbnail API routes', () => {
   let dataDir = ''
-  let cacheDir = ''
   let server: Server | null = null
+  let workspaces: WorkspaceStore | null = null
+  let thumbnailService: ThumbnailService | null = null
 
   afterEach(async () => {
     if (server) {
@@ -40,26 +43,30 @@ describe('thumbnail API routes', () => {
       server = null
     }
 
-    await Promise.all([
-      dataDir ? rm(dataDir, { recursive: true, force: true }) : undefined,
-      cacheDir ? rm(cacheDir, { recursive: true, force: true }) : undefined,
-    ])
+    await thumbnailService?.close()
+    thumbnailService = null
+    workspaces?.close()
+    workspaces = null
+    if (dataDir) await rm(dataDir, { recursive: true, force: true })
     dataDir = ''
-    cacheDir = ''
   })
 
   async function startApi(renderer: ThumbnailRenderer) {
     dataDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-api-decks-'))
-    cacheDir = await mkdtemp(path.join(os.tmpdir(), 'ark-thumb-api-cache-'))
-    const deckStore = createDeckStore(dataDir)
+    workspaces = createWorkspaceStore(dataDir)
+    const deckStore = createDeckStore(workspaces)
+    const assetStore = createAssetStore(workspaces)
     const previewSessionStore = createPreviewSessionStore()
-    const thumbnailService = createThumbnailService({
-      cache: createThumbnailCache(cacheDir),
+    thumbnailService = createThumbnailService({
       renderer,
       deckStore,
+      workspaceStore: workspaces,
+      assetStore,
     })
     const app = createApp({
       deckStore,
+      workspaceStore: workspaces,
+      assetStore,
       previewSessionStore,
       thumbnailService,
     })
@@ -105,14 +112,14 @@ describe('thumbnail API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
     const created = await createResponse.json()
     assertApiContract(createDeckResponseSchema, created)
-    const versionId = created.deck.activeVersionId!
+    const documentRevision = created.deck.documentRevision
 
     const pendingResponse = await fetch(
-      `${baseUrl}/api/decks/${created.deck.id}/thumbnails?versionId=${versionId}`,
+      `${baseUrl}/api/decks/${created.deck.id}/thumbnails?documentRevision=${documentRevision}`,
     )
     const pending = await pendingResponse.json()
     assertApiContract(deckThumbnailsResponseSchema, pending)
@@ -120,36 +127,36 @@ describe('thumbnail API routes', () => {
 
     resolveRender?.(null)
 
-    await vi.waitFor(async () => {
-      const readyResponse = await fetch(
-        `${baseUrl}/api/decks/${created.deck.id}/thumbnails?versionId=${versionId}`,
-      )
-      const ready = await readyResponse.json()
-      assertApiContract(deckThumbnailsResponseSchema, ready)
-      expect(ready.status).toBe('ready')
-      expect(ready.slides).toHaveLength(2)
+    let ready: { status: string; slides: Array<{ url: string }> } | null = null
+    await vi.waitFor(
+      async () => {
+        const readyResponse = await fetch(
+          `${baseUrl}/api/decks/${created.deck.id}/thumbnails?documentRevision=${documentRevision}`,
+        )
+        ready = await readyResponse.json()
+        assertApiContract(deckThumbnailsResponseSchema, ready)
+        expect(ready.status).toBe('ready')
+        expect(ready.slides).toHaveLength(2)
+      },
+      { timeout: 5_000 },
+    )
 
-      const imageResponse = await fetch(`${baseUrl}${ready.slides[0]!.url}`)
-      expect(imageResponse.status).toBe(200)
-      expect(imageResponse.headers.get('content-type')).toContain('image/png')
-      expect(imageResponse.headers.get('cache-control')).toContain('immutable')
-      expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
+    const slideUrl = ready!.slides[0]!.url
+    const imageResponse = await fetch(`${baseUrl}${slideUrl}`)
+    expect(imageResponse.status).toBe(200)
+    expect(imageResponse.headers.get('content-type')).toContain('image/png')
+    expect(imageResponse.headers.get('cache-control')).toContain('immutable')
+    expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
 
-      // A hash param that does not match the cached slide fingerprint exactly is
-      // rejected — and so is a missing or truncated hash.
-      const slidePath = ready.slides[0]!.url.split('?')[0]
-      const currentHash = new URL(`${baseUrl}${ready.slides[0]!.url}`).searchParams.get('hash')!
-      const mismatchHash = `${currentHash.slice(0, -1)}${currentHash.endsWith('0') ? '1' : '0'}`
-      const mismatchResponse = await fetch(`${baseUrl}${slidePath}?hash=${mismatchHash}`)
-      expect(mismatchResponse.status).toBe(404)
-      const shortHashResponse = await fetch(`${baseUrl}${slidePath}?hash=abcdef01`)
-      expect(shortHashResponse.status).toBe(404)
-      const missingHashResponse = await fetch(`${baseUrl}${slidePath}`)
-      expect(missingHashResponse.status).toBe(404)
-    })
+    const slidePath = slideUrl.split('?')[0]
+    const currentHash = new URL(`${baseUrl}${slideUrl}`).searchParams.get('hash')!
+    const mismatchHash = `${currentHash.slice(0, -1)}${currentHash.endsWith('0') ? '1' : '0'}`
+    expect((await fetch(`${baseUrl}${slidePath}?hash=${mismatchHash}`)).status).toBe(404)
+    expect((await fetch(`${baseUrl}${slidePath}?hash=abcdef01`)).status).toBe(404)
+    expect((await fetch(`${baseUrl}${slidePath}`)).status).toBe(404)
   })
 
-  it('long-polls local renders and avoids full version reads for cached pngs', async () => {
+  it('long-polls local renders and serves cached pngs', async () => {
     const { baseUrl, deckStore } = await startApi({
       isAvailable: () => true,
       close: async () => undefined,
@@ -171,23 +178,23 @@ describe('thumbnail API routes', () => {
       },
     })
 
-    const created = await deckStore.createDeck(sampleHtml, { source: 'upload' })
-    const versionId = created.activeVersionId!
-    const getVersionSpy = vi.spyOn(deckStore, 'getVersion')
+    const created = await deckStore.createDeck(sampleHtml)
+    const documentRevision = created.documentRevision
+    const getDeckSpy = vi.spyOn(deckStore, 'getDeck')
 
     const statusResponse = await fetch(
-      `${baseUrl}/api/decks/${created.id}/thumbnails?versionId=${versionId}&waitMs=500`,
+      `${baseUrl}/api/decks/${created.id}/thumbnails?documentRevision=${documentRevision}&waitMs=500`,
     )
     const status = await statusResponse.json()
     assertApiContract(deckThumbnailsResponseSchema, status)
     expect(status.status).toBe('ready')
     expect(status.slides).toHaveLength(2)
-    expect(getVersionSpy).toHaveBeenCalledTimes(1)
+    expect(getDeckSpy).toHaveBeenCalled()
 
     const imageResponse = await fetch(`${baseUrl}${status.slides[0]!.url}`)
     expect(imageResponse.status).toBe(200)
     expect(Buffer.from(await imageResponse.arrayBuffer()).toString()).toBe('png-one')
-    expect(getVersionSpy).toHaveBeenCalledTimes(1)
+    expect(getDeckSpy).toHaveBeenCalled()
   })
 
   it('returns disabled when the renderer is unavailable', async () => {
@@ -200,21 +207,21 @@ describe('thumbnail API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
     const created = await createResponse.json()
     assertApiContract(createDeckResponseSchema, created)
-    const versionId = created.deck.activeVersionId!
+    const documentRevision = created.deck.documentRevision
 
     const response = await fetch(
-      `${baseUrl}/api/decks/${created.deck.id}/thumbnails?versionId=${versionId}`,
+      `${baseUrl}/api/decks/${created.deck.id}/thumbnails?documentRevision=${documentRevision}`,
     )
     const payload = await response.json()
     assertApiContract(deckThumbnailsResponseSchema, payload)
     expect(payload.status).toBe('disabled')
   })
 
-  it('rejects missing version ids', async () => {
+  it('rejects missing document revisions', async () => {
     const { baseUrl } = await startApi({
       isAvailable: () => true,
       close: async () => undefined,

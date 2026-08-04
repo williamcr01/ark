@@ -2,9 +2,9 @@
  * Shared asset definitions used by both client and server.
  *
  * Assets are user-provided files (images, screenshots, CSV/text, PDFs) that Ark
- * stores as first-class, deck-scoped resources. They are always served through
- * Ark-owned URLs (`/api/decks/:deckId/assets/:id`) — never arbitrary external URLs — so deck
- * preview and export never trigger uncontrolled network requests.
+ * stores as first-class workspace resources. Presentation HTML uses stable
+ * `ark-asset:` references; Ark resolves those references to deck-scoped API
+ * URLs when serving a preview or export.
  */
 
 export type AssetCategory = 'image' | 'text' | 'pdf' | 'other'
@@ -108,23 +108,32 @@ export function buildAssetUrl(deckId: string, id: string) {
   return `/api/decks/${deckId}/assets/${id}`
 }
 
-/** Build the lightweight reference used until a new deck owns the asset. */
-export function buildTemporaryAssetUrl(id: string) {
-  return `/api/assets/${id}`
+/** Canonical reference stored inside presentation HTML. */
+export function buildArkAssetUrl(id: string) {
+  return `ark-asset:${id}`
+}
+
+const ARK_ASSET_URL_PATTERN = /^ark-asset:([0-9a-f-]{36})$/i
+
+export function parseArkAssetUrl(value: string) {
+  return ARK_ASSET_URL_PATTERN.exec(value.trim())?.[1]?.toLowerCase() ?? null
 }
 
 const DECK_SCOPED_ASSET_URL_PATTERN =
   /^\/api\/decks\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
-const TEMPORARY_ASSET_URL_PATTERN = /^\/api\/assets\/([0-9a-f-]{36})(?:$|[/?#])/i
 
 /** Extract an asset id from an Ark-owned asset URL, if present. */
 export function parseAssetIdFromUrl(url: string): string | null {
   const trimmed = url.trim()
+  const canonicalId = parseArkAssetUrl(trimmed)
+  if (canonicalId && isValidAssetId(canonicalId)) {
+    return canonicalId
+  }
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith('//')) {
     return null
   }
   const deckScoped = DECK_SCOPED_ASSET_URL_PATTERN.exec(trimmed)
-  const id = deckScoped?.[2] ?? TEMPORARY_ASSET_URL_PATTERN.exec(trimmed)?.[1]
+  const id = deckScoped?.[2]
 
   return id && isValidAssetId(id) ? id : null
 }

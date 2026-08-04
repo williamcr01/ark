@@ -31,14 +31,10 @@ vi.mock('@/hooks/useElementSize', () => ({
 
 vi.mock('@/hooks/useDeckPersistence', () => ({
   useDeckPersistence: () => ({
-    activeVersionId: 'version-1',
-    clearVersionPreview: vi.fn(),
     hasDeck: true,
     html: '<html>after</html>',
-    inspectVersion: vi.fn(),
     isDirty: false,
     isLoading: false,
-    isLoadingVersions: false,
     isSaving: false,
     isPatching: false,
     deckId: persistenceState.deckId,
@@ -47,17 +43,12 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     deleteActiveDeck: vi.fn(),
     patchDeckOperations: vi.fn(),
     persistHtml: vi.fn(),
-    previewVersion: null,
     refreshActiveDeck: vi.fn(),
-    refreshVersions: vi.fn(),
     renameActiveDeck: vi.fn(),
     restoreHtmlSnapshot: vi.fn(),
-    rollbackToVersion: vi.fn(),
     saveError: '',
     selectDeck: vi.fn(),
     startNewDeck: vi.fn(),
-    versionNumber: 1,
-    versions: [],
   }),
 }))
 

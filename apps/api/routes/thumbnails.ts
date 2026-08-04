@@ -8,13 +8,7 @@ import {
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
-import { type ThumbnailService } from '../thumbnails/service.ts'
-
-function resolveManifestHash(version: {
-  provenance?: { runtimeManifestHash?: string | null } | null
-}) {
-  return version.provenance?.runtimeManifestHash?.trim() || 'none'
-}
+import { thumbnailManifestHash, type ThumbnailService } from '../thumbnails/service.ts'
 
 export function createThumbnailsRouter(deps: {
   deckStore: DeckStore
@@ -23,130 +17,83 @@ export function createThumbnailsRouter(deps: {
   const { deckStore, thumbnailService } = deps
   const router = Router()
 
-  router.get(
-    '/api/decks/:id/thumbnails',
-    async (request: Request<{ id: string }>, response: Response) => {
-      const id = request.params.id?.trim()
+  router.get('/api/decks/:id/thumbnails', async (request: Request<{ id: string }>, response) => {
+    const id = request.params.id?.trim()
+    if (!id || !isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+    const parsed = parseQueryParams(deckThumbnailsQuerySchema, {
+      documentRevision: request.query.documentRevision,
+      waitMs: request.query.waitMs,
+    })
+    if (!parsed.ok) {
+      response.status(400).json({ error: parsed.error })
+      return
+    }
 
-      if (!id) {
-        response.status(400).json({ error: 'Deck id is required.' })
+    try {
+      const deck = await deckStore.getDeck(id)
+      if (!deck || deck.documentRevision !== parsed.data.documentRevision) {
+        response.status(404).json({ error: 'Document revision not found.' })
         return
       }
-
-      if (!isValidDeckId(id)) {
-        response.status(400).json({ error: 'Invalid deck id.' })
-        return
-      }
-
-      const parsedQuery = parseQueryParams(deckThumbnailsQuerySchema, {
-        versionId: typeof request.query.versionId === 'string' ? request.query.versionId : '',
-        waitMs: typeof request.query.waitMs === 'string' ? request.query.waitMs : undefined,
+      const abortController = new AbortController()
+      request.on('close', () => abortController.abort())
+      const result = await thumbnailService.getStatus({
+        deckId: id,
+        documentRevision: deck.documentRevision,
+        manifestHash: thumbnailManifestHash(deck.html),
+        enqueueIfMissing: true,
+        html: deck.html,
+        waitMs: parsed.data.waitMs,
+        signal: abortController.signal,
       })
-
-      if (!parsedQuery.ok) {
-        response.status(400).json({ error: parsedQuery.error })
-        return
-      }
-
-      try {
-        const version = await deckStore.getVersionMetadata(id, parsedQuery.data.versionId)
-
-        if (!version) {
-          response.status(404).json({ error: 'Version not found.' })
-          return
-        }
-
-        const abortController = new AbortController()
-        request.on('close', () => {
-          abortController.abort()
-        })
-
-        const manifestHash = resolveManifestHash(version)
-        const status = await thumbnailService.getStatus({
-          deckId: id,
-          versionId: version.id,
-          manifestHash,
-          enqueueIfMissing: true,
-          waitMs: parsedQuery.data.waitMs,
-          signal: abortController.signal,
-          loadHtml: async () => {
-            const fullVersion = await deckStore.getVersion(id, version.id)
-            return fullVersion?.html ?? null
-          },
-        })
-
-        getRequestLogger(request).info('thumbnail.status', {
-          deckId: id,
-          fields: {
-            versionId: version.id,
-            status: status.status,
-            slideCount: status.slides.length,
-          },
-        })
-
-        response.json(status)
-      } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
-      }
-    },
-  )
+      getRequestLogger(request).info('thumbnail.status', {
+        deckId: id,
+        fields: { documentRevision: deck.documentRevision, status: result.status },
+      })
+      response.json(result)
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
 
   router.get(
-    '/api/decks/:id/thumbnails/:versionId/:slideFile',
+    '/api/decks/:id/thumbnails/:documentRevision/:slideFile',
     async (
-      request: Request<{ id: string; versionId: string; slideFile: string }>,
+      request: Request<{ id: string; documentRevision: string; slideFile: string }>,
       response: Response,
     ) => {
       const id = request.params.id?.trim()
-      const versionId = request.params.versionId?.trim()
-      const slideFile = request.params.slideFile?.trim() ?? ''
-      const match = /^(\d+)\.png$/i.exec(slideFile)
-
-      if (!id || !versionId || !match) {
-        response.status(400).json({ error: 'Deck id, version id, and slide image are required.' })
+      const documentRevision = Number(request.params.documentRevision)
+      const match = /^(\d+)\.png$/i.exec(request.params.slideFile?.trim() ?? '')
+      if (!id || !isValidDeckId(id) || !Number.isInteger(documentRevision) || !match) {
+        response.status(400).json({ error: 'Invalid thumbnail path.' })
         return
       }
-
-      if (!isValidDeckId(id) || !isValidDeckId(versionId)) {
-        response.status(400).json({ error: 'Invalid deck id or version id.' })
+      const parsed = parseQueryParams(deckThumbnailImageQuerySchema, { hash: request.query.hash })
+      if (!parsed.ok) {
+        response.status(404).json({ error: 'Thumbnail not found.' })
         return
       }
-
-      const slideIndex = Number(match[1])
-
       try {
-        const version = await deckStore.getVersionMetadata(id, versionId)
-
-        if (!version) {
-          response.status(404).json({ error: 'Version not found.' })
-          return
-        }
-
-        const parsedQuery = parseQueryParams(deckThumbnailImageQuerySchema, {
-          hash: typeof request.query.hash === 'string' ? request.query.hash : '',
-        })
-        // The opaque thumbnail hash must match the cached fingerprint for this
-        // exact slide. Missing or malformed values are also a 404 so callers
-        // cannot use image requests to distinguish cache-key validation failures.
-        if (!parsedQuery.ok) {
+        const deck = await deckStore.getDeck(id)
+        if (!deck || deck.documentRevision !== documentRevision) {
           response.status(404).json({ error: 'Thumbnail not found.' })
           return
         }
-        const manifestHash = resolveManifestHash(version)
-
         const png = await thumbnailService.readPng({
           deckId: id,
-          versionId,
-          manifestHash,
-          slideIndex,
-          fingerprint: parsedQuery.data.hash,
+          documentRevision,
+          manifestHash: thumbnailManifestHash(deck.html),
+          slideIndex: Number(match[1]),
+          fingerprint: parsed.data.hash,
         })
-
         if (!png) {
           response.status(404).json({ error: 'Thumbnail not found.' })
           return
         }
-
         response.setHeader('Content-Type', 'image/png')
         response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
         response.setHeader('X-Content-Type-Options', 'nosniff')

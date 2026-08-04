@@ -233,10 +233,12 @@ export type BuildImageHtmlOptions = {
 
 export function buildImageHtml(
   geometry: EditorNormalizedRect,
-  asset: Extract<DeckAssetRef, { kind: 'data-url' }>,
+  asset: DeckAssetRef,
   options: BuildImageHtmlOptions = {},
 ) {
-  const srcValidation = validateImageSrcForInsert(asset.dataUrl)
+  const src = asset.kind === 'data-url' ? asset.dataUrl : asset.url
+  const srcValidation =
+    asset.kind === 'asset-id' ? { ok: true as const } : validateImageSrcForInsert(src)
 
   if (!srcValidation.ok) {
     throw new Error(srcValidation.error)
@@ -259,7 +261,7 @@ export function buildImageHtml(
     `${ARK_EDITABLE_ATTR}="${ARK_IMAGE_EDITABLE_VALUE}"`,
     `${ARK_MANAGED_ATTR}="true"`,
     `alt="${escapeHtmlAttribute(alt)}"`,
-    `src="${escapeHtmlAttribute(asset.dataUrl)}"`,
+    `src="${escapeHtmlAttribute(src)}"`,
     `style="${styleText}"`,
   ]
 

@@ -7,6 +7,16 @@ import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
 
+export function hashRuntimeManifest(manifest: DeckRuntimeManifest) {
+  const sorted = Object.fromEntries(
+    Object.keys(manifest)
+      .sort()
+      .map((key) => [key, manifest[key as keyof DeckRuntimeManifest]]),
+  )
+
+  return createHash('sha256').update(JSON.stringify(sorted)).digest('hex')
+}
+
 function resolveUsesRevealAdapter(
   validation: DeckValidationReport,
   assets: Array<{ kind: string; url: string }>,
@@ -66,3 +76,4 @@ export function buildDeckRuntimeManifestFromValidation(
 ): DeckRuntimeManifest {
   return buildDeckRuntimeManifestFromHtml(html, validation)
 }
+import { createHash } from 'node:crypto'

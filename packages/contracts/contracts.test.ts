@@ -5,14 +5,7 @@ import {
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
-  deckVersionDiffSchema,
-  deckManualVersionProvenanceSchema,
-  deckVersionProvenanceSchema,
-  deckVersionSummarySchema,
-  normalizeDeckVersionDiff,
-  normalizeDeckVersionProvenance,
   renameDeckRequestSchema,
-  rollbackDeckRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
 import { generationJobResponseSchema, startGenerationJobRequestSchema } from './generation-jobs.ts'
@@ -93,8 +86,8 @@ describe('shared API contracts', () => {
       title: 'Deck',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
-      activeVersionId: deckId,
-      versionNumber: 1,
+      documentRevision: 1,
+      filePath: '/tmp/Deck.ark',
     }
 
     expect(deckResponseSchema.parse({ deck })).toEqual({ deck })
@@ -106,8 +99,8 @@ describe('shared API contracts', () => {
             title: deck.title,
             createdAt: deck.createdAt,
             updatedAt: deck.updatedAt,
-            activeVersionId: deck.activeVersionId,
-            versionNumber: deck.versionNumber,
+            documentRevision: deck.documentRevision,
+            filePath: deck.filePath,
           },
         ],
       }),
@@ -118,17 +111,16 @@ describe('shared API contracts', () => {
           title: deck.title,
           createdAt: deck.createdAt,
           updatedAt: deck.updatedAt,
-          activeVersionId: deck.activeVersionId,
-          versionNumber: deck.versionNumber,
+          documentRevision: deck.documentRevision,
+          filePath: deck.filePath,
         },
       ],
     })
   })
 
-  it('validates rename and rollback requests', () => {
+  it('validates rename requests', () => {
     expect(renameDeckRequestSchema.safeParse({ title: 'New title' }).success).toBe(true)
     expect(renameDeckRequestSchema.safeParse({}).success).toBe(false)
-    expect(rollbackDeckRequestSchema.safeParse({ versionId: deckId }).success).toBe(true)
   })
 
   it('parses generation job wire responses', () => {
@@ -137,7 +129,7 @@ describe('shared API contracts', () => {
         job: {
           id: jobId,
           deckId,
-          baseVersionId: null,
+          baseDocumentRevision: null,
           editingExistingDeck: false,
           status: 'queued',
           model: 'openai:gpt-4o-mini',
@@ -272,22 +264,22 @@ describe('shared API contracts', () => {
   })
 
   it('parses thumbnail contracts', () => {
-    expect(deckThumbnailsQuerySchema.parse({ versionId: deckId })).toEqual({
-      versionId: deckId,
+    expect(deckThumbnailsQuerySchema.parse({ documentRevision: '1' })).toEqual({
+      documentRevision: 1,
       waitMs: 0,
     })
-    expect(deckThumbnailsQuerySchema.parse({ versionId: deckId, waitMs: '2500' })).toEqual({
-      versionId: deckId,
+    expect(deckThumbnailsQuerySchema.parse({ documentRevision: '2', waitMs: '2500' })).toEqual({
+      documentRevision: 2,
       waitMs: 2500,
     })
-    expect(deckThumbnailsQuerySchema.safeParse({ versionId: deckId, waitMs: '6000' }).success).toBe(
-      false,
-    )
-    expect(deckThumbnailsQuerySchema.safeParse({ versionId: 'bad' }).success).toBe(false)
+    expect(
+      deckThumbnailsQuerySchema.safeParse({ documentRevision: '2', waitMs: '6000' }).success,
+    ).toBe(false)
+    expect(deckThumbnailsQuerySchema.safeParse({ documentRevision: 'bad' }).success).toBe(false)
     expect(
       deckThumbnailImageParamsSchema.parse({
         id: deckId,
-        versionId: deckId,
+        documentRevision: 2,
         slideFile: '0.png',
       }),
     ).toMatchObject({ slideFile: '0.png' })
@@ -304,7 +296,7 @@ describe('shared API contracts', () => {
         slides: [
           {
             index: 0,
-            url: `/api/decks/${deckId}/thumbnails/${deckId}/0.png?hash=${'a'.repeat(64)}`,
+            url: `/api/decks/${deckId}/thumbnails/2/0.png?hash=${'a'.repeat(64)}`,
           },
         ],
         width: 480,
@@ -410,7 +402,7 @@ describe('shared API contracts', () => {
           warnings: 0,
         },
         relatedJobId: null,
-        versionId: null,
+        documentRevision: null,
         html: '<main>deck contents</main>',
       },
     })
@@ -482,127 +474,12 @@ describe('shared API contracts', () => {
     })
   })
 
-  it('parses deck version provenance and diff metadata', () => {
-    const provenance = deckVersionProvenanceSchema.parse({
-      operations: ['replace_text', 'undo'],
-      slideIndexes: [0],
-      elementIds: ['ark-el-1'],
-      jobId: 'a0000000-0000-4000-8000-000000000001',
-      stepCount: 3,
-      toolCalls: [{ toolName: 'patch_deck', summary: 'rename slide 0' }],
-      restoredVersionId: deckId,
-      restoredVersionNumber: 2,
-      runtimeManifestHash: 'abc123',
-    })
-
-    const diff = deckVersionDiffSchema.parse({
-      kind: 'structural',
-      slideCountBefore: 2,
-      slideCountAfter: 3,
-      addedSlides: [{ index: 2, title: 'Closing' }],
-      changedSlides: [{ index: 0, contentChanged: true, title: 'Opening' }],
-      titleChanged: true,
-      assetsAdded: ['data:image/png;base64,abc'],
-    })
-
-    expect(
-      deckVersionSummarySchema.parse({
-        id: deckId,
-        deckId,
-        versionNumber: 2,
-        title: 'Deck',
-        source: 'manual',
-        summary: 'Edited slide',
-        validationStatus: 'valid',
-        runtimeManifest: null,
-        modelProvider: 'openai',
-        modelName: 'gpt-4.1-mini',
-        provenance,
-        diff,
-        createdAt: '2026-01-01T00:00:00.000Z',
-        isActive: true,
-      }),
-    ).toMatchObject({
-      modelName: 'gpt-4.1-mini',
-      provenance: { operations: ['replace_text', 'undo'] },
-      diff: { kind: 'structural', slideCountAfter: 3 },
-    })
-  })
-
-  it('rejects oversized provenance arrays', () => {
-    expect(
-      deckVersionProvenanceSchema.safeParse({
-        operations: Array.from({ length: 41 }, () => 'undo'),
-      }).success,
-    ).toBe(false)
-    expect(
-      deckManualVersionProvenanceSchema.safeParse({
-        operations: Array.from({ length: 41 }, () => 'undo'),
-      }).success,
-    ).toBe(false)
-    expect(
-      deckManualVersionProvenanceSchema.safeParse({
-        operations: ['undo'],
-        jobId: 'forged',
-      }),
-    ).toMatchObject({
-      success: true,
-      data: { operations: ['undo'] },
-    })
-    expect(
-      deckVersionDiffSchema.safeParse({
-        kind: 'structural',
-        addedSlides: Array.from({ length: 101 }, (_, index) => ({
-          index,
-          title: `Slide ${index}`,
-        })),
-      }).success,
-    ).toBe(false)
-  })
-
-  it('normalizes invalid provenance and diff payloads to null', () => {
-    expect(normalizeDeckVersionProvenance({ operations: ['not-an-op'] })).toBeNull()
-    expect(normalizeDeckVersionDiff({ kind: 'invalid' })).toBeNull()
-    expect(normalizeDeckVersionProvenance(null)).toBeNull()
-  })
-
-  it('soft-normalizes oversized asset URLs instead of dropping the whole diff', () => {
-    const huge = `data:image/png;base64,${'A'.repeat(5000)}`
-    const normalized = normalizeDeckVersionDiff({
-      kind: 'structural',
-      slideCountBefore: 1,
-      slideCountAfter: 1,
-      assetsAdded: [huge],
-      addedSlides: [{ index: 0, title: 'T'.repeat(500) }],
-    })
-
-    expect(normalized?.kind).toBe('structural')
-    expect(normalized?.assetsAdded?.[0]).toMatch(/^data-asset:/)
-    expect(normalized?.assetsAdded?.[0]?.length).toBeLessThanOrEqual(2048)
-    expect(normalized?.addedSlides?.[0]?.title.length).toBeLessThanOrEqual(200)
-    expect(JSON.stringify(normalized)).not.toContain('AAAA')
-  })
-
-  it('strips client-writable diff and model fields from create requests', () => {
+  it('rejects removed version metadata in create requests', () => {
     const parsed = parseRequestBody(createDeckRequestSchema, {
       html: '<!DOCTYPE html><html><body><section class="slide"></section></body></html>',
       source: 'agent',
-      modelProvider: 'openai',
-      modelName: 'gpt-forged',
-      diff: { kind: 'coarse', htmlBytesBefore: 1, htmlBytesAfter: 2 },
-      provenance: { operations: ['undo'], jobId: 'forged' },
     })
 
-    expect(parsed.ok).toBe(true)
-    if (parsed.ok) {
-      expect(parsed.data).toEqual({
-        html: '<!DOCTYPE html><html><body><section class="slide"></section></body></html>',
-        source: 'agent',
-        provenance: { operations: ['undo'] },
-      })
-      expect('diff' in parsed.data).toBe(false)
-      expect('modelProvider' in parsed.data).toBe(false)
-      expect('modelName' in parsed.data).toBe(false)
-    }
+    expect(parsed.ok).toBe(false)
   })
 })

@@ -16,14 +16,6 @@ describe('deck tool catalog', () => {
     expect(prompt).not.toContain('Guidelines:')
     expect(prompt).toContain('self-contained')
     expect(prompt).toContain('16:9')
-
-    const withVersions = createActiveDeckTools(createDeckWorkspace(''), {
-      versionInspector: { listVersions: async () => [] },
-    })
-    expect(withVersions.activeDefinitions.map(({ name }) => name)).toContain('list_versions')
-    expect(withVersions.tools.list_versions?.description).toContain(
-      'Use before large rewrites or when the user asks what changed.',
-    )
   })
 
   it('offers structured user questions for new and existing decks', () => {

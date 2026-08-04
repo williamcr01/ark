@@ -6,23 +6,21 @@ export type ChatThreadStatus = 'active' | 'archived'
 export type ChatThread = {
   id: string
   deckId: string
-  activeDeckVersionId: string | null
+  activeDocumentRevision: number | null
   title: string
   status: ChatThreadStatus
+  visibility: 'private' | 'shared'
   createdAt: string
   updatedAt: string
 }
 
-export type StoredChatMessageError = {
-  message: string
-  code?: string | null
-}
+export type StoredChatMessageError = { message: string; code?: string | null }
 
 export type StoredChatMessage = {
   id: string
   threadId: string
   deckId: string
-  deckVersionId: string | null
+  documentRevision: number | null
   role: 'user' | 'assistant'
   content: string
   parts?: ChatMessagePart[]
@@ -35,25 +33,12 @@ export type StoredChatMessage = {
   createdAt: string
 }
 
-export type AppendChatMessageInput = {
-  id?: string
-  role: 'user' | 'assistant'
-  content: string
-  parts?: ChatMessagePart[]
-  attachments?: ChatAttachment[]
-  context?: ChatMessageContext
-  deckVersionId?: string | null
-  generationJobId?: string | null
-  generationStatus?: string | null
-  model?: string | null
-  error?: StoredChatMessageError | null
-}
+export type AppendChatMessageInput = Omit<
+  StoredChatMessage,
+  'id' | 'threadId' | 'deckId' | 'documentRevision' | 'createdAt'
+> & { id?: string }
 
-export type ListChatMessagesOptions = {
-  limit?: number
-  before?: string | null
-}
-
+export type ListChatMessagesOptions = { limit?: number; before?: string | null }
 export type ListChatMessagesResult = {
   thread: ChatThread | null
   messages: StoredChatMessage[]
@@ -62,34 +47,27 @@ export type ListChatMessagesResult = {
 
 export const DEFAULT_CHAT_MESSAGE_LIMIT = 100
 export const MAX_CHAT_MESSAGE_LIMIT = 500
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-const CHAT_MESSAGE_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-const CHAT_THREAD_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-export function isValidChatMessageId(id: string) {
-  return CHAT_MESSAGE_ID_PATTERN.test(id)
-}
-
-export function isValidChatThreadId(id: string) {
-  return CHAT_THREAD_ID_PATTERN.test(id)
-}
+export const isValidChatMessageId = (id: string) => UUID_PATTERN.test(id)
+export const isValidChatThreadId = (id: string) => UUID_PATTERN.test(id)
 
 export function normalizeChatMessageLimit(limit: unknown) {
-  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
-    return DEFAULT_CHAT_MESSAGE_LIMIT
-  }
-
-  return Math.min(MAX_CHAT_MESSAGE_LIMIT, Math.max(1, Math.floor(limit)))
+  return typeof limit === 'number' && Number.isFinite(limit)
+    ? Math.min(MAX_CHAT_MESSAGE_LIMIT, Math.max(1, Math.floor(limit)))
+    : DEFAULT_CHAT_MESSAGE_LIMIT
 }
 
 export type ChatStore = {
-  getOrCreateActiveThread: (
+  listThreads: (deckId: string) => Promise<ChatThread[]>
+  createThread: (deckId: string, title?: string) => Promise<ChatThread>
+  updateThread: (
     deckId: string,
-    activeDeckVersionId?: string | null,
-  ) => Promise<ChatThread>
+    threadId: string,
+    patch: { title?: string; archived?: boolean; visibility?: 'private' | 'shared' },
+  ) => Promise<ChatThread | null>
+  deleteThread: (deckId: string, threadId: string) => Promise<boolean>
+  getOrCreateActiveThread: (deckId: string) => Promise<ChatThread>
   getActiveThread: (deckId: string) => Promise<ChatThread | null>
   listMessages: (
     deckId: string,
@@ -100,12 +78,5 @@ export type ChatStore = {
 }
 
 export function assertValidDeckIdForChat(deckId: string) {
-  if (!isValidDeckId(deckId)) {
-    throw Object.assign(new Error('Invalid deck id.'), {
-      apiError: {
-        code: 'provider_error',
-        error: 'Invalid deck id.',
-      },
-    })
-  }
+  if (!isValidDeckId(deckId)) throw new Error('Invalid deck id.')
 }

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { FilePlus2Icon, PresentationIcon, SettingsIcon, UploadIcon } from 'lucide-react'
+import {
+  FilePlus2Icon,
+  FolderOpenIcon,
+  PresentationIcon,
+  SettingsIcon,
+  UploadIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DeckCard } from '@/components/DeckCard'
@@ -20,7 +26,16 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppearance } from '@/hooks/useAppearance'
 import { clearStoredGenerationJob } from '@/hooks/useGenerationJob'
 import { clearChatSession } from '@/lib/chat-session'
-import { createDeck, deleteDeck, listDecks, renameDeck, type DeckSummary } from '@/lib/deck-api'
+import {
+  createDeck,
+  deleteDeck,
+  listDecks,
+  locateWorkspace,
+  openWorkspace,
+  removeRecentWorkspace,
+  renameDeck,
+  type DeckSummary,
+} from '@/lib/deck-api'
 import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck-io'
 
 function DeckCardSkeleton() {
@@ -87,6 +102,13 @@ export function DecksDashboard() {
     navigate('/decks/new')
   }, [navigate])
 
+  const handleOpenWorkspace = useCallback(async () => {
+    const path = await window.arkDesktop.files.openWorkspace()
+    if (!path) return
+    const deck = await openWorkspace(path)
+    navigate(`/decks/${deck.id}`)
+  }, [navigate])
+
   const handleRenameDeck = useCallback(async (deck: DeckSummary, title: string) => {
     try {
       const updated = await renameDeck(deck.id, title)
@@ -108,6 +130,20 @@ export function DecksDashboard() {
     } catch {
       toast.error('Could not delete deck')
     }
+  }, [])
+
+  const handleLocate = useCallback(async (deck: DeckSummary) => {
+    const path = await window.arkDesktop.files.openWorkspace()
+    if (!path) return
+    const located = await locateWorkspace(deck.id, path)
+    setDecks((current) =>
+      current.map((item) => (item.id === deck.id ? { ...item, ...located, missing: false } : item)),
+    )
+  }, [])
+
+  const handleRemoveRecent = useCallback(async (deck: DeckSummary) => {
+    await removeRecentWorkspace(deck.id)
+    setDecks((current) => current.filter((item) => item.id !== deck.id))
   }, [])
 
   const handleHtmlUpload = useCallback(
@@ -136,10 +172,7 @@ export function DecksDashboard() {
           return
         }
 
-        const deck = await createDeck(html, {
-          source: 'upload',
-          summary: `Uploaded ${file.name}`,
-        })
+        const deck = await createDeck(html)
         toast.success(`Loaded ${file.name}. ${describeDeckValidation(validation)}.`)
         navigate(`/decks/${deck.id}`)
       } catch {
@@ -180,6 +213,10 @@ export function DecksDashboard() {
           <Button disabled={isUploading} onClick={handleUploadClick} size="sm" variant="outline">
             <UploadIcon data-icon="inline-start" />
             Upload HTML
+          </Button>
+          <Button onClick={() => void handleOpenWorkspace()} size="sm" variant="outline">
+            <FolderOpenIcon data-icon="inline-start" />
+            Open .ark
           </Button>
           <Button onClick={handleNewDeck} size="sm">
             <FilePlus2Icon data-icon="inline-start" />
@@ -237,6 +274,8 @@ export function DecksDashboard() {
                   key={deck.id}
                   onDelete={handleDeleteDeck}
                   onRename={handleRenameDeck}
+                  onLocate={handleLocate}
+                  onRemoveRecent={handleRemoveRecent}
                 />
               ))}
             </div>

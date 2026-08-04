@@ -13,7 +13,7 @@ import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/genera
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
-import { type DeckAttachmentInspector, type DeckVersionInspector } from './deck-tools.ts'
+import { type DeckAttachmentInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
@@ -82,7 +82,6 @@ export type RunDeckAgentOptions = {
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
-  versionInspector?: DeckVersionInspector
   attachmentInspector?: DeckAttachmentInspector
 }
 
@@ -570,7 +569,6 @@ export async function runDeckAgent({
   abortSignal,
   onStepProgress,
   logger,
-  versionInspector,
   attachmentInspector,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
   const provider = providerInput ?? 'unknown'
@@ -580,7 +578,6 @@ export async function runDeckAgent({
   const workspace = createDeckWorkspace(currentHtml)
   const { tools, activeDefinitions } = createActiveDeckTools(workspace, {
     logger,
-    versionInspector,
     attachmentInspector,
   })
   const accumulatedSteps: AgentStep[] = []

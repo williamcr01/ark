@@ -16,7 +16,7 @@ export const thumbnailSlideSchema = z.object({
 export type ThumbnailSlide = z.infer<typeof thumbnailSlideSchema>
 
 export const deckThumbnailsQuerySchema = z.object({
-  versionId: deckIdSchema,
+  documentRevision: z.coerce.number().int().min(1),
   waitMs: z.coerce.number().int().min(0).max(THUMBNAIL_LONG_POLL_MAX_WAIT_MS).optional().default(0),
 })
 
@@ -34,7 +34,7 @@ export type DeckThumbnailsResponse = z.infer<typeof deckThumbnailsResponseSchema
 
 export const deckThumbnailImageParamsSchema = z.object({
   id: deckIdSchema,
-  versionId: deckIdSchema,
+  documentRevision: z.coerce.number().int().min(1),
   slideFile: z.string().regex(/^\d+\.png$/i, 'Invalid slide image path.'),
 })
 
@@ -42,7 +42,7 @@ export type DeckThumbnailImageParams = z.infer<typeof deckThumbnailImageParamsSc
 
 /**
  * The route receives an opaque, full-length slide thumbnail fingerprint so
- * immutable image URLs cannot collide across deck versions or slide content.
+ * immutable image URLs cannot collide across document revisions or slide content.
  */
 export const deckThumbnailImageQuerySchema = z.object({
   hash: z.string().regex(/^[0-9a-f]{64}$/i, 'Invalid thumbnail fingerprint.'),

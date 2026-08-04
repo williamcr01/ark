@@ -16,15 +16,8 @@ import {
   readDeckSlideHtml,
 } from './deck-html.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import { compactVersionDiffForAgent, compactVersionProvenanceForAgent } from './deck-provenance.ts'
-import { truncateDeckVersionSummary } from '@ark/contracts'
 import type { Logger } from './observability/logger.ts'
-import type { DeckVersionSummary } from './deck-record.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
-
-export type DeckVersionInspector = {
-  listVersions: (limit?: number) => Promise<DeckVersionSummary[]>
-}
 
 export type DeckAttachmentSummary = {
   id: string
@@ -84,11 +77,10 @@ export function createDeckTools(
   workspace: DeckWorkspace,
   options: {
     logger?: Logger
-    versionInspector?: DeckVersionInspector
     attachmentInspector?: DeckAttachmentInspector
   } = {},
 ) {
-  const { logger, versionInspector, attachmentInspector } = options
+  const { logger, attachmentInspector } = options
   const timingOptions = logger ? { logger } : {}
   const baseTools = {
     parse_deck: tool({
@@ -454,43 +446,6 @@ export function createDeckTools(
                 offset,
                 nextOffset: end < bytes.length ? end : undefined,
                 content: bytes.subarray(offset, end).toString('utf8'),
-              }
-            },
-          }),
-        }
-      : {}),
-    ...(versionInspector
-      ? {
-          list_versions: tool({
-            description:
-              'List recent deck versions with source, summary, model, structural diff, and compact provenance metadata. Never returns full HTML snapshots. Use before large rewrites or when the user asks what changed.',
-            inputSchema: z.object({
-              limit: z
-                .number()
-                .int()
-                .min(1)
-                .max(20)
-                .optional()
-                .describe('Maximum versions to return (default 10, max 20).'),
-            }),
-            execute: async ({ limit = 10 }) => {
-              const versions = await versionInspector.listVersions(Math.min(limit, 20))
-
-              return {
-                versionCount: versions.length,
-                versions: versions.map((version) => ({
-                  versionNumber: version.versionNumber,
-                  source: version.source,
-                  summary:
-                    typeof version.summary === 'string'
-                      ? truncateDeckVersionSummary(version.summary)
-                      : version.summary,
-                  createdAt: version.createdAt,
-                  validationStatus: version.validationStatus,
-                  modelName: version.modelName ?? null,
-                  diff: compactVersionDiffForAgent(version.diff),
-                  provenance: compactVersionProvenanceForAgent(version.provenance),
-                })),
               }
             },
           }),

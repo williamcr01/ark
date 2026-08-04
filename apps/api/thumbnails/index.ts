@@ -1,4 +1,3 @@
-export * from './cache.ts'
 export * from './constants.ts'
 export * from './render-host.ts'
 export * from './renderer.ts'

@@ -47,8 +47,17 @@ describe('DecksDashboard', () => {
         remove: vi.fn(),
         test: vi.fn(),
       },
-      settings: { get: vi.fn(), update: vi.fn() },
+      settings: {
+        get: vi.fn().mockResolvedValue({ defaultWorkspaceDirectory: null }),
+        update: vi.fn(),
+      },
       updates: { check: vi.fn() },
+      files: {
+        openWorkspace: vi.fn(),
+        chooseWorkspacePath: vi.fn(),
+        chooseDirectory: vi.fn(),
+        reveal: vi.fn(),
+      },
     }
   })
 

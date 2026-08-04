@@ -23,30 +23,28 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
       <TooltipProvider>
         <AppTitleBar
           activeDeckId={deck.id}
-          activeVersionId="a0000000-0000-4000-8000-000000000001"
           deckTitle={deck.title}
           fileInputRef={fileInputRef}
           hasDeck
           hasSlides
           isChatOpen={false}
           isGenerating={false}
-          isLoadingVersions={false}
           isStripOpen={false}
-          onClearVersionPreview={vi.fn()}
           onDownload={vi.fn()}
+          onDuplicate={vi.fn()}
           onHtmlUpload={vi.fn()}
-          onInspectVersion={vi.fn()}
+          onMove={vi.fn()}
           onNewDeck={vi.fn()}
+          onOpenWorkspace={vi.fn()}
           onPresent={vi.fn()}
-          onRefreshVersions={vi.fn().mockResolvedValue([])}
           onRenameDeck={vi.fn()}
-          onRollbackVersion={vi.fn()}
+          onReveal={vi.fn()}
+          onSaveAs={vi.fn()}
+          onShareProject={vi.fn()}
           onToggleChat={vi.fn()}
           onToggleStrip={vi.fn()}
           onUploadClick={vi.fn()}
-          previewVersion={null}
           showSanitizedDownload={false}
-          versions={[]}
           {...overrides}
         />
       </TooltipProvider>
@@ -70,8 +68,17 @@ describe('AppTitleBar accessibility', () => {
         remove: vi.fn(),
         test: vi.fn(),
       },
-      settings: { get: vi.fn(), update: vi.fn() },
+      settings: {
+        get: vi.fn().mockResolvedValue({ defaultWorkspaceDirectory: null }),
+        update: vi.fn(),
+      },
       updates: { check: vi.fn() },
+      files: {
+        openWorkspace: vi.fn(),
+        chooseWorkspacePath: vi.fn(),
+        chooseDirectory: vi.fn(),
+        reveal: vi.fn(),
+      },
     }
   })
 

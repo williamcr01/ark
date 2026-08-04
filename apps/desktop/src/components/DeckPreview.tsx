@@ -68,7 +68,7 @@ type RuntimeErrorNotice = {
   deckId: string | null
   message: string
   slideIndex: number
-  versionId: string | null
+  documentRevision: number | null
 }
 
 export type DeckPreviewHandle = {
@@ -78,7 +78,7 @@ export type DeckPreviewHandle = {
 export type DeckPreviewProps = {
   html: string
   deckId?: string | null
-  versionId?: string | null
+  documentRevision?: number | null
   recentGenerationJobId?: string | null
   isDeckLoading?: boolean
   isGenerating: boolean
@@ -123,7 +123,7 @@ export type DeckPreviewProps = {
 export function DeckPreview({
   html,
   deckId = null,
-  versionId = null,
+  documentRevision = null,
   recentGenerationJobId = null,
   isDeckLoading = false,
   isGenerating,
@@ -203,7 +203,12 @@ export function DeckPreview({
     finishLivePatch: finishPreviewSourcePatch,
     rollbackLivePatch: reloadCanonicalPreview,
   } = useDeckPreviewSource(deckId, html, { onSlidePatch: dispatchSlidePatch })
-  const previewFrame = useDeckPreviewFrame(previewHtml, previewEnabled, previewReloadRevision)
+  const previewFrame = useDeckPreviewFrame(
+    previewHtml,
+    previewEnabled,
+    previewReloadRevision,
+    deckId,
+  )
   const reportedRuntimeErrorsRef = useRef(new Set<string>())
   const activeSlideIndexRef = useRef(0)
   const textEditActiveRef = useRef(false)
@@ -236,13 +241,13 @@ export function DeckPreview({
           deckId,
           message,
           slideIndex,
-          versionId,
+          documentRevision,
         })
       }
 
       void reportRuntimeError({
         deckId,
-        versionId,
+        documentRevision,
         slideIndex,
         severity: 'error',
         message,
@@ -261,7 +266,7 @@ export function DeckPreview({
             warnings: runtimeManifest.validation.warnings,
           },
           relatedJobId: recentGenerationJobId,
-          versionId,
+          documentRevision,
         },
       }).catch(() => {
         reportedRuntimeErrorsRef.current.delete(fingerprint)
@@ -276,7 +281,7 @@ export function DeckPreview({
       runtimeManifest.validation.errors,
       runtimeManifest.validation.warnings,
       validation.valid,
-      versionId,
+      documentRevision,
     ],
   )
   const reportNavigationCompromise = useCallback(
@@ -354,7 +359,7 @@ export function DeckPreview({
       // case on the reload path the editor coordinator already handles.
       !textEditActiveRef.current
   })
-  const { thumbnailUrls } = useDeckThumbnails(deckId, versionId, parsedDeck.slideCount, {
+  const { thumbnailUrls } = useDeckThumbnails(deckId, documentRevision, parsedDeck.slideCount, {
     // Always-on edit chrome stays active while previewing; only wait for the
     // main frame so thumbnail polling does not compete with first paint.
     enabled: mainPreviewReady,
@@ -429,7 +434,7 @@ export function DeckPreview({
 
   useEffect(() => {
     reportedRuntimeErrorsRef.current.clear()
-  }, [deckId, versionId])
+  }, [deckId, documentRevision])
 
   useEffect(() => {
     if (!bridgeSession.armed || previewCompromised) {
@@ -905,7 +910,8 @@ export function DeckPreview({
                   networkIssue={networkIssues[0]?.message}
                   onDismissRuntimeError={() => setRuntimeError(null)}
                   runtimeError={
-                    runtimeError?.deckId === deckId && runtimeError.versionId === versionId
+                    runtimeError?.deckId === deckId &&
+                    runtimeError.documentRevision === documentRevision
                       ? runtimeError
                       : null
                   }

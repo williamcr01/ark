@@ -14,7 +14,7 @@ export type { RuntimeErrorInput, RuntimeErrorSeverity } from '@ark/contracts'
 export type RuntimeErrorRecord = {
   id: string
   deckId: string | null
-  versionId: string | null
+  documentRevision: number | null
   slideIndex: number | null
   runtimeMode: string | null
   severity: RuntimeErrorSeverity
@@ -77,11 +77,7 @@ export function parseRuntimeErrorBody(
     return { ok: false, error: 'Invalid deck id.' }
   }
 
-  const versionId = parsed.data.versionId?.trim() || null
-
-  if (versionId && !isValidDeckId(versionId)) {
-    return { ok: false, error: 'Invalid version id.' }
-  }
+  const documentRevision = parsed.data.documentRevision ?? null
 
   const runtimeModeRaw = parsed.data.runtimeMode?.trim().slice(0, MAX_RUNTIME_MODE_LENGTH) || null
   // Only keep fields we can derive from the top-level request. Client-supplied
@@ -101,7 +97,7 @@ export function parseRuntimeErrorBody(
           warnings: 0,
         },
         relatedJobId: null,
-        versionId,
+        documentRevision,
       }
     : undefined
 
@@ -109,7 +105,7 @@ export function parseRuntimeErrorBody(
     ok: true,
     input: {
       deckId,
-      versionId,
+      documentRevision,
       slideIndex: clampSlideIndex(parsed.data.slideIndex),
       runtimeMode: runtimeModeRaw,
       severity: parsed.data.severity ?? 'error',
@@ -129,7 +125,7 @@ export function createRuntimeErrorStore(limit = DEFAULT_STORE_LIMIT): RuntimeErr
     const entry: RuntimeErrorRecord = {
       id: randomUUID(),
       deckId: input.deckId ?? null,
-      versionId: input.versionId ?? null,
+      documentRevision: input.documentRevision ?? null,
       slideIndex: input.slideIndex ?? null,
       runtimeMode: input.runtimeMode ?? null,
       severity: input.severity ?? 'error',

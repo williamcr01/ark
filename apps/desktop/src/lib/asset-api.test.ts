@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { deleteAsset, listDeckAssets, uploadDeckAsset, uploadTemporaryAsset } from './asset-api'
+import { deleteAsset, listDeckAssets, uploadDeckAsset } from './asset-api'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 
@@ -44,24 +44,6 @@ describe('asset-api', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/decks/${deckId}/assets`,
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
-
-  it('stages an asset before a deck exists', async () => {
-    const temporary = { ...asset, deckId: null, url: `/api/assets/${asset.id}` }
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ asset: temporary }, { status: 201 }))
-    vi.stubGlobal('fetch', fetchMock)
-
-    await expect(
-      uploadTemporaryAsset({
-        filename: 'logo.png',
-        mediaType: 'image/png',
-        data: 'data:image/png;base64,AAAA',
-      }),
-    ).resolves.toEqual(temporary)
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/assets',
       expect.objectContaining({ method: 'POST' }),
     )
   })

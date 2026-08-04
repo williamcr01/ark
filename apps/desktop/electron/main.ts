@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import express from 'express'
-import { app, BrowserWindow, ipcMain, session, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session, shell, type WebContents } from 'electron'
 import electronUpdater from 'electron-updater'
 import type { ProviderId } from '@ark/contracts'
 
@@ -122,6 +122,7 @@ async function startDesktop() {
   process.env.PORT = new URL(apiServer.origin).port
   process.env.SANDBOX_PORT = new URL(sandboxServer.origin).port
   process.env.ARK_DATA_DIR = app.getPath('userData')
+  process.env.ARK_WORKSPACES_DIR = path.join(app.getPath('documents'), 'Ark')
 
   const resourceRoot = app.isPackaged
     ? process.resourcesPath
@@ -149,6 +150,8 @@ async function startDesktop() {
     path.join(app.getPath('userData'), 'settings.json'),
   )
   await Promise.all([credentialStore.load(), settingsStore.load()])
+  process.env.ARK_WORKSPACES_DIR =
+    settingsStore.get().defaultWorkspaceDirectory || process.env.ARK_WORKSPACES_DIR
   setProviderApiKeySource(credentialStore)
   void warmModelCatalog()
 
@@ -243,7 +246,39 @@ async function startDesktop() {
     }
   })
   ipcMain.handle('settings:get', () => settingsStore.get())
-  ipcMain.handle('settings:update', (_event, patch) => settingsStore.update(patch))
+  ipcMain.handle('settings:update', async (_event, patch) => {
+    const settings = await settingsStore.update(patch)
+    const workspaceStore = api.locals.workspaceStore as
+      { setDefaultDirectory: (directory: string) => void } | undefined
+    if (settings.defaultWorkspaceDirectory) {
+      workspaceStore?.setDefaultDirectory(settings.defaultWorkspaceDirectory)
+    }
+    return settings
+  })
+  ipcMain.handle('files:open-workspace', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Ark Workspace', extensions: ['ark'] }],
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+  ipcMain.handle('files:choose-workspace-path', async (_event, suggestedName) => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.join(
+        settingsStore.get().defaultWorkspaceDirectory || path.join(app.getPath('documents'), 'Ark'),
+        typeof suggestedName === 'string' ? suggestedName : 'Untitled Presentation.ark',
+      ),
+      filters: [{ name: 'Ark Workspace', extensions: ['ark'] }],
+    })
+    return result.canceled ? null : (result.filePath ?? null)
+  })
+  ipcMain.handle('files:choose-directory', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+  ipcMain.handle('files:reveal', (_event, filePath) => {
+    if (typeof filePath === 'string') shell.showItemInFolder(filePath)
+  })
   ipcMain.handle('updates:check', async () => {
     if (!app.isPackaged)
       return { ok: false, error: 'Updates are only available in packaged builds.' }
@@ -288,11 +323,13 @@ async function startDesktop() {
     closing = true
     const thumbnailService = api.locals.thumbnailService as
       { close: () => Promise<void> } | undefined
+    const workspaceStore = api.locals.workspaceStore as { close: () => void } | undefined
     void Promise.all([
       thumbnailService?.close() ?? Promise.resolve(),
       closeServer(apiServer.server),
       closeServer(sandboxServer.server),
     ])
+      .then(() => workspaceStore?.close())
       .then(() =>
         smokeDataDirectory
           ? rm(smokeDataDirectory, { recursive: true, force: true })

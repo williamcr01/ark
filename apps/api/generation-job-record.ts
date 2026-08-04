@@ -53,7 +53,7 @@ export function cloneGenerationJobRequest(request: GenerationJobRequest): Genera
       ...(message.parts ? { parts: structuredClone(message.parts) } : {}),
     })),
     currentHtml: request.currentHtml,
-    baseVersionId: request.baseVersionId ?? null,
+    baseDocumentRevision: request.baseDocumentRevision ?? null,
     editingExistingDeck: request.editingExistingDeck ?? false,
     ...(request.editorSelection ? { editorSelection: { ...request.editorSelection } } : {}),
     ...(request.slideContexts?.length

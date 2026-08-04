@@ -12,16 +12,34 @@ import type { JsonValue } from '@ark/deck-core/chat.ts'
 export const chatThreadStatusSchema = z.enum(['active', 'archived'])
 
 export const chatThreadSummarySchema = z.object({
-  id: z.string().min(1),
-  deckId: z.string().min(1),
-  activeDeckVersionId: deckIdSchema.nullable(),
+  id: deckIdSchema,
+  deckId: deckIdSchema,
+  activeDocumentRevision: z.number().int().min(1).nullable(),
   title: z.string(),
   status: chatThreadStatusSchema,
+  visibility: z.enum(['private', 'shared']),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
 
 export type ChatThreadSummary = z.infer<typeof chatThreadSummarySchema>
+
+export const chatThreadResponseSchema = withRequestId({
+  thread: chatThreadSummarySchema,
+})
+
+export const chatThreadListResponseSchema = withRequestId({
+  threads: z.array(chatThreadSummarySchema),
+})
+
+export const createChatThreadRequestSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+})
+export const updateChatThreadRequestSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  archived: z.boolean().optional(),
+  visibility: z.enum(['private', 'shared']).optional(),
+})
 
 export const chatMessageErrorSchema = z.object({
   message: z.string(),
@@ -137,7 +155,7 @@ export const persistedChatMessageSchema = z.object({
   id: z.string().min(1),
   threadId: z.string().min(1),
   deckId: z.string().min(1),
-  deckVersionId: deckIdSchema.nullable(),
+  documentRevision: z.number().int().min(1).nullable(),
   role: z.enum(['user', 'assistant']),
   content: z.string(),
   parts: assistantPartsSchema.optional(),
@@ -160,7 +178,7 @@ export const appendChatMessageRequestSchema = z
     parts: assistantPartsSchema.optional(),
     attachments: z.array(chatAttachmentSchema).optional(),
     context: chatMessageContextSchema.optional(),
-    deckVersionId: deckIdSchema.nullable().optional(),
+    documentRevision: z.number().int().min(1).nullable().optional(),
     generationJobId: z.string().nullable().optional(),
     generationStatus: z.string().nullable().optional(),
     model: z.string().nullable().optional(),

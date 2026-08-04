@@ -25,12 +25,7 @@ describe('useDeckThumbnails', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { result } = renderHook(() =>
-      useDeckThumbnails(
-        'b0000000-0000-4000-8000-000000000001',
-        'a0000000-0000-4000-8000-000000000001',
-        2,
-        { enabled: false },
-      ),
+      useDeckThumbnails('b0000000-0000-4000-8000-000000000001', 1, 2, { enabled: false }),
     )
 
     await act(async () => {
@@ -72,11 +67,7 @@ describe('useDeckThumbnails', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { result } = renderHook(() =>
-      useDeckThumbnails(
-        'b0000000-0000-4000-8000-000000000001',
-        'a0000000-0000-4000-8000-000000000001',
-        2,
-      ),
+      useDeckThumbnails('b0000000-0000-4000-8000-000000000001', 1, 2),
     )
 
     await act(async () => {
@@ -110,14 +101,7 @@ describe('useDeckThumbnails', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    renderHook(() =>
-      useDeckThumbnails(
-        'b0000000-0000-4000-8000-000000000001',
-        'a0000000-0000-4000-8000-000000000001',
-        1,
-        { waitMs: 0 },
-      ),
-    )
+    renderHook(() => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', 1, 1, { waitMs: 0 }))
 
     await act(async () => {
       await Promise.resolve()
@@ -137,7 +121,7 @@ describe('useDeckThumbnails', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('aborts an in-flight long-poll when the version changes', async () => {
+  it('aborts an in-flight long-poll when the document revision changes', async () => {
     const signals: AbortSignal[] = []
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (init?.signal) {
@@ -149,8 +133,9 @@ describe('useDeckThumbnails', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { rerender, unmount } = renderHook(
-      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 1),
-      { initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' } },
+      ({ documentRevision }) =>
+        useDeckThumbnails('b0000000-0000-4000-8000-000000000001', documentRevision, 1),
+      { initialProps: { documentRevision: 1 } },
     )
 
     await act(async () => {
@@ -159,7 +144,7 @@ describe('useDeckThumbnails', () => {
 
     expect(signals[0]?.aborted).toBe(false)
 
-    rerender({ versionId: 'a0000000-0000-4000-8000-000000000002' })
+    rerender({ documentRevision: 2 })
 
     await act(async () => {
       await Promise.resolve()
@@ -171,7 +156,7 @@ describe('useDeckThumbnails', () => {
     unmount()
   })
 
-  it('keeps unchanged thumbnail images mounted across deck versions', async () => {
+  it('keeps unchanged thumbnail images mounted across document revisions', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -211,8 +196,9 @@ describe('useDeckThumbnails', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { result, rerender } = renderHook(
-      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 2),
-      { initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' } },
+      ({ documentRevision }) =>
+        useDeckThumbnails('b0000000-0000-4000-8000-000000000001', documentRevision, 2),
+      { initialProps: { documentRevision: 1 } },
     )
 
     await act(async () => {
@@ -225,7 +211,7 @@ describe('useDeckThumbnails', () => {
       '/api/decks/d/thumbnails/v1/1.png?hash=before',
     ])
 
-    rerender({ versionId: 'a0000000-0000-4000-8000-000000000002' })
+    rerender({ documentRevision: 2 })
 
     await act(async () => {
       await Promise.resolve()
@@ -259,9 +245,10 @@ describe('useDeckThumbnails', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { result, rerender } = renderHook(
-      ({ versionId }) => useDeckThumbnails('b0000000-0000-4000-8000-000000000001', versionId, 2),
+      ({ documentRevision }) =>
+        useDeckThumbnails('b0000000-0000-4000-8000-000000000001', documentRevision, 2),
       {
-        initialProps: { versionId: 'a0000000-0000-4000-8000-000000000001' },
+        initialProps: { documentRevision: 1 },
       },
     )
 
@@ -273,7 +260,7 @@ describe('useDeckThumbnails', () => {
     expect(result.current.thumbnailUrls).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    rerender({ versionId: 'a0000000-0000-4000-8000-000000000099' })
+    rerender({ documentRevision: 99 })
 
     await act(async () => {
       await Promise.resolve()
@@ -295,11 +282,7 @@ describe('useDeckThumbnails', () => {
     )
 
     const { result } = renderHook(() =>
-      useDeckThumbnails(
-        'b0000000-0000-4000-8000-000000000001',
-        'a0000000-0000-4000-8000-000000000002',
-        2,
-      ),
+      useDeckThumbnails('b0000000-0000-4000-8000-000000000001', 2, 2),
     )
 
     await act(async () => {

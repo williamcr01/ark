@@ -204,10 +204,10 @@ describe('runtime error reporting', () => {
   })
 
   it('builds bounded repair context from sanitized authoritative fields', () => {
-    const versionId = '22222222-2222-4222-8222-222222222222'
+    const documentRevision = 2
     const parsed = parseRuntimeErrorBody({
       deckId,
-      versionId,
+      documentRevision,
       slideIndex: 2,
       runtimeMode: 'reveal',
       message: 'Failed with sk-live-secret-value',
@@ -225,7 +225,7 @@ describe('runtime error reporting', () => {
           warnings: 2,
         },
         relatedJobId: '33333333-3333-4333-8333-333333333333',
-        versionId: null,
+        documentRevision: null,
         html: '<main>must not be retained</main>',
       },
     })
@@ -248,7 +248,7 @@ describe('runtime error reporting', () => {
           warnings: 0,
         },
         relatedJobId: null,
-        versionId,
+        documentRevision,
       })
       expect(parsed.input.repairContext).not.toHaveProperty('html')
     }
