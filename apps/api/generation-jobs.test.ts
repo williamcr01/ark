@@ -934,15 +934,21 @@ describe('generation job API routes', () => {
   let baseUrl = ''
   let generationJobRunner: ReturnType<typeof createGenerationJobRunner>
   let jobStore: ReturnType<typeof createGenerationJobStore>
+  let assetStore: ReturnType<typeof createAssetStore>
+  let assetStorage: ReturnType<typeof createLocalAssetStorage>
 
   beforeAll(async () => {
     apiRoot = await mkdtemp(path.join(os.tmpdir(), 'ark-job-api-'))
     const deckStore = createDeckStore(path.join(apiRoot, 'decks'))
     jobStore = createGenerationJobStore(path.join(apiRoot, 'jobs'))
+    assetStore = createAssetStore(path.join(apiRoot, 'assets', 'meta'))
+    assetStorage = createLocalAssetStorage(path.join(apiRoot, 'assets', 'blobs'))
     generationJobRunner = createGenerationJobRunner({
       deckStore,
       jobStore,
       chatStore: null,
+      assetStore,
+      assetStorage,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
@@ -953,6 +959,8 @@ describe('generation job API routes', () => {
 
     const app = createApp({
       deckStore,
+      assetStore,
+      assetStorage,
       generationJobStore: jobStore,
       generationJobRunner,
     })
@@ -1007,6 +1015,51 @@ describe('generation job API routes', () => {
           await generationJobRunner.cancelJob(started.job.id)
           await waitForTerminalJob((id) => jobStore.getJob(id), started.job.id)
         }
+      }
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.OPENAI_API_KEY
+      } else {
+        process.env.OPENAI_API_KEY = previousKey
+      }
+    }
+  })
+
+  it('starts a new-deck job with a temporary attachment', async () => {
+    const previousKey = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = 'sk-test-generation-job-route'
+
+    try {
+      const uploadResponse = await fetch(`${baseUrl}/api/assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: 'notes.txt',
+          mediaType: 'text/plain',
+          data: 'data:text/plain;base64,SGVsbG8sIEFyayE=',
+        }),
+      })
+      const upload = (await uploadResponse.json()) as { asset?: { id: string } }
+
+      expect(uploadResponse.status).toBe(201)
+
+      const response = await fetch(`${baseUrl}/api/generation-jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Create a deck from the attached notes' }],
+          assetIds: [upload.asset?.id],
+        }),
+      })
+
+      expect(response.status).toBe(202)
+      const started = (await response.json()) as { job?: { id: string } }
+      expect(started.job?.id).toBeTruthy()
+
+      if (started.job?.id) {
+        const current = await jobStore.getJob(started.job.id)
+        expect(current?.deckId).toBeNull()
+        expect(current?.assetIds).toEqual([upload.asset?.id])
       }
     } finally {
       if (previousKey === undefined) {
