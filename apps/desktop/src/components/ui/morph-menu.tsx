@@ -16,7 +16,7 @@ export const MORPH_TRIGGER_HEIGHT = 32
  * in the tools row shifts. `MorphMenuFooter` re-draws it as the panel's last row.
  */
 export const morphMenuTriggerMotionClassName = 'ark-morph-trigger!'
-export const morphMenuTriggerClassName = `ark-control! ${morphMenuTriggerMotionClassName} rounded-full`
+export const morphMenuTriggerClassName = `ark-control-flat! ${morphMenuTriggerMotionClassName} rounded-full`
 
 export const morphMenuSurfaceClassName = 'ark-morph-surface'
 

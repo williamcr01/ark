@@ -256,6 +256,29 @@
   }
 }
 
+/* `ark-control` for chips that sit directly on the field rather than beside it:
+   nothing is drawn until the pointer arrives, at which point a flat tint appears.
+   Deliberately without `ark-control`'s sheen and pressed inset -- those sell a
+   raised, glossy body, and a chip lying flat on the field should not have one.
+   The resting border is transparent rather than absent so the chip does not
+   resize when it gains one. */
+@utility ark-control-flat {
+  background-color: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  transition-property: background-color, border-color, opacity;
+  transition-duration: 120ms;
+
+  &:hover:not(:disabled) {
+    background-color: var(--ark-control-bg);
+    border-color: var(--ark-control-border);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--ark-control-hover-bg);
+  }
+}
+
 /* The single filled, primary-weight control (send). */
 /* Same material as `ark-control`, filled with the accent instead of the surface.
    Previously this inverted against the theme (near-black on light, near-white on
