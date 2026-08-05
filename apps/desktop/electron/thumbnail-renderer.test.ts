@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { BrowserWindow } from 'electron'
+import { BrowserWindow, session, type Session } from 'electron'
+import type { PreviewSessionStore } from '@ark/api/preview-sessions.ts'
 
-vi.mock('electron', () => ({ BrowserWindow: vi.fn(), session: {} }))
+vi.mock('electron', () => ({
+  BrowserWindow: vi.fn(),
+  session: { fromPartition: vi.fn() },
+}))
 
-import { gotoThumbnailSlide } from './thumbnail-renderer.ts'
+import { createElectronThumbnailRenderer, gotoThumbnailSlide } from './thumbnail-renderer.ts'
 
 function fakeWindow(executeJavaScript: (source: string) => unknown) {
   return {
@@ -69,5 +73,78 @@ describe('Electron thumbnail navigation', () => {
     })
 
     await expect(gotoThumbnailSlide(window, 0)).rejects.toThrow('Deck settle failed.')
+  })
+
+  it('fails the capture when the deck reports a different slide after settling', async () => {
+    let index = 0
+    const window = fakeWindow((source) => {
+      if (source.includes('ready: Boolean')) return { ready: true, index, errors: [] }
+      if (source.includes('__arkThumbGoto')) {
+        index = 1
+        return true
+      }
+      if (source.includes('__arkThumbRequestSettle')) return 9
+      if (source.includes('__arkThumbSettledRequestId')) {
+        // Simulates a deck that navigated away (e.g. auto-advanced) while settling.
+        index = 0
+        return { settled: true, errors: [] }
+      }
+      throw new Error(`Unexpected script: ${source}`)
+    })
+
+    await expect(gotoThumbnailSlide(window, 1)).rejects.toThrow(
+      'Thumbnail renderer reached slide 0, expected 1.',
+    )
+  })
+})
+
+describe('Electron thumbnail renderer', () => {
+  it('fails the render when the deck runtime reports a different slide count', async () => {
+    const webContents = {
+      setWindowOpenHandler: vi.fn(() => ({ action: 'deny' })),
+      executeJavaScript: vi.fn(async (source: string) => {
+        if (source.includes('ready: Boolean')) {
+          return { ready: true, index: 0, slideCount: 3, errors: [] }
+        }
+        throw new Error(`Unexpected script: ${source}`)
+      }),
+      capturePage: vi.fn(),
+    }
+    const window = {
+      loadURL: vi.fn(async () => undefined),
+      destroy: vi.fn(() => undefined),
+      isDestroyed: vi.fn(() => false),
+      webContents,
+    }
+    vi.mocked(BrowserWindow).mockImplementation(function () {
+      return window as unknown as BrowserWindow
+    })
+    vi.mocked(session.fromPartition).mockReturnValue({
+      setPermissionRequestHandler: vi.fn(),
+      webRequest: { onBeforeRequest: vi.fn(), onBeforeSendHeaders: vi.fn() },
+    } as unknown as Session)
+
+    const previewSessionStore = {
+      createSession: vi.fn(() => ({ token: 'thumb-token' })),
+      deleteSession: vi.fn(),
+    } as unknown as PreviewSessionStore
+
+    const renderer = createElectronThumbnailRenderer({
+      apiOrigin: 'http://127.0.0.1:8787',
+      previewSessionStore,
+      renderSecret: 'render-secret',
+    })
+
+    const result = await renderer.render({
+      html: '<!DOCTYPE html><html><head></head><body><section class="slide"><h1>One</h1></section></body></html>',
+      slideCount: 1,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('Deck reports 3 slides at runtime; expected 1.')
+    }
+    expect(webContents.capturePage).not.toHaveBeenCalled()
+    expect(window.destroy).toHaveBeenCalled()
   })
 })

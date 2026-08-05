@@ -49,4 +49,6 @@ When using `data-ark-deck="nav"`:
 
 - Listen for `CustomEvent` `"ark:deck-goto"` with `detail.index` from the Ark bridge.
 - Dispatch `CustomEvent` `"ark:deck-slide-change"` with `detail.index` on every slide change.
+- Dispatch `"ark:deck-slide-change"` only **after** the new slide is actually rendered in the DOM — never optimistically before the view updates. Ark's thumbnail capture trusts this event's index; an early event can capture the previous slide's pixels.
+- Dispatch it exactly once per completed navigation; no duplicate or out-of-order events.
 - Do **not** call `window.parent.postMessage` for navigation — use DOM events only; Ark's injected bridge forwards them.

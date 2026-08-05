@@ -207,12 +207,20 @@ function buildThumbnailSettleResponderScript(parentOrigin?: string) {
     });
   }
 
+  // Two frames: the first rAF fires before the compositor paints the frame that
+  // carries the slide change; the second rAF can only fire after that frame has
+  // been painted. capturePage() reads the latest composited frame, so waiting
+  // for a painted frame guarantees the snapshot is never the previous slide.
+  function waitForPaintedFrame() {
+    return waitForAnimationFrame().then(waitForAnimationFrame);
+  }
+
   function settle() {
     revealFragments();
     finishAnimations();
     return waitForImages()
       .then(waitForFonts)
-      .then(waitForAnimationFrame);
+      .then(waitForPaintedFrame);
   }
 
   window.addEventListener('message', function (event) {
