@@ -221,7 +221,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": { "html": { "type": "string" } },
+                "properties": {
+                  "html": { "type": "string" },
+                  "origin": { "type": "string", "enum": ["blank", "authored"] }
+                },
                 "required": ["html"],
                 "additionalProperties": false
               }
@@ -248,6 +251,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -257,6 +261,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -472,6 +477,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -481,6 +487,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -583,6 +590,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -592,6 +600,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -831,6 +840,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -840,6 +850,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -1439,6 +1450,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -1448,6 +1460,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -2353,6 +2366,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -2362,6 +2376,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -2435,6 +2450,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -2444,6 +2460,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -2551,6 +2568,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -2560,6 +2578,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -2678,6 +2697,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -2687,6 +2707,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },
@@ -2809,6 +2830,7 @@
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
                         "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
                         "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
@@ -2818,6 +2840,7 @@
                         "createdAt",
                         "updatedAt",
                         "documentRevision",
+                        "origin",
                         "filePath"
                       ]
                     },

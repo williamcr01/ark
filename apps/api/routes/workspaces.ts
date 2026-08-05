@@ -17,6 +17,7 @@ const toDeck = (workspace: WorkspaceRow): StoredDeck => ({
   createdAt: workspace.createdAt,
   updatedAt: workspace.updatedAt,
   documentRevision: workspace.documentRevision,
+  origin: workspace.origin,
   filePath: workspace.path,
 })
 

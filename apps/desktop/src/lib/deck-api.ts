@@ -4,13 +4,14 @@ import {
   deckPatchResponseSchema,
   deckResponseSchema,
   fetchApiJsonOrThrow,
+  type DeckOrigin,
   type DeckPatchRequest,
   type DeckPatchResponse,
   type DeckSummary,
   type StoredDeck,
 } from '@ark/contracts'
 
-export type { DeckPatchResponse, DeckSummary, StoredDeck }
+export type { DeckOrigin, DeckPatchResponse, DeckSummary, StoredDeck }
 
 export type PatchDeckResponse = Pick<DeckPatchResponse, 'deck' | 'patch'>
 
@@ -42,11 +43,11 @@ export async function fetchDeck(id: string) {
   return readDeckResponse(response)
 }
 
-export async function createDeck(html: string) {
+export async function createDeck(html: string, origin?: DeckOrigin) {
   const response = await fetch('/api/decks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify(origin ? { html, origin } : { html }),
   })
 
   return readDeckResponse(response)

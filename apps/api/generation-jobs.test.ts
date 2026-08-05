@@ -101,6 +101,49 @@ describe('generation job runner', () => {
     expect((await chatStore.listMessages(deck.id)).messages.at(-1)?.role).toBe('assistant')
   })
 
+  it('runs a blank deck as a new deck, then as an existing one after the first write', async () => {
+    const blank = `<!DOCTYPE html><html><head><title>Untitled Presentation</title></head><body><section class="slide"></section></body></html>`
+    const origins: Array<unknown> = []
+    const { deckStore, jobStore, runner } = await setup(async (options) => {
+      origins.push(options.deckOrigin)
+      return success()
+    })
+    const deck = await deckStore.createDeck(blank, { origin: 'blank' })
+
+    const first = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseDocumentRevision: 1,
+        currentHtml: deck.html,
+        messages: [{ role: 'user', content: 'Make slides' }],
+      },
+      defaultModel: 'openai:gpt-test',
+    })
+    await terminal(jobStore.getJob, first.id)
+
+    expect(origins).toEqual(['blank'])
+    expect(await jobStore.getJob(first.id)).toMatchObject({
+      request: { editingExistingDeck: false },
+    })
+    expect((await deckStore.getDeck(deck.id))?.origin).toBe('authored')
+
+    const second = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseDocumentRevision: 2,
+        currentHtml: html,
+        messages: [{ role: 'user', content: 'Now tighten it' }],
+      },
+      defaultModel: 'openai:gpt-test',
+    })
+    await terminal(jobStore.getJob, second.id)
+
+    expect(origins).toEqual(['blank', 'authored'])
+    expect(await jobStore.getJob(second.id)).toMatchObject({
+      request: { editingExistingDeck: true },
+    })
+  })
+
   it('rejects a stale document revision instead of overwriting newer content', async () => {
     const { deckStore, jobStore, runner } = await setup(async () =>
       success(html.replace('Hello', 'AI')),

@@ -122,7 +122,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         if (!routeDeckId) {
           clearActiveDeck()
 
-          const deck = await (newDeckPromiseRef.current ??= createDeck(NEW_DECK_HTML))
+          const deck = await (newDeckPromiseRef.current ??= createDeck(NEW_DECK_HTML, 'blank'))
           const summaries = await summariesPromise
 
           if (!bootStillOwnsSession()) {
@@ -304,7 +304,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     setIsSaving(false)
     setSaveError('')
     clearActiveDeck()
-    const promise = createDeck(NEW_DECK_HTML)
+    const promise = createDeck(NEW_DECK_HTML, 'blank')
     newDeckPromiseRef.current = promise
     const deck = await promise
     setActiveDeck(deck)

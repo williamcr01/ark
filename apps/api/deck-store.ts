@@ -21,6 +21,7 @@ function toStoredDeck(workspace: WorkspaceRow): StoredDeck {
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
     documentRevision: workspace.documentRevision,
+    origin: workspace.origin,
     filePath: workspace.path,
   }
 }
@@ -43,10 +44,13 @@ export function createDeckStore(
     async createDeck(html, options, id) {
       const extracted = extractEmbeddedAssets(html)
       return toStoredDeck(
-        await workspaces.create(extracted.html, id, undefined, [
-          ...(options?.embeddedAssets ?? []),
-          ...extracted.assets,
-        ]),
+        await workspaces.create(
+          extracted.html,
+          id,
+          undefined,
+          [...(options?.embeddedAssets ?? []), ...extracted.assets],
+          options?.origin,
+        ),
       )
     },
     async getDeck(id) {

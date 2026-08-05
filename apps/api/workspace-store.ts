@@ -4,6 +4,12 @@ import path from 'node:path'
 import { DatabaseSync, backup } from 'node:sqlite'
 
 import { extractDeckTitle, isValidDeckId, normalizeDeckTitle } from '@ark/contracts'
+import {
+  DEFAULT_DECK_ORIGIN,
+  deckOriginAfterWrite,
+  normalizeDeckOrigin,
+  type DeckOrigin,
+} from '@ark/deck-core/deck-origin.ts'
 import { resolveArkDataDir } from './data-dir.ts'
 import type { EmbeddedAsset } from './embedded-assets.ts'
 
@@ -32,7 +38,8 @@ const SCHEMA = `
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     format_version INTEGER NOT NULL,
-    document_revision INTEGER NOT NULL DEFAULT 1
+    document_revision INTEGER NOT NULL DEFAULT 1,
+    origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'
   );
   CREATE TABLE document (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -104,11 +111,18 @@ export type WorkspaceRow = {
   createdAt: string
   updatedAt: string
   documentRevision: number
+  origin: DeckOrigin
   html: string
   path: string
 }
 
 type WorkspaceMetadata = Omit<WorkspaceRow, 'html'>
+
+/**
+ * What can be read from a closed file without migrating it: `inspectWorkspaceFile`
+ * opens read-only, so it must not touch columns an older file may still lack.
+ */
+type WorkspaceIdentity = Omit<WorkspaceMetadata, 'origin'>
 
 type OpenWorkspace = {
   id: string
@@ -127,6 +141,21 @@ function configure(database: DatabaseSync) {
     PRAGMA synchronous = FULL;
     PRAGMA busy_timeout = 4000;
   `)
+}
+
+/**
+ * Bring an existing `.ark` file up to the current schema. Additive columns with
+ * defaults keep the format version stable: older Ark builds select named columns
+ * and simply ignore what they do not know about.
+ */
+function migrate(database: DatabaseSync) {
+  const columns = database.prepare('PRAGMA table_info(workspace)').all() as Array<{ name: string }>
+
+  if (!columns.some((column) => column.name === 'origin')) {
+    database.exec(
+      `ALTER TABLE workspace ADD COLUMN origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'`,
+    )
+  }
 }
 
 function syncDocumentAssetReferences(database: DatabaseSync, html: string) {
@@ -191,7 +220,7 @@ function insertEmbeddedAssets(database: DatabaseSync, assets: readonly EmbeddedA
 function readWorkspace(open: OpenWorkspace): WorkspaceRow {
   const row = open.database
     .prepare(
-      `SELECT w.id, w.title, w.created_at, w.updated_at, w.document_revision, d.html
+      `SELECT w.id, w.title, w.created_at, w.updated_at, w.document_revision, w.origin, d.html
        FROM workspace w JOIN document d ON d.id = 1`,
     )
     .get() as
@@ -201,6 +230,7 @@ function readWorkspace(open: OpenWorkspace): WorkspaceRow {
         created_at: string
         updated_at: string
         document_revision: number
+        origin: string
         html: string
       }
     | undefined
@@ -212,6 +242,7 @@ function readWorkspace(open: OpenWorkspace): WorkspaceRow {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     documentRevision: row.document_revision,
+    origin: normalizeDeckOrigin(row.origin),
     html: row.html,
     path: open.path,
   }
@@ -219,7 +250,7 @@ function readWorkspace(open: OpenWorkspace): WorkspaceRow {
 
 function readWorkspaceMetadata(open: OpenWorkspace): WorkspaceMetadata {
   const row = open.database
-    .prepare('SELECT id, title, created_at, updated_at, document_revision FROM workspace')
+    .prepare('SELECT id, title, created_at, updated_at, document_revision, origin FROM workspace')
     .get() as
     | {
         id: string
@@ -227,6 +258,7 @@ function readWorkspaceMetadata(open: OpenWorkspace): WorkspaceMetadata {
         created_at: string
         updated_at: string
         document_revision: number
+        origin: string
       }
     | undefined
 
@@ -237,11 +269,12 @@ function readWorkspaceMetadata(open: OpenWorkspace): WorkspaceMetadata {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     documentRevision: row.document_revision,
+    origin: normalizeDeckOrigin(row.origin),
     path: open.path,
   }
 }
 
-function inspectWorkspaceFile(filePath: string): WorkspaceMetadata {
+function inspectWorkspaceFile(filePath: string): WorkspaceIdentity {
   const resolved = path.resolve(filePath)
   let database: DatabaseSync
   try {
@@ -353,6 +386,7 @@ export class WorkspaceStore {
 
     const writableDatabase = new DatabaseSync(resolved)
     configure(writableDatabase)
+    migrate(writableDatabase)
     const open = { id: metadata.id, path: resolved, database: writableDatabase }
     this.byId.set(open.id, open)
     this.byPath.set(open.path, open)
@@ -448,6 +482,7 @@ export class WorkspaceStore {
     requestedId?: string,
     targetPath?: string,
     embeddedAssets: readonly EmbeddedAsset[] = [],
+    origin: DeckOrigin = DEFAULT_DECK_ORIGIN,
   ) {
     await this.index()
     const id = requestedId ?? randomUUID()
@@ -477,10 +512,10 @@ export class WorkspaceStore {
         database
           .prepare(
             `INSERT INTO workspace
-             (id, title, created_at, updated_at, format_version, document_revision)
-             VALUES (?, ?, ?, ?, ?, 1)`,
+             (id, title, created_at, updated_at, format_version, document_revision, origin)
+             VALUES (?, ?, ?, ?, ?, 1, ?)`,
           )
-          .run(id, title, now, now, ARK_WORKSPACE_FORMAT_VERSION)
+          .run(id, title, now, now, ARK_WORKSPACE_FORMAT_VERSION, origin)
         database
           .prepare('INSERT INTO document (id, html, content_hash, updated_at) VALUES (1, ?, ?, ?)')
           .run(html, contentHash(html), now)
@@ -573,6 +608,9 @@ export class WorkspaceStore {
     const title =
       current.title === extractDeckTitle(current.html) ? nextExtractedTitle : current.title
     const now = new Date().toISOString()
+    // Re-saving byte-identical HTML (autosave on an untouched starter deck) is
+    // not authoring, so it must not retire the blank origin.
+    const origin = html === current.html ? current.origin : deckOriginAfterWrite(current.origin)
 
     open.database.exec('BEGIN IMMEDIATE')
     try {
@@ -585,9 +623,9 @@ export class WorkspaceStore {
       open.database
         .prepare(
           `UPDATE workspace
-           SET title = ?, updated_at = ?, document_revision = document_revision + 1`,
+           SET title = ?, updated_at = ?, document_revision = document_revision + 1, origin = ?`,
         )
-        .run(title, now)
+        .run(title, now, origin)
       open.database.exec('COMMIT')
     } catch (error) {
       open.database.exec('ROLLBACK')

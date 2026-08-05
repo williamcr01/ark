@@ -734,4 +734,29 @@ describe('wrapUserPromptForAgent', () => {
     expect(wrapped).toContain('Build a pitch deck')
     expect(wrapped).not.toContain('attached the following slide(s) as context')
   })
+
+  it('starts a new deck when the workspace only holds a blank starter deck', () => {
+    const wrapped = wrapUserPromptForAgent(
+      'Build a pitch deck',
+      '<html><body><section class="slide"></section></body></html>',
+      0,
+      undefined,
+      undefined,
+      'blank',
+    )
+
+    expect(wrapped).toContain('Create a new complete Ark HTML slide deck')
+    expect(wrapped).toContain('empty starter deck with no authored content')
+    expect(wrapped).not.toContain('wants to revise')
+  })
+
+  it('revises once the deck holds authored content', () => {
+    const html = '<html><body><section class="slide"><h1>Q3</h1></section></body></html>'
+
+    expect(
+      wrapUserPromptForAgent('Tighten the copy', html, 0, undefined, undefined, 'authored'),
+    ).toContain('wants to revise')
+    // An unknown or absent origin must not turn a real deck into a rewrite.
+    expect(wrapUserPromptForAgent('Tighten the copy', html)).toContain('wants to revise')
+  })
 })

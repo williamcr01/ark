@@ -152,6 +152,7 @@ Ark replays the **full visible chat history** on every generation job request (p
 - **Persisted with the deck**: Deck HTML and chat messages are saved by the local API under Electron `userData`; renderer storage (`ark:chat-session:{deckId|new}`) acts as a cache/fallback. Chat for a not-yet-saved deck lives only in renderer storage until the deck is created.
 - **Assistant messages**: Durable chat keeps every logical step using recoverable, tool-specific projections, never repeated full deck HTML. Model-only context projection may summarize older steps and tells the model to re-read authoritative deck state.
 - **Token/cost**: Follow-up edits use patches instead of re-emitting the document. Context assembly is separate from append-only persistence; future compaction is documented in `docs/agent-context.md` but is not implemented.
+- **Deck origin**: Ark creates a deck before the first message, so `workspace.origin` (`blank` | `authored`, see `packages/deck-core/deck-origin.ts`) records whether the HTML is the user's work or Ark's untouched starter deck. The job runner reads it from the stored record and `wrapUserPromptForAgent` uses it to pick the new-deck flow (ask questions, propose themes) over the revise flow. The first write that changes the document retires `blank` permanently. Adding a `template` origin is issue #278.
 
 ### Deck parser (issue #37)
 

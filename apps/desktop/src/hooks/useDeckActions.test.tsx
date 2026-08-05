@@ -24,6 +24,7 @@ function createDeckActionsOptions(
       createdAt: string
       updatedAt: string
       documentRevision: number
+      origin: 'blank' | 'authored'
       filePath: string
     }>
     deleteActiveDeck?: () => Promise<void>
@@ -40,6 +41,7 @@ function createDeckActionsOptions(
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       documentRevision: 1,
+      origin: 'blank' as const,
       filePath: '/tmp/Untitled Presentation.ark',
     }))
   const deleteActiveDeck = overrides.deleteActiveDeck ?? vi.fn(async () => undefined)

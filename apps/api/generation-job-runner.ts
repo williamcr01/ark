@@ -16,6 +16,7 @@ import type {
 import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark/contracts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
 import { buildArkAssetUrl } from '@ark/deck-core/assets.ts'
+import { deckOriginIsUnauthored } from '@ark/deck-core/deck-origin.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
@@ -257,6 +258,7 @@ export function createGenerationJobRunner({
         modelRef: currentJob.model,
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
+        deckOrigin: currentJob.request.deckOrigin,
         editorSelection: currentJob.request.editorSelection,
         slideContexts: currentJob.request.slideContexts,
         reasoningEffort: currentJob.request.reasoningEffort,
@@ -818,6 +820,10 @@ export function createGenerationJobRunner({
       }
     }
 
+    // The renderer cannot be trusted to know whether the deck is still Ark's
+    // untouched starter, so read the origin from the stored record.
+    const deckOrigin = deckId ? ((await deckStore.getDeck(deckId))?.origin ?? null) : null
+
     let chatThreadId: string | null = null
 
     if (deckId && chatStore) {
@@ -840,7 +846,10 @@ export function createGenerationJobRunner({
         messages,
         currentHtml,
         baseDocumentRevision,
-        editingExistingDeck: Boolean(deckId && currentHtml.trim()),
+        editingExistingDeck: Boolean(
+          deckId && currentHtml.trim() && !deckOriginIsUnauthored(deckOrigin),
+        ),
+        ...(deckOrigin ? { deckOrigin } : {}),
         ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
         ...(body.slideContexts && body.slideContexts.length > 0
           ? { slideContexts: body.slideContexts }
@@ -927,7 +936,9 @@ export function createGenerationJobRunner({
         baseDocumentRevision = deck.documentRevision
         request.currentHtml = deck.html
         request.baseDocumentRevision = baseDocumentRevision
-        request.editingExistingDeck = true
+        request.deckOrigin = deck.origin
+        // A retry after a failed first generation still faces a blank deck.
+        request.editingExistingDeck = !deckOriginIsUnauthored(deck.origin)
       }
     }
 

@@ -12,6 +12,7 @@ describe('shared API fetch helpers', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       documentRevision: 1,
+      origin: 'authored' as const,
       filePath: '/tmp/Deck.ark',
     }
 

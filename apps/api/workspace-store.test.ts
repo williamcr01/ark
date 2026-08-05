@@ -64,6 +64,42 @@ describe('WorkspaceStore file operations', () => {
     database.close()
   })
 
+  it('retires a blank origin on the first write that changes the document', async () => {
+    const workspaces = await setup()
+    const blank = `<!DOCTYPE html><html><head><title>Untitled Presentation</title></head><body><section class="slide"></section></body></html>`
+    const created = await workspaces.create(blank, undefined, undefined, [], 'blank')
+
+    expect(created.origin).toBe('blank')
+
+    // Autosaving identical HTML is not authoring.
+    const resaved = await workspaces.updateDocument(created.id, blank)
+    expect(resaved?.origin).toBe('blank')
+
+    const written = await workspaces.updateDocument(created.id, html)
+    expect(written?.origin).toBe('authored')
+
+    // Origin is durable, and authored never reverts.
+    const reverted = await workspaces.updateDocument(created.id, blank)
+    expect(reverted?.origin).toBe('authored')
+
+    workspaces.close()
+    store = createWorkspaceStore(root)
+    await expect(store.open(created.path)).resolves.toMatchObject({ origin: 'authored' })
+  })
+
+  it('defaults decks written before the origin column to authored', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    const database = new DatabaseSync(created.path)
+    database.exec('ALTER TABLE workspace DROP COLUMN origin')
+    database.close()
+
+    store = createWorkspaceStore(root)
+    await expect(store.open(created.path)).resolves.toMatchObject({ origin: 'authored' })
+  })
+
   it('supports Save As and Move without overwriting another file', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)

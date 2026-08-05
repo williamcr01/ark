@@ -1,6 +1,7 @@
 import type { FilePart, ModelMessage, TextPart } from 'ai'
 
 import { isValidAssetId, parseAssetIdFromUrl } from './assets.ts'
+import { deckOriginIsUnauthored, type DeckOrigin } from './deck-origin.ts'
 
 export type ChatMessageRole = 'user' | 'assistant'
 
@@ -692,6 +693,7 @@ export function wrapUserPromptForAgent(
   attachmentCount = 0,
   editorSelection?: EditorSelectionContext,
   slideContexts?: SlideContext[],
+  deckOrigin?: DeckOrigin | null,
 ) {
   const effectivePrompt =
     prompt.trim() ||
@@ -706,7 +708,9 @@ export function wrapUserPromptForAgent(
   const slideNote =
     slideContexts && slideContexts.length > 0 ? `\n\n${describeSlideContexts(slideContexts)}` : ''
 
-  if (currentHtml.trim()) {
+  // Ark creates the deck before the first message, so a blank starter deck has
+  // HTML but nothing authored. Treat it as a new deck, not something to revise.
+  if (currentHtml.trim() && !deckOriginIsUnauthored(deckOrigin)) {
     return `The user wants to revise their Ark HTML deck.
 
 User instruction:
@@ -715,9 +719,13 @@ ${effectivePrompt}${attachmentNote}${selectionNote}${slideNote}
 The current deck is available in the job workspace. Inspect it with the available tools before editing.`
   }
 
+  const blankDeckNote = currentHtml.trim()
+    ? '\n\nThe workspace holds an empty starter deck with no authored content. Do not read or preserve it — write_deck replaces it outright.'
+    : ''
+
   return `Create a new complete Ark HTML slide deck from this user request:
 
-${effectivePrompt}${attachmentNote}
+${effectivePrompt}${attachmentNote}${blankDeckNote}
 
 Use the available tools to save the deck, then summarize what you built.`
 }
@@ -848,6 +856,7 @@ export function buildUserModelContent(
     currentHtml?: string
     editorSelection?: EditorSelectionContext
     slideContexts?: SlideContext[]
+    deckOrigin?: DeckOrigin | null
   },
 ): string | Array<TextPart | FilePart> {
   const attachments = message.attachments ?? []
@@ -861,6 +870,7 @@ export function buildUserModelContent(
           attachments.length,
           options?.editorSelection,
           options?.slideContexts,
+          options?.deckOrigin,
         )
       : message.content
 

@@ -5,6 +5,7 @@ import type {
   EditorSelectionContext,
   SlideContext,
 } from './chat.ts'
+import type { DeckOrigin } from './deck-origin.ts'
 
 export type GenerationJobStatus =
   'queued' | 'running' | 'canceling' | 'succeeded' | 'failed' | 'canceled'
@@ -28,6 +29,8 @@ export type GenerationJobRequest = {
   currentHtml: string
   baseDocumentRevision?: number | null
   editingExistingDeck?: boolean
+  /** Resolved server-side from the deck record; `blank` starts a new-deck flow. */
+  deckOrigin?: DeckOrigin | null
   /** Manual-editor selection captured when the request was submitted (issue #83). */
   editorSelection?: EditorSelectionContext
   /** Slides the user attached as context when the request was submitted. */

@@ -2,9 +2,19 @@ import { z } from 'zod'
 
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { isDeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
+import { DECK_ORIGINS } from '@ark/deck-core/deck-origin.ts'
 import { deckIdSchema, withRequestId } from './common.ts'
 
 export { isValidDeckId } from './common.ts'
+export {
+  DECK_ORIGINS,
+  DEFAULT_DECK_ORIGIN,
+  isDeckOrigin,
+  normalizeDeckOrigin,
+  type DeckOrigin,
+} from '@ark/deck-core/deck-origin.ts'
+
+export const deckOriginSchema = z.enum(DECK_ORIGINS)
 
 export const storedDeckSchema = z.object({
   id: deckIdSchema,
@@ -13,13 +23,16 @@ export const storedDeckSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   documentRevision: z.number().int().min(1),
+  origin: deckOriginSchema,
   filePath: z.string().min(1),
 })
 
 export type StoredDeck = z.infer<typeof storedDeckSchema>
 
+// Origin is deliberately absent from summaries: the recent list is built from
+// closed files that are never migrated or opened just to read it.
 export const deckSummarySchema = storedDeckSchema
-  .omit({ html: true, documentRevision: true })
+  .omit({ html: true, documentRevision: true, origin: true })
   .extend({
     documentRevision: z.number().int().min(1).nullable(),
     missing: z.boolean().optional(),
@@ -77,12 +90,14 @@ export type DeckValidationReport = z.infer<typeof deckValidationReportSchema>
 export const createDeckRequestSchema = z
   .object({
     html: z.string().refine((value) => value.trim().length > 0, 'HTML is required.'),
+    origin: deckOriginSchema.optional(),
   })
   .strict()
 
 export type CreateDeckRequest = z.infer<typeof createDeckRequestSchema>
 
-export const updateDeckRequestSchema = createDeckRequestSchema
+// Updates never carry an origin: writing content is what retires `blank`.
+export const updateDeckRequestSchema = createDeckRequestSchema.omit({ origin: true })
 
 export type UpdateDeckRequest = z.infer<typeof updateDeckRequestSchema>
 

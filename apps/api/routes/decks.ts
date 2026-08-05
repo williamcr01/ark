@@ -5,6 +5,7 @@ import {
   createDeckRequestSchema,
   deckPatchRequestSchema,
   renameDeckRequestSchema,
+  updateDeckRequestSchema,
 } from '@ark/contracts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import type { AssetStore } from '../asset-record.ts'
@@ -92,7 +93,7 @@ export function createDecksRouter(deps: {
       return
     }
 
-    const { html } = parsed.data
+    const { html, origin } = parsed.data
     const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
 
     if (!validation.valid) {
@@ -102,7 +103,7 @@ export function createDecksRouter(deps: {
 
     try {
       const runtimeManifest = buildDeckRuntimeManifestFromValidation(html, validation)
-      const deck = await deckStore.createDeck(html)
+      const deck = await deckStore.createDeck(html, origin ? { origin } : undefined)
       notifyDocumentPersisted(deck.id, deck.documentRevision)
       getRequestLogger(request).info('deck.created', {
         deckId: deck.id,
@@ -120,7 +121,7 @@ export function createDecksRouter(deps: {
 
   router.put('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
     const id = request.params.id?.trim()
-    const parsed = parseRequestBody(createDeckRequestSchema, request.body)
+    const parsed = parseRequestBody(updateDeckRequestSchema, request.body)
 
     if (!id) {
       response.status(400).json({ error: 'Deck id is required.' })
