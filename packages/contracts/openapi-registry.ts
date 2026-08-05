@@ -653,8 +653,16 @@ export function generateArkOpenApiDocument() {
       title: 'Ark API',
       version: '1.0.0',
       description:
-        'HTTP API for the Ark presentation builder. Zod schemas in `packages/contracts/` are the source of truth; this document is generated for cross-language clients and drift checks.',
+        'Private loopback API embedded in the Ark Electron application. Zod schemas in `packages/contracts/` are the source of truth.',
     },
-    servers: [{ url: 'http://localhost:8787', description: 'Local API (default PORT)' }],
+    servers: [
+      {
+        url: 'http://127.0.0.1:{port}',
+        description: 'Electron-managed internal API',
+        variables: {
+          port: { default: '8787', description: 'Dynamically allocated loopback port' },
+        },
+      },
+    ],
   })
 }

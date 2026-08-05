@@ -7,6 +7,18 @@ Other npm dependencies remain under the licenses declared in their package
 metadata and recorded in pnpm-lock.yaml (primarily MIT, Apache-2.0, BSD, and
 ISC).
 
+Electron
+--------
+Copyright (c) Electron contributors and GitHub Inc.
+License: MIT
+Packaged license files: LICENSE.electron.txt and LICENSES.chromium.html
+
+electron-updater
+----------------
+Copyright (c) LoopBack contributors
+License: MIT
+Distributed in Ark desktop packages for signed application updates.
+
 reveal.js
 ---------
 Copyright (C) Hakim El Hattab and contributors
@@ -41,6 +53,13 @@ Copyright 2022 The Bricolage Grotesque Project Authors
 License: SIL Open Font License 1.1 (OFL-1.1)
 Distributed via: @fontsource-variable/bricolage-grotesque
 License file: third_party/fonts/bricolage-grotesque/LICENSE
+
+Lobe Icons
+----------
+Copyright (c) 2023 LobeHub
+License: MIT
+Location: apps/desktop/src/assets/providers/
+License file: apps/desktop/src/assets/providers/LICENSE
 
 DOMPurify
 ---------

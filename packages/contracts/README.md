@@ -1,6 +1,6 @@
 # API contracts
 
-`packages/contracts/` is Ark's **contract boundary** between the React shell (`apps/web`) and the Express API (`apps/api`). Both sides import request/response schemas and types from the public entry point:
+`packages/contracts/` is Ark's **contract boundary** between the React shell (`apps/desktop`) and the Express API (`apps/api`). Both sides import request/response schemas and types from the public entry point:
 
 ```ts
 import { deckResponseSchema, parseRequestBody } from '@ark/contracts'

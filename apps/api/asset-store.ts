@@ -10,9 +10,9 @@ import {
 } from './asset-record.ts'
 import { isValidDeckId } from './deck-record.ts'
 import { getAssetCategory } from '@ark/deck-core/assets.ts'
-import { REPO_ROOT } from './repo-root.ts'
+import { resolveArkDataDir } from './data-dir.ts'
 
-const DEFAULT_DATA_DIR = path.resolve(REPO_ROOT, 'data', 'assets', 'meta')
+const DEFAULT_DATA_DIR = resolveArkDataDir('assets', 'meta')
 
 function resolveAssetPath(dataDir: string, id: string) {
   if (!isValidAssetId(id)) {

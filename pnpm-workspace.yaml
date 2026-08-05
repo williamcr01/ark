@@ -3,13 +3,18 @@ packages:
   - 'packages/*'
 
 # concurrently@10 pins shell-quote@1.8.4 exactly; override until upstream bumps.
-# postcss / brace-expansion: pin patched transitive versions until upstreams bump.
+# Patched transitive versions pinned until upstreams bump.
 overrides:
   shell-quote: 1.9.0
   postcss: 8.5.18
-  brace-expansion: 5.0.8
+  brace-expansion: 5.0.9
+  fast-uri: 3.1.5
+  ip-address: 10.3.1
+  'undici@>=7.0.0 <7.29.0': 7.29.0
 
 allowBuilds:
+  electron: true
+  electron-winstaller: true
   esbuild: true
 
 minimumReleaseAgeExclude:
@@ -17,4 +22,7 @@ minimumReleaseAgeExclude:
   - '@ai-sdk/google@3.0.98'
   - ai@6.0.233
   - postcss@8.5.18
-  - brace-expansion@5.0.8
+  - brace-expansion@5.0.9
+  - fast-uri@3.1.5
+  - ip-address@10.3.1
+  - undici@7.29.0

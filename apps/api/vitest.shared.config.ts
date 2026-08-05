@@ -2,7 +2,7 @@ import path from 'node:path'
 import { configDefaults, defineConfig } from 'vitest/config'
 
 // Module mocks and process-wide background work need a fresh worker.
-export const isolatedTests = ['app-observability.test.ts', 'thumbnails/chromium.test.ts']
+export const isolatedTests = ['app-observability.test.ts']
 
 export default defineConfig({
   root: __dirname,

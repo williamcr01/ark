@@ -308,18 +308,18 @@ Transforms, inserts, duplicates, deletes, inspector changes, and layer changes f
 
 ## Shell integration
 
-| Component / module                                     | Role                                                                          |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `apps/web/src/components/DeckPreview.tsx`              | Always-on edit chrome, text commit orchestration, overlay, keyboard shortcuts |
-| `apps/web/src/hooks/useDeckEditorBridge.ts`            | Authenticated port bootstrap, runtime listener, and shell command helpers     |
-| `apps/web/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                                    |
-| `apps/web/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                                 |
-| `apps/web/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                                        |
-| `apps/web/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel                 |
-| `apps/web/src/lib/deck-text-edit.ts`                   | `isTextEditableSelection` guard for inline text                               |
-| `packages/deck-core/deck-preview-html.ts`              | Injects editor runtime when `editorBridge: true`                              |
-| `apps/api/deck-element-patch.ts`                       | Server-side patch application and validation                                  |
-| `apps/api/deck-editable-elements.ts`                   | Editable metadata parsing (#74)                                               |
+| Component / module                                         | Role                                                                          |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `apps/desktop/src/components/DeckPreview.tsx`              | Always-on edit chrome, text commit orchestration, overlay, keyboard shortcuts |
+| `apps/desktop/src/hooks/useDeckEditorBridge.ts`            | Authenticated port bootstrap, runtime listener, and shell command helpers     |
+| `apps/desktop/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                                    |
+| `apps/desktop/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                                 |
+| `apps/desktop/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                                        |
+| `apps/desktop/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel                 |
+| `apps/desktop/src/lib/deck-text-edit.ts`                   | `isTextEditableSelection` guard for inline text                               |
+| `packages/deck-core/deck-preview-html.ts`                  | Injects editor runtime when `editorBridge: true`                              |
+| `apps/api/deck-element-patch.ts`                           | Server-side patch application and validation                                  |
+| `apps/api/deck-editable-elements.ts`                       | Editable metadata parsing (#74)                                               |
 
 Preview sessions record `editorBridge` so the sandbox host serves HTML with the editor script only when requested (`POST /api/preview-sessions` with `editorBridge: true`).
 
@@ -333,7 +333,7 @@ To add a new `ark:editor-*` message safely:
 4. **Runtime handler** — Update `buildDeckEditorBridgeRuntimeScript` to emit or consume the message on the established port.
 5. **Hook handler** — Handle the message in `useDeckEditorBridge` (or a dedicated hook) with port and generation guards.
 6. **Persistence** — Map commit-style messages to `DeckPatchOperation` types in `packages/deck-core/deck-patch.ts` and `apps/api/deck-element-patch.ts`; never write deck HTML from the client alone.
-7. **Tests** — Add validator tests in `packages/deck-core/deck-editor-bridge.test.ts`; add hook/integration tests in `apps/web/src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.
+7. **Tests** — Add validator tests in `packages/deck-core/deck-editor-bridge.test.ts`; add hook/integration tests in `apps/desktop/src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.
 
 Update this document in the same PR as any protocol change.
 

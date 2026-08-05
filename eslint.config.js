@@ -14,7 +14,7 @@ const apiContractPatterns = [
 ]
 
 const boundaryPatterns = {
-  web: [
+  renderer: [
     {
       group: ['**/apps/api/**', '@ark/api', '@ark/api/*'],
       message: 'Frontend code must not import from apps/api. Use workspace packages instead.',
@@ -22,27 +22,27 @@ const boundaryPatterns = {
   ],
   api: [
     {
-      group: ['**/apps/web/**', '@ark/web', '@ark/web/*'],
-      message: 'API code must not import from apps/web. Use workspace packages instead.',
+      group: ['**/apps/desktop/**', '@ark/desktop', '@ark/desktop/*'],
+      message: 'API code must not import from apps/desktop. Use workspace packages instead.',
     },
   ],
   sandbox: [
     {
-      group: ['**/apps/web/**', '@ark/web', '@ark/web/*'],
-      message: 'Sandbox code must not import from apps/web. Use workspace packages instead.',
+      group: ['**/apps/desktop/**', '@ark/desktop', '@ark/desktop/*'],
+      message: 'Sandbox code must not import from apps/desktop. Use workspace packages instead.',
     },
   ],
   packages: [
     {
-      group: ['**/apps/web/**', '**/apps/api/**', '**/apps/sandbox/**'],
+      group: ['**/apps/desktop/**', '**/apps/api/**', '**/apps/sandbox/**'],
       message: 'Packages must not import from apps/.',
     },
   ],
 }
 
 const environmentOnlyPaths = [
-  { name: 'react', message: 'Packages must not depend on React. Keep UI in apps/web.' },
-  { name: 'react-dom', message: 'Packages must not depend on React. Keep UI in apps/web.' },
+  { name: 'react', message: 'Packages must not depend on React. Keep UI in apps/desktop.' },
+  { name: 'react-dom', message: 'Packages must not depend on React. Keep UI in apps/desktop.' },
   { name: 'express', message: 'Packages must not depend on Express. Keep HTTP in apps/api.' },
 ]
 
@@ -77,8 +77,8 @@ export default defineConfig([
     // React Compiler lint rules in eslint-plugin-react-hooks@7 dominate wall time
     // (often >70% of rule cost) and are only needed when the compiler is enabled.
     // Ark does not use React Compiler yet, so keep the classic hooks rules only,
-    // scoped to the web app.
-    files: ['apps/web/src/**/*.{ts,tsx}'],
+    // scoped to the desktop renderer.
+    files: ['apps/desktop/src/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
     },
@@ -93,19 +93,19 @@ export default defineConfig([
   },
   {
     files: [
-      'apps/web/src/components/ui/**/*.{ts,tsx}',
-      'apps/web/src/components/ai-elements/**/*.{ts,tsx}',
+      'apps/desktop/src/components/ui/**/*.{ts,tsx}',
+      'apps/desktop/src/components/ai-elements/**/*.{ts,tsx}',
     ],
     rules: {
       'react-refresh/only-export-components': 'off',
     },
   },
   {
-    files: ['apps/web/src/**/*.{ts,tsx}'],
+    files: ['apps/desktop/src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [...boundaryPatterns.web, ...apiContractPatterns] },
+        { patterns: [...boundaryPatterns.renderer, ...apiContractPatterns] },
       ],
     },
   },

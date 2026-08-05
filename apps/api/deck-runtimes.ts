@@ -12,8 +12,10 @@ import {
 
 import { REPO_ROOT } from './repo-root.ts'
 
-const ROOT = REPO_ROOT
-const RUNTIMES_DIR = path.join(ROOT, 'runtimes')
+const configuredRuntimesDir = process.env.ARK_RUNTIMES_DIR?.trim()
+const RUNTIMES_DIR = configuredRuntimesDir
+  ? path.resolve(configuredRuntimesDir)
+  : path.join(REPO_ROOT, 'runtimes')
 
 const MIME_TYPES: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',

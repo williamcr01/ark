@@ -136,22 +136,6 @@ jobs:
     needs: changes
     if: always()
     runs-on: ubuntu-latest
-    env:
-      TEST_DATABASE_URL: postgres://ark:ark@localhost:5432/ark_test
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: ark
-          POSTGRES_PASSWORD: ark
-          POSTGRES_DB: ark_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ark -d ark_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - name: Require successful change classification
         if: needs.changes.result != 'success'
@@ -198,58 +182,19 @@ jobs:
           BASE_SHA: ${{ needs.changes.outputs.base_sha }}
         run: pnpm test:affected --base "$BASE_SHA" --github-summary "$GITHUB_STEP_SUMMARY"
 
-  test-live-chromium:
-    needs: changes
-    # Non-blocking comprehensive coverage runs after merge or by manual dispatch.
-    if: needs.changes.result == 'success' && needs.changes.outputs.full == 'true' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Browser diagnostics
-        run: |
-          node --version
-          google-chrome --version || /usr/bin/google-chrome --version
-          test -x /usr/bin/google-chrome
-          df -h / /tmp
-          free -h || true
-
-      - name: Live Chromium thumbnail renderer tests
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
-        env:
-          ARK_CHROMIUM_PATH: /usr/bin/google-chrome
-          ARK_CHROMIUM_NO_SANDBOX: 'true'
-          ARK_LIVE_CHROMIUM_TESTS: '1'
-        with:
-          timeout_minutes: 12
-          max_attempts: 3
-          retry_wait_seconds: 15
-          command: pnpm test:live-chromium
-
   smoke:
     needs: changes
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      ARK_CHROMIUM_PATH: /usr/bin/google-chrome
-      ARK_CHROMIUM_NO_SANDBOX: 'true'
+      ELECTRON_DISABLE_SANDBOX: 'true'
     steps:
       - name: Require successful change classification
         if: needs.changes.result != 'success'
         run: exit 1
 
-      - name: Browser smoke not required
+      - name: Desktop smoke not required
         if: needs.changes.result == 'success' && (needs.changes.outputs.run_ci != 'true' || needs.changes.outputs.smoke != 'true')
         env:
           CI_REASON: ${{ needs.changes.outputs.reason }}
@@ -270,108 +215,19 @@ jobs:
       - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Browser smoke diagnostics
+      - name: Desktop smoke diagnostics
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
         run: |
-          # runner.temp is only valid in step contexts, not job-level env.
-          echo "ARK_SMOKE_ARTIFACTS_DIR=${{ runner.temp }}/ark-smoke-artifacts" >> "$GITHUB_ENV"
-          mkdir -p "${{ runner.temp }}/ark-smoke-artifacts"
           node --version
-          google-chrome --version || /usr/bin/google-chrome --version
-          test -x /usr/bin/google-chrome
+          pnpm --filter @ark/desktop exec electron --version
           df -h / /tmp
           free -h || true
 
-      - name: Smoke - plain CSS
+      - name: Smoke - Electron app
         if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.smoke == 'true'
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 8
           max_attempts: 3
           retry_wait_seconds: 15
-          command: pnpm smoke:plain-css
-
-      - name: Upload browser smoke artifacts (on failure)
-        if: failure() && needs.changes.result == 'success' && needs.changes.outputs.smoke == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: browser-smoke-artifacts-${{ github.run_id }}
-          path: ${{ runner.temp }}/ark-smoke-artifacts
-          if-no-files-found: warn
-          retention-days: 7
-
-  # Disabled: flaky/expensive on every main push (especially smoke:manual-edit).
-  # Scripts kept for local use (`pnpm smoke:browser:extended`). Re-enable via
-  # nightly, prod/release branch, or path filters — see #265.
-  smoke-extended:
-    if: false
-    needs: changes
-    runs-on: ubuntu-latest
-    # Fail fast if re-enabled: hung CDP awaits previously burned ~30m/merge.
-    timeout-minutes: 25
-    env:
-      ARK_CHROMIUM_PATH: /usr/bin/google-chrome
-      ARK_CHROMIUM_NO_SANDBOX: 'true'
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Browser smoke diagnostics
-        run: |
-          echo "ARK_SMOKE_ARTIFACTS_DIR=${{ runner.temp }}/ark-smoke-artifacts" >> "$GITHUB_ENV"
-          mkdir -p "${{ runner.temp }}/ark-smoke-artifacts"
-          node --version
-          google-chrome --version || /usr/bin/google-chrome --version
-          test -x /usr/bin/google-chrome
-          df -h / /tmp
-          free -h || true
-
-      - name: Smoke - Reveal runtime
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
-        with:
-          timeout_minutes: 4
-          max_attempts: 2
-          retry_wait_seconds: 10
-          command: pnpm smoke:reveal-runtime
-
-      - name: Smoke - full-JS bridge
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
-        with:
-          timeout_minutes: 4
-          max_attempts: 2
-          retry_wait_seconds: 10
-          command: pnpm smoke:full-js-bridge
-
-      - name: Smoke - manual edit
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
-        with:
-          # One attempt only: deterministic regressions previously retried into a
-          # 3×10m hang (~30m) with no new signal.
-          timeout_minutes: 5
-          max_attempts: 1
-          command: pnpm smoke:manual-edit
-
-      - name: Smoke - thumbnails
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
-        with:
-          timeout_minutes: 5
-          max_attempts: 2
-          retry_wait_seconds: 10
-          command: pnpm smoke:thumbnails
-
-      - name: Upload browser smoke artifacts (on failure)
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: browser-smoke-extended-artifacts-${{ github.run_id }}
-          path: ${{ runner.temp }}/ark-smoke-artifacts
-          if-no-files-found: warn
-          retention-days: 7
+          command: pnpm smoke:desktop

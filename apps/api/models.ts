@@ -206,6 +206,12 @@ const PROVIDER_LISTERS: Record<ProviderId, (apiKey: string) => Promise<Set<strin
   google: listGoogleModelIds,
 }
 
+export async function testProviderApiKey(provider: ProviderId, apiKey: string) {
+  const ids = await PROVIDER_LISTERS[provider](apiKey.trim())
+
+  return { modelCount: ids.size }
+}
+
 export const formatModelCatalogWarning = (provider: ProviderId, error: unknown): string => {
   const label = PROVIDER_LABELS[provider]
   const message = error instanceof Error ? error.message.trim() : ''

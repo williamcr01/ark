@@ -12,7 +12,7 @@ import {
 } from 'node:fs/promises'
 import path from 'node:path'
 
-import { REPO_ROOT } from '../repo-root.ts'
+import { resolveArkDataDir } from '../data-dir.ts'
 import {
   THUMBNAIL_CACHE_MAX_ENTRIES,
   THUMBNAIL_STATUS,
@@ -20,7 +20,7 @@ import {
   type ThumbnailStatus,
 } from './constants.ts'
 
-const DEFAULT_CACHE_DIR = path.resolve(REPO_ROOT, 'data', 'thumbnails')
+const DEFAULT_CACHE_DIR = resolveArkDataDir('thumbnails')
 const THUMBNAIL_BLOB_DIR_NAME = 'blobs'
 const FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/i
 
@@ -31,7 +31,7 @@ export type ThumbnailCacheMeta = {
   manifestHash: string
   slideCount: number
   slideFingerprints?: string[]
-  /** Bumps when the Chromium capture pipeline changes; stale ready entries re-render. */
+  /** Bumps when the Electron capture pipeline changes; stale ready entries re-render. */
   rendererVersion?: string
   width: number
   height: number
@@ -296,7 +296,10 @@ export function createThumbnailCache(
     const meta: ThumbnailCacheMeta = {
       ...input,
       status: THUMBNAIL_STATUS.pending,
-      attempts: (existing?.attempts ?? 0) + 1,
+      attempts:
+        existing && existing.rendererVersion === input.rendererVersion
+          ? (existing.attempts ?? 0) + 1
+          : 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }

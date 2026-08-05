@@ -150,7 +150,7 @@ Guidance:
 
 Script-stripped thumbnail fallbacks **do not render live Chart.js canvases**. Acceptable v1 behavior:
 
-- Server-rendered PNG thumbnails (when Chromium pipeline is enabled) capture the painted canvas after scripts run.
+- Electron-rendered PNG thumbnails capture the painted canvas after scripts run.
 - `srcDoc` fallback shows empty/blank chart regions — prefer SVG for decks that must look correct in the scriptless strip, or accept the blank canvas until capture completes.
 
 Coordinate deeper server-side chart fidelity with [#33](https://github.com/williamcr01/ark/issues/33) if needed.

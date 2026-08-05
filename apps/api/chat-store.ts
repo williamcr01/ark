@@ -13,9 +13,9 @@ import {
   normalizeChatMessageLimit,
 } from './chat-record.ts'
 import { isValidDeckId } from './deck-record.ts'
-import { REPO_ROOT } from './repo-root.ts'
+import { resolveArkDataDir } from './data-dir.ts'
 
-const DEFAULT_DATA_DIR = path.resolve(REPO_ROOT, 'data', 'chat')
+const DEFAULT_DATA_DIR = resolveArkDataDir('chat')
 
 type StoredChatFile = {
   thread: ChatThread

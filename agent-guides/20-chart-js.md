@@ -157,6 +157,6 @@ Chart decks are plain `section.slide` documents. For shell-driven navigation, li
 
 ## Limits
 
-- Script-stripped thumbnail fallbacks show blank canvases; Chromium PNG thumbnails can capture after scripts run.
+- Script-stripped thumbnail fallbacks show blank canvases; Electron PNG thumbnails can capture after scripts run.
 - Original download keeps `/api/runtimes/chart.js/...` URLs (needs Ark host); sanitized download strips scripts.
 - No remote data loading, Chart.js plugins from CDNs, or unapproved versions.

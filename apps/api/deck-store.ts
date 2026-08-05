@@ -29,7 +29,7 @@ import {
   type DeckVersionDiff,
   type DeckVersionProvenance,
 } from '@ark/contracts'
-import { REPO_ROOT } from './repo-root.ts'
+import { resolveArkDataDir } from './data-dir.ts'
 
 export {
   extractDeckTitle,
@@ -49,7 +49,7 @@ export type {
   StoredDeck,
 }
 
-const DEFAULT_DATA_DIR = path.resolve(REPO_ROOT, 'data', 'decks')
+const DEFAULT_DATA_DIR = resolveArkDataDir('decks')
 
 type StoredDeckVersion = {
   id: string

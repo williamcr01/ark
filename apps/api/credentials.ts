@@ -17,6 +17,16 @@ const PROVIDER_ENV_KEYS: Record<ProviderId, string> = {
   google: 'GOOGLE_GENERATIVE_AI_API_KEY',
 }
 
+export type ProviderApiKeySource = {
+  getApiKey: (provider: ProviderId) => string | null
+}
+
+let providerApiKeySource: ProviderApiKeySource | null = null
+
+export function setProviderApiKeySource(source: ProviderApiKeySource | null) {
+  providerApiKeySource = source
+}
+
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
   openai: 'OpenAI',
   anthropic: 'Claude',
@@ -24,7 +34,11 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
 }
 
 export const getProviderApiKey = (provider: ProviderId): string | null => {
-  const apiKey = process.env[PROVIDER_ENV_KEYS[provider]]?.trim()
+  const apiKey = (
+    providerApiKeySource
+      ? providerApiKeySource.getApiKey(provider)
+      : process.env[PROVIDER_ENV_KEYS[provider]]
+  )?.trim()
 
   if (!apiKey || PLACEHOLDER_API_KEYS.has(apiKey)) {
     return null
@@ -50,15 +64,14 @@ export const getProviderStatus = () =>
 
 export const missingApiKeyError = (): ApiErrorPayload => ({
   code: 'missing_api_key',
-  error:
-    'No API keys configured. Add at least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY to .env and restart the dev server.',
+  error: 'No API keys configured. Add a provider key in Settings.',
 })
 
 export const invalidApiKeyError = (provider?: ProviderId): ApiErrorPayload => ({
   code: 'invalid_api_key',
   error: provider
-    ? `The ${PROVIDER_LABELS[provider]} API key in .env is invalid or expired. Check ${PROVIDER_ENV_KEYS[provider]} and restart the dev server.`
-    : 'An API key in .env is invalid or expired. Check your provider keys and restart the dev server.',
+    ? `The ${PROVIDER_LABELS[provider]} API key is invalid or expired. Update it in Settings.`
+    : 'A provider API key is invalid or expired. Update it in Settings.',
 })
 
 export const parseProviderHttpError = (

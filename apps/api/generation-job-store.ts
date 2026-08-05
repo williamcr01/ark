@@ -17,9 +17,9 @@ import {
   createEmptyGenerationJobProgress,
   isValidGenerationJobId,
 } from './generation-job-record.ts'
-import { REPO_ROOT } from './repo-root.ts'
+import { resolveArkDataDir } from './data-dir.ts'
 
-const DEFAULT_DATA_DIR = path.resolve(REPO_ROOT, 'data', 'generation-jobs')
+const DEFAULT_DATA_DIR = resolveArkDataDir('generation-jobs')
 
 type StoredGenerationJobFile = GenerationJob
 

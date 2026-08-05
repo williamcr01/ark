@@ -6,7 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDeckStore } from '../deck-store.ts'
 import type { Logger, LogFields, LogLevel } from '../observability/logger.ts'
 import { buildThumbnailCacheKey, createThumbnailCache } from './cache.ts'
-import { THUMBNAIL_QUEUE_MAX_PENDING, THUMBNAIL_STATUS } from './constants.ts'
+import {
+  THUMBNAIL_QUEUE_MAX_PENDING,
+  THUMBNAIL_RENDERER_VERSION,
+  THUMBNAIL_STATUS,
+} from './constants.ts'
 import { createThumbnailService } from './service.ts'
 import type {
   ThumbnailRenderer,
@@ -590,6 +594,48 @@ describe('thumbnail service', () => {
     expect(exhausted.status).toBe(THUMBNAIL_STATUS.failed)
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(renderCount).toBe(3)
+  })
+
+  it('starts a fresh attempt budget after the renderer changes', async () => {
+    let renderCount = 0
+    const { service, cache } = await setup(async (request) => {
+      renderCount += 1
+      return renderRequestedSlides(request)
+    })
+    const statusInput = {
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      versionId: 'a0000000-0000-4000-8000-000000000003',
+      manifestHash: 'abc123',
+    }
+    const key = { versionId: statusInput.versionId, manifestHash: statusInput.manifestHash }
+
+    await cache.writeMeta(key, {
+      ...statusInput,
+      slideCount: 2,
+      rendererVersion: 'thumbnail-renderer-old',
+      width: 480,
+      height: 270,
+      error: 'old renderer failed',
+      status: THUMBNAIL_STATUS.failed,
+      attempts: 3,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+
+    const retrying = await service.getStatus({
+      ...statusInput,
+      enqueueIfMissing: true,
+      html: sampleHtml,
+    })
+    expect(retrying.status).toBe(THUMBNAIL_STATUS.pending)
+
+    await vi.waitFor(async () => {
+      const meta = await cache.readMeta(key)
+      expect(meta?.status).toBe(THUMBNAIL_STATUS.ready)
+      expect(meta?.rendererVersion).toBe(THUMBNAIL_RENDERER_VERSION)
+      expect(meta?.attempts).toBe(1)
+    })
+    expect(renderCount).toBe(1)
   })
 
   it('runs queued foreground jobs before background warms', async () => {

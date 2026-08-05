@@ -12,10 +12,6 @@ export const THUMBNAIL_OUTPUT_HEIGHT = Math.round(
 
 export const THUMBNAIL_MAX_SLIDES = 40
 export const THUMBNAIL_DECK_TIMEOUT_MS = 45_000
-/** Tight budget for the sandboxed Chromium probe before trying --no-sandbox. */
-export const CHROMIUM_STARTUP_TIMEOUT_MS = 10_000
-/** Match the deck budget for launches that are expected to succeed in CI cold starts. */
-export const CHROMIUM_STARTUP_FALLBACK_TIMEOUT_MS = THUMBNAIL_DECK_TIMEOUT_MS
 export const THUMBNAIL_SLIDE_TIMEOUT_MS = 3_000
 export const THUMBNAIL_READY_TIMEOUT_MS = 12_000
 /**
@@ -26,7 +22,7 @@ export const THUMBNAIL_SETTLE_MS = 40
 export const THUMBNAIL_MAX_PNG_BYTES = 1_500_000
 export const THUMBNAIL_CACHE_MAX_ENTRIES = 200
 /** Bumped when capture/settle pipeline changes invalidate cached PNGs. */
-export const THUMBNAIL_RENDERER_VERSION = 'thumbnail-renderer-v11'
+export const THUMBNAIL_RENDERER_VERSION = 'thumbnail-renderer-v12'
 export const THUMBNAIL_MAX_RENDER_ATTEMPTS = 3
 export const THUMBNAIL_FAILED_RETRY_DELAY_MS = 30_000
 /** Must exceed deck timeout so a live render is not stolen by another process. */

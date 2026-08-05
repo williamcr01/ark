@@ -144,7 +144,7 @@ Reveal decks **without** approved registry assets fall back to **CSS-only** prev
 ## Thumbnails
 
 Sidebar thumbnails prefer **sandbox-rendered PNGs** produced by the headless
-Chromium pipeline ([thumbnails.md](./thumbnails.md)). That path loads the same
+Electron capture pipeline ([thumbnails.md](./thumbnails.md)). That path loads the same
 preview HTML / reveal adapter as main preview, so approved Reveal decks render
 with runtime layout instead of a static approximation.
 
@@ -176,7 +176,7 @@ Status as of issues [#93](https://github.com/williamcr01/ark/issues/93), [#94](h
 | Plugins            | **Not supported**       | No reveal plugins in registry; do not reference plugin scripts                                                                                                                         |
 | Main preview       | **Supported**           | Full reveal adapter with approved assets                                                                                                                                               |
 | Present mode       | **Supported**           | Same bridge and adapter as main preview                                                                                                                                                |
-| Sidebar thumbnails | **Supported**           | Preferred path: sandbox-rendered PNGs via Chromium ([thumbnails.md](./thumbnails.md)); `srcDoc` fallback remains static CSS with fragments fully visible                               |
+| Sidebar thumbnails | **Supported**           | Preferred path: sandbox-rendered PNGs via Electron ([thumbnails.md](./thumbnails.md)); `srcDoc` fallback remains static CSS with fragments fully visible                               |
 | Export / download  | **Supported**           | **Original** download keeps deck source with `/api/runtimes/...` URLs; **sanitized** download strips non-approved scripts (approved reveal script preserved when using reveal adapter) |
 
 ## Security rules (reveal-specific)

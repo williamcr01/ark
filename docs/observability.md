@@ -1,6 +1,6 @@
 # Backend observability
 
-Ark emits structured JSON logs from the API and generation runner. Use them to profile deck parsing, validation, preview sessions, and generation jobs before considering backend extraction ([backend-extraction.md](./backend-extraction.md)).
+Ark emits structured JSON logs from its embedded API and generation runner. Use them to profile deck parsing, validation, preview sessions, and generation jobs inside the desktop process.
 
 ## Log shape
 
