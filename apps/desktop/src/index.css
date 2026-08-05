@@ -105,6 +105,9 @@
   --ark-canvas: var(--ark-shell);
   --ark-preview: var(--ark-stage);
   --ark-paper: var(--ark-panel);
+  /* Editable surfaces share chrome's value so a field reads as a distinct material
+     from the panel holding it: brighter than the panel in light, deeper in dark. */
+  --ark-field: var(--ark-panel-raised);
   --ark-ink: var(--ark-foreground);
   --ark-muted-ink: var(--ark-muted-foreground);
   /* Emphasis *ink* — icon and label color, so it inverts with the theme. Distinct
@@ -208,6 +211,7 @@
   --ark-canvas: var(--ark-shell);
   --ark-preview: var(--ark-stage);
   --ark-paper: var(--ark-panel);
+  --ark-field: var(--ark-panel-raised);
   --ark-ink: var(--ark-foreground);
   --ark-muted-ink: var(--ark-muted-foreground);
   --ark-accent: var(--ark-focus);

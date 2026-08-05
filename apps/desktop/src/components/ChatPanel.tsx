@@ -853,7 +853,17 @@ export function ChatPanel({
           >
             <PromptInput
               accept="image/*,text/*,application/pdf"
-              className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
+              // `has-disabled:` matches any disabled descendant, so InputGroup's own
+              // rule greys the whole composer whenever the submit button is off --
+              // which is every idle moment, since an empty prompt cannot be sent.
+              // Hold the field surface through that state; the textarea carries its
+              // own disabled styling when the composer is genuinely unavailable.
+              groupClassName={cn(
+                'border-[var(--ark-line)] bg-[var(--ark-field)] shadow-none',
+                'dark:bg-[var(--ark-field)]',
+                'has-disabled:bg-[var(--ark-field)] has-disabled:opacity-100',
+                'dark:has-disabled:bg-[var(--ark-field)]',
+              )}
               maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
               multiple
               onError={(error) => onAttachmentError(formatAttachmentError(error))}

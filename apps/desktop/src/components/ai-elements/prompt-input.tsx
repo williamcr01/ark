@@ -256,10 +256,17 @@ export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, 'onSubmit' 
   maxFileSize?: number
   onError?: (err: { code: 'max_files' | 'max_file_size' | 'accept'; message: string }) => void
   onSubmit: (message: PromptInputMessage, event: FormEvent<HTMLFormElement>) => void | Promise<void>
+  /**
+   * Classes for the bordered group rather than the wrapping form. Surface styling
+   * belongs here: the form is unstyled and sits behind the group's rounded corners,
+   * so a background set through `className` shows through them as square edges.
+   */
+  groupClassName?: string
 }
 
 export const PromptInput = ({
   className,
+  groupClassName,
   accept,
   multiple,
   globalDrop,
@@ -535,7 +542,12 @@ export const PromptInput = ({
           type="file"
         />
         <form className={cn('w-full', className)} onSubmit={handleSubmit} ref={formRef} {...props}>
-          <InputGroup className="overflow-hidden transition-colors focus-within:border-foreground/25">
+          <InputGroup
+            className={cn(
+              'overflow-hidden transition-colors focus-within:border-foreground/25',
+              groupClassName,
+            )}
+          >
             {children}
           </InputGroup>
         </form>
