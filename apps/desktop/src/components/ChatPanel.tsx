@@ -101,6 +101,9 @@ const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
   ComponentType<BorderBeamProps>
 >
 
+/** `--radius: 0.625rem`, i.e. what `rounded-lg` resolves to, in px. */
+const ARK_RADIUS_LG = 10
+
 export type { ChatMessage } from '@ark/deck-core/chat.ts'
 
 type ChatAlertId = 'generation' | 'attachment' | 'models' | 'model-warnings'
@@ -160,6 +163,11 @@ function ActiveComposer({
     <Suspense fallback={<div className={ringClassName}>{children}</div>}>
       <BorderBeam
         active={active}
+        // The beam wrapper clips its children to its own radius, and it can only
+        // detect that radius from its first child -- here the prompt's unstyled
+        // form element, which has none. Left to fall back to the preset 16px it
+        // shaves the corners off the `rounded-lg` (10px) input box beneath it.
+        borderRadius={ARK_RADIUS_LG}
         className={focusRingClassName}
         colorVariant="colorful"
         duration={3.1}
