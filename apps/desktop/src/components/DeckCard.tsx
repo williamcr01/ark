@@ -138,20 +138,21 @@ export function DeckCard({ deck, onDelete, onRename, onLocate, onRemoveRecent }:
         <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-muted p-4 text-center">
           <span className="text-sm text-muted-foreground">File not found</span>
           <div className="flex gap-2">
-            <Button onClick={() => void onLocate?.(deck)} size="sm">
+            <Button className="relative z-20" onClick={() => void onLocate?.(deck)} size="sm">
               Locate
             </Button>
-            <Button onClick={() => void onRemoveRecent?.(deck)} size="sm" variant="outline">
+            <Button
+              className="relative z-20"
+              onClick={() => void onRemoveRecent?.(deck)}
+              size="sm"
+              variant="outline"
+            >
               Remove
             </Button>
           </div>
         </div>
       ) : (
-        <Link
-          aria-label={`Open ${deck.title}`}
-          className="relative aspect-video w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-          to={`/decks/${deck.id}`}
-        >
+        <div className="relative aspect-video w-full overflow-hidden bg-muted">
           {thumbnailUrl ? (
             <img
               alt=""
@@ -170,15 +171,23 @@ export function DeckCard({ deck, onDelete, onRename, onLocate, onRemoveRecent }:
               {initial}
             </div>
           )}
-        </Link>
+        </div>
       )}
+
+      {!deck.missing ? (
+        <Link
+          aria-label={`Open ${deck.title}`}
+          className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          to={`/decks/${deck.id}`}
+        />
+      ) : null}
 
       <div className="flex items-start gap-1 px-3 py-2.5">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           {isEditing ? (
             <input
               aria-label="Deck title"
-              className="box-border h-5 w-full min-w-0 truncate rounded-sm border border-ring bg-transparent px-0 font-heading text-sm font-medium leading-5 outline-none"
+              className="relative z-20 box-border h-5 w-full min-w-0 truncate rounded-sm border border-ring bg-transparent px-0 font-heading text-sm font-medium leading-5 outline-none"
               disabled={isSaving}
               onBlur={() => {
                 void commitRename()
@@ -193,12 +202,9 @@ export function DeckCard({ deck, onDelete, onRename, onLocate, onRemoveRecent }:
               {deck.title}
             </span>
           ) : (
-            <Link
-              className="box-border flex h-5 w-full min-w-0 items-center truncate rounded-sm border border-transparent font-heading text-sm font-medium leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              to={`/decks/${deck.id}`}
-            >
+            <span className="box-border flex h-5 w-full min-w-0 items-center truncate rounded-sm border border-transparent font-heading text-sm font-medium leading-5">
               {deck.title}
-            </Link>
+            </span>
           )}
           <span className="truncate text-xs text-muted-foreground">
             {formatUpdatedAt(deck.updatedAt)}
@@ -209,7 +215,7 @@ export function DeckCard({ deck, onDelete, onRename, onLocate, onRemoveRecent }:
           <DropdownMenuTrigger asChild>
             <Button
               aria-label={`Actions for ${deck.title}`}
-              className="size-7 shrink-0"
+              className="relative z-20 size-7 shrink-0"
               size="icon-sm"
               variant="ghost"
             >
