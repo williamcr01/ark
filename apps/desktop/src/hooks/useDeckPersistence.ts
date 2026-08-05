@@ -19,8 +19,9 @@ import {
 import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import { extractDeckTitle } from '@ark/contracts'
 
+/** A blank white slide: no starter content, so the first edit or generation owns the deck. */
 const NEW_DECK_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Untitled Presentation</title><style>html,body{margin:0}body{font-family:system-ui,sans-serif}.slide{box-sizing:border-box;width:100vw;height:100vh;padding:8%;display:grid;place-items:center;background:#f7f6f2;color:#171717}</style></head><body><section class="slide"><h1>Untitled Presentation</h1></section></body></html>`
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Untitled Presentation</title><style>html,body{margin:0}body{font-family:system-ui,sans-serif}.slide{box-sizing:border-box;width:100vw;height:100vh;padding:8%;background:#fff;color:#171717}</style></head><body><section class="slide"></section></body></html>`
 
 const toDeckSummary = (deck: StoredDeck): DeckSummary => ({
   id: deck.id,

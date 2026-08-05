@@ -23,6 +23,7 @@ External JavaScript libraries are only acceptable if inlined in the HTML or serv
 When the user wants a plain deck (or a simple static sequence):
 
 - Each slide is a top-level `<section class="slide">`. All slides in the DOM at once. No runtime markers; Ark injects CSS-only navigation.
+- Do **not** add a `<script>` for slide navigation. Ark already handles it, and preview strips deck scripts in this mode — a nav script is dead code that makes the preview show a "Static preview" notice. Ship plain decks with no `<script>` at all.
 
 ```html
 <!doctype html>

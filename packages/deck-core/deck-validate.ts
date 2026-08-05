@@ -261,7 +261,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
       pushIssue(issues, {
         code: 'script_without_marker',
         message:
-          'Deck scripts require data-ark-deck="nav" or data-ark-preview="full-js" on <html> or <body>.',
+          'Deck scripts are stripped in preview unless <html> or <body> has data-ark-deck="nav" or data-ark-preview="full-js". Remove the script if Ark\'s injected navigation is enough, or add the marker and own navigation through the bridge protocol.',
         severity: 'warning',
       })
     }
