@@ -67,7 +67,7 @@ function ModelSelectorTriggerLabel({
   }, [effortLabel, modelName])
 
   return (
-    <span className="relative min-w-0 flex-1 overflow-hidden text-left" ref={containerRef}>
+    <span className="relative min-w-0 shrink overflow-hidden text-left" ref={containerRef}>
       <span aria-hidden className="invisible absolute whitespace-nowrap" ref={measureRef}>
         {fullLabel}
       </span>
@@ -239,7 +239,10 @@ export function ModelSelector({
           aria-label="Select model"
           className={cn(
             morphMenuTriggerClassName,
-            'h-8 min-w-0 max-w-full grow shrink justify-between font-medium text-[var(--ark-ink)] sm:max-w-[260px]',
+            // Sized to its contents rather than the tools row: `grow` stretched the
+            // trigger across the free space and `justify-between` then pushed the
+            // chevron out to the far edge. The max-widths stay as truncation caps.
+            'h-8 min-w-0 max-w-full shrink justify-start rounded-md font-medium text-[var(--ark-ink)] sm:max-w-[260px]',
             'motion-reduce:transition-none',
             !canGenerate && 'text-muted-foreground',
             className,
@@ -261,7 +264,9 @@ export function ModelSelector({
           <ChevronsUpDownIcon className="opacity-50" data-icon="inline-end" />
         </Button>
       </DropdownMenuTrigger>
-      <MorphMenuContent bare className="relative">
+      {/* Radius matches the trigger's `rounded-md` so the panel grows out of its
+          actual corners; the default assumes the pill shape the trigger no longer has. */}
+      <MorphMenuContent bare className="relative" triggerRadius={8}>
         <div
           className={cn(
             'ark-control-panel! relative z-10 flex w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-clip-padding',

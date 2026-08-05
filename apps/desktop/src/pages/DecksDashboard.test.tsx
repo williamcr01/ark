@@ -14,7 +14,20 @@ const deckApiMocks = vi.hoisted(() => ({
   renameDeck: vi.fn(),
 }))
 
+const useDeckThumbnailsMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    status: null,
+    thumbnailUrls: null,
+    error: null,
+    isLoading: false,
+  })),
+)
+
 vi.mock('@/lib/deck-api', () => deckApiMocks)
+
+vi.mock('@/hooks/useDeckThumbnails', () => ({
+  useDeckThumbnails: useDeckThumbnailsMock,
+}))
 
 vi.mock('@/hooks/useAppearance', () => ({
   useAppearance: () => ({
@@ -110,5 +123,31 @@ describe('DecksDashboard', () => {
     expect(await screen.findByText('Fresh deck')).toBeInTheDocument()
     expect(getTestLocalStorage().getItem('ark:chat-session:new')).toBeNull()
     expect(getTestLocalStorage().getItem('ark:generation-job:new')).toBeNull()
+  })
+
+  it('opens a deck from anywhere on its card', async () => {
+    deckApiMocks.listDecks.mockResolvedValue([
+      {
+        id: 'deck-1',
+        title: 'Roadmap',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-02T00:00:00.000Z',
+        documentRevision: 1,
+        filePath: '/tmp/roadmap.ark',
+      },
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/decks']}>
+        <Routes>
+          <Route element={<DecksDashboard />} path="/decks" />
+          <Route element={<div>Opened deck</div>} path="/decks/:deckId" />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByRole('link', { name: 'Open Roadmap' }))
+
+    expect(await screen.findByText('Opened deck')).toBeInTheDocument()
   })
 })

@@ -101,6 +101,9 @@ const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
   ComponentType<BorderBeamProps>
 >
 
+/** `--radius: 0.625rem`, i.e. what `rounded-lg` resolves to, in px. */
+const ARK_RADIUS_LG = 10
+
 export type { ChatMessage } from '@ark/deck-core/chat.ts'
 
 type ChatAlertId = 'generation' | 'attachment' | 'models' | 'model-warnings'
@@ -141,7 +144,15 @@ function ActiveComposer({
   resolvedAppearance: ResolvedAppearance
   children: ReactNode
 }) {
-  const ringClassName = cn(active && 'rounded-lg ring-1 ring-[var(--ark-focus)]')
+  // The focus ring is only a "cursor is in the prompt" cue, so it stays scoped to
+  // the textarea instead of tracking generation state.
+  const focusRingClassName =
+    'rounded-lg has-[textarea:focus]:ring-1 has-[textarea:focus]:ring-[var(--ark-fill)]'
+  // Without the beam there is no motion cue, so fall back to a static active ring.
+  const ringClassName = cn(
+    focusRingClassName,
+    active && 'rounded-lg ring-1 ring-[var(--ark-focus)]',
+  )
 
   // Keep a stable wrapper tree so toggling generation does not remount PromptInput.
   if (reducedMotion) {
@@ -152,11 +163,15 @@ function ActiveComposer({
     <Suspense fallback={<div className={ringClassName}>{children}</div>}>
       <BorderBeam
         active={active}
-        className={ringClassName}
-        colorVariant="mono"
+        // The beam wrapper clips its children to its own radius, and it can only
+        // detect that radius from its first child -- here the prompt's unstyled
+        // form element, which has none. Left to fall back to the preset 16px it
+        // shaves the corners off the `rounded-lg` (10px) input box beneath it.
+        borderRadius={ARK_RADIUS_LG}
+        className={focusRingClassName}
+        colorVariant="colorful"
         duration={3.1}
-        size="line"
-        staticColors
+        size="md"
         strength={1}
         theme={resolvedAppearance}
       >
@@ -248,7 +263,7 @@ function ChatPromptInputSubmit({
 
   return (
     <PromptInputSubmit
-      className="ark-control-invert! size-8 shrink-0 rounded-full"
+      className="ark-control-accent! size-8 shrink-0 rounded-full"
       disabled={!isGenerating && (!canSubmit || isInputDisabled)}
       onStop={() => {
         void onCancelGeneration()
@@ -846,7 +861,17 @@ export function ChatPanel({
           >
             <PromptInput
               accept="image/*,text/*,application/pdf"
-              className="border-[var(--ark-line)] bg-[var(--ark-paper)] shadow-none"
+              // `has-disabled:` matches any disabled descendant, so InputGroup's own
+              // rule greys the whole composer whenever the submit button is off --
+              // which is every idle moment, since an empty prompt cannot be sent.
+              // Hold the field surface through that state; the textarea carries its
+              // own disabled styling when the composer is genuinely unavailable.
+              groupClassName={cn(
+                'border-[var(--ark-line)] bg-[var(--ark-field)] shadow-none',
+                'dark:bg-[var(--ark-field)]',
+                'has-disabled:bg-[var(--ark-field)] has-disabled:opacity-100',
+                'dark:has-disabled:bg-[var(--ark-field)]',
+              )}
               maxFileSize={MAX_CHAT_ATTACHMENT_BYTES}
               multiple
               onError={(error) => onAttachmentError(formatAttachmentError(error))}

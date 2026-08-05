@@ -138,39 +138,51 @@ export function EditModeToolbar({
           if (!value) return
           const tool = value as EditorTool
           onToolChange(tool)
-          if (tool === 'insert') onPickImage?.()
         }}
         type="single"
         value={activeTool}
       >
-        <ToggleGroupItem
-          aria-label="Select"
-          aria-pressed={activeTool === 'select'}
-          disabled={!canUseTools || textEditActive}
-          role="button"
-          value="select"
-        >
-          <MousePointer2Icon className="size-3.5" />
-        </ToggleGroupItem>
-        <ToggleGroupItem
-          aria-label="Text box"
-          aria-pressed={activeTool === 'text'}
-          disabled={!canUseTools || textEditActive}
-          role="button"
-          value="text"
-        >
-          <TypeIcon className="size-3.5" />
-        </ToggleGroupItem>
-        <ToggleGroupItem
-          aria-label="Insert image"
-          aria-pressed={activeTool === 'insert'}
-          disabled={!canUseTools || textEditActive}
-          role="button"
-          value="insert"
-        >
-          <ImageIcon className="size-3.5" />
-        </ToggleGroupItem>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <ToggleGroupItem
+                aria-label="Select"
+                aria-pressed={activeTool === 'select'}
+                disabled={!canUseTools || textEditActive}
+                role="button"
+                value="select"
+              >
+                <MousePointer2Icon className="size-3.5" />
+              </ToggleGroupItem>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Select</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <ToggleGroupItem
+                aria-label="Text box"
+                aria-pressed={activeTool === 'text'}
+                disabled={!canUseTools || textEditActive}
+                role="button"
+                value="text"
+              >
+                <TypeIcon className="size-3.5" />
+              </ToggleGroupItem>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Text box</TooltipContent>
+        </Tooltip>
       </ToggleGroup>
+
+      <ToolbarButton
+        disabled={!canUseTools || textEditActive}
+        label="Insert image"
+        onClick={onPickImage}
+      >
+        <ImageIcon className="size-3.5" />
+      </ToolbarButton>
 
       {selectedImage ? (
         <>

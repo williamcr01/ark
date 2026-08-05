@@ -37,14 +37,22 @@ describe('EditModeToolbar', () => {
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute('data-state', 'on')
     expect(screen.getByRole('button', { name: 'Text box' })).toHaveAttribute(
       'aria-pressed',
       'false',
     )
-    expect(screen.getByRole('button', { name: 'Insert image' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
+    expect(screen.getByRole('button', { name: 'Insert image' })).not.toHaveAttribute('aria-pressed')
+  })
+
+  it('opens the image picker from a plain button', async () => {
+    const user = userEvent.setup()
+    const onPickImage = vi.fn()
+    renderToolbar({ onPickImage })
+
+    await user.click(screen.getByRole('button', { name: 'Insert image' }))
+
+    expect(onPickImage).toHaveBeenCalledTimes(1)
   })
 
   it('disables tools when no deck is loaded', () => {
