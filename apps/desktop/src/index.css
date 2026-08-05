@@ -58,8 +58,8 @@
   --card-foreground: #18181b;
   --popover: #fbfbfc;
   --popover-foreground: #18181b;
-  --primary: #171717;
-  --primary-foreground: #fafafa;
+  --primary: var(--ark-fill);
+  --primary-foreground: var(--ark-fill-fg);
   --secondary: #e7e7e9;
   --secondary-foreground: #18181b;
   --muted: #eeeeef;
@@ -95,15 +95,35 @@
   --ark-success: #536f5b;
   --ark-warning: #8a693f;
   --ark-destructive: #bc5c55;
-  --ark-selection: #171717;
+  --ark-selection: var(--ark-fill);
   --ark-overlay: rgb(24 24 27 / 38%);
   --ark-canvas: var(--ark-shell);
   --ark-preview: var(--ark-stage);
   --ark-paper: var(--ark-panel);
   --ark-ink: var(--ark-foreground);
   --ark-muted-ink: var(--ark-muted-foreground);
+  /* Emphasis *ink* — icon and label color, so it inverts with the theme. Distinct
+     from `--ark-fill` below, which colors surfaces rather than glyphs. */
   --ark-accent: var(--ark-focus);
   --ark-accent-soft: rgb(23 23 23 / 10%);
+
+  /* Accent *fill* — the one color that stays put across both themes, so it is
+     declared here only and deliberately not overridden in `.dark`. A mid-tone sits
+     far enough from both `--ark-panel` values (4.89:1 light, 3.61:1 dark) for the
+     filled shape to read on either surface, which is what lets it stop inverting.
+     Going lighter buys contrast on dark and spends it on light, so the value is
+     picked to sit near the middle of that trade rather than at either end.
+     Chroma is held near the rest of the palette (sage 14%, tobacco 37%, clay 43%)
+     so the accent does not become the one vivid color in an otherwise muted UI.
+     Anything on top of a fill has to be `--ark-fill-fg`; the ink tokens are too
+     close in value to stay legible against it. */
+  --ark-fill: #4f6fa6;
+  --ark-fill-hover: #5c7db4;
+  --ark-fill-border: #3f5a88;
+  --ark-fill-fg: #fafafa;
+  --ark-fill-soft: rgb(79 111 166 / 14%);
+  --ark-fill-sheen: rgb(255 255 255 / 22%);
+  --ark-fill-lowlight: rgb(0 0 0 / 30%);
   --ark-stage-border: #c7c7cc;
   --ark-stage-shadow: rgb(24 24 27 / 10%);
   --ark-titlebar: var(--ark-panel-raised);
@@ -119,12 +139,6 @@
   --ark-control-lowlight: rgb(24 24 27 / 6%);
   --ark-control-shadow: rgb(24 24 27 / 12%);
   --ark-control-panel: #fbfbfc;
-  --ark-control-invert-bg: #202020;
-  --ark-control-invert-hover-bg: #2e2e2e;
-  --ark-control-invert-border: #0a0a0a;
-  --ark-control-invert-sheen: rgb(255 255 255 / 22%);
-  --ark-control-invert-lowlight: rgb(0 0 0 / 30%);
-  --ark-control-invert-fg: #fafafa;
   --ark-morph-in: 340ms;
   --ark-morph-out: 180ms;
   --ark-wing-in: 280ms;
@@ -154,8 +168,8 @@
   --card-foreground: #f2eee8;
   --popover: #151516;
   --popover-foreground: #f2eee8;
-  --primary: #f2eee8;
-  --primary-foreground: #0a0a0b;
+  /* `--primary` and `--ark-selection` are intentionally absent: they resolve to
+     `--ark-fill`, which is the same color in both themes. */
   --secondary: #242426;
   --secondary-foreground: #f2eee8;
   --muted: #242426;
@@ -177,7 +191,6 @@
   --ark-success: #87a68e;
   --ark-warning: #c29b67;
   --ark-destructive: #e77b70;
-  --ark-selection: #d8d3cb;
   --ark-overlay: rgb(10 10 11 / 72%);
   --ark-canvas: var(--ark-shell);
   --ark-preview: var(--ark-stage);
@@ -201,12 +214,6 @@
   --ark-control-lowlight: rgb(0 0 0 / 30%);
   --ark-control-shadow: rgb(0 0 0 / 40%);
   --ark-control-panel: #1c1c1f;
-  --ark-control-invert-bg: #ebe7e0;
-  --ark-control-invert-hover-bg: #f7f4ef;
-  --ark-control-invert-border: #b9b4ac;
-  --ark-control-invert-sheen: rgb(255 255 255 / 90%);
-  --ark-control-invert-lowlight: rgb(24 24 27 / 12%);
-  --ark-control-invert-fg: #0a0a0b;
   color-scheme: dark;
 }
 
@@ -231,20 +238,23 @@
 }
 
 /* The single filled, primary-weight control (send). */
-@utility ark-control-invert {
-  background-color: var(--ark-control-invert-bg);
-  border: 1px solid var(--ark-control-invert-border);
-  color: var(--ark-control-invert-fg);
-  box-shadow: inset 0 1px 0 var(--ark-control-invert-sheen);
+/* Same material as `ark-control`, filled with the accent instead of the surface.
+   Previously this inverted against the theme (near-black on light, near-white on
+   dark), hence the old `-invert` name; the accent holds still, so it does not. */
+@utility ark-control-accent {
+  background-color: var(--ark-fill);
+  border: 1px solid var(--ark-fill-border);
+  color: var(--ark-fill-fg);
+  box-shadow: inset 0 1px 0 var(--ark-fill-sheen);
   transition-property: background-color, box-shadow, opacity;
   transition-duration: 120ms;
 
   &:hover:not(:disabled) {
-    background-color: var(--ark-control-invert-hover-bg);
+    background-color: var(--ark-fill-hover);
   }
 
   &:active:not(:disabled) {
-    box-shadow: inset 0 1px 2px -1px var(--ark-control-invert-lowlight);
+    box-shadow: inset 0 1px 2px -1px var(--ark-fill-lowlight);
   }
 }
 

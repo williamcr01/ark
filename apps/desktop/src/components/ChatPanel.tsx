@@ -144,7 +144,7 @@ function ActiveComposer({
   // The focus ring is only a "cursor is in the prompt" cue, so it stays scoped to
   // the textarea instead of tracking generation state.
   const focusRingClassName =
-    'rounded-lg has-[textarea:focus]:ring-1 has-[textarea:focus]:ring-[var(--ark-accent-soft)]'
+    'rounded-lg has-[textarea:focus]:ring-1 has-[textarea:focus]:ring-[var(--ark-fill)]'
   // Without the beam there is no motion cue, so fall back to a static active ring.
   const ringClassName = cn(
     focusRingClassName,
@@ -255,7 +255,7 @@ function ChatPromptInputSubmit({
 
   return (
     <PromptInputSubmit
-      className="ark-control-invert! size-8 shrink-0 rounded-full"
+      className="ark-control-accent! size-8 shrink-0 rounded-full"
       disabled={!isGenerating && (!canSubmit || isInputDisabled)}
       onStop={() => {
         void onCancelGeneration()

@@ -316,7 +316,7 @@ const LazyThumbnail = memo(function LazyThumbnail({
                 'opacity-0 shadow-sm transition-opacity',
                 'focus-visible:opacity-100 group-hover/thumb:opacity-100 group-focus-within/thumb:opacity-100',
                 contextAttached &&
-                  'border-[var(--ark-accent)]/50 bg-[var(--ark-accent)] text-primary-foreground opacity-100',
+                  'border-[var(--ark-fill-border)] bg-[var(--ark-fill)] text-[var(--ark-fill-fg)] opacity-100',
               )}
               onClick={(event) => {
                 event.stopPropagation()
