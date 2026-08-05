@@ -88,9 +88,12 @@
      frames steps down from there, which is the reverse of the dark theme's ladder
      (chrome raised *above* a near-black shell). The steps below white are kept
      within a couple of percent so the surfaces stay a family rather than reading
-     as separate materials -- the seam is carried by `--ark-line`, not by value. */
-  --ark-shell: #f1f1f3;
-  --ark-panel: #f7f7f8;
+     as separate materials -- the seam is carried by `--ark-line`, not by value.
+     Neutral rather than the blue-leaning near-whites used elsewhere in the
+     palette: at this brightness a cool cast is what reads as grey, so the tint
+     comes out and only the value separates the surfaces. */
+  --ark-shell: #f8f8f8;
+  --ark-panel: #fcfcfc;
   --ark-panel-raised: #ffffff;
   --ark-stage: #f7f7f8;
   --ark-foreground: #18181b;
@@ -258,20 +261,19 @@
 
 /* `ark-control` for chips that sit directly on the field rather than beside it:
    nothing is drawn until the pointer arrives, at which point a flat tint appears.
-   Deliberately without `ark-control`'s sheen and pressed inset -- those sell a
-   raised, glossy body, and a chip lying flat on the field should not have one.
-   The resting border is transparent rather than absent so the chip does not
-   resize when it gains one. */
+   Deliberately without `ark-control`'s border, sheen, and pressed inset -- those
+   sell a raised, glossy body, and a chip lying flat on the field should not have
+   one. The border stays declared but transparent so the chip keeps the same box
+   as the bordered controls it sits beside. */
 @utility ark-control-flat {
   background-color: transparent;
   border: 1px solid transparent;
   box-shadow: none;
-  transition-property: background-color, border-color, opacity;
+  transition-property: background-color, opacity;
   transition-duration: 120ms;
 
   &:hover:not(:disabled) {
     background-color: var(--ark-control-bg);
-    border-color: var(--ark-control-border);
   }
 
   &:active:not(:disabled) {
