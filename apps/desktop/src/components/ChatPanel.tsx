@@ -141,7 +141,15 @@ function ActiveComposer({
   resolvedAppearance: ResolvedAppearance
   children: ReactNode
 }) {
-  const ringClassName = cn(active && 'rounded-lg ring-1 ring-[var(--ark-focus)]')
+  // The focus ring is only a "cursor is in the prompt" cue, so it stays scoped to
+  // the textarea instead of tracking generation state.
+  const focusRingClassName =
+    'rounded-lg has-[textarea:focus]:ring-1 has-[textarea:focus]:ring-[var(--ark-accent-soft)]'
+  // Without the beam there is no motion cue, so fall back to a static active ring.
+  const ringClassName = cn(
+    focusRingClassName,
+    active && 'rounded-lg ring-1 ring-[var(--ark-focus)]',
+  )
 
   // Keep a stable wrapper tree so toggling generation does not remount PromptInput.
   if (reducedMotion) {
@@ -152,11 +160,10 @@ function ActiveComposer({
     <Suspense fallback={<div className={ringClassName}>{children}</div>}>
       <BorderBeam
         active={active}
-        className={ringClassName}
-        colorVariant="mono"
+        className={focusRingClassName}
+        colorVariant="colorful"
         duration={3.1}
-        size="line"
-        staticColors
+        size="md"
         strength={1}
         theme={resolvedAppearance}
       >
