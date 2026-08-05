@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/morph-menu'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { DesktopSettingsDialog } from '@/components/DesktopSettingsDialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { AppearancePreference } from '@/hooks/useAppearance'
 
@@ -66,28 +67,33 @@ function TitleBarButton({
   ...props
 }: TitleBarButtonProps) {
   return (
-    <button
-      aria-label={label}
-      aria-pressed={toggle ? active : undefined}
-      className={cn(
-        buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
-        'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
-        'hover:!bg-transparent dark:hover:!bg-transparent active:!translate-y-0',
-        'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-titlebar-fg)]',
-        'disabled:text-[var(--ark-titlebar-muted)]/50',
-        active && 'bg-[var(--ark-titlebar-active)]',
-        primary && !disabled && 'text-[var(--ark-accent)] hover:!text-[var(--ark-accent)]',
-        !primary && !disabled && 'hover:!text-[var(--ark-titlebar-fg)]',
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-      {...props}
-    >
-      <span aria-hidden className="inline-flex">
-        {children}
-      </span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={label}
+          aria-pressed={toggle ? active : undefined}
+          className={cn(
+            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+            'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
+            'hover:!bg-transparent dark:hover:!bg-transparent active:!translate-y-0',
+            'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-titlebar-fg)]',
+            'disabled:text-[var(--ark-titlebar-muted)]/50',
+            active && 'bg-[var(--ark-titlebar-active)]',
+            primary && !disabled && 'text-[var(--ark-accent)] hover:!text-[var(--ark-accent)]',
+            !primary && !disabled && 'hover:!text-[var(--ark-titlebar-fg)]',
+          )}
+          disabled={disabled}
+          onClick={onClick}
+          type="button"
+          {...props}
+        >
+          <span aria-hidden className="inline-flex">
+            {children}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -117,25 +123,30 @@ function DownloadTitleBarButton({
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
-      <DropdownMenuTrigger asChild>
-        <button
-          aria-label="Download HTML"
-          className={cn(
-            buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
-            morphMenuTriggerMotionClassName,
-            'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
-            'hover:!bg-transparent hover:!text-[var(--ark-accent)] dark:hover:!bg-transparent active:!translate-y-0',
-            'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-accent)]',
-            'disabled:text-[var(--ark-titlebar-muted)]/50',
-          )}
-          disabled={disabled}
-          type="button"
-        >
-          <span aria-hidden className="inline-flex">
-            <DownloadIcon />
-          </span>
-        </button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <DropdownMenuTrigger asChild>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="Download HTML"
+              className={cn(
+                buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+                morphMenuTriggerMotionClassName,
+                'size-[26px] rounded-sm border-0 text-[var(--ark-accent)] shadow-none',
+                'hover:!bg-transparent hover:!text-[var(--ark-accent)] dark:hover:!bg-transparent active:!translate-y-0',
+                'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-accent)]',
+                'disabled:text-[var(--ark-titlebar-muted)]/50',
+              )}
+              disabled={disabled}
+              type="button"
+            >
+              <span aria-hidden className="inline-flex">
+                <DownloadIcon />
+              </span>
+            </button>
+          </TooltipTrigger>
+        </DropdownMenuTrigger>
+        <TooltipContent side="bottom">Download HTML</TooltipContent>
+      </Tooltip>
       <MorphMenuContent
         align="end"
         className="w-64"
@@ -375,13 +386,18 @@ export function AppTitleBar({
         </ButtonGroup>
       ) : null}
       <div className="flex min-w-0 items-center gap-2 px-1">
-        <Link
-          aria-label="All decks"
-          className="inline-flex shrink-0 items-center rounded-sm text-[var(--ark-focus)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          to="/decks"
-        >
-          <PresentationIcon aria-hidden className="size-4" />
-        </Link>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              aria-label="All decks"
+              className="inline-flex shrink-0 items-center rounded-sm text-[var(--ark-focus)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              to="/decks"
+            >
+              <PresentationIcon aria-hidden className="size-4" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">All decks</TooltipContent>
+        </Tooltip>
         <Link
           className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           to="/decks"
