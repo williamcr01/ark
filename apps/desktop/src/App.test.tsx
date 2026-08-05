@@ -15,7 +15,6 @@ const persistenceCallbacks = vi.hoisted(() => ({
 const generationState = vi.hoisted(() => ({ generateDeck: vi.fn() }))
 const assetApi = vi.hoisted(() => ({
   uploadDeckAsset: vi.fn(),
-  uploadTemporaryAsset: vi.fn(),
 }))
 
 vi.mock('@/lib/asset-api', () => assetApi)
@@ -30,14 +29,10 @@ vi.mock('@/hooks/useElementSize', () => ({
 
 vi.mock('@/hooks/useDeckPersistence', () => ({
   useDeckPersistence: () => ({
-    activeVersionId: 'version-1',
-    clearVersionPreview: vi.fn(),
     hasDeck: true,
     html: '<html></html>',
-    inspectVersion: vi.fn(),
     isDirty: false,
     isLoading: false,
-    isLoadingVersions: false,
     isSaving: false,
     isPatching: false,
     deckId: persistenceState.deckId,
@@ -46,16 +41,11 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     deleteActiveDeck: vi.fn(),
     patchDeckOperations: persistenceCallbacks.patchDeckOperations,
     persistHtml: vi.fn(),
-    previewVersion: null,
     refreshActiveDeck: persistenceCallbacks.refreshActiveDeck,
-    refreshVersions: vi.fn(),
     renameActiveDeck: vi.fn(),
-    rollbackToVersion: vi.fn(),
     saveError: '',
     selectDeck: vi.fn(),
     startNewDeck: vi.fn(),
-    versionNumber: 1,
-    versions: [],
   }),
 }))
 
@@ -221,11 +211,10 @@ describe('App chat panel layout', () => {
     expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
   })
 
-  it('stages first-prompt images and forwards their asset ids to new-deck generation', async () => {
-    persistenceState.deckId = null
-    assetApi.uploadTemporaryAsset.mockResolvedValueOnce({
+  it('uploads prompt images into the new workspace before generation', async () => {
+    assetApi.uploadDeckAsset.mockResolvedValueOnce({
       id: '00000000-0000-4000-8000-000000000701',
-      deckId: null,
+      deckId: 'deck-1',
       chatMessageId: null,
       filename: 'hero.avif',
       mediaType: 'image/avif',
@@ -233,8 +222,8 @@ describe('App chat panel layout', () => {
       byteSize: 128,
       checksum: 'abc',
       source: 'upload',
-      storageKind: 'local',
-      url: '/api/assets/00000000-0000-4000-8000-000000000701',
+      storageKind: 'sqlite',
+      url: '/api/decks/deck-1/assets/00000000-0000-4000-8000-000000000701',
       createdAt: '2026-01-01T00:00:00.000Z',
     })
     renderWithRouter(<App />)
@@ -256,7 +245,8 @@ describe('App chat panel layout', () => {
       })
     })
 
-    expect(assetApi.uploadTemporaryAsset).toHaveBeenCalledWith(
+    expect(assetApi.uploadDeckAsset).toHaveBeenCalledWith(
+      'deck-1',
       expect.objectContaining({ filename: 'hero.avif', mediaType: 'image/avif' }),
     )
     expect(generationState.generateDeck).toHaveBeenCalledWith(
@@ -264,7 +254,7 @@ describe('App chat panel layout', () => {
       [
         expect.objectContaining({
           assetId: '00000000-0000-4000-8000-000000000701',
-          url: '/api/assets/00000000-0000-4000-8000-000000000701',
+          url: '/api/decks/deck-1/assets/00000000-0000-4000-8000-000000000701',
         }),
       ],
       expect.objectContaining({
@@ -273,9 +263,33 @@ describe('App chat panel layout', () => {
     )
   })
 
-  it('surfaces first-prompt attachment staging failures', async () => {
+  it('keeps first-message attachment submission disabled until the workspace exists', async () => {
     persistenceState.deckId = null
-    assetApi.uploadTemporaryAsset.mockRejectedValueOnce(new Error('Unsupported image format.'))
+    renderWithRouter(<App />)
+
+    const props = chatPanelProps.calls.at(-1)
+    expect(props?.canGenerate).toBe(false)
+
+    await act(async () => {
+      await (props?.onPromptSubmit as (message: unknown) => Promise<void>)({
+        text: 'Start a deck from this CSV',
+        files: [
+          {
+            id: 'file-1',
+            filename: 'data.csv',
+            mediaType: 'text/csv',
+            url: 'data:text/csv;base64,YQ==',
+          },
+        ],
+      })
+    })
+
+    expect(assetApi.uploadDeckAsset).not.toHaveBeenCalled()
+    expect(generationState.generateDeck).not.toHaveBeenCalled()
+  })
+
+  it('surfaces first-prompt attachment staging failures', async () => {
+    assetApi.uploadDeckAsset.mockRejectedValueOnce(new Error('Unsupported image format.'))
     renderWithRouter(<App />)
     const onPromptSubmit = chatPanelProps.calls.at(-1)?.onPromptSubmit as (
       message: unknown,

@@ -20,8 +20,12 @@ import {
 import {
   appendChatMessageRequestSchema,
   appendChatMessageResponseSchema,
+  chatThreadListResponseSchema,
+  chatThreadResponseSchema,
+  createChatThreadRequestSchema,
   deckChatQuerySchema,
   deckChatResponseSchema,
+  updateChatThreadRequestSchema,
 } from './chat.ts'
 import {
   assetListResponseSchema,
@@ -37,13 +41,11 @@ import {
   deckPatchRequestSchema,
   deckPatchResponseSchema,
   deckResponseSchema,
-  deckRollbackResponseSchema,
   deckValidationErrorResponseSchema,
-  deckVersionListResponseSchema,
-  deckVersionResponseSchema,
+  duplicateWorkspaceRequestSchema,
   renameDeckRequestSchema,
-  rollbackDeckRequestSchema,
   updateDeckRequestSchema,
+  workspacePathRequestSchema,
 } from './decks.ts'
 import { generationJobResponseSchema, startGenerationJobRequestSchema } from './generation-jobs.ts'
 import {
@@ -67,8 +69,8 @@ import { runtimeAssetParamsSchema, runtimeRegistryResponseSchema } from './runti
 extendZodWithOpenApi(z)
 
 const deckIdParam = z.object({ id: deckIdSchema })
-const deckVersionParams = z.object({ id: deckIdSchema, versionId: deckIdSchema })
 const deckAssetParams = z.object({ id: deckIdSchema, assetId: z.string().min(1) })
+const deckThreadParams = z.object({ id: deckIdSchema, threadId: deckIdSchema })
 const generationJobParams = z.object({ id: generationJobIdSchema })
 const previewTokenParams = z.object({ token: z.string().min(1) })
 
@@ -168,6 +170,22 @@ export function createArkOpenApiRegistry() {
   })
 
   registry.registerPath({
+    method: 'get',
+    path: '/api/decks/{id}/export',
+    summary: 'Export a self-contained HTML presentation',
+    request: {
+      params: deckIdParam,
+      query: z.object({ sanitized: z.enum(['true', 'false']).optional() }),
+    },
+    responses: {
+      200: { description: 'Self-contained HTML document' },
+      400: jsonError,
+      404: jsonError,
+      500: jsonError,
+    },
+  })
+
+  registry.registerPath({
     method: 'put',
     path: '/api/decks/{id}',
     summary: 'Replace deck HTML',
@@ -245,57 +263,6 @@ export function createArkOpenApiRegistry() {
 
   registry.registerPath({
     method: 'get',
-    path: '/api/decks/{id}/versions',
-    summary: 'List deck versions',
-    request: { params: deckIdParam },
-    responses: {
-      200: {
-        description: 'Version summaries',
-        content: { 'application/json': { schema: deckVersionListResponseSchema } },
-      },
-      400: jsonError,
-      404: jsonError,
-      500: jsonError,
-    },
-  })
-
-  registry.registerPath({
-    method: 'get',
-    path: '/api/decks/{id}/versions/{versionId}',
-    summary: 'Get a deck version',
-    request: { params: deckVersionParams },
-    responses: {
-      200: {
-        description: 'Version detail with HTML',
-        content: { 'application/json': { schema: deckVersionResponseSchema } },
-      },
-      400: jsonError,
-      404: jsonError,
-      500: jsonError,
-    },
-  })
-
-  registry.registerPath({
-    method: 'post',
-    path: '/api/decks/{id}/rollback',
-    summary: 'Rollback to a prior version',
-    request: {
-      params: deckIdParam,
-      body: { content: { 'application/json': { schema: rollbackDeckRequestSchema } } },
-    },
-    responses: {
-      200: {
-        description: 'Rolled-back deck',
-        content: { 'application/json': { schema: deckRollbackResponseSchema } },
-      },
-      400: jsonError,
-      404: jsonError,
-      500: jsonError,
-    },
-  })
-
-  registry.registerPath({
-    method: 'get',
     path: '/api/decks/{id}/chat',
     summary: 'List chat messages for a deck',
     request: {
@@ -347,18 +314,148 @@ export function createArkOpenApiRegistry() {
 
   registry.registerPath({
     method: 'post',
-    path: '/api/assets',
-    summary: 'Stage an asset for a new deck',
+    path: '/api/workspaces/open',
+    summary: 'Open an Ark workspace',
     request: {
-      body: { content: { 'application/json': { schema: uploadAssetRequestSchema } } },
+      body: { content: { 'application/json': { schema: workspacePathRequestSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'Opened workspace',
+        content: { 'application/json': { schema: deckResponseSchema } },
+      },
+      400: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/workspaces/{id}/locate',
+    summary: 'Locate a missing recent workspace',
+    request: {
+      params: deckIdParam,
+      body: { content: { 'application/json': { schema: workspacePathRequestSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'Located workspace',
+        content: { 'application/json': { schema: deckResponseSchema } },
+      },
+      400: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/api/workspaces/{id}/recent',
+    summary: 'Remove a workspace from the recent index',
+    request: { params: deckIdParam },
+    responses: {
+      204: { description: 'Recent entry removed' },
+      400: jsonError,
+    },
+  })
+
+  for (const action of ['save-as', 'move'] as const) {
+    registry.registerPath({
+      method: 'post',
+      path: `/api/decks/{id}/${action}`,
+      summary: action === 'save-as' ? 'Save a workspace as a new file' : 'Move a workspace file',
+      request: {
+        params: deckIdParam,
+        body: { content: { 'application/json': { schema: workspacePathRequestSchema } } },
+      },
+      responses: {
+        200: {
+          description: 'Updated workspace location',
+          content: { 'application/json': { schema: deckResponseSchema } },
+        },
+        400: jsonError,
+        404: jsonError,
+        409: jsonError,
+        500: jsonError,
+      },
+    })
+  }
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/decks/{id}/duplicate',
+    summary: 'Duplicate or share an Ark workspace',
+    request: {
+      params: deckIdParam,
+      body: { content: { 'application/json': { schema: duplicateWorkspaceRequestSchema } } },
     },
     responses: {
       201: {
-        description: 'Temporary unassigned asset metadata',
-        content: { 'application/json': { schema: uploadAssetResponseSchema } },
+        description: 'Duplicated workspace',
+        content: { 'application/json': { schema: deckResponseSchema } },
       },
       400: jsonError,
+      404: jsonError,
+      409: jsonError,
       500: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/decks/{id}/threads',
+    summary: 'List workspace chat threads',
+    request: { params: deckIdParam },
+    responses: {
+      200: {
+        description: 'Chat threads',
+        content: { 'application/json': { schema: chatThreadListResponseSchema } },
+      },
+      400: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/decks/{id}/threads',
+    summary: 'Create a workspace chat thread',
+    request: {
+      params: deckIdParam,
+      body: { content: { 'application/json': { schema: createChatThreadRequestSchema } } },
+    },
+    responses: {
+      201: {
+        description: 'Created chat thread',
+        content: { 'application/json': { schema: chatThreadResponseSchema } },
+      },
+      400: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/api/decks/{id}/threads/{threadId}',
+    summary: 'Rename, archive, or share a chat thread',
+    request: {
+      params: deckThreadParams,
+      body: { content: { 'application/json': { schema: updateChatThreadRequestSchema } } },
+    },
+    responses: {
+      200: {
+        description: 'Updated chat thread',
+        content: { 'application/json': { schema: chatThreadResponseSchema } },
+      },
+      400: jsonError,
+      404: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/api/decks/{id}/threads/{threadId}',
+    summary: 'Delete a chat thread',
+    request: { params: deckThreadParams },
+    responses: {
+      204: { description: 'Chat thread deleted' },
+      400: jsonError,
+      404: jsonError,
     },
   })
 
@@ -429,7 +526,7 @@ export function createArkOpenApiRegistry() {
     path: '/api/generation-jobs',
     summary: 'Start an async generation job',
     description:
-      'Enqueue deck generation or editing. Optional `assetIds` attach deck-owned assets, or unassigned temporary assets when `deckId` is omitted. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.',
+      'Enqueue deck generation or editing. Optional `assetIds` attach assets owned by `deckId`. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.',
     request: {
       body: { content: { 'application/json': { schema: startGenerationJobRequestSchema } } },
     },
@@ -507,7 +604,7 @@ export function createArkOpenApiRegistry() {
       },
       400: jsonError,
       413: {
-        description: 'Request body exceeds the preview session JSON size limit',
+        description: 'Request body or asset-expanded preview exceeds its size limit',
         content: {
           'application/json': {
             schema: simpleErrorResponseSchema,
@@ -537,7 +634,7 @@ export function createArkOpenApiRegistry() {
   registry.registerPath({
     method: 'get',
     path: '/api/decks/{id}/thumbnails',
-    summary: 'Get sandbox-rendered slide thumbnails for a deck version',
+    summary: 'Get sandbox-rendered slide thumbnails for a document revision',
     description:
       'Returns cached per-slide PNG URLs when ready. Missing thumbnails enqueue an async render and return `pending`. When the renderer is unavailable, returns `disabled` and clients fall back to script-stripped srcDoc thumbnails.',
     request: {
@@ -557,7 +654,7 @@ export function createArkOpenApiRegistry() {
 
   registry.registerPath({
     method: 'get',
-    path: '/api/decks/{id}/thumbnails/{versionId}/{slideFile}',
+    path: '/api/decks/{id}/thumbnails/{documentRevision}/{slideFile}',
     summary: 'Serve a cached slide thumbnail PNG',
     request: {
       params: deckThumbnailImageParamsSchema,

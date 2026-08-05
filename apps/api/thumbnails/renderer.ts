@@ -1,7 +1,7 @@
 export type ThumbnailRenderRequest = {
   html: string
   deckId?: string
-  versionId?: string
+  documentRevision?: number
   slideIndexes?: number[]
   slideCount?: number
   signal?: AbortSignal

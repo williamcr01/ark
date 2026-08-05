@@ -1,14 +1,7 @@
 import { type Response } from 'express'
 
 import type { AppendChatMessageRequest } from '@ark/contracts'
-import {
-  deckClientVersionSourceSchema,
-  deckManualVersionProvenanceSchema,
-  normalizeDeckVersionProvenance,
-  truncateDeckVersionSummary,
-} from '@ark/contracts'
 import { parseProviderError, type ApiErrorPayload } from '../credentials.ts'
-import { type DeckVersionOptions } from '../deck-record.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 
@@ -16,7 +9,7 @@ export function toChatApiMessage(message: {
   id: string
   threadId: string
   deckId: string
-  deckVersionId: string | null
+  documentRevision: number | null
   role: 'user' | 'assistant'
   content: string
   parts?: AppendChatMessageRequest['parts']
@@ -32,7 +25,7 @@ export function toChatApiMessage(message: {
     id: message.id,
     threadId: message.threadId,
     deckId: message.deckId,
-    deckVersionId: message.deckVersionId,
+    documentRevision: message.documentRevision,
     role: message.role,
     content: message.content,
     ...(message.parts?.length ? { parts: message.parts } : {}),
@@ -44,39 +37,6 @@ export function toChatApiMessage(message: {
     error: message.error ?? null,
     createdAt: message.createdAt,
   }
-}
-
-/**
- * Parse client-supplied version options for public create/update/patch routes.
- * Only manual/upload sources, truncated summaries, and manual provenance are accepted.
- * Model metadata and diffs are never taken from the client.
- */
-export function parseDeckVersionOptions(
-  body: {
-    source?: unknown
-    summary?: unknown
-    provenance?: unknown
-  } = {},
-): DeckVersionOptions {
-  const parsedSource = deckClientVersionSourceSchema.safeParse(body.source)
-  const options: DeckVersionOptions = {
-    source: parsedSource.success ? parsedSource.data : 'manual',
-    validationStatus: 'valid',
-  }
-
-  if (typeof body.summary === 'string' && body.summary.trim()) {
-    options.summary = truncateDeckVersionSummary(body.summary)
-  }
-
-  if (options.source === 'manual' && body.provenance !== undefined) {
-    const parsedProvenance = deckManualVersionProvenanceSchema.safeParse(body.provenance)
-
-    if (parsedProvenance.success) {
-      options.provenance = normalizeDeckVersionProvenance(parsedProvenance.data) ?? undefined
-    }
-  }
-
-  return options
 }
 
 export const sendApiError = (response: Response, status: number, payload: ApiErrorPayload) => {

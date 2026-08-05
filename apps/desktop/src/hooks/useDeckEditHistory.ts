@@ -45,7 +45,7 @@ export type DeckEditHistory = {
  *
  * The hook is intentionally storage-agnostic: it only tracks HTML snapshots and
  * provenance. Applying a snapshot to the server is the caller's responsibility,
- * which keeps history in lock-step with immutable deck versions.
+ * which keeps history scoped to the current in-memory editing session.
  */
 export function useDeckEditHistory(): DeckEditHistory {
   const [state, setState] = useState<HistoryState>(EMPTY_STATE)

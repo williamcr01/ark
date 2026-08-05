@@ -15,9 +15,6 @@ import {
   deckListResponseSchema,
   deckPatchResponseSchema,
   deckResponseSchema,
-  deckRollbackResponseSchema,
-  deckVersionListResponseSchema,
-  deckVersionResponseSchema,
   generationJobResponseSchema,
   healthResponseSchema,
   modelsResponseSchema,
@@ -25,7 +22,6 @@ import {
   simpleErrorResponseSchema,
 } from '@ark/contracts'
 import { createApp } from './app.ts'
-import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
@@ -64,14 +60,14 @@ describe('deck API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
     const created = await createResponse.json()
 
     expect(createResponse.status).toBe(201)
     assertApiContract(createDeckResponseSchema, created)
     expect(created.deck?.title).toBe('Quarterly Review')
-    expect(created.deck?.versionNumber).toBe(1)
+    expect(created.deck?.documentRevision).toBe(1)
 
     const listResponse = await fetch(`${baseUrl}/api/decks`)
     const list = await listResponse.json()
@@ -82,7 +78,7 @@ describe('deck API routes', () => {
     expect(listed).toMatchObject({
       id: created.deck?.id,
       title: 'Quarterly Review',
-      versionNumber: 1,
+      documentRevision: 1,
     })
     expect(listed && 'html' in listed).toBe(false)
 
@@ -97,14 +93,14 @@ describe('deck API routes', () => {
     const updateResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml, source: 'manual', summary: 'Manual edit' }),
+      body: JSON.stringify({ html: updatedHtml }),
     })
     const updated = await updateResponse.json()
 
     expect(updateResponse.status).toBe(200)
     assertApiContract(createDeckResponseSchema, updated)
     expect(updated.deck?.title).toBe('Board Review')
-    expect(updated.deck?.versionNumber).toBe(2)
+    expect(updated.deck?.documentRevision).toBe(2)
 
     const deleteResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'DELETE',
@@ -114,7 +110,7 @@ describe('deck API routes', () => {
     expect((await fetch(`${baseUrl}/api/decks/${created.deck!.id}`)).status).toBe(404)
   })
 
-  it('applies structured slide patches and persists a new version', async () => {
+  it('applies structured slide patches to the workspace document', async () => {
     const multiSlideHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -130,7 +126,7 @@ describe('deck API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: multiSlideHtml, source: 'upload' }),
+      body: JSON.stringify({ html: multiSlideHtml }),
     })
     const created = await createResponse.json()
     assertApiContract(createDeckResponseSchema, created)
@@ -141,210 +137,19 @@ describe('deck API routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         operations: [{ op: 'update_slide_title', slideIndex: 1, title: 'Updated second slide' }],
-        source: 'manual',
       }),
     })
     const patched = await patchResponse.json()
 
     expect(patchResponse.status).toBe(200)
     assertApiContract(deckPatchResponseSchema, patched)
-    expect(patched.deck?.versionNumber).toBe(2)
+    expect(patched.deck?.documentRevision).toBe(2)
     expect(patched.patch).toMatchObject({
       appliedCount: 1,
       changedSlideIndexes: [1],
       summary: expect.stringContaining('Updated title'),
     })
     expect(patched.deck?.html).toContain('Updated second slide')
-
-    const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    const versionsPayload = await versionsResponse.json()
-
-    assertApiContract(deckVersionListResponseSchema, versionsPayload)
-    expect(versionsPayload.versions?.[0]).toMatchObject({
-      source: 'manual',
-      provenance: {
-        operations: ['update_slide_title'],
-        slideIndexes: [1],
-        runtimeManifestHash: expect.any(String),
-      },
-      diff: {
-        kind: 'structural',
-      },
-    })
-  })
-
-  it('persists manual provenance from PUT and ignores forged agent provenance', async () => {
-    const createResponse = await fetch(`${baseUrl}/api/decks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
-    })
-    const created = await createResponse.json()
-    const deckId = created.deck.id
-
-    const manualHtml = sampleHtml.replace('Hello', 'Manual edit')
-    const manualResponse = await fetch(`${baseUrl}/api/decks/${deckId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        html: manualHtml,
-        source: 'manual',
-        summary: 'Undo: replace text',
-        provenance: {
-          operations: ['undo'],
-          slideIndexes: [0],
-          elementIds: ['ark-el-1'],
-        },
-      }),
-    })
-
-    expect(manualResponse.status).toBe(200)
-
-    const manualVersions = await (await fetch(`${baseUrl}/api/decks/${deckId}/versions`)).json()
-    expect(manualVersions.versions?.[0]).toMatchObject({
-      source: 'manual',
-      summary: 'Undo: replace text',
-      provenance: {
-        operations: ['undo'],
-        slideIndexes: [0],
-        elementIds: ['ark-el-1'],
-        runtimeManifestHash: expect.any(String),
-      },
-    })
-    expect(manualVersions.versions?.[0].provenance?.jobId).toBeUndefined()
-    expect(manualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
-
-    const leakedHtml = '<section class="slide"><h1>Secret deck HTML</h1></section>'
-    const forgedManualHtml = manualHtml.replace('Manual edit', 'Forged manual')
-    await fetch(`${baseUrl}/api/decks/${deckId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        html: forgedManualHtml,
-        source: 'manual',
-        summary: 'Forged manual provenance',
-        provenance: {
-          operations: ['undo'],
-          jobId: 'forged-job-id',
-          toolCalls: [{ toolName: 'patch_deck', summary: `Applied ${leakedHtml}` }],
-          restoredVersionId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
-        },
-      }),
-    })
-
-    const forgedManualVersions = await (
-      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    ).json()
-    expect(forgedManualVersions.versions?.[0].provenance).toMatchObject({
-      operations: ['undo'],
-    })
-    expect(forgedManualVersions.versions?.[0].provenance?.jobId).toBeUndefined()
-    expect(forgedManualVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
-    expect(JSON.stringify(forgedManualVersions.versions?.[0].provenance)).not.toContain('<section')
-
-    const forgedAgentHtml = manualHtml.replace('Manual edit', 'Forged agent')
-    await fetch(`${baseUrl}/api/decks/${deckId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        html: forgedAgentHtml,
-        source: 'agent',
-        modelProvider: 'openai',
-        modelName: 'gpt-forged',
-        diff: { kind: 'coarse', htmlBytesBefore: 1, htmlBytesAfter: 2 },
-        provenance: {
-          jobId: 'forged-job-id',
-          operations: ['undo'],
-        },
-      }),
-    })
-
-    const forgedAgentVersions = await (
-      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    ).json()
-    // Spoofed agent/rollback sources coerce to manual; only manual provenance fields stick.
-    expect(forgedAgentVersions.versions?.[0]).toMatchObject({
-      source: 'manual',
-      provenance: {
-        operations: ['undo'],
-        runtimeManifestHash: expect.any(String),
-      },
-    })
-    expect(forgedAgentVersions.versions?.[0].modelProvider ?? null).toBeNull()
-    expect(forgedAgentVersions.versions?.[0].modelName ?? null).toBeNull()
-    expect(forgedAgentVersions.versions?.[0].diff?.kind).toBe('structural')
-    expect(forgedAgentVersions.versions?.[0].diff?.htmlBytesBefore).toBeUndefined()
-    expect(forgedAgentVersions.versions?.[0].provenance?.jobId).toBeUndefined()
-    expect(forgedAgentVersions.versions?.[0].provenance?.toolCalls).toBeUndefined()
-  })
-
-  it('lists versions, fetches one version, and rolls back without losing history', async () => {
-    const createResponse = await fetch(`${baseUrl}/api/decks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
-    })
-    const created = await createResponse.json()
-    assertApiContract(createDeckResponseSchema, created)
-    const deckId = created.deck.id
-
-    const updatedHtml = sampleHtml.replace('Hello', 'Updated')
-    await fetch(`${baseUrl}/api/decks/${deckId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml, source: 'manual' }),
-    })
-
-    const versionsResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    const versionsPayload = await versionsResponse.json()
-
-    expect(versionsResponse.status).toBe(200)
-    assertApiContract(deckVersionListResponseSchema, versionsPayload)
-    expect(versionsPayload.versions).toHaveLength(2)
-    expect(versionsPayload.versions?.[0]).toMatchObject({
-      versionNumber: 2,
-      source: 'manual',
-      isActive: true,
-    })
-    expect(versionsPayload.versions?.[1]).toMatchObject({
-      versionNumber: 1,
-      source: 'upload',
-      isActive: false,
-    })
-    expect('html' in versionsPayload.versions![0]).toBe(false)
-
-    const firstVersionId = versionsPayload.versions![1].id
-    const versionResponse = await fetch(`${baseUrl}/api/decks/${deckId}/versions/${firstVersionId}`)
-    const versionPayload = await versionResponse.json()
-
-    expect(versionResponse.status).toBe(200)
-    assertApiContract(deckVersionResponseSchema, versionPayload)
-    expect(versionPayload.version?.html).toBe(sampleHtml)
-
-    const rollbackResponse = await fetch(`${baseUrl}/api/decks/${deckId}/rollback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ versionId: firstVersionId }),
-    })
-    const rollbackPayload = await rollbackResponse.json()
-
-    expect(rollbackResponse.status).toBe(200)
-    assertApiContract(deckRollbackResponseSchema, rollbackPayload)
-    expect(rollbackPayload.deck?.html).toBe(sampleHtml)
-    expect(rollbackPayload.deck?.versionNumber).toBe(3)
-
-    const versionsAfterRollback = await (
-      await fetch(`${baseUrl}/api/decks/${deckId}/versions`)
-    ).json()
-
-    assertApiContract(deckVersionListResponseSchema, versionsAfterRollback)
-
-    expect(versionsAfterRollback.versions).toHaveLength(3)
-    expect(versionsAfterRollback.versions?.[0]).toMatchObject({
-      versionNumber: 3,
-      source: 'rollback',
-      isActive: true,
-    })
   })
 
   it('returns consistent validation errors for invalid create payloads', async () => {
@@ -358,23 +163,13 @@ describe('deck API routes', () => {
     expect(response.status).toBe(400)
     assertApiContract(simpleErrorResponseSchema, payload)
     expect(payload.error).toContain('HTML')
-  })
 
-  it('rejects invalid version and rollback requests', async () => {
-    expect((await fetch(`${baseUrl}/api/decks/not-a-uuid/versions`)).status).toBe(400)
-    expect(
-      (await fetch(`${baseUrl}/api/decks/not-a-uuid/versions/be4b3f4e-d05b-45d1-9da6-89d6df227b54`))
-        .status,
-    ).toBe(400)
-    expect(
-      (
-        await fetch(`${baseUrl}/api/decks/not-a-uuid/rollback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ versionId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54' }),
-        })
-      ).status,
-    ).toBe(400)
+    const removedMetadataResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml, source: 'manual' }),
+    })
+    expect(removedMetadataResponse.status).toBe(400)
   })
 })
 
@@ -385,10 +180,7 @@ describe('deck chat API routes', () => {
 
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'ark-api-chat-'))
-    const app = createApp({
-      deckStore: createDeckStore(path.join(root, 'decks')),
-      chatStore: createChatStore(path.join(root, 'chat')),
-    })
+    const app = createApp({ deckStore: createDeckStore(path.join(root, 'workspaces')) })
     server = app.listen(0)
     await new Promise<void>((resolve) => server.once('listening', resolve))
     const address = server.address() as AddressInfo
@@ -406,7 +198,7 @@ describe('deck chat API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
     const created = await createResponse.json()
     assertApiContract(createDeckResponseSchema, created)
@@ -455,7 +247,7 @@ describe('deck chat API routes', () => {
     const createResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
     const created = await createResponse.json()
     assertApiContract(createDeckResponseSchema, created)

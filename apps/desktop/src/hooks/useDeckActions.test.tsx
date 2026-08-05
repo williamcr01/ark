@@ -17,13 +17,33 @@ vi.mock('sonner', () => ({
 
 function createDeckActionsOptions(
   overrides: {
-    startNewDeck?: () => void
+    startNewDeck?: () => Promise<{
+      id: string
+      html: string
+      title: string
+      createdAt: string
+      updatedAt: string
+      documentRevision: number
+      origin: 'blank' | 'authored'
+      filePath: string
+    }>
     deleteActiveDeck?: () => Promise<void>
     resetChat?: (targetDeckId?: string | null) => Promise<boolean>
   } = {},
 ) {
   const resetChat = overrides.resetChat ?? vi.fn(async () => true)
-  const startNewDeck = overrides.startNewDeck ?? vi.fn()
+  const startNewDeck =
+    overrides.startNewDeck ??
+    vi.fn(async () => ({
+      id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+      html: '<html></html>',
+      title: 'Untitled Presentation',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      documentRevision: 1,
+      origin: 'blank' as const,
+      filePath: '/tmp/Untitled Presentation.ark',
+    }))
   const deleteActiveDeck = overrides.deleteActiveDeck ?? vi.fn(async () => undefined)
   const setInput = vi.fn()
   const setError = vi.fn()
@@ -35,7 +55,6 @@ function createDeckActionsOptions(
         deckId: 'deck-1' as string | null,
         html: '<html></html>',
         persistHtml: vi.fn(),
-        rollbackToVersion: vi.fn(),
         startNewDeck,
         renameActiveDeck: vi.fn(),
         deleteActiveDeck,
@@ -57,13 +76,13 @@ function createDeckActionsOptions(
 }
 
 describe('useDeckActions', () => {
-  it('starts a new deck by resetting the unsaved chat session explicitly', () => {
+  it('starts a new deck by resetting the unsaved chat session explicitly', async () => {
     getTestLocalStorage().setItem('ark:generation-job:new', 'job-old')
     const { options, resetChat, startNewDeck, setInput, setError } = createDeckActionsOptions()
     const { result } = renderHook(() => useDeckActions(options))
 
-    act(() => {
-      result.current.handleNewDeck()
+    await act(async () => {
+      await result.current.handleNewDeck()
     })
 
     expect(startNewDeck).toHaveBeenCalledTimes(1)

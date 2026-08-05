@@ -3,11 +3,7 @@ import { createHash } from 'node:crypto'
 import { THEME_SAMPLE_HTML_MAX_BYTES } from '@ark/deck-core/agent-themes.ts'
 import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/deck-core/chat.ts'
 import type { Logger } from './observability/logger.ts'
-import {
-  createDeckTools,
-  type DeckAttachmentInspector,
-  type DeckVersionInspector,
-} from './deck-tools.ts'
+import { createDeckTools, type DeckAttachmentInspector } from './deck-tools.ts'
 import type { DeckWorkspace } from './deck-workspace.ts'
 
 export type DeckToolDefinition = {
@@ -97,8 +93,6 @@ const summarizeInput = (toolName: string, input: unknown) => {
   if (toolName === 'patch_deck' || toolName === 'patch_element')
     return `${Array.isArray(record.operations) ? record.operations.length : 0} op(s)`
   if (toolName === 'write_deck') return 'full deck'
-  if (toolName === 'list_versions')
-    return `${typeof record.limit === 'number' ? record.limit : 10} version(s)`
   return 'outline'
 }
 
@@ -109,8 +103,6 @@ const summarizeOutput = (toolName: string, output: unknown) => {
   if (typeof record.summary === 'string') return record.summary
   if (toolName === 'ask_user') return 'Waiting for user answers'
   if (toolName === 'propose_themes') return 'Waiting for theme choice'
-  if (toolName === 'list_versions')
-    return `${typeof record.versionCount === 'number' ? record.versionCount : 0} version(s)`
   if (toolName === 'read_deck')
     return record.mode === 'slide' && typeof record.title === 'string'
       ? record.title
@@ -268,10 +260,6 @@ const metadata = {
     mutating: true,
     snippet: 'write_deck({ html })',
   },
-  list_versions: {
-    mutating: false,
-    snippet: 'list_versions({ limit })',
-  },
   list_attachments: {
     mutating: false,
     snippet: 'list_attachments()',
@@ -319,10 +307,6 @@ const transcriptProjectors = {
     input: (value: unknown) => projectMutation('write_deck', value),
     output: (value: unknown) => projectMutation('write_deck', value),
   },
-  list_versions: {
-    input: (value: unknown) => projectReadOnly('list_versions', value),
-    output: (value: unknown) => projectReadOnly('list_versions', value),
-  },
   list_attachments: {
     input: (value: unknown) => projectReadOnly('list_attachments', value),
     output: (value: unknown) => projectReadOnly('list_attachments', value),
@@ -351,7 +335,6 @@ export function createActiveDeckTools(
   workspace: DeckWorkspace,
   options: {
     logger?: Logger
-    versionInspector?: DeckVersionInspector
     attachmentInspector?: DeckAttachmentInspector
   } = {},
 ) {

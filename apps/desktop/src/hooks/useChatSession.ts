@@ -15,7 +15,6 @@ export type MessageDeliveryStatus = 'saving' | 'saved' | 'failed'
 
 export type UseChatSessionOptions = {
   deckId: string | null
-  deckVersionId?: string | null
   onPersistFailure?: (messageId: string) => void
   onResetFailure?: () => void
   onReloadFallback?: () => void
@@ -45,7 +44,6 @@ function buildDeliveryStatusMap(
 
 export function useChatSession({
   deckId,
-  deckVersionId = null,
   onPersistFailure,
   onResetFailure,
   onReloadFallback,
@@ -284,7 +282,6 @@ export function useChatSession({
           parts: message.parts,
           attachments: message.attachments,
           context: message.context,
-          deckVersionId,
         })
         markDeliveryStatus(message.id, 'saved')
         return true
@@ -293,7 +290,7 @@ export function useChatSession({
         return false
       }
     },
-    [deckVersionId, markDeliveryStatus],
+    [markDeliveryStatus],
   )
 
   const appendMessage = useCallback(

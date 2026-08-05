@@ -175,19 +175,18 @@
                           "title": { "type": "string" },
                           "createdAt": { "type": "string" },
                           "updatedAt": { "type": "string" },
-                          "activeVersionId": {
-                            "type": "string",
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                          },
-                          "versionNumber": { "type": "integer", "minimum": 1 }
+                          "filePath": { "type": "string", "minLength": 1 },
+                          "documentRevision": { "type": "integer", "nullable": true, "minimum": 1 },
+                          "missing": { "type": "boolean" },
+                          "cover": { "type": "string" }
                         },
                         "required": [
                           "id",
                           "title",
                           "createdAt",
                           "updatedAt",
-                          "activeVersionId",
-                          "versionNumber"
+                          "filePath",
+                          "documentRevision"
                         ]
                       }
                     },
@@ -224,54 +223,10 @@
                 "type": "object",
                 "properties": {
                   "html": { "type": "string" },
-                  "source": { "type": "string" },
-                  "summary": { "type": "string", "nullable": true },
-                  "provenance": {
-                    "type": "object",
-                    "properties": {
-                      "operations": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "enum": [
-                            "add_slide",
-                            "delete_slide",
-                            "replace_slide",
-                            "reorder_slide",
-                            "update_slide_title",
-                            "update_slide_notes",
-                            "replace_text",
-                            "insert_element",
-                            "delete_element",
-                            "duplicate_element",
-                            "set_attrs",
-                            "set_inline_style",
-                            "move_element",
-                            "resize_element",
-                            "reorder_element",
-                            "lock_element",
-                            "unlock_element",
-                            "text_replace",
-                            "undo",
-                            "redo"
-                          ]
-                        },
-                        "maxItems": 40
-                      },
-                      "slideIndexes": {
-                        "type": "array",
-                        "items": { "type": "integer", "minimum": 0 },
-                        "maxItems": 100
-                      },
-                      "elementIds": {
-                        "type": "array",
-                        "items": { "type": "string", "maxLength": 128 },
-                        "maxItems": 200
-                      }
-                    }
-                  }
+                  "origin": { "type": "string", "enum": ["blank", "authored"] }
                 },
-                "required": ["html"]
+                "required": ["html"],
+                "additionalProperties": false
               }
             }
           }
@@ -295,11 +250,9 @@
                         "title": { "type": "string" },
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
-                        "activeVersionId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 }
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
                         "id",
@@ -307,8 +260,9 @@
                         "title",
                         "createdAt",
                         "updatedAt",
-                        "activeVersionId",
-                        "versionNumber"
+                        "documentRevision",
+                        "origin",
+                        "filePath"
                       ]
                     },
                     "validation": {
@@ -522,11 +476,9 @@
                         "title": { "type": "string" },
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
-                        "activeVersionId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 }
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
                         "id",
@@ -534,8 +486,9 @@
                         "title",
                         "createdAt",
                         "updatedAt",
-                        "activeVersionId",
-                        "versionNumber"
+                        "documentRevision",
+                        "origin",
+                        "filePath"
                       ]
                     },
                     "requestId": { "type": "string", "format": "uuid" }
@@ -610,56 +563,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "html": { "type": "string" },
-                  "source": { "type": "string" },
-                  "summary": { "type": "string", "nullable": true },
-                  "provenance": {
-                    "type": "object",
-                    "properties": {
-                      "operations": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "enum": [
-                            "add_slide",
-                            "delete_slide",
-                            "replace_slide",
-                            "reorder_slide",
-                            "update_slide_title",
-                            "update_slide_notes",
-                            "replace_text",
-                            "insert_element",
-                            "delete_element",
-                            "duplicate_element",
-                            "set_attrs",
-                            "set_inline_style",
-                            "move_element",
-                            "resize_element",
-                            "reorder_element",
-                            "lock_element",
-                            "unlock_element",
-                            "text_replace",
-                            "undo",
-                            "redo"
-                          ]
-                        },
-                        "maxItems": 40
-                      },
-                      "slideIndexes": {
-                        "type": "array",
-                        "items": { "type": "integer", "minimum": 0 },
-                        "maxItems": 100
-                      },
-                      "elementIds": {
-                        "type": "array",
-                        "items": { "type": "string", "maxLength": 128 },
-                        "maxItems": 200
-                      }
-                    }
-                  }
-                },
-                "required": ["html"]
+                "properties": { "html": { "type": "string" } },
+                "required": ["html"],
+                "additionalProperties": false
               }
             }
           }
@@ -683,11 +589,9 @@
                         "title": { "type": "string" },
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
-                        "activeVersionId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 }
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
                         "id",
@@ -695,8 +599,9 @@
                         "title",
                         "createdAt",
                         "updatedAt",
-                        "activeVersionId",
-                        "versionNumber"
+                        "documentRevision",
+                        "origin",
+                        "filePath"
                       ]
                     },
                     "validation": {
@@ -934,11 +839,9 @@
                         "title": { "type": "string" },
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
-                        "activeVersionId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 }
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
                         "id",
@@ -946,8 +849,9 @@
                         "title",
                         "createdAt",
                         "updatedAt",
-                        "activeVersionId",
-                        "versionNumber"
+                        "documentRevision",
+                        "origin",
+                        "filePath"
                       ]
                     },
                     "requestId": { "type": "string", "format": "uuid" }
@@ -1019,6 +923,76 @@
         ],
         "responses": {
           "204": { "description": "Deck deleted" },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/export": {
+      "get": {
+        "summary": "Export a self-contained HTML presentation",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "string", "enum": ["true", "false"] },
+            "required": false,
+            "name": "sanitized",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Self-contained HTML document" },
           "400": {
             "description": "Error response",
             "content": {
@@ -1475,11 +1449,9 @@
                         "title": { "type": "string" },
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" },
-                        "activeVersionId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 }
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
                         "id",
@@ -1487,8 +1459,9 @@
                         "title",
                         "createdAt",
                         "updatedAt",
-                        "activeVersionId",
-                        "versionNumber"
+                        "documentRevision",
+                        "origin",
+                        "filePath"
                       ]
                     },
                     "validation": {
@@ -1628,758 +1601,6 @@
         }
       }
     },
-    "/api/decks/{id}/versions": {
-      "get": {
-        "summary": "List deck versions",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Version summaries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "versions": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                          },
-                          "deckId": {
-                            "type": "string",
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                          },
-                          "versionNumber": { "type": "integer", "minimum": 1 },
-                          "title": { "type": "string" },
-                          "source": {
-                            "type": "string",
-                            "enum": ["manual", "agent", "upload", "repair", "rollback"]
-                          },
-                          "summary": { "type": "string", "nullable": true },
-                          "validationStatus": {
-                            "type": "string",
-                            "enum": ["unknown", "valid", "invalid"]
-                          },
-                          "runtimeManifest": {
-                            "type": "object",
-                            "nullable": true,
-                            "properties": {
-                              "schemaVersion": { "type": "number" },
-                              "runtimeMode": { "type": "string" },
-                              "previewMode": { "type": "string" },
-                              "slideCount": { "type": "number" },
-                              "structure": {
-                                "type": "string",
-                                "enum": ["plain", "reveal", "unknown"]
-                              },
-                              "slideSelector": { "type": "string", "nullable": true },
-                              "aspectRatio": { "type": "string" }
-                            },
-                            "additionalProperties": { "nullable": true }
-                          },
-                          "modelProvider": { "type": "string", "nullable": true },
-                          "modelName": { "type": "string", "nullable": true },
-                          "provenance": {
-                            "type": "object",
-                            "nullable": true,
-                            "properties": {
-                              "operations": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string",
-                                  "enum": [
-                                    "add_slide",
-                                    "delete_slide",
-                                    "replace_slide",
-                                    "reorder_slide",
-                                    "update_slide_title",
-                                    "update_slide_notes",
-                                    "replace_text",
-                                    "insert_element",
-                                    "delete_element",
-                                    "duplicate_element",
-                                    "set_attrs",
-                                    "set_inline_style",
-                                    "move_element",
-                                    "resize_element",
-                                    "reorder_element",
-                                    "lock_element",
-                                    "unlock_element",
-                                    "text_replace",
-                                    "undo",
-                                    "redo"
-                                  ]
-                                },
-                                "maxItems": 40
-                              },
-                              "slideIndexes": {
-                                "type": "array",
-                                "items": { "type": "integer", "minimum": 0 },
-                                "maxItems": 100
-                              },
-                              "elementIds": {
-                                "type": "array",
-                                "items": { "type": "string", "maxLength": 128 },
-                                "maxItems": 200
-                              },
-                              "jobId": { "type": "string", "maxLength": 64 },
-                              "stepCount": { "type": "integer", "minimum": 0 },
-                              "toolCalls": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "toolName": { "type": "string", "maxLength": 64 },
-                                    "summary": { "type": "string", "maxLength": 300 },
-                                    "error": { "type": "boolean" }
-                                  },
-                                  "required": ["toolName", "summary"]
-                                },
-                                "maxItems": 50
-                              },
-                              "restoredVersionId": {
-                                "type": "string",
-                                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                              },
-                              "restoredVersionNumber": { "type": "integer", "minimum": 1 },
-                              "runtimeManifestHash": { "type": "string", "maxLength": 64 }
-                            }
-                          },
-                          "diff": {
-                            "type": "object",
-                            "nullable": true,
-                            "properties": {
-                              "kind": { "type": "string", "enum": ["structural", "coarse"] },
-                              "slideCountBefore": { "type": "integer", "minimum": 0 },
-                              "slideCountAfter": { "type": "integer", "minimum": 0 },
-                              "addedSlides": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "index": { "type": "integer", "minimum": 0 },
-                                    "title": { "type": "string", "maxLength": 200 }
-                                  },
-                                  "required": ["index", "title"]
-                                },
-                                "maxItems": 100
-                              },
-                              "deletedSlides": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "index": { "type": "integer", "minimum": 0 },
-                                    "title": { "type": "string", "maxLength": 200 }
-                                  },
-                                  "required": ["index", "title"]
-                                },
-                                "maxItems": 100
-                              },
-                              "movedSlides": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "fromIndex": { "type": "integer", "minimum": 0 },
-                                    "toIndex": { "type": "integer", "minimum": 0 }
-                                  },
-                                  "required": ["fromIndex", "toIndex"]
-                                },
-                                "maxItems": 100
-                              },
-                              "changedSlides": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "index": { "type": "integer", "minimum": 0 },
-                                    "titleChanged": { "type": "boolean" },
-                                    "notesChanged": { "type": "boolean" },
-                                    "contentChanged": { "type": "boolean" },
-                                    "title": { "type": "string", "maxLength": 200 }
-                                  },
-                                  "required": ["index"]
-                                },
-                                "maxItems": 100
-                              },
-                              "titleChanged": { "type": "boolean" },
-                              "assetsAdded": {
-                                "type": "array",
-                                "items": { "type": "string", "maxLength": 2048 },
-                                "maxItems": 50
-                              },
-                              "assetsRemoved": {
-                                "type": "array",
-                                "items": { "type": "string", "maxLength": 2048 },
-                                "maxItems": 50
-                              },
-                              "htmlBytesBefore": { "type": "integer", "minimum": 0 },
-                              "htmlBytesAfter": { "type": "integer", "minimum": 0 }
-                            },
-                            "required": ["kind"]
-                          },
-                          "createdAt": { "type": "string" },
-                          "isActive": { "type": "boolean" }
-                        },
-                        "required": [
-                          "id",
-                          "deckId",
-                          "versionNumber",
-                          "title",
-                          "source",
-                          "summary",
-                          "validationStatus",
-                          "runtimeManifest",
-                          "modelProvider",
-                          "modelName",
-                          "provenance",
-                          "diff",
-                          "createdAt",
-                          "isActive"
-                        ]
-                      }
-                    },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["versions"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/decks/{id}/versions/{versionId}": {
-      "get": {
-        "summary": "Get a deck version",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-            },
-            "required": true,
-            "name": "versionId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Version detail with HTML",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "version": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "deckId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 },
-                        "title": { "type": "string" },
-                        "source": {
-                          "type": "string",
-                          "enum": ["manual", "agent", "upload", "repair", "rollback"]
-                        },
-                        "summary": { "type": "string", "nullable": true },
-                        "validationStatus": {
-                          "type": "string",
-                          "enum": ["unknown", "valid", "invalid"]
-                        },
-                        "runtimeManifest": {
-                          "type": "object",
-                          "nullable": true,
-                          "properties": {
-                            "schemaVersion": { "type": "number" },
-                            "runtimeMode": { "type": "string" },
-                            "previewMode": { "type": "string" },
-                            "slideCount": { "type": "number" },
-                            "structure": {
-                              "type": "string",
-                              "enum": ["plain", "reveal", "unknown"]
-                            },
-                            "slideSelector": { "type": "string", "nullable": true },
-                            "aspectRatio": { "type": "string" }
-                          },
-                          "additionalProperties": { "nullable": true }
-                        },
-                        "modelProvider": { "type": "string", "nullable": true },
-                        "modelName": { "type": "string", "nullable": true },
-                        "provenance": {
-                          "type": "object",
-                          "nullable": true,
-                          "properties": {
-                            "operations": {
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "enum": [
-                                  "add_slide",
-                                  "delete_slide",
-                                  "replace_slide",
-                                  "reorder_slide",
-                                  "update_slide_title",
-                                  "update_slide_notes",
-                                  "replace_text",
-                                  "insert_element",
-                                  "delete_element",
-                                  "duplicate_element",
-                                  "set_attrs",
-                                  "set_inline_style",
-                                  "move_element",
-                                  "resize_element",
-                                  "reorder_element",
-                                  "lock_element",
-                                  "unlock_element",
-                                  "text_replace",
-                                  "undo",
-                                  "redo"
-                                ]
-                              },
-                              "maxItems": 40
-                            },
-                            "slideIndexes": {
-                              "type": "array",
-                              "items": { "type": "integer", "minimum": 0 },
-                              "maxItems": 100
-                            },
-                            "elementIds": {
-                              "type": "array",
-                              "items": { "type": "string", "maxLength": 128 },
-                              "maxItems": 200
-                            },
-                            "jobId": { "type": "string", "maxLength": 64 },
-                            "stepCount": { "type": "integer", "minimum": 0 },
-                            "toolCalls": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "toolName": { "type": "string", "maxLength": 64 },
-                                  "summary": { "type": "string", "maxLength": 300 },
-                                  "error": { "type": "boolean" }
-                                },
-                                "required": ["toolName", "summary"]
-                              },
-                              "maxItems": 50
-                            },
-                            "restoredVersionId": {
-                              "type": "string",
-                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                            },
-                            "restoredVersionNumber": { "type": "integer", "minimum": 1 },
-                            "runtimeManifestHash": { "type": "string", "maxLength": 64 }
-                          }
-                        },
-                        "diff": {
-                          "type": "object",
-                          "nullable": true,
-                          "properties": {
-                            "kind": { "type": "string", "enum": ["structural", "coarse"] },
-                            "slideCountBefore": { "type": "integer", "minimum": 0 },
-                            "slideCountAfter": { "type": "integer", "minimum": 0 },
-                            "addedSlides": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "index": { "type": "integer", "minimum": 0 },
-                                  "title": { "type": "string", "maxLength": 200 }
-                                },
-                                "required": ["index", "title"]
-                              },
-                              "maxItems": 100
-                            },
-                            "deletedSlides": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "index": { "type": "integer", "minimum": 0 },
-                                  "title": { "type": "string", "maxLength": 200 }
-                                },
-                                "required": ["index", "title"]
-                              },
-                              "maxItems": 100
-                            },
-                            "movedSlides": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "fromIndex": { "type": "integer", "minimum": 0 },
-                                  "toIndex": { "type": "integer", "minimum": 0 }
-                                },
-                                "required": ["fromIndex", "toIndex"]
-                              },
-                              "maxItems": 100
-                            },
-                            "changedSlides": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "index": { "type": "integer", "minimum": 0 },
-                                  "titleChanged": { "type": "boolean" },
-                                  "notesChanged": { "type": "boolean" },
-                                  "contentChanged": { "type": "boolean" },
-                                  "title": { "type": "string", "maxLength": 200 }
-                                },
-                                "required": ["index"]
-                              },
-                              "maxItems": 100
-                            },
-                            "titleChanged": { "type": "boolean" },
-                            "assetsAdded": {
-                              "type": "array",
-                              "items": { "type": "string", "maxLength": 2048 },
-                              "maxItems": 50
-                            },
-                            "assetsRemoved": {
-                              "type": "array",
-                              "items": { "type": "string", "maxLength": 2048 },
-                              "maxItems": 50
-                            },
-                            "htmlBytesBefore": { "type": "integer", "minimum": 0 },
-                            "htmlBytesAfter": { "type": "integer", "minimum": 0 }
-                          },
-                          "required": ["kind"]
-                        },
-                        "createdAt": { "type": "string" },
-                        "isActive": { "type": "boolean" },
-                        "html": { "type": "string" }
-                      },
-                      "required": [
-                        "id",
-                        "deckId",
-                        "versionNumber",
-                        "title",
-                        "source",
-                        "summary",
-                        "validationStatus",
-                        "runtimeManifest",
-                        "modelProvider",
-                        "modelName",
-                        "provenance",
-                        "diff",
-                        "createdAt",
-                        "isActive",
-                        "html"
-                      ]
-                    },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["version"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/decks/{id}/rollback": {
-      "post": {
-        "summary": "Rollback to a prior version",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "versionId": {
-                    "type": "string",
-                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                  }
-                },
-                "required": ["versionId"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Rolled-back deck",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "deck": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "html": { "type": "string" },
-                        "title": { "type": "string" },
-                        "createdAt": { "type": "string" },
-                        "updatedAt": { "type": "string" },
-                        "activeVersionId": {
-                          "type": "string",
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
-                        "versionNumber": { "type": "integer", "minimum": 1 }
-                      },
-                      "required": [
-                        "id",
-                        "html",
-                        "title",
-                        "createdAt",
-                        "updatedAt",
-                        "activeVersionId",
-                        "versionNumber"
-                      ]
-                    },
-                    "validation": {
-                      "type": "object",
-                      "properties": {
-                        "valid": { "type": "boolean" },
-                        "slideCount": { "type": "integer", "minimum": 0 },
-                        "scripts": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "inline": { "type": "boolean" },
-                              "src": { "type": "string" },
-                              "type": { "type": "string" }
-                            },
-                            "required": ["inline"]
-                          }
-                        },
-                        "forms": { "type": "integer", "minimum": 0 },
-                        "iframes": { "type": "integer", "minimum": 0 },
-                        "externalUrls": { "type": "array", "items": { "type": "string" } },
-                        "malformedSlides": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "index": { "type": "integer", "minimum": 0 },
-                              "reason": { "type": "string", "enum": ["nested_slide", "empty"] }
-                            },
-                            "required": ["index", "reason"]
-                          }
-                        },
-                        "runtimeMarkers": {
-                          "type": "object",
-                          "properties": {},
-                          "additionalProperties": { "nullable": true }
-                        },
-                        "issues": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "code": { "type": "string" },
-                              "message": { "type": "string" },
-                              "severity": { "type": "string", "enum": ["error", "warning"] }
-                            },
-                            "required": ["code", "message", "severity"]
-                          }
-                        }
-                      },
-                      "required": [
-                        "valid",
-                        "slideCount",
-                        "scripts",
-                        "forms",
-                        "iframes",
-                        "externalUrls",
-                        "malformedSlides",
-                        "runtimeMarkers",
-                        "issues"
-                      ],
-                      "additionalProperties": { "nullable": true }
-                    },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["deck", "validation"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "requestId": { "type": "string", "format": "uuid" }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/decks/{id}/chat": {
       "get": {
         "summary": "List chat messages for a deck",
@@ -2413,24 +1634,32 @@
                       "type": "object",
                       "nullable": true,
                       "properties": {
-                        "id": { "type": "string", "minLength": 1 },
-                        "deckId": { "type": "string", "minLength": 1 },
-                        "activeDeckVersionId": {
+                        "id": {
                           "type": "string",
-                          "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "deckId": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "activeDocumentRevision": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 1
                         },
                         "title": { "type": "string" },
                         "status": { "type": "string", "enum": ["active", "archived"] },
+                        "visibility": { "type": "string", "enum": ["private", "shared"] },
                         "createdAt": { "type": "string" },
                         "updatedAt": { "type": "string" }
                       },
                       "required": [
                         "id",
                         "deckId",
-                        "activeDeckVersionId",
+                        "activeDocumentRevision",
                         "title",
                         "status",
+                        "visibility",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -2443,11 +1672,7 @@
                           "id": { "type": "string", "minLength": 1 },
                           "threadId": { "type": "string", "minLength": 1 },
                           "deckId": { "type": "string", "minLength": 1 },
-                          "deckVersionId": {
-                            "type": "string",
-                            "nullable": true,
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                          },
+                          "documentRevision": { "type": "integer", "nullable": true, "minimum": 1 },
                           "role": { "type": "string", "enum": ["user", "assistant"] },
                           "content": { "type": "string" },
                           "parts": {
@@ -2596,7 +1821,7 @@
                           "id",
                           "threadId",
                           "deckId",
-                          "deckVersionId",
+                          "documentRevision",
                           "role",
                           "content",
                           "createdAt"
@@ -2864,11 +2089,7 @@
                       }
                     }
                   },
-                  "deckVersionId": {
-                    "type": "string",
-                    "nullable": true,
-                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                  },
+                  "documentRevision": { "type": "integer", "nullable": true, "minimum": 1 },
                   "generationJobId": { "type": "string", "nullable": true },
                   "generationStatus": { "type": "string", "nullable": true },
                   "model": { "type": "string", "nullable": true },
@@ -2901,11 +2122,7 @@
                         "id": { "type": "string", "minLength": 1 },
                         "threadId": { "type": "string", "minLength": 1 },
                         "deckId": { "type": "string", "minLength": 1 },
-                        "deckVersionId": {
-                          "type": "string",
-                          "nullable": true,
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                        },
+                        "documentRevision": { "type": "integer", "nullable": true, "minimum": 1 },
                         "role": { "type": "string", "enum": ["user", "assistant"] },
                         "content": { "type": "string" },
                         "parts": {
@@ -3054,7 +2271,7 @@
                         "id",
                         "threadId",
                         "deckId",
-                        "deckVersionId",
+                        "documentRevision",
                         "role",
                         "content",
                         "createdAt"
@@ -3115,72 +2332,259 @@
         }
       }
     },
-    "/api/assets": {
+    "/api/workspaces/open": {
       "post": {
-        "summary": "Stage an asset for a new deck",
+        "summary": "Open an Ark workspace",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "filename": { "type": "string", "minLength": 1, "maxLength": 1024 },
-                  "mediaType": { "type": "string" },
-                  "data": { "type": "string", "minLength": 1, "maxLength": 69905323 },
-                  "chatMessageId": {
-                    "type": "string",
-                    "nullable": true,
-                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                  },
-                  "source": { "type": "string", "enum": ["upload", "screenshot", "proxy"] }
-                },
-                "required": ["filename", "mediaType", "data"]
+                "properties": { "path": { "type": "string", "minLength": 1 } },
+                "required": ["path"]
               }
             }
           }
         },
         "responses": {
-          "201": {
-            "description": "Temporary unassigned asset metadata",
+          "200": {
+            "description": "Opened workspace",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "asset": {
+                    "deck": {
                       "type": "object",
                       "properties": {
-                        "id": { "type": "string", "minLength": 1 },
-                        "deckId": { "type": "string", "nullable": true, "minLength": 1 },
-                        "chatMessageId": { "type": "string", "nullable": true, "minLength": 1 },
-                        "filename": { "type": "string" },
-                        "mediaType": { "type": "string" },
-                        "category": { "type": "string", "enum": ["image", "text", "pdf", "other"] },
-                        "byteSize": { "type": "integer", "minimum": 0 },
-                        "checksum": { "type": "string" },
-                        "source": { "type": "string", "enum": ["upload", "screenshot", "proxy"] },
-                        "storageKind": { "type": "string" },
-                        "url": { "type": "string" },
-                        "createdAt": { "type": "string" }
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "html": { "type": "string" },
+                        "title": { "type": "string" },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
                       },
                       "required": [
                         "id",
-                        "deckId",
-                        "chatMessageId",
-                        "filename",
-                        "mediaType",
-                        "category",
-                        "byteSize",
-                        "checksum",
-                        "source",
-                        "storageKind",
-                        "url",
-                        "createdAt"
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "documentRevision",
+                        "origin",
+                        "filePath"
                       ]
                     },
                     "requestId": { "type": "string", "format": "uuid" }
                   },
-                  "required": ["asset"]
+                  "required": ["deck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/locate": {
+      "post": {
+        "summary": "Locate a missing recent workspace",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "path": { "type": "string", "minLength": 1 } },
+                "required": ["path"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Located workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deck": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "html": { "type": "string" },
+                        "title": { "type": "string" },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
+                      },
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "documentRevision",
+                        "origin",
+                        "filePath"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["deck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/recent": {
+      "delete": {
+        "summary": "Remove a workspace from the recent index",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": { "description": "Recent entry removed" },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/save-as": {
+      "post": {
+        "summary": "Save a workspace as a new file",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "path": { "type": "string", "minLength": 1 } },
+                "required": ["path"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated workspace location",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deck": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "html": { "type": "string" },
+                        "title": { "type": "string" },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
+                      },
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "documentRevision",
+                        "origin",
+                        "filePath"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["deck"]
                 }
               }
             }
@@ -3200,7 +2604,644 @@
               }
             }
           },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
           "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/move": {
+      "post": {
+        "summary": "Move a workspace file",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "path": { "type": "string", "minLength": 1 } },
+                "required": ["path"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated workspace location",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deck": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "html": { "type": "string" },
+                        "title": { "type": "string" },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
+                      },
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "documentRevision",
+                        "origin",
+                        "filePath"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["deck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/duplicate": {
+      "post": {
+        "summary": "Duplicate or share an Ark workspace",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "mode": { "type": "string", "enum": ["presentation", "complete"] },
+                  "threadIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                },
+                "required": ["mode"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Duplicated workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deck": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "html": { "type": "string" },
+                        "title": { "type": "string" },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
+                      },
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "documentRevision",
+                        "origin",
+                        "filePath"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["deck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/threads": {
+      "get": {
+        "summary": "List workspace chat threads",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chat threads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "threads": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                          },
+                          "deckId": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                          },
+                          "activeDocumentRevision": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 1
+                          },
+                          "title": { "type": "string" },
+                          "status": { "type": "string", "enum": ["active", "archived"] },
+                          "visibility": { "type": "string", "enum": ["private", "shared"] },
+                          "createdAt": { "type": "string" },
+                          "updatedAt": { "type": "string" }
+                        },
+                        "required": [
+                          "id",
+                          "deckId",
+                          "activeDocumentRevision",
+                          "title",
+                          "status",
+                          "visibility",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["threads"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a workspace chat thread",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 200 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created chat thread",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "thread": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "deckId": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "activeDocumentRevision": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 1
+                        },
+                        "title": { "type": "string" },
+                        "status": { "type": "string", "enum": ["active", "archived"] },
+                        "visibility": { "type": "string", "enum": ["private", "shared"] },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" }
+                      },
+                      "required": [
+                        "id",
+                        "deckId",
+                        "activeDocumentRevision",
+                        "title",
+                        "status",
+                        "visibility",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["thread"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/threads/{threadId}": {
+      "patch": {
+        "summary": "Rename, archive, or share a chat thread",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "threadId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "archived": { "type": "boolean" },
+                  "visibility": { "type": "string", "enum": ["private", "shared"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated chat thread",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "thread": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "deckId": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "activeDocumentRevision": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 1
+                        },
+                        "title": { "type": "string" },
+                        "status": { "type": "string", "enum": ["active", "archived"] },
+                        "visibility": { "type": "string", "enum": ["private", "shared"] },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" }
+                      },
+                      "required": [
+                        "id",
+                        "deckId",
+                        "activeDocumentRevision",
+                        "title",
+                        "status",
+                        "visibility",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["thread"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a chat thread",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "threadId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": { "description": "Chat thread deleted" },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
             "description": "Error response",
             "content": {
               "application/json": {
@@ -3615,7 +3656,7 @@
     "/api/generation-jobs": {
       "post": {
         "summary": "Start an async generation job",
-        "description": "Enqueue deck generation or editing. Optional `assetIds` attach deck-owned assets, or unassigned temporary assets when `deckId` is omitted. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.",
+        "description": "Enqueue deck generation or editing. Optional `assetIds` attach assets owned by `deckId`. Poll `GET /api/generation-jobs/{id}` until the job reaches a terminal status.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3804,11 +3845,7 @@
                     "nullable": true,
                     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                   },
-                  "baseVersionId": {
-                    "type": "string",
-                    "nullable": true,
-                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                  },
+                  "baseDocumentRevision": { "type": "integer", "nullable": true, "minimum": 1 },
                   "editorSelection": {
                     "type": "object",
                     "properties": {
@@ -3868,10 +3905,10 @@
                           "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "baseVersionId": {
-                          "type": "string",
+                        "baseDocumentRevision": {
+                          "type": "integer",
                           "nullable": true,
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                          "minimum": 1
                         },
                         "editingExistingDeck": { "type": "boolean" },
                         "status": {
@@ -4024,10 +4061,7 @@
                               "type": "string",
                               "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                             },
-                            "versionId": {
-                              "type": "string",
-                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                            },
+                            "documentRevision": { "type": "integer", "minimum": 1 },
                             "validation": {
                               "type": "object",
                               "properties": {
@@ -4095,7 +4129,7 @@
                             },
                             "assistantText": { "type": "string" }
                           },
-                          "required": ["deckId", "versionId", "validation", "assistantText"]
+                          "required": ["deckId", "documentRevision", "validation", "assistantText"]
                         },
                         "error": {
                           "type": "object",
@@ -4121,7 +4155,7 @@
                       "required": [
                         "id",
                         "deckId",
-                        "baseVersionId",
+                        "baseDocumentRevision",
                         "status",
                         "model",
                         "provider",
@@ -4233,10 +4267,10 @@
                           "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "baseVersionId": {
-                          "type": "string",
+                        "baseDocumentRevision": {
+                          "type": "integer",
                           "nullable": true,
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                          "minimum": 1
                         },
                         "editingExistingDeck": { "type": "boolean" },
                         "status": {
@@ -4389,10 +4423,7 @@
                               "type": "string",
                               "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                             },
-                            "versionId": {
-                              "type": "string",
-                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                            },
+                            "documentRevision": { "type": "integer", "minimum": 1 },
                             "validation": {
                               "type": "object",
                               "properties": {
@@ -4460,7 +4491,7 @@
                             },
                             "assistantText": { "type": "string" }
                           },
-                          "required": ["deckId", "versionId", "validation", "assistantText"]
+                          "required": ["deckId", "documentRevision", "validation", "assistantText"]
                         },
                         "error": {
                           "type": "object",
@@ -4486,7 +4517,7 @@
                       "required": [
                         "id",
                         "deckId",
-                        "baseVersionId",
+                        "baseDocumentRevision",
                         "status",
                         "model",
                         "provider",
@@ -4589,10 +4620,10 @@
                           "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "baseVersionId": {
-                          "type": "string",
+                        "baseDocumentRevision": {
+                          "type": "integer",
                           "nullable": true,
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                          "minimum": 1
                         },
                         "editingExistingDeck": { "type": "boolean" },
                         "status": {
@@ -4745,10 +4776,7 @@
                               "type": "string",
                               "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                             },
-                            "versionId": {
-                              "type": "string",
-                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                            },
+                            "documentRevision": { "type": "integer", "minimum": 1 },
                             "validation": {
                               "type": "object",
                               "properties": {
@@ -4816,7 +4844,7 @@
                             },
                             "assistantText": { "type": "string" }
                           },
-                          "required": ["deckId", "versionId", "validation", "assistantText"]
+                          "required": ["deckId", "documentRevision", "validation", "assistantText"]
                         },
                         "error": {
                           "type": "object",
@@ -4842,7 +4870,7 @@
                       "required": [
                         "id",
                         "deckId",
-                        "baseVersionId",
+                        "baseDocumentRevision",
                         "status",
                         "model",
                         "provider",
@@ -4945,10 +4973,10 @@
                           "nullable": true,
                           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                         },
-                        "baseVersionId": {
-                          "type": "string",
+                        "baseDocumentRevision": {
+                          "type": "integer",
                           "nullable": true,
-                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                          "minimum": 1
                         },
                         "editingExistingDeck": { "type": "boolean" },
                         "status": {
@@ -5101,10 +5129,7 @@
                               "type": "string",
                               "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                             },
-                            "versionId": {
-                              "type": "string",
-                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                            },
+                            "documentRevision": { "type": "integer", "minimum": 1 },
                             "validation": {
                               "type": "object",
                               "properties": {
@@ -5172,7 +5197,7 @@
                             },
                             "assistantText": { "type": "string" }
                           },
-                          "required": ["deckId", "versionId", "validation", "assistantText"]
+                          "required": ["deckId", "documentRevision", "validation", "assistantText"]
                         },
                         "error": {
                           "type": "object",
@@ -5198,7 +5223,7 @@
                       "required": [
                         "id",
                         "deckId",
-                        "baseVersionId",
+                        "baseDocumentRevision",
                         "status",
                         "model",
                         "provider",
@@ -5295,6 +5320,10 @@
                 "type": "object",
                 "properties": {
                   "html": { "type": "string" },
+                  "deckId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                  },
                   "editorBridge": { "type": "boolean" }
                 },
                 "required": ["html"]
@@ -5338,7 +5367,7 @@
             }
           },
           "413": {
-            "description": "Request body exceeds the preview session JSON size limit",
+            "description": "Request body or asset-expanded preview exceeds its size limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5451,7 +5480,7 @@
     },
     "/api/decks/{id}/thumbnails": {
       "get": {
-        "summary": "Get sandbox-rendered slide thumbnails for a deck version",
+        "summary": "Get sandbox-rendered slide thumbnails for a document revision",
         "description": "Returns cached per-slide PNG URLs when ready. Missing thumbnails enqueue an async render and return `pending`. When the renderer is unavailable, returns `disabled` and clients fall back to script-stripped srcDoc thumbnails.",
         "parameters": [
           {
@@ -5464,12 +5493,9 @@
             "in": "path"
           },
           {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-            },
+            "schema": { "type": "integer", "minimum": 1 },
             "required": true,
-            "name": "versionId",
+            "name": "documentRevision",
             "in": "query"
           },
           {
@@ -5566,7 +5592,7 @@
         }
       }
     },
-    "/api/decks/{id}/thumbnails/{versionId}/{slideFile}": {
+    "/api/decks/{id}/thumbnails/{documentRevision}/{slideFile}": {
       "get": {
         "summary": "Serve a cached slide thumbnail PNG",
         "parameters": [
@@ -5580,12 +5606,9 @@
             "in": "path"
           },
           {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-            },
+            "schema": { "type": "integer", "minimum": 1 },
             "required": true,
-            "name": "versionId",
+            "name": "documentRevision",
             "in": "path"
           },
           {
@@ -5665,11 +5688,7 @@
                     "nullable": true,
                     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                   },
-                  "versionId": {
-                    "type": "string",
-                    "nullable": true,
-                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                  },
+                  "documentRevision": { "type": "integer", "nullable": true, "minimum": 1 },
                   "slideIndex": { "type": "integer", "nullable": true, "minimum": 0 },
                   "runtimeMode": { "type": "string", "nullable": true, "maxLength": 64 },
                   "severity": {
@@ -5721,11 +5740,7 @@
                         "nullable": true,
                         "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
                       },
-                      "versionId": {
-                        "type": "string",
-                        "nullable": true,
-                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
-                      }
+                      "documentRevision": { "type": "integer", "nullable": true, "minimum": 1 }
                     },
                     "required": [
                       "errorSummary",
@@ -5733,7 +5748,7 @@
                       "runtime",
                       "validation",
                       "relatedJobId",
-                      "versionId"
+                      "documentRevision"
                     ]
                   }
                 },

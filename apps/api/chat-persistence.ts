@@ -20,7 +20,6 @@ export async function ensureChatThreadForJob(
   chatStore: ChatStore,
   deckStore: DeckStore,
   deckId: string,
-  baseVersionId: string | null,
 ) {
   const deck = await deckStore.getDeck(deckId)
 
@@ -28,14 +27,13 @@ export async function ensureChatThreadForJob(
     return null
   }
 
-  return chatStore.getOrCreateActiveThread(deckId, baseVersionId ?? deck.activeVersionId ?? null)
+  return chatStore.getOrCreateActiveThread(deckId)
 }
 
 export async function persistLatestUserMessage(
   chatStore: ChatStore,
   deckId: string,
   messages: ApiChatMessage[],
-  deckVersionId: string | null,
 ) {
   const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')
 
@@ -49,7 +47,6 @@ export async function persistLatestUserMessage(
     content: lastUserMessage.content,
     attachments: lastUserMessage.attachments,
     context: lastUserMessage.context,
-    deckVersionId,
   })
 }
 
@@ -101,7 +98,6 @@ export async function persistAssistantGenerationMessage(
     transcriptParts?: ChatMessagePart[]
     assistantText?: string | null
     editingExistingDeck: boolean
-    deckVersionId?: string | null
     error?: GenerationJobError | null
     validationNote?: string
   },
@@ -125,7 +121,6 @@ export async function persistAssistantGenerationMessage(
     role: 'assistant',
     content,
     parts: persistedParts.length > 0 ? persistedParts : undefined,
-    deckVersionId: options.deckVersionId ?? null,
     generationJobId: options.jobId,
     generationStatus: options.status,
     model: options.model,
@@ -142,7 +137,6 @@ export async function persistInitialDeckChatHistory(
   chatStore: ChatStore,
   deckId: string,
   messages: ApiChatMessage[],
-  deckVersionId: string | null,
 ) {
   for (const message of messages) {
     await chatStore.appendMessage(deckId, {
@@ -152,7 +146,6 @@ export async function persistInitialDeckChatHistory(
       attachments: message.attachments,
       context: message.role === 'user' ? message.context : undefined,
       parts: message.role === 'assistant' ? message.parts : undefined,
-      deckVersionId,
     })
   }
 }

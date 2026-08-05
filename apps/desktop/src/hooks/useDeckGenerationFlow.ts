@@ -21,7 +21,7 @@ import { useGenerationJob, type GenerationJobOutcome } from './useGenerationJob'
 
 type DeckPersistenceSlice = {
   deckId: string | null
-  activeVersionId: string | null
+  documentRevision: number | null
   generatedHtml: string
   isDeckLoading: boolean
   refreshActiveDeck: (targetDeckId?: string) => Promise<unknown>
@@ -113,7 +113,7 @@ export function useDeckGenerationFlow({
   onGenerationStart,
   onGenerationSucceeded,
 }: UseDeckGenerationFlowOptions) {
-  const { deckId, activeVersionId, generatedHtml, isDeckLoading, refreshActiveDeck } = deck
+  const { deckId, documentRevision, generatedHtml, isDeckLoading, refreshActiveDeck } = deck
   const { messages, appendMessage, reloadChat, setMessages } = chat
 
   const {
@@ -130,7 +130,7 @@ export function useDeckGenerationFlow({
     status: generationStatus,
   } = useGenerationJob({
     deckId,
-    baseVersionId: activeVersionId,
+    baseDocumentRevision: documentRevision,
     selectedModel,
     reasoningEffort,
     canGenerate,
@@ -347,7 +347,7 @@ export function useDeckGenerationFlow({
 
         if (outcome.status === 'canceled') {
           toast.info('Generation canceled')
-        } else if (outcome.job.error?.code === 'version_conflict') {
+        } else if (outcome.job.error?.code === 'document_conflict') {
           toast.error('Deck changed during generation')
         } else if (!isModelFailure) {
           toast.error('Generation failed')
@@ -469,8 +469,8 @@ export function useDeckGenerationFlow({
     isGenerating,
     recentGenerationJobId:
       activeJob?.status === 'succeeded' &&
-      activeVersionId &&
-      activeJob.result?.versionId === activeVersionId
+      documentRevision !== null &&
+      activeJob.result?.documentRevision === documentRevision
         ? activeJob.id
         : null,
     retryGeneration: handleRetryGeneration,

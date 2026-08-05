@@ -5,56 +5,54 @@ import {
   createDeckRequestSchema,
   deckPatchRequestSchema,
   renameDeckRequestSchema,
+  updateDeckRequestSchema,
 } from '@ark/contracts'
-import { type AssetStore } from '../asset-record.ts'
-import { type AssetStorage } from '../asset-storage.ts'
-import { computeDeckVersionDiff } from '../deck-diff.ts'
-import { buildManualVersionProvenance } from '../deck-provenance.ts'
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
-import { buildDeckVersionOptions, mergeDeckVersionOptions } from '../deck-version-payload.ts'
+import type { AssetStore } from '../asset-record.ts'
+import { resolveArkAssetUrls } from '../asset-resolve.ts'
+import { stripDeckScriptsForPreview } from '@ark/deck-core/deck-preview-slides.ts'
+import { buildDeckRuntimeManifestFromValidation } from '../deck-manifest.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
-import {
-  getApiErrorFromUnknown,
-  parseDeckVersionOptions,
-  sendApiError,
-  sendDeckValidationError,
-} from './shared.ts'
+import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 
 export function createDecksRouter(deps: {
   deckStore: DeckStore
-  assetStore?: AssetStore
-  assetStorage?: AssetStorage
-  onDeckVersionPersisted?: (deckId: string, versionId: string) => void
+  assetStore: AssetStore
+  onDocumentPersisted?: (deckId: string, documentRevision: number) => void
 }): Router {
-  const { deckStore, assetStore, assetStorage, onDeckVersionPersisted } = deps
+  const { deckStore, assetStore, onDocumentPersisted } = deps
   const router = Router()
 
-  const notifyVersionPersisted = (deckId: string, versionId: string | null | undefined) => {
-    if (!versionId || !onDeckVersionPersisted) {
-      return
-    }
-
-    onDeckVersionPersisted(deckId, versionId)
-  }
-
-  const cleanupDeckAssets = async (deckId: string) => {
-    if (!assetStore) {
-      return
-    }
-
-    const removed = await assetStore.deleteAssetsByDeck(deckId)
-
-    if (assetStorage) {
-      await Promise.all(removed.map((asset) => assetStorage.delete(asset.storageKey)))
-    }
-  }
+  const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
+    onDocumentPersisted?.(deckId, documentRevision)
 
   router.get('/api/decks', async (_request: Request, response: Response) => {
     try {
       const decks = await deckStore.listDecks()
 
       response.json({ decks })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
+
+  router.get('/api/decks/:id/export', async (request: Request<{ id: string }>, response) => {
+    const id = request.params.id?.trim()
+    if (!id || !isValidDeckId(id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+    try {
+      const deck = await deckStore.getDeck(id)
+      if (!deck) {
+        response.status(404).json({ error: 'Deck not found.' })
+        return
+      }
+      const html = await resolveArkAssetUrls(assetStore, id, deck.html)
+      response
+        .type('html')
+        .send(request.query.sanitized === 'true' ? stripDeckScriptsForPreview(html) : html)
     } catch (error) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
     }
@@ -95,7 +93,7 @@ export function createDecksRouter(deps: {
       return
     }
 
-    const { html, ...versionBody } = parsed.data
+    const { html, origin } = parsed.data
     const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
 
     if (!validation.valid) {
@@ -104,13 +102,9 @@ export function createDecksRouter(deps: {
     }
 
     try {
-      const versionOptions = buildDeckVersionOptions(
-        html,
-        parseDeckVersionOptions(versionBody),
-        validation,
-      )
-      const deck = await deckStore.createDeck(html, versionOptions)
-      notifyVersionPersisted(deck.id, deck.activeVersionId)
+      const runtimeManifest = buildDeckRuntimeManifestFromValidation(html, validation)
+      const deck = await deckStore.createDeck(html, origin ? { origin } : undefined)
+      notifyDocumentPersisted(deck.id, deck.documentRevision)
       getRequestLogger(request).info('deck.created', {
         deckId: deck.id,
         statusCode: 201,
@@ -118,7 +112,7 @@ export function createDecksRouter(deps: {
       response.status(201).json({
         deck,
         validation,
-        runtimeManifest: versionOptions.runtimeManifest ?? null,
+        runtimeManifest,
       })
     } catch (error) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
@@ -127,7 +121,7 @@ export function createDecksRouter(deps: {
 
   router.put('/api/decks/:id', async (request: Request<{ id: string }>, response: Response) => {
     const id = request.params.id?.trim()
-    const parsed = parseRequestBody(createDeckRequestSchema, request.body)
+    const parsed = parseRequestBody(updateDeckRequestSchema, request.body)
 
     if (!id) {
       response.status(400).json({ error: 'Deck id is required.' })
@@ -144,7 +138,7 @@ export function createDecksRouter(deps: {
       return
     }
 
-    const { html, ...versionBody } = parsed.data
+    const { html } = parsed.data
     const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
 
     if (!validation.valid) {
@@ -160,26 +154,20 @@ export function createDecksRouter(deps: {
         return
       }
 
-      const versionOptions = buildDeckVersionOptions(
-        html,
-        parseDeckVersionOptions(versionBody),
-        validation,
-      )
-      versionOptions.diff = computeDeckVersionDiff(existing.html, html)
-
-      const deck = await deckStore.updateDeck(id, html, versionOptions)
+      const runtimeManifest = buildDeckRuntimeManifestFromValidation(html, validation)
+      const deck = await deckStore.updateDeck(id, html)
 
       if (!deck) {
         response.status(404).json({ error: 'Deck not found.' })
         return
       }
 
-      notifyVersionPersisted(deck.id, deck.activeVersionId)
+      notifyDocumentPersisted(deck.id, deck.documentRevision)
 
       response.json({
         deck,
         validation,
-        runtimeManifest: versionOptions.runtimeManifest ?? null,
+        runtimeManifest,
       })
     } catch (error) {
       sendApiError(response, 500, getApiErrorFromUnknown(error))
@@ -243,26 +231,14 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const parsedVersionOptions = parseDeckVersionOptions(request.body)
-        const versionOptions = mergeDeckVersionOptions(
-          patched.html,
-          {
-            ...parsedVersionOptions,
-            summary: parsedVersionOptions.summary ?? patched.summary,
-            provenance: buildManualVersionProvenance(parsedBody.data.operations, patched),
-            diff: computeDeckVersionDiff(existing.html, patched.html),
-          },
-          validation,
-        )
-
-        const deck = await deckStore.updateDeck(id, patched.html, versionOptions)
+        const deck = await deckStore.updateDeck(id, patched.html)
 
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })
           return
         }
 
-        notifyVersionPersisted(deck.id, deck.activeVersionId)
+        notifyDocumentPersisted(deck.id, deck.documentRevision)
 
         response.json({
           deck,
@@ -335,8 +311,6 @@ export function createDecksRouter(deps: {
         response.status(404).json({ error: 'Deck not found.' })
         return
       }
-
-      await cleanupDeckAssets(id)
 
       response.status(204).send()
     } catch (error) {

@@ -1,15 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  createDeck,
-  fetchDeck,
-  fetchDeckVersion,
-  listDeckVersions,
-  listDecks,
-  renameDeck,
-  rollbackDeck,
-  updateDeck,
-} from './deck-api'
+import { createDeck, fetchDeck, listDecks, renameDeck, updateDeck } from './deck-api'
 
 const deck = {
   id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
@@ -17,8 +8,9 @@ const deck = {
   title: 'Deck',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  activeVersionId: 'a0000000-0000-4000-8000-000000000001',
-  versionNumber: 1,
+  documentRevision: 1,
+  origin: 'authored' as const,
+  filePath: '/tmp/Deck.ark',
 }
 
 const deckSummary = {
@@ -26,8 +18,8 @@ const deckSummary = {
   title: deck.title,
   createdAt: deck.createdAt,
   updatedAt: deck.updatedAt,
-  activeVersionId: deck.activeVersionId,
-  versionNumber: deck.versionNumber,
+  documentRevision: deck.documentRevision,
+  filePath: deck.filePath,
 }
 
 const jsonResponse = (body: unknown, options: { ok?: boolean; status?: number } = {}) => ({
@@ -64,109 +56,27 @@ describe('deck-api', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(createDeck(deck.html, { source: 'upload' })).resolves.toEqual(deck)
+    await expect(createDeck(deck.html)).resolves.toEqual(deck)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/decks',
       expect.objectContaining({
-        body: JSON.stringify({ html: deck.html, source: 'upload' }),
+        body: JSON.stringify({ html: deck.html }),
         method: 'POST',
       }),
     )
   })
 
-  it('updates decks with optional manual provenance', async () => {
+  it('updates the current document', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deck }))
 
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(
-      updateDeck(deck.id, deck.html, {
-        source: 'manual',
-        summary: 'Undo: Edited text',
-        provenance: {
-          operations: ['undo'],
-          slideIndexes: [0],
-          elementIds: ['el-1'],
-        },
-      }),
-    ).resolves.toEqual(deck)
+    await expect(updateDeck(deck.id, deck.html)).resolves.toEqual(deck)
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/decks/${deck.id}`,
       expect.objectContaining({
-        body: JSON.stringify({
-          html: deck.html,
-          source: 'manual',
-          summary: 'Undo: Edited text',
-          provenance: {
-            operations: ['undo'],
-            slideIndexes: [0],
-            elementIds: ['el-1'],
-          },
-        }),
+        body: JSON.stringify({ html: deck.html }),
         method: 'PUT',
-      }),
-    )
-  })
-
-  it('lists deck versions and fetches one version', async () => {
-    const version = {
-      id: 'a0000000-0000-4000-8000-000000000001',
-      deckId: deck.id,
-      versionNumber: 1,
-      title: deck.title,
-      source: 'manual' as const,
-      summary: null,
-      validationStatus: 'valid' as const,
-      runtimeManifest: null,
-      modelProvider: null,
-      modelName: null,
-      provenance: null,
-      diff: null,
-      createdAt: deck.createdAt,
-      isActive: true,
-      html: deck.html,
-    }
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ versions: [version] }))
-      .mockResolvedValueOnce(jsonResponse({ version }))
-
-    vi.stubGlobal('fetch', fetchMock)
-
-    await expect(listDeckVersions(deck.id)).resolves.toEqual([
-      {
-        id: version.id,
-        deckId: version.deckId,
-        versionNumber: version.versionNumber,
-        title: version.title,
-        source: version.source,
-        summary: version.summary,
-        validationStatus: version.validationStatus,
-        runtimeManifest: version.runtimeManifest,
-        modelProvider: version.modelProvider,
-        modelName: version.modelName,
-        provenance: version.provenance,
-        diff: version.diff,
-        createdAt: version.createdAt,
-        isActive: version.isActive,
-      },
-    ])
-    await expect(fetchDeckVersion(deck.id, version.id)).resolves.toEqual(version)
-  })
-
-  it('rolls back to a prior version', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deck }))
-
-    vi.stubGlobal('fetch', fetchMock)
-
-    await expect(rollbackDeck(deck.id, 'a0000000-0000-4000-8000-000000000001')).resolves.toEqual(
-      deck,
-    )
-    expect(fetchMock).toHaveBeenCalledWith(
-      `/api/decks/${deck.id}/rollback`,
-      expect.objectContaining({
-        body: JSON.stringify({ versionId: 'a0000000-0000-4000-8000-000000000001' }),
-        method: 'POST',
       }),
     )
   })

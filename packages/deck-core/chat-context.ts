@@ -10,6 +10,7 @@ import {
   type JsonValue,
   type SlideContext,
 } from './chat.ts'
+import type { DeckOrigin } from './deck-origin.ts'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
 const stringBytes = (value: string) => new TextEncoder().encode(value).byteLength
@@ -379,12 +380,14 @@ export function assembleDeckAgentContext({
   currentHtml,
   editorSelection,
   slideContexts,
+  deckOrigin,
   projectionLimits,
 }: {
   messages: ApiChatMessage[]
   currentHtml: string
   editorSelection?: EditorSelectionContext
   slideContexts?: SlideContext[]
+  deckOrigin?: DeckOrigin | null
   projectionLimits?: { maxAssistantTurnBytes?: number }
 }): { modelMessages: ModelMessage[]; metadata: DeckAgentContextMetadata } {
   let omittedStepCount = 0
@@ -411,6 +414,7 @@ export function assembleDeckAgentContext({
         currentHtml,
         editorSelection,
         slideContexts,
+        deckOrigin,
       }),
     })
   return {
@@ -424,11 +428,13 @@ export function buildAgentModelMessages(
   currentHtml: string,
   editorSelection?: EditorSelectionContext,
   slideContexts?: SlideContext[],
+  deckOrigin?: DeckOrigin | null,
 ) {
   return assembleDeckAgentContext({
     messages,
     currentHtml,
     editorSelection,
     slideContexts,
+    deckOrigin,
   }).modelMessages
 }

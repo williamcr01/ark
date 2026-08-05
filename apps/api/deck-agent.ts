@@ -9,11 +9,12 @@ import {
   type SlideContext,
 } from '@ark/deck-core/chat.ts'
 import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
+import type { DeckOrigin } from '@ark/deck-core/deck-origin.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
-import { type DeckAttachmentInspector, type DeckVersionInspector } from './deck-tools.ts'
+import { type DeckAttachmentInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
@@ -57,7 +58,7 @@ Attached images are optional design inputs: place them when the user's request o
 For an image, use the exact Ark URL returned by the attachment tools; never reproduce base64 bytes, invent an asset URL, or substitute a remote URL. Add meaningful alt text. Use object-fit: cover for photographic crops and contain for logos, diagrams, screenshots, or anything that must not be cropped.
 
 Use ask_user when critical context is missing — ask concise questions, then stop. Never re-ask information already present in the conversation.
-- New deck: before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, skip ask_user.
+- New deck: the request wrapper tells you when you are starting one — either there is no deck yet, or the workspace holds an empty starter deck with no authored content. In both cases build from scratch; never treat a starter deck as the user's work, and do not read it before writing. Before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, skip ask_user.
 - After context is clear for a NEW deck (and before write_deck), call propose_themes with exactly 4 lean single-slide title samples in distinct visual directions, then stop. After the user picks a theme, write the full deck in that look. Never re-propose unless asked.
 - Existing deck: ask only when guessing would materially change the result. Call propose_themes only when the user explicitly asks to retheme the whole deck or requests new theme options. After they pick, apply that direction consistently across the deck while preserving its content and structure unless they requested broader changes.
 
@@ -76,13 +77,14 @@ export type RunDeckAgentOptions = {
   modelRef?: string | null
   messages: ApiChatMessage[]
   currentHtml: string
+  /** `blank` marks Ark's untouched starter deck so the agent opens a new-deck flow. */
+  deckOrigin?: DeckOrigin | null
   editorSelection?: EditorSelectionContext
   slideContexts?: SlideContext[]
   reasoningEffort?: ReasoningEffort
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
-  versionInspector?: DeckVersionInspector
   attachmentInspector?: DeckAttachmentInspector
 }
 
@@ -564,13 +566,13 @@ export async function runDeckAgent({
   modelRef: modelRefInput = 'unknown',
   messages,
   currentHtml,
+  deckOrigin,
   editorSelection,
   slideContexts,
   reasoningEffort,
   abortSignal,
   onStepProgress,
   logger,
-  versionInspector,
   attachmentInspector,
 }: RunDeckAgentOptions): Promise<RunDeckAgentResult> {
   const provider = providerInput ?? 'unknown'
@@ -580,7 +582,6 @@ export async function runDeckAgent({
   const workspace = createDeckWorkspace(currentHtml)
   const { tools, activeDefinitions } = createActiveDeckTools(workspace, {
     logger,
-    versionInspector,
     attachmentInspector,
   })
   const accumulatedSteps: AgentStep[] = []
@@ -593,6 +594,7 @@ export async function runDeckAgent({
     currentHtml,
     editorSelection,
     slideContexts,
+    deckOrigin,
   })
   const guideMetadata = getAgentGuidesMetadata()
   logger?.info('generation.context.assembled', {

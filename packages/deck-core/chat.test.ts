@@ -186,7 +186,7 @@ describe('parseGenerateMessages', () => {
             type: 'file',
             mediaType: 'image/png',
             filename: 'chart.png',
-            url: `/api/assets/${ASSET_ID}`,
+            url: `ark-asset:${ASSET_ID}`,
             assetId: ASSET_ID,
           },
         ],
@@ -204,7 +204,7 @@ describe('parseGenerateMessages', () => {
       {
         role: 'user',
         content: 'ref',
-        attachments: [{ type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}` }],
+        attachments: [{ type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}` }],
       },
     ])
 
@@ -492,7 +492,7 @@ describe('chatAttachmentsToModelParts', () => {
   it('emits file parts for inline image data URLs and skips asset references', () => {
     const parts = chatAttachmentsToModelParts([
       sampleAttachment,
-      { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
+      { type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}`, assetId: ASSET_ID },
     ])
 
     expect(parts).toHaveLength(1)
@@ -539,7 +539,7 @@ describe('chatAttachmentsToModelParts', () => {
         type: 'file',
         mediaType: 'text/csv',
         filename: 'prior.csv',
-        url: `/api/assets/${ASSET_ID}`,
+        url: `ark-asset:${ASSET_ID}`,
         assetId: ASSET_ID,
       },
     ])
@@ -582,8 +582,8 @@ describe('collectAssetIds', () => {
   it('collects unique asset ids from references and URLs', () => {
     expect(
       collectAssetIds([
-        { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}`, assetId: ASSET_ID },
-        { type: 'file', mediaType: 'image/png', url: `/api/assets/${ASSET_ID}` },
+        { type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}`, assetId: ASSET_ID },
+        { type: 'file', mediaType: 'image/png', url: `ark-asset:${ASSET_ID}` },
         sampleAttachment,
       ]),
     ).toEqual([ASSET_ID])
@@ -733,5 +733,30 @@ describe('wrapUserPromptForAgent', () => {
     ])
     expect(wrapped).toContain('Build a pitch deck')
     expect(wrapped).not.toContain('attached the following slide(s) as context')
+  })
+
+  it('starts a new deck when the workspace only holds a blank starter deck', () => {
+    const wrapped = wrapUserPromptForAgent(
+      'Build a pitch deck',
+      '<html><body><section class="slide"></section></body></html>',
+      0,
+      undefined,
+      undefined,
+      'blank',
+    )
+
+    expect(wrapped).toContain('Create a new complete Ark HTML slide deck')
+    expect(wrapped).toContain('empty starter deck with no authored content')
+    expect(wrapped).not.toContain('wants to revise')
+  })
+
+  it('revises once the deck holds authored content', () => {
+    const html = '<html><body><section class="slide"><h1>Q3</h1></section></body></html>'
+
+    expect(
+      wrapUserPromptForAgent('Tighten the copy', html, 0, undefined, undefined, 'authored'),
+    ).toContain('wants to revise')
+    // An unknown or absent origin must not turn a real deck into a rewrite.
+    expect(wrapUserPromptForAgent('Tighten the copy', html)).toContain('wants to revise')
   })
 })

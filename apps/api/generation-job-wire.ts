@@ -2,12 +2,12 @@ import type { GenerationJob } from '@ark/deck-core/generation-job.ts'
 import { deckValidationReportSchema } from '@ark/contracts'
 import type { GenerationJobApi } from '@ark/contracts'
 
-/** Map a persisted generation job to the REST wire shape (no request body or HTML). */
+/** Map a process-local generation job to the REST wire shape (no request body or HTML). */
 export function toGenerationJobApi(job: GenerationJob): GenerationJobApi {
   return {
     id: job.id,
     deckId: job.deckId,
-    baseVersionId: job.baseVersionId,
+    baseDocumentRevision: job.baseDocumentRevision,
     editingExistingDeck: job.request.editingExistingDeck ?? false,
     status: job.status,
     model: job.model,
@@ -17,7 +17,7 @@ export function toGenerationJobApi(job: GenerationJob): GenerationJobApi {
     result: job.result
       ? {
           deckId: job.result.deckId,
-          versionId: job.result.versionId,
+          documentRevision: job.result.documentRevision,
           validation: deckValidationReportSchema.parse(job.result.validation),
           assistantText: job.result.assistantText,
         }

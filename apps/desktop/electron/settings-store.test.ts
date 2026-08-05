@@ -20,11 +20,13 @@ describe('DesktopSettingsStore', () => {
   })
 
   it('persists validated preferences and restores them', async () => {
+    const longWorkspaceDirectory = `/workspace/${'nested/'.repeat(200)}`
     const store = new DesktopSettingsStore(filePath)
     await store.update({
       appearance: 'dark',
       selectedModel: 'openai:gpt-5.6-luna',
       reasoningEffortByModel: { 'openai:gpt-5.6-luna': 'high' },
+      defaultWorkspaceDirectory: longWorkspaceDirectory,
     })
 
     const restored = new DesktopSettingsStore(filePath)
@@ -34,6 +36,7 @@ describe('DesktopSettingsStore', () => {
       appearance: 'dark',
       selectedModel: 'openai:gpt-5.6-luna',
       reasoningEffortByModel: { 'openai:gpt-5.6-luna': 'high' },
+      defaultWorkspaceDirectory: longWorkspaceDirectory,
     })
     expect(JSON.parse(await readFile(filePath, 'utf8'))).toMatchObject({ version: 1 })
   })

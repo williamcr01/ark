@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createGenerationJobStore } from './generation-job-store.ts'
+import { createGenerationJobStore, MAX_RETAINED_TERMINAL_JOBS } from './generation-job-store.ts'
 
 describe('file generation job store', () => {
   let dataDir = ''
@@ -22,7 +22,7 @@ describe('file generation job store', () => {
 
     const created = await store.createJob({
       deckId: null,
-      baseVersionId: null,
+      baseDocumentRevision: null,
       model: 'openai:gpt-5.6-luna',
       provider: 'openai',
       request: {
@@ -66,5 +66,39 @@ describe('file generation job store', () => {
     const loaded = await store.getJob(created.id)
     expect(loaded?.status).toBe('canceled')
     expect(loaded?.request.reasoningEffort).toBe('high')
+  })
+
+  it('drops completed deck payloads and evicts old terminal jobs', async () => {
+    const store = createGenerationJobStore()
+    const ids: string[] = []
+
+    for (let index = 0; index <= MAX_RETAINED_TERMINAL_JOBS; index += 1) {
+      const created = await store.createJob({
+        deckId: '00000000-0000-4000-8000-000000000001',
+        model: 'openai:gpt-5.6-luna',
+        request: {
+          messages: [{ role: 'user', content: `Deck ${index}` }],
+          currentHtml: `<html>${'x'.repeat(10_000)}</html>`,
+        },
+      })
+      ids.push(created.id)
+      const completed = await store.updateJob(created.id, {
+        status: 'succeeded',
+        result: {
+          deckId: created.deckId!,
+          documentRevision: 2,
+          html: '<html>generated</html>',
+          validation: {},
+          assistantText: 'Done',
+        },
+        completedAt: new Date().toISOString(),
+      })
+      expect(completed?.request.currentHtml).toBe('')
+      expect(completed?.request.messages).toEqual([])
+      expect(completed?.result?.html).toBe('')
+    }
+
+    await expect(store.getJob(ids[0]!)).resolves.toBeNull()
+    await expect(store.getJob(ids.at(-1)!)).resolves.toMatchObject({ status: 'succeeded' })
   })
 })

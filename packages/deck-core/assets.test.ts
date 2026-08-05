@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   absolutizeArkAssetReferences,
+  buildArkAssetUrl,
   buildAssetUrl,
   getAssetCategory,
   isAllowedAssetMediaType,
@@ -10,6 +11,7 @@ import {
   parseAssetIdFromUrl,
   resolveAssetMediaType,
   sanitizeAssetFilename,
+  scopeArkAssetReferences,
 } from './assets.ts'
 
 const ASSET_ID = '00000000-0000-4000-8000-000000000001'
@@ -48,14 +50,22 @@ describe('asset URLs', () => {
     expect(isArkAssetUrl(`/api/decks/${DECK_ID}/assets/${ASSET_ID}`)).toBe(true)
   })
 
-  it('parses temporary /api/assets/:id URLs for unsaved decks', () => {
-    expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}`)).toBe(ASSET_ID)
-    expect(isArkAssetUrl(`/api/assets/${ASSET_ID}`)).toBe(true)
+  it('builds and parses canonical workspace asset references', () => {
+    expect(buildArkAssetUrl(ASSET_ID)).toBe(`ark-asset:${ASSET_ID}`)
+    expect(parseAssetIdFromUrl(`ark-asset:${ASSET_ID}`)).toBe(ASSET_ID)
+    expect(isArkAssetUrl(`ark-asset:${ASSET_ID}`)).toBe(true)
+  })
+
+  it('scopes canonical workspace asset references to a deck', () => {
+    expect(scopeArkAssetReferences(`url("ark-asset:${ASSET_ID}")`, DECK_ID)).toBe(
+      `url("${buildAssetUrl(DECK_ID, ASSET_ID)}")`,
+    )
   })
 
   it('rejects non-asset and external URLs', () => {
     expect(parseAssetIdFromUrl('https://example.com/logo.png')).toBeNull()
     expect(parseAssetIdFromUrl('/api/assets/not-a-uuid')).toBeNull()
+    expect(parseAssetIdFromUrl(`/api/assets/${ASSET_ID}`)).toBeNull()
     expect(isArkAssetUrl('https://evil.example/api/assets/x')).toBe(false)
     expect(
       parseAssetIdFromUrl(`https://evil.example/api/decks/${DECK_ID}/assets/${ASSET_ID}`),

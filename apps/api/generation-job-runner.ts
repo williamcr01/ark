@@ -15,17 +15,14 @@ import type {
 } from '@ark/deck-core/generation-job.ts'
 import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark/contracts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
-import { buildAssetUrl, buildTemporaryAssetUrl } from '@ark/deck-core/assets.ts'
+import { buildArkAssetUrl } from '@ark/deck-core/assets.ts'
+import { deckOriginIsUnauthored } from '@ark/deck-core/deck-origin.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import { computeDeckVersionDiff } from './deck-diff.ts'
-import { buildAgentVersionProvenance } from './deck-provenance.ts'
 import { type DeckStore } from './deck-record.ts'
-import { buildDeckVersionOptions } from './deck-version-payload.ts'
 import { type ChatStore } from './chat-record.ts'
 import { resolveAssetAttachments } from './asset-resolve.ts'
-import { type AssetStorage } from './asset-storage.ts'
 import { type AssetRecord, type AssetStore } from './asset-record.ts'
 import {
   ensureChatThreadForJob,
@@ -51,58 +48,15 @@ function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | unde
   }
 }
 
-const TEMPORARY_ASSET_URL_PATTERN =
-  /\/api\/assets\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi
-const TEMPORARY_ASSET_TTL_MS = 24 * 60 * 60 * 1000
-
-function finalizeTemporaryAssetUrls(
-  html: string,
-  deckId: string,
-  allowedAssetIds: ReadonlySet<string>,
-) {
-  TEMPORARY_ASSET_URL_PATTERN.lastIndex = 0
-  const rewritten = html.replace(TEMPORARY_ASSET_URL_PATTERN, (match, rawId: string) => {
-    const id = rawId.toLowerCase()
-    return allowedAssetIds.has(id) ? buildAssetUrl(deckId, id) : match
-  })
-
-  TEMPORARY_ASSET_URL_PATTERN.lastIndex = 0
-  if (TEMPORARY_ASSET_URL_PATTERN.test(rewritten)) {
-    throw new Error('Generated deck contains an unrecognized temporary asset reference.')
-  }
-  return rewritten
-}
-
-function finalizeTemporaryMessageUrls(
-  messages: ApiChatMessage[],
-  deckId: string,
-  allowedAssetIds: ReadonlySet<string>,
-) {
-  return messages.map((message) => ({
-    ...message,
-    ...(message.attachments
-      ? {
-          attachments: message.attachments.map((attachment) => {
-            const id = attachment.assetId?.toLowerCase()
-            return id && allowedAssetIds.has(id)
-              ? { ...attachment, url: buildAssetUrl(deckId, id) }
-              : attachment
-          }),
-        }
-      : {}),
-  }))
-}
-
 export type GenerationJobRunnerOptions = {
   deckStore: DeckStore
   jobStore: GenerationJobStore
   chatStore?: ChatStore | null
   assetStore?: AssetStore | null
-  assetStorage?: AssetStorage | null
   createModel?: typeof createLanguageModel
   runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
   now?: () => Date
-  onDeckVersionPersisted?: (deckId: string, versionId: string) => void
+  onDocumentPersisted?: (deckId: string, documentRevision: number) => void
 }
 
 export type StartGenerationJobOptions = {
@@ -177,19 +131,13 @@ export function createGenerationJobRunner({
   jobStore,
   chatStore = null,
   assetStore = null,
-  assetStorage = null,
   createModel = createLanguageModel,
   runAgent = runDeckAgent,
   now = () => new Date(),
-  onDeckVersionPersisted,
+  onDocumentPersisted,
 }: GenerationJobRunnerOptions): GenerationJobRunner {
-  const notifyVersionPersisted = (deckId: string, versionId: string | null | undefined) => {
-    if (!versionId || !onDeckVersionPersisted) {
-      return
-    }
-
-    onDeckVersionPersisted(deckId, versionId)
-  }
+  const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
+    onDocumentPersisted?.(deckId, documentRevision)
   const persistTerminalAssistantMessage = async (
     job: GenerationJob,
     options: {
@@ -198,7 +146,6 @@ export function createGenerationJobRunner({
       transcriptParts?: import('@ark/deck-core/chat.ts').ChatMessagePart[]
       assistantText?: string | null
       deckId: string
-      deckVersionId?: string | null
       error?: GenerationJob['error']
     },
   ) => {
@@ -214,7 +161,6 @@ export function createGenerationJobRunner({
       transcriptParts: options.transcriptParts,
       assistantText: options.assistantText,
       editingExistingDeck: job.request.editingExistingDeck ?? false,
-      deckVersionId: options.deckVersionId ?? null,
       error: options.error ?? null,
     })
   }
@@ -248,24 +194,26 @@ export function createGenerationJobRunner({
 
       let modelMessages = currentJob.request.messages
       let attachmentInspector: Parameters<typeof runDeckAgent>[0]['attachmentInspector']
-      let jobAssetRecords: AssetRecord[] = []
 
       const historyAssetIds = collectAssetIdsFromMessages(currentJob.request.messages)
       const latestTurnAssetIds = currentJob.assetIds ?? []
       const allAssetIds = [...new Set([...historyAssetIds, ...latestTurnAssetIds])]
 
-      if (allAssetIds.length > 0 && assetStore && assetStorage) {
+      if (allAssetIds.length > 0 && assetStore) {
         const resolved = await resolveAssetAttachments(
-          { assetStore, assetStorage },
+          { assetStore },
           currentJob.deckId,
           allAssetIds,
         )
 
         if (resolved.ok) {
           const records = (
-            await Promise.all(allAssetIds.map(async (id) => assetStore.getAsset(id)))
+            await Promise.all(
+              allAssetIds.map(async (id) =>
+                currentJob.deckId ? assetStore.getAsset(currentJob.deckId, id) : null,
+              ),
+            )
           ).filter((record): record is AssetRecord => Boolean(record?.deckId === currentJob.deckId))
-          jobAssetRecords = records
           const recordsById = new Map(records.map((record) => [record.id, record]))
           attachmentInspector = {
             attachments: records.map((record) => ({
@@ -273,13 +221,13 @@ export function createGenerationJobRunner({
               filename: record.filename,
               mediaType: record.mediaType,
               byteSize: record.byteSize,
-              url: record.deckId
-                ? buildAssetUrl(record.deckId, record.id)
-                : buildTemporaryAssetUrl(record.id),
+              url: buildArkAssetUrl(record.id),
             })),
             read: async (id) => {
               const record = recordsById.get(id)
-              return record ? assetStorage.read(record.storageKey) : null
+              return record && currentJob.deckId
+                ? assetStore.readBytes(currentJob.deckId, record.id)
+                : null
             },
           }
           const modelAttachments = new Map(
@@ -290,9 +238,7 @@ export function createGenerationJobRunner({
                 record && isReadableTextMediaType(record.mediaType)
                   ? {
                       ...attachment,
-                      url: record.deckId
-                        ? buildAssetUrl(record.deckId, id)
-                        : buildTemporaryAssetUrl(id),
+                      url: buildArkAssetUrl(id),
                     }
                   : attachment,
               ]
@@ -312,22 +258,13 @@ export function createGenerationJobRunner({
         modelRef: currentJob.model,
         messages: modelMessages,
         currentHtml: currentJob.request.currentHtml,
+        deckOrigin: currentJob.request.deckOrigin,
         editorSelection: currentJob.request.editorSelection,
         slideContexts: currentJob.request.slideContexts,
         reasoningEffort: currentJob.request.reasoningEffort,
         abortSignal: abortController.signal,
         logger: jobLogger,
         attachmentInspector,
-        versionInspector:
-          currentJob.request.editingExistingDeck && currentJob.deckId
-            ? {
-                listVersions: async (limit = 10) => {
-                  const versions = await deckStore.listVersions(currentJob.deckId!)
-
-                  return (versions ?? []).slice(0, limit)
-                },
-              }
-            : undefined,
         onStepProgress: async (steps) => {
           const latestStep = steps.at(-1)
 
@@ -429,7 +366,7 @@ export function createGenerationJobRunner({
       }
 
       const targetDeckId = refreshed.deckId
-      const baseVersionId = refreshed.baseVersionId
+      const baseDocumentRevision = refreshed.baseDocumentRevision
 
       if (
         !targetDeckId &&
@@ -493,9 +430,9 @@ export function createGenerationJobRunner({
           return
         }
 
-        const currentActiveVersionId = existingDeck.activeVersionId ?? null
+        const currentDocumentRevision = existingDeck.documentRevision
 
-        if (baseVersionId && currentActiveVersionId && baseVersionId !== currentActiveVersionId) {
+        if (baseDocumentRevision !== null && baseDocumentRevision !== currentDocumentRevision) {
           const failedJob = await jobStore.updateJob(jobId, {
             status: 'failed',
             progress: {
@@ -505,8 +442,8 @@ export function createGenerationJobRunner({
             },
             error: {
               message:
-                'The deck changed while generation was running. Retry from the latest version.',
-              code: 'version_conflict',
+                'The deck changed while generation was running. Retry from the latest document.',
+              code: 'document_conflict',
             },
             observability,
             completedAt: now().toISOString(),
@@ -536,7 +473,6 @@ export function createGenerationJobRunner({
             transcriptParts: agentResult.transcriptParts,
             assistantText: agentResult.assistantText,
             deckId: existingDeck.id,
-            deckVersionId: existingDeck.activeVersionId ?? null,
           })
 
           await jobStore.updateJob(jobId, {
@@ -552,7 +488,7 @@ export function createGenerationJobRunner({
             },
             result: {
               deckId: existingDeck.id,
-              versionId: existingDeck.activeVersionId ?? '',
+              documentRevision: existingDeck.documentRevision,
               html: existingDeck.html,
               validation: agentResult.validation,
               assistantText: agentResult.assistantText,
@@ -572,21 +508,7 @@ export function createGenerationJobRunner({
           return
         }
 
-        const updatedDeck = await deckStore.updateDeck(
-          targetDeckId,
-          agentResult.html,
-          buildDeckVersionOptions(agentResult.html, {
-            source: 'agent',
-            summary: refreshed.request.editingExistingDeck ? 'AI edit' : 'AI generation',
-            modelProvider: provider,
-            modelName: refreshed.model,
-            provenance: buildAgentVersionProvenance({
-              jobId,
-              steps: agentResult.steps,
-            }),
-            diff: computeDeckVersionDiff(existingDeck.html, agentResult.html),
-          }),
-        )
+        const updatedDeck = await deckStore.updateDeck(targetDeckId, agentResult.html)
 
         if (!updatedDeck) {
           const failedJob = await jobStore.updateJob(jobId, {
@@ -621,7 +543,7 @@ export function createGenerationJobRunner({
           },
           result: {
             deckId: updatedDeck.id,
-            versionId: updatedDeck.activeVersionId ?? '',
+            documentRevision: updatedDeck.documentRevision,
             html: updatedDeck.html,
             validation: agentResult.validation,
             assistantText: agentResult.assistantText,
@@ -636,7 +558,6 @@ export function createGenerationJobRunner({
             transcriptParts: agentResult.transcriptParts,
             assistantText: agentResult.assistantText,
             deckId: updatedDeck.id,
-            deckVersionId: updatedDeck.activeVersionId ?? null,
           })
         }
 
@@ -651,18 +572,13 @@ export function createGenerationJobRunner({
           tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
         })
 
-        notifyVersionPersisted(updatedDeck.id, updatedDeck.activeVersionId)
+        notifyDocumentPersisted(updatedDeck.id, updatedDeck.documentRevision)
 
         return
       }
 
       const newDeckId = randomUUID()
-      const temporaryAssetIds = new Set(jobAssetRecords.map((record) => record.id.toLowerCase()))
-      const finalizedHtml = finalizeTemporaryAssetUrls(
-        agentResult.html,
-        newDeckId,
-        temporaryAssetIds,
-      )
+      const finalizedHtml = agentResult.html
       const finalValidation = validateDeckHtmlOnServer(finalizedHtml, { logger: jobLogger })
       if (!finalValidation.valid) {
         throw new Error(
@@ -671,40 +587,10 @@ export function createGenerationJobRunner({
         )
       }
 
-      const createdDeck = await deckStore.createDeck(
-        finalizedHtml,
-        buildDeckVersionOptions(finalizedHtml, {
-          source: 'agent',
-          summary: 'AI generation',
-          modelProvider: provider,
-          modelName: refreshed.model,
-          provenance: buildAgentVersionProvenance({
-            jobId,
-            steps: agentResult.steps,
-          }),
-        }),
-        newDeckId,
-      )
-
-      if (temporaryAssetIds.size > 0) {
-        const claimed = await assetStore?.claimAssetsForDeck([...temporaryAssetIds], createdDeck.id)
-        if (!claimed || claimed.length !== temporaryAssetIds.size) {
-          await deckStore.deleteDeck(createdDeck.id)
-          throw new Error('Could not attach uploaded images to the new deck.')
-        }
-      }
+      const createdDeck = await deckStore.createDeck(finalizedHtml, undefined, newDeckId)
 
       if (chatStore) {
-        await persistInitialDeckChatHistory(
-          chatStore,
-          createdDeck.id,
-          finalizeTemporaryMessageUrls(
-            refreshed.request.messages,
-            createdDeck.id,
-            temporaryAssetIds,
-          ),
-          createdDeck.activeVersionId ?? null,
-        )
+        await persistInitialDeckChatHistory(chatStore, createdDeck.id, refreshed.request.messages)
       }
 
       const preparedJob = await jobStore.updateJob(jobId, {
@@ -716,7 +602,7 @@ export function createGenerationJobRunner({
         },
         result: {
           deckId: createdDeck.id,
-          versionId: createdDeck.activeVersionId ?? '',
+          documentRevision: createdDeck.documentRevision,
           html: createdDeck.html,
           validation: finalValidation,
           assistantText: agentResult.assistantText,
@@ -731,7 +617,6 @@ export function createGenerationJobRunner({
           transcriptParts: agentResult.transcriptParts,
           assistantText: agentResult.assistantText,
           deckId: createdDeck.id,
-          deckVersionId: createdDeck.activeVersionId ?? null,
         })
       }
 
@@ -746,7 +631,7 @@ export function createGenerationJobRunner({
         tokenUsage: agentResult.providerMetrics?.tokenUsage ?? null,
       })
 
-      notifyVersionPersisted(createdDeck.id, createdDeck.activeVersionId)
+      notifyDocumentPersisted(createdDeck.id, createdDeck.documentRevision)
     } catch (error) {
       const latest = await jobStore.getJob(jobId)
       const durationMs = Math.round(performance.now() - jobStartedAt)
@@ -896,7 +781,7 @@ export function createGenerationJobRunner({
     }
 
     if (assetIds.length > 0) {
-      if (!assetStore || !assetStorage) {
+      if (!assetStore) {
         throw Object.assign(new Error('Asset storage is not configured.'), {
           apiError: {
             code: 'provider_error',
@@ -905,18 +790,9 @@ export function createGenerationJobRunner({
         })
       }
 
-      if (!deckId) {
-        const cutoff = new Date(now().getTime() - TEMPORARY_ASSET_TTL_MS).toISOString()
-        const expired = await assetStore.deleteExpiredUnassignedAssets(cutoff)
-        await Promise.all(expired.map((record) => assetStorage.delete(record.storageKey)))
-      }
-
-      const resolved = await resolveAssetAttachments(
-        { assetStore, assetStorage },
-        deckId,
-        assetIds,
-        { strict: true },
-      )
+      const resolved = await resolveAssetAttachments({ assetStore }, deckId, assetIds, {
+        strict: true,
+      })
 
       if (!resolved.ok) {
         throw Object.assign(new Error('One or more asset ids could not be resolved.'), {
@@ -928,10 +804,7 @@ export function createGenerationJobRunner({
       }
     }
 
-    const baseVersionId =
-      typeof body.baseVersionId === 'string' && body.baseVersionId.trim()
-        ? body.baseVersionId.trim()
-        : null
+    const baseDocumentRevision = body.baseDocumentRevision ?? null
 
     if (deckId) {
       const jobs = await jobStore.listJobsForDeck(deckId)
@@ -947,20 +820,24 @@ export function createGenerationJobRunner({
       }
     }
 
+    // The renderer cannot be trusted to know whether the deck is still Ark's
+    // untouched starter, so read the origin from the stored record.
+    const deckOrigin = deckId ? ((await deckStore.getDeck(deckId))?.origin ?? null) : null
+
     let chatThreadId: string | null = null
 
     if (deckId && chatStore) {
-      const thread = await ensureChatThreadForJob(chatStore, deckStore, deckId, baseVersionId)
+      const thread = await ensureChatThreadForJob(chatStore, deckStore, deckId)
 
       if (thread) {
         chatThreadId = thread.id
-        await persistLatestUserMessage(chatStore, deckId, messages, baseVersionId)
+        await persistLatestUserMessage(chatStore, deckId, messages)
       }
     }
 
     const input: CreateGenerationJobInput = {
       deckId,
-      baseVersionId,
+      baseDocumentRevision,
       chatThreadId,
       assetIds: assetIds.length > 0 ? assetIds : undefined,
       model: modelRef,
@@ -968,8 +845,11 @@ export function createGenerationJobRunner({
       request: {
         messages,
         currentHtml,
-        baseVersionId,
-        editingExistingDeck: Boolean(deckId && currentHtml.trim()),
+        baseDocumentRevision,
+        editingExistingDeck: Boolean(
+          deckId && currentHtml.trim() && !deckOriginIsUnauthored(deckOrigin),
+        ),
+        ...(deckOrigin ? { deckOrigin } : {}),
         ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
         ...(body.slideContexts && body.slideContexts.length > 0
           ? { slideContexts: body.slideContexts }
@@ -998,7 +878,7 @@ export function createGenerationJobRunner({
 
     const request = cloneGenerationJobRequest(existing.request)
     const deckId = existing.deckId
-    let baseVersionId = existing.baseVersionId
+    let baseDocumentRevision = existing.baseDocumentRevision
     let retryControlMessage: ApiChatMessage | null = null
 
     const appendRetryTurn = (failedAssistant: {
@@ -1053,10 +933,12 @@ export function createGenerationJobRunner({
       const deck = await deckStore.getDeck(deckId)
 
       if (deck) {
-        baseVersionId = deck.activeVersionId ?? null
+        baseDocumentRevision = deck.documentRevision
         request.currentHtml = deck.html
-        request.baseVersionId = baseVersionId
-        request.editingExistingDeck = true
+        request.baseDocumentRevision = baseDocumentRevision
+        request.deckOrigin = deck.origin
+        // A retry after a failed first generation still faces a blank deck.
+        request.editingExistingDeck = !deckOriginIsUnauthored(deck.origin)
       }
     }
 
@@ -1064,14 +946,13 @@ export function createGenerationJobRunner({
       const persisted = await chatStore.appendMessage(deckId, {
         role: 'user',
         content: retryControlMessage.content,
-        deckVersionId: baseVersionId,
       })
       retryControlMessage.id = persisted.id
     }
 
     const input: CreateGenerationJobInput = {
       deckId,
-      baseVersionId,
+      baseDocumentRevision,
       assetIds: existing.assetIds,
       model: existing.model,
       provider: existing.provider,

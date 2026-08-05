@@ -25,7 +25,7 @@
     "openapi:check": "tsx scripts/generate-openapi.ts --check"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "devDependencies": {
     "@ark/contracts": "workspace:*",

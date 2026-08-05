@@ -40,7 +40,7 @@ function makeJob(overrides: Partial<GenerationJobApi> = {}): GenerationJobApi {
   return {
     id: 'job-1',
     deckId: 'deck-1',
-    baseVersionId: null,
+    baseDocumentRevision: null,
     editingExistingDeck: false,
     status: 'queued',
     model: 'test-model',
@@ -62,7 +62,7 @@ type JobResult = NonNullable<GenerationJobApi['result']>
 
 const succeededResult: JobResult = {
   deckId: 'deck-1',
-  versionId: 'v1',
+  documentRevision: 1,
   validation: {
     valid: true,
     slideCount: 1,
@@ -100,7 +100,7 @@ type Harness = {
 function makeHarness(
   overrides: {
     deckId?: string | null
-    activeVersionId?: string | null
+    documentRevision?: number | null
     messages?: ChatMessage[]
     canGenerate?: boolean
   } = {},
@@ -116,8 +116,7 @@ function makeHarness(
   const options: UseDeckGenerationFlowOptions = {
     deck: {
       deckId: overrides.deckId === undefined ? 'deck-1' : overrides.deckId,
-      activeVersionId:
-        overrides.activeVersionId === undefined ? 'version-1' : overrides.activeVersionId,
+      documentRevision: overrides.documentRevision === undefined ? 1 : overrides.documentRevision,
       generatedHtml: '<html></html>',
       isDeckLoading: false,
       refreshActiveDeck,
@@ -161,7 +160,7 @@ describe('useDeckGenerationFlow', () => {
   })
 
   it('applies a succeeded outcome (deck refresh + local assistant message)', async () => {
-    const harness = makeHarness({ deckId: 'deck-1', activeVersionId: 'v1' })
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
     fetchGenerationJobMock.mockResolvedValue(
       makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
@@ -189,8 +188,8 @@ describe('useDeckGenerationFlow', () => {
     expect(result.current.recentGenerationJobId).toBe('job-1')
   })
 
-  it('correlates recentGenerationJobId only to a succeeded job for the active version', async () => {
-    const harness = makeHarness({ deckId: 'deck-1', activeVersionId: 'version-1' })
+  it('correlates recentGenerationJobId only to a succeeded job for the active revision', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 2 })
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
     fetchGenerationJobMock.mockResolvedValue(
       makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
@@ -205,21 +204,21 @@ describe('useDeckGenerationFlow', () => {
       await result.current.generateDeck('make slides')
     })
 
-    // Active version still points at a prior/manual version — do not correlate.
+    // The active document still points at a prior/manual revision — do not correlate.
     expect(result.current.recentGenerationJobId).toBeNull()
 
     rerender({
       ...harness.options,
       deck: {
         ...harness.options.deck,
-        activeVersionId: 'v1',
+        documentRevision: 1,
       },
     })
     expect(result.current.recentGenerationJobId).toBe('job-1')
   })
 
   it('does not correlate failed or canceled generation jobs', async () => {
-    const harness = makeHarness({ deckId: 'deck-1', activeVersionId: 'v1' })
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
     fetchGenerationJobMock.mockResolvedValue(
       makeJob({
@@ -238,7 +237,7 @@ describe('useDeckGenerationFlow', () => {
     expect(result.current.recentGenerationJobId).toBeNull()
   })
 
-  it('flags the preview only while a new deck version is being refreshed', async () => {
+  it('flags the preview only while a new document revision is being refreshed', async () => {
     const harness = makeHarness({ deckId: 'deck-1' })
     let resolveRefresh = () => {}
     harness.refreshActiveDeck.mockImplementation(
@@ -249,7 +248,11 @@ describe('useDeckGenerationFlow', () => {
     )
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
     fetchGenerationJobMock.mockResolvedValue(
-      makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
     )
 
     const { result } = renderHook(() => useDeckGenerationFlow(harness.options))

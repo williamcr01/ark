@@ -51,14 +51,10 @@ vi.mock('@/hooks/useElementSize', () => ({
 
 vi.mock('@/hooks/useDeckPersistence', () => ({
   useDeckPersistence: () => ({
-    activeVersionId: 'version-1',
-    clearVersionPreview: vi.fn(),
     hasDeck: true,
     html: '<html>after</html>',
-    inspectVersion: vi.fn(),
     isDirty: false,
     isLoading: false,
-    isLoadingVersions: false,
     isSaving: false,
     isPatching: false,
     deckId: 'deck-1',
@@ -67,17 +63,12 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     deleteActiveDeck: vi.fn(),
     patchDeckOperations,
     persistHtml: vi.fn(),
-    previewVersion: null,
     refreshActiveDeck: vi.fn(),
-    refreshVersions: vi.fn(),
     renameActiveDeck: vi.fn(),
     restoreHtmlSnapshot,
-    rollbackToVersion: vi.fn(),
     saveError: '',
     selectDeck: vi.fn(),
     startNewDeck: vi.fn(),
-    versionNumber: 1,
-    versions: [],
   }),
 }))
 
@@ -197,7 +188,7 @@ vi.mock('@/components/DeckPreview', () => ({
 
 const { default: App } = await import('./App')
 
-describe('App undo/redo version provenance', () => {
+describe('App undo/redo persistence', () => {
   beforeEach(() => {
     mediaState.isDesktop = true
     historyState.canUndo = true
@@ -213,40 +204,26 @@ describe('App undo/redo version provenance', () => {
     vi.clearAllMocks()
   })
 
-  it('sends undo provenance on the restore PUT options', async () => {
+  it('restores the undo snapshot', async () => {
     const user = userEvent.setup()
     renderWithRouter(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Undo' }))
 
     await waitFor(() => {
-      expect(restoreHtmlSnapshot).toHaveBeenCalledWith('<html>before</html>', {
-        summary: 'Undo: Edited text in preview',
-        provenance: {
-          operations: ['undo'],
-          slideIndexes: [0, 1],
-          elementIds: ['el-a', 'el-b'],
-        },
-      })
+      expect(restoreHtmlSnapshot).toHaveBeenCalledWith('<html>before</html>')
     })
     expect(historyState.commitUndo).toHaveBeenCalledTimes(1)
   })
 
-  it('sends redo provenance on the restore PUT options', async () => {
+  it('restores the redo snapshot', async () => {
     const user = userEvent.setup()
     renderWithRouter(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Redo' }))
 
     await waitFor(() => {
-      expect(restoreHtmlSnapshot).toHaveBeenCalledWith('<html>after</html>', {
-        summary: 'Redo: Edited text in preview',
-        provenance: {
-          operations: ['redo'],
-          slideIndexes: [0, 1],
-          elementIds: ['el-a', 'el-b'],
-        },
-      })
+      expect(restoreHtmlSnapshot).toHaveBeenCalledWith('<html>after</html>')
     })
     expect(historyState.commitRedo).toHaveBeenCalledTimes(1)
   })
@@ -297,7 +274,6 @@ describe('App undo/redo version provenance', () => {
     expect(patchDeckOperations).toHaveBeenCalledWith(
       [{ op: 'reorder_slide', slideIndex: 0, toIndex: 2 }],
       0,
-      { summary: 'Moved slide 1 to position 3' },
     )
     expect(historyState.record).toHaveBeenCalledWith(
       expect.objectContaining({

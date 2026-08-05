@@ -78,7 +78,7 @@ export type GenerationJobOutcome =
 
 export type UseGenerationJobOptions = {
   deckId: string | null
-  baseVersionId: string | null
+  baseDocumentRevision: number | null
   selectedModel: string
   reasoningEffort?: ReasoningEffort
   canGenerate: boolean
@@ -89,7 +89,7 @@ const POLL_INTERVAL_MS = 800
 
 export function useGenerationJob({
   deckId,
-  baseVersionId,
+  baseDocumentRevision,
   selectedModel,
   reasoningEffort,
   canGenerate,
@@ -174,7 +174,9 @@ export function useGenerationJob({
         return {
           status: 'succeeded',
           job,
-          deckChanged: Boolean(job.result?.versionId && job.result.versionId !== baseVersionId),
+          deckChanged: Boolean(
+            job.result?.documentRevision && job.result.documentRevision !== baseDocumentRevision,
+          ),
           awaitingUserResponse,
           assistantParts:
             transcriptParts && transcriptParts.length > 0
@@ -197,7 +199,7 @@ export function useGenerationJob({
         retryable: job.status === 'failed' || job.status === 'canceled',
       }
     },
-    [baseVersionId],
+    [baseDocumentRevision],
   )
 
   const finalizeJob = useCallback(
@@ -281,7 +283,7 @@ export function useGenerationJob({
           model: selectedModel || undefined,
           ...(reasoningEffort ? { reasoningEffort } : {}),
           deckId,
-          baseVersionId,
+          baseDocumentRevision,
           ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
           ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
           ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
@@ -311,7 +313,7 @@ export function useGenerationJob({
       }
     },
     [
-      baseVersionId,
+      baseDocumentRevision,
       canGenerate,
       deckId,
       isGenerating,

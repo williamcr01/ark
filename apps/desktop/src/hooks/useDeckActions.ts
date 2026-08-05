@@ -17,6 +17,7 @@ import {
 } from '@/lib/deck-io'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
 import { newId } from '@/lib/id'
+import { exportDeckHtml } from '@/lib/deck-api'
 
 import type { useChatSession } from './useChatSession'
 import type { useDeckPersistence } from './useDeckPersistence'
@@ -27,13 +28,7 @@ type ChatSessionApi = ReturnType<typeof useChatSession>
 
 type DeckActionsDeckSlice = Pick<
   DeckPersistenceApi,
-  | 'deckId'
-  | 'html'
-  | 'persistHtml'
-  | 'rollbackToVersion'
-  | 'startNewDeck'
-  | 'renameActiveDeck'
-  | 'deleteActiveDeck'
+  'deckId' | 'html' | 'persistHtml' | 'startNewDeck' | 'renameActiveDeck' | 'deleteActiveDeck'
 >
 
 type DeckActionsChatSlice = Pick<ChatSessionApi, 'appendMessage' | 'setMessages' | 'resetChat'>
@@ -44,13 +39,13 @@ export type UseDeckActionsOptions = {
   chat: DeckActionsChatSlice
   setInput: Dispatch<SetStateAction<string>>
   setError: Dispatch<SetStateAction<string>>
-  /** Called when undo/redo history should reset (rollback, upload). */
+  /** Called when undo/redo history should reset after upload. */
   onEditHistoryBoundary?: () => void
 }
 
 /**
  * Deck lifecycle handlers used by the shell chrome: upload/download, deck CRUD
- * (new/rename/delete), and version rollback. Extracted from `App.tsx`;
+ * (new/rename/delete). Extracted from `App.tsx`;
  * behavior is intended to be identical to the previous inline implementation.
  */
 export function useDeckActions({
@@ -65,42 +60,25 @@ export function useDeckActions({
     deckId,
     html: generatedHtml,
     persistHtml,
-    rollbackToVersion,
     startNewDeck,
     renameActiveDeck,
     deleteActiveDeck,
   } = deck
   const { appendMessage, setMessages, resetChat } = chat
 
-  const handleRollbackVersion = useCallback(
-    async (versionId: string) => {
-      try {
-        await rollbackToVersion(versionId)
-        onEditHistoryBoundary?.()
-        await resetChat()
-        setInput('')
-        setError('')
-        toast.success('Deck restored to selected version')
-      } catch {
-        toast.error('Could not restore that version')
-        throw new Error('Could not restore that version')
-      }
-    },
-    [onEditHistoryBoundary, resetChat, rollbackToVersion, setError, setInput],
-  )
-
   const handleDownload = useCallback(
-    (variant: DeckDownloadVariant = 'original') => {
-      if (!generatedHtml) {
+    async (variant: DeckDownloadVariant = 'original') => {
+      if (!generatedHtml || !deckId) {
         return
       }
 
-      downloadHtml(generatedHtml, { variant })
+      const exportedHtml = await exportDeckHtml(deckId, variant === 'sanitized')
+      downloadHtml(exportedHtml)
       toast.success(
         variant === 'sanitized' ? 'Sanitized HTML deck downloaded' : 'HTML deck downloaded',
       )
     },
-    [generatedHtml],
+    [deckId, generatedHtml],
   )
 
   const handleUploadClick = useCallback(() => {
@@ -134,10 +112,7 @@ export function useDeckActions({
         let savedDeckId = deckId
 
         try {
-          const savedDeck = await persistHtml(html, {
-            source: 'upload',
-            summary: `Uploaded ${file.name}`,
-          })
+          const savedDeck = await persistHtml(html)
 
           if (savedDeck?.id) {
             savedDeckId = savedDeck.id
@@ -168,8 +143,8 @@ export function useDeckActions({
     [appendMessage, deckId, onEditHistoryBoundary, persistHtml, setError, setMessages],
   )
 
-  const handleNewDeck = useCallback(() => {
-    startNewDeck()
+  const handleNewDeck = useCallback(async () => {
+    await startNewDeck()
     clearStoredGenerationJob(null)
     void resetChat(null)
     setInput('')
@@ -209,7 +184,6 @@ export function useDeckActions({
     handleHtmlUpload,
     handleNewDeck,
     handleRenameDeck,
-    handleRollbackVersion,
     handleUploadClick,
   }
 }

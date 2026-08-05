@@ -19,14 +19,19 @@ const PENDING_REPOLL_MS = 50
 /** When waitMs is 0 the server answers immediately — don't spin at 20 req/s. */
 const PENDING_REPOLL_NO_WAIT_MS = 1000
 
+function scheduleAfter(callback: () => void, delayMs: number) {
+  const timeoutId = setTimeout(callback, delayMs)
+  return () => clearTimeout(timeoutId)
+}
+
 async function fetchDeckThumbnails(
   deckId: string,
-  versionId: string,
+  documentRevision: number,
   signal: AbortSignal,
   waitMs: number,
 ) {
   const params = new URLSearchParams({
-    versionId,
+    documentRevision: String(documentRevision),
     waitMs: String(waitMs),
   })
   const response = await fetch(
@@ -82,11 +87,11 @@ function canReuseThumbnailUrl(previousUrl: string | null, nextUrl: string) {
 
 export function useDeckThumbnails(
   deckId: string | null | undefined,
-  versionId: string | null | undefined,
+  documentRevision: number | null | undefined,
   slideCount: number,
   options: { enabled?: boolean; waitMs?: number } = {},
 ): DeckThumbnailsState {
-  const enabled = options.enabled !== false && Boolean(deckId && versionId && slideCount > 0)
+  const enabled = options.enabled !== false && Boolean(deckId && documentRevision && slideCount > 0)
   const waitMs = options.waitMs ?? THUMBNAIL_LONG_POLL_MAX_WAIT_MS
   const [status, setStatus] = useState<ThumbnailStatus | null>(null)
   const [thumbnailUrls, setThumbnailUrls] = useState<(string | null)[] | null>(null)
@@ -97,32 +102,32 @@ export function useDeckThumbnails(
   // fetches for that deck. Rapid undo/redo otherwise hammers /thumbnails during
   // preview reloads (manual-edit smoke). Accessed only from effects.
   const disabledDeckIdsRef = useRef(new Set<string>())
-  // Version URLs are immutable, but identical per-slide hashes point at the
+  // Revision URLs are immutable, but identical per-slide hashes point at the
   // same rendered pixels. Keep those URLs stable across edits so unchanged
   // thumbnail <img> elements do not reload.
   const stateKeyRef = useRef<{
     deckId: string
-    versionId: string
+    documentRevision: number
     slideCount: number
   } | null>(null)
 
   useEffect(() => {
-    if (!enabled || !deckId || !versionId) {
-      return
+    if (!enabled || !deckId || !documentRevision) {
+      return () => undefined
     }
 
     const previousStateKey = stateKeyRef.current
     const deckOrStructureChanged =
       previousStateKey !== null &&
       (previousStateKey.deckId !== deckId || previousStateKey.slideCount !== slideCount)
-    const versionChanged =
+    const revisionChanged =
       previousStateKey === null ||
       previousStateKey.deckId !== deckId ||
-      previousStateKey.versionId !== versionId ||
+      previousStateKey.documentRevision !== documentRevision ||
       previousStateKey.slideCount !== slideCount
 
-    if (versionChanged) {
-      stateKeyRef.current = { deckId, versionId, slideCount }
+    if (revisionChanged) {
+      stateKeyRef.current = { deckId, documentRevision, slideCount }
       setStatus(null)
       setError(null)
 
@@ -136,24 +141,19 @@ export function useDeckThumbnails(
       setThumbnailUrls(null)
       setError(null)
       setIsLoading(false)
-      return
+      return () => undefined
     }
 
     let cancelled = false
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let cancelScheduledPoll: (() => void) | null = null
     let activeController: AbortController | null = null
     const requestId = ++requestIdRef.current
 
-    const clearTimer = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-    }
-
     const schedulePoll = () => {
-      timeoutId = setTimeout(
+      cancelScheduledPoll?.()
+      cancelScheduledPoll = scheduleAfter(
         () => {
+          cancelScheduledPoll = null
           void load()
         },
         waitMs === 0 ? PENDING_REPOLL_NO_WAIT_MS : PENDING_REPOLL_MS,
@@ -167,7 +167,12 @@ export function useDeckThumbnails(
       setIsLoading(true)
 
       try {
-        const payload = await fetchDeckThumbnails(deckId, versionId, controller.signal, waitMs)
+        const payload = await fetchDeckThumbnails(
+          deckId,
+          documentRevision,
+          controller.signal,
+          waitMs,
+        )
 
         if (cancelled || requestId !== requestIdRef.current) {
           return
@@ -223,10 +228,10 @@ export function useDeckThumbnails(
 
     return () => {
       cancelled = true
-      clearTimer()
+      cancelScheduledPoll?.()
       activeController?.abort()
     }
-  }, [deckId, enabled, slideCount, versionId, waitMs])
+  }, [deckId, enabled, slideCount, documentRevision, waitMs])
 
   if (!enabled) {
     return {

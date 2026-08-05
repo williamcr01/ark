@@ -8,9 +8,11 @@ import {
   validateImageSrcForInsert,
 } from '@ark/deck-core/deck-image.ts'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import { buildArkAssetUrl } from '@ark/deck-core/assets.ts'
+import { uploadDeckAsset } from './asset-api'
 
 export type PreparedImageInsert = {
-  asset: Extract<DeckAssetRef, { kind: 'data-url' }>
+  asset: Extract<DeckAssetRef, { kind: 'asset-id' }>
   geometry: EditorNormalizedRect
   aspectRatio: number
 }
@@ -58,6 +60,7 @@ export async function loadImageDimensions(
 }
 
 export async function prepareImageInsertFromFile(
+  deckId: string,
   file: File,
   position?: { x: number; y: number },
 ): Promise<PreparedImageInsert> {
@@ -77,12 +80,17 @@ export async function prepareImageInsertFromFile(
   const dimensions = await loadImageDimensions(dataUrl)
   const geometry = computeImageGeometry(dimensions.width, dimensions.height, { position })
   const aspectRatio = dimensions.width / dimensions.height
+  const uploaded = await uploadDeckAsset(deckId, {
+    filename: file.name,
+    mediaType: file.type,
+    data: dataUrl,
+  })
 
   return {
     asset: {
-      kind: 'data-url',
-      mimeType: file.type,
-      dataUrl,
+      kind: 'asset-id',
+      id: uploaded.id,
+      url: buildArkAssetUrl(uploaded.id),
     },
     geometry,
     aspectRatio,

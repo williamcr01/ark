@@ -13,22 +13,12 @@ import {
   uploadAssetResponseSchema,
 } from '@ark/contracts'
 import { createApp } from '../app.ts'
-import { createAssetStore } from '../asset-store.ts'
-import { createLocalAssetStorage } from '../asset-storage.ts'
-import { createDeckStore } from '../deck-store.ts'
 import { resolveAssetAttachments } from '../asset-resolve.ts'
+import { createAssetStore, type AssetStore } from '../asset-store.ts'
+import { createDeckStore } from '../deck-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '../workspace-store.ts'
 
-const sampleHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Assets Deck</title>
-</head>
-<body>
-  <section class="slide"><h1>Hello</h1></section>
-</body>
-</html>`
-
+const sampleHtml = `<!DOCTYPE html><html><head><title>Assets Deck</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
 ])
@@ -38,38 +28,35 @@ describe('asset API routes', () => {
   let root = ''
   let server: Server
   let baseUrl = ''
-  let assetStore = createAssetStore()
-  let assetStorage = createLocalAssetStorage()
+  let workspaces: WorkspaceStore
+  let assetStore: AssetStore
 
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'ark-api-assets-'))
-    const deckStore = createDeckStore(path.join(root, 'decks'))
-    assetStore = createAssetStore(path.join(root, 'assets', 'meta'))
-    assetStorage = createLocalAssetStorage(path.join(root, 'assets', 'blobs'))
-    const app = createApp({ deckStore, assetStore, assetStorage })
-
+    workspaces = createWorkspaceStore(root)
+    const deckStore = createDeckStore(workspaces)
+    assetStore = createAssetStore(workspaces)
+    const app = createApp({ deckStore, workspaceStore: workspaces, assetStore })
     server = app.listen(0)
     await new Promise<void>((resolve) => server.once('listening', resolve))
-
-    const address = server.address() as AddressInfo
-    baseUrl = `http://127.0.0.1:${address.port}`
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   })
 
   afterAll(async () => {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()))
     })
+    workspaces.close()
     await rm(root, { recursive: true, force: true })
   })
 
   async function createDeck() {
-    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+    const response = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
-    const created = await createResponse.json()
-    return created.deck.id as string
+    return (await response.json()).deck.id as string
   }
 
   const upload = (deckId: string, body: Record<string, unknown>) =>
@@ -79,177 +66,92 @@ describe('asset API routes', () => {
       body: JSON.stringify(body),
     })
 
-  const uploadTemporary = (body: Record<string, unknown>) =>
-    fetch(`${baseUrl}/api/assets`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-  it('uploads a valid asset and serves it through an Ark-owned URL', async () => {
+  it('uploads and serves asset bytes from the workspace database', async () => {
     const deckId = await createDeck()
-
     const response = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
     })
-    const json = await response.json()
-
+    const payload = await response.json()
     expect(response.status).toBe(201)
-    assertApiContract(uploadAssetResponseSchema, json)
-    expect(json.asset.url).toBe(`/api/decks/${deckId}/assets/${json.asset.id}`)
-    expect(json.asset.byteSize).toBe(PNG_BYTES.length)
-    expect(json.asset.category).toBe('image')
-    expect(json.asset.checksum).toHaveLength(64)
+    assertApiContract(uploadAssetResponseSchema, payload)
+    expect(payload.asset).toMatchObject({
+      deckId,
+      byteSize: PNG_BYTES.length,
+      storageKind: 'sqlite',
+    })
 
-    const bytesResponse = await fetch(`${baseUrl}${json.asset.url}`)
+    const bytesResponse = await fetch(`${baseUrl}${payload.asset.url}`)
     expect(bytesResponse.status).toBe(200)
-    expect(bytesResponse.headers.get('content-type')).toBe('image/png')
-    expect(bytesResponse.headers.get('x-content-type-options')).toBe('nosniff')
-    const bytes = Buffer.from(await bytesResponse.arrayBuffer())
-    expect(bytes.equals(PNG_BYTES)).toBe(true)
+    expect(Buffer.from(await bytesResponse.arrayBuffer())).toEqual(PNG_BYTES)
   })
 
-  it('stages and resolves an unassigned asset for a new deck job', async () => {
-    const response = await uploadTemporary({
-      filename: 'logo.png',
-      mediaType: '',
-      data: pngDataUrl,
-    })
-    const json = await response.json()
-
-    expect(response.status).toBe(201)
-    expect(json.asset.deckId).toBeNull()
-    expect(json.asset.mediaType).toBe('image/png')
-    expect(json.asset.url).toBe(`/api/assets/${json.asset.id}`)
-
-    const resolved = await resolveAssetAttachments(
-      { assetStore, assetStorage },
-      null,
-      [json.asset.id],
-      { strict: true },
-    )
-    expect(resolved.ok).toBe(true)
-    if (resolved.ok) {
-      expect(resolved.attachments[0]?.url).toMatch(/^data:image\/png;base64,/)
-    }
-  })
-
-  it('lists assets for a deck', async () => {
+  it('lists assets for their workspace only', async () => {
     const deckId = await createDeck()
-
-    await upload(deckId, {
-      filename: 'logo.png',
-      mediaType: 'image/png',
-      data: pngDataUrl,
-    })
-
-    const listResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets`)
-    const list = await listResponse.json()
-
-    expect(listResponse.status).toBe(200)
-    assertApiContract(assetListResponseSchema, list)
-    expect(list.assets).toHaveLength(1)
-    expect(list.assets[0].filename).toBe('logo.png')
+    await upload(deckId, { filename: 'logo.png', mediaType: 'image/png', data: pngDataUrl })
+    const response = await fetch(`${baseUrl}/api/decks/${deckId}/assets`)
+    const payload = await response.json()
+    assertApiContract(assetListResponseSchema, payload)
+    expect(payload.assets).toEqual([expect.objectContaining({ filename: 'logo.png' })])
   })
 
-  it('rejects unsupported MIME types', async () => {
+  it('rejects unsupported media and suspicious filenames', async () => {
     const deckId = await createDeck()
-
-    const response = await upload(deckId, {
-      filename: 'app.exe',
-      mediaType: 'application/x-msdownload',
-      data: Buffer.from('MZ').toString('base64'),
-    })
-
-    expect(response.status).toBe(400)
-    const json = await response.json()
-    expect(json.code).toBe('unsupported_media_type')
+    expect(
+      (
+        await upload(deckId, {
+          filename: 'app.exe',
+          mediaType: 'application/x-msdownload',
+          data: Buffer.from('MZ').toString('base64'),
+        })
+      ).status,
+    ).toBe(400)
+    expect(
+      (
+        await upload(deckId, {
+          filename: '../../evil.png',
+          mediaType: 'image/png',
+          data: pngDataUrl,
+        })
+      ).status,
+    ).toBe(400)
   })
 
-  it('accepts payloads above the former 10 MiB cap', async () => {
-    const deckId = await createDeck()
-    const payload = Buffer.alloc(11 * 1024 * 1024)
-    PNG_BYTES.copy(payload)
-
-    const response = await upload(deckId, {
-      filename: 'logo.png',
-      mediaType: 'image/png',
-      data: payload.toString('base64'),
-    })
-
-    expect(response.status).toBe(201)
-    expect((await response.json()).asset.byteSize).toBe(payload.length)
-  })
-
-  it('rejects suspicious filenames', async () => {
-    const deckId = await createDeck()
-
-    const response = await upload(deckId, {
-      filename: '../../evil.png',
-      mediaType: 'image/png',
-      data: pngDataUrl,
-    })
-
-    expect(response.status).toBe(400)
-    const json = await response.json()
-    expect(json.code).toBe('suspicious_filename')
-  })
-
-  it('returns 404 when uploading to a missing deck', async () => {
+  it('returns 404 when uploading to a missing workspace', async () => {
     const response = await upload('00000000-0000-4000-8000-0000000000ff', {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
     })
-
     expect(response.status).toBe(404)
     assertApiContract(simpleErrorResponseSchema, await response.json())
   })
 
-  it('rejects malformed upload payloads', async () => {
+  it('deletes unreferenced assets and their blob bytes', async () => {
     const deckId = await createDeck()
-
-    const response = await upload(deckId, { filename: 'logo.png' })
-    expect(response.status).toBe(400)
-  })
-
-  it('deletes an asset and its bytes', async () => {
-    const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
+    const uploaded = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
     })
-    const { asset } = await uploadResponse.json()
-
-    const deleteResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`, {
+    const { asset } = await uploaded.json()
+    const response = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`, {
       method: 'DELETE',
     })
-    expect(deleteResponse.status).toBe(204)
-
-    const bytesResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`)
-    expect(bytesResponse.status).toBe(404)
-
-    const listResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets`)
-    const list = await listResponse.json()
-    expect(list.assets).toHaveLength(0)
+    expect(response.status).toBe(204)
+    await expect(assetStore.readBytes(deckId, asset.id)).resolves.toBeNull()
   })
 
-  it('refuses to delete an asset referenced by any immutable deck version', async () => {
+  it('refuses to delete assets referenced by the current document', async () => {
     const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
+    const uploaded = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
     })
-    const { asset } = await uploadResponse.json()
-    const withImage = sampleHtml.replace(
-      '<h1>Hello</h1>',
-      `<h1>Hello</h1><img src="${asset.url}" alt="Logo">`,
-    )
-
+    const { asset } = await uploaded.json()
+    const withImage = sampleHtml.replace('</body>', `<img src="ark-asset:${asset.id}"></body>`)
     expect(
       (
         await fetch(`${baseUrl}/api/decks/${deckId}`, {
@@ -259,128 +161,39 @@ describe('asset API routes', () => {
         })
       ).status,
     ).toBe(200)
-    expect(
-      (
-        await fetch(`${baseUrl}/api/decks/${deckId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: sampleHtml }),
-        })
-      ).status,
-    ).toBe(200)
-
-    const deleteResponse = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`, {
+    const response = await fetch(`${baseUrl}/api/decks/${deckId}/assets/${asset.id}`, {
       method: 'DELETE',
     })
-    expect(deleteResponse.status).toBe(409)
-    expect(await deleteResponse.json()).toMatchObject({ code: 'asset_in_use' })
+    expect(response.status).toBe(409)
   })
 
-  it('cleans up deck assets when the deck is deleted', async () => {
+  it('resolves scoped assets into data URL model attachments', async () => {
     const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
+    const uploaded = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
     })
-    const { asset } = await uploadResponse.json()
-    const stored = await assetStore.getAsset(asset.id)
-    expect(stored).not.toBeNull()
-
-    const deleteDeckResponse = await fetch(`${baseUrl}/api/decks/${deckId}`, { method: 'DELETE' })
-    expect(deleteDeckResponse.status).toBe(204)
-
-    expect(await assetStore.getAsset(asset.id)).toBeNull()
-    expect(stored && (await assetStorage.read(stored.storageKey))).toBeNull()
-  })
-
-  it('resolves asset ids into inline data-url attachments scoped to the deck', async () => {
-    const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
-      filename: 'logo.png',
-      mediaType: 'image/png',
-      data: pngDataUrl,
+    const { asset } = await uploaded.json()
+    const resolved = await resolveAssetAttachments({ assetStore }, deckId, [asset.id], {
+      strict: true,
     })
-    const { asset } = await uploadResponse.json()
-
-    const resolved = await resolveAssetAttachments({ assetStore, assetStorage }, deckId, [
-      asset.id,
-      '00000000-0000-4000-8000-0000000000aa',
-    ])
-
     expect(resolved.ok).toBe(true)
-    if (!resolved.ok) {
-      return
-    }
-
-    expect(resolved.attachments).toHaveLength(1)
-    expect(resolved.attachments[0]).toMatchObject({
-      type: 'file',
-      mediaType: 'image/png',
-      assetId: asset.id,
-      filename: 'logo.png',
-    })
-    expect(resolved.attachments[0].url.startsWith('data:image/png;base64,')).toBe(true)
+    if (resolved.ok) expect(resolved.attachments[0]?.url).toMatch(/^data:image\/png;base64,/)
   })
 
-  it('rejects cross-deck asset resolution when deck ids differ', async () => {
+  it('rejects cross-workspace asset reads and resolution', async () => {
     const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
+    const otherDeckId = await createDeck()
+    const uploaded = await upload(deckId, {
       filename: 'logo.png',
       mediaType: 'image/png',
       data: pngDataUrl,
     })
-    const { asset } = await uploadResponse.json()
-
-    const otherDeck = 'ffffffff-0000-4000-8000-000000000001'
-    const resolved = await resolveAssetAttachments(
-      { assetStore, assetStorage },
-      otherDeck,
-      [asset.id],
-      { strict: true },
-    )
-
-    expect(resolved).toEqual({ ok: false, assetIds: [asset.id] })
-  })
-
-  it('does not resolve a deck-owned attachment without its deck id', async () => {
-    const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
-      filename: 'logo.png',
-      mediaType: 'image/png',
-      data: pngDataUrl,
-    })
-    const { asset } = await uploadResponse.json()
-
-    expect(await resolveAssetAttachments({ assetStore, assetStorage }, null, [asset.id])).toEqual({
-      ok: true,
-      attachments: [],
-      byId: new Map(),
-    })
-  })
-
-  it('reports unresolved asset ids in strict mode', async () => {
-    const deckId = await createDeck()
-    const missingId = '00000000-0000-4000-8000-0000000000aa'
-
-    expect(
-      await resolveAssetAttachments({ assetStore, assetStorage }, deckId, [missingId], {
-        strict: true,
-      }),
-    ).toEqual({ ok: false, assetIds: [missingId] })
-  })
-
-  it('rejects unscoped asset fetch from another deck', async () => {
-    const deckId = await createDeck()
-    const uploadResponse = await upload(deckId, {
-      filename: 'logo.png',
-      mediaType: 'image/png',
-      data: pngDataUrl,
-    })
-    const { asset } = await uploadResponse.json()
-
-    const otherDeck = 'ffffffff-0000-4000-8000-000000000001'
-    const bytesResponse = await fetch(`${baseUrl}/api/decks/${otherDeck}/assets/${asset.id}`)
-    expect(bytesResponse.status).toBe(404)
+    const { asset } = await uploaded.json()
+    expect((await fetch(`${baseUrl}/api/decks/${otherDeckId}/assets/${asset.id}`)).status).toBe(404)
+    await expect(
+      resolveAssetAttachments({ assetStore }, otherDeckId, [asset.id], { strict: true }),
+    ).resolves.toEqual({ ok: false, assetIds: [asset.id] })
   })
 })

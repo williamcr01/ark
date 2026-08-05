@@ -50,6 +50,7 @@ export function DesktopSettingsDialog({
   const [drafts, setDrafts] = useState<Partial<Record<ProviderId, string>>>({})
   const [message, setMessage] = useState('')
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null)
+  const [workspaceDirectory, setWorkspaceDirectory] = useState('')
 
   const refresh = async () => {
     setStatus(await window.arkDesktop.credentials.list())
@@ -59,10 +60,13 @@ export function DesktopSettingsDialog({
     if (!open) return
     let cancelled = false
     setMessage('')
-    void window.arkDesktop.credentials
-      .list()
-      .then((nextStatus) => {
-        if (!cancelled) setStatus(nextStatus)
+    void window.arkDesktop.credentials.list().then((nextStatus) => {
+      if (!cancelled) setStatus(nextStatus)
+    })
+    void window.arkDesktop.settings
+      .get()
+      .then((settings) => {
+        if (!cancelled) setWorkspaceDirectory(settings.defaultWorkspaceDirectory ?? '')
       })
       .catch((error) => {
         if (!cancelled)
@@ -141,6 +145,31 @@ export function DesktopSettingsDialog({
                 Dark
               </ToggleGroupItem>
             </ToggleGroup>
+          </section>
+          <section className="flex flex-col gap-2 rounded-lg border p-3">
+            <div>
+              <h2 className="font-medium">New workspace location</h2>
+              <p className="text-xs text-muted-foreground">
+                New .ark files are created here. Existing files are not moved.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Input readOnly value={workspaceDirectory || 'Documents/Ark'} />
+              <Button
+                onClick={() => {
+                  void window.arkDesktop.files.chooseDirectory().then(async (directory) => {
+                    if (!directory) return
+                    await window.arkDesktop.settings.update({
+                      defaultWorkspaceDirectory: directory,
+                    })
+                    setWorkspaceDirectory(directory)
+                  })
+                }}
+                variant="outline"
+              >
+                Choose…
+              </Button>
+            </div>
           </section>
           {PROVIDERS.map(({ id, label }) => {
             const draft = drafts[id] ?? ''

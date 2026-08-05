@@ -9,6 +9,8 @@ import {
 import { PreviewSessionCapacityError, type PreviewSessionStore } from '../preview-sessions.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { logTimedEvent, measureSync } from '../observability/timing.ts'
+import type { AssetStore } from '../asset-record.ts'
+import { resolveArkAssetUrls } from '../asset-resolve.ts'
 
 // Preview sessions carry full deck HTML — align with the global 12mb JSON parser
 // used for deck create/update. The in-memory store still enforces its own caps.
@@ -16,6 +18,7 @@ export const PREVIEW_SESSION_JSON_LIMIT = '12mb'
 
 export function createPreviewSessionsRouter(deps: {
   previewSessionStore: PreviewSessionStore
+  assetStore?: AssetStore
 }): Router {
   const { previewSessionStore } = deps
   const router = Router()
@@ -33,10 +36,16 @@ export function createPreviewSessionsRouter(deps: {
 
       let session
       let durationMs
+      let assetsWereInlined = false
 
       try {
+        const html =
+          parsed.data.deckId && deps.assetStore
+            ? await resolveArkAssetUrls(deps.assetStore, parsed.data.deckId, parsed.data.html)
+            : parsed.data.html
+        assetsWereInlined = html !== parsed.data.html
         const timed = measureSync(() =>
-          previewSessionStore.createSession(parsed.data.html, {
+          previewSessionStore.createSession(html, {
             editorBridge: parsed.data.editorBridge === true,
           }),
         )
@@ -44,7 +53,11 @@ export function createPreviewSessionsRouter(deps: {
         durationMs = timed.durationMs
       } catch (error) {
         if (error instanceof PreviewSessionCapacityError) {
-          response.status(503).json({ error: error.message })
+          response.status(assetsWereInlined ? 413 : 503).json({
+            error: assetsWereInlined
+              ? 'The deck and its embedded assets exceed the preview memory limit.'
+              : error.message,
+          })
           return
         }
 
@@ -52,7 +65,7 @@ export function createPreviewSessionsRouter(deps: {
       }
 
       logTimedEvent(getRequestLogger(request), 'preview.session.created', durationMs, {
-        htmlBytes: Buffer.byteLength(parsed.data.html, 'utf8'),
+        htmlBytes: Buffer.byteLength(session.html, 'utf8'),
         editorBridge: parsed.data.editorBridge === true,
       })
 

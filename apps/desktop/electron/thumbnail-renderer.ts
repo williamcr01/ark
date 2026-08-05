@@ -56,6 +56,7 @@ async function waitFor<T>(
 type ThumbnailState = {
   ready: boolean
   index: number
+  slideCount: number
   errors: string[]
 }
 
@@ -64,6 +65,7 @@ function readState(window: BrowserWindow) {
     `({
       ready: Boolean(window.__arkThumbReady),
       index: Number(window.__arkThumbIndex || 0),
+      slideCount: Number(window.__arkThumbSlideCount || 0),
       errors: Array.isArray(window.__arkThumbErrors) ? window.__arkThumbErrors.slice() : []
     })`,
     true,
@@ -129,6 +131,16 @@ export async function gotoThumbnailSlide(
     if (!(error instanceof ThumbnailWaitTimeoutError)) throw error
     await sleep(THUMBNAIL_SETTLE_MS)
   })
+
+  // The deck reports its own index, so the settled acknowledgement alone does
+  // not prove the visible slide matches the requested one (deck scripts may
+  // post CHANGE optimistically or auto-advance during settle). Fail the batch
+  // instead of caching a PNG that shows another slide.
+  const verified = await readState(window)
+  if (verified.errors.length > 0) throw new Error(verified.errors[0])
+  if (verified.index !== index) {
+    throw new Error(`Thumbnail renderer reached slide ${verified.index}, expected ${index}.`)
+  }
 }
 
 export function createElectronThumbnailRenderer(options: {
@@ -232,6 +244,17 @@ export function createElectronThumbnailRenderer(options: {
             THUMBNAIL_READY_TIMEOUT_MS,
             signal,
           )
+
+          // Thumbnail indexes come from a static parse of the source HTML; if
+          // the deck reports a different slide count at runtime (dynamic
+          // full-JS decks that mount or reorder slides), captures would be
+          // cached under the wrong fingerprints. Fail instead of misaligning.
+          const readyState = await readState(window!)
+          if (readyState.slideCount > 0 && readyState.slideCount !== slideCount) {
+            throw new Error(
+              `Deck reports ${readyState.slideCount} slides at runtime; expected ${slideCount}.`,
+            )
+          }
 
           const slides: Buffer[] = []
           for (const index of slideIndexes) {

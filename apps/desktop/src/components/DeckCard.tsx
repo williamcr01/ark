@@ -31,14 +31,21 @@ export type DeckCardProps = {
   deck: DeckSummary
   onDelete: (deck: DeckSummary) => void | Promise<void>
   onRename: (deck: DeckSummary, title: string) => void | Promise<void>
+  onLocate?: (deck: DeckSummary) => void | Promise<void>
+  onRemoveRecent?: (deck: DeckSummary) => void | Promise<void>
 }
 
-export function DeckCard({ deck, onDelete, onRename }: DeckCardProps) {
-  const { thumbnailUrls, isLoading, status } = useDeckThumbnails(deck.id, deck.activeVersionId, 1, {
-    waitMs: 0,
-  })
-  const thumbnailUrl = thumbnailUrls?.[0] ?? null
-  const showSkeleton = Boolean(deck.activeVersionId) && (isLoading || status === 'pending')
+export function DeckCard({ deck, onDelete, onRename, onLocate, onRemoveRecent }: DeckCardProps) {
+  const { thumbnailUrls, isLoading, status } = useDeckThumbnails(
+    deck.id,
+    deck.documentRevision,
+    1,
+    {
+      waitMs: 0,
+    },
+  )
+  const thumbnailUrl = thumbnailUrls?.[0] ?? deck.cover ?? null
+  const showSkeleton = !deck.missing && (isLoading || status === 'pending')
   const initial = (deck.title.trim().charAt(0) || 'A').toUpperCase()
 
   const [isEditing, setIsEditing] = useState(false)
@@ -127,30 +134,44 @@ export function DeckCard({ deck, onDelete, onRename }: DeckCardProps) {
         'hover:-translate-y-0.5 hover:shadow-md',
       )}
     >
-      <Link
-        aria-label={`Open ${deck.title}`}
-        className="relative aspect-video w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-        to={`/decks/${deck.id}`}
-      >
-        {thumbnailUrl ? (
-          <img
-            alt=""
-            className="size-full object-cover"
-            decoding="async"
-            loading="lazy"
-            src={thumbnailUrl}
-          />
-        ) : showSkeleton ? (
-          <Skeleton className="size-full rounded-none" />
-        ) : (
-          <div
-            aria-hidden
-            className="flex size-full items-center justify-center bg-muted font-heading text-3xl font-semibold text-muted-foreground"
-          >
-            {initial}
+      {deck.missing ? (
+        <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-muted p-4 text-center">
+          <span className="text-sm text-muted-foreground">File not found</span>
+          <div className="flex gap-2">
+            <Button onClick={() => void onLocate?.(deck)} size="sm">
+              Locate
+            </Button>
+            <Button onClick={() => void onRemoveRecent?.(deck)} size="sm" variant="outline">
+              Remove
+            </Button>
           </div>
-        )}
-      </Link>
+        </div>
+      ) : (
+        <Link
+          aria-label={`Open ${deck.title}`}
+          className="relative aspect-video w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          to={`/decks/${deck.id}`}
+        >
+          {thumbnailUrl ? (
+            <img
+              alt=""
+              className="size-full object-cover"
+              decoding="async"
+              loading="lazy"
+              src={thumbnailUrl}
+            />
+          ) : showSkeleton ? (
+            <Skeleton className="size-full rounded-none" />
+          ) : (
+            <div
+              aria-hidden
+              className="flex size-full items-center justify-center bg-muted font-heading text-3xl font-semibold text-muted-foreground"
+            >
+              {initial}
+            </div>
+          )}
+        </Link>
+      )}
 
       <div className="flex items-start gap-1 px-3 py-2.5">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -167,6 +188,10 @@ export function DeckCard({ deck, onDelete, onRename }: DeckCardProps) {
               ref={inputRef}
               value={draftTitle}
             />
+          ) : deck.missing ? (
+            <span className="box-border flex h-5 w-full min-w-0 items-center truncate rounded-sm border border-transparent font-heading text-sm font-medium leading-5">
+              {deck.title}
+            </span>
           ) : (
             <Link
               className="box-border flex h-5 w-full min-w-0 items-center truncate rounded-sm border border-transparent font-heading text-sm font-medium leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -205,11 +230,11 @@ export function DeckCard({ deck, onDelete, onRename }: DeckCardProps) {
               inputRef.current?.select()
             }}
           >
-            <DropdownMenuItem onSelect={startRename}>
+            <DropdownMenuItem disabled={deck.missing} onSelect={startRename}>
               <PencilIcon />
               Rename
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleDelete} variant="destructive">
+            <DropdownMenuItem disabled={deck.missing} onSelect={handleDelete} variant="destructive">
               <Trash2Icon />
               Delete
             </DropdownMenuItem>

@@ -11,8 +11,9 @@ describe('shared API fetch helpers', () => {
       title: 'Deck',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
-      activeVersionId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
-      versionNumber: 1,
+      documentRevision: 1,
+      origin: 'authored' as const,
+      filePath: '/tmp/Deck.ark',
     }
 
     expect(parseApiResponse(deckResponseSchema, { deck })).toEqual({ deck })

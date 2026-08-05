@@ -289,7 +289,7 @@ User edits text in contenteditable (iframe)
   → patchDeckOperations([{ op: 'replace_text', elementId, slideIndex, slideId?, text }])
   → POST /api/decks/:id/patch
   → apps/api/deck-element-patch.ts: resolve element, assertElementPatchable, apply text
-  → new deck version persisted; response includes updated HTML
+  → current workspace document persisted; response includes updated HTML
   → useDeckPersistence.applyPatchedDeck updates shell html state
   → preview refreshes; preserveSlideIndexRef restores slide index
 ```

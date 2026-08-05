@@ -32,7 +32,6 @@ import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
-import { buildUndoRedoVersionOptions } from '@/lib/undo-redo-version-options'
 import { MAX_SLIDE_CONTEXTS } from '@ark/contracts'
 import { toEditorSelectionContext } from '@/lib/editor-selection-context'
 import {
@@ -44,11 +43,12 @@ import {
   type ContextSlideEntry,
 } from '@/lib/slide-context'
 import type { PatchDeckResponse } from '@/lib/deck-api'
-import { uploadDeckAsset, uploadTemporaryAsset } from '@/lib/asset-api'
+import { uploadDeckAsset } from '@/lib/asset-api'
 import {
   startRevealThumbnailStylesPreload,
   waitForRevealThumbnailStylesPreload,
 } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
+import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 /** Parse `?slide=` — 0-based index (slide=0 is the first slide). */
 function parseInitialSlideIndex(value: string | null) {
@@ -61,7 +61,7 @@ function parseInitialSlideIndex(value: string | null) {
 }
 
 async function uploadPromptAttachments(
-  deckId: string | null,
+  deckId: string,
   files: PromptInputMessage['files'],
 ): Promise<ChatAttachment[]> {
   const attachments = new Array<ChatAttachment>(files.length)
@@ -78,7 +78,7 @@ async function uploadPromptAttachments(
       mediaType: file.mediaType,
       data: file.url,
     }
-    const asset = deckId ? await uploadDeckAsset(deckId, input) : await uploadTemporaryAsset(input)
+    const asset = await uploadDeckAsset(deckId, input)
     attachments[index] = {
       type: 'file',
       mediaType: asset.mediaType,
@@ -104,13 +104,12 @@ function App() {
   const initialSlideIndex = parseInitialSlideIndex(searchParams.get('slide'))
 
   const {
-    activeVersionId,
-    clearVersionPreview,
+    documentRevision,
+    duplicate,
+    filePath,
     hasDeck,
     html: generatedHtml,
-    inspectVersion,
     isLoading: isDeckLoading,
-    isLoadingVersions,
     isSaving: isDeckSaving,
     isPatching: isDeckPatching,
     deckId,
@@ -118,14 +117,13 @@ function App() {
     deleteActiveDeck,
     patchDeckOperations,
     persistHtml,
-    previewVersion,
+    moveTo,
+    openWorkspaceFile,
     refreshActiveDeck,
-    refreshVersions,
     renameActiveDeck,
     restoreHtmlSnapshot,
-    rollbackToVersion,
+    saveAs,
     startNewDeck,
-    versions,
   } = useDeckPersistence(routeDeckId)
 
   // After the first save on /decks/new, put the real id in the URL.
@@ -145,7 +143,6 @@ function App() {
     setMessages,
   } = useChatSession({
     deckId,
-    deckVersionId: activeVersionId,
     onPersistFailure: useCallback(() => {
       toast.error("Message couldn't be saved to the server — kept locally")
     }, []),
@@ -186,6 +183,7 @@ function App() {
     selectedModel,
     models,
   )
+  const canGenerateForDeck = canGenerate && Boolean(deckId)
 
   const handleModelSelect = useCallback(
     (modelId: string, nextEffort?: ReasoningEffort) => {
@@ -225,7 +223,7 @@ function App() {
   } = useDeckGenerationFlow({
     deck: {
       deckId,
-      activeVersionId,
+      documentRevision,
       generatedHtml,
       isDeckLoading,
       refreshActiveDeck,
@@ -238,7 +236,7 @@ function App() {
     },
     selectedModel,
     reasoningEffort,
-    canGenerate,
+    canGenerate: canGenerateForDeck,
     loadModels,
     onError: setError,
     onGenerationStart: useCallback(() => setAttachmentError(''), []),
@@ -271,7 +269,7 @@ function App() {
   }, [generatedHtml])
 
   // Clear undo/redo history whenever the active deck changes (switch, new deck,
-  // delete). AI generation, upload, and rollback reset explicitly via callbacks.
+  // delete). AI generation, upload, and snapshot restores reset explicitly via callbacks.
   useEffect(() => {
     resetEditHistory()
   }, [deckId, resetEditHistory])
@@ -323,8 +321,8 @@ function App() {
 
   const deckAnalysis = useMemo(() => {
     void thumbnailStylesRevision
-    return analyzeDeckInBrowser(generatedHtml)
-  }, [generatedHtml, thumbnailStylesRevision])
+    return analyzeDeckInBrowser(generatedHtml, { assetOrigin: resolveAppOrigin(), deckId })
+  }, [deckId, generatedHtml, thumbnailStylesRevision])
 
   const handleToggleContextSlide = useCallback(
     (slideIndex: number) => {
@@ -354,7 +352,7 @@ function App() {
     [deckAnalysis.slides],
   )
 
-  // Keep attached-slide state aligned with the live deck (reorder/delete/rollback).
+  // Keep attached-slide state aligned with the live deck (reorder/delete/snapshot restore).
   const resolvedContextSlides = useMemo(
     () => resolveContextSlides(contextSlideEntries, deckAnalysis.slides),
     [contextSlideEntries, deckAnalysis.slides],
@@ -405,7 +403,6 @@ function App() {
     handleHtmlUpload,
     handleNewDeck: newDeckAction,
     handleRenameDeck,
-    handleRollbackVersion,
     handleUploadClick,
   } = useDeckActions({
     fileInputRef,
@@ -413,7 +410,6 @@ function App() {
       deckId,
       html: generatedHtml,
       persistHtml,
-      rollbackToVersion,
       startNewDeck,
       renameActiveDeck,
       deleteActiveDeck,
@@ -428,16 +424,50 @@ function App() {
     onEditHistoryBoundary: resetEditHistory,
   })
 
-  const handleNewDeck = useCallback(() => {
-    newDeckAction()
+  const handleNewDeck = useCallback(async () => {
+    await newDeckAction()
     navigate('/decks/new')
   }, [navigate, newDeckAction])
+
+  const workspaceFileName = useMemo(
+    () => `${deckTitle.replace(/[<>:"/\\|?*]/g, ' ').trim() || 'Untitled Presentation'}.ark`,
+    [deckTitle],
+  )
+  const handleOpenWorkspace = useCallback(async () => {
+    const path = await window.arkDesktop.files.openWorkspace()
+    if (!path) return
+    const deck = await openWorkspaceFile(path)
+    navigate(`/decks/${deck.id}`)
+  }, [navigate, openWorkspaceFile])
+  const handleSaveAs = useCallback(async () => {
+    const path = await window.arkDesktop.files.chooseWorkspacePath(workspaceFileName)
+    if (path) await saveAs(path)
+  }, [saveAs, workspaceFileName])
+  const handleMove = useCallback(async () => {
+    const path = await window.arkDesktop.files.chooseWorkspacePath(workspaceFileName)
+    if (path) await moveTo(path)
+  }, [moveTo, workspaceFileName])
+  const handleDuplicate = useCallback(async () => {
+    const deck = await duplicate('presentation')
+    navigate(`/decks/${deck.id}`)
+  }, [duplicate, navigate])
+  const handleShareProject = useCallback(async () => {
+    if (
+      !window.confirm(
+        'Share Ark Project may contain prompts, conversations, and source files. Continue?',
+      )
+    ) {
+      return
+    }
+    const path = await window.arkDesktop.files.chooseWorkspacePath(workspaceFileName)
+    if (path) await duplicate('complete', path)
+  }, [duplicate, workspaceFileName])
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
     const hasAttachments = message.files.length > 0
     const hasContent = Boolean(message.text.trim() || hasAttachments)
 
-    if (!hasContent || !canGenerate) {
+    if (!hasContent || !canGenerate || !deckId) {
       return
     }
 
@@ -529,7 +559,7 @@ function App() {
       const summary = 'Edited text in preview'
 
       try {
-        const result = await patchDeckOperations(operations, commit.slideIndex, { summary })
+        const result = await patchDeckOperations(operations, commit.slideIndex)
         recordManualEdit(
           result?.beforeHtml ?? generatedHtmlRef.current,
           result,
@@ -561,7 +591,7 @@ function App() {
       }
 
       try {
-        const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
+        const result = await patchDeckOperations(operations, activeSlideIndex)
         recordManualEdit(
           result?.beforeHtml ?? generatedHtmlRef.current,
           result,
@@ -595,7 +625,7 @@ function App() {
       const summary = `Moved slide ${fromIndex + 1} to position ${toIndex + 1}`
 
       try {
-        const result = await patchDeckOperations(operations, activeSlideIndex, { summary })
+        const result = await patchDeckOperations(operations, activeSlideIndex)
         recordManualEdit(
           result?.beforeHtml ?? generatedHtmlRef.current,
           result,
@@ -631,10 +661,7 @@ function App() {
     undoRedoInFlightRef.current = true
 
     try {
-      const deck = await restoreHtmlSnapshot(
-        entry.beforeHtml,
-        buildUndoRedoVersionOptions('undo', entry),
-      )
+      const deck = await restoreHtmlSnapshot(entry.beforeHtml)
 
       if (deck) {
         commitUndo()
@@ -665,10 +692,7 @@ function App() {
     undoRedoInFlightRef.current = true
 
     try {
-      const deck = await restoreHtmlSnapshot(
-        entry.afterHtml,
-        buildUndoRedoVersionOptions('redo', entry),
-      )
+      const deck = await restoreHtmlSnapshot(entry.afterHtml)
 
       if (deck) {
         commitRedo()
@@ -690,7 +714,7 @@ function App() {
       activeJobId={activeJobId}
       activeSteps={activeSteps}
       attachmentError={attachmentError}
-      canGenerate={canGenerate}
+      canGenerate={canGenerateForDeck}
       contextSlot={chatContextSlot}
       error={displayError}
       failedJobId={failedJobId}
@@ -750,7 +774,7 @@ function App() {
       redoSlideIndex={redoEntry?.slideIndex ?? null}
       recentGenerationJobId={recentGenerationJobId}
       undoSlideIndex={undoEntry?.slideIndex ?? null}
-      versionId={activeVersionId}
+      documentRevision={documentRevision}
     />
   )
 
@@ -759,33 +783,31 @@ function App() {
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
         <AppTitleBar
           activeDeckId={deckId}
-          activeVersionId={activeVersionId}
           deckTitle={deckTitle}
           fileInputRef={fileInputRef}
           hasDeck={hasDeck}
           hasSlides={hasSlides}
           isChatOpen={isChatOpen}
           isGenerating={isGenerating}
-          isLoadingVersions={isLoadingVersions}
           isStripOpen={isStripOpen}
           appearancePreference={preference}
-          onClearVersionPreview={clearVersionPreview}
           onDownload={handleDownload}
           onHtmlUpload={handleHtmlUpload}
-          onInspectVersion={inspectVersion}
           onCredentialsChanged={loadModels}
           onNewDeck={handleNewDeck}
+          onOpenWorkspace={handleOpenWorkspace}
+          onSaveAs={handleSaveAs}
+          onMove={handleMove}
+          onReveal={() => filePath && void window.arkDesktop.files.reveal(filePath)}
+          onDuplicate={handleDuplicate}
+          onShareProject={handleShareProject}
           onPresent={() => deckPreviewRef.current?.openPresent()}
-          onRefreshVersions={() => (deckId ? refreshVersions(deckId) : Promise.resolve([]))}
           onRenameDeck={handleRenameDeck}
-          onRollbackVersion={handleRollbackVersion}
           onToggleChat={() => setIsChatOpen((current) => !current)}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onAppearanceChange={setPreference}
           onUploadClick={handleUploadClick}
-          previewVersion={previewVersion}
           showSanitizedDownload={showSanitizedDownload}
-          versions={versions}
         />
 
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden" ref={mainRef}>

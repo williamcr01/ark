@@ -68,13 +68,13 @@ Preview session creation is usually cheap (in-memory token + HTML store). Large 
 
 ## Thumbnails
 
-| Event                        | Level | Key `fields`                            |
-| ---------------------------- | ----- | --------------------------------------- |
-| `thumbnail.status`           | info  | `versionId`, `status`, `slideCount`     |
-| `thumbnail.render.succeeded` | info  | `versionId`, `slideCount`, `durationMs` |
-| `thumbnail.render.failed`    | warn  | `versionId`, `error`, `durationMs`      |
-| `thumbnail.queue.saturated`  | warn  | `versionId`, `queued`                   |
-| `thumbnail.queue.failed`     | warn  | `versionId`, `error`                    |
+| Event                        | Level | Key `fields`                                   |
+| ---------------------------- | ----- | ---------------------------------------------- |
+| `thumbnail.status`           | info  | `documentRevision`, `status`, `slideCount`     |
+| `thumbnail.render.succeeded` | info  | `documentRevision`, `slideCount`, `durationMs` |
+| `thumbnail.render.failed`    | warn  | `documentRevision`, `error`, `durationMs`      |
+| `thumbnail.queue.saturated`  | warn  | `documentRevision`, `queued`                   |
+| `thumbnail.queue.failed`     | warn  | `documentRevision`, `error`                    |
 
 See [thumbnails.md](./thumbnails.md) for the renderer pipeline and cache identity.
 

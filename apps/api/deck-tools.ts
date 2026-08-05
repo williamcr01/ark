@@ -15,16 +15,9 @@ import {
   readDeckHtmlSlice,
   readDeckSlideHtml,
 } from './deck-html.ts'
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import { compactVersionDiffForAgent, compactVersionProvenanceForAgent } from './deck-provenance.ts'
-import { truncateDeckVersionSummary } from '@ark/contracts'
+import { validateDeckHtmlOnServer, type DeckValidationReport } from './deck-validate.ts'
 import type { Logger } from './observability/logger.ts'
-import type { DeckVersionSummary } from './deck-record.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
-
-export type DeckVersionInspector = {
-  listVersions: (limit?: number) => Promise<DeckVersionSummary[]>
-}
 
 export type DeckAttachmentSummary = {
   id: string
@@ -46,6 +39,20 @@ const editSchema = z.object({
     .describe('Exact text to replace. Must appear exactly once in the deck.'),
   newText: z.string().describe('Replacement text.'),
 })
+
+/**
+ * Warnings never block a write, so the agent only learns about them if the tool
+ * result carries them back (e.g. scripts that preview will strip).
+ */
+function collectValidationWarnings(validation: DeckValidationReport) {
+  return validation.issues
+    .filter((issue) => issue.severity === 'warning')
+    .map((issue) => issue.message)
+}
+
+function appendWarnings(message: string, warnings: string[]) {
+  return warnings.length > 0 ? `${message} Fix before finishing: ${warnings.join(' ')}` : message
+}
 
 function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
   return {
@@ -84,11 +91,10 @@ export function createDeckTools(
   workspace: DeckWorkspace,
   options: {
     logger?: Logger
-    versionInspector?: DeckVersionInspector
     attachmentInspector?: DeckAttachmentInspector
   } = {},
 ) {
-  const { logger, versionInspector, attachmentInspector } = options
+  const { logger, attachmentInspector } = options
   const timingOptions = logger ? { logger } : {}
   const baseTools = {
     parse_deck: tool({
@@ -206,10 +212,16 @@ export function createDeckTools(
 
         setDeckWorkspaceHtml(workspace, html)
 
+        const warnings = collectValidationWarnings(validation)
+
         return {
           ok: true,
           slideCount: validation.slideCount,
-          message: `Wrote complete deck (${validation.slideCount} slide(s)).`,
+          warnings,
+          message: appendWarnings(
+            `Wrote complete deck (${validation.slideCount} slide(s)).`,
+            warnings,
+          ),
         }
       },
     }),
@@ -250,11 +262,17 @@ export function createDeckTools(
 
         setDeckWorkspaceHtml(workspace, applied.html)
 
+        const warnings = collectValidationWarnings(validation)
+
         return {
           ok: true,
           appliedCount: applied.appliedCount,
           slideCount: validation.slideCount,
-          message: `Applied ${applied.appliedCount} edit(s). Deck now has ${validation.slideCount} slide(s).`,
+          warnings,
+          message: appendWarnings(
+            `Applied ${applied.appliedCount} edit(s). Deck now has ${validation.slideCount} slide(s).`,
+            warnings,
+          ),
         }
       },
     }),
@@ -303,6 +321,8 @@ export function createDeckTools(
 
         setDeckWorkspaceHtml(workspace, patched.html)
 
+        const warnings = collectValidationWarnings(validation)
+
         return {
           ok: true,
           appliedCount: patched.appliedCount,
@@ -310,7 +330,8 @@ export function createDeckTools(
           changedSlideIndexes: patched.changedSlideIndexes,
           suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
           summary: patched.summary,
-          message: patched.summary,
+          warnings,
+          message: appendWarnings(patched.summary, warnings),
         }
       },
     }),
@@ -359,6 +380,8 @@ export function createDeckTools(
 
         setDeckWorkspaceHtml(workspace, patched.html)
 
+        const warnings = collectValidationWarnings(validation)
+
         return {
           ok: true,
           appliedCount: patched.appliedCount,
@@ -366,7 +389,8 @@ export function createDeckTools(
           changedSlideIndexes: patched.changedSlideIndexes,
           changedElementIds: patched.changedElementIds,
           summary: patched.summary,
-          message: patched.summary,
+          warnings,
+          message: appendWarnings(patched.summary, warnings),
         }
       },
     }),
@@ -454,43 +478,6 @@ export function createDeckTools(
                 offset,
                 nextOffset: end < bytes.length ? end : undefined,
                 content: bytes.subarray(offset, end).toString('utf8'),
-              }
-            },
-          }),
-        }
-      : {}),
-    ...(versionInspector
-      ? {
-          list_versions: tool({
-            description:
-              'List recent deck versions with source, summary, model, structural diff, and compact provenance metadata. Never returns full HTML snapshots. Use before large rewrites or when the user asks what changed.',
-            inputSchema: z.object({
-              limit: z
-                .number()
-                .int()
-                .min(1)
-                .max(20)
-                .optional()
-                .describe('Maximum versions to return (default 10, max 20).'),
-            }),
-            execute: async ({ limit = 10 }) => {
-              const versions = await versionInspector.listVersions(Math.min(limit, 20))
-
-              return {
-                versionCount: versions.length,
-                versions: versions.map((version) => ({
-                  versionNumber: version.versionNumber,
-                  source: version.source,
-                  summary:
-                    typeof version.summary === 'string'
-                      ? truncateDeckVersionSummary(version.summary)
-                      : version.summary,
-                  createdAt: version.createdAt,
-                  validationStatus: version.validationStatus,
-                  modelName: version.modelName ?? null,
-                  diff: compactVersionDiffForAgent(version.diff),
-                  provenance: compactVersionProvenanceForAgent(version.provenance),
-                })),
               }
             },
           }),

@@ -53,8 +53,9 @@ export function cloneGenerationJobRequest(request: GenerationJobRequest): Genera
       ...(message.parts ? { parts: structuredClone(message.parts) } : {}),
     })),
     currentHtml: request.currentHtml,
-    baseVersionId: request.baseVersionId ?? null,
+    baseDocumentRevision: request.baseDocumentRevision ?? null,
     editingExistingDeck: request.editingExistingDeck ?? false,
+    ...(request.deckOrigin ? { deckOrigin: request.deckOrigin } : {}),
     ...(request.editorSelection ? { editorSelection: { ...request.editorSelection } } : {}),
     ...(request.slideContexts?.length
       ? { slideContexts: request.slideContexts.map((slide) => ({ ...slide })) }

@@ -5,6 +5,7 @@ import type {
   EditorSelectionContext,
   SlideContext,
 } from './chat.ts'
+import type { DeckOrigin } from './deck-origin.ts'
 
 export type GenerationJobStatus =
   'queued' | 'running' | 'canceling' | 'succeeded' | 'failed' | 'canceled'
@@ -26,8 +27,10 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | '
 export type GenerationJobRequest = {
   messages: ApiChatMessage[]
   currentHtml: string
-  baseVersionId?: string | null
+  baseDocumentRevision?: number | null
   editingExistingDeck?: boolean
+  /** Resolved server-side from the deck record; `blank` starts a new-deck flow. */
+  deckOrigin?: DeckOrigin | null
   /** Manual-editor selection captured when the request was submitted (issue #83). */
   editorSelection?: EditorSelectionContext
   /** Slides the user attached as context when the request was submitted. */
@@ -110,7 +113,7 @@ export type GenerationJobObservability = {
 
 export type GenerationJobResult = {
   deckId: string
-  versionId: string
+  documentRevision: number
   html: string
   validation: unknown
   assistantText: string
@@ -119,7 +122,7 @@ export type GenerationJobResult = {
 export type GenerationJob = {
   id: string
   deckId: string | null
-  baseVersionId: string | null
+  baseDocumentRevision: number | null
   chatThreadId?: string | null
   /** Asset ids resolved to bytes at run time — kept out of persisted request messages. */
   assetIds?: string[]
@@ -145,7 +148,7 @@ export type GenerationJobSummary = Omit<GenerationJob, 'request' | 'result'> & {
 
 export type CreateGenerationJobInput = {
   deckId?: string | null
-  baseVersionId?: string | null
+  baseDocumentRevision?: number | null
   chatThreadId?: string | null
   assetIds?: string[]
   model: string

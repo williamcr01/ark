@@ -7,7 +7,7 @@
  */
 import { type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -24,7 +24,6 @@ import {
   deckResponseSchema,
   deckThumbnailsResponseSchema,
   deckValidationErrorResponseSchema,
-  deckVersionListResponseSchema,
   generationJobResponseSchema,
   getPreviewSessionResponseSchema,
   healthResponseSchema,
@@ -39,12 +38,13 @@ import {
 import { type RunDeckAgentResult } from './deck-agent.ts'
 import { createApp } from './app.ts'
 import { createAssetStore } from './asset-store.ts'
-import { createLocalAssetStorage } from './asset-storage.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
+import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
 import type { ThumbnailService } from './thumbnails/service.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -84,7 +84,7 @@ const disabledThumbnailService: ThumbnailService = {
   getStatus: async () => ({ status: 'disabled', slides: [] }),
   enqueue: async () => ({ status: 'disabled', slides: [] }),
   readPng: async () => null,
-  enqueueForDeckVersion: async () => undefined,
+  enqueueForDocument: async () => undefined,
   close: async () => undefined,
 }
 
@@ -109,6 +109,7 @@ type ContractApi = {
 describe('HTTP API contract drift prevention', () => {
   let root = ''
   let server: Server | null = null
+  let workspaces: WorkspaceStore | null = null
 
   afterEach(async () => {
     if (server) {
@@ -118,27 +119,30 @@ describe('HTTP API contract drift prevention', () => {
       server = null
     }
 
+    workspaces?.close()
+    workspaces = null
     if (root) {
       await rm(root, { recursive: true, force: true })
       root = ''
     }
   })
 
-  async function startContractApi(): Promise<ContractApi> {
+  async function startContractApi(
+    options: { previewSessionStore?: PreviewSessionStore } = {},
+  ): Promise<ContractApi> {
     root = await mkdtemp(path.join(os.tmpdir(), 'ark-api-contract-'))
 
-    const deckStore = createDeckStore(path.join(root, 'decks'))
-    const chatStore = createChatStore(path.join(root, 'chat'))
-    const jobStore = createGenerationJobStore(path.join(root, 'jobs'))
-    const assetStore = createAssetStore(path.join(root, 'assets', 'meta'))
-    const assetStorage = createLocalAssetStorage(path.join(root, 'assets', 'blobs'))
+    workspaces = createWorkspaceStore(path.join(root, 'workspaces'))
+    const deckStore = createDeckStore(workspaces)
+    const chatStore = createChatStore(workspaces)
+    const jobStore = createGenerationJobStore()
+    const assetStore = createAssetStore(workspaces)
 
     const generationJobRunner = createGenerationJobRunner({
       deckStore,
       jobStore,
       chatStore,
       assetStore,
-      assetStorage,
       createModel: () => ({
         model: {} as never,
         provider: 'openai',
@@ -151,10 +155,11 @@ describe('HTTP API contract drift prevention', () => {
       deckStore,
       chatStore,
       assetStore,
-      assetStorage,
+      workspaceStore: workspaces,
       generationJobStore: jobStore,
       generationJobRunner,
       thumbnailService: disabledThumbnailService,
+      previewSessionStore: options.previewSessionStore,
     })
 
     server = app.listen(0)
@@ -170,7 +175,7 @@ describe('HTTP API contract drift prevention', () => {
     const response = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: sampleHtml, source: 'upload' }),
+      body: JSON.stringify({ html: sampleHtml }),
     })
     const payload = await response.json()
 
@@ -232,18 +237,12 @@ describe('HTTP API contract drift prevention', () => {
     const validationErrorResponse = await fetch(`${baseUrl}/api/decks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: externalUrlHtml, source: 'upload' }),
+      body: JSON.stringify({ html: externalUrlHtml }),
     })
     const validationErrorBody = await validationErrorResponse.json()
 
     expect(validationErrorResponse.status).toBe(400)
     assertApiContract(deckValidationErrorResponseSchema, validationErrorBody)
-
-    const versionsResponse = await fetch(`${baseUrl}/api/decks/${deck.id}/versions`)
-    const versions = await versionsResponse.json()
-
-    expect(versionsResponse.status).toBe(200)
-    assertApiContract(deckVersionListResponseSchema, versions)
 
     const missingResponse = await fetch(`${baseUrl}/api/decks/00000000-0000-4000-8000-000000000099`)
     const missingBody = await missingResponse.json()
@@ -252,12 +251,75 @@ describe('HTTP API contract drift prevention', () => {
     assertApiContract(simpleErrorResponseSchema, missingBody)
   })
 
+  it('returns 404 when a recent workspace file was deleted outside Ark', async () => {
+    const { baseUrl } = await startContractApi()
+    const deck = await createDeck(baseUrl)
+    workspaces?.close()
+    await rm(deck.filePath)
+
+    const response = await fetch(`${baseUrl}/api/decks/${deck.id}`)
+    const body = await response.json()
+
+    expect(response.status).toBe(404)
+    assertApiContract(simpleErrorResponseSchema, body)
+  })
+
+  it('returns a conflict for workspace actions that would overwrite a file', async () => {
+    const { baseUrl } = await startContractApi()
+    const deck = await createDeck(baseUrl)
+    const occupiedPath = path.join(root, 'occupied.ark')
+    await writeFile(occupiedPath, 'keep me', 'utf8')
+
+    for (const action of ['save-as', 'move', 'duplicate']) {
+      const response = await fetch(`${baseUrl}/api/decks/${deck.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: occupiedPath,
+          ...(action === 'duplicate' ? { mode: 'presentation' } : {}),
+        }),
+      })
+      expect(response.status).toBe(409)
+      assertApiContract(simpleErrorResponseSchema, await response.json())
+    }
+    await expect(readFile(occupiedPath, 'utf8')).resolves.toBe('keep me')
+  })
+
+  it('reports when asset inlining exceeds preview memory capacity', async () => {
+    const { baseUrl } = await startContractApi({
+      previewSessionStore: createPreviewSessionStore({ maxTotalHtmlBytes: 500 }),
+    })
+    const deck = await createDeck(baseUrl)
+    const uploadResponse = await fetch(`${baseUrl}/api/decks/${deck.id}/assets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: 'large.png',
+        mediaType: 'image/png',
+        data: `data:image/png;base64,${Buffer.concat([PNG_BYTES, Buffer.alloc(1_024)]).toString('base64')}`,
+      }),
+    })
+    const uploaded = await uploadResponse.json()
+    expect(uploadResponse.status).toBe(201)
+    const html = sampleHtml.replace('</body>', `<img src="ark-asset:${uploaded.asset.id}"></body>`)
+
+    const response = await fetch(`${baseUrl}/api/preview-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deckId: deck.id, html }),
+    })
+    expect(response.status).toBe(413)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'The deck and its embedded assets exceed the preview memory limit.',
+    })
+  })
+
   it('matches the disabled thumbnail response contract', async () => {
     const { baseUrl } = await startContractApi()
     const deck = await createDeck(baseUrl)
 
     const response = await fetch(
-      `${baseUrl}/api/decks/${deck.id}/thumbnails?versionId=${deck.activeVersionId}`,
+      `${baseUrl}/api/decks/${deck.id}/thumbnails?documentRevision=${deck.documentRevision}`,
     )
     const payload = await response.json()
 

@@ -69,6 +69,7 @@ function getThumbnailSharedKey(
   doc: Document,
   runtimeMode: ReturnType<typeof detectRuntimeModeFromDocument>,
   assetOrigin: string | null | undefined,
+  deckId: string | null | undefined,
 ) {
   const root = doc.documentElement.cloneNode(true) as HTMLElement
 
@@ -94,7 +95,9 @@ function getThumbnailSharedKey(
     })
     .join('\n')
 
-  return [runtimeMode, assetOrigin ?? '', root.outerHTML, crossSlideInfluence].join('\0')
+  return [runtimeMode, assetOrigin ?? '', deckId ?? '', root.outerHTML, crossSlideInfluence].join(
+    '\0',
+  )
 }
 
 const emptyParsedDeck: ParsedDeck = {
@@ -128,7 +131,12 @@ export function parseDeckSlideDocument(
   }))
 
   const runtimeMode = detectRuntimeModeFromDocument(doc)
-  const thumbnailSharedKey = getThumbnailSharedKey(doc, runtimeMode, options.assetOrigin)
+  const thumbnailSharedKey = getThumbnailSharedKey(
+    doc,
+    runtimeMode,
+    options.assetOrigin,
+    options.deckId,
+  )
   // Thumbnail srcDoc prep (reveal CSS inlining, etc.) is deferred until the
   // strip actually needs a fallback iframe — main preview/shell must not wait.
   let buildThumbnailSrcDoc: ((index: number) => string) | null = null

@@ -8,10 +8,14 @@ import {
 } from 'react'
 import { Link } from 'react-router'
 import {
-  HistoryIcon,
   Maximize2Icon,
   DownloadIcon,
   FilePlus2Icon,
+  FolderOpenIcon,
+  FolderInputIcon,
+  CopyIcon,
+  Share2Icon,
+  MapPinIcon,
   PanelLeftCloseIcon,
   PanelLeftIcon,
   PanelRightCloseIcon,
@@ -36,9 +40,7 @@ import {
   MorphMenuFooter,
   morphMenuTriggerMotionClassName,
 } from '@/components/ui/morph-menu'
-import type { DeckVersionDetail, DeckVersionSummary } from '@/lib/deck-api'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
-import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { DesktopSettingsDialog } from '@/components/DesktopSettingsDialog'
 import { cn } from '@/lib/utils'
 import type { AppearancePreference } from '@/hooks/useAppearance'
@@ -296,65 +298,60 @@ function DeckTitleEditor({
 export type AppTitleBarProps = {
   appearancePreference?: AppearancePreference
   activeDeckId: string | null
-  activeVersionId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
   deckTitle: string
   hasDeck: boolean
   hasSlides: boolean
   isChatOpen: boolean
   isGenerating: boolean
-  isLoadingVersions: boolean
   isStripOpen: boolean
   onPresent: () => void
-  onClearVersionPreview: () => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
-  onInspectVersion: (versionId: string) => Promise<DeckVersionDetail | null>
   onCredentialsChanged?: () => void | Promise<void>
   onNewDeck: () => void
-  onRefreshVersions: () => Promise<DeckVersionSummary[]>
+  onOpenWorkspace: () => void
+  onSaveAs: () => void
+  onMove: () => void
+  onReveal: () => void
+  onDuplicate: () => void
+  onShareProject: () => void
   onRenameDeck: (title: string) => Promise<void> | void
-  onRollbackVersion: (versionId: string) => Promise<void>
   onToggleChat: () => void
   onToggleStrip: () => void
   onUploadClick: () => void
-  previewVersion: DeckVersionDetail | null
   showSanitizedDownload: boolean
-  versions: DeckVersionSummary[]
 }
 
 export function AppTitleBar({
   appearancePreference = 'system',
   activeDeckId,
-  activeVersionId,
   fileInputRef,
   deckTitle,
   hasDeck,
   hasSlides,
   isChatOpen,
   isGenerating,
-  isLoadingVersions,
   isStripOpen,
-  onClearVersionPreview,
   onAppearanceChange = () => undefined,
   onDownload,
   onHtmlUpload,
-  onInspectVersion,
   onCredentialsChanged = () => undefined,
   onNewDeck,
+  onOpenWorkspace,
+  onSaveAs,
+  onMove,
+  onReveal,
+  onDuplicate,
+  onShareProject,
   onPresent,
-  onRefreshVersions,
   onRenameDeck,
-  onRollbackVersion,
   onToggleChat,
   onToggleStrip,
   onUploadClick,
-  previewVersion,
   showSanitizedDownload,
-  versions,
 }: AppTitleBarProps) {
-  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   return (
     <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-2 text-foreground">
@@ -408,15 +405,42 @@ export function AppTitleBar({
         <TitleBarButton label="Settings" onClick={() => setSettingsOpen(true)}>
           <SettingsIcon />
         </TitleBarButton>
-        <TitleBarButton
-          disabled={!activeDeckId || isGenerating}
-          label="Version history"
-          onClick={() => setVersionHistoryOpen(true)}
-        >
-          <HistoryIcon />
-        </TitleBarButton>
         <TitleBarButton disabled={isGenerating} label="New deck" onClick={onNewDeck}>
           <FilePlus2Icon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={isGenerating}
+          label="Open Ark workspace"
+          onClick={onOpenWorkspace}
+        >
+          <FolderOpenIcon />
+        </TitleBarButton>
+        <TitleBarButton disabled={!activeDeckId || isGenerating} label="Save As" onClick={onSaveAs}>
+          <CopyIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={!activeDeckId || isGenerating}
+          label="Move workspace"
+          onClick={onMove}
+        >
+          <FolderInputIcon />
+        </TitleBarButton>
+        <TitleBarButton disabled={!activeDeckId} label="Reveal in file manager" onClick={onReveal}>
+          <MapPinIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={!activeDeckId || isGenerating}
+          label="Duplicate presentation"
+          onClick={onDuplicate}
+        >
+          <CopyIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={!activeDeckId || isGenerating}
+          label="Share Ark Project"
+          onClick={onShareProject}
+        >
+          <Share2Icon />
         </TitleBarButton>
         <DownloadTitleBarButton
           disabled={!hasDeck}
@@ -444,20 +468,6 @@ export function AppTitleBar({
         </TitleBarButton>
       </ButtonGroup>
 
-      <VersionHistoryDialog
-        activeVersionId={activeVersionId}
-        deckTitle={deckTitle}
-        disabled={isGenerating}
-        isLoadingVersions={isLoadingVersions}
-        onClearPreview={onClearVersionPreview}
-        onInspectVersion={onInspectVersion}
-        onOpenChange={setVersionHistoryOpen}
-        onRefreshVersions={onRefreshVersions}
-        onRollback={onRollbackVersion}
-        open={versionHistoryOpen}
-        previewVersion={previewVersion}
-        versions={versions}
-      />
       <DesktopSettingsDialog
         appearancePreference={appearancePreference}
         onAppearanceChange={onAppearanceChange}

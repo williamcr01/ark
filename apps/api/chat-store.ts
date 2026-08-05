@@ -1,331 +1,294 @@
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import type { DatabaseSync } from 'node:sqlite'
 
 import {
   type AppendChatMessageInput,
   type ChatStore,
   type ChatThread,
   type ListChatMessagesOptions,
-  type ListChatMessagesResult,
   type StoredChatMessage,
+  assertValidDeckIdForChat,
   isValidChatMessageId,
   normalizeChatMessageLimit,
 } from './chat-record.ts'
-import { isValidDeckId } from './deck-record.ts'
-import { resolveArkDataDir } from './data-dir.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
-const DEFAULT_DATA_DIR = resolveArkDataDir('chat')
-
-type StoredChatFile = {
-  thread: ChatThread
-  messages: StoredChatMessage[]
-}
-
-const deckLocks = new Map<string, Promise<void>>()
-
-async function withDeckLock<T>(deckId: string, operation: () => Promise<T>) {
-  const previous = deckLocks.get(deckId) ?? Promise.resolve()
-  let release!: () => void
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const current = previous.then(() => gate)
-  deckLocks.set(deckId, current)
-
-  await previous
-
-  try {
-    return await operation()
-  } finally {
-    release()
-    if (deckLocks.get(deckId) === current) {
-      deckLocks.delete(deckId)
-    }
-  }
-}
-
-function resolveChatPath(dataDir: string, deckId: string) {
-  if (!isValidDeckId(deckId)) {
-    return null
-  }
-
-  const resolvedDataDir = path.resolve(dataDir)
-  const resolvedPath = path.resolve(resolvedDataDir, `${deckId}.json`)
-  const dataDirPrefix = resolvedDataDir.endsWith(path.sep)
-    ? resolvedDataDir
-    : `${resolvedDataDir}${path.sep}`
-
-  if (!resolvedPath.startsWith(dataDirPrefix)) {
-    return null
-  }
-
-  return resolvedPath
-}
-
-async function ensureDataDir(dataDir: string) {
-  await mkdir(dataDir, { recursive: true })
-}
-
-function parseStoredChatFile(parsed: unknown): StoredChatFile | null {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return null
-  }
-
-  const record = parsed as Partial<StoredChatFile>
-
-  if (
-    !record.thread ||
-    typeof record.thread !== 'object' ||
-    !Array.isArray(record.messages) ||
-    typeof record.thread.id !== 'string' ||
-    typeof record.thread.deckId !== 'string'
-  ) {
-    return null
-  }
-
-  return {
-    thread: record.thread,
-    messages: record.messages.filter(
-      (message): message is StoredChatMessage =>
-        typeof message === 'object' &&
-        message !== null &&
-        typeof message.id === 'string' &&
-        typeof message.content === 'string' &&
-        (message.role === 'user' || message.role === 'assistant'),
-    ),
-  }
-}
-
-async function readChatFile(filePath: string) {
-  try {
-    const raw = await readFile(filePath, 'utf8')
-    const parsed = parseStoredChatFile(JSON.parse(raw))
-
-    if (!parsed) {
-      throw new Error(`Corrupt chat history file at ${filePath}`)
-    }
-
-    return parsed
-  } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-      return null
-    }
-
-    if (error instanceof Error && error.message.startsWith('Corrupt chat history file')) {
-      throw error
-    }
-
-    const corruptError = new Error(`Corrupt chat history file at ${filePath}`, {
-      cause: error,
-    })
-    throw corruptError
-  }
-}
-
-async function writeChatFile(filePath: string, file: StoredChatFile) {
-  const tempPath = `${filePath}.${randomUUID()}.tmp`
-  await writeFile(tempPath, JSON.stringify(file, null, 2), 'utf8')
-  await rename(tempPath, filePath)
-}
-
-export function createChatStore(dataDir = DEFAULT_DATA_DIR): ChatStore {
-  const getOrCreateActiveThreadUnlocked = async (
-    deckId: string,
-    activeDeckVersionId: string | null = null,
-  ) => {
-    const filePath = resolveChatPath(dataDir, deckId)
-
-    if (!filePath) {
-      throw new Error('Invalid deck id.')
-    }
-
-    await ensureDataDir(dataDir)
-
-    const existing = await readChatFile(filePath)
-
-    if (existing?.thread.status === 'active') {
-      const thread = {
-        ...existing.thread,
-        activeDeckVersionId: activeDeckVersionId ?? existing.thread.activeDeckVersionId,
-        updatedAt: new Date().toISOString(),
+function activeThread(database: DatabaseSync, deckId: string, revision: number): ChatThread | null {
+  const row = database
+    .prepare(
+      `SELECT id, title, visibility, created_at, updated_at, archived_at
+       FROM threads WHERE archived_at IS NULL ORDER BY created_at LIMIT 1`,
+    )
+    .get() as
+    | {
+        id: string
+        title: string
+        visibility: 'private' | 'shared'
+        created_at: string
+        updated_at: string
+        archived_at: string | null
       }
+    | undefined
+  return row
+    ? {
+        id: row.id,
+        deckId,
+        activeDocumentRevision: revision,
+        title: row.title,
+        status: row.archived_at ? 'archived' : 'active',
+        visibility: row.visibility,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }
+    : null
+}
 
-      await writeChatFile(filePath, {
-        thread,
-        messages: existing.messages,
-      })
+function deleteThreadWithAttachments(database: DatabaseSync, threadId: string) {
+  const assetIds = (
+    database
+      .prepare(
+        `SELECT DISTINCT asset_id FROM asset_references
+         WHERE owner_type = 'message'
+         AND owner_id IN (SELECT id FROM messages WHERE thread_id = ?)`,
+      )
+      .all(threadId) as Array<{ asset_id: string }>
+  ).map((row) => row.asset_id)
 
-      return thread
-    }
+  database.exec('BEGIN IMMEDIATE')
+  try {
+    database
+      .prepare(
+        `DELETE FROM asset_references WHERE owner_type = 'message'
+         AND owner_id IN (SELECT id FROM messages WHERE thread_id = ?)`,
+      )
+      .run(threadId)
+    const deleted = database.prepare('DELETE FROM threads WHERE id = ?').run(threadId).changes > 0
+    const deleteAsset = database.prepare(
+      `DELETE FROM assets WHERE id = ?
+       AND NOT EXISTS (SELECT 1 FROM asset_references WHERE asset_id = ?)`,
+    )
+    for (const assetId of assetIds) deleteAsset.run(assetId, assetId)
+    database
+      .prepare(
+        `DELETE FROM blobs
+         WHERE NOT EXISTS (SELECT 1 FROM assets WHERE blob_checksum = blobs.checksum)`,
+      )
+      .run()
+    database.exec('COMMIT')
+    return deleted
+  } catch (error) {
+    database.exec('ROLLBACK')
+    throw error
+  }
+}
 
-    const now = new Date().toISOString()
-    const thread: ChatThread = {
-      id: randomUUID(),
-      deckId,
-      activeDeckVersionId,
-      title: 'Deck chat',
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    }
+export function createChatStore(
+  workspaceOrDirectory: WorkspaceStore | string = createWorkspaceStore(),
+): ChatStore {
+  const workspaces =
+    typeof workspaceOrDirectory === 'string'
+      ? createWorkspaceStore(workspaceOrDirectory)
+      : workspaceOrDirectory
 
-    await writeChatFile(filePath, {
-      thread,
-      messages: [],
-    })
-
-    return thread
+  const context = async (deckId: string) => {
+    assertValidDeckIdForChat(deckId)
+    const [database, workspace] = await Promise.all([
+      workspaces.database(deckId),
+      workspaces.get(deckId),
+    ])
+    if (!database || !workspace) throw new Error('Deck not found.')
+    return { database, workspace }
   }
 
   const getActiveThread = async (deckId: string) => {
-    const filePath = resolveChatPath(dataDir, deckId)
-
-    if (!filePath) {
-      return null
-    }
-
-    const file = await readChatFile(filePath)
-
-    return file?.thread.status === 'active' ? file.thread : null
+    const { database, workspace } = await context(deckId)
+    return activeThread(database, deckId, workspace.documentRevision)
   }
 
-  const getOrCreateActiveThread = async (
-    deckId: string,
-    activeDeckVersionId: string | null = null,
-  ) => withDeckLock(deckId, () => getOrCreateActiveThreadUnlocked(deckId, activeDeckVersionId))
+  const listThreads = async (deckId: string) => {
+    const { database, workspace } = await context(deckId)
+    const rows = database
+      .prepare(
+        'SELECT id, title, visibility, created_at, updated_at, archived_at FROM threads ORDER BY updated_at DESC',
+      )
+      .all() as Array<Record<string, unknown>>
+    return rows.map((row) => ({
+      id: String(row.id),
+      deckId,
+      activeDocumentRevision: workspace.documentRevision,
+      title: String(row.title),
+      status: row.archived_at ? ('archived' as const) : ('active' as const),
+      visibility: row.visibility === 'shared' ? ('shared' as const) : ('private' as const),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    }))
+  }
 
-  const listMessages = async (
-    deckId: string,
-    options: ListChatMessagesOptions = {},
-  ): Promise<ListChatMessagesResult> => {
-    const filePath = resolveChatPath(dataDir, deckId)
+  const createThread = async (deckId: string, title = 'Chat') => {
+    const { database, workspace } = await context(deckId)
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    database
+      .prepare(
+        `INSERT INTO threads (id, title, visibility, created_at, updated_at) VALUES (?, ?, 'private', ?, ?)`,
+      )
+      .run(id, title.trim() || 'Chat', now, now)
+    return (
+      (await listThreads(deckId)).find((thread) => thread.id === id) ?? {
+        id,
+        deckId,
+        activeDocumentRevision: workspace.documentRevision,
+        title,
+        status: 'active',
+        visibility: 'private',
+        createdAt: now,
+        updatedAt: now,
+      }
+    )
+  }
 
-    if (!filePath) {
-      return { thread: null, messages: [], hasMore: false }
-    }
+  const updateThread: ChatStore['updateThread'] = async (deckId, threadId, patch) => {
+    const { database } = await context(deckId)
+    const existing = (await listThreads(deckId)).find((thread) => thread.id === threadId)
+    if (!existing) return null
+    const now = new Date().toISOString()
+    database
+      .prepare(
+        'UPDATE threads SET title = ?, visibility = ?, archived_at = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(
+        patch.title?.trim() || existing.title,
+        patch.visibility ?? existing.visibility,
+        patch.archived === true
+          ? now
+          : patch.archived === false
+            ? null
+            : existing.status === 'archived'
+              ? existing.updatedAt
+              : null,
+        now,
+        threadId,
+      )
+    return (await listThreads(deckId)).find((thread) => thread.id === threadId) ?? null
+  }
 
-    const file = await readChatFile(filePath)
+  const deleteThread = async (deckId: string, threadId: string) => {
+    const { database } = await context(deckId)
+    return deleteThreadWithAttachments(database, threadId)
+  }
 
-    if (!file || file.thread.status !== 'active') {
-      return { thread: null, messages: [], hasMore: false }
-    }
+  const getOrCreateActiveThread = async (deckId: string) => {
+    const { database, workspace } = await context(deckId)
+    const existing = activeThread(database, deckId, workspace.documentRevision)
+    if (existing) return existing
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    database
+      .prepare(
+        `INSERT INTO threads
+         (id, title, visibility, created_at, updated_at) VALUES (?, 'Chat', 'private', ?, ?)`,
+      )
+      .run(id, now, now)
+    return activeThread(database, deckId, workspace.documentRevision)!
+  }
+
+  const listMessages = async (deckId: string, options: ListChatMessagesOptions = {}) => {
+    const { database, workspace } = await context(deckId)
+    const thread = activeThread(database, deckId, workspace.documentRevision)
+    if (!thread) return { thread: null, messages: [], hasMore: false }
 
     const limit = normalizeChatMessageLimit(options.limit)
-    const before = options.before?.trim() ?? null
-    let messages = [...file.messages].sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt),
-    )
-
-    if (before && isValidChatMessageId(before)) {
-      const beforeIndex = messages.findIndex((message) => message.id === before)
-
-      if (beforeIndex > 0) {
-        messages = messages.slice(0, beforeIndex)
-      } else if (beforeIndex === 0) {
-        messages = []
-      }
-    }
-
-    const hasMore = messages.length > limit
-    const page = hasMore ? messages.slice(messages.length - limit) : messages
-
-    return {
-      thread: file.thread,
-      messages: page,
-      hasMore,
-    }
+    const beforeRow = options.before
+      ? (database
+          .prepare('SELECT sequence FROM messages WHERE id = ? AND thread_id = ?')
+          .get(options.before, thread.id) as { sequence: number } | undefined)
+      : undefined
+    const rows = database
+      .prepare(
+        `SELECT content_json FROM messages
+         WHERE thread_id = ? AND sequence < ?
+         ORDER BY sequence DESC LIMIT ?`,
+      )
+      .all(thread.id, beforeRow?.sequence ?? Number.MAX_SAFE_INTEGER, limit + 1) as Array<{
+      content_json: string
+    }>
+    const hasMore = rows.length > limit
+    const messages = rows
+      .slice(0, limit)
+      .reverse()
+      .map((row) => JSON.parse(row.content_json) as StoredChatMessage)
+    return { thread, messages, hasMore }
   }
 
-  const appendMessage = async (deckId: string, input: AppendChatMessageInput) =>
-    withDeckLock(deckId, async () => {
-      const filePath = resolveChatPath(dataDir, deckId)
+  const appendMessage = async (deckId: string, input: AppendChatMessageInput) => {
+    const { database, workspace } = await context(deckId)
+    const thread = await getOrCreateActiveThread(deckId)
+    const id = input.id ?? randomUUID()
+    if (!isValidChatMessageId(id)) throw new Error('Invalid chat message id.')
+    const existing = database.prepare('SELECT content_json FROM messages WHERE id = ?').get(id) as
+      { content_json: string } | undefined
+    if (existing) return JSON.parse(existing.content_json) as StoredChatMessage
+    const now = new Date().toISOString()
+    const message: StoredChatMessage = {
+      ...input,
+      id,
+      threadId: thread.id,
+      deckId,
+      documentRevision: workspace.documentRevision,
+      createdAt: now,
+    }
 
-      if (!filePath) {
-        throw new Error('Invalid deck id.')
-      }
-
-      await ensureDataDir(dataDir)
-
-      const existing = await readChatFile(filePath)
-      const thread =
-        existing?.thread.status === 'active'
-          ? existing.thread
-          : await getOrCreateActiveThreadUnlocked(deckId, input.deckVersionId ?? null)
-      const messages = existing?.thread.status === 'active' ? [...existing.messages] : []
-      const id =
-        input.id && isValidChatMessageId(input.id)
-          ? input.id
-          : input.generationJobId && isValidChatMessageId(input.generationJobId)
-            ? input.generationJobId
-            : randomUUID()
-
-      const duplicateById = messages.find((message) => message.id === id)
-      if (duplicateById) {
-        return duplicateById
-      }
-
-      if (input.generationJobId) {
-        const duplicateByJob = messages.find(
-          (message) => message.generationJobId === input.generationJobId,
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      const sequence = (
+        database
+          .prepare(
+            'SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence FROM messages WHERE thread_id = ?',
+          )
+          .get(thread.id) as { sequence: number }
+      ).sequence
+      database
+        .prepare(
+          `INSERT INTO messages
+           (id, thread_id, sequence, role, content_json, model, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-
-        if (duplicateByJob) {
-          return duplicateByJob
+        .run(id, thread.id, sequence, input.role, JSON.stringify(message), input.model ?? null, now)
+      for (const assetId of new Set(
+        input.attachments?.flatMap((item) => item.assetId ?? []) ?? [],
+      )) {
+        if (!database.prepare('SELECT 1 FROM assets WHERE id = ?').get(assetId)) {
+          throw new Error(`Unknown attachment asset: ${assetId}`)
         }
+        database
+          .prepare(
+            `INSERT OR IGNORE INTO asset_references
+             (asset_id, owner_type, owner_id, purpose)
+             VALUES (?, 'message', ?, 'attachment')`,
+          )
+          .run(assetId, id)
       }
+      database.prepare('UPDATE threads SET updated_at = ? WHERE id = ?').run(now, thread.id)
+      database.exec('COMMIT')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+    return message
+  }
 
-      const createdAt = new Date().toISOString()
-      const message: StoredChatMessage = {
-        id,
-        threadId: thread.id,
-        deckId,
-        deckVersionId: input.deckVersionId ?? thread.activeDeckVersionId,
-        role: input.role,
-        content: input.content,
-        parts: input.parts,
-        attachments: input.attachments,
-        ...(input.context ? { context: input.context } : {}),
-        generationJobId: input.generationJobId ?? null,
-        generationStatus: input.generationStatus ?? null,
-        model: input.model ?? null,
-        error: input.error ?? null,
-        createdAt,
-      }
-
-      await writeChatFile(filePath, {
-        thread: {
-          ...thread,
-          activeDeckVersionId: input.deckVersionId ?? thread.activeDeckVersionId,
-          updatedAt: createdAt,
-        },
-        messages: [...messages, message],
-      })
-
-      return message
-    })
-
-  const clearThread = async (deckId: string) =>
-    withDeckLock(deckId, async () => {
-      const filePath = resolveChatPath(dataDir, deckId)
-
-      if (!filePath) {
-        return false
-      }
-
-      try {
-        await unlink(filePath)
-        return true
-      } catch (error) {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-          return false
-        }
-
-        throw error
-      }
-    })
+  const clearThread = async (deckId: string) => {
+    const { database, workspace } = await context(deckId)
+    const thread = activeThread(database, deckId, workspace.documentRevision)
+    if (!thread) return false
+    return deleteThreadWithAttachments(database, thread.id)
+  }
 
   return {
+    listThreads,
+    createThread,
+    updateThread,
+    deleteThread,
     getOrCreateActiveThread,
     getActiveThread,
     listMessages,

@@ -66,7 +66,7 @@ export function createMiscRouter(deps: {
     getRequestLogger(request).warn('runtime.error.reported', {
       runtimeErrorId: record.id,
       deckId: record.deckId,
-      versionId: record.versionId,
+      documentRevision: record.documentRevision,
       slideIndex: record.slideIndex,
       runtimeMode: record.runtimeMode,
       severity: record.severity,

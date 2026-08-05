@@ -1,9 +1,9 @@
 import express from 'express'
 
-import { createDeckStore } from './deck-store.ts'
+import { createDeckStore, workspaceStoreFor } from './deck-store.ts'
 import { createChatStore } from './chat-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 import { createAssetStore } from './asset-store.ts'
-import { createDefaultAssetStorage, type AssetStorage } from './asset-storage.ts'
 import { type AssetStore } from './asset-record.ts'
 import { type ChatStore } from './chat-record.ts'
 import { type DeckStore } from './deck-record.ts'
@@ -19,15 +19,14 @@ import {
 } from './observability/index.ts'
 import { createAssetsRouter } from './routes/assets.ts'
 import { createDecksRouter } from './routes/decks.ts'
-import { createDeckVersionsRouter } from './routes/deck-versions.ts'
 import { createDeckChatRouter } from './routes/deck-chat.ts'
+import { createDeckThreadsRouter } from './routes/deck-threads.ts'
 import { createGenerationJobsRouter } from './routes/generation-jobs.ts'
 import { createMiscRouter } from './routes/misc.ts'
 import { createPreviewSessionsRouter } from './routes/preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './routes/runtimes-and-assets.ts'
 import { createThumbnailsRouter } from './routes/thumbnails.ts'
-import { createDefaultThumbnailCache } from './thumbnails/cache.ts'
-import { THUMBNAIL_QUEUE_CONCURRENCY } from './thumbnails/constants.ts'
+import { createWorkspacesRouter } from './routes/workspaces.ts'
 import {
   createThumbnailRenderRouter,
   createThumbnailRenderSecret,
@@ -38,8 +37,8 @@ import { createThumbnailService, type ThumbnailService } from './thumbnails/serv
 type CreateAppOptions = {
   deckStore?: DeckStore
   chatStore?: ChatStore
+  workspaceStore?: WorkspaceStore
   assetStore?: AssetStore
-  assetStorage?: AssetStorage
   generationJobStore?: GenerationJobStore
   generationJobRunner?: GenerationJobRunner
   previewSessionStore?: PreviewSessionStore
@@ -50,45 +49,40 @@ type CreateAppOptions = {
   thumbnailRenderSecret?: string
 }
 
-function readPositiveIntEnv(name: string, fallback: number) {
-  const parsed = Number(process.env[name])
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
-}
-
 function scheduleThumbnailWarm(
   thumbnailService: ThumbnailService | null | undefined,
   deckId: string | null | undefined,
-  versionId: string | null | undefined,
+  documentRevision: number | null | undefined,
 ) {
-  if (!thumbnailService || !deckId || !versionId) {
+  const revision = Number(documentRevision)
+  if (!thumbnailService || !deckId || !Number.isInteger(revision)) {
     return
   }
 
-  void thumbnailService.enqueueForDeckVersion(deckId, versionId).catch(() => undefined)
+  void thumbnailService.enqueueForDocument(deckId, revision).catch(() => undefined)
 }
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = express()
-  const deckStore = options.deckStore ?? createDeckStore()
-  const chatStore = options.chatStore ?? createChatStore()
-  const assetStore = options.assetStore ?? createAssetStore()
-  const assetStorage = options.assetStorage ?? createDefaultAssetStorage()
+  const workspaceStore =
+    options.workspaceStore ??
+    (options.deckStore ? workspaceStoreFor(options.deckStore) : null) ??
+    createWorkspaceStore()
+  const deckStore = options.deckStore ?? createDeckStore(workspaceStore)
+  const chatStore = options.chatStore ?? createChatStore(workspaceStore)
+  const assetStore = options.assetStore ?? createAssetStore(workspaceStore)
   const jobStore = options.generationJobStore ?? createGenerationJobStore()
   const previewSessionStore = options.previewSessionStore ?? createPreviewSessionStore()
   const runtimeErrorStore = options.runtimeErrorStore ?? createRuntimeErrorStore()
   const defaultModel = getDefaultModel()
   const thumbnailRenderSecret = options.thumbnailRenderSecret ?? createThumbnailRenderSecret()
-  const thumbnailQueueConcurrency = readPositiveIntEnv(
-    'ARK_THUMBNAIL_QUEUE_CONCURRENCY',
-    THUMBNAIL_QUEUE_CONCURRENCY,
-  )
   const thumbnailService =
     options.thumbnailService ??
     createThumbnailService({
-      cache: createDefaultThumbnailCache(),
       renderer: options.thumbnailRenderer ?? createDisabledThumbnailRenderer(),
       deckStore,
-      queueConcurrency: thumbnailQueueConcurrency,
+      workspaceStore,
+      assetStore,
     })
 
   const generationJobs =
@@ -98,9 +92,8 @@ export function createApp(options: CreateAppOptions = {}) {
       jobStore,
       chatStore,
       assetStore,
-      assetStorage,
-      onDeckVersionPersisted: (deckId, versionId) => {
-        scheduleThumbnailWarm(thumbnailService, deckId, versionId)
+      onDocumentPersisted: (deckId, documentRevision) => {
+        scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
       },
     })
 
@@ -108,11 +101,11 @@ export function createApp(options: CreateAppOptions = {}) {
 
   // Assets are mounted before the global JSON parser so the upload route can
   // apply its own larger body limit for base64-encoded files.
-  app.use(createAssetsRouter({ assetStore, assetStorage, deckStore }))
+  app.use(createAssetsRouter({ assetStore, deckStore }))
 
   // Preview sessions keep their own 12mb deck limit. In-memory session count
   // and byte caps are enforced in the store.
-  app.use(createPreviewSessionsRouter({ previewSessionStore }))
+  app.use(createPreviewSessionsRouter({ previewSessionStore, assetStore }))
 
   app.use(express.json({ limit: '72mb' }))
 
@@ -128,22 +121,15 @@ export function createApp(options: CreateAppOptions = {}) {
     createDecksRouter({
       deckStore,
       assetStore,
-      assetStorage,
-      onDeckVersionPersisted: (deckId, versionId) => {
-        scheduleThumbnailWarm(thumbnailService, deckId, versionId)
-      },
-    }),
-  )
-  app.use(
-    createDeckVersionsRouter({
-      deckStore,
-      onDeckVersionPersisted: (deckId, versionId) => {
-        scheduleThumbnailWarm(thumbnailService, deckId, versionId)
+      onDocumentPersisted: (deckId, documentRevision) => {
+        scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
       },
     }),
   )
   app.use(createThumbnailsRouter({ deckStore, thumbnailService }))
   app.use(createDeckChatRouter({ deckStore, chatStore }))
+  app.use(createDeckThreadsRouter(chatStore))
+  app.use(createWorkspacesRouter(workspaceStore))
   app.use(
     createGenerationJobsRouter({
       generationJobs,
@@ -154,5 +140,6 @@ export function createApp(options: CreateAppOptions = {}) {
   // Exposed for the Electron main process shutdown hook.
   app.locals.thumbnailService = thumbnailService
   app.locals.thumbnailRenderSecret = thumbnailRenderSecret
+  app.locals.workspaceStore = workspaceStore
   return app
 }

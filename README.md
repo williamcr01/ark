@@ -12,7 +12,7 @@ Download the installer for your platform from the official GitHub Releases page.
 
 Requirements:
 
-- Node.js 22 or newer
+- Node.js 24 or newer
 - pnpm 11.5.3 through Corepack
 
 ```bash
@@ -26,13 +26,15 @@ Add OpenAI, Anthropic, or Google Gemini keys from **Settings** inside Ark. Keys 
 
 ## Local data
 
-Decks, versions, chat, assets, generation jobs, thumbnails, preferences, and encrypted credentials live under Electron's per-user `userData` directory:
+Each presentation is a portable `.ark` SQLite workspace containing the current HTML document, assets, conversations, and current thumbnail cache. New workspaces are created immediately in `Documents/Ark` by default; Settings can point that default at another directory, and Open/Save As/Move can place a workspace anywhere.
+
+Electron's per-user `userData` directory contains the disposable recent-workspace index, preferences, and encrypted credentials:
 
 - Linux: `~/.config/Ark`
 - macOS: `~/Library/Application Support/Ark`
 - Windows: `%APPDATA%\Ark`
 
-Ark uses the local filesystem only. PostgreSQL and cloud persistence are not part of the desktop application.
+Generation jobs are process-local, completed payloads are trimmed and bounded, and version history is not persisted. Undo/redo remains available for the current editing session. Ark uses the local filesystem only; PostgreSQL and cloud persistence are not part of the desktop application.
 
 Provider keys are stored as encrypted values in `auth.json`. Appearance, selected model, and reasoning preferences are stored separately in `settings.json`. If operating-system secure storage is unavailable, a provider key can be kept in memory for the current Ark session without writing it to disk.
 

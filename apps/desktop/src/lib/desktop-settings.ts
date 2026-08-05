@@ -7,6 +7,7 @@ export type DesktopSettings = {
   migratedLegacyRendererPreferences: boolean
   reasoningEffortByModel: Record<string, ReasoningEffort>
   selectedModel: string | null
+  defaultWorkspaceDirectory: string | null
 }
 
 const APPEARANCE_KEY = 'ark:appearance'
@@ -27,6 +28,7 @@ const defaults = (): DesktopSettings => ({
   migratedLegacyRendererPreferences: false,
   reasoningEffortByModel: {},
   selectedModel: null,
+  defaultWorkspaceDirectory: null,
 })
 
 let current = defaults()

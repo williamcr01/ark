@@ -16,6 +16,7 @@ import {
 } from '@ark/runtime-registry/deck-runtime.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
 import { getApprovedRuntimeStylesheetContent } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
+import { absolutizeArkAssetReferences, scopeArkAssetReferences } from './assets.ts'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 
@@ -92,6 +93,7 @@ export const thumbnailFillStyle = `
 
 export type ThumbnailHtmlOptions = {
   assetOrigin?: string | null
+  deckId?: string | null
 }
 
 export type ThumbnailSharedMaterials = {
@@ -423,7 +425,7 @@ export function createThumbnailSrcDocBuilder(
   return (slideIndex: number) => {
     const bodyHtml = prepareThumbnailBody(doc, slideIndex, materials.runtimeMode)
 
-    return applyThumbnailCsp(
+    const srcDoc = applyThumbnailCsp(
       `<!DOCTYPE html>
 ${materials.htmlOpen}
 <head>
@@ -437,6 +439,13 @@ ${bodyHtml}
 </html>`,
       materials,
     )
+
+    return options.deckId
+      ? absolutizeArkAssetReferences(
+          scopeArkAssetReferences(srcDoc, options.deckId),
+          options.assetOrigin,
+        )
+      : srcDoc
   }
 }
 

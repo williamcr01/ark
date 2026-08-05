@@ -25,14 +25,14 @@ export const runtimeErrorRepairContextSchema = z.object({
     warnings: z.number().int().min(0).max(10_000),
   }),
   relatedJobId: deckIdSchema.nullable(),
-  versionId: deckIdSchema.nullable(),
+  documentRevision: z.number().int().min(1).nullable(),
 })
 
 export type RuntimeErrorRepairContext = z.infer<typeof runtimeErrorRepairContextSchema>
 
 export const runtimeErrorInputSchema = z.object({
   deckId: deckIdSchema.nullable().optional(),
-  versionId: deckIdSchema.nullable().optional(),
+  documentRevision: z.number().int().min(1).nullable().optional(),
   slideIndex: z.number().int().min(0).nullable().optional(),
   runtimeMode: z.string().max(64).nullable().optional(),
   severity: runtimeErrorSeveritySchema.nullable().optional(),

@@ -331,14 +331,14 @@ export function useDeckEditorPatchCoordinator({
 
   const handleInsertImageFile = useCallback(
     async (file: File, position?: { x: number; y: number }) => {
-      if (!onPatchEditorOperations) {
+      if (!onPatchEditorOperations || !scopeKey) {
         toast.error('Save the deck before inserting images')
         return
       }
 
       try {
         const generation = scopeGenerationRef.current
-        const prepared = await prepareImageInsertFromFile(file, position)
+        const prepared = await prepareImageInsertFromFile(scopeKey, file, position)
         if (scopeGenerationRef.current !== generation) {
           return
         }
@@ -355,7 +355,7 @@ export function useDeckEditorPatchCoordinator({
         )
       }
     },
-    [activeSlideIndex, onPatchEditorOperations, onSelectTool],
+    [activeSlideIndex, onPatchEditorOperations, onSelectTool, scopeKey],
   )
 
   const handleImageAltChange = useCallback(

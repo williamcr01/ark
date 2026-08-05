@@ -19,8 +19,9 @@ export function useDeckPreviewFrame(
   html: string,
   enabled: boolean,
   reloadRevision = 0,
+  deckId?: string | null,
 ): DeckPreviewFrameModel {
-  const sandboxPreview = useSandboxPreview(html, enabled, reloadRevision)
+  const sandboxPreview = useSandboxPreview(html, enabled, reloadRevision, deckId)
   const contentFingerprint = fingerprintPreviewHtml(html)
   const sandboxSessionIdentity = sandboxPreview.sessionToken ?? sandboxPreview.previewUrl
   const contentIdentity = `sandbox:${sandboxSessionIdentity ?? `pending:${contentFingerprint}`}:r${reloadRevision}`

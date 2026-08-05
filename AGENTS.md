@@ -197,7 +197,7 @@ One user message → one agent run → as many tool/model steps as needed → de
 
 Fully working editor, not a scaffold. Implemented today:
 
-- **Local multi-deck persistence** with immutable versions and rollback under Electron `userData`.
+- **Portable `.ark` workspace persistence**: one current document, assets, conversations, and thumbnails per SQLite file, with an in-memory editing-session undo/redo stack.
 - **Local chat persistence** per deck with renderer storage caching.
 - **Tool-based agent generation** via async generation jobs (create/status/cancel/retry) with observability.
 - **Sandboxed preview** on a separate dynamic loopback origin with CSP isolation, CSS-only and full-JS modes, Electron-captured PNG thumbnails with `srcDoc` fallback, and Present mode.
