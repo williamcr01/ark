@@ -4,7 +4,16 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import express from 'express'
-import { app, BrowserWindow, dialog, ipcMain, session, shell, type WebContents } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  session,
+  shell,
+  type WebContents,
+} from 'electron'
 import electronUpdater from 'electron-updater'
 import type { ProviderId } from '@ark/contracts'
 
@@ -105,7 +114,24 @@ function parseProvider(value: unknown): ProviderId {
   return value as ProviderId
 }
 
+// Electron installs a default File/Edit/View/Window menu whenever an app never sets
+// one. Ark's chrome lives in the renderer title bar, so that menu is dead weight.
+//
+// macOS keeps a two-item template rather than no menu at all: the system draws a menu
+// bar for the frontmost app either way, and the standard roles are what bind Cmd+Q and
+// the clipboard shortcuts. Dropping them there would leave copy/paste broken inside the
+// composer, so only File/View/Window/Help go away on that platform.
+function configureApplicationMenu() {
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]))
+    return
+  }
+  Menu.setApplicationMenu(null)
+}
+
 async function startDesktop() {
+  configureApplicationMenu()
+
   const developmentApiPort = rendererDevelopmentUrl ? Number(process.env.PORT?.trim() || 8787) : 0
   const developmentSandboxPort = rendererDevelopmentUrl
     ? Number(process.env.SANDBOX_PORT?.trim() || 5174)
