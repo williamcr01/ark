@@ -52,11 +52,11 @@
 }
 
 :root {
-  --background: #f6f6f7;
+  --background: var(--ark-shell);
   --foreground: #18181b;
-  --card: #fbfbfc;
+  --card: var(--ark-panel);
   --card-foreground: #18181b;
-  --popover: #fbfbfc;
+  --popover: var(--ark-panel);
   --popover-foreground: #18181b;
   --primary: var(--ark-fill);
   --primary-foreground: var(--ark-fill-fg);
@@ -84,10 +84,15 @@
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
-  --ark-shell: #f6f6f7;
-  --ark-panel: #fbfbfc;
-  --ark-panel-raised: #ececee;
-  --ark-stage: #fbfbfc;
+  /* Light mode runs brightest at the top: chrome is pure white and everything it
+     frames steps down from there, which is the reverse of the dark theme's ladder
+     (chrome raised *above* a near-black shell). The steps below white are kept
+     within a couple of percent so the surfaces stay a family rather than reading
+     as separate materials -- the seam is carried by `--ark-line`, not by value. */
+  --ark-shell: #f1f1f3;
+  --ark-panel: #f7f7f8;
+  --ark-panel-raised: #ffffff;
+  --ark-stage: #f7f7f8;
   --ark-foreground: #18181b;
   --ark-muted-foreground: #71717a;
   --ark-line: #d4d4d8;
@@ -162,11 +167,11 @@
 }
 
 .dark {
-  --background: #0a0a0b;
+  --background: var(--ark-shell);
   --foreground: #f2eee8;
-  --card: #151516;
+  --card: var(--ark-panel);
   --card-foreground: #f2eee8;
-  --popover: #151516;
+  --popover: var(--ark-panel);
   --popover-foreground: #f2eee8;
   /* `--primary` and `--ark-selection` are intentionally absent: they resolve to
      `--ark-fill`, which is the same color in both themes. */
@@ -180,10 +185,18 @@
   --border: #343438;
   --input: #424247;
   --ring: #f2eee8;
-  --ark-shell: #0a0a0b;
-  --ark-panel: #151516;
-  --ark-panel-raised: #1c1c1f;
-  --ark-stage: #151516;
+  /* Mirror of the light ladder: chrome sits at the far end of the scale and the
+     content it frames steps back toward the middle. That puts chrome *below* the
+     shell here rather than above it, so the bar reads as the ground the app sits
+     on instead of a raised surface. Reaching that without pure black means lifting
+     the content surfaces instead of sinking the bar, which is the inverse of light
+     mode greying its panels down away from white. The bar sits a half-step below
+     the shell (1.039) rather than the full ~1.07 used elsewhere: at a full step the
+     drop to chrome read as a separate material instead of the same ladder. */
+  --ark-shell: #131315;
+  --ark-panel: #1b1b1e;
+  --ark-panel-raised: #0e0e10;
+  --ark-stage: #1b1b1e;
   --ark-foreground: #f2eee8;
   --ark-muted-foreground: #a6a3a0;
   --ark-line: #343438;
@@ -213,7 +226,9 @@
   --ark-control-sheen: rgb(255 255 255 / 10%);
   --ark-control-lowlight: rgb(0 0 0 / 30%);
   --ark-control-shadow: rgb(0 0 0 / 40%);
-  --ark-control-panel: #1c1c1f;
+  /* Lifted with the panels above it; at its old #1c1c1f a floating menu now sat
+     within 1.01 of `--ark-panel` and stopped reading as a separate surface. */
+  --ark-control-panel: #242428;
   color-scheme: dark;
 }
 
