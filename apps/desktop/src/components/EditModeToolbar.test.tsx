@@ -42,9 +42,7 @@ describe('EditModeToolbar', () => {
       'aria-pressed',
       'false',
     )
-    expect(screen.getByRole('button', { name: 'Insert image' })).not.toHaveAttribute(
-      'aria-pressed',
-    )
+    expect(screen.getByRole('button', { name: 'Insert image' })).not.toHaveAttribute('aria-pressed')
   })
 
   it('opens the image picker from a plain button', async () => {

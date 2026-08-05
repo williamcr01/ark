@@ -825,7 +825,7 @@ function App() {
               </ResizablePanel>
               {isChatOpen ? (
                 <>
-                  <ResizableHandle withHandle />
+                  <ResizableHandle className="border-[var(--ark-line)]" />
                   <ResizablePanel
                     defaultSize={chatDefaultSize}
                     id="ark-chat-panel"

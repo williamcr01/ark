@@ -28,7 +28,10 @@ function ResizableHandle({
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
-        'relative flex w-px items-center justify-center bg-border after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 outline-none aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2 [&[aria-orientation=horizontal]>div]:rotate-90',
+        // The seam is a border, not a filled 1px box: Chromium snaps border
+        // widths to whole device pixels, so this matches every other hairline
+        // in the app instead of rounding up to 2px on fractional-DPR screens.
+        'relative flex w-0 items-center justify-center border-l border-border outline-none aria-[orientation=horizontal]:h-0 aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:border-l-0 aria-[orientation=horizontal]:border-t [&[aria-orientation=horizontal]>div]:rotate-90',
         className,
       )}
       {...props}
