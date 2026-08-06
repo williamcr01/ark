@@ -91,7 +91,12 @@ vi.mock('@/hooks/useDeckGenerationFlow', () => ({
 
 vi.mock('@/components/AppTitleBar', () => ({
   AppTitleBar: ({ onToggleChat }: { onToggleChat: () => void }) => (
-    <button data-testid="toggle-chat" type="button" onClick={onToggleChat}>
+    <button
+      aria-controls="ark-chat-panel"
+      data-testid="toggle-chat"
+      type="button"
+      onClick={onToggleChat}
+    >
       Toggle chat
     </button>
   ),
@@ -370,6 +375,56 @@ describe('App chat panel layout', () => {
       'closed',
     )
     expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+  })
+
+  it('keeps the drawer closed when the titlebar toggle is clicked (full pointer/focus/click sequence)', async () => {
+    mediaState.isDesktop = false
+    const { getByTestId } = renderWithRouter(<App />)
+    // Radix attaches its pointerdown-outside listener asynchronously (setTimeout 0).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Open the drawer first.
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+
+    // A real click begins with pointerdown and a focus change on the button. Without the
+    // outside-dismiss guard those dismiss the drawer, and the click then reopens it.
+    fireEvent.pointerDown(getByTestId('toggle-chat'))
+    fireEvent.focusIn(getByTestId('toggle-chat'))
+    fireEvent.click(getByTestId('toggle-chat'))
+
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+  })
+
+  it('keeps the stored chat preference when outside clicks land while the drawer is closed', async () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { rerender } = renderWithRouter(<App />)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Collapse to mobile: drawer closes as an accommodation, preference intact.
+    mediaState.isDesktop = false
+    rerender(<App />)
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+
+    // Clicking the deck while the (force-mounted) drawer is closed must not clobber it.
+    fireEvent.pointerDown(document.body)
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
   })
 
   it('uploads prompt images into the new workspace before generation', async () => {

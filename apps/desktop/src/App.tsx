@@ -73,6 +73,13 @@ function loadChatOpenPreference(): boolean | null {
   }
 }
 
+/** The titlebar chat toggle sits outside the drawer, so its own pointer/focus events
+ *  would dismiss the drawer, and the click that follows would then reopen it. Treat
+ *  events originating from that button as if they happened inside the drawer. */
+function isChatPanelToggleTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[aria-controls="ark-chat-panel"]') !== null
+}
+
 function storeChatOpenPreference(open: boolean) {
   try {
     window.localStorage.setItem(CHAT_OPEN_PREFERENCE_KEY, open ? '1' : '0')
@@ -203,12 +210,20 @@ function App() {
     setIsChatOpen(next)
     storeChatOpenPreference(next)
   }, [isChatOpen])
-  const handleChatOpenChange = useCallback((open: boolean) => {
-    // Radix reports only user-initiated changes (close button, ESC, outside click);
-    // programmatic `open` prop changes never reach this callback.
-    setIsChatOpen(open)
-    storeChatOpenPreference(open)
-  }, [])
+  const handleChatOpenChange = useCallback(
+    (open: boolean) => {
+      // Radix reports only user-initiated changes (close button, ESC, outside click);
+      // programmatic `open` prop changes never reach this callback. While the drawer is
+      // closed it stays force-mounted, so stray outside interactions still fire this
+      // callback with `false`; skip them instead of clobbering the stored preference.
+      if (open === isChatOpen) {
+        return
+      }
+      setIsChatOpen(open)
+      storeChatOpenPreference(open)
+    },
+    [isChatOpen],
+  )
   const handleChatShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
       return
@@ -920,6 +935,16 @@ function App() {
                   className="gap-0 p-0"
                   forceMount
                   id="ark-chat-panel"
+                  onFocusOutside={(event) => {
+                    if (isChatPanelToggleTarget(event.target)) {
+                      event.preventDefault()
+                    }
+                  }}
+                  onPointerDownOutside={(event) => {
+                    if (isChatPanelToggleTarget(event.target)) {
+                      event.preventDefault()
+                    }
+                  }}
                 >
                   <SheetTitle className="sr-only" id="ark-agent-sheet-title">
                     Agent
