@@ -320,6 +320,58 @@ describe('App chat panel layout', () => {
     expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
   })
 
+  it('does not persist the auto-close when the layout collapses to mobile', () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { rerender } = renderWithRouter(<App />)
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+
+    mediaState.isDesktop = false
+    rerender(<App />)
+
+    // The drawer mounts closed (no open flash), and the collapse is a layout
+    // accommodation, so the stored user preference survives.
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+  })
+
+  it('keeps the drawer closed across repeated layout jitter after the user closes it', () => {
+    mediaState.isDesktop = false
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { rerender } = renderWithRouter(<App />)
+
+    // Starts open from the persisted preference, then the user closes it once.
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+    fireEvent.click(document.querySelector('button[aria-label="Close"]')!)
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+
+    // Drag jitter across the breakpoint must not make the drawer come back.
+    mediaState.isDesktop = true
+    rerender(<App />)
+    mediaState.isDesktop = false
+    rerender(<App />)
+    mediaState.isDesktop = true
+    rerender(<App />)
+    mediaState.isDesktop = false
+    rerender(<App />)
+
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+  })
+
   it('uploads prompt images into the new workspace before generation', async () => {
     assetApi.uploadDeckAsset.mockResolvedValueOnce({
       id: '00000000-0000-4000-8000-000000000701',

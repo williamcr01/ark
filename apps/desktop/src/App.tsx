@@ -185,16 +185,19 @@ function App() {
   // never force itself open over the deck, so it closes when the layout collapses to mobile.
   const [isChatOpen, setIsChatOpen] = useState<boolean>(() => loadChatOpenPreference() ?? isDesktop)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  // When the layout collapses to mobile, close the agent drawer *before* the sheet mounts so
+  // it never pops open over the deck and never races a close the user makes at the same
+  // moment (an effect-based close happened a frame too late: the drawer mounted open, then
+  // closed, and a close click in between reopened it). React re-renders immediately when
+  // state is set during render, so the sheet mounts closed. This is a layout accommodation,
+  // not a user preference, so it is not persisted.
   const prevIsDesktopRef = useRef(isDesktop)
-  useEffect(() => {
-    const wasDesktop = prevIsDesktopRef.current
+  if (prevIsDesktopRef.current !== isDesktop) {
     prevIsDesktopRef.current = isDesktop
-    if (wasDesktop && !isDesktop) {
-      // Collapsing the layout is a layout accommodation, not a user preference, so the
-      // auto-close is not persisted.
+    if (!isDesktop && isChatOpen) {
       setIsChatOpen(false)
     }
-  }, [isDesktop])
+  }
   const handleToggleChat = useCallback(() => {
     const next = !isChatOpen
     setIsChatOpen(next)
