@@ -126,7 +126,7 @@ describe('AppTitleBar accessibility', () => {
     expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('hover:!bg-transparent')
   })
 
-  it('shows MCP running with a green light instead of highlighting the button', async () => {
+  it('shows MCP running with a green light and opens the MCP settings tab', async () => {
     window.arkDesktop.mcp.getStatus = vi.fn().mockResolvedValue({
       state: 'running',
       autoStart: false,
@@ -138,10 +138,14 @@ describe('AppTitleBar accessibility', () => {
     })
     renderTitleBar()
 
-    const mcpButton = await screen.findByRole('button', { name: 'Stop MCP server' })
-    expect(mcpButton).toHaveAttribute('aria-pressed', 'true')
+    const mcpButton = await screen.findByRole('button', { name: 'MCP settings' })
+    expect(mcpButton).not.toHaveAttribute('aria-pressed')
     expect(mcpButton).not.toHaveClass('bg-[var(--ark-titlebar-active)]')
     expect(screen.getByTestId('mcp-running-indicator')).toHaveClass('bg-emerald-500')
+
+    await userEvent.click(mcpButton)
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'MCP' })).toHaveAttribute('data-state', 'active')
   })
 
   it('keeps panel controls unhighlighted and swaps to the icon without an arrow when closed', () => {

@@ -67,7 +67,7 @@ export function McpSettingsSection({
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border p-3">
+    <section className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-medium">External agents (MCP)</h2>

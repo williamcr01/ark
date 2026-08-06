@@ -43,7 +43,7 @@ import {
   morphMenuTriggerMotionClassName,
 } from '@/components/ui/morph-menu'
 import type { DeckDownloadVariant } from '@/lib/deck-export'
-import { DesktopSettingsDialog } from '@/components/DesktopSettingsDialog'
+import { DesktopSettingsDialog, type SettingsTab } from '@/components/DesktopSettingsDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { AppearancePreference } from '@/hooks/useAppearance'
@@ -365,6 +365,7 @@ export function AppTitleBar({
   showSanitizedDownload,
 }: AppTitleBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
 
   useEffect(() => {
@@ -436,16 +437,11 @@ export function AppTitleBar({
 
       <ButtonGroup className="shrink-0">
         <TitleBarButton
-          active={mcpStatus?.state === 'running'}
-          label={mcpStatus?.state === 'running' ? 'Stop MCP server' : 'Start MCP server'}
+          label="MCP settings"
           onClick={() => {
-            const operation =
-              mcpStatus?.state === 'running'
-                ? window.arkDesktop.mcp.stop()
-                : window.arkDesktop.mcp.start()
-            void operation.then(setMcpStatus)
+            setSettingsTab('mcp')
+            setSettingsOpen(true)
           }}
-          toggle
         >
           <span className="relative inline-flex">
             <CableIcon />
@@ -458,7 +454,13 @@ export function AppTitleBar({
             ) : null}
           </span>
         </TitleBarButton>
-        <TitleBarButton label="Settings" onClick={() => setSettingsOpen(true)}>
+        <TitleBarButton
+          label="Settings"
+          onClick={() => {
+            setSettingsTab('general')
+            setSettingsOpen(true)
+          }}
+        >
           <SettingsIcon />
         </TitleBarButton>
         <TitleBarButton disabled={isGenerating} label="New deck" onClick={onNewDeck}>
@@ -526,6 +528,7 @@ export function AppTitleBar({
 
       <DesktopSettingsDialog
         appearancePreference={appearancePreference}
+        initialTab={settingsTab}
         onAppearanceChange={onAppearanceChange}
         onCredentialsChanged={onCredentialsChanged}
         onOpenChange={setSettingsOpen}

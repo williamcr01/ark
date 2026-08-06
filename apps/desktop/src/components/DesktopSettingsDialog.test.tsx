@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DesktopSettingsDialog } from './DesktopSettingsDialog'
 
+async function switchTab(label: string) {
+  await userEvent.click(screen.getByRole('tab', { name: label }))
+}
+
 describe('DesktopSettingsDialog', () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -47,8 +51,9 @@ describe('DesktopSettingsDialog', () => {
         open
       />,
     )
-    expect(document.querySelectorAll('[data-provider-logo]')).toHaveLength(3)
     const user = userEvent.setup()
+    await switchTab('AI Providers')
+    expect(document.querySelectorAll('[data-provider-logo]')).toHaveLength(3)
     await user.type(screen.getByLabelText('OpenAI'), 'sk-test')
     await user.click(screen.getAllByRole('button', { name: 'Test' })[0]!)
 
@@ -113,6 +118,7 @@ describe('DesktopSettingsDialog', () => {
       />,
     )
     const user = userEvent.setup()
+    await switchTab('AI Providers')
     await user.type(screen.getByLabelText('OpenAI'), 'sk-session')
     await user.click(screen.getAllByRole('button', { name: 'Use for session' })[0]!)
 
@@ -151,6 +157,7 @@ describe('DesktopSettingsDialog', () => {
         open
       />,
     )
+    await switchTab('MCP')
     await userEvent.click(screen.getByRole('button', { name: 'Start MCP server' }))
 
     expect(window.arkDesktop.mcp.start).toHaveBeenCalledOnce()
