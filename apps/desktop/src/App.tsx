@@ -153,12 +153,22 @@ function App() {
       toast.warning('Could not refresh chat from server — showing cached messages')
     }, []),
   })
+  const isDesktop = useMediaQuery('(min-width: 1180px)')
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const [input, setInput] = useState('')
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
-  const [isChatOpen, setIsChatOpen] = useState(true)
+  // On narrow windows the agent panel is a drawer that slides over the deck; it must
+  // never force itself open and cover/darken the deck, so it starts closed there and
+  // closes if the layout collapses to mobile while it is open.
+  const [isChatOpen, setIsChatOpen] = useState(isDesktop)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  useEffect(() => {
+    if (!isDesktop) {
+      setIsChatOpen(false)
+    }
+  }, [isDesktop])
   const deckPreviewRef = useRef<DeckPreviewHandle>(null)
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
@@ -166,8 +176,6 @@ function App() {
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const [deckChromeHost, setDeckChromeHost] = useState<HTMLDivElement | null>(null)
-  const isDesktop = useMediaQuery('(min-width: 1180px)')
-  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const { preference, resolvedAppearance, setPreference } = useAppearance()
   const {
     canGenerate,
@@ -840,7 +848,11 @@ function App() {
           ) : (
             <>
               <div className="min-h-0 flex-1 overflow-hidden">{deckPreview}</div>
-              <Sheet onOpenChange={setIsChatOpen} open={isChatOpen}>
+              {/*
+                Non-modal drawer: Radix renders no backdrop for modal={false}, so the
+                deck stays visible and interactive while the agent panel is open.
+              */}
+              <Sheet modal={false} onOpenChange={setIsChatOpen} open={isChatOpen}>
                 <SheetContent
                   aria-describedby="ark-agent-sheet-description"
                   aria-labelledby="ark-agent-sheet-title"

@@ -204,11 +204,44 @@ describe('App chat panel layout', () => {
     const { container, getByTestId } = renderWithRouter(<App />)
 
     expect(getByTestId('deck-preview')).toBeInTheDocument()
-    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    // The agent drawer starts closed on mobile but the chat stays mounted (forceMount).
+    expect(container.ownerDocument.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    fireEvent.click(getByTestId('toggle-chat'))
     fireEvent.click(getByTestId('toggle-chat'))
 
     expect(container.ownerDocument.querySelectorAll('[data-testid="chat-panel"]')).toHaveLength(1)
     expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
+  })
+
+  it('renders the mobile agent drawer without a dimming modal overlay', () => {
+    mediaState.isDesktop = false
+    const { container, getByTestId } = renderWithRouter(<App />)
+
+    // Non-modal drawer: no dark backdrop covers the deck, and opening the drawer
+    // must not add one either.
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(container.ownerDocument.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+    expect(container.ownerDocument.querySelector('[class*="ark-overlay"]')).toBeNull()
+  })
+
+  it('closes the agent drawer when the layout collapses to mobile', () => {
+    mediaState.isDesktop = true
+    const { getByTestId, rerender } = renderWithRouter(<App />)
+
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+
+    mediaState.isDesktop = false
+    rerender(<App />)
+
+    const sheet = document.querySelector('[data-slot="sheet-content"]')
+    expect(sheet).toHaveAttribute('data-state', 'closed')
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
   })
 
   it('uploads prompt images into the new workspace before generation', async () => {
