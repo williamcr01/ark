@@ -165,6 +165,7 @@ async function startDesktop() {
     : path.resolve(app.getAppPath(), '../..')
   process.env.ARK_RUNTIMES_DIR = path.join(resourceRoot, 'runtimes')
   process.env.ARK_AGENT_GUIDES_DIR = path.join(resourceRoot, 'agent-guides')
+  process.env.ARK_MCP_GUIDES_DIR = path.join(resourceRoot, 'mcp-guides')
   const [
     { createApp },
     { createSandboxHost },

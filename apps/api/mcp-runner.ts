@@ -8,6 +8,7 @@ import { createActiveDeckTools } from './deck-tool-catalog.ts'
 import type { DeckStore } from './deck-record.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { parseDeckStructure } from './deck-html.ts'
+import { buildMcpAuthoringGuide } from './mcp-guides.ts'
 import { WorkspaceDocumentConflictError } from './workspace-store.ts'
 import type { McpServiceState } from './mcp-service.ts'
 
@@ -101,6 +102,17 @@ export function createMcpRunner(options: {
     }
 
     const requested = parsed.data as Record<string, unknown>
+    if (name === 'get_authoring_guide') {
+      const guide = buildMcpAuthoringGuide()
+      return {
+        text: guide,
+        structuredContent: {
+          format: 'text/markdown',
+          bytes: new TextEncoder().encode(guide).byteLength,
+        },
+      }
+    }
+
     const deck = await resolveActiveDeck(requested.deckId)
     if (name === 'get_active_deck') {
       const parsedDeck = parseDeckStructure(deck.html)

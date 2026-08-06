@@ -72,6 +72,20 @@ describe('MCP runner', () => {
     expect(onExternalDeckUpdate).toHaveBeenCalledOnce()
   })
 
+  it('returns MCP-specific authoring guidance without requiring an active deck', async () => {
+    const { run, state } = await setup()
+    state.setActiveDeck(null)
+
+    const result = await run('get_authoring_guide', {}, 'Claude Code')
+
+    expect(result.text).toContain('# Ark MCP authoring guide')
+    expect(result.text).toContain('# Base rules')
+    expect(result.text).toContain('/api/runtimes/reveal.js/5.1.0/reveal.js')
+    expect(result.text).not.toContain('ask_user')
+    expect(result.text).not.toContain('propose_themes')
+    expect(result.structuredContent).toMatchObject({ format: 'text/markdown' })
+  })
+
   it('returns recoverable errors for stale, inactive, and disabled access', async () => {
     const { deck, run, state } = await setup()
     await expect(

@@ -208,16 +208,17 @@ The MCP surface reuses Ark's current operation names, descriptions, schemas, par
 validation behavior wherever possible. MCP adds a target/revision envelope because the built-in
 agent already owns a deck-scoped in-memory workspace while an external process does not.
 
-| Tool              | Behavior                                                     | Mutating |
-| ----------------- | ------------------------------------------------------------ | -------- |
-| `get_active_deck` | Return id, title, revision, slide count, and MCP status      | No       |
-| `parse_deck`      | Return structured deck metadata and editable element ids     | No       |
-| `list_slides`     | Return slide ids, indexes, and titles                        | No       |
-| `read_deck`       | Return paged HTML or one slide                               | No       |
-| `patch_deck`      | Apply structured slide operations; preferred for slide edits | Yes      |
-| `patch_element`   | Apply element operations using stable element ids            | Yes      |
-| `edit_deck`       | Apply exact unique old-text to new-text edits                | Yes      |
-| `write_deck`      | Replace the document; only for explicit full rewrites        | Yes      |
+| Tool                  | Behavior                                                     | Mutating |
+| --------------------- | ------------------------------------------------------------ | -------- |
+| `get_authoring_guide` | Return MCP-safe deck authoring and runtime guidance          | No       |
+| `get_active_deck`     | Return id, title, revision, slide count, and MCP status      | No       |
+| `parse_deck`          | Return structured deck metadata and editable element ids     | No       |
+| `list_slides`         | Return slide ids, indexes, and titles                        | No       |
+| `read_deck`           | Return paged HTML or one slide                               | No       |
+| `patch_deck`          | Apply structured slide operations; preferred for slide edits | Yes      |
+| `patch_element`       | Apply element operations using stable element ids            | Yes      |
+| `edit_deck`           | Apply exact unique old-text to new-text edits                | Yes      |
+| `write_deck`          | Replace the document; only for explicit full rewrites        | Yes      |
 
 The first release deliberately omits:
 
@@ -333,10 +334,11 @@ in the existing in-memory undo/redo model; persistent revision history remains a
 ## Server instructions and authoring quality
 
 External clients do not receive Ark's built-in agent system prompt or always-on guides. The MCP
-server instructions must therefore state, in this order:
+server instructions therefore tell the client to load the MCP-safe guide once before its first edit
+in each conversation, then state:
 
-1. Call `get_active_deck` before other tools.
-2. Parse or list slides before targeted edits.
+1. Call `get_authoring_guide` once before the first edit in the conversation.
+2. Call `get_active_deck`, then parse or list slides before targeted edits.
 3. Prefer `patch_deck`; use `edit_deck` for small exact edits and `write_deck` only for explicit
    rewrites.
 4. Carry `deckId` and `documentRevision` from reads into writes.
@@ -345,9 +347,10 @@ server instructions must therefore state, in this order:
 7. Re-read and retry after a revision conflict.
 
 Keep the first 512 characters self-contained for clients that prioritize or truncate server
-instructions. Expose the longer relevant content from `agent-guides/` as an `ark://authoring-guide`
-resource or `get_authoring_guide` read tool only if client testing shows the initialization
-instructions are insufficient. Do not duplicate every guide into every tool description.
+instructions. `get_authoring_guide` returns the live runtime registry plus the packaged
+`mcp-guides/` documents. Those documents mirror `agent-guides/` but replace internal-only tools
+with the equivalent external-client workflow. Do not duplicate every guide into every tool
+description.
 
 ## Desktop integration
 

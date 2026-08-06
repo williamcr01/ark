@@ -49,9 +49,15 @@ export const deckElementPatchInputSchema = z.object({
 })
 
 export const MCP_SERVER_INSTRUCTIONS =
-  'Call get_active_deck first, then parse_deck or list_slides before targeted edits. Prefer patch_deck; use edit_deck for small exact edits and write_deck only for explicit full rewrites. Carry deckId and documentRevision from reads into writes. Produce one self-contained HTML document with no external resource URLs. Use only approved /api/runtimes/... assets and existing Ark asset URLs. After a revision conflict, re-read and retry.'
+  'Before the first Ark deck edit in each conversation, call get_authoring_guide once. Then call get_active_deck, followed by parse_deck or list_slides before targeted edits. Prefer patch_deck; use edit_deck for small exact edits and write_deck only for explicit full rewrites. Carry deckId and documentRevision from reads into writes. Produce one self-contained HTML document with no external resource URLs. Use only approved /api/runtimes/... assets and existing Ark asset URLs. After a revision conflict, re-read and retry.'
 
 export const MCP_TOOL_CATALOG = {
+  get_authoring_guide: {
+    description:
+      'Return Ark deck authoring rules and approved runtime guidance. Call once before the first edit in each conversation.',
+    inputSchema: z.object({}),
+    mutating: false,
+  },
   get_active_deck: {
     description: 'Return the visible Ark deck, its revision, title, and slide count.',
     inputSchema: z.object({}),

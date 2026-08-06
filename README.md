@@ -55,7 +55,8 @@ apps/api/       Internal local API and persistence services
 apps/sandbox/   Separate-origin hostile deck renderer
 packages/       Shared contracts, deck helpers, and runtime registry
 runtimes/       Vendored approved deck runtimes
-agent-guides/   Always-on deck generation guidance
+agent-guides/   Always-on built-in deck generation guidance
+mcp-guides/     External-agent deck authoring guidance
 ```
 
 ## Commands

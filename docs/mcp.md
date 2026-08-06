@@ -9,6 +9,10 @@ Ark can let Codex, Claude Code, or another local MCP client edit the presentatio
 3. Copy the generated command for your client and run it once in a terminal.
 4. In the client, ask it to call `get_active_deck` before reading or editing the deck.
 
+Before the first Ark edit in a conversation, the client receives instructions to load Ark's
+MCP-specific authoring guide once. The guide supplies the deck structure, design, and approved
+runtime rules used by Ark's built-in agent without referring to internal-only tools.
+
 The generated command contains the absolute path to the installed Ark executable. Typical commands look like:
 
 ```bash

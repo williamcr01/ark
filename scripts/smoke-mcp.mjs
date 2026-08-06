@@ -96,6 +96,7 @@ try {
   const expectedTools = [
     'edit_deck',
     'get_active_deck',
+    'get_authoring_guide',
     'list_slides',
     'parse_deck',
     'patch_deck',

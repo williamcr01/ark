@@ -98,6 +98,10 @@
       {
         "from": "../../agent-guides",
         "to": "agent-guides"
+      },
+      {
+        "from": "../../mcp-guides",
+        "to": "mcp-guides"
       }
     ],
     "publish": {
