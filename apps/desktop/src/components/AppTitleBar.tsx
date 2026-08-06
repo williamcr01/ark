@@ -477,7 +477,7 @@ export function AppTitleBar({
         <TitleBarButton
           aria-controls="ark-chat-panel"
           aria-expanded={isChatOpen}
-          label={isChatOpen ? 'Hide chat panel' : 'Show chat panel'}
+          label={isChatOpen ? 'Hide chat panel (Ctrl/⌘B)' : 'Show chat panel (Ctrl/⌘B)'}
           onClick={onToggleChat}
         >
           {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightIcon />}

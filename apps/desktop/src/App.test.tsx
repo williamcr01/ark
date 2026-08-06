@@ -1,6 +1,7 @@
 import { act, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getTestLocalStorage } from '@/test/storage'
 import { renderWithRouter } from '@/test/render-with-router'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
@@ -242,6 +243,81 @@ describe('App chat panel layout', () => {
     const sheet = document.querySelector('[data-slot="sheet-content"]')
     expect(sheet).toHaveAttribute('data-state', 'closed')
     expect(getByTestId('deck-preview')).toBeInTheDocument()
+  })
+
+  it('restores a persisted closed chat panel on desktop', () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '0')
+    const { queryByTestId } = renderWithRouter(<App />)
+
+    expect(queryByTestId('chat-panel')).not.toBeInTheDocument()
+  })
+
+  it('keeps a persisted open chat on mobile (layout collapse does not override it)', () => {
+    mediaState.isDesktop = false
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { getByTestId } = renderWithRouter(<App />)
+
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+  })
+
+  it('persists the chat panel preference when toggled', () => {
+    mediaState.isDesktop = true
+    const { getByTestId } = renderWithRouter(<App />)
+
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+  })
+
+  it('toggles the chat panel with the Ctrl/Cmd+B shortcut', () => {
+    mediaState.isDesktop = true
+    const { getByTestId, queryByTestId } = renderWithRouter(<App />)
+
+    fireEvent.keyDown(window, { key: 'b', metaKey: true })
+    expect(queryByTestId('chat-panel')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'B', ctrlKey: true })
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+  })
+
+  it('ignores the chat panel shortcut while typing', () => {
+    mediaState.isDesktop = true
+    const { getByTestId } = renderWithRouter(<App />)
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+
+    fireEvent.keyDown(input, { key: 'b', metaKey: true })
+
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    input.remove()
+  })
+
+  it('closes the mobile agent drawer from its in-drawer close button and persists', () => {
+    mediaState.isDesktop = false
+    const { getByTestId } = renderWithRouter(<App />)
+
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+
+    const closeButton = document.querySelector('button[aria-label="Close"]')
+    expect(closeButton).not.toBeNull()
+    fireEvent.click(closeButton!)
+
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
   })
 
   it('uploads prompt images into the new workspace before generation', async () => {

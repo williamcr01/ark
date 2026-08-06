@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { memo, useMemo, useRef, useState, useEffect, useCallback, useEffectEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { type ChatAttachment } from '@ark/deck-core/chat.ts'
@@ -58,6 +58,27 @@ function parseInitialSlideIndex(value: string | null) {
 
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
+const CHAT_OPEN_PREFERENCE_KEY = 'ark:chat-open'
+
+function loadChatOpenPreference(): boolean | null {
+  try {
+    const value = window.localStorage.getItem(CHAT_OPEN_PREFERENCE_KEY)
+    if (value === '1') return true
+    if (value === '0') return false
+    return null
+  } catch {
+    return null
+  }
+}
+
+function storeChatOpenPreference(open: boolean) {
+  try {
+    window.localStorage.setItem(CHAT_OPEN_PREFERENCE_KEY, open ? '1' : '0')
+  } catch {
+    // Storage can be unavailable (e.g. private browsing); the preference just won't persist.
+  }
 }
 
 async function uploadPromptAttachments(
@@ -159,16 +180,53 @@ function App() {
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
-  // On narrow windows the agent panel is a drawer that slides over the deck; it must
-  // never force itself open and cover/darken the deck, so it starts closed there and
-  // closes if the layout collapses to mobile while it is open.
-  const [isChatOpen, setIsChatOpen] = useState(isDesktop)
+  // The agent panel preference persists across sessions; layout defaults apply when unset
+  // (open side-by-side on desktop, closed as a drawer on narrow windows). The drawer must
+  // never force itself open over the deck, so it closes when the layout collapses to mobile.
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(() => loadChatOpenPreference() ?? isDesktop)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  const prevIsDesktopRef = useRef(isDesktop)
   useEffect(() => {
-    if (!isDesktop) {
+    const wasDesktop = prevIsDesktopRef.current
+    prevIsDesktopRef.current = isDesktop
+    if (wasDesktop && !isDesktop) {
+      // Collapsing the layout is a layout accommodation, not a user preference, so the
+      // auto-close is not persisted.
       setIsChatOpen(false)
     }
   }, [isDesktop])
+  const handleToggleChat = useCallback(() => {
+    const next = !isChatOpen
+    setIsChatOpen(next)
+    storeChatOpenPreference(next)
+  }, [isChatOpen])
+  const handleChatOpenChange = useCallback((open: boolean) => {
+    // Radix reports only user-initiated changes (close button, ESC, outside click);
+    // programmatic `open` prop changes never reach this callback.
+    setIsChatOpen(open)
+    storeChatOpenPreference(open)
+  }, [])
+  const handleChatShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
+      return
+    }
+    if (event.key.toLowerCase() !== 'b') {
+      return
+    }
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')
+    ) {
+      return
+    }
+    event.preventDefault()
+    handleToggleChat()
+  })
+  // Toggle the agent panel with Ctrl/Cmd+B, mirroring common sidebar shortcuts.
+  useEffect(() => {
+    window.addEventListener('keydown', handleChatShortcut)
+    return () => window.removeEventListener('keydown', handleChatShortcut)
+  }, [])
   const deckPreviewRef = useRef<DeckPreviewHandle>(null)
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
@@ -811,7 +869,7 @@ function App() {
           onShareProject={handleShareProject}
           onPresent={() => deckPreviewRef.current?.openPresent()}
           onRenameDeck={handleRenameDeck}
-          onToggleChat={() => setIsChatOpen((current) => !current)}
+          onToggleChat={handleToggleChat}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onAppearanceChange={setPreference}
           onUploadClick={handleUploadClick}
@@ -852,14 +910,13 @@ function App() {
                 Non-modal drawer: Radix renders no backdrop for modal={false}, so the
                 deck stays visible and interactive while the agent panel is open.
               */}
-              <Sheet modal={false} onOpenChange={setIsChatOpen} open={isChatOpen}>
+              <Sheet modal={false} onOpenChange={handleChatOpenChange} open={isChatOpen}>
                 <SheetContent
                   aria-describedby="ark-agent-sheet-description"
                   aria-labelledby="ark-agent-sheet-title"
                   className="gap-0 p-0"
                   forceMount
                   id="ark-chat-panel"
-                  showCloseButton={false}
                 >
                   <SheetTitle className="sr-only" id="ark-agent-sheet-title">
                     Agent
