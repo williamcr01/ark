@@ -17,6 +17,7 @@ export function createMcpRouter(options: {
     name: string,
     args: Record<string, unknown>,
     clientName: string | null,
+    clientSessionId?: string,
   ) => Promise<McpToolResponse>
   onActivity?: (activity: McpActivityEvent) => void
 }) {
@@ -62,11 +63,16 @@ export function createMcpRouter(options: {
       logger.info('mcp.tool.started', { toolName: name, clientName })
 
       try {
-        const result = await options.runTool(name, parsed.data.arguments, clientName)
+        const result = await options.runTool(
+          name,
+          parsed.data.arguments,
+          clientName,
+          parsed.data.client?.sessionId,
+        )
         const activity = {
           clientName,
           toolName: name,
-          summary: result.text.slice(0, 500),
+          summary: (result.activitySummary ?? result.text).slice(0, 500),
           occurredAt: new Date().toISOString(),
           failed: Boolean(result.isError),
         }

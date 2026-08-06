@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { agentQuestionRequestSchema } from './agent-questions.ts'
+import { themeProposalRequestSchema } from './agent-themes.ts'
 import { deckElementPatchOperationSchema, deckSlidePatchOperationSchema } from './deck-patch.ts'
 
 const targetSchema = z.object({
@@ -49,7 +51,7 @@ export const deckElementPatchInputSchema = z.object({
 })
 
 export const MCP_SERVER_INSTRUCTIONS =
-  'Before the first Ark deck edit in each conversation, call get_authoring_guide once. Then call get_active_deck, followed by parse_deck or list_slides before targeted edits. Prefer patch_deck; use edit_deck for small exact edits and write_deck only for explicit full rewrites. Carry deckId and documentRevision from reads into writes. Produce one self-contained HTML document with no external resource URLs. Use only approved /api/runtimes/... assets and existing Ark asset URLs. After a revision conflict, re-read and retry.'
+  'Before the first Ark deck edit in each conversation, call get_authoring_guide once, then get_active_deck. When isBlank is true, use ask_user for critical missing context, then propose_themes with exactly four visual samples; after either call, use wait_for_interaction until Ark returns the user response. Build the chosen direction with write_deck. For authored decks, call parse_deck or list_slides and prefer patch_deck; use edit_deck for small exact edits and write_deck only for explicit full rewrites. Carry deckId and documentRevision from reads into writes. Produce one self-contained HTML document with no external resource URLs. Use only approved /api/runtimes/... assets and existing Ark asset URLs. After a revision conflict, re-read and retry.'
 
 export const MCP_TOOL_CATALOG = {
   get_authoring_guide: {
@@ -59,7 +61,8 @@ export const MCP_TOOL_CATALOG = {
     mutating: false,
   },
   get_active_deck: {
-    description: 'Return the visible Ark deck, its revision, title, and slide count.',
+    description:
+      'Return the visible Ark deck, its revision, title, slide count, origin, and whether it is blank.',
     inputSchema: z.object({}),
     mutating: false,
   },
@@ -95,9 +98,32 @@ export const MCP_TOOL_CATALOG = {
     mutating: true,
   },
   write_deck: {
-    description: 'Replace the entire deck. Use only for an explicit full rewrite.',
+    description: 'Replace the entire deck. Use for a blank deck or an explicit full rewrite.',
     inputSchema: mutationTargetSchema.extend(deckWriteInputSchema.shape),
     mutating: true,
+  },
+  ask_user: {
+    description:
+      'Show up to five concise questions inside Ark when critical context is missing. Returns an interaction id; call wait_for_interaction until the user responds.',
+    inputSchema: mutationTargetSchema.extend(agentQuestionRequestSchema.shape),
+    mutating: false,
+    sideEffecting: true,
+  },
+  propose_themes: {
+    description:
+      'Show exactly four visual theme samples inside Ark. Returns an interaction id; call wait_for_interaction until the user picks one.',
+    inputSchema: mutationTargetSchema.extend(themeProposalRequestSchema.shape),
+    mutating: false,
+    sideEffecting: true,
+  },
+  wait_for_interaction: {
+    description:
+      'Wait briefly for the user to answer an Ark question or theme picker. Call again while status is pending.',
+    inputSchema: z.object({
+      interactionId: z.string().uuid(),
+      timeoutMs: z.number().int().min(0).max(20_000).optional(),
+    }),
+    mutating: false,
   },
 } as const
 

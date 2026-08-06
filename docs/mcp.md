@@ -45,6 +45,9 @@ Stopping MCP in Ark immediately revokes the current session but leaves the clien
 - MCP can read and edit only the presentation currently visible in Ark.
 - Switching presentations changes the target of new calls; an in-flight write cannot be redirected to another deck.
 - The external conversation remains in the MCP client and is not copied into Ark chat.
+- On a blank deck, an external agent can show questions and visual theme samples inside Ark through
+  `ask_user` and `propose_themes`. Ark returns the response through `wait_for_interaction`; pending
+  interactions are temporary and disappear when MCP stops, the deck changes, or they expire.
 - The client uses its own account and authentication. Ark's provider keys are not shared.
 - Ark stores a temporary high-entropy capability in its per-user application-data directory only while MCP is running. The capability and internal API address are not exposed to the renderer.
 - Requests stay on a random `127.0.0.1` loopback port. Writes use document revisions, so concurrent Ark and external edits fail with a recoverable conflict instead of silently overwriting one another.

@@ -7,6 +7,7 @@ import type {
   McpStatus,
 } from '@ark/contracts'
 import type { McpServiceState } from '@ark/api/mcp-service.ts'
+import type { McpInteractionStore } from '@ark/api/mcp-interactions.ts'
 import { mcpDiscoveryPath, removeMcpDiscovery, writeMcpDiscovery } from '@ark/mcp/discovery.ts'
 
 const quoteExecutable = (value: string) => `"${value.replaceAll('"', '\\"')}"`
@@ -40,6 +41,7 @@ export class McpManager {
     apiOrigin: string
     userDataDirectory: string
     serviceState: McpServiceState
+    interactionStore: McpInteractionStore
     getAutoStart: () => boolean
     setAutoStart: (enabled: boolean) => Promise<void>
     executableArgs: string[]
@@ -58,6 +60,7 @@ export class McpManager {
     apiOrigin: string
     userDataDirectory: string
     serviceState: McpServiceState
+    interactionStore: McpInteractionStore
     getAutoStart: () => boolean
     setAutoStart: (enabled: boolean) => Promise<void>
     executableArgs: string[]
@@ -88,6 +91,7 @@ export class McpManager {
 
   async cleanupStartup() {
     this.options.serviceState.stop()
+    this.options.interactionStore.cancelAll()
     await removeMcpDiscovery(this.discoveryPath)
   }
 
@@ -116,6 +120,7 @@ export class McpManager {
 
   async stop() {
     this.options.serviceState.stop()
+    this.options.interactionStore.cancelAll()
     this.state = 'stopping'
     this.notify()
     await removeMcpDiscovery(this.discoveryPath).catch(() => undefined)
@@ -130,14 +135,16 @@ export class McpManager {
     return this.notify()
   }
 
-  setActiveDeck(deckId: string | null, title: string | null) {
+  setActiveDeck(deckId: string | null, title: string | null, documentRevision: number | null) {
     this.activeDeckId = deckId
     this.activeDeckTitle = title
     this.options.serviceState.setActiveDeck(deckId)
+    this.options.interactionStore.cancelForTarget(deckId, documentRevision)
     this.notify()
   }
 
   recordExternalUpdate(update: ExternalDeckUpdate) {
+    this.options.interactionStore.cancelForTarget(update.deckId, update.documentRevision)
     this.recordActivity(
       {
         clientName: update.clientName,

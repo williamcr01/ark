@@ -85,6 +85,7 @@ import {
   type ThemeProposalRequest,
 } from '@ark/deck-core/agent-themes.ts'
 import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
+import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import {
   findAskUserAnswerAfter,
   findPendingAgentQuestions,
@@ -583,6 +584,9 @@ export type ChatPanelProps = {
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
   onQuestionSubmit?: (content: string) => void
+  mcpInteraction?: McpPendingInteraction | null
+  onMcpInteractionSubmit?: (answer: McpInteractionAnswer) => void
+  onMcpInteractionCancel?: () => void
   onAttachmentError: (message: string) => void
   onCancelGeneration: () => void | Promise<void>
   onRetryGeneration: () => void | Promise<void>
@@ -615,6 +619,9 @@ export function ChatPanel({
   onModelSelect,
   onPromptSubmit,
   onQuestionSubmit,
+  mcpInteraction = null,
+  onMcpInteractionSubmit,
+  onMcpInteractionCancel,
   onAttachmentError,
   onCancelGeneration,
   onRetryGeneration,
@@ -660,8 +667,10 @@ export function ChatPanel({
     showGenerationError || showAttachmentError || showModelsError || showModelWarnings
   const pendingAgentQuestions = onQuestionSubmit ? findPendingAgentQuestions(messages) : null
   const pendingThemeProposal = onQuestionSubmit ? findPendingThemeProposal(messages) : null
-  const activeQuestions = pendingAgentQuestions
-  const activeThemes = pendingThemeProposal
+  const activeQuestions =
+    mcpInteraction?.kind === 'questions' ? mcpInteraction.request : pendingAgentQuestions
+  const activeThemes =
+    mcpInteraction?.kind === 'themes' ? mcpInteraction.request : pendingThemeProposal
   const interactionActive = Boolean(activeQuestions || activeThemes)
   const isSubmitDisabled = isGenerating || !canGenerate || interactionActive
 
@@ -774,20 +783,45 @@ export function ChatPanel({
               />
             </div>
           ) : null}
-          {activeQuestions && onQuestionSubmit ? (
+          {mcpInteraction ? (
+            <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
+              <span>
+                {mcpInteraction.clientName ?? 'An external agent'} is waiting for your response
+                through MCP.
+              </span>
+              {onMcpInteractionCancel ? (
+                <Button onClick={onMcpInteractionCancel} size="sm" type="button" variant="ghost">
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {activeQuestions &&
+          (mcpInteraction?.kind === 'questions' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
             <AgentQuestions
-              disabled={isGenerating || !canGenerate}
-              onSubmit={(answers) =>
-                onQuestionSubmit(formatAgentQuestionAnswers(activeQuestions, answers))
-              }
+              disabled={isGenerating || (!mcpInteraction && !canGenerate)}
+              onSubmit={(answers) => {
+                if (mcpInteraction?.kind === 'questions' && onMcpInteractionSubmit) {
+                  onMcpInteractionSubmit({ kind: 'questions', answers })
+                  return
+                }
+                onQuestionSubmit?.(formatAgentQuestionAnswers(activeQuestions, answers))
+              }}
               request={activeQuestions}
               submitLabel="Send answers"
             />
           ) : null}
-          {activeThemes && onQuestionSubmit ? (
+          {activeThemes &&
+          (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
             <ThemePicker
-              disabled={isGenerating || !canGenerate}
-              onSubmit={(themeId) => onQuestionSubmit(formatThemeChoice(activeThemes, themeId))}
+              disabled={isGenerating || (!mcpInteraction && !canGenerate)}
+              onSubmit={(themeId) => {
+                if (mcpInteraction?.kind === 'themes' && onMcpInteractionSubmit) {
+                  onMcpInteractionSubmit({ kind: 'themes', themeId })
+                  return
+                }
+                onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId))
+              }}
               request={activeThemes}
               submitLabel="Use this theme"
             />

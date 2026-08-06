@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { McpServer } from '@modelcontextprotocol/server'
 import { serveStdio } from '@modelcontextprotocol/server/stdio'
 
@@ -31,7 +33,7 @@ async function forwardToolCall(
   discoveryPath: string,
   name: McpToolName,
   args: Record<string, unknown>,
-  client: { name: string; version?: string } | null,
+  client: { name: string; version?: string; sessionId: string } | null,
 ) {
   let discovery
   try {
@@ -80,6 +82,7 @@ async function forwardToolCall(
 
 export function runMcpBridge(discoveryPath: string) {
   let activeServer: McpServer | null = null
+  const sessionId = randomUUID()
   const handle = serveStdio(
     () => {
       const server = new McpServer(
@@ -90,15 +93,16 @@ export function runMcpBridge(discoveryPath: string) {
 
       for (const [rawName, definition] of Object.entries(MCP_TOOL_CATALOG)) {
         const name = rawName as McpToolName
+        const sideEffecting = 'sideEffecting' in definition && definition.sideEffecting === true
         server.registerTool(
           name,
           {
             description: definition.description,
             inputSchema: definition.inputSchema,
             annotations: {
-              readOnlyHint: !definition.mutating,
+              readOnlyHint: !definition.mutating && !sideEffecting,
               destructiveHint: name === 'write_deck',
-              idempotentHint: !definition.mutating,
+              idempotentHint: !definition.mutating && !sideEffecting,
             },
           },
           async (args: unknown) => {
@@ -110,6 +114,7 @@ export function runMcpBridge(discoveryPath: string) {
               clientVersion
                 ? {
                     name: clientVersion.name,
+                    sessionId,
                     ...(clientVersion.version ? { version: clientVersion.version } : {}),
                   }
                 : null,

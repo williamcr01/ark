@@ -32,7 +32,12 @@ import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
-import { MAX_SLIDE_CONTEXTS, type ExternalDeckUpdate } from '@ark/contracts'
+import {
+  MAX_SLIDE_CONTEXTS,
+  type ExternalDeckUpdate,
+  type McpInteractionAnswer,
+  type McpPendingInteraction,
+} from '@ark/contracts'
 import { toEditorSelectionContext } from '@/lib/editor-selection-context'
 import {
   buildSlideContexts,
@@ -154,6 +159,7 @@ function App() {
     }, []),
   })
   const [input, setInput] = useState('')
+  const [mcpInteraction, setMcpInteraction] = useState<McpPendingInteraction | null>(null)
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
@@ -184,6 +190,42 @@ function App() {
     models,
   )
   const canGenerateForDeck = canGenerate && Boolean(deckId)
+
+  useEffect(() => {
+    let canceled = false
+    void window.arkDesktop.mcp.getPendingInteraction().then((interaction) => {
+      if (!canceled) setMcpInteraction(interaction)
+    })
+    const unsubscribe = window.arkDesktop.mcp.onInteractionChanged(({ interaction }) => {
+      setMcpInteraction(interaction)
+    })
+    return () => {
+      canceled = true
+      unsubscribe()
+    }
+  }, [])
+
+  const activeMcpInteraction = mcpInteraction?.deckId === deckId ? mcpInteraction : null
+
+  const respondToMcpInteraction = useCallback(
+    async (answer: McpInteractionAnswer) => {
+      if (!activeMcpInteraction) return
+      try {
+        await window.arkDesktop.mcp.respondToInteraction(activeMcpInteraction.id, answer)
+        toast.success('Response sent to the external agent')
+      } catch (responseError) {
+        toast.error(
+          responseError instanceof Error ? responseError.message : 'Could not send the response',
+        )
+      }
+    },
+    [activeMcpInteraction],
+  )
+
+  const cancelMcpInteraction = useCallback(async () => {
+    if (!activeMcpInteraction) return
+    await window.arkDesktop.mcp.cancelInteraction(activeMcpInteraction.id)
+  }, [activeMcpInteraction])
 
   const handleModelSelect = useCallback(
     (modelId: string, nextEffort?: ReasoningEffort) => {
@@ -284,8 +326,12 @@ function App() {
   }, [deckId])
 
   useEffect(() => {
-    void window.arkDesktop.mcp.setActiveDeck(deckId, deckId ? deckTitle : null)
-  }, [deckId, deckTitle])
+    void window.arkDesktop.mcp.setActiveDeck(
+      deckId,
+      deckId ? deckTitle : null,
+      deckId ? documentRevision : null,
+    )
+  }, [deckId, deckTitle, documentRevision])
 
   useEffect(() => {
     externalBusyRef.current = isDeckSaving || isDeckPatching || isGenerating
@@ -813,6 +859,7 @@ function App() {
       isGenerating={isGenerating}
       isLoadingModels={isLoadingModels}
       messages={messages}
+      mcpInteraction={activeMcpInteraction}
       models={models}
       modelsError={modelsError}
       modelWarnings={modelWarnings}
@@ -820,6 +867,12 @@ function App() {
       onCancelGeneration={handleCancelGeneration}
       onInputChange={setInput}
       onModelSelect={handleModelSelect}
+      onMcpInteractionCancel={() => {
+        void cancelMcpInteraction()
+      }}
+      onMcpInteractionSubmit={(answer) => {
+        void respondToMcpInteraction(answer)
+      }}
       onPromptSubmit={handlePromptSubmit}
       onQuestionSubmit={(content) => {
         void generateDeck(content)

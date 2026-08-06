@@ -208,23 +208,23 @@ The MCP surface reuses Ark's current operation names, descriptions, schemas, par
 validation behavior wherever possible. MCP adds a target/revision envelope because the built-in
 agent already owns a deck-scoped in-memory workspace while an external process does not.
 
-| Tool                  | Behavior                                                     | Mutating |
-| --------------------- | ------------------------------------------------------------ | -------- |
-| `get_authoring_guide` | Return MCP-safe deck authoring and runtime guidance          | No       |
-| `get_active_deck`     | Return id, title, revision, slide count, and MCP status      | No       |
-| `parse_deck`          | Return structured deck metadata and editable element ids     | No       |
-| `list_slides`         | Return slide ids, indexes, and titles                        | No       |
-| `read_deck`           | Return paged HTML or one slide                               | No       |
-| `patch_deck`          | Apply structured slide operations; preferred for slide edits | Yes      |
-| `patch_element`       | Apply element operations using stable element ids            | Yes      |
-| `edit_deck`           | Apply exact unique old-text to new-text edits                | Yes      |
-| `write_deck`          | Replace the document; only for explicit full rewrites        | Yes      |
+| Tool                   | Behavior                                                        | Mutating |
+| ---------------------- | --------------------------------------------------------------- | -------- |
+| `get_authoring_guide`  | Return MCP-safe deck authoring and runtime guidance             | No       |
+| `get_active_deck`      | Return id, title, revision, slide count, origin, and MCP status | No       |
+| `parse_deck`           | Return structured deck metadata and editable element ids        | No       |
+| `list_slides`          | Return slide ids, indexes, and titles                           | No       |
+| `read_deck`            | Return paged HTML or one slide                                  | No       |
+| `patch_deck`           | Apply structured slide operations; preferred for slide edits    | Yes      |
+| `patch_element`        | Apply element operations using stable element ids               | Yes      |
+| `edit_deck`            | Apply exact unique old-text to new-text edits                   | Yes      |
+| `write_deck`           | Replace a blank deck or perform an explicit full rewrite        | Yes      |
+| `ask_user`             | Show structured questions in the visible Ark deck               | UI only  |
+| `propose_themes`       | Show four validated visual theme samples in Ark                 | UI only  |
+| `wait_for_interaction` | Wait briefly for an Ark question or theme response              | No       |
 
 The first release deliberately omits:
 
-- `ask_user`: the external client asks the user in its own conversation.
-- `propose_themes`: theme discussion happens in the external conversation; the chosen result uses
-  normal edit tools.
 - attachments: add after the active-deck path is stable.
 - generation-job tools: an external agent should not delegate back to Ark's built-in agent.
 - versions and rollback tools: Ark currently has session undo/redo, not persistent immutable deck

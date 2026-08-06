@@ -1,5 +1,8 @@
 import type {
   ExternalDeckUpdate,
+  McpInteractionAnswer,
+  McpInteractionChanged,
+  McpPendingInteraction,
   McpSetupCommands,
   McpStatus,
   ProviderId,
@@ -39,11 +42,19 @@ declare global {
         start: () => Promise<McpStatus>
         stop: () => Promise<McpStatus>
         setAutoStart: (enabled: boolean) => Promise<McpStatus>
-        setActiveDeck: (deckId: string | null, title: string | null) => Promise<void>
+        setActiveDeck: (
+          deckId: string | null,
+          title: string | null,
+          documentRevision: number | null,
+        ) => Promise<void>
+        getPendingInteraction: () => Promise<McpPendingInteraction | null>
+        respondToInteraction: (id: string, answer: McpInteractionAnswer) => Promise<void>
+        cancelInteraction: (id: string) => Promise<boolean>
         getSetupCommands: () => Promise<McpSetupCommands>
         copySetupCommand: (command: string) => Promise<void>
         onStatusChanged: (listener: (status: McpStatus) => void) => () => void
         onDeckUpdated: (listener: (update: ExternalDeckUpdate) => void) => () => void
+        onInteractionChanged: (listener: (change: McpInteractionChanged) => void) => () => void
       }
       updates: {
         check: () => Promise<DesktopResult>

@@ -1,4 +1,6 @@
 import type { ExternalDeckUpdate, McpToolResponse } from '@ark/contracts'
+import type { AgentQuestionRequest } from '@ark/deck-core/agent-questions.ts'
+import type { ThemeProposalRequest } from '@ark/deck-core/agent-themes.ts'
 import {
   MCP_TOOL_CATALOG,
   isMcpToolName,
@@ -11,6 +13,11 @@ import { parseDeckStructure } from './deck-html.ts'
 import { buildMcpAuthoringGuide } from './mcp-guides.ts'
 import { WorkspaceDocumentConflictError } from './workspace-store.ts'
 import type { McpServiceState } from './mcp-service.ts'
+import {
+  createMcpInteractionStore,
+  McpInteractionError,
+  type McpInteractionStore,
+} from './mcp-interactions.ts'
 
 type ToolExecute = (input: unknown, options: unknown) => Promise<unknown>
 
@@ -48,13 +55,22 @@ function response(name: string, output: Record<string, unknown>, isError = false
   }
 }
 
+function interactionError(error: unknown): never {
+  if (error instanceof McpInteractionError) {
+    throw new McpRunnerError(error.code, error.message, 409)
+  }
+  throw error
+}
+
 export function createMcpRunner(options: {
   deckStore: DeckStore
   state: McpServiceState
+  interactionStore?: McpInteractionStore
   onDocumentPersisted?: (deckId: string, documentRevision: number) => void
   onExternalDeckUpdate?: (update: ExternalDeckUpdate) => void
 }) {
   const { deckStore, state, onDocumentPersisted, onExternalDeckUpdate } = options
+  const interactionStore = options.interactionStore ?? createMcpInteractionStore()
 
   const resolveActiveDeck = async (requestedDeckId?: unknown) => {
     const activeDeckId = state.getActiveDeck()
@@ -80,6 +96,7 @@ export function createMcpRunner(options: {
     rawName: string,
     rawArguments: Record<string, unknown>,
     clientName: string | null,
+    clientSessionId = clientName ?? 'anonymous',
   ): Promise<McpToolResponse> {
     if (!state.isRunning()) {
       throw new McpRunnerError(
@@ -113,6 +130,40 @@ export function createMcpRunner(options: {
       }
     }
 
+    if (name === 'wait_for_interaction') {
+      try {
+        const result = await interactionStore.wait(
+          String(requested.interactionId),
+          clientSessionId,
+          typeof requested.timeoutMs === 'number' ? requested.timeoutMs : undefined,
+        )
+        if (result.status === 'answered' && result.answer?.kind === 'questions') {
+          return {
+            text: `The user answered in Ark:\n${JSON.stringify(result.answer.answers)}`,
+            activitySummary: 'Received answers to an MCP question interaction.',
+            structuredContent: result,
+          }
+        }
+        if (result.status === 'answered' && result.answer?.kind === 'themes') {
+          return {
+            text: `The user chose theme id "${result.answer.themeId}" in Ark.`,
+            activitySummary: 'Received an MCP theme choice.',
+            structuredContent: result,
+          }
+        }
+        return {
+          text:
+            result.status === 'pending'
+              ? 'The user has not responded in Ark yet. Call wait_for_interaction again.'
+              : (result.reason ?? `The interaction is ${result.status}.`),
+          activitySummary: `MCP interaction is ${result.status}.`,
+          structuredContent: result,
+        }
+      } catch (error) {
+        interactionError(error)
+      }
+    }
+
     const deck = await resolveActiveDeck(requested.deckId)
     if (name === 'get_active_deck') {
       const parsedDeck = parseDeckStructure(deck.html)
@@ -121,12 +172,15 @@ export function createMcpRunner(options: {
         title: deck.title,
         documentRevision: deck.documentRevision,
         slideCount: parsedDeck.slideCount,
+        origin: deck.origin,
+        isBlank: deck.origin === 'blank',
         mcpStatus: 'running',
       })
     }
 
     const definition = MCP_TOOL_CATALOG[name]
-    if (definition.mutating && requested.expectedDocumentRevision !== deck.documentRevision) {
+    const requiresRevision = definition.mutating || name === 'ask_user' || name === 'propose_themes'
+    if (requiresRevision && requested.expectedDocumentRevision !== deck.documentRevision) {
       throw new McpRunnerError(
         'DOCUMENT_CONFLICT',
         'The deck changed. Re-read it and retry against the latest revision.',
@@ -147,6 +201,44 @@ export function createMcpRunner(options: {
         ? (rawOutput as Record<string, unknown>)
         : { result: rawOutput }
     const failed = 'error' in output || output.ok === false
+
+    if (!failed && (name === 'ask_user' || name === 'propose_themes')) {
+      try {
+        const interaction = interactionStore.create(
+          name === 'ask_user'
+            ? {
+                kind: 'questions',
+                deckId: deck.id,
+                baseDocumentRevision: deck.documentRevision,
+                clientName,
+                request: toolArguments as AgentQuestionRequest,
+              }
+            : {
+                kind: 'themes',
+                deckId: deck.id,
+                baseDocumentRevision: deck.documentRevision,
+                clientName,
+                request: toolArguments as ThemeProposalRequest,
+              },
+          clientSessionId,
+        )
+        return {
+          text: `The interaction is visible in Ark. Call wait_for_interaction with interactionId "${interaction.id}" until the user responds.`,
+          activitySummary:
+            name === 'ask_user'
+              ? 'Waiting for user answers in Ark.'
+              : 'Waiting for a theme choice in Ark.',
+          structuredContent: {
+            interactionId: interaction.id,
+            status: 'pending',
+            kind: interaction.kind,
+            expiresAt: interaction.expiresAt,
+          },
+        }
+      } catch (error) {
+        interactionError(error)
+      }
+    }
 
     if (!workspace.changed || failed) {
       return response(

@@ -29,7 +29,8 @@ import { createThumbnailsRouter } from './routes/thumbnails.ts'
 import { createMcpRouter } from './routes/mcp.ts'
 import { createMcpRunner } from './mcp-runner.ts'
 import { createMcpServiceState, type McpServiceState } from './mcp-service.ts'
-import type { ExternalDeckUpdate, McpActivityEvent } from '@ark/contracts'
+import { createMcpInteractionStore, type McpInteractionStore } from './mcp-interactions.ts'
+import type { ExternalDeckUpdate, McpActivityEvent, McpInteractionChanged } from '@ark/contracts'
 import { createWorkspacesRouter } from './routes/workspaces.ts'
 import {
   createThumbnailRenderRouter,
@@ -52,8 +53,10 @@ type CreateAppOptions = {
   /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
   thumbnailRenderSecret?: string
   mcpServiceState?: McpServiceState
+  mcpInteractionStore?: McpInteractionStore
   onExternalDeckUpdate?: (update: ExternalDeckUpdate) => void
   onMcpActivity?: (activity: McpActivityEvent) => void
+  onMcpInteractionChanged?: (change: McpInteractionChanged) => void
 }
 
 function scheduleThumbnailWarm(
@@ -92,11 +95,14 @@ export function createApp(options: CreateAppOptions = {}) {
       assetStore,
     })
   const mcpServiceState = options.mcpServiceState ?? createMcpServiceState()
+  const mcpInteractionStore =
+    options.mcpInteractionStore ?? createMcpInteractionStore(options.onMcpInteractionChanged)
   const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
     scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
   const runMcpTool = createMcpRunner({
     deckStore,
     state: mcpServiceState,
+    interactionStore: mcpInteractionStore,
     onDocumentPersisted: notifyDocumentPersisted,
     onExternalDeckUpdate: options.onExternalDeckUpdate,
   })
@@ -161,5 +167,6 @@ export function createApp(options: CreateAppOptions = {}) {
   app.locals.thumbnailRenderSecret = thumbnailRenderSecret
   app.locals.workspaceStore = workspaceStore
   app.locals.mcpServiceState = mcpServiceState
+  app.locals.mcpInteractionStore = mcpInteractionStore
   return app
 }

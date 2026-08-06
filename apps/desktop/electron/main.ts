@@ -18,8 +18,10 @@ import {
 import electronUpdater from 'electron-updater'
 import {
   isValidDeckId,
+  mcpInteractionAnswerSchema,
   type ExternalDeckUpdate,
   type McpActivityEvent,
+  type McpInteractionChanged,
   type McpStatus,
   type ProviderId,
 } from '@ark/contracts'
@@ -172,6 +174,7 @@ async function startDesktop() {
     { createPreviewSessionStore },
     { createThumbnailRenderSecret },
     { createMcpServiceState },
+    { createMcpInteractionStore },
     { setProviderApiKeySource },
     { clearModelCatalogCache, testProviderApiKey, warmModelCatalog },
   ] = await Promise.all([
@@ -180,6 +183,7 @@ async function startDesktop() {
     import('@ark/api/preview-sessions.ts'),
     import('@ark/api/thumbnails/render-host.ts'),
     import('@ark/api/mcp-service.ts'),
+    import('@ark/api/mcp-interactions.ts'),
     import('@ark/api/credentials.ts'),
     import('@ark/api/models.ts'),
   ])
@@ -206,16 +210,20 @@ async function startDesktop() {
   let mcpManager: McpManager | null = null
   const sendToRenderer = (
     channel: string,
-    value: McpStatus | ExternalDeckUpdate | McpActivityEvent,
+    value: McpStatus | ExternalDeckUpdate | McpActivityEvent | McpInteractionChanged,
   ) => {
     const target = window
     if (target && !target.isDestroyed()) target.webContents.send(channel, value)
   }
+  const mcpInteractionStore = createMcpInteractionStore((change) =>
+    sendToRenderer('mcp:interaction-changed', change),
+  )
   const api = createApp({
     previewSessionStore,
     thumbnailRenderer,
     thumbnailRenderSecret,
     mcpServiceState,
+    mcpInteractionStore,
     onExternalDeckUpdate: (update) => mcpManager?.recordExternalUpdate(update),
     onMcpActivity: (activity) => mcpManager?.recordActivity(activity),
   })
@@ -223,6 +231,7 @@ async function startDesktop() {
     apiOrigin: apiServer.origin,
     userDataDirectory: app.getPath('userData'),
     serviceState: mcpServiceState,
+    interactionStore: mcpInteractionStore,
     getAutoStart: () => settingsStore.get().mcpAutoStart,
     setAutoStart: async (enabled) => {
       await settingsStore.update({ mcpAutoStart: enabled })
@@ -335,14 +344,31 @@ async function startDesktop() {
     if (typeof enabled !== 'boolean') throw new Error('Invalid MCP autostart preference.')
     return mcpManager!.setAutoStart(enabled)
   })
-  ipcMain.handle('mcp:set-active-deck', (_event, deckId, title) => {
+  ipcMain.handle('mcp:set-active-deck', (_event, deckId, title, documentRevision) => {
     if (deckId !== null && (typeof deckId !== 'string' || !isValidDeckId(deckId))) {
       throw new Error('Invalid active deck id.')
+    }
+    if (
+      documentRevision !== null &&
+      (!Number.isInteger(documentRevision) || documentRevision < 1)
+    ) {
+      throw new Error('Invalid document revision.')
     }
     mcpManager!.setActiveDeck(
       deckId,
       deckId && typeof title === 'string' ? title.slice(0, 1_000) : null,
+      deckId ? documentRevision : null,
     )
+  })
+  ipcMain.handle('mcp:get-pending-interaction', () => mcpInteractionStore.getPending())
+  ipcMain.handle('mcp:respond-interaction', (_event, id, rawAnswer) => {
+    if (typeof id !== 'string') throw new Error('Invalid interaction id.')
+    const answer = mcpInteractionAnswerSchema.parse(rawAnswer)
+    mcpInteractionStore.respond(id, answer)
+  })
+  ipcMain.handle('mcp:cancel-interaction', (_event, id) => {
+    if (typeof id !== 'string') throw new Error('Invalid interaction id.')
+    return mcpInteractionStore.cancel(id)
   })
   ipcMain.handle('mcp:get-setup-commands', () => mcpManager!.getSetupCommands())
   ipcMain.handle('mcp:copy-setup-command', (_event, command) => {

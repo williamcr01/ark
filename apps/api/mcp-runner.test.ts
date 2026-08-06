@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDeckStore } from './deck-store.ts'
 import { createMcpRunner, McpRunnerError } from './mcp-runner.ts'
 import { createMcpServiceState } from './mcp-service.ts'
+import { createMcpInteractionStore } from './mcp-interactions.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
 const html = `<!DOCTYPE html><html><head><title>MCP Deck</title></head><body><section class="slide"><h1>Opening</h1></section></body></html>`
@@ -29,12 +30,19 @@ describe('MCP runner', () => {
     state.start('x'.repeat(32))
     state.setActiveDeck(deck.id)
     const onExternalDeckUpdate = vi.fn()
+    const interactionStore = createMcpInteractionStore()
     return {
       deck,
       deckStore,
       state,
       onExternalDeckUpdate,
-      run: createMcpRunner({ deckStore, state, onExternalDeckUpdate }),
+      interactionStore,
+      run: createMcpRunner({
+        deckStore,
+        state,
+        interactionStore,
+        onExternalDeckUpdate,
+      }),
     }
   }
 
@@ -81,9 +89,95 @@ describe('MCP runner', () => {
     expect(result.text).toContain('# Ark MCP authoring guide')
     expect(result.text).toContain('# Base rules')
     expect(result.text).toContain('/api/runtimes/reveal.js/5.1.0/reveal.js')
-    expect(result.text).not.toContain('ask_user')
-    expect(result.text).not.toContain('propose_themes')
+    expect(result.text).toContain('ask_user')
+    expect(result.text).toContain('propose_themes')
     expect(result.structuredContent).toMatchObject({ format: 'text/markdown' })
+  })
+
+  it('identifies a blank starter and retires the blank origin after a full write', async () => {
+    const { deckStore, run, state } = await setup()
+    const blank = await deckStore.createDeck(
+      '<!doctype html><html><head><title>Untitled Presentation</title></head><body><section class="slide"></section></body></html>',
+      { origin: 'blank' },
+    )
+    state.setActiveDeck(blank.id)
+
+    await expect(run('get_active_deck', {}, 'Codex')).resolves.toMatchObject({
+      structuredContent: { origin: 'blank', isBlank: true },
+    })
+    await run(
+      'write_deck',
+      {
+        deckId: blank.id,
+        expectedDocumentRevision: 1,
+        html: '<!doctype html><html><head><title>Built</title></head><body><section class="slide"><h1>Built</h1></section></body></html>',
+      },
+      'Codex',
+    )
+
+    await expect(deckStore.getDeck(blank.id)).resolves.toMatchObject({ origin: 'authored' })
+  })
+
+  it('shows questions and themes in Ark and returns their responses to the owning session', async () => {
+    const { deck, interactionStore, run } = await setup()
+    const questionResult = await run(
+      'ask_user',
+      {
+        deckId: deck.id,
+        expectedDocumentRevision: 1,
+        title: 'A few details',
+        questions: [{ id: 'audience', question: 'Who is this for?', type: 'text' }],
+      },
+      'Codex',
+      'session-a',
+    )
+    const questionId = String(questionResult.structuredContent.interactionId)
+    expect(interactionStore.getPending()).toMatchObject({ kind: 'questions' })
+    interactionStore.respond(questionId, {
+      kind: 'questions',
+      answers: { audience: 'Board members' },
+    })
+    await expect(
+      run(
+        'wait_for_interaction',
+        { interactionId: questionId, timeoutMs: 0 },
+        'Codex',
+        'session-a',
+      ),
+    ).resolves.toMatchObject({
+      activitySummary: 'Received answers to an MCP question interaction.',
+      structuredContent: { status: 'answered' },
+    })
+
+    const sampleHtml =
+      '<!doctype html><html><head><title>Sample</title></head><body><section class="slide"><h1>Sample</h1></section></body></html>'
+    const themeResult = await run(
+      'propose_themes',
+      {
+        deckId: deck.id,
+        expectedDocumentRevision: 1,
+        title: 'Pick a direction',
+        themes: Array.from({ length: 4 }, (_, index) => ({
+          id: `theme-${index}`,
+          name: `Theme ${index}`,
+          description: `Direction ${index}`,
+          sampleHtml,
+        })),
+      },
+      'Codex',
+      'session-a',
+    )
+    const themeId = String(themeResult.structuredContent.interactionId)
+    expect(interactionStore.getPending()).toMatchObject({ kind: 'themes' })
+    interactionStore.respond(themeId, { kind: 'themes', themeId: 'theme-2' })
+    await expect(
+      run('wait_for_interaction', { interactionId: themeId, timeoutMs: 0 }, 'Codex', 'session-a'),
+    ).resolves.toMatchObject({
+      structuredContent: {
+        status: 'answered',
+        answer: { kind: 'themes', themeId: 'theme-2' },
+      },
+    })
   })
 
   it('returns recoverable errors for stale, inactive, and disabled access', async () => {
