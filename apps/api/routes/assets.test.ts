@@ -157,7 +157,7 @@ describe('asset API routes', () => {
         await fetch(`${baseUrl}/api/decks/${deckId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: withImage }),
+          body: JSON.stringify({ html: withImage, expectedDocumentRevision: 1 }),
         })
       ).status,
     ).toBe(200)

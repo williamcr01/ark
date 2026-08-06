@@ -5,9 +5,12 @@ import { agentQuestionRequestSchema } from '@ark/deck-core/agent-questions.ts'
 import { themeProposalRequestSchema } from '@ark/deck-core/agent-themes.ts'
 import { applyDeckEdits } from './deck-edit.ts'
 import {
-  deckElementPatchOperationSchema,
-  deckSlidePatchOperationSchema,
-} from '@ark/deck-core/deck-patch.ts'
+  deckEditInputSchema,
+  deckElementPatchInputSchema,
+  deckReadInputSchema,
+  deckSlidePatchInputSchema,
+  deckWriteInputSchema,
+} from '@ark/deck-core/mcp-tool-catalog.ts'
 import {
   listDeckSlides,
   parseDeckStructure,
@@ -31,14 +34,6 @@ export type DeckAttachmentInspector = {
   attachments: readonly DeckAttachmentSummary[]
   read: (id: string) => Promise<Buffer | null>
 }
-
-const editSchema = z.object({
-  oldText: z
-    .string()
-    .min(1)
-    .describe('Exact text to replace. Must appear exactly once in the deck.'),
-  newText: z.string().describe('Replacement text.'),
-})
 
 /**
  * Warnings never block a write, so the agent only learns about them if the tool
@@ -140,27 +135,7 @@ export function createDeckTools(
     read_deck: tool({
       description:
         'Read deck HTML. Use offset/limit for line-based paging on large files, or slideIndex for one slide outerHTML. Re-read when transcript markers say content was omitted.',
-      inputSchema: z.object({
-        offset: z
-          .number()
-          .int()
-          .min(1)
-          .optional()
-          .describe('1-based line number to start reading from.'),
-        limit: z.number().int().min(1).optional().describe('Maximum number of lines to return.'),
-        slideIndex: z
-          .number()
-          .int()
-          .min(0)
-          .optional()
-          .describe('Zero-based slide index. When set, returns that slide HTML only.'),
-        charOffset: z
-          .number()
-          .int()
-          .min(0)
-          .optional()
-          .describe('Character offset for continuing one oversized line or slide.'),
-      }),
+      inputSchema: deckReadInputSchema,
       execute: async ({ offset, limit, slideIndex, charOffset }) => {
         if (!workspace.html.trim()) {
           return {
@@ -194,9 +169,7 @@ export function createDeckTools(
     write_deck: tool({
       description:
         'Replace the entire deck HTML. Use only for new decks or when the user explicitly asks for a full rewrite.',
-      inputSchema: z.object({
-        html: z.string().min(1).describe('Complete self-contained HTML document.'),
-      }),
+      inputSchema: deckWriteInputSchema,
       execute: async ({ html }) => {
         const validation = validateDeckHtmlOnServer(html, timingOptions)
 
@@ -229,9 +202,7 @@ export function createDeckTools(
     edit_deck: tool({
       description:
         'Apply exact search/replace patches to the deck. Each oldText must match exactly once in the original file. Prefer patch_deck for slide operations; use this for small inline HTML tweaks.',
-      inputSchema: z.object({
-        edits: z.array(editSchema).min(1).max(20),
-      }),
+      inputSchema: deckEditInputSchema,
       execute: async ({ edits }) => {
         if (!workspace.html.trim()) {
           return {
@@ -280,15 +251,7 @@ export function createDeckTools(
     patch_deck: tool({
       description:
         'Apply structured slide-level patch operations (add, delete, replace, reorder, title, notes). Prefer this over edit_deck or write_deck for slide changes. Call list_slides or parse_deck first to get indexes and slide ids.',
-      inputSchema: z.object({
-        operations: z.array(deckSlidePatchOperationSchema).min(1).max(20),
-        activeSlideIndex: z
-          .number()
-          .int()
-          .min(0)
-          .optional()
-          .describe('Current active slide index when reordering or deleting slides.'),
-      }),
+      inputSchema: deckSlidePatchInputSchema,
       execute: async ({ operations, activeSlideIndex }) => {
         if (!workspace.html.trim()) {
           return {
@@ -339,15 +302,7 @@ export function createDeckTools(
     patch_element: tool({
       description:
         'Apply element-level patch operations targeting elements by id (replace_text, set_attrs, set_inline_style, move_element, resize_element, reorder_element, duplicate_element, delete_element, insert_element, lock_element, unlock_element). Prefer this for the element the user selected. Call parse_deck first to get element ids, kinds, and locked/managed flags. Locked elements cannot be changed. If a selected element id is missing (stale) or locked, inspect the deck and pick the closest match or explain what can and cannot change instead of failing.',
-      inputSchema: z.object({
-        operations: z.array(deckElementPatchOperationSchema).min(1).max(20),
-        activeSlideIndex: z
-          .number()
-          .int()
-          .min(0)
-          .optional()
-          .describe('Current active slide index for context.'),
-      }),
+      inputSchema: deckElementPatchInputSchema,
       execute: async ({ operations, activeSlideIndex }) => {
         if (!workspace.html.trim()) {
           return {

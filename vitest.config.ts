@@ -6,6 +6,7 @@ export default defineConfig({
       './packages/*/vitest.config.ts',
       './apps/api/vitest.shared.config.ts',
       './apps/api/vitest.isolated.config.ts',
+      './apps/mcp/vitest.config.ts',
       './apps/sandbox/vitest.config.ts',
       './apps/desktop/vitest.shared.config.ts',
       './apps/desktop/vitest.isolated.config.ts',

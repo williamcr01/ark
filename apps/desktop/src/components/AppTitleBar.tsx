@@ -23,7 +23,9 @@ import {
   PresentationIcon,
   SettingsIcon,
   UploadIcon,
+  CableIcon,
 } from 'lucide-react'
+import type { McpStatus } from '@ark/contracts'
 
 import { buttonVariants } from '@/components/ui/button-variants'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -78,7 +80,6 @@ function TitleBarButton({
             'hover:!bg-transparent dark:hover:!bg-transparent active:!translate-y-0',
             'aria-expanded:!bg-transparent aria-expanded:!text-[var(--ark-titlebar-fg)]',
             'disabled:text-[var(--ark-titlebar-muted)]/50',
-            active && 'bg-[var(--ark-titlebar-active)]',
             primary && !disabled && 'text-[var(--ark-accent)] hover:!text-[var(--ark-accent)]',
             !primary && !disabled && 'hover:!text-[var(--ark-titlebar-fg)]',
           )}
@@ -364,6 +365,22 @@ export function AppTitleBar({
   showSanitizedDownload,
 }: AppTitleBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void window.arkDesktop.mcp.getStatus().then((status) => {
+      if (!cancelled) setMcpStatus(status)
+    })
+    const unsubscribe = window.arkDesktop.mcp.onStatusChanged((status) => {
+      if (!cancelled) setMcpStatus(status)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [])
+
   return (
     <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-2 text-foreground">
       <input
@@ -418,6 +435,29 @@ export function AppTitleBar({
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
+        <TitleBarButton
+          active={mcpStatus?.state === 'running'}
+          label={mcpStatus?.state === 'running' ? 'Stop MCP server' : 'Start MCP server'}
+          onClick={() => {
+            const operation =
+              mcpStatus?.state === 'running'
+                ? window.arkDesktop.mcp.stop()
+                : window.arkDesktop.mcp.start()
+            void operation.then(setMcpStatus)
+          }}
+          toggle
+        >
+          <span className="relative inline-flex">
+            <CableIcon />
+            {mcpStatus?.state === 'running' ? (
+              <span
+                aria-hidden
+                className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 ring-1 ring-[var(--ark-panel-raised)]"
+                data-testid="mcp-running-indicator"
+              />
+            ) : null}
+          </span>
+        </TitleBarButton>
         <TitleBarButton label="Settings" onClick={() => setSettingsOpen(true)}>
           <SettingsIcon />
         </TitleBarButton>

@@ -36,7 +36,9 @@ describe('Ark workspace store contract', () => {
   it('creates one .ark file and updates its document in place', async () => {
     const { deckStore } = await stores()
     const created = await deckStore.createDeck(sampleHtml)
-    const updated = await deckStore.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'))
+    const updated = await deckStore.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'), {
+      expectedDocumentRevision: created.documentRevision,
+    })
 
     expect(created.filePath).toMatch(/\.ark$/)
     expect(updated).toMatchObject({ id: created.id, documentRevision: 2 })

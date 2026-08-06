@@ -7,6 +7,7 @@ import express from 'express'
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -15,12 +16,21 @@ import {
   type WebContents,
 } from 'electron'
 import electronUpdater from 'electron-updater'
-import type { ProviderId } from '@ark/contracts'
+import {
+  isValidDeckId,
+  type ExternalDeckUpdate,
+  type McpActivityEvent,
+  type McpStatus,
+  type ProviderId,
+} from '@ark/contracts'
+import { mcpDiscoveryPath } from '@ark/mcp/discovery.ts'
+import { runMcpBridge } from '@ark/mcp/bridge.ts'
 
 import { SecureCredentialStore } from './credential-store.ts'
 import { getRendererContentSecurityPolicy } from './renderer-security.ts'
 import { DesktopSettingsStore } from './settings-store.ts'
 import { createElectronThumbnailRenderer } from './thumbnail-renderer.ts'
+import { McpManager, resolveMcpExecutableArgs } from './mcp-manager.ts'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const { autoUpdater } = electronUpdater
@@ -160,6 +170,7 @@ async function startDesktop() {
     { createSandboxHost },
     { createPreviewSessionStore },
     { createThumbnailRenderSecret },
+    { createMcpServiceState },
     { setProviderApiKeySource },
     { clearModelCatalogCache, testProviderApiKey, warmModelCatalog },
   ] = await Promise.all([
@@ -167,6 +178,7 @@ async function startDesktop() {
     import('@ark/sandbox/sandbox-host.ts'),
     import('@ark/api/preview-sessions.ts'),
     import('@ark/api/thumbnails/render-host.ts'),
+    import('@ark/api/mcp-service.ts'),
     import('@ark/api/credentials.ts'),
     import('@ark/api/models.ts'),
   ])
@@ -182,17 +194,49 @@ async function startDesktop() {
   void warmModelCatalog()
 
   const previewSessionStore = createPreviewSessionStore()
+  const mcpServiceState = createMcpServiceState()
   const thumbnailRenderSecret = createThumbnailRenderSecret()
   const thumbnailRenderer = createElectronThumbnailRenderer({
     apiOrigin: apiServer.origin,
     previewSessionStore,
     renderSecret: thumbnailRenderSecret,
   })
+  let window: BrowserWindow | null = null
+  let mcpManager: McpManager | null = null
+  const sendToRenderer = (
+    channel: string,
+    value: McpStatus | ExternalDeckUpdate | McpActivityEvent,
+  ) => {
+    const target = window
+    if (target && !target.isDestroyed()) target.webContents.send(channel, value)
+  }
   const api = createApp({
     previewSessionStore,
     thumbnailRenderer,
     thumbnailRenderSecret,
+    mcpServiceState,
+    onExternalDeckUpdate: (update) => mcpManager?.recordExternalUpdate(update),
+    onMcpActivity: (activity) => mcpManager?.recordActivity(activity),
   })
+  mcpManager = new McpManager({
+    apiOrigin: apiServer.origin,
+    userDataDirectory: app.getPath('userData'),
+    serviceState: mcpServiceState,
+    getAutoStart: () => settingsStore.get().mcpAutoStart,
+    setAutoStart: async (enabled) => {
+      await settingsStore.update({ mcpAutoStart: enabled })
+    },
+    executableArgs: resolveMcpExecutableArgs({
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      ...(process.env.APPIMAGE ? { appImagePath: process.env.APPIMAGE } : {}),
+    }),
+    onStatusChanged: (status) => sendToRenderer('mcp:status-changed', status),
+    onDeckUpdated: (update) => sendToRenderer('mcp:deck-updated', update),
+  })
+  await mcpManager.cleanupStartup()
   const rendererDirectory = path.resolve(dirname, '../renderer')
 
   api.use((request, response, next) => {
@@ -210,6 +254,8 @@ async function startDesktop() {
   api.use(express.static(rendererDirectory, { index: 'index.html' }))
   api.use((_request, response) => response.sendFile(path.join(rendererDirectory, 'index.html')))
   apiServer.setHandler(api)
+
+  if (settingsStore.get().mcpAutoStart) await mcpManager.start()
 
   const sandbox = createSandboxHost({
     apiOrigin: apiServer.origin,
@@ -281,6 +327,32 @@ async function startDesktop() {
     }
     return settings
   })
+  ipcMain.handle('mcp:get-status', () => mcpManager!.getStatus())
+  ipcMain.handle('mcp:start', () => mcpManager!.start())
+  ipcMain.handle('mcp:stop', () => mcpManager!.stop())
+  ipcMain.handle('mcp:set-auto-start', (_event, enabled) => {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid MCP autostart preference.')
+    return mcpManager!.setAutoStart(enabled)
+  })
+  ipcMain.handle('mcp:set-active-deck', (_event, deckId, title) => {
+    if (deckId !== null && (typeof deckId !== 'string' || !isValidDeckId(deckId))) {
+      throw new Error('Invalid active deck id.')
+    }
+    mcpManager!.setActiveDeck(
+      deckId,
+      deckId && typeof title === 'string' ? title.slice(0, 1_000) : null,
+    )
+  })
+  ipcMain.handle('mcp:get-setup-commands', () => mcpManager!.getSetupCommands())
+  ipcMain.handle('mcp:copy-setup-command', (_event, command) => {
+    if (
+      typeof command !== 'string' ||
+      !Object.values(mcpManager!.getSetupCommands()).includes(command)
+    ) {
+      throw new Error('Invalid MCP setup command.')
+    }
+    clipboard.writeText(command)
+  })
   ipcMain.handle('files:open-workspace', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -317,7 +389,7 @@ async function startDesktop() {
   })
 
   configureSessionSecurity(new Set([appOrigin, apiServer.origin, sandboxServer.origin]))
-  const window = new BrowserWindow({
+  window = new BrowserWindow({
     title: 'Ark',
     width: 1440,
     height: 960,
@@ -351,6 +423,7 @@ async function startDesktop() {
       { close: () => Promise<void> } | undefined
     const workspaceStore = api.locals.workspaceStore as { close: () => void } | undefined
     void Promise.all([
+      mcpManager?.stop() ?? Promise.resolve(),
       thumbnailService?.close() ?? Promise.resolve(),
       closeServer(apiServer.server),
       closeServer(sandboxServer.server),
@@ -402,9 +475,12 @@ async function startDesktop() {
 
 app.setName('Ark')
 if (smokeDataDirectory) app.setPath('userData', smokeDataDirectory)
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const mcpMode = process.argv.includes('--mcp')
+const hasSingleInstanceLock = mcpMode ? false : app.requestSingleInstanceLock()
 
-if (!hasSingleInstanceLock) {
+if (mcpMode) {
+  runMcpBridge(mcpDiscoveryPath(app.getPath('userData')))
+} else if (!hasSingleInstanceLock) {
   app.quit()
 } else {
   let mainWindow: BrowserWindow | null = null

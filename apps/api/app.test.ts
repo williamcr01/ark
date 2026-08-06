@@ -93,7 +93,7 @@ describe('deck API routes', () => {
     const updateResponse = await fetch(`${baseUrl}/api/decks/${created.deck!.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: updatedHtml }),
+      body: JSON.stringify({ html: updatedHtml, expectedDocumentRevision: 1 }),
     })
     const updated = await updateResponse.json()
 
@@ -136,6 +136,7 @@ describe('deck API routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        expectedDocumentRevision: 1,
         operations: [{ op: 'update_slide_title', slideIndex: 1, title: 'Updated second slide' }],
       }),
     })
@@ -150,6 +151,39 @@ describe('deck API routes', () => {
       summary: expect.stringContaining('Updated title'),
     })
     expect(patched.deck?.html).toContain('Updated second slide')
+  })
+
+  it('returns a stable conflict response for stale writes', async () => {
+    const createdResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: sampleHtml }),
+    })
+    const created = await createdResponse.json()
+    const id = created.deck.id as string
+    const first = await fetch(`${baseUrl}/api/decks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: sampleHtml.replace('Hello', 'Fresh'),
+        expectedDocumentRevision: 1,
+      }),
+    })
+    expect(first.status).toBe(200)
+
+    const stale = await fetch(`${baseUrl}/api/decks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: sampleHtml.replace('Hello', 'Stale'),
+        expectedDocumentRevision: 1,
+      }),
+    })
+    expect(stale.status).toBe(409)
+    await expect(stale.json()).resolves.toMatchObject({
+      code: 'document_conflict',
+      currentDocumentRevision: 2,
+    })
   })
 
   it('returns consistent validation errors for invalid create payloads', async () => {

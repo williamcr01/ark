@@ -32,7 +32,7 @@ import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
-import { MAX_SLIDE_CONTEXTS } from '@ark/contracts'
+import { MAX_SLIDE_CONTEXTS, type ExternalDeckUpdate } from '@ark/contracts'
 import { toEditorSelectionContext } from '@/lib/editor-selection-context'
 import {
   buildSlideContexts,
@@ -263,10 +263,98 @@ function App() {
   }, [])
 
   const generatedHtmlRef = useRef(generatedHtml)
+  const activeDeckIdRef = useRef(deckId)
+  const documentRevisionRef = useRef(documentRevision)
+  const externalBusyRef = useRef(false)
+  const pendingExternalUpdateRef = useRef<ExternalDeckUpdate | null>(null)
+  const applyingExternalUpdateRef = useRef(false)
+  const [externalUpdateTick, setExternalUpdateTick] = useState(0)
 
   useEffect(() => {
     generatedHtmlRef.current = generatedHtml
   }, [generatedHtml])
+
+  useEffect(() => {
+    documentRevisionRef.current = documentRevision
+  }, [documentRevision])
+
+  useEffect(() => {
+    activeDeckIdRef.current = deckId
+    pendingExternalUpdateRef.current = null
+  }, [deckId])
+
+  useEffect(() => {
+    void window.arkDesktop.mcp.setActiveDeck(deckId, deckId ? deckTitle : null)
+  }, [deckId, deckTitle])
+
+  useEffect(() => {
+    externalBusyRef.current = isDeckSaving || isDeckPatching || isGenerating
+    if (!externalBusyRef.current) setExternalUpdateTick((value) => value + 1)
+  }, [isDeckPatching, isDeckSaving, isGenerating])
+
+  useEffect(
+    () =>
+      window.arkDesktop.mcp.onDeckUpdated((update) => {
+        if (
+          update.deckId !== activeDeckIdRef.current ||
+          update.documentRevision <= (documentRevisionRef.current ?? 0)
+        ) {
+          return
+        }
+        const pending = pendingExternalUpdateRef.current
+        if (!pending || update.documentRevision > pending.documentRevision) {
+          pendingExternalUpdateRef.current = update
+        }
+        setExternalUpdateTick((value) => value + 1)
+      }),
+    [],
+  )
+
+  useEffect(() => {
+    const update = pendingExternalUpdateRef.current
+    if (!update || externalBusyRef.current || applyingExternalUpdateRef.current) return
+    pendingExternalUpdateRef.current = null
+    applyingExternalUpdateRef.current = true
+    const beforeHtml = generatedHtmlRef.current
+
+    void refreshActiveDeck(update.deckId)
+      .then((deck) => {
+        if (
+          activeDeckIdRef.current !== update.deckId ||
+          !deck ||
+          deck.documentRevision < update.documentRevision ||
+          deck.html === beforeHtml
+        ) {
+          return
+        }
+        documentRevisionRef.current = deck.documentRevision
+        generatedHtmlRef.current = deck.html
+        recordEditHistory({
+          beforeHtml,
+          afterHtml: deck.html,
+          slideIndex: 0,
+          provenance: {
+            source: 'external',
+            clientName: update.clientName,
+            toolName: update.toolName,
+            summary: update.summary,
+            createdAt: new Date().toISOString(),
+          },
+        })
+        toast.success(`Updated by ${update.clientName ?? 'external agent'}`)
+      })
+      .catch((refreshError) => {
+        toast.error(
+          refreshError instanceof Error
+            ? refreshError.message
+            : 'Could not load the external deck update',
+        )
+      })
+      .finally(() => {
+        applyingExternalUpdateRef.current = false
+        setExternalUpdateTick((value) => value + 1)
+      })
+  }, [externalUpdateTick, recordEditHistory, refreshActiveDeck])
 
   // Clear undo/redo history whenever the active deck changes (switch, new deck,
   // delete). AI generation, upload, and snapshot restores reset explicitly via callbacks.

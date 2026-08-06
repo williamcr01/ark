@@ -97,7 +97,9 @@ export const createDeckRequestSchema = z
 export type CreateDeckRequest = z.infer<typeof createDeckRequestSchema>
 
 // Updates never carry an origin: writing content is what retires `blank`.
-export const updateDeckRequestSchema = createDeckRequestSchema.omit({ origin: true })
+export const updateDeckRequestSchema = createDeckRequestSchema.omit({ origin: true }).extend({
+  expectedDocumentRevision: z.number().int().min(1),
+})
 
 export type UpdateDeckRequest = z.infer<typeof updateDeckRequestSchema>
 
@@ -169,6 +171,14 @@ export const deckPatchErrorResponseSchema = withRequestId({
 })
 
 export type DeckPatchErrorResponse = z.infer<typeof deckPatchErrorResponseSchema>
+
+export const deckConflictErrorResponseSchema = withRequestId({
+  error: z.string(),
+  code: z.literal('document_conflict'),
+  currentDocumentRevision: z.number().int().min(1),
+})
+
+export type DeckConflictErrorResponse = z.infer<typeof deckConflictErrorResponseSchema>
 
 export { deckPatchRequestSchema } from '@ark/deck-core/deck-patch.ts'
 export type { DeckPatchRequest } from '@ark/deck-core/deck-patch.ts'

@@ -1,15 +1,19 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DesktopSettingsDialog } from './DesktopSettingsDialog'
 
 describe('DesktopSettingsDialog', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
 
   it('tests a provider key through the preload bridge', async () => {
     const test = vi.fn().mockResolvedValue({ ok: true, modelCount: 12 })
     window.arkDesktop = {
+      mcp: window.arkDesktop.mcp,
       credentials: {
         list: vi.fn().mockResolvedValue({
           openai: { configured: false, storage: null },
@@ -55,6 +59,7 @@ describe('DesktopSettingsDialog', () => {
   it('changes appearance from Settings', async () => {
     const onAppearanceChange = vi.fn()
     window.arkDesktop = {
+      mcp: window.arkDesktop.mcp,
       credentials: {
         list: vi.fn().mockResolvedValue({
           openai: { configured: false, storage: null },
@@ -113,5 +118,60 @@ describe('DesktopSettingsDialog', () => {
 
     expect(saveSession).toHaveBeenCalledWith('openai', 'sk-session')
     expect(await screen.findByText(/kept until Ark quits/)).toBeInTheDocument()
+  })
+
+  it('starts MCP and shows copyable client commands', async () => {
+    const running = {
+      state: 'running' as const,
+      autoStart: false,
+      activeDeckId: 'e703d7b8-b612-451c-89b2-347b0eae4643',
+      activeDeckTitle: 'The Curious World of Pigs',
+      connectedClient: 'Codex',
+      lastActivity: {
+        clientName: 'Codex',
+        toolName: 'read_deck',
+        summary: '{"deckId":"e703d7b8-b612-451c-89b2-347b0eae4643"}',
+        occurredAt: '2026-08-06T12:00:00.000Z',
+      },
+      error: null,
+    }
+    window.arkDesktop.mcp.start = vi.fn().mockResolvedValue(running)
+    window.arkDesktop.mcp.getSetupCommands = vi.fn().mockResolvedValue({
+      codex: 'codex mcp add ark -- "/path/to/Ark" --mcp',
+      claudeCode: 'claude mcp add --transport stdio --scope user ark -- "/path/to/Ark" --mcp',
+    })
+    window.arkDesktop.mcp.copySetupCommand = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <DesktopSettingsDialog
+        appearancePreference="system"
+        onAppearanceChange={vi.fn()}
+        onCredentialsChanged={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Start MCP server' }))
+
+    expect(window.arkDesktop.mcp.start).toHaveBeenCalledOnce()
+    expect(await screen.findByLabelText('Codex setup command')).toHaveValue(
+      'codex mcp add ark -- "/path/to/Ark" --mcp',
+    )
+    expect(screen.queryByText(/Sharing:|e703d7b8/)).not.toBeInTheDocument()
+
+    const copyButton = screen.getByRole('button', { name: 'Copy Codex setup command' })
+    vi.useFakeTimers()
+    await act(async () => {
+      fireEvent.click(copyButton)
+      await Promise.resolve()
+    })
+
+    expect(window.arkDesktop.mcp.copySetupCommand).toHaveBeenCalledWith(
+      'codex mcp add ark -- "/path/to/Ark" --mcp',
+    )
+    expect(copyButton).toHaveTextContent('Copied')
+
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(copyButton).toHaveTextContent('Copy')
   })
 })

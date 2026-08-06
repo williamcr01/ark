@@ -41,6 +41,7 @@ import {
   resolveCatalogReasoningEffort,
 } from './model-catalog.ts'
 import { clearModelCatalogCache } from './models.ts'
+import { WorkspaceDocumentConflictError } from './workspace-store.ts'
 
 function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | undefined) {
   if (errorCategory === 'invalid_api_key' || errorCategory === 'missing_api_key') {
@@ -508,7 +509,9 @@ export function createGenerationJobRunner({
           return
         }
 
-        const updatedDeck = await deckStore.updateDeck(targetDeckId, agentResult.html)
+        const updatedDeck = await deckStore.updateDeck(targetDeckId, agentResult.html, {
+          expectedDocumentRevision: currentDocumentRevision,
+        })
 
         if (!updatedDeck) {
           const failedJob = await jobStore.updateJob(jobId, {
@@ -635,7 +638,13 @@ export function createGenerationJobRunner({
     } catch (error) {
       const latest = await jobStore.getJob(jobId)
       const durationMs = Math.round(performance.now() - jobStartedAt)
-      const errorDetails = categorizeProviderError(error)
+      const errorDetails =
+        error instanceof WorkspaceDocumentConflictError
+          ? {
+              category: 'document_conflict',
+              apiErrorCode: 'document_conflict' as const,
+            }
+          : categorizeProviderError(error)
 
       if (isAbortError(error) || latest?.status === 'canceling') {
         const canceledJob = await jobStore.updateJob(jobId, {

@@ -27,6 +27,7 @@
     "@ark/api": "workspace:*",
     "@ark/contracts": "workspace:*",
     "@ark/deck-core": "workspace:*",
+    "@ark/mcp": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "@ark/sandbox": "workspace:*",
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

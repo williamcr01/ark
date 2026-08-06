@@ -15,6 +15,7 @@ import { buildDeckRuntimeManifestFromValidation } from '../deck-manifest.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
+import { WorkspaceDocumentConflictError } from '../workspace-store.ts'
 
 export function createDecksRouter(deps: {
   deckStore: DeckStore
@@ -26,6 +27,18 @@ export function createDecksRouter(deps: {
 
   const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
     onDocumentPersisted?.(deckId, documentRevision)
+
+  const sendWriteError = (response: Response, error: unknown) => {
+    if (error instanceof WorkspaceDocumentConflictError) {
+      response.status(409).json({
+        error: error.message,
+        code: error.code,
+        currentDocumentRevision: error.currentDocumentRevision,
+      })
+      return
+    }
+    sendApiError(response, 500, getApiErrorFromUnknown(error))
+  }
 
   router.get('/api/decks', async (_request: Request, response: Response) => {
     try {
@@ -138,7 +151,7 @@ export function createDecksRouter(deps: {
       return
     }
 
-    const { html } = parsed.data
+    const { html, expectedDocumentRevision } = parsed.data
     const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
 
     if (!validation.valid) {
@@ -155,7 +168,7 @@ export function createDecksRouter(deps: {
       }
 
       const runtimeManifest = buildDeckRuntimeManifestFromValidation(html, validation)
-      const deck = await deckStore.updateDeck(id, html)
+      const deck = await deckStore.updateDeck(id, html, { expectedDocumentRevision })
 
       if (!deck) {
         response.status(404).json({ error: 'Deck not found.' })
@@ -170,7 +183,7 @@ export function createDecksRouter(deps: {
         runtimeManifest,
       })
     } catch (error) {
-      sendApiError(response, 500, getApiErrorFromUnknown(error))
+      sendWriteError(response, error)
     }
   })
 
@@ -190,6 +203,7 @@ export function createDecksRouter(deps: {
       }
 
       const parsedBody = parseRequestBody(deckPatchRequestSchema, {
+        expectedDocumentRevision: request.body?.expectedDocumentRevision,
         operations: request.body?.operations,
         activeSlideIndex: request.body?.activeSlideIndex,
       })
@@ -231,7 +245,9 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const deck = await deckStore.updateDeck(id, patched.html)
+        const deck = await deckStore.updateDeck(id, patched.html, {
+          expectedDocumentRevision: parsedBody.data.expectedDocumentRevision,
+        })
 
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })
@@ -252,7 +268,7 @@ export function createDecksRouter(deps: {
           },
         })
       } catch (error) {
-        sendApiError(response, 500, getApiErrorFromUnknown(error))
+        sendWriteError(response, error)
       }
     },
   )

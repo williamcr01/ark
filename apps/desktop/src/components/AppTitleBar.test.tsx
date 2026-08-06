@@ -57,6 +57,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
 describe('AppTitleBar accessibility', () => {
   beforeEach(() => {
     window.arkDesktop = {
+      mcp: window.arkDesktop.mcp,
       credentials: {
         list: vi.fn().mockResolvedValue({
           openai: { configured: false, storage: null },
@@ -123,6 +124,24 @@ describe('AppTitleBar accessibility', () => {
     expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('active:!translate-y-0')
     expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass('hover:!bg-transparent')
     expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('hover:!bg-transparent')
+  })
+
+  it('shows MCP running with a green light instead of highlighting the button', async () => {
+    window.arkDesktop.mcp.getStatus = vi.fn().mockResolvedValue({
+      state: 'running',
+      autoStart: false,
+      activeDeckId: deck.id,
+      activeDeckTitle: deck.title,
+      connectedClient: 'Codex',
+      lastActivity: null,
+      error: null,
+    })
+    renderTitleBar()
+
+    const mcpButton = await screen.findByRole('button', { name: 'Stop MCP server' })
+    expect(mcpButton).toHaveAttribute('aria-pressed', 'true')
+    expect(mcpButton).not.toHaveClass('bg-[var(--ark-titlebar-active)]')
+    expect(screen.getByTestId('mcp-running-indicator')).toHaveClass('bg-emerald-500')
   })
 
   it('keeps panel controls unhighlighted and swaps to the icon without an arrow when closed', () => {

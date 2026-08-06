@@ -7,7 +7,22 @@ import { renderWithRouter } from '@/test/render-with-router'
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const persistenceState = vi.hoisted(() => ({
   deckId: 'deck-1' as string | null,
+  documentRevision: 1,
+  html: '<html>after</html>',
+  isSaving: false,
+  isPatching: false,
+  refreshActiveDeck: vi.fn(),
 }))
+let externalUpdateListener:
+  | ((update: {
+      deckId: string
+      previousDocumentRevision: number
+      documentRevision: number
+      clientName: string | null
+      toolName: string
+      summary: string
+    }) => void)
+  | null = null
 const generationFlowCapture = vi.hoisted(() => ({
   onGenerationSucceeded: null as (() => void) | null | undefined,
 }))
@@ -32,18 +47,19 @@ vi.mock('@/hooks/useElementSize', () => ({
 vi.mock('@/hooks/useDeckPersistence', () => ({
   useDeckPersistence: () => ({
     hasDeck: true,
-    html: '<html>after</html>',
+    html: persistenceState.html,
     isDirty: false,
     isLoading: false,
-    isSaving: false,
-    isPatching: false,
+    isSaving: persistenceState.isSaving,
+    isPatching: persistenceState.isPatching,
     deckId: persistenceState.deckId,
+    documentRevision: persistenceState.documentRevision,
     deckTitle: 'Deck',
     decks: [],
     deleteActiveDeck: vi.fn(),
     patchDeckOperations: vi.fn(),
     persistHtml: vi.fn(),
-    refreshActiveDeck: vi.fn(),
+    refreshActiveDeck: persistenceState.refreshActiveDeck,
     renameActiveDeck: vi.fn(),
     restoreHtmlSnapshot: vi.fn(),
     saveError: '',
@@ -158,6 +174,18 @@ describe('App generation / deck-switch edit history boundaries', () => {
   beforeEach(() => {
     mediaState.isDesktop = true
     persistenceState.deckId = 'deck-1'
+    persistenceState.documentRevision = 1
+    persistenceState.html = '<html>after</html>'
+    persistenceState.isSaving = false
+    persistenceState.isPatching = false
+    persistenceState.refreshActiveDeck.mockReset()
+    externalUpdateListener = null
+    window.arkDesktop.mcp.onDeckUpdated = vi.fn((listener) => {
+      externalUpdateListener = listener
+      return () => {
+        externalUpdateListener = null
+      }
+    })
     generationFlowCapture.onGenerationSucceeded = null
     historyCapture.current = null
   })
@@ -217,5 +245,83 @@ describe('App generation / deck-switch edit history boundaries', () => {
       expect(screen.getByLabelText('Redo availability')).toHaveTextContent('disabled')
     })
     expect(historyCapture.current?.canUndo).toBe(false)
+  })
+
+  it('records one undo boundary for a newer external update and ignores duplicates', async () => {
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>external</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
+    renderWithRouter(<App />)
+    await waitFor(() => expect(externalUpdateListener).toEqual(expect.any(Function)))
+
+    const update = {
+      deckId: 'deck-1',
+      previousDocumentRevision: 1,
+      documentRevision: 2,
+      clientName: 'Codex',
+      toolName: 'edit_deck',
+      summary: 'Updated the opening.',
+    }
+    act(() => externalUpdateListener?.(update))
+
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>external</html>',
+        provenance: { source: 'external', clientName: 'Codex', toolName: 'edit_deck' },
+      })
+    })
+
+    act(() => externalUpdateListener?.(update))
+    await waitFor(() => expect(persistenceState.refreshActiveDeck).toHaveBeenCalledTimes(1))
+  })
+
+  it('queues an external update while a local save is in flight', async () => {
+    persistenceState.isSaving = true
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>external</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
+    const { rerender } = renderWithRouter(<App />)
+    await waitFor(() => expect(externalUpdateListener).toEqual(expect.any(Function)))
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-1',
+        previousDocumentRevision: 1,
+        documentRevision: 2,
+        clientName: 'Claude Code',
+        toolName: 'patch_deck',
+        summary: 'Patched one slide.',
+      }),
+    )
+    expect(persistenceState.refreshActiveDeck).not.toHaveBeenCalled()
+
+    persistenceState.isSaving = false
+    rerender(<App />)
+    await waitFor(() => expect(persistenceState.refreshActiveDeck).toHaveBeenCalledWith('deck-1'))
+  })
+
+  it('ignores external updates for a deck that is not visible', async () => {
+    renderWithRouter(<App />)
+    await waitFor(() => expect(externalUpdateListener).toEqual(expect.any(Function)))
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-2',
+        previousDocumentRevision: 1,
+        documentRevision: 2,
+        clientName: 'Codex',
+        toolName: 'edit_deck',
+        summary: 'Edited another deck.',
+      }),
+    )
+
+    expect(persistenceState.refreshActiveDeck).not.toHaveBeenCalled()
   })
 })

@@ -15,7 +15,10 @@ export type { DeckOrigin, DeckPatchResponse, DeckSummary, StoredDeck }
 
 export type PatchDeckResponse = Pick<DeckPatchResponse, 'deck' | 'patch'>
 
-export type PatchDeckOptions = Pick<DeckPatchRequest, 'activeSlideIndex'> & {
+export type PatchDeckOptions = Pick<
+  DeckPatchRequest,
+  'activeSlideIndex' | 'expectedDocumentRevision'
+> & {
   operations: DeckPatchOperation[]
 }
 
@@ -53,11 +56,11 @@ export async function createDeck(html: string, origin?: DeckOrigin) {
   return readDeckResponse(response)
 }
 
-export async function updateDeck(id: string, html: string) {
+export async function updateDeck(id: string, html: string, expectedDocumentRevision: number) {
   const response = await fetch(`/api/decks/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html }),
+    body: JSON.stringify({ html, expectedDocumentRevision }),
   })
 
   return readDeckResponse(response)
@@ -81,13 +84,14 @@ async function readPatchResponse(response: Response): Promise<PatchDeckResponse>
 }
 
 export async function patchDeck(id: string, options: PatchDeckOptions) {
-  const { operations, activeSlideIndex } = options
+  const { operations, activeSlideIndex, expectedDocumentRevision } = options
   const response = await fetch(`/api/decks/${encodeURIComponent(id)}/patch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       operations,
       activeSlideIndex,
+      expectedDocumentRevision,
     }),
   })
 

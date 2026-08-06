@@ -12,11 +12,15 @@ export type DeckSaveOptions = {
   origin?: DeckOrigin
 }
 
+export type DeckUpdateOptions = DeckSaveOptions & {
+  expectedDocumentRevision: number
+}
+
 export type DeckStore = {
   createDeck: (html: string, options?: DeckSaveOptions, id?: string) => Promise<StoredDeck>
   getDeck: (id: string) => Promise<StoredDeck | null>
   listDecks: () => Promise<DeckSummary[]>
-  updateDeck: (id: string, html: string, options?: DeckSaveOptions) => Promise<StoredDeck | null>
+  updateDeck: (id: string, html: string, options: DeckUpdateOptions) => Promise<StoredDeck | null>
   updateDeckMetadata: (id: string, metadata: { title?: string }) => Promise<StoredDeck | null>
   deleteDeck: (id: string) => Promise<boolean>
 }

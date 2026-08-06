@@ -49,6 +49,7 @@ describe('DecksDashboard', () => {
   beforeEach(() => {
     deckApiMocks.listDecks.mockResolvedValue([])
     window.arkDesktop = {
+      mcp: window.arkDesktop.mcp,
       credentials: {
         list: vi.fn().mockResolvedValue({
           openai: { configured: false, storage: null },

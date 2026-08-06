@@ -204,6 +204,7 @@ export const deckPatchOperationSchema = z.union([
 ])
 
 export const deckPatchRequestSchema = z.object({
+  expectedDocumentRevision: z.number().int().min(1),
   operations: z.array(deckPatchOperationSchema).min(1).max(20),
   activeSlideIndex: z
     .number()

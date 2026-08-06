@@ -4,6 +4,7 @@ import { LaptopIcon, MoonIcon, SunIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ProviderLogo } from '@/components/ProviderLogo'
+import { McpSettingsSection } from '@/components/McpSettingsSection'
 import {
   Dialog,
   DialogContent,
@@ -72,7 +73,6 @@ export function DesktopSettingsDialog({
         if (!cancelled)
           setMessage(error instanceof Error ? error.message : 'Could not load credentials.')
       })
-
     return () => {
       cancelled = true
     }
@@ -171,6 +171,7 @@ export function DesktopSettingsDialog({
               </Button>
             </div>
           </section>
+          <McpSettingsSection onMessage={setMessage} open={open} />
           {PROVIDERS.map(({ id, label }) => {
             const draft = drafts[id] ?? ''
             const configured = status[id].configured

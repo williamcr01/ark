@@ -8,6 +8,7 @@ export type DesktopSettings = {
   reasoningEffortByModel: Record<string, ReasoningEffort>
   selectedModel: string | null
   defaultWorkspaceDirectory: string | null
+  mcpAutoStart: boolean
 }
 
 const APPEARANCE_KEY = 'ark:appearance'
@@ -29,6 +30,7 @@ const defaults = (): DesktopSettings => ({
   reasoningEffortByModel: {},
   selectedModel: null,
   defaultWorkspaceDirectory: null,
+  mcpAutoStart: false,
 })
 
 let current = defaults()

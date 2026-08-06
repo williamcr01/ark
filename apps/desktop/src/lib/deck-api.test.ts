@@ -71,11 +71,11 @@ describe('deck-api', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(updateDeck(deck.id, deck.html)).resolves.toEqual(deck)
+    await expect(updateDeck(deck.id, deck.html, deck.documentRevision)).resolves.toEqual(deck)
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/decks/${deck.id}`,
       expect.objectContaining({
-        body: JSON.stringify({ html: deck.html }),
+        body: JSON.stringify({ html: deck.html, expectedDocumentRevision: deck.documentRevision }),
         method: 'PUT',
       }),
     )

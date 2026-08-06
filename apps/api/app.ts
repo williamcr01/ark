@@ -26,6 +26,10 @@ import { createMiscRouter } from './routes/misc.ts'
 import { createPreviewSessionsRouter } from './routes/preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './routes/runtimes-and-assets.ts'
 import { createThumbnailsRouter } from './routes/thumbnails.ts'
+import { createMcpRouter } from './routes/mcp.ts'
+import { createMcpRunner } from './mcp-runner.ts'
+import { createMcpServiceState, type McpServiceState } from './mcp-service.ts'
+import type { ExternalDeckUpdate, McpActivityEvent } from '@ark/contracts'
 import { createWorkspacesRouter } from './routes/workspaces.ts'
 import {
   createThumbnailRenderRouter,
@@ -47,6 +51,9 @@ type CreateAppOptions = {
   thumbnailRenderer?: ThumbnailRenderer
   /** Process-local secret for /api/thumbnail-render/*; generated when omitted. */
   thumbnailRenderSecret?: string
+  mcpServiceState?: McpServiceState
+  onExternalDeckUpdate?: (update: ExternalDeckUpdate) => void
+  onMcpActivity?: (activity: McpActivityEvent) => void
 }
 
 function scheduleThumbnailWarm(
@@ -84,6 +91,15 @@ export function createApp(options: CreateAppOptions = {}) {
       workspaceStore,
       assetStore,
     })
+  const mcpServiceState = options.mcpServiceState ?? createMcpServiceState()
+  const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
+    scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
+  const runMcpTool = createMcpRunner({
+    deckStore,
+    state: mcpServiceState,
+    onDocumentPersisted: notifyDocumentPersisted,
+    onExternalDeckUpdate: options.onExternalDeckUpdate,
+  })
 
   const generationJobs =
     options.generationJobRunner ??
@@ -92,9 +108,7 @@ export function createApp(options: CreateAppOptions = {}) {
       jobStore,
       chatStore,
       assetStore,
-      onDocumentPersisted: (deckId, documentRevision) => {
-        scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
-      },
+      onDocumentPersisted: notifyDocumentPersisted,
     })
 
   app.use(createObservabilityMiddleware())
@@ -112,6 +126,13 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(createRuntimesAndAssetsRouter())
   app.use(createMiscRouter({ defaultModel, runtimeErrorStore }))
   app.use(
+    createMcpRouter({
+      state: mcpServiceState,
+      runTool: runMcpTool,
+      onActivity: options.onMcpActivity,
+    }),
+  )
+  app.use(
     createThumbnailRenderRouter({
       previewSessionStore,
       renderSecret: thumbnailRenderSecret,
@@ -121,9 +142,7 @@ export function createApp(options: CreateAppOptions = {}) {
     createDecksRouter({
       deckStore,
       assetStore,
-      onDocumentPersisted: (deckId, documentRevision) => {
-        scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
-      },
+      onDocumentPersisted: notifyDocumentPersisted,
     }),
   )
   app.use(createThumbnailsRouter({ deckStore, thumbnailService }))
@@ -141,5 +160,6 @@ export function createApp(options: CreateAppOptions = {}) {
   app.locals.thumbnailService = thumbnailService
   app.locals.thumbnailRenderSecret = thumbnailRenderSecret
   app.locals.workspaceStore = workspaceStore
+  app.locals.mcpServiceState = mcpServiceState
   return app
 }
