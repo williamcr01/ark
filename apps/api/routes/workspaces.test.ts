@@ -1,6 +1,6 @@
 import { type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -78,6 +78,28 @@ describe('workspace API routes', () => {
 
     expect(response.status).toBe(409)
     expect(payload).toMatchObject({ code: 'workspace_already_open' })
+  })
+
+  it('adopts the file name as the deck title when opening a renamed file', async () => {
+    const deck = await createDeck()
+    // Unregister the open handle so the file can be re-opened from disk.
+    workspaces.close()
+    const renamedPath = path.join(root, 'Renamed deck.ark')
+    await rename(deck.filePath, renamedPath)
+
+    const response = await fetch(`${baseUrl}/api/workspaces/open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: renamedPath }),
+    })
+
+    expect(response.status).toBe(200)
+    const payload = await response.json()
+    expect(payload.deck).toMatchObject({
+      id: deck.id,
+      title: 'Renamed deck',
+      filePath: renamedPath,
+    })
   })
 
   it('renames the managed file when a document title change lands', async () => {

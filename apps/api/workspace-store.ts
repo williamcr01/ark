@@ -519,6 +519,22 @@ export class WorkspaceStore {
     return row?.name_source === 'user' ? 'user' : 'derived'
   }
 
+  /**
+   * Derive a deck title from a file's name when it diverges from the stored
+   * title — the user's latest statement of the name was renaming the file
+   * itself. Collision-safe suffixes ("Board plan 2.ark" vs title "Board plan")
+   * are recognized and do not override the title. Returns null when the file
+   * name should not change the title.
+   */
+  private titleFromFileName(filePath: string, currentTitle: string) {
+    const fileStem = safeFileStem(path.basename(filePath).replace(/\.ark$/i, ''))
+    const titleStem = safeFileStem(currentTitle)
+    if (fileStem === titleStem) return null
+    const escaped = titleStem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (new RegExp(`^${escaped}( \\d+)?$`).test(fileStem)) return null
+    return fileStem
+  }
+
   private async uniquePath(title: string, directory: string = this.rootDir) {
     const stem = safeFileStem(title)
     for (let suffix = 1; ; suffix += 1) {
@@ -605,6 +621,13 @@ export class WorkspaceStore {
   async open(filePath: string) {
     await this.index()
     const open = this.openFile(filePath)
+    const current = readWorkspace(open)
+    const title = this.titleFromFileName(open.path, current.title)
+    if (title) {
+      open.database
+        .prepare('UPDATE workspace SET title = ?, updated_at = ?')
+        .run(title, new Date().toISOString())
+    }
     open.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
@@ -660,6 +683,13 @@ export class WorkspaceStore {
       throw new Error('Selected workspace has a different identity.')
     }
     const open = this.openFile(filePath)
+    const current = readWorkspace(open)
+    const title = this.titleFromFileName(open.path, current.title)
+    if (title) {
+      open.database
+        .prepare('UPDATE workspace SET title = ?, updated_at = ?')
+        .run(title, new Date().toISOString())
+    }
     open.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)

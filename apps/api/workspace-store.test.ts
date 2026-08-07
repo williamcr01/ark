@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -263,6 +263,67 @@ describe('WorkspaceStore file operations', () => {
 
     expect(updated?.title).toBe('Board plan')
     expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
+  })
+
+  it('adopts an externally renamed file name as the deck title on open', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    expect(created.title).toBe('Workspace')
+    workspaces.close()
+
+    const renamedPath = path.join(root, 'Final.ark')
+    await rename(created.path, renamedPath)
+
+    store = createWorkspaceStore(root)
+    const opened = await store.open(renamedPath)
+
+    expect(opened?.title).toBe('Final')
+    expect(opened?.path).toBe(renamedPath)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, title: 'Final', path: renamedPath }),
+    ])
+  })
+
+  it('does not adopt a collision-safe suffix as the deck title on open', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    const suffixedPath = path.join(root, 'Workspace 2.ark')
+    await rename(created.path, suffixedPath)
+
+    store = createWorkspaceStore(root)
+    await expect(store.open(suffixedPath)).resolves.toMatchObject({
+      title: 'Workspace',
+      path: suffixedPath,
+    })
+  })
+
+  it('adopts the file name as the deck title when locating a missing workspace', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    const relocatedPath = path.join(root, 'Relocated.ark')
+    await rename(created.path, relocatedPath)
+
+    store = createWorkspaceStore(root)
+    const located = await store.locate(created.id, relocatedPath)
+
+    expect(located?.title).toBe('Relocated')
+    expect(located?.path).toBe(relocatedPath)
+  })
+
+  it('keeps the stored title when opening a file whose name still matches', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    store = createWorkspaceStore(root)
+    await expect(store.open(created.path)).resolves.toMatchObject({
+      title: 'Workspace',
+      path: created.path,
+    })
   })
 
   it('overwrites an existing file on Save As only when explicitly allowed', async () => {
