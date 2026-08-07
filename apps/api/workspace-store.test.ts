@@ -150,6 +150,40 @@ describe('WorkspaceStore file operations', () => {
     await expect(access(path.join(root, 'Board plan.ark'))).resolves.toBeUndefined()
   })
 
+  it('keeps the current file when a new title maps onto its existing name', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const titled = await workspaces.rename(created.id, 'Q3: Review')
+    expect(titled?.path).toBe(path.join(root, 'Q3 Review.ark'))
+
+    const renamed = await workspaces.rename(created.id, 'Q3 Review')
+
+    expect(renamed?.title).toBe('Q3 Review')
+    expect(renamed?.path).toBe(titled?.path)
+    await expect(access(path.join(root, 'Q3 Review 2.ark'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
+  it('keeps a user-chosen file name when the agent establishes the matching title', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const userPath = path.join(root, 'Board plan.ark')
+    await workspaces.saveAs(created.id, userPath)
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated?.title).toBe('Board plan')
+    expect(updated?.path).toBe(userPath)
+    await expect(access(path.join(root, 'Board plan 2.ark'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
   it('renames the managed file when an agent-established title changes', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
@@ -370,6 +404,23 @@ describe('WorkspaceStore file operations', () => {
       id: copy?.id,
       html: expect.stringContaining('Hello'),
     })
+  })
+
+  it('drops the overwritten workspace from the recent list', async () => {
+    const workspaces = await setup()
+    const doomed = await workspaces.create(html.replace('Hello', 'Doomed'), undefined, undefined)
+    const created = await workspaces.create(html)
+    const targetPath = doomed.path
+    workspaces.close()
+
+    store = createWorkspaceStore(root)
+    await store.open(created.path)
+    const saved = await store.saveAs(created.id, targetPath, true)
+
+    expect(saved?.path).toBe(targetPath)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, path: targetPath }),
+    ])
   })
 
   it('renames the file in place when renaming outside the default directory', async () => {

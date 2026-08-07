@@ -14,17 +14,21 @@ const escapeHtmlText = (value: string) =>
 
 /**
  * Rewrite the document `<title>` to match a deck title, preserving any
- * attributes on the opening tag. When the document has no `<title>` and does
- * have a `<head>`, one is inserted after the opening head tag. Returns the
- * original html unchanged when neither is possible.
+ * attributes on the opening tag. Only the head region is considered, so an
+ * `<svg><title>` accessible label is never mistaken for the document title.
+ * When the head has no `<title>`, one is inserted after the opening head tag.
+ * Returns the original html unchanged when neither is possible.
  */
 export function syncDeckHtmlTitle(html: string, title: string) {
   const escaped = escapeHtmlText(title)
-  const replaced = html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, (match) => {
+  const headEnd = html.search(/<\/head\s*>/i)
+  const head = headEnd === -1 ? '' : html.slice(0, headEnd)
+  const rest = headEnd === -1 ? html : html.slice(headEnd)
+  const replaced = head.replace(/<title[^>]*>[\s\S]*?<\/title>/i, (match) => {
     const openTagEnd = match.indexOf('>') + 1
     return `${match.slice(0, openTagEnd)}${escaped}</title>`
   })
-  if (replaced !== html) return replaced
+  if (replaced !== head) return `${replaced}${rest}`
   return html.replace(/(<head[^>]*>)/i, (match) => `${match}<title>${escaped}</title>`)
 }
 

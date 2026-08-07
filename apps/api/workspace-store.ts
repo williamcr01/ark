@@ -366,6 +366,7 @@ export class WorkspaceStore {
   private indexed = false
   private readonly recent = new Map<string, RecentWorkspace>()
   private recentLoaded = false
+  private pendingFileMove: Promise<void> | null = null
 
   constructor(rootDir?: string) {
     this.defaultDir = path.resolve(rootDir ?? defaultWorkspaceDir())
@@ -406,6 +407,10 @@ export class WorkspaceStore {
   }
 
   private async index() {
+    // A file move deregisters its workspace across an await; every public
+    // method funnels through here, so waiting for it keeps other requests from
+    // reopening the file at its stale path mid-move.
+    while (this.pendingFileMove) await this.pendingFileMove
     if (this.indexed) return
     if (!this.recentLoaded) {
       try {
@@ -483,6 +488,22 @@ export class WorkspaceStore {
    * On failure the original path is reopened and the error rethrown.
    */
   private async renameOpenWorkspaceFile(open: OpenWorkspace, targetPath: string) {
+    // The workspace is unregistered across the rename await, so a concurrent
+    // request must not reopen it from the recent index at the stale path.
+    // index() — which every public method awaits first — waits this out.
+    const move = this.moveUnregisteredWorkspaceFile(open, targetPath)
+    this.pendingFileMove = move.then(
+      () => undefined,
+      () => undefined,
+    )
+    try {
+      return await move
+    } finally {
+      this.pendingFileMove = null
+    }
+  }
+
+  private async moveUnregisteredWorkspaceFile(open: OpenWorkspace, targetPath: string) {
     open.database.close()
     this.byId.delete(open.id)
     this.byPath.delete(open.path)
@@ -495,6 +516,22 @@ export class WorkspaceStore {
     }
   }
 
+  /**
+   * Forget the recent-index row for a file that is about to be replaced. The
+   * overwritten workspace's id still resolves to that path, so leaving it
+   * listed shows a dashboard entry that opens a different deck.
+   */
+  private async forgetRecentAtPath(filePath: string, keepId?: string) {
+    const resolved = path.resolve(filePath)
+    let changed = false
+    for (const [id, entry] of this.recent) {
+      if (id === keepId || path.resolve(entry.path) !== resolved) continue
+      this.recent.delete(id)
+      changed = true
+    }
+    if (changed) await this.persistRecent()
+  }
+
   private async exists(filePath: string) {
     try {
       await access(filePath)
@@ -505,13 +542,6 @@ export class WorkspaceStore {
     }
   }
 
-  /**
-   * Derive a deck title from a file's name when it diverges from the stored
-   * title — the user's latest statement of the name was renaming the file
-   * itself. Collision-safe suffixes ("Board plan 2.ark" vs title "Board plan")
-   * are recognized and do not override the title. Returns null when the file
-   * name should not change the title.
-   */
   /**
    * Adopt a file-derived title: update the title row and keep the document
    * <title> in sync, bumping document_revision only when the document changes.
@@ -538,6 +568,13 @@ export class WorkspaceStore {
     }
   }
 
+  /**
+   * Derive a deck title from a file's name when it diverges from the stored
+   * title — the user's latest statement of the name was renaming the file
+   * itself. Collision-safe suffixes ("Board plan 2.ark" vs title "Board plan")
+   * are recognized and do not override the title. Returns null when the file
+   * name should not change the title.
+   */
   private titleFromFileName(filePath: string, currentTitle: string) {
     const fileStem = safeFileStem(path.basename(filePath).replace(/\.ark$/i, ''))
     const titleStem = safeFileStem(currentTitle)
@@ -547,10 +584,17 @@ export class WorkspaceStore {
     return fileStem
   }
 
-  private async uniquePath(title: string, directory: string = this.rootDir) {
+  /**
+   * First free `<stem>.ark` (then " 2", " 3", …) in a directory. `selfPath` is
+   * the caller's own file: a name that lands back on it is already free, so
+   * renaming a deck to the name its file already has is a no-op instead of a
+   * spurious " 2" suffix.
+   */
+  private async uniquePath(title: string, directory: string = this.rootDir, selfPath?: string) {
     const stem = safeFileStem(title)
     for (let suffix = 1; ; suffix += 1) {
       const candidate = path.join(directory, `${stem}${suffix === 1 ? '' : ` ${suffix}`}.ark`)
+      if (selfPath && candidate === path.resolve(selfPath)) return candidate
       try {
         await access(candidate)
       } catch {
@@ -579,8 +623,11 @@ export class WorkspaceStore {
     if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
     }
-    if (targetExists) await unlink(filePath)
-    const database = new DatabaseSync(filePath)
+    if (targetExists) await this.forgetRecentAtPath(filePath, id)
+    // Build the workspace beside its destination and swap it in once it is
+    // complete, so a failed build never destroys the file being overwritten.
+    const staged = `${filePath}.${randomUUID()}.tmp`
+    const database = new DatabaseSync(staged)
 
     try {
       configure(database)
@@ -610,13 +657,18 @@ export class WorkspaceStore {
       }
     } catch (error) {
       database.close()
-      await unlink(filePath).catch(() => undefined)
+      await unlink(staged).catch(() => undefined)
       throw error
     }
 
-    const open = { id, path: filePath, database }
-    this.byId.set(id, open)
-    this.byPath.set(filePath, open)
+    database.close()
+    try {
+      await rename(staged, filePath)
+    } catch (error) {
+      await unlink(staged).catch(() => undefined)
+      throw error
+    }
+    const open = this.openFile(filePath)
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace
@@ -746,7 +798,7 @@ export class WorkspaceStore {
     // file lives. The target is collision-safe (Board plan.ark,
     // Board plan 2.ark) and never overwrites.
     if (title !== current.title) {
-      const targetPath = await this.uniquePath(title, path.dirname(open.path))
+      const targetPath = await this.uniquePath(title, path.dirname(open.path), open.path)
       if (targetPath !== open.path) {
         try {
           const renamed = await this.renameOpenWorkspaceFile(open, targetPath)
@@ -809,7 +861,7 @@ export class WorkspaceStore {
     // already matches the current filename skips the file rename entirely. A
     // user rename re-derives the name, so later agent-established titles keep
     // renaming the file too.
-    const targetPath = await this.uniquePath(title, path.dirname(open.path))
+    const targetPath = await this.uniquePath(title, path.dirname(open.path), open.path)
     writeMetadata(open, title, syncedHtml, htmlChanged, now)
     if (targetPath !== open.path) {
       try {
@@ -968,8 +1020,17 @@ export class WorkspaceStore {
     if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
     }
-    if (targetExists) await unlink(resolved)
-    await backup(open.database, resolved)
+    if (targetExists) await this.forgetRecentAtPath(resolved, id)
+    // Back up beside the destination and swap it in, so a failed backup never
+    // destroys the file being overwritten.
+    const staged = `${resolved}.${randomUUID()}.tmp`
+    try {
+      await backup(open.database, staged)
+      await rename(staged, resolved)
+    } catch (error) {
+      await unlink(staged).catch(() => undefined)
+      throw error
+    }
     open.database.close()
     this.byId.delete(id)
     this.byPath.delete(open.path)
@@ -991,20 +1052,12 @@ export class WorkspaceStore {
     if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
     }
-    if (targetExists) await unlink(resolved)
-    open.database.close()
-    this.byId.delete(id)
-    this.byPath.delete(open.path)
-    try {
-      await rename(open.path, resolved)
-      const reopened = this.openFile(resolved)
-      const workspace = readWorkspace(reopened)
-      await this.touchRecent(workspace)
-      return workspace
-    } catch (error) {
-      this.openFile(open.path)
-      throw error
-    }
+    // rename() replaces the destination atomically, so a confirmed overwrite
+    // never leaves the target missing.
+    if (targetExists) await this.forgetRecentAtPath(resolved, id)
+    const workspace = await this.renameOpenWorkspaceFile(open, resolved)
+    await this.touchRecent(workspace)
+    return workspace
   }
 
   async duplicate(

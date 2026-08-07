@@ -94,6 +94,15 @@ describe('syncDeckHtmlTitle', () => {
     )
   })
 
+  it('inserts a head title instead of rewriting an SVG title', () => {
+    const html =
+      '<html><head><meta charset="utf-8"></head><body><svg><title>Revenue by quarter</title></svg></body></html>'
+
+    expect(syncDeckHtmlTitle(html, 'Board plan')).toBe(
+      '<html><head><title>Board plan</title><meta charset="utf-8"></head><body><svg><title>Revenue by quarter</title></svg></body></html>',
+    )
+  })
+
   it('inserts a title into the head when the document has none', () => {
     const html = '<html><head><meta charset="utf-8"></head><body></body></html>'
 

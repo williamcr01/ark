@@ -401,8 +401,10 @@ async function startDesktop() {
               typeof suggestedName === 'string' ? suggestedName : 'Untitled Presentation.ark',
             ),
       filters: [{ name: 'Ark Workspace', extensions: ['ark'] }],
-      // No OS overwrite prompt: Ark owns the overwrite decision and asks
-      // before replacing, so the user is not prompted twice.
+      // Ark owns the overwrite decision and asks before replacing. Omitting
+      // 'showOverwriteConfirmation' turns off the GTK prompt (on by default on
+      // Linux) so the user is not prompted twice.
+      properties: [],
     })
     return result.canceled ? null : (result.filePath ?? null)
   })
