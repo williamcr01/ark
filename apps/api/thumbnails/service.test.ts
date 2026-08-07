@@ -98,7 +98,9 @@ describe('workspace thumbnail service', () => {
       enqueueIfMissing: true,
       waitMs: 1_000,
     })
-    const updated = (await deckStore.updateDeck(deck.id, html.replace('Two', 'Changed')))!
+    const updated = (await deckStore.updateDeck(deck.id, html.replace('Two', 'Changed'), {
+      expectedDocumentRevision: deck.documentRevision,
+    }))!
     await service.getStatus({
       deckId: deck.id,
       documentRevision: 2,

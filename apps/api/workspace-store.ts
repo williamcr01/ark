@@ -116,6 +116,17 @@ export type WorkspaceRow = {
   path: string
 }
 
+export class WorkspaceDocumentConflictError extends Error {
+  readonly code = 'document_conflict'
+  readonly currentDocumentRevision: number
+
+  constructor(currentDocumentRevision: number) {
+    super('The deck changed. Re-read it and retry against the latest revision.')
+    this.name = 'WorkspaceDocumentConflictError'
+    this.currentDocumentRevision = currentDocumentRevision
+  }
+}
+
 type WorkspaceMetadata = Omit<WorkspaceRow, 'html'>
 
 /**
@@ -599,7 +610,12 @@ export class WorkspaceStore {
     return workspace
   }
 
-  async updateDocument(id: string, html: string, embeddedAssets: readonly EmbeddedAsset[] = []) {
+  async updateDocument(
+    id: string,
+    html: string,
+    expectedDocumentRevision: number,
+    embeddedAssets: readonly EmbeddedAsset[] = [],
+  ) {
     await this.index()
     const open = this.openById(id)
     if (!open) return null
@@ -614,18 +630,25 @@ export class WorkspaceStore {
 
     open.database.exec('BEGIN IMMEDIATE')
     try {
+      const revisionUpdate = open.database
+        .prepare(
+          `UPDATE workspace
+           SET title = ?, updated_at = ?, document_revision = document_revision + 1, origin = ?
+           WHERE document_revision = ?`,
+        )
+        .run(title, now, origin, expectedDocumentRevision)
+      if (revisionUpdate.changes === 0) {
+        const latest = open.database.prepare('SELECT document_revision FROM workspace').get() as {
+          document_revision: number
+        }
+        throw new WorkspaceDocumentConflictError(latest.document_revision)
+      }
       insertEmbeddedAssets(open.database, embeddedAssets)
       syncDocumentAssetReferences(open.database, html)
       garbageCollectUnreferencedAssets(open.database)
       open.database
         .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
         .run(html, contentHash(html), now)
-      open.database
-        .prepare(
-          `UPDATE workspace
-           SET title = ?, updated_at = ?, document_revision = document_revision + 1, origin = ?`,
-        )
-        .run(title, now, origin)
       open.database.exec('COMMIT')
     } catch (error) {
       open.database.exec('ROLLBACK')

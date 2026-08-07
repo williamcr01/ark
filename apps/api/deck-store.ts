@@ -2,6 +2,7 @@ import {
   type DeckStore,
   type DeckSummary,
   type DeckSaveOptions,
+  type DeckUpdateOptions,
   type StoredDeck,
   extractDeckTitle,
   isValidDeckId,
@@ -11,7 +12,7 @@ import { createWorkspaceStore, type WorkspaceRow, type WorkspaceStore } from './
 import { extractEmbeddedAssets } from './embedded-assets.ts'
 
 export { extractDeckTitle, isValidDeckId, normalizeDeckTitle }
-export type { DeckStore, DeckSummary, DeckSaveOptions, StoredDeck }
+export type { DeckStore, DeckSummary, DeckSaveOptions, DeckUpdateOptions, StoredDeck }
 
 function toStoredDeck(workspace: WorkspaceRow): StoredDeck {
   return {
@@ -71,10 +72,12 @@ export function createDeckStore(
     },
     async updateDeck(id, html, options) {
       const extracted = extractEmbeddedAssets(html)
-      const workspace = await workspaces.updateDocument(id, extracted.html, [
-        ...(options?.embeddedAssets ?? []),
-        ...extracted.assets,
-      ])
+      const workspace = await workspaces.updateDocument(
+        id,
+        extracted.html,
+        options.expectedDocumentRevision,
+        [...(options.embeddedAssets ?? []), ...extracted.assets],
+      )
       return workspace ? toStoredDeck(workspace) : null
     },
     async updateDeckMetadata(id, metadata) {

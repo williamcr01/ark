@@ -28,6 +28,20 @@ describe('WorkspaceStore file operations', () => {
     return store
   }
 
+  it('rejects stale revisions atomically without changing the document', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'Fresh'), 1)
+
+    await expect(
+      workspaces.updateDocument(created.id, html.replace('Hello', 'Stale'), 1),
+    ).rejects.toMatchObject({ code: 'document_conflict', currentDocumentRevision: 2 })
+    await expect(workspaces.get(created.id)).resolves.toMatchObject({
+      documentRevision: 2,
+      html: expect.stringContaining('Fresh'),
+    })
+  })
+
   it('leaves invalid and existing target files untouched', async () => {
     const workspaces = await setup()
     const target = path.join(root, 'Existing.ark')
@@ -72,14 +86,14 @@ describe('WorkspaceStore file operations', () => {
     expect(created.origin).toBe('blank')
 
     // Autosaving identical HTML is not authoring.
-    const resaved = await workspaces.updateDocument(created.id, blank)
+    const resaved = await workspaces.updateDocument(created.id, blank, 1)
     expect(resaved?.origin).toBe('blank')
 
-    const written = await workspaces.updateDocument(created.id, html)
+    const written = await workspaces.updateDocument(created.id, html, 2)
     expect(written?.origin).toBe('authored')
 
     // Origin is durable, and authored never reverts.
-    const reverted = await workspaces.updateDocument(created.id, blank)
+    const reverted = await workspaces.updateDocument(created.id, blank, 3)
     expect(reverted?.origin).toBe('authored')
 
     workspaces.close()
@@ -204,12 +218,13 @@ describe('WorkspaceStore file operations', () => {
     await workspaces.updateDocument(
       created.id,
       html.replace('</body>', `<img src="ark-asset:${kept.id}"></body>`),
+      1,
     )
     await expect(assets.listAssetsByDeck(created.id)).resolves.toEqual([
       expect.objectContaining({ id: kept.id }),
     ])
 
-    await workspaces.updateDocument(created.id, html)
+    await workspaces.updateDocument(created.id, html, 2)
     await expect(assets.listAssetsByDeck(created.id)).resolves.toEqual([])
     expect(database?.prepare('SELECT COUNT(*) AS count FROM blobs').get()).toEqual({ count: 0 })
   })
@@ -228,7 +243,7 @@ describe('WorkspaceStore file operations', () => {
       bytes: Buffer.from('quarter,revenue'),
     })
 
-    await workspaces.updateDocument(created.id, html)
+    await workspaces.updateDocument(created.id, html, 1)
     await expect(
       chat.appendMessage(created.id, {
         role: 'user',

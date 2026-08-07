@@ -181,6 +181,7 @@ describe('deck patch schema', () => {
 
   it('parses patch requests with active slide context', () => {
     const parsed = deckPatchRequestSchema.parse({
+      expectedDocumentRevision: 1,
       operations: [{ op: 'update_slide_title', slideIndex: 0, title: 'Hello' }],
       activeSlideIndex: 2,
     })

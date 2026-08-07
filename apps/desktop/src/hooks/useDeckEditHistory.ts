@@ -2,6 +2,14 @@ import { useCallback, useMemo, useState } from 'react'
 
 import type { ManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
 
+export type ExternalEditProvenance = {
+  source: 'external'
+  clientName: string | null
+  toolName: string
+  summary: string
+  createdAt: string
+}
+
 /**
  * A single reversible manual edit boundary (issue #82).
  *
@@ -13,7 +21,7 @@ export type DeckEditHistoryEntry = {
   beforeHtml: string
   afterHtml: string
   slideIndex: number
-  provenance: ManualEditProvenance
+  provenance: ManualEditProvenance | ExternalEditProvenance
 }
 
 type HistoryState = {

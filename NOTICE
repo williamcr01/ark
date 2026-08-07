@@ -19,6 +19,12 @@ Copyright (c) LoopBack contributors
 License: MIT
 Distributed in Ark desktop packages for signed application updates.
 
+Model Context Protocol TypeScript SDK
+-------------------------------------
+Copyright (c) 2024-2025 Model Context Protocol, a Series of LF Projects, LLC.
+License: MIT and Apache-2.0 (according to the upstream licensing transition)
+Distributed via: @modelcontextprotocol/server
+
 reveal.js
 ---------
 Copyright (C) Hakim El Hattab and contributors

@@ -65,6 +65,89 @@ describe('ChatPanel delivery status', () => {
 })
 
 describe('ChatPanel submit control', () => {
+  it('renders an external MCP question without requiring an Ark model', async () => {
+    const onMcpInteractionSubmit = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          canGenerate={false}
+          mcpInteraction={{
+            id: '00000000-0000-4000-8000-000000000001',
+            deckId: '00000000-0000-4000-8000-000000000002',
+            baseDocumentRevision: 1,
+            clientName: 'Codex',
+            createdAt: '2026-08-06T12:00:00.000Z',
+            expiresAt: '2026-08-06T12:30:00.000Z',
+            kind: 'questions',
+            request: {
+              title: 'Shape the deck',
+              questions: [
+                {
+                  id: 'audience',
+                  question: 'Who is the audience?',
+                  type: 'single',
+                  options: ['Board', 'Customers'],
+                  required: true,
+                },
+              ],
+            },
+          }}
+          onMcpInteractionSubmit={onMcpInteractionSubmit}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText(/Codex is waiting for your response/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Board/ }))
+    expect(onMcpInteractionSubmit).toHaveBeenCalledWith({
+      kind: 'questions',
+      answers: { audience: 'Board' },
+    })
+  })
+
+  it('renders and submits visual themes requested through MCP', async () => {
+    const onMcpInteractionSubmit = vi.fn()
+    const user = userEvent.setup()
+    const sampleHtml = '<!doctype html><html><body><section class="slide"></section></body></html>'
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          mcpInteraction={{
+            id: '00000000-0000-4000-8000-000000000001',
+            deckId: '00000000-0000-4000-8000-000000000002',
+            baseDocumentRevision: 1,
+            clientName: 'Claude Code',
+            createdAt: '2026-08-06T12:00:00.000Z',
+            expiresAt: '2026-08-06T12:30:00.000Z',
+            kind: 'themes',
+            request: {
+              title: 'Pick a direction',
+              themes: Array.from({ length: 4 }, (_, index) => ({
+                id: `theme-${index}`,
+                name: `Theme ${index}`,
+                description: `Direction ${index}`,
+                sampleHtml,
+              })),
+            },
+          }}
+          onMcpInteractionSubmit={onMcpInteractionSubmit}
+        />
+      </TooltipProvider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select Theme 2' }))
+    await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 2' }))
+    expect(onMcpInteractionSubmit).toHaveBeenCalledWith({
+      kind: 'themes',
+      themeId: 'theme-2',
+    })
+  })
+
   it(
     'renders ask_user questions one at a time above the composer',
     { timeout: 15_000 },

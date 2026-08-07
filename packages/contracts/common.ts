@@ -51,7 +51,12 @@ export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   max: 'Max',
 }
 
-export const apiErrorCodeSchema = z.enum(['missing_api_key', 'invalid_api_key', 'provider_error'])
+export const apiErrorCodeSchema = z.enum([
+  'missing_api_key',
+  'invalid_api_key',
+  'provider_error',
+  'document_conflict',
+])
 
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>
 

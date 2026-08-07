@@ -61,11 +61,13 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
   const manualMutationQueueRef = useRef<Promise<void> | null>(null)
   const htmlRef = useRef('')
   const deckIdRef = useRef<string | null>(null)
+  const documentRevisionRef = useRef<number | null>(null)
   const newDeckPromiseRef = useRef<ReturnType<typeof createDeck> | null>(null)
 
   const setActiveDeck = useCallback((deck: StoredDeck) => {
     htmlRef.current = deck.html
     deckIdRef.current = deck.id
+    documentRevisionRef.current = deck.documentRevision
     setDeckId(deck.id)
     setDeckTitle(deck.title)
     setFilePath(deck.filePath)
@@ -77,6 +79,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
   const clearActiveDeck = useCallback(() => {
     htmlRef.current = ''
     deckIdRef.current = null
+    documentRevisionRef.current = null
     setDeckId(null)
     setDeckTitle('')
     setFilePath(null)
@@ -230,7 +233,9 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
       setSaveError('')
 
       try {
-        const deck = deckId ? await updateDeck(deckId, nextHtml) : await createDeck(nextHtml)
+        const deck = deckId
+          ? await updateDeck(deckId, nextHtml, documentRevisionRef.current!)
+          : await createDeck(nextHtml)
 
         if (requestId !== saveRequestIdRef.current) {
           return undefined
@@ -240,6 +245,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         setDeckId(deck.id)
         setDeckTitle(deck.title)
         setDocumentRevision(deck.documentRevision)
+        documentRevisionRef.current = deck.documentRevision
         setSavedHtml(deck.html)
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
         return deck
@@ -418,7 +424,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
       try {
         const deck = await fetchDeck(resolvedDeckId)
 
-        if (requestId !== saveRequestIdRef.current) {
+        if (requestId !== saveRequestIdRef.current || resolvedDeckId !== deckIdRef.current) {
           return null
         }
 
@@ -446,6 +452,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     setHtml(deck.html)
     setSavedHtml(deck.html)
     setDocumentRevision(deck.documentRevision)
+    documentRevisionRef.current = deck.documentRevision
     setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
 
     return patch.suggestedActiveSlideIndex
@@ -486,7 +493,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         setSaveError('')
 
         try {
-          const deck = await updateDeck(deckId, nextHtml)
+          const deck = await updateDeck(deckId, nextHtml, documentRevisionRef.current!)
 
           if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
             return undefined
@@ -496,6 +503,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
           setHtml(deck.html)
           setSavedHtml(deck.html)
           setDocumentRevision(deck.documentRevision)
+          documentRevisionRef.current = deck.documentRevision
           setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
           return deck
         } catch (error) {
@@ -540,6 +548,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
           const patchResult = await patchDeck(deckId, {
             operations,
             activeSlideIndex,
+            expectedDocumentRevision: documentRevisionRef.current!,
           })
 
           if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {

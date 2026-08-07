@@ -84,7 +84,11 @@ describe('useDeckEditHistory', () => {
     })
 
     expect(result.current.canRedo).toBe(false)
-    expect(result.current.undoEntry?.provenance.elementIds).toEqual(['c'])
+    expect(
+      result.current.undoEntry?.provenance.source === 'manual'
+        ? result.current.undoEntry.provenance.elementIds
+        : [],
+    ).toEqual(['c'])
   })
 
   it('reset clears all history', () => {

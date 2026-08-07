@@ -14,6 +14,6 @@ export default defineConfig({
     },
   },
   ssr: {
-    noExternal: [/^@ark\//],
+    noExternal: [/^@ark\//, /^@modelcontextprotocol\//],
   },
 })

@@ -149,7 +149,9 @@ describe('generation job runner', () => {
       success(html.replace('Hello', 'AI')),
     )
     const deck = await deckStore.createDeck(html)
-    await deckStore.updateDeck(deck.id, html.replace('Hello', 'Manual'))
+    await deckStore.updateDeck(deck.id, html.replace('Hello', 'Manual'), {
+      expectedDocumentRevision: deck.documentRevision,
+    })
     const started = await runner.startJob({
       body: {
         deckId: deck.id,
@@ -163,6 +165,38 @@ describe('generation job runner', () => {
     await expect(terminal(jobStore.getJob, started.id)).resolves.toMatchObject({
       status: 'failed',
       error: { code: 'document_conflict' },
+    })
+    expect((await deckStore.getDeck(deck.id))?.html).toContain('Manual')
+  })
+
+  it('surfaces a commit-time revision conflict instead of classifying it as a provider failure', async () => {
+    const { deckStore, jobStore, runner } = await setup(async () =>
+      success(html.replace('Hello', 'AI')),
+    )
+    const deck = await deckStore.createDeck(html)
+    const originalUpdate = deckStore.updateDeck.bind(deckStore)
+    let injectConcurrentWrite = true
+    deckStore.updateDeck = async (id, nextHtml, options) => {
+      if (injectConcurrentWrite) {
+        injectConcurrentWrite = false
+        await originalUpdate(id, html.replace('Hello', 'Manual'), options)
+      }
+      return originalUpdate(id, nextHtml, options)
+    }
+    const started = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseDocumentRevision: 1,
+        editingExistingDeck: true,
+        currentHtml: deck.html,
+        messages: [{ role: 'user', content: 'Update it' }],
+      },
+      defaultModel: 'openai:gpt-test',
+    })
+
+    await expect(terminal(jobStore.getJob, started.id)).resolves.toMatchObject({
+      status: 'failed',
+      error: { code: 'document_conflict', errorCategory: 'document_conflict' },
     })
     expect((await deckStore.getDeck(deck.id))?.html).toContain('Manual')
   })

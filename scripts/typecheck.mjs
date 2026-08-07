@@ -27,6 +27,7 @@ const PROJECTS = [
   'apps/desktop/tsconfig.app.json',
   'apps/desktop/tsconfig.node.json',
   'apps/api/tsconfig.json',
+  'apps/mcp/tsconfig.json',
   'apps/sandbox/tsconfig.json',
   'packages/contracts/tsconfig.json',
   'packages/deck-core/tsconfig.json',

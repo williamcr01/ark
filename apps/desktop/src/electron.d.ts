@@ -1,4 +1,13 @@
-import type { ProviderId, ReasoningEffort } from '@ark/contracts'
+import type {
+  ExternalDeckUpdate,
+  McpInteractionAnswer,
+  McpInteractionChanged,
+  McpPendingInteraction,
+  McpSetupCommands,
+  McpStatus,
+  ProviderId,
+  ReasoningEffort,
+} from '@ark/contracts'
 
 type CredentialStatus = Record<
   ProviderId,
@@ -11,6 +20,7 @@ type DesktopSettings = {
   reasoningEffortByModel: Record<string, ReasoningEffort>
   selectedModel: string | null
   defaultWorkspaceDirectory: string | null
+  mcpAutoStart: boolean
 }
 
 declare global {
@@ -26,6 +36,25 @@ declare global {
       settings: {
         get: () => Promise<DesktopSettings>
         update: (patch: Partial<DesktopSettings>) => Promise<DesktopSettings>
+      }
+      mcp: {
+        getStatus: () => Promise<McpStatus>
+        start: () => Promise<McpStatus>
+        stop: () => Promise<McpStatus>
+        setAutoStart: (enabled: boolean) => Promise<McpStatus>
+        setActiveDeck: (
+          deckId: string | null,
+          title: string | null,
+          documentRevision: number | null,
+        ) => Promise<void>
+        getPendingInteraction: () => Promise<McpPendingInteraction | null>
+        respondToInteraction: (id: string, answer: McpInteractionAnswer) => Promise<void>
+        cancelInteraction: (id: string) => Promise<boolean>
+        getSetupCommands: () => Promise<McpSetupCommands>
+        copySetupCommand: (command: string) => Promise<void>
+        onStatusChanged: (listener: (status: McpStatus) => void) => () => void
+        onDeckUpdated: (listener: (update: ExternalDeckUpdate) => void) => () => void
+        onInteractionChanged: (listener: (change: McpInteractionChanged) => void) => () => void
       }
       updates: {
         check: () => Promise<DesktopResult>

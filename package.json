@@ -20,6 +20,7 @@
     "test:ci-scope": "node --test scripts/ci-test-scope.test.mjs scripts/typecheck.test.mjs",
     "lockfile:check": "pnpm install --frozen-lockfile",
     "smoke:desktop": "pnpm build && node scripts/smoke-desktop.mjs",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check"

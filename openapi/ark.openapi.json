@@ -141,7 +141,12 @@
                     "error": { "type": "string" },
                     "code": {
                       "type": "string",
-                      "enum": ["missing_api_key", "invalid_api_key", "provider_error"]
+                      "enum": [
+                        "missing_api_key",
+                        "invalid_api_key",
+                        "provider_error",
+                        "document_conflict"
+                      ]
                     }
                   },
                   "required": ["error", "code"]
@@ -563,8 +568,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": { "html": { "type": "string" } },
-                "required": ["html"],
+                "properties": {
+                  "html": { "type": "string" },
+                  "expectedDocumentRevision": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["html", "expectedDocumentRevision"],
                 "additionalProperties": false
               }
             }
@@ -1061,6 +1069,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "expectedDocumentRevision": { "type": "integer", "minimum": 1 },
                   "operations": {
                     "type": "array",
                     "items": {
@@ -1425,7 +1434,7 @@
                     "description": "Current active slide index so the server can suggest an updated index."
                   }
                 },
-                "required": ["operations"]
+                "required": ["expectedDocumentRevision", "operations"]
               }
             }
           }
@@ -4186,7 +4195,12 @@
                     "error": { "type": "string" },
                     "code": {
                       "type": "string",
-                      "enum": ["missing_api_key", "invalid_api_key", "provider_error"]
+                      "enum": [
+                        "missing_api_key",
+                        "invalid_api_key",
+                        "provider_error",
+                        "document_conflict"
+                      ]
                     }
                   },
                   "required": ["error", "code"]
@@ -4204,7 +4218,12 @@
                     "error": { "type": "string" },
                     "code": {
                       "type": "string",
-                      "enum": ["missing_api_key", "invalid_api_key", "provider_error"]
+                      "enum": [
+                        "missing_api_key",
+                        "invalid_api_key",
+                        "provider_error",
+                        "document_conflict"
+                      ]
                     }
                   },
                   "required": ["error", "code"]
@@ -4222,7 +4241,12 @@
                     "error": { "type": "string" },
                     "code": {
                       "type": "string",
-                      "enum": ["missing_api_key", "invalid_api_key", "provider_error"]
+                      "enum": [
+                        "missing_api_key",
+                        "invalid_api_key",
+                        "provider_error",
+                        "document_conflict"
+                      ]
                     }
                   },
                   "required": ["error", "code"]
@@ -5299,7 +5323,12 @@
                     "error": { "type": "string" },
                     "code": {
                       "type": "string",
-                      "enum": ["missing_api_key", "invalid_api_key", "provider_error"]
+                      "enum": [
+                        "missing_api_key",
+                        "invalid_api_key",
+                        "provider_error",
+                        "document_conflict"
+                      ]
                     }
                   },
                   "required": ["error", "code"]

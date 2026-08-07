@@ -24,6 +24,8 @@ pnpm dev
 
 Add OpenAI, Anthropic, or Google Gemini keys from **Settings** inside Ark. Keys are encrypted with Electron `safeStorage` and remain on the local device. Ark does not read provider keys from `.env`.
 
+Local coding agents can edit the presentation visible in Ark through the optional MCP integration. Start it from the cable button or **Settings → External agents (MCP)**, then copy the generated Codex or Claude Code command. See [docs/mcp.md](docs/mcp.md) for setup, removal, security, and troubleshooting.
+
 ## Local data
 
 Each presentation is a portable `.ark` SQLite workspace containing the current HTML document, assets, conversations, and current thumbnail cache. New workspaces are created immediately in `Documents/Ark` by default; Settings can point that default at another directory, and Open/Save As/Move can place a workspace anywhere.
@@ -53,7 +55,8 @@ apps/api/       Internal local API and persistence services
 apps/sandbox/   Separate-origin hostile deck renderer
 packages/       Shared contracts, deck helpers, and runtime registry
 runtimes/       Vendored approved deck runtimes
-agent-guides/   Always-on deck generation guidance
+agent-guides/   Always-on built-in deck generation guidance
+mcp-guides/     External-agent deck authoring guidance
 ```
 
 ## Commands
@@ -75,7 +78,7 @@ Run `pnpm format` before committing.
 ## Desktop security
 
 - Every `BrowserWindow` uses `contextIsolation: true`, `sandbox: true`, and `nodeIntegration: false`.
-- The preload exposes only narrow credential and updater IPC methods.
+- The preload exposes only narrow credential, MCP lifecycle, file, settings, and updater IPC methods.
 - Renderer sessions allow only Ark's exact loopback origins. Provider traffic originates from the local Node service, not deck or renderer frames.
 - Deck previews use a separate loopback origin, short-lived render tokens, `sandbox="allow-scripts"`, and a strict CSP with `connect-src 'none'`.
 - The Electron session blocks the residual frame self-navigation request that browsers cannot prevent with CSP alone.

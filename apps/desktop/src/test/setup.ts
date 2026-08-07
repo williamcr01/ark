@@ -85,6 +85,7 @@ if (isJsdomEnvironment) {
       reasoningEffortByModel: {},
       selectedModel: null,
       defaultWorkspaceDirectory: null,
+      mcpAutoStart: false,
     }
     window.arkDesktop = {
       credentials: {
@@ -101,6 +102,29 @@ if (isJsdomEnvironment) {
       settings: {
         get: vi.fn().mockResolvedValue(settings),
         update: vi.fn().mockImplementation(async (patch) => ({ ...settings, ...patch })),
+      },
+      mcp: {
+        getStatus: vi.fn().mockResolvedValue({
+          state: 'stopped',
+          autoStart: false,
+          activeDeckId: null,
+          activeDeckTitle: null,
+          connectedClient: null,
+          lastActivity: null,
+          error: null,
+        }),
+        start: vi.fn(),
+        stop: vi.fn(),
+        setAutoStart: vi.fn(),
+        setActiveDeck: vi.fn(),
+        getPendingInteraction: vi.fn().mockResolvedValue(null),
+        respondToInteraction: vi.fn().mockResolvedValue(undefined),
+        cancelInteraction: vi.fn().mockResolvedValue(false),
+        getSetupCommands: vi.fn().mockResolvedValue({ codex: '', claudeCode: '' }),
+        copySetupCommand: vi.fn().mockResolvedValue(undefined),
+        onStatusChanged: vi.fn().mockReturnValue(() => undefined),
+        onDeckUpdated: vi.fn().mockReturnValue(() => undefined),
+        onInteractionChanged: vi.fn().mockReturnValue(() => undefined),
       },
       updates: { check: vi.fn() },
       files: {

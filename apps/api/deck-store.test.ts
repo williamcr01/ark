@@ -48,7 +48,9 @@ describe('createDeckStore', () => {
       'Quarterly Review.ark',
     ])
 
-    const updated = await store.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'))
+    const updated = await store.updateDeck(created.id, sampleHtml.replace('Hello', 'Updated'), {
+      expectedDocumentRevision: created.documentRevision,
+    })
     expect(updated).toMatchObject({ documentRevision: 2, html: expect.stringContaining('Updated') })
     expect(await store.deleteDeck(created.id)).toBe(true)
     expect(await store.getDeck(created.id)).toBeNull()
@@ -61,6 +63,7 @@ describe('createDeckStore', () => {
     const updated = await store.updateDeck(
       created.id,
       sampleHtml.replace('Quarterly Review', 'HTML title'),
+      { expectedDocumentRevision: created.documentRevision },
     )
     expect(updated).toMatchObject({ title: 'Board plan', documentRevision: 2 })
   })
@@ -79,7 +82,9 @@ describe('createDeckStore', () => {
     const store = await makeStore()
     const missing = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
     await expect(store.getDeck(missing)).resolves.toBeNull()
-    await expect(store.updateDeck(missing, sampleHtml)).resolves.toBeNull()
+    await expect(
+      store.updateDeck(missing, sampleHtml, { expectedDocumentRevision: 1 }),
+    ).resolves.toBeNull()
     await expect(store.deleteDeck(missing)).resolves.toBe(false)
   })
 
