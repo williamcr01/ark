@@ -349,7 +349,7 @@ function parseDeckHtmlCore(html: string): DeckParseResult {
 
 export function summarizeParsedDeck(parsed: DeckParseResult) {
   if (parsed.slideCount === 0) {
-    return `Deck "${parsed.title}" (${parsed.structure}). No slides detected — inspect raw HTML with read_deck.`
+    return `Deck "${parsed.title}" (${parsed.structure}). No slides detected; inspect raw HTML with read_deck.`
   }
 
   const slideList = parsed.slides

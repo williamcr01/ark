@@ -6,6 +6,7 @@ import { relative, resolve } from 'node:path'
 
 const workspaceProjects = new Map([
   ['apps/api', '@ark/api-*'],
+  ['apps/mcp', '@ark/mcp'],
   ['apps/sandbox', '@ark/sandbox'],
   ['apps/desktop', '@ark/desktop-*'],
   ['packages/contracts', '@ark/contracts'],

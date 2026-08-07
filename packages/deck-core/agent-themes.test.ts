@@ -49,7 +49,7 @@ describe('agent themes', () => {
     })
 
     const formatted = formatThemeChoice(request, 'midnight')
-    expect(formatted).toContain('Pick a visual direction — theme choice:')
+    expect(formatted).toContain('Pick a visual direction: theme choice:')
     expect(formatted).toContain('Midnight Editorial (id: midnight)')
     expect(parseThemeChoiceId(formatted)).toBe('midnight')
     expect(parseThemeChoiceName(request, formatted)).toBe('Midnight Editorial')

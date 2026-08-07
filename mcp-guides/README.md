@@ -6,12 +6,12 @@ clients such as Claude Code and Codex.
 
 ## Convention
 
-| Rule    | Behavior                                                                                                   |
-| ------- | ---------------------------------------------------------------------------------------------------------- |
-| Include | All `*.md` files directly in this directory (non-recursive)                                                |
-| Order   | Lexicographic by filename — use numeric prefixes (`00-base-rules.md`, `10-reveal-js.md`, `20-chart-js.md`) |
-| Exclude | This `README.md`, and files starting with `_`                                                              |
-| Content | Plain markdown. Optional YAML frontmatter is stripped                                                      |
+| Rule    | Behavior                                                                                                  |
+| ------- | --------------------------------------------------------------------------------------------------------- |
+| Include | All `*.md` files directly in this directory (non-recursive)                                               |
+| Order   | Lexicographic by filename; use numeric prefixes (`00-base-rules.md`, `10-reveal-js.md`, `20-chart-js.md`) |
+| Exclude | This `README.md`, and files starting with `_`                                                             |
+| Content | Plain markdown. Optional YAML frontmatter is stripped                                                     |
 
 Do not duplicate the live approved-runtime URL list here. The MCP guide response generates it from
 `runtimes/manifest.json` through `buildRuntimeRegistryPromptSection()`.
@@ -21,5 +21,5 @@ their MCP equivalent when one exists; otherwise describe the equivalent conversa
 
 Packaged overrides:
 
-- `ARK_MCP_GUIDES_DIR` — alternate directory
-- `ARK_MCP_GUIDES_MAX_BYTES` — truncate concatenated guides past this size
+- `ARK_MCP_GUIDES_DIR`: alternate directory
+- `ARK_MCP_GUIDES_MAX_BYTES`: truncate concatenated guides past this size

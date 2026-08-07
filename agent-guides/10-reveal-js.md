@@ -4,15 +4,15 @@ Prefer not to use reveal.js for new decks unless the user asks for it. Keep it p
 
 ## Hard rules
 
-- Markers on `<html>`: `data-ark-runtime="reveal"`, `data-ark-runtime-lib="reveal.js"`, `data-ark-runtime-version="5.1.0"`. Do **not** set `data-ark-deck="nav"` — Ark’s reveal adapter owns navigation.
-- Structure: `.reveal > .slides > section` only — never `section.slide`. No `data-markdown` / `<textarea data-template>` (Markdown plugin unavailable).
+- Markers on `<html>`: `data-ark-runtime="reveal"`, `data-ark-runtime-lib="reveal.js"`, `data-ark-runtime-version="5.1.0"`. Do **not** set `data-ark-deck="nav"`; Ark’s reveal adapter owns navigation.
+- Structure: `.reveal > .slides > section` only; never `section.slide`. No `data-markdown` / `<textarea data-template>` (Markdown plugin unavailable).
 - Include all required runtime CSS/JS URLs from the system prompt registry list. CDN reveal.js URLs are invalid even if the version matches.
 - No deck-authored bridge/`postMessage` scripts, `Reveal.initialize(...)`, or reveal plugins (Markdown, Highlight, Notes). Inline `<script>` blocks are disallowed **except** Chart.js init when `data-ark-runtime-addon-lib="chart.js"` is set.
-- Only `theme/white.css` is vendored — override look in the deck’s inline `<style>`; do not link other reveal themes (`black`, `night`, `moon`, etc.).
+- Only `theme/white.css` is vendored; override look in the deck’s inline `<style>`; do not link other reveal themes (`black`, `night`, `moon`, etc.).
 - Do not promise: shell-controlled fragment step-through, speaker-notes UI / `S` key overlay, timer / `autoSlide`, PDF export, or custom keyboard / hash / controls (adapter disables that surface).
-- Transitions / controls / hash: rely on adapter defaults — do not configure via `Reveal.initialize()`.
+- Transitions / controls / hash: rely on adapter defaults; do not configure via `Reveal.initialize()`.
 - Fragments are still worth authoring for Present/keyboard later; shell nav does not step them. Thumbnails show all fragments visible.
-- Backgrounds: `data-background-color`, `data-background-gradient`, `data-background-image` (self-contained assets only — see base rules).
+- Backgrounds: `data-background-color`, `data-background-gradient`, `data-background-image` (self-contained assets only; see base rules).
 - `data-auto-animate` on sections can animate matched `data-id` elements between slides; still omit `Reveal.initialize()`.
 
 ```html
@@ -29,7 +29,7 @@ Prefer not to use reveal.js for new decks unless the user asks for it. Keep it p
     <title>Reveal Deck</title>
     <!-- Required CSS/JS URLs from the system prompt registry section -->
     <style>
-      /* deck-specific CSS — override theme/white.css here */
+      /* deck-specific CSS; override theme/white.css here */
     </style>
   </head>
   <body>
@@ -87,7 +87,7 @@ Useful classes: `fade-in`, `fade-out`, `fade-up`, `fade-down`, `fade-left`, `fad
 
 ## Code blocks
 
-No Highlight plugin — plain HTML + deck CSS:
+No Highlight plugin: plain HTML + deck CSS:
 
 ```html
 <section>
@@ -100,7 +100,7 @@ POST /users
 </section>
 ```
 
-Style `<pre>` / `<code>` in the deck’s inline `<style>`. `data-line-numbers` and highlight themes need Highlight — unsupported; do without.
+Style `<pre>` / `<code>` in the deck’s inline `<style>`. `data-line-numbers` and highlight themes need Highlight, which is unsupported; do without.
 
 ## Speaker notes
 
@@ -112,4 +112,4 @@ Style `<pre>` / `<code>` in the deck’s inline `<style>`. `data-line-numbers` a
 </section>
 ```
 
-Ark can parse notes; no speaker-notes UI in preview yet — still include when the user asks.
+Ark can parse notes; no speaker-notes UI in preview yet; still include when the user asks.

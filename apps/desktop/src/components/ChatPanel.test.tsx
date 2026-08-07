@@ -441,7 +441,7 @@ describe('ChatPanel submit control', () => {
               id: 'u2',
               role: 'user',
               content:
-                'Pick a visual direction — theme choice:\n- Theme: Midnight Editorial (id: midnight)',
+                'Pick a visual direction: theme choice:\n- Theme: Midnight Editorial (id: midnight)',
             },
           ]}
           onQuestionSubmit={vi.fn()}
@@ -450,7 +450,7 @@ describe('ChatPanel submit control', () => {
     )
 
     expect(screen.getByText('Chose theme: Midnight Editorial')).toBeInTheDocument()
-    expect(screen.queryByText(/Pick a visual direction — theme choice:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Pick a visual direction: theme choice:/)).not.toBeInTheDocument()
     expect(
       screen.queryByText('Pick the visual direction for the first draft.'),
     ).not.toBeInTheDocument()
@@ -500,7 +500,7 @@ describe('ChatPanel submit control', () => {
               id: 'u2',
               role: 'user',
               content:
-                'Shape your presentation — answers:\n- Who is the audience?: Customers\n- How many slides?: 8 slides',
+                'Shape your presentation: answers:\n- Who is the audience?: Customers\n- How many slides?: 8 slides',
             },
           ]}
           onQuestionSubmit={vi.fn()}
@@ -512,7 +512,7 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByText('Customers')).toBeInTheDocument()
     expect(screen.getByText('8 slides')).toBeInTheDocument()
     // Answer content must not appear as its own user bubble.
-    expect(screen.queryByText(/Shape your presentation — answers:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Shape your presentation: answers:/)).not.toBeInTheDocument()
   })
 
   it('shows a concise working status while generating', () => {
