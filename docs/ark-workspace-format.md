@@ -198,7 +198,7 @@ Concurrency: the main process keeps a registry `workspaceId → { path, open han
 ## Default location and recent index
 
 - Default: `Documents/Ark/`, configurable via native directory picker.
-- Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`. Ark may _suggest_ renaming when the agent establishes a title; never silently rename/move.
+- Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`. Ark may _suggest_ renaming when the agent establishes a title; never silently rename/move. A user-initiated rename (title bar / dashboard) does rename the `.ark` file in the default directory to match the new title (collision-safe); files at user-chosen paths keep their names — Move exists for that.
 - Support Save As…, Move to…, Reveal in file manager.
 - Dashboard = recent-file index at `<userData>/recent-workspaces.json`: workspace ID, path, cached title/updated-time/cover, last opened. Cache is disposable; `.ark` is authoritative. Missing file → "File not found · [Locate] [Remove from recent]". Ark may scan the default directory, never arbitrary drives.
 

@@ -28,7 +28,13 @@ type ChatSessionApi = ReturnType<typeof useChatSession>
 
 type DeckActionsDeckSlice = Pick<
   DeckPersistenceApi,
-  'deckId' | 'html' | 'persistHtml' | 'startNewDeck' | 'renameActiveDeck' | 'deleteActiveDeck'
+  | 'deckId'
+  | 'html'
+  | 'persistHtml'
+  | 'startNewDeck'
+  | 'renameActiveDeck'
+  | 'deleteActiveDeck'
+  | 'deckTitle'
 >
 
 type DeckActionsChatSlice = Pick<ChatSessionApi, 'appendMessage' | 'setMessages' | 'resetChat'>
@@ -63,6 +69,7 @@ export function useDeckActions({
     startNewDeck,
     renameActiveDeck,
     deleteActiveDeck,
+    deckTitle,
   } = deck
   const { appendMessage, setMessages, resetChat } = chat
 
@@ -73,12 +80,12 @@ export function useDeckActions({
       }
 
       const exportedHtml = await exportDeckHtml(deckId, variant === 'sanitized')
-      downloadHtml(exportedHtml)
+      downloadHtml(exportedHtml, { baseName: deckTitle })
       toast.success(
         variant === 'sanitized' ? 'Sanitized HTML deck downloaded' : 'HTML deck downloaded',
       )
     },
-    [deckId, generatedHtml],
+    [deckId, deckTitle, generatedHtml],
   )
 
   const handleUploadClick = useCallback(() => {

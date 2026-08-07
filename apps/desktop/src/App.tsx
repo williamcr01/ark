@@ -651,6 +651,7 @@ function useAppShell() {
       startNewDeck,
       renameActiveDeck,
       deleteActiveDeck,
+      deckTitle,
     },
     chat: {
       appendMessage,

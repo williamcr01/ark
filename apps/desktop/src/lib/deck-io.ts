@@ -10,11 +10,23 @@ export type DownloadHtmlOptions = {
   baseName?: string
 }
 
+function toDownloadBaseName(baseName: string) {
+  const sanitized = baseName
+    // Intentionally strips control characters from filesystem names.
+    // eslint-disable-next-line no-control-regex
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return sanitized || ''
+}
+
 export function downloadHtml(html: string, options: DownloadHtmlOptions = {}) {
   const variant = options.variant ?? 'original'
   const content = resolveDownloadHtml(html, variant)
   const date = new Date().toISOString().slice(0, 10)
-  const baseName = options.baseName ?? `ark-presentation-${date}`
+  const baseName = toDownloadBaseName(options.baseName ?? '') || `ark-presentation-${date}`
   const suffix = variant === 'sanitized' ? '-sanitized' : ''
   const blob = new Blob([content], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)

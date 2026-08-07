@@ -114,6 +114,58 @@ describe('WorkspaceStore file operations', () => {
     await expect(store.open(created.path)).resolves.toMatchObject({ origin: 'authored' })
   })
 
+  it('renames the on-disk file to match a new title in the default directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const originalPath = created.path
+    expect(path.basename(originalPath)).toBe('Workspace.ark')
+
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+
+    expect(renamed?.title).toBe('Board plan')
+    expect(renamed?.path).toBe(path.join(root, 'Board plan.ark'))
+    await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(renamed!.path)).resolves.toBeUndefined()
+    await expect(workspaces.get(created.id)).resolves.toMatchObject({
+      title: 'Board plan',
+      path: renamed?.path,
+    })
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, path: renamed?.path }),
+    ])
+  })
+
+  it('picks a collision-safe filename when the new title target already exists', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    await workspaces.rename(created.id, 'Board plan')
+    const second = await workspaces.create(html.replace('Hello', 'Second'))
+    await workspaces.rename(second.id, 'Board plan')
+
+    const secondPath = (await workspaces.get(second.id))?.path
+    expect(path.basename(secondPath!)).toBe('Board plan 2.ark')
+    await expect(access(secondPath!)).resolves.toBeUndefined()
+    await expect(access(path.join(root, 'Board plan.ark'))).resolves.toBeUndefined()
+  })
+
+  it('keeps a user-chosen path name when renaming outside the default directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const externalDir = await mkdtemp(path.join(os.tmpdir(), 'ark-external-'))
+    try {
+      const externalPath = path.join(externalDir, 'My chosen name.ark')
+      await workspaces.move(created.id, externalPath)
+
+      const renamed = await workspaces.rename(created.id, 'Board plan')
+
+      expect(renamed?.title).toBe('Board plan')
+      expect(renamed?.path).toBe(externalPath)
+      await expect(access(externalPath)).resolves.toBeUndefined()
+    } finally {
+      await rm(externalDir, { recursive: true, force: true })
+    }
+  })
+
   it('supports Save As and Move without overwriting another file', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)

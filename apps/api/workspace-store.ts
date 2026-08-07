@@ -476,10 +476,10 @@ export class WorkspaceStore {
     await this.persistRecent()
   }
 
-  private async uniquePath(title: string) {
+  private async uniquePath(title: string, directory: string = this.rootDir) {
     const stem = safeFileStem(title)
     for (let suffix = 1; ; suffix += 1) {
-      const candidate = path.join(this.rootDir, `${stem}${suffix === 1 ? '' : ` ${suffix}`}.ark`)
+      const candidate = path.join(directory, `${stem}${suffix === 1 ? '' : ` ${suffix}`}.ark`)
       try {
         await access(candidate)
       } catch {
@@ -663,9 +663,40 @@ export class WorkspaceStore {
     await this.index()
     const open = this.openById(id)
     if (!open) return null
-    open.database
-      .prepare('UPDATE workspace SET title = ?, updated_at = ?')
-      .run(normalizeDeckTitle(rawTitle), new Date().toISOString())
+    const previous = readWorkspace(open)
+    const title = normalizeDeckTitle(rawTitle)
+    const now = new Date().toISOString()
+
+    // Keep the on-disk filename in sync with the title for Ark-managed files in
+    // the default workspaces directory, where the name is derived from the
+    // title at creation. Files at user-chosen paths keep their names; Move
+    // exists for that. A title that already matches the current filename skips
+    // the file rename entirely.
+    if (path.dirname(open.path) === this.defaultDir) {
+      const targetPath = await this.uniquePath(title, path.dirname(open.path))
+      if (targetPath !== open.path) {
+        open.database.prepare('UPDATE workspace SET title = ?, updated_at = ?').run(title, now)
+        open.database.close()
+        this.byId.delete(id)
+        this.byPath.delete(open.path)
+        try {
+          await rename(open.path, targetPath)
+          const workspace = readWorkspace(this.openFile(targetPath))
+          await this.touchRecent(workspace)
+          return workspace
+        } catch (error) {
+          // Roll the file rename back: reopen the original path and restore the
+          // previous title so the deck does not half-rename.
+          const reopened = this.openFile(open.path)
+          reopened.database
+            .prepare('UPDATE workspace SET title = ?, updated_at = ?')
+            .run(previous.title, previous.updatedAt)
+          throw error
+        }
+      }
+    }
+
+    open.database.prepare('UPDATE workspace SET title = ?, updated_at = ?').run(title, now)
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace

@@ -327,6 +327,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         const deck = await renameDeck(deckId, title)
 
         setDeckTitle(deck.title)
+        setFilePath(deck.filePath)
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not rename the deck.'

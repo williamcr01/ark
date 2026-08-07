@@ -124,4 +124,27 @@ describe('useDeckPersistence', () => {
 
     expect(result.current.filePath).toBe(savedAs.filePath)
   })
+
+  it('adopts the renamed workspace path alongside the new title', async () => {
+    const renamed = { ...deck, title: 'Board plan', filePath: '/tmp/Board plan.ark' }
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/decks') return jsonResponse({ decks: [summary] })
+      if (url === `/api/decks/${deck.id}` && init?.method === 'PATCH') {
+        return jsonResponse({ deck: renamed })
+      }
+      if (url === `/api/decks/${deck.id}`) return jsonResponse({ deck })
+      return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.renameActiveDeck('Board plan')
+    })
+
+    expect(result.current.deckTitle).toBe('Board plan')
+    expect(result.current.filePath).toBe('/tmp/Board plan.ark')
+  })
 })

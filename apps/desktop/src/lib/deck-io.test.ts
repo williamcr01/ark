@@ -40,4 +40,16 @@ describe('downloadHtml', () => {
     expect(createdLinks[0]?.download).toBe('demo-deck-sanitized.html')
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1)
   })
+
+  it('sanitizes deck titles into safe download filenames', () => {
+    downloadHtml(plainCssDeck, { baseName: 'Q3: Board "Plan"? / 2025' })
+
+    expect(createdLinks[0]?.download).toBe('Q3 Board Plan 2025.html')
+  })
+
+  it('falls back to a dated generic name when the title is unusable', () => {
+    downloadHtml(plainCssDeck, { baseName: '***' })
+
+    expect(createdLinks[0]?.download).toMatch(/^ark-presentation-\d{4}-\d{2}-\d{2}\.html$/)
+  })
 })
