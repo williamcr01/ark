@@ -2,22 +2,27 @@ import { useEffect, useState } from 'react'
 import { LaptopIcon, MoonIcon, SunIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Input } from '@/components/ui/input'
 import type { AppearancePreference } from '@/hooks/useAppearance'
+import { updateDesktopSettings } from '@/lib/desktop-settings'
 
 export function GeneralSettingsSection({
   appearancePreference,
+  onAgentInteractionsInModalChange,
   onAppearanceChange,
   onMessage,
   open,
 }: {
   appearancePreference: AppearancePreference
+  onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange: (preference: AppearancePreference) => void
   onMessage: (message: string) => void
   open: boolean
 }) {
   const [workspaceDirectory, setWorkspaceDirectory] = useState('')
+  const [agentInteractionsInModal, setAgentInteractionsInModal] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -25,7 +30,9 @@ export function GeneralSettingsSection({
     void window.arkDesktop.settings
       .get()
       .then((settings) => {
-        if (!cancelled) setWorkspaceDirectory(settings.defaultWorkspaceDirectory ?? '')
+        if (cancelled) return
+        setWorkspaceDirectory(settings.defaultWorkspaceDirectory ?? '')
+        setAgentInteractionsInModal(settings.agentInteractionsInModal === true)
       })
       .catch((error) => {
         if (!cancelled)
@@ -65,6 +72,29 @@ export function GeneralSettingsSection({
             Dark
           </ToggleGroupItem>
         </ToggleGroup>
+      </section>
+      <section className="flex flex-col gap-2">
+        <div>
+          <h2 className="font-medium">Agent prompts</h2>
+          <p className="text-xs text-muted-foreground">
+            Keep Ark’s questions and theme choices visible while the chat panel is closed.
+          </p>
+        </div>
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox
+            aria-label="Show Ark agent prompts in a modal"
+            checked={agentInteractionsInModal}
+            onCheckedChange={(checked) => {
+              const next = checked === true
+              setAgentInteractionsInModal(next)
+              onAgentInteractionsInModalChange?.(next)
+              void updateDesktopSettings({ agentInteractionsInModal: next })
+            }}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="font-medium">Show Ark agent prompts in a modal</span>
+          </span>
+        </label>
       </section>
       <section className="flex flex-col gap-2">
         <div>

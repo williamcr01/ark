@@ -126,6 +126,38 @@ describe('DesktopSettingsDialog', () => {
     expect(await screen.findByText(/kept until Ark quits/)).toBeInTheDocument()
   })
 
+  it('toggles modal prompts for the normal agent', async () => {
+    const update = vi.fn().mockResolvedValue({
+      agentInteractionsInModal: true,
+      defaultWorkspaceDirectory: null,
+    })
+    const onChange = vi.fn()
+    window.arkDesktop.settings.get = vi.fn().mockResolvedValue({
+      agentInteractionsInModal: false,
+      defaultWorkspaceDirectory: null,
+    })
+    window.arkDesktop.settings.update = update
+
+    render(
+      <DesktopSettingsDialog
+        appearancePreference="system"
+        onAgentInteractionsInModalChange={onChange}
+        onAppearanceChange={vi.fn()}
+        onCredentialsChanged={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Show Ark agent prompts in a modal' })
+    expect(checkbox).not.toBeChecked()
+    await userEvent.click(checkbox)
+
+    expect(update).toHaveBeenCalledWith({ agentInteractionsInModal: true })
+    expect(onChange).toHaveBeenCalledWith(true)
+    expect(checkbox).toBeChecked()
+  })
+
   it('starts MCP and shows copyable client commands', async () => {
     const running = {
       state: 'running' as const,

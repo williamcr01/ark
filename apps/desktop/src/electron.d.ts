@@ -21,6 +21,7 @@ type DesktopSettings = {
   selectedModel: string | null
   defaultWorkspaceDirectory: string | null
   mcpAutoStart: boolean
+  agentInteractionsInModal: boolean
 }
 
 declare global {

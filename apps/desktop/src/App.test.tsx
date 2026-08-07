@@ -1,6 +1,7 @@
-import { act, fireEvent } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resetDesktopSettingsForTests } from '@/lib/desktop-settings'
 import { getTestLocalStorage } from '@/test/storage'
 import { renderWithRouter } from '@/test/render-with-router'
 
@@ -14,6 +15,7 @@ const persistenceCallbacks = vi.hoisted(() => ({
   refreshActiveDeck: vi.fn(),
 }))
 const generationState = vi.hoisted(() => ({ generateDeck: vi.fn() }))
+const chatSessionState = vi.hoisted(() => ({ messages: [] as Array<Record<string, unknown>> }))
 const assetApi = vi.hoisted(() => ({
   uploadDeckAsset: vi.fn(),
 }))
@@ -54,7 +56,7 @@ vi.mock('@/hooks/useChatSession', () => ({
   useChatSession: () => ({
     appendMessage: vi.fn(),
     getMessageDeliveryStatus: vi.fn(),
-    messages: [],
+    messages: chatSessionState.messages,
     reloadChat: vi.fn(),
     resetChat: vi.fn(),
     retryPersist: vi.fn(),
@@ -137,6 +139,8 @@ describe('App chat panel layout', () => {
     deckPreviewLifecycle.mounts = 0
     deckPreviewLifecycle.unmounts = 0
     deckPreviewRenders.count = 0
+    chatSessionState.messages = []
+    resetDesktopSettingsForTests()
   })
 
   afterEach(() => {
@@ -155,6 +159,73 @@ describe('App chat panel layout', () => {
     const { getAllByTestId } = renderWithRouter(<App />)
 
     expect(getAllByTestId('chat-panel')).toHaveLength(1)
+  })
+
+  it('shows an MCP interaction over the app when the chat panel is closed', async () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '0')
+    window.arkDesktop.mcp.getPendingInteraction = vi.fn().mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      deckId: 'deck-1',
+      baseDocumentRevision: 1,
+      clientName: 'Codex',
+      createdAt: '2026-08-06T12:00:00.000Z',
+      expiresAt: '2026-08-06T12:30:00.000Z',
+      kind: 'questions',
+      request: {
+        title: 'Shape the deck',
+        questions: [
+          {
+            id: 'audience',
+            question: 'Who is the audience?',
+            type: 'single',
+            options: ['Board', 'Customers'],
+          },
+        ],
+      },
+    })
+
+    renderWithRouter(<App />)
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Codex needs your input')).toBeInTheDocument()
+    expect(screen.queryByTestId('chat-panel')).not.toBeInTheDocument()
+  })
+
+  it('routes normal agent interactions to the modal when enabled', async () => {
+    mediaState.isDesktop = true
+    resetDesktopSettingsForTests({ agentInteractionsInModal: true })
+    chatSessionState.messages = [
+      { id: 'u1', role: 'user', content: 'Build a deck' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'A question first',
+        parts: [
+          {
+            type: 'tool-call',
+            toolName: 'ask_user',
+            input: {
+              title: 'Shape the deck',
+              questions: [
+                {
+                  id: 'audience',
+                  question: 'Who is the audience?',
+                  type: 'single',
+                  options: ['Board', 'Customers'],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]
+
+    renderWithRouter(<App />)
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getAllByText('Shape the deck').length).toBeGreaterThan(0)
+    expect(chatPanelProps.calls.at(-1)?.interactiveToolsInModal).toBe(true)
   })
 
   it('passes identical chat panel props in both layouts', () => {

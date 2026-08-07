@@ -21,12 +21,14 @@ describe('desktop settings', () => {
       migratedLegacyRendererPreferences: false,
       reasoningEffortByModel: {},
       selectedModel: null,
+      agentInteractionsInModal: false,
     })
     window.arkDesktop.settings.update = vi.fn().mockImplementation(async (patch) => ({
       appearance: 'system',
       migratedLegacyRendererPreferences: false,
       reasoningEffortByModel: {},
       selectedModel: null,
+      agentInteractionsInModal: false,
       ...patch,
     }))
 
@@ -37,6 +39,7 @@ describe('desktop settings', () => {
       migratedLegacyRendererPreferences: true,
       reasoningEffortByModel: { 'openai:gpt-5.6-luna': 'high' },
       selectedModel: 'openai:gpt-5.6-luna',
+      agentInteractionsInModal: false,
     })
     expect(localStorage.getItem('ark:appearance')).toBeNull()
     expect(localStorage.getItem('ark:selected-model')).toBeNull()
