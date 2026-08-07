@@ -16,9 +16,11 @@ import { applyDeckEdits } from './deck-edit.ts'
 import { applyElementPatch } from './deck-element-patch.ts'
 import { stampEditableElementIds } from './deck-editable-elements.ts'
 import { validateDeckDocumentOnServer } from './deck-validate.ts'
+import type { Logger } from './observability/logger.ts'
 
 export type ApplyDeckPatchesOptions = {
   activeSlideIndex?: number
+  logger?: Logger
 }
 
 type ResolvedSlide = {
@@ -544,7 +546,11 @@ export function applyDeckPatches(
   const liveDom = getLiveDom()
   if (liveDom) {
     workingHtml = serializeDeckHtml(liveDom)
-    validation = validateDeckDocumentOnServer(liveDom.window.document, workingHtml)
+    validation = validateDeckDocumentOnServer(
+      liveDom.window.document,
+      workingHtml,
+      options.logger ? { logger: options.logger } : undefined,
+    )
     closeDom()
   } else {
     flushDom()

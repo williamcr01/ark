@@ -21,8 +21,9 @@ export function createDecksRouter(deps: {
   deckStore: DeckStore
   assetStore: AssetStore
   onDocumentPersisted?: (deckId: string, documentRevision: number) => void
+  onEditorPatchPersisted?: (deckId: string, documentRevision: number) => void
 }): Router {
-  const { deckStore, assetStore, onDocumentPersisted } = deps
+  const { deckStore, assetStore, onDocumentPersisted, onEditorPatchPersisted } = deps
   const router = Router()
 
   const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
@@ -224,8 +225,10 @@ export function createDecksRouter(deps: {
         }
 
         const { applyDeckPatches } = await import('../deck-patch.ts')
+        const logger = getRequestLogger(request)
         const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
           activeSlideIndex: parsedBody.data.activeSlideIndex,
+          logger,
         })
 
         if (!patched.ok) {
@@ -241,7 +244,7 @@ export function createDecksRouter(deps: {
         const validation =
           patched.validation ??
           validateDeckHtmlOnServer(patched.html, {
-            logger: getRequestLogger(request),
+            logger,
           })
 
         if (!validation.valid) {
@@ -258,7 +261,11 @@ export function createDecksRouter(deps: {
           return
         }
 
-        notifyDocumentPersisted(deck.id, deck.documentRevision)
+        if (onEditorPatchPersisted) {
+          onEditorPatchPersisted(deck.id, deck.documentRevision)
+        } else {
+          notifyDocumentPersisted(deck.id, deck.documentRevision)
+        }
 
         response.json({
           deck,

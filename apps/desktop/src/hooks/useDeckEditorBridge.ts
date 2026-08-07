@@ -52,6 +52,7 @@ export type DeckEditorBridgeState = {
   slideBounds: EditorNormalizedRect | null
   selectionZIndex: number | null
   editorError: string | null
+  /** First preview frame as a gesture-in-progress marker; latest geometry is delivered through the ref/listener. */
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
   transformCancelSequence: number
@@ -220,6 +221,7 @@ export function useDeckEditorBridge(
   const setTransformPreviewListener = useCallback(
     (listener: ((preview: EditorTransformPreviewMessage | null) => void) | null) => {
       transformPreviewListenerRef.current = listener
+      listener?.(transformPreviewRef.current)
     },
     [],
   )
@@ -441,18 +443,35 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorTransformCommitMessage(data)) {
+        if (
+          selectionIdentityRef.current?.elementId !== data.elementId ||
+          selectionIdentityRef.current.slideIndex !== data.slideIndex
+        ) {
+          // Ignore a late commit for an element that is no longer selected.
+          return
+        }
+
         publishTransformPreview(null)
-        setState((current) => ({
-          ...current,
-          transformCommit: data,
-          transformPreview: null,
-          geometry: data.geometry,
-          slideBounds: data.slideBounds ?? current.slideBounds,
-          selectionZIndex:
-            data.zIndex !== undefined && data.zIndex !== null
-              ? data.zIndex
-              : current.selectionZIndex,
-        }))
+        setState((current) => {
+          if (
+            current.selection?.elementId !== data.elementId ||
+            current.selection.slideIndex !== data.slideIndex
+          ) {
+            return current
+          }
+
+          return {
+            ...current,
+            transformCommit: data,
+            transformPreview: null,
+            geometry: data.geometry,
+            slideBounds: data.slideBounds ?? current.slideBounds,
+            selectionZIndex:
+              data.zIndex !== undefined && data.zIndex !== null
+                ? data.zIndex
+                : current.selectionZIndex,
+          }
+        })
         return
       }
 

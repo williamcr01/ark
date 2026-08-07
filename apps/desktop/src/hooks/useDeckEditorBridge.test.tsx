@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -22,6 +22,7 @@ import {
   createEditorTransformEndMessage,
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
+  type EditorTransformPreviewMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 import {
   OPAQUE_SANDBOX_ORIGIN,
@@ -42,6 +43,7 @@ function EditorHarness({
   canPostToFrame,
   shouldAcceptInbound,
   onSelectionChange,
+  transformPreviewListener,
 }: {
   enabled?: boolean
   sandboxOrigin?: string | null
@@ -51,6 +53,7 @@ function EditorHarness({
   canPostToFrame?: () => boolean
   shouldAcceptInbound?: () => boolean
   onSelectionChange?: (selection: { elementId: string } | null) => void
+  transformPreviewListener?: (preview: EditorTransformPreviewMessage | null) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previousGenerationKeyRef = useRef(iframeGenerationKey)
@@ -64,7 +67,16 @@ function EditorHarness({
     shouldAcceptInbound,
     onSelectionChange,
   })
-  const { enableEditor } = bridge
+  const { enableEditor, setTransformPreviewListener } = bridge
+
+  useLayoutEffect(() => {
+    if (!transformPreviewListener) {
+      return
+    }
+
+    setTransformPreviewListener(transformPreviewListener)
+    return () => setTransformPreviewListener(null)
+  }, [setTransformPreviewListener, transformPreviewListener])
   const selectionIdentityRef = useRef(bridge.selection)
   const [selectionIdentityVersion, setSelectionIdentityVersion] = useState(0)
 
@@ -748,6 +760,97 @@ describe('useDeckEditorBridge', () => {
     })
 
     expect(screen.getByLabelText('Hover geometry')).toHaveTextContent('none')
+  })
+
+  it('replays an active preview when the listener is registered again', async () => {
+    const firstListener = vi.fn()
+    const secondListener = vi.fn()
+    const { rerender } = render(
+      <EditorHarness sandboxOrigin={sandboxOrigin} transformPreviewListener={firstListener} />,
+    )
+    const iframeWindow = getIframeWindow()
+    const geometry = { x: 0.1, y: 0.2, width: 0.5, height: 0.1 }
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTransformPreviewMessage('ark-el-title', 0, geometry),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(firstListener).toHaveBeenLastCalledWith(
+      expect.objectContaining({ elementId: 'ark-el-title', geometry }),
+    )
+
+    rerender(
+      <EditorHarness sandboxOrigin={sandboxOrigin} transformPreviewListener={secondListener} />,
+    )
+
+    expect(secondListener).toHaveBeenCalledWith(
+      expect.objectContaining({ elementId: 'ark-el-title', geometry }),
+    )
+  })
+
+  it('ignores a late transform commit for an element that is no longer selected', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+    const geometry = { x: 0.1, y: 0.2, width: 0.5, height: 0.1 }
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-title',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'h1',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Title',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorGeometryMessage('ark-el-title', 0, geometry),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage({
+            elementId: 'ark-el-body',
+            slideIndex: 0,
+            slideId: null,
+            tagName: 'p',
+            locked: false,
+            managed: false,
+            editableKind: null,
+            textPreview: 'Body',
+          }),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorTransformCommitMessage('ark-el-title', 0, geometry),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-body')
+    expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
+    expect(screen.getByLabelText('Transform commit')).toHaveTextContent('none')
   })
 
   it('clears transform state when the runtime cancels a gesture', async () => {

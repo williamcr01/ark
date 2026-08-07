@@ -261,7 +261,7 @@ export function createDeckTools(
         }
 
         const { applyDeckPatches } = await import('./deck-patch.ts')
-        const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex })
+        const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {
           return { ok: false, error: patched.error, operationIndex: patched.operationIndex }
@@ -313,7 +313,7 @@ export function createDeckTools(
         }
 
         const { applyDeckPatches } = await import('./deck-patch.ts')
-        const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex })
+        const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {
           return { ok: false, error: patched.error, operationIndex: patched.operationIndex }

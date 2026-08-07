@@ -110,6 +110,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const mcpInteractionStore =
     options.mcpInteractionStore ?? createMcpInteractionStore(options.onMcpInteractionChanged)
   const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
+    scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
+  const notifyEditorPatchPersisted = (deckId: string, documentRevision: number) =>
     scheduleThumbnailWarm(thumbnailService, deckId, documentRevision, 250)
   const runMcpTool = createMcpRunner({
     deckStore,
@@ -161,6 +163,7 @@ export function createApp(options: CreateAppOptions = {}) {
       deckStore,
       assetStore,
       onDocumentPersisted: notifyDocumentPersisted,
+      onEditorPatchPersisted: notifyEditorPatchPersisted,
     }),
   )
   app.use(createThumbnailsRouter({ deckStore, thumbnailService }))
