@@ -83,11 +83,15 @@ function buildSucceededAssistantMessage(
     ? `${outcome.assistantContent}${validationNote}`
     : `Generated a complete self-contained HTML slide deck.${validationNote}`
   const assistantParts = [...outcome.assistantParts]
-  const existingText = assistantParts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.content)
-    .join('\n')
-    .trim()
+  let existingText = ''
+
+  for (const part of assistantParts) {
+    if (part.type === 'text') {
+      existingText += part.content + '\n'
+    }
+  }
+
+  existingText = existingText.trim()
   const extraText = content.trim()
 
   if (extraText && extraText !== existingText && !existingText.endsWith(extraText)) {
@@ -211,9 +215,7 @@ export function useDeckGenerationFlow({
       } catch {
         toast.error('Deck generated but could not be refreshed in the editor')
       } finally {
-        if (outcome.deckChanged) {
-          setIsPreviewUpdating(false)
-        }
+        setIsPreviewUpdating((current) => (outcome.deckChanged ? false : current))
       }
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')

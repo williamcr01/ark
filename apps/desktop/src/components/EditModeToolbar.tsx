@@ -22,19 +22,22 @@ import { cn } from '@/lib/utils'
 
 export type EditModeToolbarProps = {
   activeTool: EditorTool
-  canEditText: boolean
-  canRedo?: boolean
-  canUndo?: boolean
-  hasDeck: boolean
-  hasSelection: boolean
+  /** Orthogonal editor capability flags (grouped to keep the props surface small). */
+  state: {
+    canEditText: boolean
+    canRedo: boolean
+    canUndo: boolean
+    hasDeck: boolean
+    hasSelection: boolean
+    isGenerating: boolean
+    isSaving: boolean
+    selectedImage: boolean
+    selectionLocked: boolean
+    selectionManaged: boolean
+    textEditActive: boolean
+  }
   imageAlt?: string
   imageFit?: ImageFitMode
-  isGenerating: boolean
-  isSaving: boolean
-  selectedImage?: boolean
-  selectionLocked: boolean
-  selectionManaged: boolean
-  textEditActive: boolean
   onBringForward?: () => void
   onDelete?: () => void
   onDuplicate?: () => void
@@ -94,19 +97,9 @@ function ToolbarButton({
 
 export function EditModeToolbar({
   activeTool,
-  canEditText,
-  canRedo = false,
-  canUndo = false,
-  hasDeck,
-  hasSelection,
+  state,
   imageAlt = '',
   imageFit = 'contain',
-  isGenerating,
-  isSaving,
-  selectedImage = false,
-  selectionLocked,
-  selectionManaged,
-  textEditActive,
   onBringForward,
   onDelete,
   onDuplicate,
@@ -119,6 +112,19 @@ export function EditModeToolbar({
   onToolChange,
   onUndo,
 }: EditModeToolbarProps) {
+  const {
+    canEditText,
+    canRedo,
+    canUndo,
+    hasDeck,
+    hasSelection,
+    isGenerating,
+    isSaving,
+    selectedImage,
+    selectionLocked,
+    selectionManaged,
+    textEditActive,
+  } = state
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
   const canModifySelection = hasSelection && !selectionLocked && !toolbarDisabled && !textEditActive
   const canReorderSelection = canModifySelection && selectionManaged

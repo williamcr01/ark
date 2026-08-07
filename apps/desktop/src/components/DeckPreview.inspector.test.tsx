@@ -1,19 +1,22 @@
-import { type ComponentProps } from 'react'
+import { createRef, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import fullJsDeck from '@fixtures/full-js-deck.html?raw'
+import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
+import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
+import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
 import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import {
-  createEditorTransformCommitMessage,
   type EditorNormalizedRect,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 
-import { DeckPreview } from './DeckPreview'
+import { DeckPreview, type DeckPreviewHandle } from './DeckPreview'
 
 function renderDeckPreview(props: ComponentProps<typeof DeckPreview>) {
   return render(
@@ -108,6 +111,11 @@ const editorBridgeOptionsMock = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
   useDeckEditorBridge: (...args: unknown[]) => {
     editorBridgeOptionsMock(...args)
+    // Simulate the real bridge's event-driven selection reporting so the
+    // shell-facing onEditorSelectionChange prop receives the same events the
+    // real editor MessagePort listener emits.
+    const options = args[1] as { onSelectionChange?: (selection: unknown) => void } | undefined
+    options?.onSelectionChange?.(editorBridgeMock.selection)
     return editorBridgeMock
   },
 }))
@@ -140,8 +148,16 @@ vi.mock('@/hooks/useElementSize', () => ({
 
 const plainDeckProps = {
   html: plainCssDeck,
-  isGenerating: false,
-  isStripOpen: false,
+  state: {
+    canRedo: false,
+    canUndo: false,
+    editorBridgeEnabled: false,
+    isDeckLoading: false,
+    isGenerating: false,
+    isPreviewUpdating: false,
+    isStripOpen: false,
+    isTextEditSaving: false,
+  },
   layout: 'desktop' as const,
   deckAnalysis: analyzeDeckInBrowser(plainCssDeck),
 }
@@ -186,512 +202,481 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeOptionsMock.mockClear()
   })
 
-  it('shows locked messaging for locked selections', async () => {
-    editorBridgeMock.selection = {
-      elementId: 'locked-el',
-      slideIndex: 0,
-      slideId: null,
-      tagName: 'h1',
-      locked: true,
-      managed: false,
-      editableKind: null,
-      textPreview: 'Runtime title',
-    }
+  it('tears down the preview and reports when the iframe self-navigates', async () => {
+    renderDeckPreview(plainDeckProps)
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    const iframe = screen.getByTitle('Generated Ark presentation preview')
 
-    expect(screen.getAllByText('Locked').length).toBeGreaterThan(0)
-    expect(screen.queryByRole('button', { name: 'Edit selected text' })).not.toBeInTheDocument()
-  })
+    fireEvent.load(iframe)
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
 
-  it('keeps layer actions disabled until an unlocked selection is adopted', async () => {
-    const user = userEvent.setup()
-    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
-    editorBridgeMock.selection = {
-      elementId: 'transient-el-0-0',
-      slideIndex: 0,
-      slideId: null,
-      tagName: 'h1',
-      locked: false,
-      managed: false,
-      editableKind: null,
-      textPreview: 'Quarterly planning',
-    }
+    fireEvent.load(iframe)
 
-    renderDeckPreview({
-      ...plainDeckProps,
-      editorBridgeEnabled: true,
-      onPatchEditorOperations,
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Delete selected element' }))
-    expect(screen.getByRole('button', { name: 'Bring forward' })).toBeDisabled()
-
-    expect(onPatchEditorOperations.mock.calls.map(([operations]) => operations[0]?.op)).toEqual([
-      'delete_element',
-    ])
-  })
-
-  it('keeps the floating inspector closed until settings is clicked', async () => {
-    const user = userEvent.setup()
-
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-box',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'div',
-      locked: false,
-      managed: true,
-      editableKind: 'text-box',
-      textPreview: 'New text',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    expect(screen.queryByRole('dialog', { name: 'Element inspector' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Element settings' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Element settings' }))
-    expect(screen.getByRole('dialog', { name: 'Element inspector' })).toBeInTheDocument()
-  })
-
-  it('shows the floating inspector settings trigger on mobile when selected', async () => {
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-box',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'div',
-      locked: false,
-      managed: true,
-      editableKind: 'text-box',
-      textPreview: 'New text',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    renderDeckPreview({ ...plainDeckProps, layout: 'mobile', editorBridgeEnabled: true })
-
-    expect(screen.getByRole('button', { name: 'Element settings' })).toBeInTheDocument()
-    expect(screen.queryByRole('dialog', { name: 'Element inspector' })).not.toBeInTheDocument()
-  })
-
-  it('closes the floating inspector when the selection clears', async () => {
-    const user = userEvent.setup()
-
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-box',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'div',
-      locked: false,
-      managed: true,
-      editableKind: 'text-box',
-      textPreview: 'New text',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    const { rerender } = renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
-    await user.click(screen.getByRole('button', { name: 'Element settings' }))
-    expect(screen.getByRole('dialog', { name: 'Element inspector' })).toBeInTheDocument()
-
-    editorBridgeMock.selection = null
-    editorBridgeMock.geometry = null
-    rerender(
-      <TooltipProvider>
-        <DeckPreview {...plainDeckProps} editorBridgeEnabled />
-      </TooltipProvider>,
-    )
-
-    expect(screen.queryByRole('button', { name: 'Element settings' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('dialog', { name: 'Element inspector' })).not.toBeInTheDocument()
-  })
-
-  it('dispatches inspector geometry edits through the patch callback', async () => {
-    const user = userEvent.setup()
-    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
-
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-box',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'div',
-      locked: false,
-      managed: true,
-      geometryEditable: true,
-      editableKind: 'text-box',
-      textPreview: 'New text',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    renderDeckPreview({
-      ...plainDeckProps,
-      editorBridgeEnabled: true,
-      onPatchEditorOperations,
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Element settings' }))
-
-    const xInput = screen.getByRole('textbox', { name: 'X (%)' })
-    await user.clear(xInput)
-    await user.type(xInput, '50{enter}')
-
-    expect(onPatchEditorOperations).toHaveBeenCalledTimes(1)
-    expect(onPatchEditorOperations).toHaveBeenCalledWith(
-      [
-        {
-          op: 'move_element',
-          elementId: 'ark-el-box',
-          slideIndex: 0,
-          slideId: 'slide-1',
-          x: 0.5,
-          y: 0.1,
-        },
-      ],
-      0,
-      'Moved element',
-    )
-  })
-
-  it('restores the selection after the preview reloads with patched HTML', async () => {
-    const user = userEvent.setup()
-    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
-
-    editorBridgeMock.editorReady = true
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-box',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'div',
-      locked: false,
-      managed: true,
-      geometryEditable: true,
-      editableKind: 'text-box',
-      textPreview: 'New text',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    const props = {
-      ...plainDeckProps,
-      editorBridgeEnabled: true,
-      onPatchEditorOperations,
-    }
-    const { rerender } = renderDeckPreview(props)
-
-    // Commit an inspector edit; this schedules a reselect for the element.
-    await user.click(screen.getByRole('button', { name: 'Element settings' }))
-
-    const xInput = screen.getByRole('textbox', { name: 'X (%)' })
-    await user.clear(xInput)
-    await user.type(xInput, '50{enter}')
-
-    expect(onPatchEditorOperations).toHaveBeenCalledTimes(1)
-    expect(editorBridgeMock.selectElement).not.toHaveBeenCalled()
-
-    // The patched HTML produces a new preview session; the bridge resets.
-    previewFrameMock.iframeKey = 'patched-preview'
-    editorBridgeMock.selection = null
-    editorBridgeMock.geometry = null
-
-    rerender(
-      <TooltipProvider>
-        <DeckPreview {...props} />
-      </TooltipProvider>,
-    )
-
-    expect(editorBridgeMock.selectElement).toHaveBeenCalledWith('ark-el-box', 0)
-  })
-
-  it('reselects an adopted element by its server-assigned stable id', async () => {
-    const onPatchEditorOperations = vi.fn().mockResolvedValue({
-      patch: { changedElementIds: ['ark-el-stable'] },
-    })
-    const geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-    editorBridgeMock.editorReady = true
-    editorBridgeMock.selection = {
-      elementId: 'transient-el-0-0',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'h1',
-      locked: false,
-      managed: false,
-      editableKind: 'text',
-      textPreview: 'Title',
-    }
-    editorBridgeMock.geometry = geometry
-    const props = { ...plainDeckProps, editorBridgeEnabled: true, onPatchEditorOperations }
-    const { rerender } = renderDeckPreview(props)
-
-    editorBridgeMock.transformCommit = createEditorTransformCommitMessage(
-      'transient-el-0-0',
-      0,
-      geometry,
-      undefined,
-      undefined,
-      true,
-    )
-    rerender(
-      <TooltipProvider>
-        <DeckPreview {...props} />
-      </TooltipProvider>,
-    )
-    await act(async () => undefined)
-
-    previewFrameMock.iframeKey = 'adopted-preview'
-    editorBridgeMock.selection = null
-    editorBridgeMock.geometry = null
-    editorBridgeMock.transformCommit = null
-    rerender(
-      <TooltipProvider>
-        <DeckPreview {...props} />
-      </TooltipProvider>,
-    )
-
-    expect(editorBridgeMock.selectElement).toHaveBeenCalledWith('ark-el-stable', 0)
-  })
-
-  it('does not reselect when the user already selected another element', async () => {
-    const user = userEvent.setup()
-    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
-
-    editorBridgeMock.editorReady = true
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-box',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'div',
-      locked: false,
-      managed: true,
-      geometryEditable: true,
-      editableKind: 'text-box',
-      textPreview: 'New text',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    const props = {
-      ...plainDeckProps,
-      editorBridgeEnabled: true,
-      onPatchEditorOperations,
-    }
-    const { rerender } = renderDeckPreview(props)
-
-    await user.click(screen.getByRole('button', { name: 'Element settings' }))
-
-    const xInput = screen.getByRole('textbox', { name: 'X (%)' })
-    await user.clear(xInput)
-    await user.type(xInput, '50{enter}')
-
-    previewFrameMock.iframeKey = 'patched-preview'
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-other',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'p',
-      locked: false,
-      managed: false,
-      editableKind: null,
-      textPreview: 'Other',
-    }
-
-    rerender(
-      <TooltipProvider>
-        <DeckPreview {...props} />
-      </TooltipProvider>,
-    )
-
-    expect(editorBridgeMock.selectElement).not.toHaveBeenCalled()
-  })
-
-  it('shows inspector image controls for image selections and dispatches fit changes', async () => {
-    const user = userEvent.setup()
-    const onPatchEditorOperations = vi.fn().mockResolvedValue(undefined)
-
-    editorBridgeMock.selection = {
-      elementId: 'ark-el-img',
-      slideIndex: 0,
-      slideId: 'slide-1',
-      tagName: 'img',
-      locked: false,
-      managed: false,
-      editableKind: 'image',
-      textPreview: 'A chart',
-    }
-    editorBridgeMock.geometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-    renderDeckPreview({
-      ...plainDeckProps,
-      editorBridgeEnabled: true,
-      onPatchEditorOperations,
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Element settings' }))
-
-    const inspector = screen.getByRole('dialog', { name: 'Element inspector' })
-    const fitSelect = within(inspector).getByRole('combobox', { name: 'Image fit mode' })
-    await user.selectOptions(fitSelect, 'cover')
-
-    expect(onPatchEditorOperations).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({ op: 'set_inline_style', style: { 'object-fit': 'cover' } }),
-        expect.objectContaining({ op: 'set_attrs', attrs: { 'data-ark-fit': 'cover' } }),
-      ],
-      0,
-      'Updated image fit mode',
-    )
-  })
-
-  it('shows, dismisses, and replaces runtime errors with structured repair context', async () => {
-    const user = userEvent.setup()
-
-    renderDeckPreview({
-      ...plainDeckProps,
-      deckId: '11111111-1111-4111-8111-111111111111',
-      recentGenerationJobId: '22222222-2222-4222-8222-222222222222',
-      documentRevision: 3,
-    })
-
-    const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
-      onRuntimeError: (message: string, source?: string) => void
-    }
-
-    act(() => navigationOptions.onRuntimeError('Reveal failed to initialize', 'reveal.js'))
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Runtime error on slide 1')
-    expect(screen.getByRole('alert')).toHaveTextContent('Reveal failed to initialize')
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+    expect(screen.getByText(/The deck attempted an unexpected navigation/i)).toBeVisible()
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
     expect(reportRuntimeErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: 'Reveal failed to initialize',
-        repairContext: expect.objectContaining({
-          affectedSlideIndex: 0,
-          errorSummary: 'Reveal failed to initialize',
-          relatedJobId: '22222222-2222-4222-8222-222222222222',
-          validation: expect.objectContaining({ status: 'valid' }),
-          documentRevision: 3,
-        }),
+        source: 'preview-navigation-guard',
+        severity: 'error',
       }),
     )
-
-    await user.click(screen.getByRole('button', { name: 'Dismiss runtime error' }))
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-
-    act(() => navigationOptions.onRuntimeError('A later distinct failure', 'deck.js'))
-    expect(screen.getByRole('alert')).toHaveTextContent('A later distinct failure')
   })
 
-  it('allows retrying the same runtime error after a report failure', async () => {
-    reportRuntimeErrorMock.mockRejectedValueOnce(new Error('network down'))
+  it('sets empty allow and credentialless on the preview iframe', () => {
+    renderDeckPreview(plainDeckProps)
+
+    const iframe = screen.getByTitle('Generated Ark presentation preview')
+
+    expect(iframe).toHaveAttribute('allow', '')
+    expect(iframe).toHaveAttribute('credentialless')
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(iframe).toHaveAttribute('referrerPolicy', 'no-referrer')
+  })
+
+  it('does not post editor enable after compromise even if onLoad races', async () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+    const iframe = screen.getByTitle('Generated Ark presentation preview')
+    fireEvent.load(iframe)
+    fireEvent.load(iframe)
+
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+    editorBridgeMock.enableEditor.mockClear()
+
+    // Hostile load path must not re-enable after teardown.
+    expect(editorBridgeMock.enableEditor).not.toHaveBeenCalled()
+  })
+
+  it('does not treat a shell remount (new iframe key) as hostile navigation', async () => {
+    const { rerender } = renderDeckPreview(plainDeckProps)
+
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+    expect(await screen.findByText('Preview stopped')).toBeVisible()
+
+    previewFrameMock.iframeKey = 'test-preview-reloaded'
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Generated Ark presentation preview')).toBeInTheDocument()
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+    expect(screen.queryByText('Preview stopped')).not.toBeInTheDocument()
+  })
+
+  it('reuses the main preview frame when opening present mode', () => {
+    const previewRef = createRef<DeckPreviewHandle>()
+    renderDeckPreview({ ...plainDeckProps, presentHandleRef: previewRef })
+
+    const previewIframe = screen.getByTitle('Generated Ark presentation preview')
+
+    act(() => previewRef.current?.openPresent())
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.queryByTitle('Ark presentation mode')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Generated Ark presentation preview')).toBe(previewIframe)
+    expect(screen.getAllByTitle('Generated Ark presentation preview')).toHaveLength(1)
+    expect(useDeckPreviewFrameMock).toHaveBeenLastCalledWith(plainCssDeck, true, 0, null)
+    expect(useDeckPreviewFrameMock.mock.calls.every((call) => call[1] === true)).toBe(true)
+  })
+
+  it('hides preview chrome overlays while present mode is open', () => {
+    const previewRef = createRef<DeckPreviewHandle>()
+    renderDeckPreview({
+      state: { ...plainDeckProps.state, isGenerating: false, isStripOpen: false },
+      html: hostileScriptsDeck,
+      layout: 'desktop',
+      deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
+      presentHandleRef: previewRef,
+    })
+
+    expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
+
+    act(() => previewRef.current?.openPresent())
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Scripts and inline handlers were removed for preview/i),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Download the original HTML to keep executable code/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('disables then re-enables the editor when presenting', async () => {
+    const user = userEvent.setup()
+    const previewRef = createRef<DeckPreviewHandle>()
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+      presentHandleRef: previewRef,
+    })
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    editorBridgeMock.editorReady = true
+
+    editorBridgeMock.disableEditor.mockClear()
+    editorBridgeMock.enableEditor.mockClear()
+
+    act(() => previewRef.current?.openPresent())
+
+    expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Exit presentation' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Presentation mode' })).not.toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(editorBridgeMock.enableEditor).toHaveBeenCalled()
+  })
+
+  it('shows static preview messaging for uploaded scripted decks', () => {
+    renderDeckPreview({
+      state: { ...plainDeckProps.state, isGenerating: false, isStripOpen: false },
+      html: hostileScriptsDeck,
+      layout: 'desktop',
+      deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
+    })
+
+    expect(screen.getAllByText('Static preview').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Scripts and inline handlers were removed for preview/i)).toBeVisible()
+  })
+
+  it('does not show static preview messaging for plain CSS decks', () => {
+    renderDeckPreview(plainDeckProps)
+
+    expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+  })
+
+  it('shows reveal runtime messaging for approved reveal registry decks', () => {
+    renderDeckPreview({
+      state: { ...plainDeckProps.state, isGenerating: false, isStripOpen: false },
+      html: revealRegistryDeck,
+      layout: 'desktop',
+      deckAnalysis: analyzeDeckInBrowser(revealRegistryDeck),
+    })
+
+    expect(screen.queryByText('Static preview')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Generated Ark presentation preview')).toBeInTheDocument()
+  })
+
+  it('enables edit chrome by default when the editor bridge is on', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+    expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+  })
+
+  it('keeps persistent manual editing enabled for custom-JS decks', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+      html: fullJsDeck,
+      deckAnalysis: analyzeDeckInBrowser(fullJsDeck),
+    })
+
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        enabled: true,
+        sessionHandshake: previewFrameMock.handshake,
+      }),
+    )
+  })
+
+  it('keeps persistent editing enabled when approved runtime decks execute init scripts', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+      html: revealChartDeck,
+      deckAnalysis: analyzeDeckInBrowser(revealChartDeck),
+    })
+
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(editorBridgeOptionsMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        enabled: true,
+        sessionHandshake: previewFrameMock.handshake,
+      }),
+    )
+  })
+
+  it('keeps slide navigation chrome visible while editing', () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, isStripOpen: true },
+    })
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Go to slide 1' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Go to slide 3' })).toBeInTheDocument()
+  })
+
+  it('navigates to the server-remapped active slide after a reorder', async () => {
+    const onReorderSlide = vi.fn().mockResolvedValue({
+      patch: {
+        appliedCount: 1,
+        changedElementIds: [],
+        changedSlideIndexes: [0, 2],
+        suggestedActiveSlideIndex: 2,
+        summary: 'Moved slide from index 0 to 2.',
+      },
+    })
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, isStripOpen: true },
+      onReorderSlide,
+    })
+    goToSlideMock.mockClear()
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Go to slide 1' }), {
+      altKey: true,
+      key: 'ArrowDown',
+    })
+
+    await waitFor(() => expect(onReorderSlide).toHaveBeenCalledWith(0, 1, 0))
+    expect(goToSlideMock).toHaveBeenCalledWith(2)
+  })
+
+  it('pauses edit chrome when generation starts', () => {
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+
+    expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          state={{ ...plainDeckProps.state, editorBridgeEnabled: true, isGenerating: true }}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByRole('toolbar', { name: 'Edit mode toolbar' })).not.toBeInTheDocument()
+    expect(editorBridgeMock.disableEditor).toHaveBeenCalled()
+  })
+
+  it('shows the preview update indicator only while a changed deck is refreshing', () => {
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, isGenerating: true },
+    })
+
+    expect(screen.queryByText('Updating preview')).not.toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          state={{ ...plainDeckProps.state, isPreviewUpdating: true }}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Updating preview')).toBeVisible()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview {...plainDeckProps} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByText('Updating preview')).not.toBeInTheDocument()
+  })
+
+  it('keeps the empty stage during new-deck generation instead of a fake slide skeleton', () => {
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      html: '',
+      deckAnalysis: analyzeDeckInBrowser(''),
+    })
+
+    expect(screen.getByText('Set the stage')).toBeVisible()
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          deckAnalysis={analyzeDeckInBrowser('')}
+          html=""
+          state={{ ...plainDeckProps.state, isGenerating: true }}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Set the stage')).toBeVisible()
+    expect(screen.getByRole('status')).toHaveTextContent('Building your deck…')
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+  })
+
+  it('uses size-locked preview and thumbnail skeletons while opening a deck', () => {
+    const { container } = renderDeckPreview({
+      ...plainDeckProps,
+      state: {
+        ...plainDeckProps.state,
+        editorBridgeEnabled: true,
+        isDeckLoading: true,
+        isStripOpen: true,
+      },
+      deckAnalysis: analyzeDeckInBrowser(''),
+      html: '',
+    })
+
+    const preview = screen.getByRole('status', { name: 'Loading deck preview' })
+    const strip = screen.getByLabelText('Loading slide thumbnails')
+    const thumbnailSkeletons = strip.querySelectorAll(
+      '[data-slot="slide-reorder-zone"] [data-slot="skeleton"]',
+    )
+
+    expect(preview).toHaveStyle({ height: '720px', width: '1280px' })
+    expect(container.querySelector('[data-slot="deck-toolbar-skeleton"]')).toHaveClass('h-9')
+    expect(strip).toHaveClass('w-[168px]')
+    expect(thumbnailSkeletons).toHaveLength(5)
+    expect(thumbnailSkeletons[0]).toHaveAttribute('style', 'aspect-ratio: 1280 / 720;')
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument()
+    expect(screen.queryByText('Set the stage')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Generated Ark presentation preview')).not.toBeInTheDocument()
+  })
+
+  it('reports editor selection to the shell while edit chrome is active', () => {
+    const onEditorSelectionChange = vi.fn()
+
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-1',
+      slideIndex: 0,
+      slideId: 'ark-slide-1',
+      tagName: 'h1',
+      locked: false,
+      managed: true,
+      editableKind: 'text',
+      textPreview: 'Headline',
+    }
+
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+      onEditorSelectionChange,
+    })
+
+    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ elementId: 'ark-el-1' }),
+    )
+
+    rerender(
+      <TooltipProvider>
+        <DeckPreview
+          {...plainDeckProps}
+          state={{ ...plainDeckProps.state, editorBridgeEnabled: true, isGenerating: true }}
+          onEditorSelectionChange={onEditorSelectionChange}
+        />
+      </TooltipProvider>,
+    )
+    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null)
+  })
+
+  it('enables the editor bridge when the edit-mode iframe loads', async () => {
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'ark:deck-handshake',
+            handshake: previewFrameMock.handshake,
+            protocolVersion: 1,
+          },
+          origin: window.location.origin,
+        }),
+      )
+    })
+
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+
+    expect(editorBridgeMock.enableEditor).toHaveBeenCalledWith(0, 'select', 1)
+  })
+
+  it('configures runtime chrome with the preview scale', () => {
+    editorBridgeMock.editorReady = true
 
     renderDeckPreview({
       ...plainDeckProps,
-      deckId: '11111111-1111-4111-8111-111111111111',
-      documentRevision: 3,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
     })
-
-    const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
-      onRuntimeError: (message: string, source?: string) => void
-    }
-
-    act(() => navigationOptions.onRuntimeError('Transient failure', 'deck.js'))
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(1)
-
-    act(() => navigationOptions.onRuntimeError('Transient failure', 'deck.js'))
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(2)
+    expect(editorBridgeMock.configureEditor).toHaveBeenCalledWith(1)
   })
 
-  it('keeps runtime errors distinct from validation and network failures', () => {
-    const invalidHtml = plainCssDeck.replace(
-      '</body>',
-      '<img src="https://example.com/tracker.png" alt=""></body>',
-    )
-    const { rerender } = renderDeckPreview({
+  it('starts thumbnail work only after the current main preview is ready', async () => {
+    const props = {
       ...plainDeckProps,
-      html: invalidHtml,
-      deckAnalysis: analyzeDeckInBrowser(invalidHtml),
-    })
-    const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
-      onRuntimeError: (message: string, source?: string) => void
+      deckId: 'b0000000-0000-4000-8000-000000000001',
+      documentRevision: 1,
     }
+    const { rerender } = renderDeckPreview(props)
 
-    act(() => navigationOptions.onRuntimeError('Deck script crashed', 'deck.js'))
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(
+      props.deckId,
+      props.documentRevision,
+      3,
+      {
+        enabled: false,
+      },
+    )
 
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'ark:deck-handshake',
+            handshake: previewFrameMock.handshake,
+            protocolVersion: 1,
+          },
+          origin: window.location.origin,
+        }),
+      )
+    })
+    fireEvent.load(screen.getByTitle('Generated Ark presentation preview'))
+
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(
+      props.deckId,
+      props.documentRevision,
+      3,
+      {
+        enabled: true,
+      },
+    )
+
+    previewFrameMock.isStale = true
     rerender(
       <TooltipProvider>
-        <DeckPreview
-          {...plainDeckProps}
-          html={invalidHtml}
-          deckAnalysis={analyzeDeckInBrowser(invalidHtml)}
-        />
+        <DeckPreview {...props} />
       </TooltipProvider>,
     )
 
-    expect(screen.getByText('Network access blocked')).toBeInTheDocument()
-    expect(screen.getByText('Deck script crashed').closest('[role="alert"]')).toHaveTextContent(
-      'Deck script crashed',
+    expect(useDeckThumbnailsMock).toHaveBeenLastCalledWith(
+      props.deckId,
+      props.documentRevision,
+      3,
+      {
+        enabled: false,
+      },
     )
-  })
-
-  it('caps hostile runtime error reports per document revision', () => {
-    renderDeckPreview({
-      ...plainDeckProps,
-      deckId: '11111111-1111-4111-8111-111111111111',
-      documentRevision: 3,
-    })
-
-    for (let index = 0; index < 25; index += 1) {
-      const navigationOptions = deckSlideNavigationOptionsMock.mock.calls.at(-1)?.[0] as {
-        onRuntimeError: (message: string, source?: string) => void
-      }
-      act(() => navigationOptions.onRuntimeError(`Hostile failure ${index}`, 'hostile.js'))
-    }
-
-    expect(reportRuntimeErrorMock).toHaveBeenCalledTimes(20)
-    expect(screen.getByRole('alert')).toHaveTextContent('Hostile failure 19')
-  })
-
-  it('only assigns clearEditorSelectionRef while the editor bridge is active', () => {
-    const clearEditorSelectionRef = { current: null as (() => boolean) | null }
-
-    const { rerender } = renderDeckPreview({
-      ...plainDeckProps,
-      clearEditorSelectionRef,
-      editorBridgeEnabled: false,
-      isGenerating: false,
-    })
-
-    expect(clearEditorSelectionRef.current).toBeNull()
-
-    rerender(
-      <TooltipProvider>
-        <DeckPreview
-          {...plainDeckProps}
-          clearEditorSelectionRef={clearEditorSelectionRef}
-          editorBridgeEnabled
-          isGenerating={false}
-        />
-      </TooltipProvider>,
-    )
-
-    expect(clearEditorSelectionRef.current).toBe(editorBridgeMock.clearSelection)
-
-    rerender(
-      <TooltipProvider>
-        <DeckPreview
-          {...plainDeckProps}
-          clearEditorSelectionRef={clearEditorSelectionRef}
-          editorBridgeEnabled
-          isGenerating
-        />
-      </TooltipProvider>,
-    )
-
-    expect(clearEditorSelectionRef.current).toBeNull()
   })
 })

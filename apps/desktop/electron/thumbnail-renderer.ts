@@ -259,6 +259,7 @@ export function createElectronThumbnailRenderer(options: {
           const slides: Buffer[] = []
           for (const index of slideIndexes) {
             throwIfAborted(signal)
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- sequential by design: each slide must be navigated to and settled before its capture can run (ordered side effects + per-slide abort checks)
             await gotoThumbnailSlide(window, index, signal)
             const png = (await window.webContents.capturePage())
               .resize({ width: THUMBNAIL_OUTPUT_WIDTH, height: THUMBNAIL_OUTPUT_HEIGHT })

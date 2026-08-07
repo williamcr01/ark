@@ -17,7 +17,6 @@ vi.mock('@/components/MiniHtmlPreview', () => ({
 const baseProps: ComponentProps<typeof ChatPanel> = {
   messages: [],
   input: '',
-  isGenerating: false,
   generationStatus: null,
   activeSteps: [],
   failedJobId: null,
@@ -26,10 +25,14 @@ const baseProps: ComponentProps<typeof ChatPanel> = {
   models: [],
   selectedModel: '',
   reasoningEffort: 'medium',
-  isLoadingModels: false,
   modelsError: '',
   modelWarnings: [],
-  canGenerate: true,
+  generationState: {
+    canGenerate: true,
+    isGenerating: false,
+    isLoadingModels: false,
+    showGenerationErrorAlert: true,
+  },
   // Avoid mounting border-beam in jsdom (it requires matchMedia).
   reducedMotion: true,
   onInputChange: vi.fn(),
@@ -73,7 +76,7 @@ describe('ChatPanel submit control', () => {
       <TooltipProvider>
         <ChatPanel
           {...baseProps}
-          canGenerate={false}
+          generationState={{ ...baseProps.generationState, canGenerate: false }}
           mcpInteraction={{
             id: '00000000-0000-4000-8000-000000000001',
             deckId: '00000000-0000-4000-8000-000000000002',
@@ -326,7 +329,7 @@ describe('ChatPanel submit control', () => {
       <TooltipProvider>
         <ChatPanel
           {...baseProps}
-          isGenerating={false}
+          generationState={{ ...baseProps.generationState, isGenerating: false }}
           messages={[
             { id: 'u1', role: 'user', content: 'Build a product launch deck' },
             {
@@ -515,7 +518,11 @@ describe('ChatPanel submit control', () => {
   it('shows a concise working status while generating', () => {
     render(
       <TooltipProvider>
-        <ChatPanel {...baseProps} generationStatus="running" isGenerating />
+        <ChatPanel
+          {...baseProps}
+          generationState={{ ...baseProps.generationState, isGenerating: true }}
+          generationStatus="running"
+        />
       </TooltipProvider>,
     )
 
@@ -543,7 +550,11 @@ describe('ChatPanel submit control', () => {
   it('keeps the textarea writable when generation is unavailable', () => {
     render(
       <TooltipProvider>
-        <ChatPanel {...baseProps} canGenerate={false} input="draft notes" />
+        <ChatPanel
+          {...baseProps}
+          generationState={{ ...baseProps.generationState, canGenerate: false }}
+          input="draft notes"
+        />
       </TooltipProvider>,
     )
 
@@ -715,7 +726,7 @@ describe('ChatPanel submit control', () => {
       <TooltipProvider>
         <ChatPanel
           {...baseProps}
-          canGenerate
+          generationState={{ ...baseProps.generationState, canGenerate: true }}
           modelWarnings={['The Gemini API key in .env is invalid or expired.']}
         />
       </TooltipProvider>,
@@ -741,7 +752,7 @@ describe('ChatPanel submit control', () => {
               content: 'The model failed to generate the deck. The provider rejected the request.',
             },
           ]}
-          showGenerationErrorAlert={false}
+          generationState={{ ...baseProps.generationState, showGenerationErrorAlert: false }}
         />
       </TooltipProvider>,
     )
@@ -756,7 +767,7 @@ describe('ChatPanel submit control', () => {
         <ChatPanel
           {...baseProps}
           error="The deck changed while generation was running."
-          showGenerationErrorAlert
+          generationState={{ ...baseProps.generationState, showGenerationErrorAlert: true }}
         />
       </TooltipProvider>,
     )
@@ -784,7 +795,7 @@ describe('ChatPanel submit control', () => {
       <TooltipProvider>
         <ChatPanel
           {...baseProps}
-          canGenerate={false}
+          generationState={{ ...baseProps.generationState, canGenerate: false }}
           models={[
             {
               id: 'openai:gpt-5.6-luna',
@@ -969,7 +980,7 @@ describe('ChatPanel submit control', () => {
             { type: 'tool-call', toolName: 'read_deck', summary: 'Reading slide 1' },
           ]}
           generationStatus="running"
-          isGenerating
+          generationState={{ ...baseProps.generationState, isGenerating: true }}
           reducedMotion
         />
       </TooltipProvider>,
@@ -991,7 +1002,7 @@ describe('ChatPanel submit control', () => {
             { type: 'tool-call', toolName: 'read_deck', summary: 'Reading slide 1' },
           ]}
           generationStatus="running"
-          isGenerating
+          generationState={{ ...baseProps.generationState, isGenerating: true }}
           reducedMotion
         />
       </TooltipProvider>,
@@ -1009,7 +1020,7 @@ describe('ChatPanel submit control', () => {
           activeJobId="job-1"
           activeSteps={[{ type: 'thinking', summary: 'Planning the edit.', durationMs: 1100 }]}
           generationStatus="succeeded"
-          isGenerating={false}
+          generationState={{ ...baseProps.generationState, isGenerating: false }}
           messages={[{ id: 'u1', role: 'user', content: 'make slides' }]}
           reducedMotion
         />
@@ -1025,7 +1036,7 @@ describe('ChatPanel submit control', () => {
           activeJobId="job-1"
           activeSteps={[{ type: 'thinking', summary: 'Planning the edit.', durationMs: 1100 }]}
           generationStatus="succeeded"
-          isGenerating={false}
+          generationState={{ ...baseProps.generationState, isGenerating: false }}
           messages={[
             { id: 'u1', role: 'user', content: 'make slides' },
             {

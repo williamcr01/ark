@@ -312,11 +312,15 @@ export type AppTitleBarProps = {
   activeDeckId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
   deckTitle: string
-  hasDeck: boolean
-  hasSlides: boolean
-  isChatOpen: boolean
-  isGenerating: boolean
-  isStripOpen: boolean
+  /** Orthogonal shell/UI state flags (grouped to keep the props surface small). */
+  uiState: {
+    hasDeck: boolean
+    hasSlides: boolean
+    isChatOpen: boolean
+    isGenerating: boolean
+    isStripOpen: boolean
+    showSanitizedDownload: boolean
+  }
   onPresent: () => void
   onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange?: (preference: AppearancePreference) => void
@@ -334,7 +338,6 @@ export type AppTitleBarProps = {
   onToggleChat: () => void
   onToggleStrip: () => void
   onUploadClick: () => void
-  showSanitizedDownload: boolean
 }
 
 export function AppTitleBar({
@@ -342,11 +345,7 @@ export function AppTitleBar({
   activeDeckId,
   fileInputRef,
   deckTitle,
-  hasDeck,
-  hasSlides,
-  isChatOpen,
-  isGenerating,
-  isStripOpen,
+  uiState,
   onAppearanceChange = () => undefined,
   onDownload,
   onHtmlUpload,
@@ -364,8 +363,9 @@ export function AppTitleBar({
   onToggleChat,
   onToggleStrip,
   onUploadClick,
-  showSanitizedDownload,
 }: AppTitleBarProps) {
+  const { hasDeck, hasSlides, isChatOpen, isGenerating, isStripOpen, showSanitizedDownload } =
+    uiState
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)

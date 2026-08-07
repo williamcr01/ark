@@ -533,6 +533,7 @@ export function useDeckEditorPatchCoordinator({
     preserveSlideIndexRef.current = activeSlideIndex
     scheduleReselect()
     const keepLivePreview = beginLivePatch(transformCommit.elementId)
+    // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent -- exactly-once imperative geometry-patch command for a transformCommit arriving over the private editor MessagePort the parent cannot subscribe to (external-subscription predicate); deduped by processedTransformCommitRef
     const patchPromise = onPatchEditorOperations(
       operations,
       transformCommit.slideIndex,
@@ -616,6 +617,7 @@ export function useDeckEditorPatchCoordinator({
         )
         return
       }
+      // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent -- exactly-once imperative duplicate command for a shortcut request arriving over the private editor MessagePort the parent cannot subscribe to (external-subscription predicate); deduped by processedShortcutRequestRef
       handleDuplicateSelection()
       return
     }

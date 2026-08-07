@@ -555,7 +555,7 @@ describe('App chat panel layout', () => {
     renderWithRouter(<App />)
 
     const props = chatPanelProps.calls.at(-1)
-    expect(props?.canGenerate).toBe(false)
+    expect((props?.generationState as { canGenerate: boolean }).canGenerate).toBe(false)
 
     await act(async () => {
       await (props?.onPromptSubmit as (message: unknown) => Promise<void>)({

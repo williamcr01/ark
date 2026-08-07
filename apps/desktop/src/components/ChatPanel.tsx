@@ -208,6 +208,7 @@ function ChatMessageAttachments({ attachments }: { attachments: ChatAttachment[]
             ...attachment,
             id: `${attachment.filename ?? 'attachment'}-${index}`,
           }}
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- append-only per-message attachment list: ChatAttachment has no stable id and attachments never reorder/filter after send (rule's documented suppression)
           key={`${attachment.filename ?? 'attachment'}-${index}`}
         >
           <AttachmentPreview />
@@ -559,25 +560,232 @@ function ChatMessageParts({
   )
 }
 
+function ChatFloatingAlerts({
+  attachmentError,
+  dismissAlert,
+  error,
+  failedJobId,
+  handleRetryGeneration,
+  modelWarnings,
+  modelWarningsKey,
+  modelsError,
+  visible,
+}: {
+  attachmentError: string
+  dismissAlert: (alertId: ChatAlertId, content: string) => void
+  error: string
+  failedJobId: string | null
+  handleRetryGeneration: () => void
+  modelWarnings: string[]
+  modelWarningsKey: string
+  modelsError: string
+  visible: {
+    showAttachmentError: boolean
+    showGenerationError: boolean
+    showModelsError: boolean
+    showModelWarnings: boolean
+  }
+}) {
+  const { showAttachmentError, showGenerationError, showModelsError, showModelWarnings } = visible
+  return (
+    <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">
+      {showGenerationError ? (
+        <ChatFloatingAlert
+          onClose={() => dismissAlert('generation', error)}
+          title="Generation failed"
+          variant="destructive"
+        >
+          <div className="flex flex-col gap-2">
+            <span>{error}</span>
+            {failedJobId ? (
+              <div>
+                <PromptInputButton
+                  aria-label="Retry generation"
+                  onClick={handleRetryGeneration}
+                  tooltip="Retry generation"
+                >
+                  <RefreshCwIcon className="size-4" />
+                  Retry
+                </PromptInputButton>
+              </div>
+            ) : null}
+          </div>
+        </ChatFloatingAlert>
+      ) : null}
+
+      {showAttachmentError ? (
+        <ChatFloatingAlert
+          onClose={() => dismissAlert('attachment', attachmentError)}
+          title="Attachment error"
+          variant="destructive"
+        >
+          {attachmentError}
+        </ChatFloatingAlert>
+      ) : null}
+
+      {showModelsError ? (
+        <ChatFloatingAlert
+          onClose={() => dismissAlert('models', modelsError)}
+          title="Could not load models"
+          variant="destructive"
+        >
+          {modelsError}
+        </ChatFloatingAlert>
+      ) : null}
+
+      {showModelWarnings ? (
+        <ChatFloatingAlert
+          onClose={() => dismissAlert('model-warnings', modelWarningsKey)}
+          title="Model catalog notice"
+        >
+          <ul className="flex list-disc flex-col gap-1 pl-4">
+            {modelWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </ChatFloatingAlert>
+      ) : null}
+    </div>
+  )
+}
+
+function ChatMessageList({
+  activeSteps,
+  getMessageDeliveryStatus,
+  interactionActive,
+  messages,
+  onInputChange,
+  onRetryPersist,
+  showLiveAssistant,
+}: {
+  activeSteps: AgentStep[]
+  getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
+  interactionActive: boolean
+  messages: ChatMessage[]
+  onInputChange: (value: string) => void
+  onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
+  showLiveAssistant: boolean
+}) {
+  return (
+    <Conversation>
+      <ConversationContent className="gap-5 px-5 py-6">
+        {messages.length === 0 && !interactionActive ? (
+          <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 text-center">
+            <ConversationEmptyState
+              description="Start with an audience, raw notes, or one clear outcome."
+              icon={<SparklesIcon className="size-8" />}
+              title="Direct the next cut"
+            />
+            <div className="flex max-w-sm flex-col gap-2">
+              {[
+                'Turn my notes into a concise narrative',
+                'Build a six-slide pitch for this idea',
+                'Give this deck a sharper visual hierarchy',
+              ].map((prompt) => (
+                <Button
+                  className="h-auto justify-start whitespace-normal text-left"
+                  key={prompt}
+                  onClick={() => onInputChange(prompt)}
+                  size="sm"
+                  variant="outline"
+                >
+                  {prompt}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : messages.length > 0 ? (
+          messages.map((message, index) => {
+            // Answers stay in history for the model, but render under the matching tool call.
+            if (isAskUserAnswerMessage(messages, index)) return null
+            if (isThemeChoiceMessage(messages, index)) return null
+
+            const askUserAnswers =
+              message.role === 'assistant'
+                ? (findAskUserAnswerAfter(messages, index)?.content ?? null)
+                : null
+            const themeChoice =
+              message.role === 'assistant'
+                ? (findThemeChoiceAfter(messages, index)?.content ?? null)
+                : null
+
+            return (
+              <Message from={message.role} key={message.id}>
+                <MessageContent>
+                  {message.parts?.length ? (
+                    <ChatMessageParts
+                      askUserAnswers={askUserAnswers}
+                      parts={message.parts}
+                      themeChoice={themeChoice}
+                    />
+                  ) : (
+                    <MessageResponse>{message.content}</MessageResponse>
+                  )}
+                  {message.attachments?.length ? (
+                    <ChatMessageAttachments attachments={message.attachments} />
+                  ) : null}
+                  {message.role === 'user' && message.context ? (
+                    <ContextChipList
+                      className="mt-2"
+                      label="Attached context"
+                      {...contextToChipProps(message.context)}
+                    />
+                  ) : null}
+                  <ChatMessageDeliveryStatus
+                    onRetry={
+                      onRetryPersist
+                        ? () => {
+                            void onRetryPersist(message.id)
+                          }
+                        : undefined
+                    }
+                    status={getMessageDeliveryStatus?.(message.id)}
+                  />
+                </MessageContent>
+              </Message>
+            )
+          })
+        ) : null}
+        {showLiveAssistant ? (
+          <Message from="assistant">
+            <MessageContent>
+              <div className="flex flex-col gap-2">
+                <span className="sr-only">Working…</span>
+                {activeSteps.length > 0 ? (
+                  <ChatMessageParts live parts={agentStepsToChatParts(activeSteps)} />
+                ) : null}
+              </div>
+            </MessageContent>
+          </Message>
+        ) : null}
+      </ConversationContent>
+      <ConversationScrollButton />
+    </Conversation>
+  )
+}
+
 export type ChatPanelProps = {
   messages: ChatMessage[]
   input: string
-  isGenerating: boolean
   generationStatus: GenerationJobStatus | null
   activeSteps: AgentStep[]
   /** Job id for the in-flight or just-finished generation; used to bridge live → final UI. */
   activeJobId?: string | null
   failedJobId: string | null
   error: string
-  showGenerationErrorAlert?: boolean
   attachmentError: string
   models: AvailableModel[]
   selectedModel: string
   reasoningEffort?: ReasoningEffort
-  isLoadingModels: boolean
   modelsError: string
   modelWarnings: string[]
-  canGenerate: boolean
+  /** Orthogonal generation/UI state flags (grouped to keep the props surface small). */
+  generationState: {
+    isGenerating: boolean
+    showGenerationErrorAlert: boolean
+    isLoadingModels: boolean
+    canGenerate: boolean
+  }
   /** Keep normal ask_user/theme tools in the global modal instead of this panel. */
   interactiveToolsInModal?: boolean
   /** Context chips (selected element / attached slides) in the composer attachment row. */
@@ -602,20 +810,17 @@ export type ChatPanelProps = {
 export function ChatPanel({
   messages,
   input,
-  isGenerating,
   activeSteps,
   activeJobId = null,
   failedJobId,
   error,
-  showGenerationErrorAlert = true,
   attachmentError,
   models,
   selectedModel,
   reasoningEffort,
-  isLoadingModels,
   modelsError,
   modelWarnings,
-  canGenerate,
+  generationState,
   contextSlot,
   interactiveToolsInModal = false,
   onInputChange,
@@ -635,6 +840,7 @@ export function ChatPanel({
   onRetryPersist,
   generationStatus,
 }: ChatPanelProps) {
+  const { isGenerating, showGenerationErrorAlert, isLoadingModels, canGenerate } = generationState
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
   const supportsAttachments = selectedModelInfo?.supportsAttachments ?? false
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
@@ -692,100 +898,15 @@ export function ChatPanel({
   return (
     <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 bg-[var(--ark-panel)] py-0 shadow-none ring-0 [--card-spacing:0]">
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-        <Conversation>
-          <ConversationContent className="gap-5 px-5 py-6">
-            {messages.length === 0 && !interactionActive ? (
-              <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 text-center">
-                <ConversationEmptyState
-                  description="Start with an audience, raw notes, or one clear outcome."
-                  icon={<SparklesIcon className="size-8" />}
-                  title="Direct the next cut"
-                />
-                <div className="flex max-w-sm flex-col gap-2">
-                  {[
-                    'Turn my notes into a concise narrative',
-                    'Build a six-slide pitch for this idea',
-                    'Give this deck a sharper visual hierarchy',
-                  ].map((prompt) => (
-                    <Button
-                      className="h-auto justify-start whitespace-normal text-left"
-                      key={prompt}
-                      onClick={() => onInputChange(prompt)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      {prompt}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ) : messages.length > 0 ? (
-              messages.map((message, index) => {
-                // Answers stay in history for the model, but render under the matching tool call.
-                if (isAskUserAnswerMessage(messages, index)) return null
-                if (isThemeChoiceMessage(messages, index)) return null
-
-                const askUserAnswers =
-                  message.role === 'assistant'
-                    ? (findAskUserAnswerAfter(messages, index)?.content ?? null)
-                    : null
-                const themeChoice =
-                  message.role === 'assistant'
-                    ? (findThemeChoiceAfter(messages, index)?.content ?? null)
-                    : null
-
-                return (
-                  <Message from={message.role} key={message.id}>
-                    <MessageContent>
-                      {message.parts?.length ? (
-                        <ChatMessageParts
-                          askUserAnswers={askUserAnswers}
-                          parts={message.parts}
-                          themeChoice={themeChoice}
-                        />
-                      ) : (
-                        <MessageResponse>{message.content}</MessageResponse>
-                      )}
-                      {message.attachments?.length ? (
-                        <ChatMessageAttachments attachments={message.attachments} />
-                      ) : null}
-                      {message.role === 'user' && message.context ? (
-                        <ContextChipList
-                          className="mt-2"
-                          label="Attached context"
-                          {...contextToChipProps(message.context)}
-                        />
-                      ) : null}
-                      <ChatMessageDeliveryStatus
-                        onRetry={
-                          onRetryPersist
-                            ? () => {
-                                void onRetryPersist(message.id)
-                              }
-                            : undefined
-                        }
-                        status={getMessageDeliveryStatus?.(message.id)}
-                      />
-                    </MessageContent>
-                  </Message>
-                )
-              })
-            ) : null}
-            {showLiveAssistant ? (
-              <Message from="assistant">
-                <MessageContent>
-                  <div className="flex flex-col gap-2">
-                    <span className="sr-only">Working…</span>
-                    {activeSteps.length > 0 ? (
-                      <ChatMessageParts live parts={agentStepsToChatParts(activeSteps)} />
-                    ) : null}
-                  </div>
-                </MessageContent>
-              </Message>
-            ) : null}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
+        <ChatMessageList
+          activeSteps={activeSteps}
+          getMessageDeliveryStatus={getMessageDeliveryStatus}
+          interactionActive={interactionActive}
+          messages={messages}
+          onInputChange={onInputChange}
+          onRetryPersist={onRetryPersist}
+          showLiveAssistant={showLiveAssistant}
+        />
 
         <div className="relative shrink-0 bg-[var(--ark-paper)] p-4" data-slot="agent-composer">
           {isGenerating ? (
@@ -843,64 +964,22 @@ export function ChatPanel({
           ) : null}
 
           {hasFloatingAlerts ? (
-            <div className="absolute inset-x-4 bottom-full z-10 mb-2 flex flex-col gap-2">
-              {showGenerationError ? (
-                <ChatFloatingAlert
-                  onClose={() => dismissAlert('generation', error)}
-                  title="Generation failed"
-                  variant="destructive"
-                >
-                  <div className="flex flex-col gap-2">
-                    <span>{error}</span>
-                    {failedJobId ? (
-                      <div>
-                        <PromptInputButton
-                          aria-label="Retry generation"
-                          onClick={handleRetryGeneration}
-                          tooltip="Retry generation"
-                        >
-                          <RefreshCwIcon className="size-4" />
-                          Retry
-                        </PromptInputButton>
-                      </div>
-                    ) : null}
-                  </div>
-                </ChatFloatingAlert>
-              ) : null}
-
-              {showAttachmentError ? (
-                <ChatFloatingAlert
-                  onClose={() => dismissAlert('attachment', attachmentError)}
-                  title="Attachment error"
-                  variant="destructive"
-                >
-                  {attachmentError}
-                </ChatFloatingAlert>
-              ) : null}
-
-              {showModelsError ? (
-                <ChatFloatingAlert
-                  onClose={() => dismissAlert('models', modelsError)}
-                  title="Could not load models"
-                  variant="destructive"
-                >
-                  {modelsError}
-                </ChatFloatingAlert>
-              ) : null}
-
-              {showModelWarnings ? (
-                <ChatFloatingAlert
-                  onClose={() => dismissAlert('model-warnings', modelWarningsKey)}
-                  title="Model catalog notice"
-                >
-                  <ul className="flex list-disc flex-col gap-1 pl-4">
-                    {modelWarnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                </ChatFloatingAlert>
-              ) : null}
-            </div>
+            <ChatFloatingAlerts
+              attachmentError={attachmentError}
+              dismissAlert={dismissAlert}
+              error={error}
+              failedJobId={failedJobId}
+              handleRetryGeneration={handleRetryGeneration}
+              modelWarnings={modelWarnings}
+              modelWarningsKey={modelWarningsKey}
+              modelsError={modelsError}
+              visible={{
+                showAttachmentError,
+                showGenerationError,
+                showModelsError,
+                showModelWarnings,
+              }}
+            />
           ) : null}
 
           <ActiveComposer

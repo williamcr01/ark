@@ -7,6 +7,20 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 
 import { EditModeToolbar } from './EditModeToolbar'
 
+const DEFAULT_STATE: NonNullable<ComponentProps<typeof EditModeToolbar>['state']> = {
+  canEditText: false,
+  canRedo: false,
+  canUndo: false,
+  hasDeck: true,
+  hasSelection: false,
+  isGenerating: false,
+  isSaving: false,
+  selectedImage: false,
+  selectionLocked: false,
+  selectionManaged: false,
+  textEditActive: false,
+}
+
 function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>> = {}) {
   const onToolChange = vi.fn()
 
@@ -14,15 +28,20 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>
     <TooltipProvider>
       <EditModeToolbar
         activeTool="select"
-        canEditText={false}
-        hasDeck
-        hasSelection={false}
-        isGenerating={false}
-        isSaving={false}
+        state={{
+          canEditText: false,
+          canRedo: false,
+          canUndo: false,
+          hasDeck: true,
+          hasSelection: false,
+          isGenerating: false,
+          isSaving: false,
+          selectedImage: false,
+          selectionLocked: false,
+          selectionManaged: false,
+          textEditActive: false,
+        }}
         onToolChange={onToolChange}
-        selectionLocked={false}
-        selectionManaged={false}
-        textEditActive={false}
         {...overrides}
       />
     </TooltipProvider>,
@@ -56,7 +75,7 @@ describe('EditModeToolbar', () => {
   })
 
   it('disables tools when no deck is loaded', () => {
-    renderToolbar({ hasDeck: false })
+    renderToolbar({ state: { ...DEFAULT_STATE, hasDeck: false } })
 
     expect(screen.getByText('No deck loaded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select' })).toBeDisabled()
@@ -65,7 +84,7 @@ describe('EditModeToolbar', () => {
   })
 
   it('shows generation paused state and disables tools while generating', () => {
-    renderToolbar({ isGenerating: true })
+    renderToolbar({ state: { ...DEFAULT_STATE, isGenerating: true } })
 
     expect(screen.getByText('Editing paused during generation')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select' })).toBeDisabled()
@@ -81,13 +100,13 @@ describe('EditModeToolbar', () => {
   })
 
   it('shows edit-text action for editable selections', () => {
-    renderToolbar({ canEditText: true })
+    renderToolbar({ state: { ...DEFAULT_STATE, canEditText: true } })
 
     expect(screen.getByRole('button', { name: 'Edit selected text' })).toBeEnabled()
   })
 
   it('shows locked status for locked selections', () => {
-    renderToolbar({ hasSelection: true, selectionLocked: true })
+    renderToolbar({ state: { ...DEFAULT_STATE, hasSelection: true, selectionLocked: true } })
 
     expect(screen.getByText('Locked')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete selected element (locked)' })).toBeDisabled()
@@ -95,7 +114,10 @@ describe('EditModeToolbar', () => {
 
   it('enables unlocked selection actions when available', () => {
     const onDuplicate = vi.fn()
-    renderToolbar({ hasSelection: true, onDuplicate, selectionManaged: true })
+    renderToolbar({
+      state: { ...DEFAULT_STATE, hasSelection: true, selectionManaged: true },
+      onDuplicate,
+    })
 
     expect(screen.getByRole('button', { name: 'Duplicate selected element' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Bring forward' })).toBeEnabled()
@@ -103,7 +125,7 @@ describe('EditModeToolbar', () => {
   })
 
   it('disables history actions when there is nothing to undo or redo', () => {
-    renderToolbar({ hasSelection: true })
+    renderToolbar({ state: { ...DEFAULT_STATE, hasSelection: true } })
 
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
@@ -115,7 +137,7 @@ describe('EditModeToolbar', () => {
     const onUndo = vi.fn()
     const onRedo = vi.fn()
 
-    renderToolbar({ canUndo: true, canRedo: true, onUndo, onRedo })
+    renderToolbar({ state: { ...DEFAULT_STATE, canUndo: true, canRedo: true }, onUndo, onRedo })
 
     const undoButton = screen.getByRole('button', { name: 'Undo' })
     const redoButton = screen.getByRole('button', { name: 'Redo' })
@@ -131,7 +153,7 @@ describe('EditModeToolbar', () => {
   })
 
   it('disables history actions while saving or editing text', () => {
-    renderToolbar({ canUndo: true, canRedo: true, isSaving: true })
+    renderToolbar({ state: { ...DEFAULT_STATE, canUndo: true, canRedo: true, isSaving: true } })
 
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()

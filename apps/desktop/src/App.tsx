@@ -133,7 +133,7 @@ async function uploadPromptAttachments(
 
 const MemoizedDeckPreview = memo(DeckPreview)
 
-function App() {
+function useAppShell() {
   const navigate = useNavigate()
   const { deckId: routeParam } = useParams<{ deckId: string }>()
   const [searchParams] = useSearchParams()
@@ -211,9 +211,13 @@ function App() {
   // closed, and a close click in between reopened it). React re-renders immediately when
   // state is set during render, so the sheet mounts closed. This is a layout accommodation,
   // not a user preference, so it is not persisted.
-  const prevIsDesktopRef = useRef(isDesktop)
-  if (prevIsDesktopRef.current !== isDesktop) {
-    prevIsDesktopRef.current = isDesktop
+  const [prevIsDesktop, setPrevIsDesktop] = useState(isDesktop)
+  if (prevIsDesktop !== isDesktop) {
+    // React re-renders immediately after render-phase state updates, so the
+    // sheet still mounts closed (React "adjusting state during render"
+    // pattern — storing the previous value in state instead of mutating a
+    // ref, which render must stay pure of).
+    setPrevIsDesktop(isDesktop)
     if (!isDesktop && isChatOpen) {
       setIsChatOpen(false)
     }
@@ -948,16 +952,19 @@ function App() {
       activeJobId={activeJobId}
       activeSteps={activeSteps}
       attachmentError={attachmentError}
-      canGenerate={canGenerateForDeck}
       contextSlot={chatContextSlot}
       error={displayError}
       failedJobId={failedJobId}
+      generationState={{
+        canGenerate: canGenerateForDeck,
+        isGenerating,
+        isLoadingModels,
+        showGenerationErrorAlert: !isModelFailure,
+      }}
       generationStatus={generationStatus}
       getMessageDeliveryStatus={getMessageDeliveryStatus}
       getReasoningEffort={getReasoningEffort}
       input={input}
-      isGenerating={isGenerating}
-      isLoadingModels={isLoadingModels}
       interactiveToolsInModal={agentInteractionsInModal}
       messages={messages}
       models={models}
@@ -977,25 +984,40 @@ function App() {
       reasoningEffort={reasoningEffort}
       resolvedAppearance={resolvedAppearance}
       selectedModel={selectedModel}
-      showGenerationErrorAlert={!isModelFailure}
     />
+  )
+  const deckPreviewState = useMemo(
+    () => ({
+      canRedo,
+      canUndo,
+      editorBridgeEnabled: true,
+      isDeckLoading: Boolean(routeDeckId && isDeckLoading),
+      isGenerating,
+      isPreviewUpdating,
+      isStripOpen,
+      isTextEditSaving: isDeckPatching || isDeckSaving,
+    }),
+    [
+      canRedo,
+      canUndo,
+      isDeckLoading,
+      isDeckPatching,
+      isDeckSaving,
+      isGenerating,
+      isPreviewUpdating,
+      isStripOpen,
+      routeDeckId,
+    ],
   )
   const deckPreview = (
     <MemoizedDeckPreview
-      canRedo={canRedo}
-      canUndo={canUndo}
+      state={deckPreviewState}
       chromeHost={deckChromeHost}
       clearEditorSelectionRef={clearEditorSelectionRef}
       contextSlideIndexes={contextSlideIndexes}
       deckId={deckId}
-      editorBridgeEnabled
       html={generatedHtml}
       initialSlideIndex={initialSlideIndex}
-      isDeckLoading={Boolean(routeDeckId && isDeckLoading)}
-      isGenerating={isGenerating}
-      isPreviewUpdating={isPreviewUpdating}
-      isStripOpen={isStripOpen}
-      isTextEditSaving={isDeckPatching || isDeckSaving}
       layout={isDesktop ? 'desktop' : 'mobile'}
       onCommitTextEdit={handleCommitTextEdit}
       onEditorSelectionChange={handleEditorSelectionChange}
@@ -1013,6 +1035,99 @@ function App() {
     />
   )
 
+  return {
+    activeMcpInteraction,
+    canGenerateForDeck,
+    cancelMcpInteraction,
+    chatContextSlot,
+    chatDefaultSize,
+    chatPanel,
+    deckDefaultSizeWithChat,
+    deckPreview,
+    deckId,
+    deckPreviewRef,
+    deckTitle,
+    fileInputRef,
+    filePath,
+    generateDeck,
+    handleChatOpenChange,
+    handleDownload,
+    handleDuplicate,
+    handleHtmlUpload,
+    handleMove,
+    handleNewDeck,
+    handleOpenWorkspace,
+    handleRenameDeck,
+    handleSaveAs,
+    handleShareProject,
+    handleToggleChat,
+    handleUploadClick,
+    hasDeck,
+    hasSlides,
+    isChatOpen,
+    isDesktop,
+    isGenerating,
+    isStripOpen,
+    loadModels,
+    mainRef,
+    normalAgentQuestions,
+    normalThemeProposal,
+    preference,
+    respondToMcpInteraction,
+    setAgentInteractionsInModal,
+    setDeckChromeHost,
+    setIsStripOpen,
+    setPreference,
+    showSanitizedDownload,
+  }
+}
+
+export default function App() {
+  const {
+    activeMcpInteraction,
+    canGenerateForDeck,
+    cancelMcpInteraction,
+    chatDefaultSize,
+    chatPanel,
+    deckDefaultSizeWithChat,
+    deckPreview,
+    deckId,
+    deckPreviewRef,
+    deckTitle,
+    fileInputRef,
+    filePath,
+    generateDeck,
+    handleChatOpenChange,
+    handleDownload,
+    handleDuplicate,
+    handleHtmlUpload,
+    handleMove,
+    handleNewDeck,
+    handleOpenWorkspace,
+    handleRenameDeck,
+    handleSaveAs,
+    handleShareProject,
+    handleToggleChat,
+    handleUploadClick,
+    hasDeck,
+    hasSlides,
+    isChatOpen,
+    isDesktop,
+    isGenerating,
+    isStripOpen,
+    loadModels,
+    mainRef,
+    normalAgentQuestions,
+    normalThemeProposal,
+    preference,
+    respondToMcpInteraction,
+    setAgentInteractionsInModal,
+    setDeckChromeHost,
+    setIsStripOpen,
+    setPreference,
+    showSanitizedDownload,
+  } = useAppShell()
+
   return (
     <TooltipProvider>
       <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
@@ -1020,11 +1135,14 @@ function App() {
           activeDeckId={deckId}
           deckTitle={deckTitle}
           fileInputRef={fileInputRef}
-          hasDeck={hasDeck}
-          hasSlides={hasSlides}
-          isChatOpen={isChatOpen}
-          isGenerating={isGenerating}
-          isStripOpen={isStripOpen}
+          uiState={{
+            hasDeck,
+            hasSlides,
+            isChatOpen,
+            isGenerating,
+            isStripOpen,
+            showSanitizedDownload,
+          }}
           appearancePreference={preference}
           onDownload={handleDownload}
           onAgentInteractionsInModalChange={setAgentInteractionsInModal}
@@ -1043,7 +1161,6 @@ function App() {
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onAppearanceChange={setPreference}
           onUploadClick={handleUploadClick}
-          showSanitizedDownload={showSanitizedDownload}
         />
 
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
@@ -1130,5 +1247,3 @@ function App() {
     </TooltipProvider>
   )
 }
-
-export default App

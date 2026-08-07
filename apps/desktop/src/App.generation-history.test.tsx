@@ -143,10 +143,10 @@ vi.mock('@/components/ChatPanel', () => ({
 }))
 
 vi.mock('@/components/DeckPreview', () => ({
-  DeckPreview: (props: { canUndo?: boolean; canRedo?: boolean }) => (
+  DeckPreview: (props: { state: { canUndo: boolean; canRedo: boolean } }) => (
     <div data-testid="deck-preview">
-      <output aria-label="Undo availability">{props.canUndo ? 'enabled' : 'disabled'}</output>
-      <output aria-label="Redo availability">{props.canRedo ? 'enabled' : 'disabled'}</output>
+      <output aria-label="Undo availability">{props.state.canUndo ? 'enabled' : 'disabled'}</output>
+      <output aria-label="Redo availability">{props.state.canRedo ? 'enabled' : 'disabled'}</output>
     </div>
   ),
 }))

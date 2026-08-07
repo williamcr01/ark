@@ -224,9 +224,10 @@ export function useDeckEditorBridge(
         transformCancelSequence: current.transformCancelSequence,
         lastTextCommit: current.lastTextCommit,
       }))
+      onSelectionChange?.(null)
       return postToFrame(createEditorEnableMessage(slideIndex, tool, scale))
     },
-    [activeSlideIndex, postToFrame],
+    [activeSlideIndex, onSelectionChange, postToFrame],
   )
 
   const configureEditor = useCallback(
@@ -239,10 +240,11 @@ export function useDeckEditorBridge(
 
     if (posted) {
       setState(initialState)
+      onSelectionChange?.(null)
     }
 
     return posted
-  }, [postToFrame])
+  }, [onSelectionChange, postToFrame])
 
   const selectElement = useCallback(
     (elementId: string, slideIndex = activeSlideIndex) =>

@@ -141,8 +141,16 @@ vi.mock('@/hooks/useElementSize', () => ({
 
 const plainDeckProps = {
   html: plainCssDeck,
-  isGenerating: false,
-  isStripOpen: false,
+  state: {
+    canRedo: false,
+    canUndo: false,
+    editorBridgeEnabled: false,
+    isDeckLoading: false,
+    isGenerating: false,
+    isPreviewUpdating: false,
+    isStripOpen: false,
+    isTextEditSaving: false,
+  },
   layout: 'desktop' as const,
   deckAnalysis: analyzeDeckInBrowser(plainCssDeck),
 }
@@ -199,8 +207,10 @@ describe('DeckPreview script divergence UI', () => {
       textPreview: 'Quarterly planning',
     }
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     expect(screen.getByRole('button', { name: 'Edit selected text' })).toBeInTheDocument()
   })
 
@@ -218,7 +228,10 @@ describe('DeckPreview script divergence UI', () => {
       textPreview: 'Quarterly planning',
     }
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     await user.click(screen.getByRole('button', { name: 'Edit selected text' }))
 
     expect(editorBridgeMock.startTextEdit).toHaveBeenCalledWith('transient-el-0-0', 0)
@@ -236,8 +249,10 @@ describe('DeckPreview script divergence UI', () => {
       textPreview: 'Body copy',
     }
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     fireEvent.keyDown(window, { key: 'Enter' })
 
     expect(editorBridgeMock.startTextEdit).toHaveBeenCalledWith('transient-el-0-0', 0)
@@ -256,7 +271,10 @@ describe('DeckPreview script divergence UI', () => {
     }
     editorBridgeMock.textEditActive = true
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(editorBridgeMock.cancelTextEdit).toHaveBeenCalled()
@@ -265,7 +283,10 @@ describe('DeckPreview script divergence UI', () => {
   it('resets the active tool when Escape is pressed outside text editing', async () => {
     const user = userEvent.setup()
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     await user.click(screen.getByRole('button', { name: 'Text box' }))
     fireEvent.keyDown(window, { key: 'Escape' })
 
@@ -296,7 +317,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onCommitTextEdit,
     })
 
@@ -336,7 +357,7 @@ describe('DeckPreview script divergence UI', () => {
       html: beforeHtml,
       deckId: 'deck-1',
       deckAnalysis: analyzeDeckInBrowser(beforeHtml),
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onCommitTextEdit,
     }
     const { rerender } = renderDeckPreview(props)
@@ -368,7 +389,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onCommitTextEdit,
     })
 
@@ -394,7 +415,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onCommitTextEdit,
     })
 
@@ -414,7 +435,7 @@ describe('DeckPreview script divergence UI', () => {
 
     const { rerender } = renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onCommitTextEdit,
     })
 
@@ -430,7 +451,11 @@ describe('DeckPreview script divergence UI', () => {
 
     rerender(
       <TooltipProvider>
-        <DeckPreview {...plainDeckProps} editorBridgeEnabled onCommitTextEdit={onCommitTextEdit} />
+        <DeckPreview
+          {...plainDeckProps}
+          state={{ ...plainDeckProps.state, editorBridgeEnabled: true }}
+          onCommitTextEdit={onCommitTextEdit}
+        />
       </TooltipProvider>,
     )
 
@@ -463,7 +488,7 @@ describe('DeckPreview script divergence UI', () => {
 
     const props = {
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onPatchEditorOperations,
     }
 
@@ -527,7 +552,10 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.hover = { elementId: 'ark-el-box', slideIndex: 0 }
     editorBridgeMock.hoverGeometry = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
 
-    const { container } = renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
+    const { container } = renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
 
     expect(
       container.querySelector(
@@ -551,7 +579,11 @@ describe('DeckPreview script divergence UI', () => {
       textPreview: 'New text',
     }
     editorBridgeMock.geometry = startGeometry
-    const props = { ...plainDeckProps, editorBridgeEnabled: true, onPatchEditorOperations }
+    const props = {
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+      onPatchEditorOperations,
+    }
     const { rerender } = renderDeckPreview(props)
     const renderProps = () =>
       rerender(
@@ -605,9 +637,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
-      canUndo: true,
-      canRedo: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo: true, canRedo: true },
       onUndo,
       onRedo,
     })
@@ -624,9 +654,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
-      canUndo: true,
-      canRedo: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo: true, canRedo: true },
       onUndo,
       onRedo,
     })
@@ -658,9 +686,7 @@ describe('DeckPreview script divergence UI', () => {
     editorBridgeMock.lastShortcutRequest = { action: 'undo', sequence: 1 }
     const props = {
       ...plainDeckProps,
-      editorBridgeEnabled: true,
-      canUndo: true,
-      canRedo: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo: true, canRedo: true },
       onUndo,
       onRedo,
       onPatchEditorOperations,
@@ -723,9 +749,7 @@ describe('DeckPreview script divergence UI', () => {
 
       renderDeckPreview({
         ...plainDeckProps,
-        editorBridgeEnabled: true,
-        canUndo: true,
-        canRedo: true,
+        state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo: true, canRedo: true },
         onUndo,
         onRedo,
         onPatchEditorOperations,
@@ -770,7 +794,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onPatchEditorOperations,
     })
 
@@ -815,8 +839,7 @@ describe('DeckPreview script divergence UI', () => {
       })
       const props = {
         ...plainDeckProps,
-        editorBridgeEnabled: true,
-        canUndo,
+        state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo },
         onUndo,
         onPatchEditorOperations,
       }
@@ -842,8 +865,7 @@ describe('DeckPreview script divergence UI', () => {
 
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
-      canUndo: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo: true },
       onUndo,
     })
 
@@ -858,8 +880,7 @@ it('does not undo with keyboard when nothing is undoable', async () => {
 
   renderDeckPreview({
     ...plainDeckProps,
-    editorBridgeEnabled: true,
-    canUndo: false,
+    state: { ...plainDeckProps.state, editorBridgeEnabled: true, canUndo: false },
     onUndo,
   })
 
@@ -873,9 +894,12 @@ it('does not undo with keyboard while a patch is saving', async () => {
 
   renderDeckPreview({
     ...plainDeckProps,
-    editorBridgeEnabled: true,
-    canUndo: true,
-    isTextEditSaving: true,
+    state: {
+      ...plainDeckProps.state,
+      editorBridgeEnabled: true,
+      canUndo: true,
+      isTextEditSaving: true,
+    },
     onUndo,
   })
 

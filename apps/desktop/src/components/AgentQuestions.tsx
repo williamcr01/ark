@@ -119,6 +119,197 @@ function OptionRow({
   )
 }
 
+function AnsweredTrail({
+  disabled,
+  onJump,
+  trail,
+}: {
+  disabled: boolean
+  onJump: (index: number) => void
+  trail: Array<{ question: AgentQuestion; record: StepRecord; index: number }>
+}) {
+  return (
+    <ul className="flex flex-col gap-1.5 border-b border-border/60 pb-3">
+      {trail.map(({ question: item, record, index }) => (
+        <li key={item.id}>
+          <button
+            className="text-muted-foreground hover:text-foreground flex w-full items-start gap-2 rounded-md px-1 py-0.5 text-left text-xs transition-colors"
+            disabled={disabled}
+            onClick={() => onJump(index)}
+            type="button"
+          >
+            <PencilIcon aria-hidden className="mt-0.5 size-3 shrink-0 opacity-60" />
+            <span className="min-w-0">
+              <span className="text-foreground/80">{item.question}</span>
+              <span className="text-muted-foreground"> — {formatTrailAnswer(item, record)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function QuestionStep({
+  advanceLabel,
+  baseId,
+  canConfirmCustom,
+  canContinueMultiple,
+  canContinueText,
+  customDraft,
+  disabled,
+  multipleDraftSet,
+  onConfirmCustom,
+  onContinueMultiple,
+  onContinueText,
+  onSelectSingle,
+  onSkip,
+  onTextKeyDown,
+  onToggleMultiple,
+  question,
+  records,
+  setCustomDraft,
+  setTextDraft,
+  setWritingCustom,
+  textDraft,
+  writingCustom,
+}: {
+  advanceLabel: string
+  baseId: string
+  canConfirmCustom: boolean
+  canContinueMultiple: boolean
+  canContinueText: boolean
+  customDraft: string
+  disabled: boolean
+  multipleDraftSet: Set<string>
+  onConfirmCustom: () => void
+  onContinueMultiple: () => void
+  onContinueText: () => void
+  onSelectSingle: (option: string) => void
+  onSkip: () => void
+  onTextKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void
+  onToggleMultiple: (option: string) => void
+  question: AgentQuestion
+  records: Record<string, StepRecord>
+  setCustomDraft: (value: string) => void
+  setTextDraft: (value: string) => void
+  setWritingCustom: (value: boolean) => void
+  textDraft: string
+  writingCustom: boolean
+}) {
+  return (
+    <div className="animate-[enter_0.2s_ease-out] fade-in slide-in-from-bottom-2 flex flex-col gap-3">
+      <p className="text-sm font-medium" id={`${baseId}-question`}>
+        {question.question}
+      </p>
+
+      {question.type === 'text' ? (
+        <Textarea
+          aria-labelledby={`${baseId}-question`}
+          autoFocus
+          disabled={disabled}
+          onChange={(event) => setTextDraft(event.currentTarget.value)}
+          onKeyDown={onTextKeyDown}
+          placeholder={question.placeholder}
+          rows={2}
+          value={textDraft}
+        />
+      ) : (
+        <div aria-labelledby={`${baseId}-question`} className="flex flex-col gap-1.5" role="group">
+          {question.options?.map((option, optionIndex) => {
+            const selected =
+              question.type === 'multiple'
+                ? multipleDraftSet.has(option)
+                : !writingCustom && records[question.id]?.answer === option
+            return (
+              <OptionRow
+                disabled={disabled}
+                hint={optionIndex < 9 ? String(optionIndex + 1) : undefined}
+                key={option}
+                multi={question.type === 'multiple'}
+                onClick={() => {
+                  if (question.type === 'multiple') {
+                    setWritingCustom(false)
+                    onToggleMultiple(option)
+                  } else {
+                    onSelectSingle(option)
+                  }
+                }}
+                selected={Boolean(selected)}
+              >
+                {option}
+              </OptionRow>
+            )
+          })}
+
+          {writingCustom ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-border/80 bg-background/40 p-3">
+              <Textarea
+                aria-label={`Write your own answer for ${question.question}`}
+                autoFocus
+                disabled={disabled}
+                onChange={(event) => setCustomDraft(event.currentTarget.value)}
+                placeholder={question.placeholder ?? 'Write your own answer…'}
+                rows={2}
+                value={customDraft}
+              />
+              {question.type === 'single' ? (
+                <div className="flex justify-end">
+                  <Button
+                    disabled={disabled || !canConfirmCustom}
+                    onClick={onConfirmCustom}
+                    size="sm"
+                    type="button"
+                  >
+                    {advanceLabel}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <OptionRow
+              disabled={disabled}
+              onClick={() => {
+                setWritingCustom(true)
+                setCustomDraft(records[question.id]?.written ?? '')
+              }}
+              selected={false}
+            >
+              Write your own…
+            </OptionRow>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        <Button disabled={disabled} onClick={onSkip} size="sm" type="button" variant="ghost">
+          Skip
+        </Button>
+        {question.type === 'text' ? (
+          <Button
+            disabled={disabled || !canContinueText}
+            onClick={onContinueText}
+            size="sm"
+            type="button"
+          >
+            {advanceLabel}
+          </Button>
+        ) : null}
+        {question.type === 'multiple' ? (
+          <Button
+            disabled={disabled || !canContinueMultiple}
+            onClick={onContinueMultiple}
+            size="sm"
+            type="button"
+          >
+            {advanceLabel}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function AgentQuestions({
   request,
   submitLabel = 'Send answers',
@@ -290,6 +481,7 @@ export function AgentQuestions({
 
   const canContinueMultiple =
     multipleDraft.length > 0 || (writingCustom && Boolean(customDraft.trim()))
+  const multipleDraftSet = new Set(multipleDraft)
   const canConfirmCustom = Boolean(customDraft.trim())
   const canContinueText = Boolean(textDraft.trim())
 
@@ -306,6 +498,7 @@ export function AgentQuestions({
       data-slot="agent-questions"
       onKeyDown={handlePanelKeyDown}
       ref={panelRef}
+      role="group"
       tabIndex={-1}
     >
       <div className="flex items-start gap-2">
@@ -326,145 +519,34 @@ export function AgentQuestions({
       </div>
 
       {answeredTrail.length > 0 ? (
-        <ul className="flex flex-col gap-1.5 border-b border-border/60 pb-3">
-          {answeredTrail.map(({ question: item, record, index }) => (
-            <li key={item.id}>
-              <button
-                className="text-muted-foreground hover:text-foreground flex w-full items-start gap-2 rounded-md px-1 py-0.5 text-left text-xs transition-colors"
-                disabled={disabled}
-                onClick={() => goToStep(index)}
-                type="button"
-              >
-                <PencilIcon aria-hidden className="mt-0.5 size-3 shrink-0 opacity-60" />
-                <span className="min-w-0">
-                  <span className="text-foreground/80">{item.question}</span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    — {formatTrailAnswer(item, record)}
-                  </span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <AnsweredTrail disabled={disabled} onJump={goToStep} trail={answeredTrail} />
       ) : null}
 
-      <div
-        className="animate-in fade-in slide-in-from-bottom-2 flex flex-col gap-3 duration-200"
+      <QuestionStep
+        advanceLabel={advanceLabel}
+        baseId={baseId}
+        canConfirmCustom={canConfirmCustom}
+        canContinueMultiple={canContinueMultiple}
+        canContinueText={canContinueText}
+        customDraft={customDraft}
+        disabled={disabled}
         key={question.id}
-      >
-        <p className="text-sm font-medium" id={`${baseId}-question`}>
-          {question.question}
-        </p>
-
-        {question.type === 'text' ? (
-          <Textarea
-            aria-labelledby={`${baseId}-question`}
-            autoFocus
-            disabled={disabled}
-            onChange={(event) => setTextDraft(event.currentTarget.value)}
-            onKeyDown={onTextKeyDown}
-            placeholder={question.placeholder}
-            rows={2}
-            value={textDraft}
-          />
-        ) : (
-          <div
-            aria-labelledby={`${baseId}-question`}
-            className="flex flex-col gap-1.5"
-            role="group"
-          >
-            {question.options?.map((option, optionIndex) => {
-              const selected =
-                question.type === 'multiple'
-                  ? multipleDraft.includes(option)
-                  : !writingCustom && records[question.id]?.answer === option
-              return (
-                <OptionRow
-                  disabled={disabled}
-                  hint={optionIndex < 9 ? String(optionIndex + 1) : undefined}
-                  key={option}
-                  multi={question.type === 'multiple'}
-                  onClick={() => {
-                    if (question.type === 'multiple') {
-                      setWritingCustom(false)
-                      toggleMultiple(option)
-                    } else {
-                      handleSingleSelect(option)
-                    }
-                  }}
-                  selected={Boolean(selected)}
-                >
-                  {option}
-                </OptionRow>
-              )
-            })}
-
-            {writingCustom ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-border/80 bg-background/40 p-3">
-                <Textarea
-                  aria-label={`Write your own answer for ${question.question}`}
-                  autoFocus
-                  disabled={disabled}
-                  onChange={(event) => setCustomDraft(event.currentTarget.value)}
-                  placeholder={question.placeholder ?? 'Write your own answer…'}
-                  rows={2}
-                  value={customDraft}
-                />
-                {question.type === 'single' ? (
-                  <div className="flex justify-end">
-                    <Button
-                      disabled={disabled || !canConfirmCustom}
-                      onClick={handleConfirmCustom}
-                      size="sm"
-                      type="button"
-                    >
-                      {advanceLabel}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <OptionRow
-                disabled={disabled}
-                onClick={() => {
-                  setWritingCustom(true)
-                  setCustomDraft(records[question.id]?.written ?? '')
-                }}
-                selected={false}
-              >
-                Write your own…
-              </OptionRow>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-2">
-          <Button disabled={disabled} onClick={handleSkip} size="sm" type="button" variant="ghost">
-            Skip
-          </Button>
-          {question.type === 'text' ? (
-            <Button
-              disabled={disabled || !canContinueText}
-              onClick={handleContinueText}
-              size="sm"
-              type="button"
-            >
-              {advanceLabel}
-            </Button>
-          ) : null}
-          {question.type === 'multiple' ? (
-            <Button
-              disabled={disabled || !canContinueMultiple}
-              onClick={handleContinueMultiple}
-              size="sm"
-              type="button"
-            >
-              {advanceLabel}
-            </Button>
-          ) : null}
-        </div>
-      </div>
+        multipleDraftSet={multipleDraftSet}
+        onConfirmCustom={handleConfirmCustom}
+        onContinueMultiple={handleContinueMultiple}
+        onContinueText={handleContinueText}
+        onSelectSingle={handleSingleSelect}
+        onSkip={handleSkip}
+        onTextKeyDown={onTextKeyDown}
+        onToggleMultiple={toggleMultiple}
+        question={question}
+        records={records}
+        setCustomDraft={setCustomDraft}
+        setTextDraft={setTextDraft}
+        setWritingCustom={setWritingCustom}
+        textDraft={textDraft}
+        writingCustom={writingCustom}
+      />
     </div>
   )
 }

@@ -246,26 +246,8 @@ const LazyThumbnail = memo(function LazyThumbnail({
         >
           {mountContent ? (
             <>
-              {!imageReady ? (
-                srcDoc ? (
-                  <iframe
-                    className="pointer-events-none absolute left-0 top-0 block border-0 bg-white"
-                    sandbox={getThumbnailSandbox()}
-                    srcDoc={srcDoc}
-                    style={{
-                      width: PREVIEW_FRAME_WIDTH,
-                      height: PREVIEW_FRAME_HEIGHT,
-                      transform: 'scale(var(--ark-thumb-scale))',
-                      transformOrigin: 'top left',
-                    }}
-                    tabIndex={-1}
-                    title={
-                      thumbnailUrl ? `Loading slide ${index + 1}` : `Slide ${index + 1} thumbnail`
-                    }
-                  />
-                ) : (
-                  <Skeleton className="absolute inset-0 rounded-none" />
-                )
+              {!imageReady && !srcDoc ? (
+                <Skeleton className="absolute inset-0 rounded-none" />
               ) : null}
               {thumbnailUrl ? (
                 <img
@@ -290,7 +272,7 @@ const LazyThumbnail = memo(function LazyThumbnail({
         </div>
         <span
           className={cn(
-            'absolute bottom-1 left-1 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
+            'absolute bottom-1 left-1 z-10 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
             active
               ? 'bg-[var(--ark-selection)] text-primary-foreground'
               : 'bg-[var(--ark-overlay)] text-primary-foreground',
@@ -299,6 +281,23 @@ const LazyThumbnail = memo(function LazyThumbnail({
           {index + 1}
         </span>
       </button>
+
+      {mountContent && !imageReady && srcDoc ? (
+        <iframe
+          aria-hidden
+          className="pointer-events-none absolute left-0 top-0 z-0 block rounded-sm border-0 bg-white"
+          sandbox={getThumbnailSandbox()}
+          srcDoc={srcDoc}
+          style={{
+            width: PREVIEW_FRAME_WIDTH,
+            height: PREVIEW_FRAME_HEIGHT,
+            transform: 'scale(var(--ark-thumb-scale))',
+            transformOrigin: 'top left',
+          }}
+          tabIndex={-1}
+          title={thumbnailUrl ? `Loading slide ${index + 1}` : `Slide ${index + 1} thumbnail`}
+        />
+      ) : null}
 
       {onToggleContextSlide ? (
         <Tooltip>
@@ -535,6 +534,173 @@ function useThumbnailReorder({
     insertionIndex,
     isReordering,
   }
+}
+
+function SlideThumbnailStripContent({
+  activeIndex,
+  contentEnabled,
+  contextSlideIndexes,
+  draggedIndex,
+  dropZoneProps,
+  getCachedThumbnailSrcDoc,
+  getDragProps,
+  getExistingThumbnailSrcDoc,
+  getUsableThumbnailUrl,
+  handleKeyboardReorder,
+  handleThumbnailImageError,
+  handleVisibilityChange,
+  id,
+  mountedIndices,
+  onReorder,
+  onSelect,
+  onToggleContextSlide,
+  orientation,
+  reorderDestination,
+  slideCount,
+  state,
+  thumbScale,
+}: {
+  activeIndex: number
+  contentEnabled: boolean
+  contextSlideIndexes: number[]
+  draggedIndex: number | null
+  dropZoneProps: Record<string, unknown>
+  getCachedThumbnailSrcDoc: (index: number) => string | null
+  getDragProps: (index: number) => Record<string, unknown>
+  getExistingThumbnailSrcDoc: (index: number) => string | null
+  getUsableThumbnailUrl: (index: number) => string | null
+  handleKeyboardReorder: (index: number, event: KeyboardEvent<HTMLButtonElement>) => void
+  handleThumbnailImageError: (index: number, url: string) => void
+  handleVisibilityChange: (index: number, isIntersecting: boolean) => void
+  id?: string
+  mountedIndices: Set<number>
+  onReorder?: (fromIndex: number, toIndex: number) => void | Promise<unknown>
+  onSelect: (index: number) => void
+  onToggleContextSlide?: (index: number) => void
+  orientation: SlideThumbnailStripProps['orientation']
+  reorderDestination: number | null
+  slideCount: number
+  state: {
+    isOpen: boolean
+    isReordering: boolean
+    isLoading: boolean
+    showDropPreview: boolean
+  }
+  thumbScale: number
+}) {
+  const { isOpen, isReordering, isLoading, showDropPreview } = state
+  return (
+    <aside
+      aria-hidden={!isOpen}
+      aria-label={isLoading ? 'Loading slide thumbnails' : undefined}
+      aria-busy={isLoading || undefined}
+      className={cn(
+        'flex min-h-0 shrink-0 flex-col border-[var(--ark-line)] bg-[var(--ark-panel)]',
+        orientation === 'vertical' ? 'w-[168px] border-r' : 'h-[132px] border-b',
+        !isOpen && 'hidden',
+      )}
+      id={id}
+      style={{ '--ark-thumb-scale': thumbScale } as CSSProperties}
+    >
+      <div className="flex h-9 shrink-0 items-center border-b border-[var(--ark-titlebar-border)] px-3">
+        <span className="text-xs font-medium text-[var(--ark-titlebar-fg)]">Slides</span>
+        {isLoading ? (
+          <Skeleton className="ml-auto h-3 w-4 rounded-sm motion-reduce:animate-none" />
+        ) : (
+          <span className="ml-auto text-[11px] text-[var(--ark-titlebar-muted)]">{slideCount}</span>
+        )}
+      </div>
+
+      <ScrollArea className="min-h-0 flex-1">
+        <div
+          className={cn('p-2', orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2')}
+          data-slot="slide-reorder-zone"
+          {...dropZoneProps}
+        >
+          {isLoading
+            ? Array.from({ length: INITIAL_EAGER_THUMBNAILS }, (_, index) => (
+                <div className="relative rounded-sm" key={index}>
+                  <Skeleton
+                    className={cn(
+                      'block shrink-0 rounded-sm motion-reduce:animate-none',
+                      orientation === 'vertical' ? 'w-full' : 'w-[152px]',
+                    )}
+                    style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
+                  />
+                </div>
+              ))
+            : Array.from({ length: slideCount }, (_, index) => {
+                const mountContent = contentEnabled && mountedIndices.has(index)
+                const thumbnailUrl = getUsableThumbnailUrl(index)
+                const srcDoc =
+                  isOpen && mountContent
+                    ? !thumbnailUrl && index === activeIndex
+                      ? getCachedThumbnailSrcDoc(index)
+                      : getExistingThumbnailSrcDoc(index)
+                    : null
+                const previewOffset =
+                  !showDropPreview || draggedIndex === null || reorderDestination === null
+                    ? 0
+                    : index === draggedIndex
+                      ? reorderDestination - draggedIndex
+                      : draggedIndex < reorderDestination &&
+                          index > draggedIndex &&
+                          index <= reorderDestination
+                        ? -1
+                        : draggedIndex > reorderDestination &&
+                            index >= reorderDestination &&
+                            index < draggedIndex
+                          ? 1
+                          : 0
+                const previewDistance = Math.abs(previewOffset)
+                const previewTranslation = previewOffset
+                  ? `calc(${previewOffset < 0 ? '-' : ''}${previewDistance * 100}% ${previewOffset < 0 ? '-' : '+'} ${previewDistance * 0.5}rem)`
+                  : null
+
+                return (
+                  <div
+                    className={cn(
+                      'relative rounded-sm',
+                      onReorder && !isReordering && 'cursor-grab active:cursor-grabbing',
+                      draggedIndex !== null && 'transition-transform duration-100 ease-out',
+                      draggedIndex === index && 'z-20 opacity-70',
+                    )}
+                    {...getDragProps(index)}
+                    key={index}
+                    style={
+                      previewTranslation
+                        ? {
+                            transform:
+                              orientation === 'vertical'
+                                ? `translateY(${previewTranslation})`
+                                : `translateX(${previewTranslation})`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <LazyThumbnail
+                      active={index === activeIndex}
+                      contextAttached={contextSlideIndexes.includes(index)}
+                      index={index}
+                      mountContent={mountContent}
+                      onSelect={onSelect}
+                      onReorderByKeyboard={onReorder ? handleKeyboardReorder : undefined}
+                      onThumbnailImageError={handleThumbnailImageError}
+                      onToggleContextSlide={onToggleContextSlide}
+                      onVisibilityChange={handleVisibilityChange}
+                      orientation={orientation}
+                      prioritizeLoad={index < INITIAL_EAGER_THUMBNAILS || index === activeIndex}
+                      srcDoc={srcDoc}
+                      thumbnailUrl={thumbnailUrl}
+                      trackVisibility={isOpen && draggedIndex === null}
+                    />
+                  </div>
+                )
+              })}
+        </div>
+      </ScrollArea>
+    </aside>
+  )
 }
 
 export function SlideThumbnailStrip({
@@ -777,115 +943,29 @@ export function SlideThumbnailStrip({
       : 152 / PREVIEW_FRAME_WIDTH
 
   return (
-    <aside
-      aria-hidden={!isOpen}
-      aria-label={isLoading ? 'Loading slide thumbnails' : undefined}
-      aria-busy={isLoading || undefined}
-      className={cn(
-        'flex min-h-0 shrink-0 flex-col border-[var(--ark-line)] bg-[var(--ark-panel)]',
-        orientation === 'vertical' ? 'w-[168px] border-r' : 'h-[132px] border-b',
-        !isOpen && 'hidden',
-      )}
+    <SlideThumbnailStripContent
+      activeIndex={activeIndex}
+      contentEnabled={contentEnabled}
+      contextSlideIndexes={contextSlideIndexes}
+      draggedIndex={draggedIndex}
+      dropZoneProps={dropZoneProps}
+      getCachedThumbnailSrcDoc={getCachedThumbnailSrcDoc}
+      getDragProps={getDragProps}
+      getExistingThumbnailSrcDoc={getExistingThumbnailSrcDoc}
+      getUsableThumbnailUrl={getUsableThumbnailUrl}
+      handleKeyboardReorder={handleKeyboardReorder}
+      handleThumbnailImageError={handleThumbnailImageError}
+      handleVisibilityChange={handleVisibilityChange}
       id={id}
-      style={{ '--ark-thumb-scale': thumbScale } as CSSProperties}
-    >
-      <div className="flex h-9 shrink-0 items-center border-b border-[var(--ark-titlebar-border)] px-3">
-        <span className="text-xs font-medium text-[var(--ark-titlebar-fg)]">Slides</span>
-        {isLoading ? (
-          <Skeleton className="ml-auto h-3 w-4 rounded-sm motion-reduce:animate-none" />
-        ) : (
-          <span className="ml-auto text-[11px] text-[var(--ark-titlebar-muted)]">{slideCount}</span>
-        )}
-      </div>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div
-          className={cn('p-2', orientation === 'vertical' ? 'flex flex-col gap-2' : 'flex gap-2')}
-          data-slot="slide-reorder-zone"
-          {...dropZoneProps}
-        >
-          {isLoading
-            ? Array.from({ length: INITIAL_EAGER_THUMBNAILS }, (_, index) => (
-                <div className="relative rounded-sm" key={index}>
-                  <Skeleton
-                    className={cn(
-                      'block shrink-0 rounded-sm motion-reduce:animate-none',
-                      orientation === 'vertical' ? 'w-full' : 'w-[152px]',
-                    )}
-                    style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
-                  />
-                </div>
-              ))
-            : Array.from({ length: slideCount }, (_, index) => {
-                const mountContent = contentEnabled && mountedIndices.has(index)
-                const thumbnailUrl = getUsableThumbnailUrl(index)
-                const srcDoc =
-                  isOpen && mountContent
-                    ? !thumbnailUrl && index === activeIndex
-                      ? getCachedThumbnailSrcDoc(index)
-                      : getExistingThumbnailSrcDoc(index)
-                    : null
-                const previewOffset =
-                  !showDropPreview || draggedIndex === null || reorderDestination === null
-                    ? 0
-                    : index === draggedIndex
-                      ? reorderDestination - draggedIndex
-                      : draggedIndex < reorderDestination &&
-                          index > draggedIndex &&
-                          index <= reorderDestination
-                        ? -1
-                        : draggedIndex > reorderDestination &&
-                            index >= reorderDestination &&
-                            index < draggedIndex
-                          ? 1
-                          : 0
-                const previewDistance = Math.abs(previewOffset)
-                const previewTranslation = previewOffset
-                  ? `calc(${previewOffset < 0 ? '-' : ''}${previewDistance * 100}% ${previewOffset < 0 ? '-' : '+'} ${previewDistance * 0.5}rem)`
-                  : null
-
-                return (
-                  <div
-                    className={cn(
-                      'relative rounded-sm',
-                      onReorder && !isReordering && 'cursor-grab active:cursor-grabbing',
-                      draggedIndex !== null && 'transition-transform duration-100 ease-out',
-                      draggedIndex === index && 'z-20 opacity-70',
-                    )}
-                    {...getDragProps(index)}
-                    key={index}
-                    style={
-                      previewTranslation
-                        ? {
-                            transform:
-                              orientation === 'vertical'
-                                ? `translateY(${previewTranslation})`
-                                : `translateX(${previewTranslation})`,
-                          }
-                        : undefined
-                    }
-                  >
-                    <LazyThumbnail
-                      active={index === activeIndex}
-                      contextAttached={contextSlideIndexes.includes(index)}
-                      index={index}
-                      mountContent={mountContent}
-                      onSelect={onSelect}
-                      onReorderByKeyboard={onReorder ? handleKeyboardReorder : undefined}
-                      onThumbnailImageError={handleThumbnailImageError}
-                      onToggleContextSlide={onToggleContextSlide}
-                      onVisibilityChange={handleVisibilityChange}
-                      orientation={orientation}
-                      prioritizeLoad={index < INITIAL_EAGER_THUMBNAILS || index === activeIndex}
-                      srcDoc={srcDoc}
-                      thumbnailUrl={thumbnailUrl}
-                      trackVisibility={isOpen && draggedIndex === null}
-                    />
-                  </div>
-                )
-              })}
-        </div>
-      </ScrollArea>
-    </aside>
+      mountedIndices={mountedIndices}
+      onReorder={onReorder}
+      onSelect={onSelect}
+      onToggleContextSlide={onToggleContextSlide}
+      orientation={orientation}
+      reorderDestination={reorderDestination}
+      slideCount={slideCount}
+      state={{ isOpen, isReordering, isLoading, showDropPreview }}
+      thumbScale={thumbScale}
+    />
   )
 }

@@ -15,6 +15,15 @@ const deck = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
+const DEFAULT_UI_STATE = {
+  hasDeck: true,
+  hasSlides: true,
+  isChatOpen: false,
+  isGenerating: false,
+  isStripOpen: false,
+  showSanitizedDownload: false,
+}
+
 function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> = {}) {
   const fileInputRef = createRef<HTMLInputElement>()
 
@@ -25,11 +34,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           activeDeckId={deck.id}
           deckTitle={deck.title}
           fileInputRef={fileInputRef}
-          hasDeck
-          hasSlides
-          isChatOpen={false}
-          isGenerating={false}
-          isStripOpen={false}
+          uiState={DEFAULT_UI_STATE}
           onDownload={vi.fn()}
           onDuplicate={vi.fn()}
           onHtmlUpload={vi.fn()}
@@ -44,7 +49,6 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           onToggleChat={vi.fn()}
           onToggleStrip={vi.fn()}
           onUploadClick={vi.fn()}
-          showSanitizedDownload={false}
           {...overrides}
         />
       </TooltipProvider>
@@ -149,7 +153,7 @@ describe('AppTitleBar accessibility', () => {
   })
 
   it('keeps panel controls unhighlighted and swaps to the icon without an arrow when closed', () => {
-    renderTitleBar({ isChatOpen: true, isStripOpen: false })
+    renderTitleBar({ uiState: { ...DEFAULT_UI_STATE, isChatOpen: true, isStripOpen: false } })
 
     const chatToggle = screen.getByRole('button', { name: /Hide chat panel/ })
     const stripToggle = screen.getByRole('button', { name: 'Show slide thumbnails' })
@@ -194,7 +198,7 @@ describe('AppTitleBar accessibility', () => {
   it('offers original and sanitized download choices when scripts are present', async () => {
     const user = userEvent.setup()
     const onDownload = vi.fn()
-    renderTitleBar({ onDownload, showSanitizedDownload: true })
+    renderTitleBar({ onDownload, uiState: { ...DEFAULT_UI_STATE, showSanitizedDownload: true } })
 
     await user.click(screen.getByRole('button', { name: 'Download HTML' }))
     await user.click(screen.getByText('Original HTML'))

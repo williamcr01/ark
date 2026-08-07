@@ -1,5 +1,4 @@
 export const CHAT_PANEL_MIN_WIDTH_PX = 320
-export const CHAT_PANEL_MAX_WIDTH_PX = 460
 export const CHAT_PANEL_DEFAULT_PERCENT = 30
 
 export function getChatPanelDefaultSize(_containerWidth: number) {

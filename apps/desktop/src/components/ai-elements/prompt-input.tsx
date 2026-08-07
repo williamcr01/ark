@@ -1,11 +1,6 @@
 'use client'
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   InputGroup,
   InputGroupAddon,
@@ -351,6 +346,7 @@ export const PromptInput = ({
         id: nanoid(),
         mediaType: file.type,
         type: 'file' as const,
+        // react-doctor-disable-next-line react-doctor/no-create-object-url-without-revoke -- object URLs are revoked when the attachment is removed or the input is cleared (remove()/clear() call URL.revokeObjectURL)
         url: URL.createObjectURL(file),
       }))
       filesRef.current = [...filesRef.current, ...next]
@@ -839,14 +835,6 @@ export const PromptInputActionMenuTrigger = ({
       {children ?? <PlusIcon className="size-4" />}
     </PromptInputButton>
   </DropdownMenuTrigger>
-)
-
-export type PromptInputActionMenuContentProps = ComponentProps<typeof DropdownMenuContent>
-export const PromptInputActionMenuContent = ({
-  className,
-  ...props
-}: PromptInputActionMenuContentProps) => (
-  <DropdownMenuContent align="start" className={cn(className)} {...props} />
 )
 
 // Note: Actions that perform side-effects (like opening a file dialog)
