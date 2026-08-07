@@ -209,7 +209,7 @@ describe('WorkspaceStore file operations', () => {
     expect(updated?.path).toBe(path.join(root, 'Agent title.ark'))
   })
 
-  it('does not rename a user-placed file in the default directory', async () => {
+  it('renames a file on agent title change even after Save As picked the name', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
     const userPath = path.join(root, 'Custom name.ark')
@@ -222,11 +222,11 @@ describe('WorkspaceStore file operations', () => {
     )
 
     expect(updated?.title).toBe('Board plan')
-    expect(updated?.path).toBe(userPath)
-    await expect(access(userPath)).resolves.toBeUndefined()
+    expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
+    await expect(access(userPath)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
-  it('does not rename a file opened from disk even when the title changes', async () => {
+  it('renames a file opened from disk when the title changes', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
     workspaces.close()
@@ -241,31 +241,8 @@ describe('WorkspaceStore file operations', () => {
     )
 
     expect(updated?.title).toBe('Board plan')
-    expect(updated?.path).toBe(created.path)
-  })
-
-  it('defaults legacy files without a name_source column to derived names', async () => {
-    const workspaces = await setup()
-    const created = await workspaces.create(html)
-    workspaces.close()
-
-    const database = new DatabaseSync(created.path)
-    database.exec('ALTER TABLE workspace DROP COLUMN name_source')
-    database.close()
-
-    store = createWorkspaceStore(root)
-    // Boot/scan path: the deck is reopened from the recent index, not via the
-    // open dialog, so its name stays Ark-derived.
-    await expect(store.get(created.id)).resolves.toMatchObject({ path: created.path })
-
-    const updated = await store.updateDocument(
-      created.id,
-      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
-      1,
-    )
-
-    expect(updated?.title).toBe('Board plan')
     expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
+    await expect(access(created.path)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('does not bump the revision when a rename cannot sync the document title', async () => {
@@ -395,7 +372,7 @@ describe('WorkspaceStore file operations', () => {
     })
   })
 
-  it('keeps a user-chosen path name when renaming outside the default directory', async () => {
+  it('renames the file in place when renaming outside the default directory', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
     const externalDir = await mkdtemp(path.join(os.tmpdir(), 'ark-external-'))
@@ -406,8 +383,9 @@ describe('WorkspaceStore file operations', () => {
       const renamed = await workspaces.rename(created.id, 'Board plan')
 
       expect(renamed?.title).toBe('Board plan')
-      expect(renamed?.path).toBe(externalPath)
-      await expect(access(externalPath)).resolves.toBeUndefined()
+      expect(renamed?.path).toBe(path.join(externalDir, 'Board plan.ark'))
+      await expect(access(externalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(access(renamed!.path)).resolves.toBeUndefined()
     } finally {
       await rm(externalDir, { recursive: true, force: true })
     }

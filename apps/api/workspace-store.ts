@@ -40,8 +40,7 @@ const SCHEMA = `
     updated_at TEXT NOT NULL,
     format_version INTEGER NOT NULL,
     document_revision INTEGER NOT NULL DEFAULT 1,
-    origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}',
-    name_source TEXT NOT NULL DEFAULT 'derived'
+    origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'
   );
   CREATE TABLE document (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -168,14 +167,6 @@ function migrate(database: DatabaseSync) {
     database.exec(
       `ALTER TABLE workspace ADD COLUMN origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'`,
     )
-  }
-
-  // 'derived' means the on-disk name was generated from the deck title and may
-  // follow future title changes; 'user' means the user placed the file and its
-  // name must never be touched silently. Newer decks write this column; older
-  // decks default to 'derived' (the common auto-named case).
-  if (!columns.some((column) => column.name === 'name_source')) {
-    database.exec(`ALTER TABLE workspace ADD COLUMN name_source TEXT NOT NULL DEFAULT 'derived'`)
   }
 }
 
@@ -514,12 +505,6 @@ export class WorkspaceStore {
     }
   }
 
-  private nameSource(open: OpenWorkspace) {
-    const row = open.database.prepare('SELECT name_source FROM workspace').get() as
-      { name_source: string } | undefined
-    return row?.name_source === 'user' ? 'user' : 'derived'
-  }
-
   /**
    * Derive a deck title from a file's name when it diverges from the stored
    * title — the user's latest statement of the name was renaming the file
@@ -610,18 +595,10 @@ export class WorkspaceStore {
         database
           .prepare(
             `INSERT INTO workspace
-             (id, title, created_at, updated_at, format_version, document_revision, origin, name_source)
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+             (id, title, created_at, updated_at, format_version, document_revision, origin)
+             VALUES (?, ?, ?, ?, ?, 1, ?)`,
           )
-          .run(
-            id,
-            title,
-            now,
-            now,
-            ARK_WORKSPACE_FORMAT_VERSION,
-            origin,
-            targetPath ? 'user' : 'derived',
-          )
+          .run(id, title, now, now, ARK_WORKSPACE_FORMAT_VERSION, origin)
         database
           .prepare('INSERT INTO document (id, html, content_hash, updated_at) VALUES (1, ?, ?, ?)')
           .run(html, contentHash(html), now)
@@ -653,7 +630,6 @@ export class WorkspaceStore {
     if (title) {
       this.adoptFileName(open, current, title)
     }
-    open.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace
@@ -713,7 +689,6 @@ export class WorkspaceStore {
     if (title) {
       this.adoptFileName(open, current, title)
     }
-    open.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace
@@ -767,15 +742,10 @@ export class WorkspaceStore {
     await this.touchRecent(workspace)
 
     // When the agent establishes a new title (the title row is still
-    // auto-derived from HTML), keep the on-disk filename in sync for
-    // Ark-managed files in the default workspaces directory. The target is
-    // collision-safe (Board plan.ark, Board plan 2.ark) and never overwrites.
-    // User-placed files (opened, Save As, Move) keep their names.
-    if (
-      title !== current.title &&
-      path.dirname(open.path) === this.defaultDir &&
-      this.nameSource(open) === 'derived'
-    ) {
+    // auto-derived from HTML), keep the on-disk filename in sync wherever the
+    // file lives. The target is collision-safe (Board plan.ark,
+    // Board plan 2.ark) and never overwrites.
+    if (title !== current.title) {
       const targetPath = await this.uniquePath(title, path.dirname(open.path))
       if (targetPath !== open.path) {
         try {
@@ -812,17 +782,12 @@ export class WorkspaceStore {
       nextHtml: string,
       changed: boolean,
       updatedAt: string,
-      nameSource: 'derived' | null,
     ) => {
       target.database.exec('BEGIN IMMEDIATE')
       try {
         target.database
-          .prepare(
-            nameSource
-              ? 'UPDATE workspace SET title = ?, updated_at = ?, name_source = ?'
-              : 'UPDATE workspace SET title = ?, updated_at = ?',
-          )
-          .run(nextTitle, updatedAt, ...(nameSource ? [nameSource] : []))
+          .prepare('UPDATE workspace SET title = ?, updated_at = ?')
+          .run(nextTitle, updatedAt)
         if (changed) {
           target.database
             .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
@@ -838,46 +803,32 @@ export class WorkspaceStore {
       }
     }
 
-    // Keep the on-disk filename in sync with the title for Ark-managed files in
-    // the default workspaces directory, where the name is derived from the
-    // title at creation. Files at user-chosen paths keep their names; Move
-    // exists for that. A title that already matches the current filename skips
-    // the file rename entirely. A user rename re-derives the name, so later
-    // agent-established titles keep renaming the file too.
-    if (path.dirname(open.path) === this.defaultDir) {
-      const targetPath = await this.uniquePath(title, path.dirname(open.path))
-      writeMetadata(open, title, syncedHtml, htmlChanged, now, 'derived')
-      if (targetPath !== open.path) {
-        try {
-          const workspace = await this.renameOpenWorkspaceFile(open, targetPath)
-          await this.touchRecent(workspace)
-          return workspace
-        } catch (error) {
-          // Roll the file rename back: reopen the original path and restore the
-          // previous metadata so the deck does not half-rename.
-          const reopened = this.openFile(open.path)
-          writeMetadata(
-            reopened,
-            previous.title,
-            previous.html,
-            htmlChanged,
-            previous.updatedAt,
-            null,
-          )
-          if (htmlChanged) {
-            reopened.database
-              .prepare('UPDATE workspace SET document_revision = ?')
-              .run(previous.documentRevision)
-          }
-          throw error
+    // Keep the on-disk filename in sync with the title wherever the file
+    // lives: the deck name is the file name. The target is collision-safe
+    // (Board plan.ark, Board plan 2.ark) and never overwrites. A title that
+    // already matches the current filename skips the file rename entirely. A
+    // user rename re-derives the name, so later agent-established titles keep
+    // renaming the file too.
+    const targetPath = await this.uniquePath(title, path.dirname(open.path))
+    writeMetadata(open, title, syncedHtml, htmlChanged, now)
+    if (targetPath !== open.path) {
+      try {
+        const workspace = await this.renameOpenWorkspaceFile(open, targetPath)
+        await this.touchRecent(workspace)
+        return workspace
+      } catch (error) {
+        // Roll the file rename back: reopen the original path and restore the
+        // previous metadata so the deck does not half-rename.
+        const reopened = this.openFile(open.path)
+        writeMetadata(reopened, previous.title, previous.html, htmlChanged, previous.updatedAt)
+        if (htmlChanged) {
+          reopened.database
+            .prepare('UPDATE workspace SET document_revision = ?')
+            .run(previous.documentRevision)
         }
+        throw error
       }
-      const workspace = readWorkspace(open)
-      await this.touchRecent(workspace)
-      return workspace
     }
-
-    writeMetadata(open, title, syncedHtml, htmlChanged, now, null)
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace
@@ -1023,7 +974,6 @@ export class WorkspaceStore {
     this.byId.delete(id)
     this.byPath.delete(open.path)
     const reopened = this.openFile(resolved)
-    reopened.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(reopened)
     await this.touchRecent(workspace)
     return workspace
@@ -1048,7 +998,6 @@ export class WorkspaceStore {
     try {
       await rename(open.path, resolved)
       const reopened = this.openFile(resolved)
-      reopened.database.prepare("UPDATE workspace SET name_source = 'user'").run()
       const workspace = readWorkspace(reopened)
       await this.touchRecent(workspace)
       return workspace
