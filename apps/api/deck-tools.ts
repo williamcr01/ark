@@ -267,7 +267,8 @@ export function createDeckTools(
           return { ok: false, error: patched.error, operationIndex: patched.operationIndex }
         }
 
-        const validation = validateDeckHtmlOnServer(patched.html, timingOptions)
+        const validation =
+          patched.validation ?? validateDeckHtmlOnServer(patched.html, timingOptions)
 
         if (!validation.valid) {
           const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
@@ -318,7 +319,8 @@ export function createDeckTools(
           return { ok: false, error: patched.error, operationIndex: patched.operationIndex }
         }
 
-        const validation = validateDeckHtmlOnServer(patched.html, timingOptions)
+        const validation =
+          patched.validation ?? validateDeckHtmlOnServer(patched.html, timingOptions)
 
         if (!validation.valid) {
           const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')

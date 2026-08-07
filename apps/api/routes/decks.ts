@@ -236,9 +236,13 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const validation = validateDeckHtmlOnServer(patched.html, {
-          logger: getRequestLogger(request),
-        })
+        // Prefer the live-DOM validation attached by applyDeckPatches so we do
+        // not pay a second full JSDOM parse on the editor commit path.
+        const validation =
+          patched.validation ??
+          validateDeckHtmlOnServer(patched.html, {
+            logger: getRequestLogger(request),
+          })
 
         if (!validation.valid) {
           sendDeckValidationError(response, validation, request)

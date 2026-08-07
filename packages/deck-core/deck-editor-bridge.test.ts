@@ -785,6 +785,9 @@ describe('deck editor bridge protocol', () => {
     expect(script).toContain(
       'function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis',
     )
+    expect(script).toContain('function applySnapGuides(slide, guides, cache)')
+    expect(script).toContain('liveTransform: true')
+    expect(script).toContain('liveTransformBase')
     expect(script).toContain("willChange = 'transform'")
     expect(script).toContain('data.type === C.TRANSFORM_END')
     expect(script).toContain('candidates.length < 60')

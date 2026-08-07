@@ -38,6 +38,9 @@ export function useDeckPreviewSource(
   // Bumped by reloads and by in-place slide patches, so consumers can react to
   // "the preview shows different content now" without watching previewHtml.
   const [contentRevision, setContentRevision] = useState(0)
+  // True while a pointer-up live patch is in flight — thumbnail polling must wait
+  // so it cannot compete with the commit path (issue #287).
+  const [livePatchPending, setLivePatchPending] = useState(false)
   const canonicalRef = useRef({ deckId, html })
   const observedRef = useRef({ deckId, html })
   const livePatchPendingRef = useRef(false)
@@ -100,6 +103,7 @@ export function useDeckPreviewSource(
     if (observed.deckId !== deckId) {
       observedRef.current = { deckId, html }
       livePatchPendingRef.current = false
+      setLivePatchPending(false)
       expectedLiveHtmlRef.current = null
       frameContentRef.current = { html, snapshot: null }
       setContentRevision((current) => current + 1)
@@ -153,6 +157,7 @@ export function useDeckPreviewSource(
     }
 
     livePatchPendingRef.current = true
+    setLivePatchPending(true)
     expectedLiveHtmlRef.current = null
     return true
   }, [])
@@ -165,6 +170,7 @@ export function useDeckPreviewSource(
     const canonical = canonicalRef.current
 
     livePatchPendingRef.current = false
+    setLivePatchPending(false)
     expectedLiveHtmlRef.current = null
     observedRef.current = canonical
     frameContentRef.current = { html: canonical.html, snapshot: null }
@@ -183,6 +189,7 @@ export function useDeckPreviewSource(
       }
 
       livePatchPendingRef.current = false
+      setLivePatchPending(false)
 
       if (!result) {
         rollbackLivePatch()
@@ -210,6 +217,7 @@ export function useDeckPreviewSource(
     previewHtml: matchesDeck ? source.html : html,
     previewReloadRevision: source.reloadRevision + (matchesDeck ? 0 : 1),
     previewContentRevision: contentRevision,
+    livePatchPending,
     beginLivePatch,
     finishLivePatch,
     rollbackLivePatch,

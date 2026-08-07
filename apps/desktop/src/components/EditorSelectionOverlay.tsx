@@ -1,3 +1,5 @@
+import { forwardRef, useImperativeHandle, useRef } from 'react'
+
 import type { EditorNormalizedRect, EditorSurface } from '@ark/deck-core/deck-editor-bridge.ts'
 import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
 import { cn } from '@/lib/utils'
@@ -14,17 +16,63 @@ export type EditorSelectionOverlayProps = {
   isEditing?: boolean
 }
 
-export function EditorSelectionOverlay({
-  geometry,
-  hoverGeometry = null,
-  slideBounds = null,
-  hoverSlideBounds = null,
-  scale,
-  surface = 'light',
-  hoverSurface = 'light',
-  locked = false,
-  isEditing = false,
-}: EditorSelectionOverlayProps) {
+export type EditorSelectionOverlayHandle = {
+  applyTransformPreview: (
+    geometry: EditorNormalizedRect,
+    slideBounds?: EditorNormalizedRect | null,
+  ) => void
+  clearTransformPreview: () => void
+}
+
+export const EditorSelectionOverlay = forwardRef<
+  EditorSelectionOverlayHandle,
+  EditorSelectionOverlayProps
+>(function EditorSelectionOverlay(
+  {
+    geometry,
+    hoverGeometry = null,
+    slideBounds = null,
+    hoverSlideBounds = null,
+    scale,
+    surface = 'light',
+    hoverSurface = 'light',
+    locked = false,
+    isEditing = false,
+  },
+  ref,
+) {
+  const selectionBoxRef = useRef<HTMLDivElement>(null)
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyTransformPreview(nextGeometry, nextSlideBounds) {
+        const node = selectionBoxRef.current
+
+        if (!node || scaleRef.current <= 0) {
+          return
+        }
+
+        const rect = normalizedRectToStagePixels(
+          nextGeometry,
+          scaleRef.current,
+          nextSlideBounds ?? undefined,
+        )
+        node.style.left = `${rect.left}px`
+        node.style.top = `${rect.top}px`
+        node.style.width = `${rect.width}px`
+        node.style.height = `${rect.height}px`
+      },
+      clearTransformPreview() {
+        // React props reassert committed geometry on the next render after
+        // transformPreview clears; nothing to undo on the node itself.
+      },
+    }),
+    [],
+  )
+
   if (scale <= 0) {
     return null
   }
@@ -36,6 +84,10 @@ export function EditorSelectionOverlay({
       hoverGeometry.y !== geometry.y ||
       hoverGeometry.width !== geometry.width ||
       hoverGeometry.height !== geometry.height)
+
+  const selectionStyle = geometry
+    ? normalizedRectToStagePixels(geometry, scale, slideBounds ?? undefined)
+    : undefined
 
   return (
     <>
@@ -62,9 +114,10 @@ export function EditorSelectionOverlay({
                 ? cn('border-white shadow-[0_0_0_1px_#000]', isEditing && 'bg-white/10')
                 : cn('border-black shadow-[0_0_0_1px_#fff]', isEditing && 'bg-black/10'),
           )}
-          style={normalizedRectToStagePixels(geometry, scale, slideBounds ?? undefined)}
+          ref={selectionBoxRef}
+          style={selectionStyle}
         />
       ) : null}
     </>
   )
-}
+})

@@ -63,13 +63,25 @@ function scheduleThumbnailWarm(
   thumbnailService: ThumbnailService | null | undefined,
   deckId: string | null | undefined,
   documentRevision: number | null | undefined,
+  delayMs = 0,
 ) {
   const revision = Number(documentRevision)
   if (!thumbnailService || !deckId || !Number.isInteger(revision)) {
     return
   }
 
-  void thumbnailService.enqueueForDocument(deckId, revision).catch(() => undefined)
+  const enqueue = () => {
+    void thumbnailService.enqueueForDocument(deckId, revision).catch(() => undefined)
+  }
+
+  // Editor pointer-up patches defer warm work so thumbnail rendering does not
+  // contend with the live-patch response path (issue #287).
+  if (delayMs > 0) {
+    setTimeout(enqueue, delayMs)
+    return
+  }
+
+  enqueue()
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -98,7 +110,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const mcpInteractionStore =
     options.mcpInteractionStore ?? createMcpInteractionStore(options.onMcpInteractionChanged)
   const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
-    scheduleThumbnailWarm(thumbnailService, deckId, documentRevision)
+    scheduleThumbnailWarm(thumbnailService, deckId, documentRevision, 250)
   const runMcpTool = createMcpRunner({
     deckStore,
     state: mcpServiceState,
