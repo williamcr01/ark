@@ -135,9 +135,13 @@ export async function removeRecentWorkspace(id: string) {
   })
   if (!response.ok && response.status !== 204) throw new Error('Could not remove recent workspace.')
 }
-export const saveWorkspaceAs = (id: string, path: string) =>
-  postWorkspace(`/api/decks/${encodeURIComponent(id)}/save-as`, { path })
-export const moveWorkspace = (id: string, path: string) =>
-  postWorkspace(`/api/decks/${encodeURIComponent(id)}/move`, { path })
-export const duplicateWorkspace = (id: string, mode: 'presentation' | 'complete', path?: string) =>
-  postWorkspace(`/api/decks/${encodeURIComponent(id)}/duplicate`, { mode, path })
+export const saveWorkspaceAs = (id: string, path: string, overwrite = false) =>
+  postWorkspace(`/api/decks/${encodeURIComponent(id)}/save-as`, { path, overwrite })
+export const moveWorkspace = (id: string, path: string, overwrite = false) =>
+  postWorkspace(`/api/decks/${encodeURIComponent(id)}/move`, { path, overwrite })
+export const duplicateWorkspace = (
+  id: string,
+  mode: 'presentation' | 'complete',
+  path?: string,
+  overwrite = false,
+) => postWorkspace(`/api/decks/${encodeURIComponent(id)}/duplicate`, { mode, path, overwrite })

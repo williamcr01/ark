@@ -56,6 +56,8 @@ export const apiErrorCodeSchema = z.enum([
   'invalid_api_key',
   'provider_error',
   'document_conflict',
+  'workspace_file_exists',
+  'workspace_already_open',
 ])
 
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>

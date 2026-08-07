@@ -74,12 +74,13 @@ describe('useDeckPersistence', () => {
     )
   })
 
-  it('saves into the open workspace and adopts its next document revision', async () => {
+  it('saves into the open workspace and adopts its next document revision and path', async () => {
     const updated = {
       ...deck,
       html: html.replace('</body>', '<p>Saved</p></body>'),
       updatedAt: '2026-01-02T00:00:00.000Z',
       documentRevision: 2,
+      filePath: '/tmp/Board plan.ark',
     }
     const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
       const url = String(input)
@@ -100,6 +101,7 @@ describe('useDeckPersistence', () => {
 
     expect(result.current.html).toBe(updated.html)
     expect(result.current.documentRevision).toBe(2)
+    expect(result.current.filePath).toBe('/tmp/Board plan.ark')
     expect(result.current.isDirty).toBe(false)
   })
 
@@ -123,5 +125,37 @@ describe('useDeckPersistence', () => {
     })
 
     expect(result.current.filePath).toBe(savedAs.filePath)
+  })
+
+  it('adopts the renamed workspace path, document, and revision', async () => {
+    const renamedHtml = html.replace('<title>Deck</title>', '<title>Board plan</title>')
+    const renamed = {
+      ...deck,
+      title: 'Board plan',
+      html: renamedHtml,
+      filePath: '/tmp/Board plan.ark',
+      documentRevision: 2,
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/decks') return jsonResponse({ decks: [summary] })
+      if (url === `/api/decks/${deck.id}` && init?.method === 'PATCH') {
+        return jsonResponse({ deck: renamed })
+      }
+      if (url === `/api/decks/${deck.id}`) return jsonResponse({ deck })
+      return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.renameActiveDeck('Board plan')
+    })
+
+    expect(result.current.deckTitle).toBe('Board plan')
+    expect(result.current.filePath).toBe('/tmp/Board plan.ark')
+    expect(result.current.html).toBe(renamedHtml)
+    expect(result.current.documentRevision).toBe(2)
   })
 })

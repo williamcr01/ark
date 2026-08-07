@@ -114,12 +114,16 @@ export const workspacePathRequestSchema = z.object({
     .string()
     .min(1)
     .refine((value) => value.toLowerCase().endsWith('.ark'), 'Expected an .ark file.'),
+  /** Replace an existing file at the target path instead of refusing. */
+  overwrite: z.boolean().optional(),
 })
 
 export const duplicateWorkspaceRequestSchema = z.object({
   path: workspacePathRequestSchema.shape.path.optional(),
   mode: z.enum(['presentation', 'complete']),
   threadIds: z.array(z.string().min(1)).optional(),
+  /** Replace an existing file at the target path instead of refusing. */
+  overwrite: z.boolean().optional(),
 })
 
 export const deckResponseSchema = withRequestId({

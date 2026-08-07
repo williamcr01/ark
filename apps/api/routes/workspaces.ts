@@ -5,6 +5,7 @@ import {
   isValidDeckId,
   parseRequestBody,
   workspacePathRequestSchema,
+  type ApiErrorPayload,
   type StoredDeck,
 } from '@ark/contracts'
 import type { WorkspaceRow, WorkspaceStore } from '../workspace-store.ts'
@@ -21,11 +22,27 @@ const toDeck = (workspace: WorkspaceRow): StoredDeck => ({
   filePath: workspace.path,
 })
 
-const workspaceActionStatus = (error: unknown) => {
+/**
+ * Map workspace action failures to an HTTP status and a structured payload.
+ * The two conflict cases carry machine-readable codes so the renderer can
+ * offer overwrite / pick-a-different-name without parsing prose.
+ */
+const workspaceActionError = (error: unknown): { status: number; payload: ApiErrorPayload } => {
   const message = error instanceof Error ? error.message : ''
-  if (/already exists|already open|same identity/i.test(message)) return 409
-  if (/invalid|unsupported|different identity|could not open/i.test(message)) return 400
-  return 500
+
+  if (/already exists/i.test(message)) {
+    return { status: 409, payload: { error: message, code: 'workspace_file_exists' } }
+  }
+
+  if (/already open|same identity/i.test(message)) {
+    return { status: 409, payload: { error: message, code: 'workspace_already_open' } }
+  }
+
+  if (/invalid|unsupported|different identity|could not open/i.test(message)) {
+    return { status: 400, payload: getApiErrorFromUnknown(error) }
+  }
+
+  return { status: 500, payload: getApiErrorFromUnknown(error) }
 }
 
 export function createWorkspacesRouter(workspaces: WorkspaceStore) {
@@ -80,15 +97,16 @@ export function createWorkspacesRouter(workspaces: WorkspaceStore) {
       try {
         const workspace =
           action === 'save-as'
-            ? await workspaces.saveAs(id, parsed.data.path)
-            : await workspaces.move(id, parsed.data.path)
+            ? await workspaces.saveAs(id, parsed.data.path, parsed.data.overwrite ?? false)
+            : await workspaces.move(id, parsed.data.path, parsed.data.overwrite ?? false)
         if (!workspace) {
           response.status(404).json({ error: 'Deck not found.' })
           return
         }
         response.json({ deck: toDeck(workspace) })
       } catch (error) {
-        sendApiError(response, workspaceActionStatus(error), getApiErrorFromUnknown(error))
+        const { status, payload } = workspaceActionError(error)
+        sendApiError(response, status, payload)
       }
     })
   }
@@ -105,6 +123,7 @@ export function createWorkspacesRouter(workspaces: WorkspaceStore) {
         parsed.data.mode,
         parsed.data.path,
         parsed.data.threadIds,
+        parsed.data.overwrite ?? false,
       )
       if (!workspace) {
         response.status(404).json({ error: 'Deck not found.' })
@@ -112,7 +131,8 @@ export function createWorkspacesRouter(workspaces: WorkspaceStore) {
       }
       response.status(201).json({ deck: toDeck(workspace) })
     } catch (error) {
-      sendApiError(response, workspaceActionStatus(error), getApiErrorFromUnknown(error))
+      const { status, payload } = workspaceActionError(error)
+      sendApiError(response, status, payload)
     }
   })
 

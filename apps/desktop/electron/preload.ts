@@ -55,8 +55,8 @@ contextBridge.exposeInMainWorld('arkDesktop', {
   },
   files: {
     openWorkspace: () => ipcRenderer.invoke('files:open-workspace'),
-    chooseWorkspacePath: (suggestedName: string) =>
-      ipcRenderer.invoke('files:choose-workspace-path', suggestedName),
+    chooseWorkspacePath: (suggestedName: string, defaultPath?: string) =>
+      ipcRenderer.invoke('files:choose-workspace-path', suggestedName, defaultPath),
     chooseDirectory: () => ipcRenderer.invoke('files:choose-directory'),
     reveal: (path: string) => ipcRenderer.invoke('files:reveal', path),
   },

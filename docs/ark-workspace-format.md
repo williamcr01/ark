@@ -180,6 +180,8 @@ user commits edit → update HTML in memory → debounce ~300 ms
 
 Immediate flush on: close, deck switch, Present mode, export/share, Save As. Drags/resizes save once per gesture (existing 400 ms nudge coalescing carries over). UI states: Saving… / Saved / Save failed.
 
+Save As / Move / Share into a path that already exists: the API refuses with `409 workspace_file_exists` unless the request sets `overwrite: true`, in which case the existing file is replaced (the "already open" case always refuses with `workspace_already_open` — an open workspace is never clobbered). The renderer asks the user before sending `overwrite: true`, and reopens the dialog at the conflicting path for "choose a different name".
+
 Pragmas:
 
 ```
@@ -198,7 +200,10 @@ Concurrency: the main process keeps a registry `workspaceId → { path, open han
 ## Default location and recent index
 
 - Default: `Documents/Ark/`, configurable via native directory picker.
-- Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`. Ark may _suggest_ renaming when the agent establishes a title; never silently rename/move.
+- Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`.
+- The on-disk filename follows the deck title whenever the title changes (user rename in the title bar/dashboard, or an agent-established `<title>` that the UI adopts), **in whatever directory the file lives**. Renames are collision-safe (`Board plan.ark`, `Board plan 2.ark`) and never overwrite.
+- Opening a file (Open dialog or Locate) adopts its file name as the deck title when the two diverge — a rename in the file explorer/terminal is treated as the user's latest statement of the deck's name. Collision-safe suffixes (`Board plan 2.ark` vs title `Board plan`) are recognized and leave the title alone.
+- Deck-name changes (UI rename, file-name adoption) also rewrite the document `<title>` so the deck name, the file name, and the exported HTML agree. The rewrite bumps `document_revision` only when the document actually changes, and the renderer adopts the returned HTML + revision.
 - Support Save As…, Move to…, Reveal in file manager.
 - Dashboard = recent-file index at `<userData>/recent-workspaces.json`: workspace ID, path, cached title/updated-time/cover, last opened. Cache is disposable; `.ark` is authoritative. Missing file → "File not found · [Locate] [Remove from recent]". Ark may scan the default directory, never arbitrary drives.
 

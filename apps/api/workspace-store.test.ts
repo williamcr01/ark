@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -112,6 +112,334 @@ describe('WorkspaceStore file operations', () => {
 
     store = createWorkspaceStore(root)
     await expect(store.open(created.path)).resolves.toMatchObject({ origin: 'authored' })
+  })
+
+  it('renames the on-disk file and syncs the document title in the default directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const originalPath = created.path
+    expect(path.basename(originalPath)).toBe('Workspace.ark')
+
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+
+    expect(renamed?.title).toBe('Board plan')
+    expect(renamed?.path).toBe(path.join(root, 'Board plan.ark'))
+    expect(renamed?.html).toContain('<title>Board plan</title>')
+    expect(renamed?.documentRevision).toBe(2)
+    await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(renamed!.path)).resolves.toBeUndefined()
+    await expect(workspaces.get(created.id)).resolves.toMatchObject({
+      title: 'Board plan',
+      path: renamed?.path,
+    })
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, path: renamed?.path }),
+    ])
+  })
+
+  it('picks a collision-safe filename when the new title target already exists', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    await workspaces.rename(created.id, 'Board plan')
+    const second = await workspaces.create(html.replace('Hello', 'Second'))
+    await workspaces.rename(second.id, 'Board plan')
+
+    const secondPath = (await workspaces.get(second.id))?.path
+    expect(path.basename(secondPath!)).toBe('Board plan 2.ark')
+    await expect(access(secondPath!)).resolves.toBeUndefined()
+    await expect(access(path.join(root, 'Board plan.ark'))).resolves.toBeUndefined()
+  })
+
+  it('keeps the current file when a new title maps onto its existing name', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const titled = await workspaces.rename(created.id, 'Q3: Review')
+    expect(titled?.path).toBe(path.join(root, 'Q3 Review.ark'))
+
+    const renamed = await workspaces.rename(created.id, 'Q3 Review')
+
+    expect(renamed?.title).toBe('Q3 Review')
+    expect(renamed?.path).toBe(titled?.path)
+    await expect(access(path.join(root, 'Q3 Review 2.ark'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
+  it('keeps a user-chosen file name when the agent establishes the matching title', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const userPath = path.join(root, 'Board plan.ark')
+    await workspaces.saveAs(created.id, userPath)
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated?.title).toBe('Board plan')
+    expect(updated?.path).toBe(userPath)
+    await expect(access(path.join(root, 'Board plan 2.ark'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  })
+
+  it('renames the managed file when an agent-established title changes', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const originalPath = created.path
+    expect(path.basename(originalPath)).toBe('Workspace.ark')
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated).toMatchObject({ title: 'Board plan', documentRevision: 2 })
+    expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
+    await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(updated!.path)).resolves.toBeUndefined()
+    await expect(workspaces.get(created.id)).resolves.toMatchObject({ path: updated?.path })
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, path: updated?.path }),
+    ])
+  })
+
+  it('picks a collision-safe filename when an agent title collides with another file', async () => {
+    const workspaces = await setup()
+    const first = await workspaces.create(
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+    )
+    const second = await workspaces.create(html)
+    expect(path.basename(second.path)).toBe('Workspace.ark')
+
+    const retitled = await workspaces.updateDocument(
+      second.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(retitled?.title).toBe('Board plan')
+    expect(retitled?.path).toBe(path.join(root, 'Board plan 2.ark'))
+    await expect(access(first.path)).resolves.toBeUndefined()
+    await expect(access(retitled!.path)).resolves.toBeUndefined()
+  })
+
+  it('lets an agent title change follow a UI rename once the document title is synced', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+    expect(renamed?.path).toBe(path.join(root, 'Board plan.ark'))
+    expect(renamed?.html).toContain('<title>Board plan</title>')
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Agent title</title>'),
+      renamed!.documentRevision,
+    )
+
+    expect(updated?.title).toBe('Agent title')
+    expect(updated?.path).toBe(path.join(root, 'Agent title.ark'))
+  })
+
+  it('renames a file on agent title change even after Save As picked the name', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const userPath = path.join(root, 'Custom name.ark')
+    await workspaces.saveAs(created.id, userPath)
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated?.title).toBe('Board plan')
+    expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
+    await expect(access(userPath)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('renames a file opened from disk when the title changes', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    store = createWorkspaceStore(root)
+    await store.open(created.path)
+
+    const updated = await store.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated?.title).toBe('Board plan')
+    expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
+    await expect(access(created.path)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('does not bump the revision when a rename cannot sync the document title', async () => {
+    const workspaces = await setup()
+    const noTitleHtml = '<!DOCTYPE html><html><body><section class="slide"></section></body></html>'
+    const created = await workspaces.create(noTitleHtml)
+
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+
+    expect(renamed?.title).toBe('Board plan')
+    expect(renamed?.html).toBe(noTitleHtml)
+    expect(renamed?.documentRevision).toBe(1)
+  })
+
+  it('adopts an externally renamed file name as the deck title on open', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    expect(created.title).toBe('Workspace')
+    workspaces.close()
+
+    const renamedPath = path.join(root, 'Final.ark')
+    await rename(created.path, renamedPath)
+
+    store = createWorkspaceStore(root)
+    const opened = await store.open(renamedPath)
+
+    expect(opened?.title).toBe('Final')
+    expect(opened?.path).toBe(renamedPath)
+    expect(opened?.html).toContain('<title>Final</title>')
+    expect(opened?.documentRevision).toBe(2)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, title: 'Final', path: renamedPath }),
+    ])
+  })
+
+  it('does not adopt a collision-safe suffix as the deck title on open', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    const suffixedPath = path.join(root, 'Workspace 2.ark')
+    await rename(created.path, suffixedPath)
+
+    store = createWorkspaceStore(root)
+    await expect(store.open(suffixedPath)).resolves.toMatchObject({
+      title: 'Workspace',
+      path: suffixedPath,
+    })
+  })
+
+  it('adopts the file name as the deck title when locating a missing workspace', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    const relocatedPath = path.join(root, 'Relocated.ark')
+    await rename(created.path, relocatedPath)
+
+    store = createWorkspaceStore(root)
+    const located = await store.locate(created.id, relocatedPath)
+
+    expect(located?.title).toBe('Relocated')
+    expect(located?.path).toBe(relocatedPath)
+  })
+
+  it('keeps the stored title when opening a file whose name still matches', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    store = createWorkspaceStore(root)
+    await expect(store.open(created.path)).resolves.toMatchObject({
+      title: 'Workspace',
+      path: created.path,
+    })
+  })
+
+  it('overwrites an existing file on Save As only when explicitly allowed', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const targetPath = path.join(root, 'Taken.ark')
+    await writeFile(targetPath, 'keep this', 'utf8')
+
+    await expect(workspaces.saveAs(created.id, targetPath)).rejects.toThrow('already exists')
+    await expect(readFile(targetPath, 'utf8')).resolves.toBe('keep this')
+
+    const saved = await workspaces.saveAs(created.id, targetPath, true)
+
+    expect(saved?.path).toBe(targetPath)
+    await expect(workspaces.open(targetPath)).resolves.toMatchObject({ id: created.id })
+  })
+
+  it('overwrites an existing file on Move only when explicitly allowed', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const targetPath = path.join(root, 'Taken.ark')
+    await writeFile(targetPath, 'keep this', 'utf8')
+    const originalPath = created.path
+
+    await expect(workspaces.move(created.id, targetPath)).rejects.toThrow('already exists')
+    await expect(readFile(targetPath, 'utf8')).resolves.toBe('keep this')
+
+    const moved = await workspaces.move(created.id, targetPath, true)
+
+    expect(moved?.path).toBe(targetPath)
+    await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(workspaces.open(targetPath)).resolves.toMatchObject({ id: created.id })
+  })
+
+  it('overwrites an existing file when duplicating into an explicit path', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const targetPath = path.join(root, 'Taken.ark')
+    await writeFile(targetPath, 'not a workspace', 'utf8')
+
+    await expect(workspaces.duplicate(created.id, 'complete', targetPath)).rejects.toThrow(
+      'already exists',
+    )
+    await expect(readFile(targetPath, 'utf8')).resolves.toBe('not a workspace')
+
+    const copy = await workspaces.duplicate(created.id, 'complete', targetPath, undefined, true)
+
+    expect(copy?.path).toBe(targetPath)
+    await expect(workspaces.open(targetPath)).resolves.toMatchObject({
+      id: copy?.id,
+      html: expect.stringContaining('Hello'),
+    })
+  })
+
+  it('drops the overwritten workspace from the recent list', async () => {
+    const workspaces = await setup()
+    const doomed = await workspaces.create(html.replace('Hello', 'Doomed'), undefined, undefined)
+    const created = await workspaces.create(html)
+    const targetPath = doomed.path
+    workspaces.close()
+
+    store = createWorkspaceStore(root)
+    await store.open(created.path)
+    const saved = await store.saveAs(created.id, targetPath, true)
+
+    expect(saved?.path).toBe(targetPath)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, path: targetPath }),
+    ])
+  })
+
+  it('renames the file in place when renaming outside the default directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const externalDir = await mkdtemp(path.join(os.tmpdir(), 'ark-external-'))
+    try {
+      const externalPath = path.join(externalDir, 'My chosen name.ark')
+      await workspaces.move(created.id, externalPath)
+
+      const renamed = await workspaces.rename(created.id, 'Board plan')
+
+      expect(renamed?.title).toBe('Board plan')
+      expect(renamed?.path).toBe(path.join(externalDir, 'Board plan.ark'))
+      await expect(access(externalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(access(renamed!.path)).resolves.toBeUndefined()
+    } finally {
+      await rm(externalDir, { recursive: true, force: true })
+    }
   })
 
   it('supports Save As and Move without overwriting another file', async () => {

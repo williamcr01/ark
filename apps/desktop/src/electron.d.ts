@@ -62,7 +62,7 @@ declare global {
       }
       files: {
         openWorkspace: () => Promise<string | null>
-        chooseWorkspacePath: (suggestedName: string) => Promise<string | null>
+        chooseWorkspacePath: (suggestedName: string, defaultPath?: string) => Promise<string | null>
         chooseDirectory: () => Promise<string | null>
         reveal: (path: string) => Promise<void>
       }

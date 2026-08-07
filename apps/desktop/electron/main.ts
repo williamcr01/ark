@@ -387,13 +387,24 @@ async function startDesktop() {
     })
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
-  ipcMain.handle('files:choose-workspace-path', async (_event, suggestedName) => {
+  ipcMain.handle('files:choose-workspace-path', async (_event, suggestedName, defaultPath) => {
     const result = await dialog.showSaveDialog({
-      defaultPath: path.join(
-        settingsStore.get().defaultWorkspaceDirectory || path.join(app.getPath('documents'), 'Ark'),
-        typeof suggestedName === 'string' ? suggestedName : 'Untitled Presentation.ark',
-      ),
+      // A previously chosen (conflicting) path reopens the dialog in the same
+      // location so the user can pick a different name. Otherwise default to
+      // the workspace directory with the deck-title-derived name.
+      defaultPath:
+        typeof defaultPath === 'string' && defaultPath
+          ? defaultPath
+          : path.join(
+              settingsStore.get().defaultWorkspaceDirectory ||
+                path.join(app.getPath('documents'), 'Ark'),
+              typeof suggestedName === 'string' ? suggestedName : 'Untitled Presentation.ark',
+            ),
       filters: [{ name: 'Ark Workspace', extensions: ['ark'] }],
+      // Ark owns the overwrite decision and asks before replacing. Omitting
+      // 'showOverwriteConfirmation' turns off the GTK prompt (on by default on
+      // Linux) so the user is not prompted twice.
+      properties: [],
     })
     return result.canceled ? null : (result.filePath ?? null)
   })

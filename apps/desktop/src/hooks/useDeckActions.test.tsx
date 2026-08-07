@@ -15,6 +15,14 @@ vi.mock('sonner', () => ({
   },
 }))
 
+const { exportDeckHtmlMock, downloadHtmlMock } = vi.hoisted(() => ({
+  exportDeckHtmlMock: vi.fn(),
+  downloadHtmlMock: vi.fn(),
+}))
+
+vi.mock('@/lib/deck-api', () => ({ exportDeckHtml: exportDeckHtmlMock }))
+vi.mock('@/lib/deck-io', () => ({ downloadHtml: downloadHtmlMock }))
+
 function createDeckActionsOptions(
   overrides: {
     startNewDeck?: () => Promise<{
@@ -58,6 +66,7 @@ function createDeckActionsOptions(
         startNewDeck,
         renameActiveDeck: vi.fn(),
         deleteActiveDeck,
+        deckTitle: 'Quarterly review',
       },
       chat: {
         appendMessage: vi.fn(),
@@ -104,5 +113,20 @@ describe('useDeckActions', () => {
     expect(resetChat).toHaveBeenCalledExactlyOnceWith(null)
     expect(setInput).toHaveBeenCalledWith('')
     expect(setError).toHaveBeenCalledWith('')
+  })
+
+  it('downloads the exported deck under the deck title filename', async () => {
+    exportDeckHtmlMock.mockResolvedValue('<html>exported</html>')
+    const { options } = createDeckActionsOptions()
+    const { result } = renderHook(() => useDeckActions(options))
+
+    await act(async () => {
+      await result.current.handleDownload()
+    })
+
+    expect(exportDeckHtmlMock).toHaveBeenCalledWith('deck-1', false)
+    expect(downloadHtmlMock).toHaveBeenCalledWith('<html>exported</html>', {
+      baseName: 'Quarterly review',
+    })
   })
 })

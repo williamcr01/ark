@@ -244,6 +244,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         deckIdRef.current = deck.id
         setDeckId(deck.id)
         setDeckTitle(deck.title)
+        setFilePath(deck.filePath)
         setDocumentRevision(deck.documentRevision)
         documentRevisionRef.current = deck.documentRevision
         setSavedHtml(deck.html)
@@ -326,7 +327,15 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
       try {
         const deck = await renameDeck(deckId, title)
 
+        // The rename syncs the document <title> server-side, so adopt the
+        // returned HTML and its bumped revision to stay consistent.
+        htmlRef.current = deck.html
         setDeckTitle(deck.title)
+        setFilePath(deck.filePath)
+        setHtml(deck.html)
+        setSavedHtml(deck.html)
+        setDocumentRevision(deck.documentRevision)
+        documentRevisionRef.current = deck.documentRevision
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not rename the deck.'
@@ -386,23 +395,23 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     [applyWorkspaceAction],
   )
   const saveAs = useCallback(
-    (path: string) => {
+    (path: string, overwrite = false) => {
       if (!deckId) throw new Error('No workspace is open.')
-      return applyWorkspaceAction(() => saveWorkspaceAs(deckId, path))
+      return applyWorkspaceAction(() => saveWorkspaceAs(deckId, path, overwrite))
     },
     [applyWorkspaceAction, deckId],
   )
   const moveTo = useCallback(
-    (path: string) => {
+    (path: string, overwrite = false) => {
       if (!deckId) throw new Error('No workspace is open.')
-      return applyWorkspaceAction(() => moveWorkspace(deckId, path))
+      return applyWorkspaceAction(() => moveWorkspace(deckId, path, overwrite))
     },
     [applyWorkspaceAction, deckId],
   )
   const duplicate = useCallback(
-    (mode: 'presentation' | 'complete', path?: string) => {
+    (mode: 'presentation' | 'complete', path?: string, overwrite = false) => {
       if (!deckId) throw new Error('No workspace is open.')
-      return duplicateWorkspace(deckId, mode, path)
+      return duplicateWorkspace(deckId, mode, path, overwrite)
     },
     [deckId],
   )
