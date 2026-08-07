@@ -110,7 +110,15 @@ export function useDeckThumbnails(
     documentRevision: number
     slideCount: number
   } | null>(null)
+  // Mirrors thumbnailUrls so the poll loop can read the latest committed URLs
+  // without re-running the effect (the effect intentionally excludes it from deps).
+  const thumbnailUrlsRef = useRef<(string | null)[] | null>(null)
 
+  useEffect(() => {
+    thumbnailUrlsRef.current = thumbnailUrls
+  }, [thumbnailUrls])
+
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect -- one-shot long-poll thumbnail fetch with AbortController + request-id staleness guards; project has no data-fetching library (rule's documented suppression)
   useEffect(() => {
     if (!enabled || !deckId || !documentRevision) {
       return () => undefined
@@ -165,6 +173,7 @@ export function useDeckThumbnails(
       const controller = new AbortController()
       activeController = controller
       setIsLoading(true)
+      let continuesPolling = false
 
       try {
         const payload = await fetchDeckThumbnails(
@@ -186,15 +195,18 @@ export function useDeckThumbnails(
         setError(payload.error ?? null)
 
         if (payload.status === 'ready') {
-          setThumbnailUrls((current) => toThumbnailUrls(payload, slideCount, current))
+          const nextUrls = toThumbnailUrls(payload, slideCount, thumbnailUrlsRef.current)
+          setThumbnailUrls(nextUrls)
           if (activeController === controller) {
             activeController = null
           }
-          setIsLoading(false)
           return
         }
 
         if (payload.status === 'pending') {
+          // The long-poll loop keeps isLoading true while thumbnails are still
+          // rendering; only the final ready/error state clears it.
+          continuesPolling = true
           if (activeController === controller) {
             activeController = null
           }
@@ -207,7 +219,6 @@ export function useDeckThumbnails(
         if (activeController === controller) {
           activeController = null
         }
-        setIsLoading(false)
       } catch (loadError) {
         if (cancelled || requestId !== requestIdRef.current) {
           return
@@ -220,7 +231,10 @@ export function useDeckThumbnails(
         setStatus(null)
         setThumbnailUrls(null)
         setError(loadError instanceof Error ? loadError.message : 'Could not load deck thumbnails.')
-        setIsLoading(false)
+      } finally {
+        setIsLoading((current) =>
+          cancelled || requestId !== requestIdRef.current || continuesPolling ? current : false,
+        )
       }
     }
 

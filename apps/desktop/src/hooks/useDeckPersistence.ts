@@ -204,9 +204,9 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         setDecks([])
         setSaveError('Could not load saved decks.')
       } finally {
-        if (!cancelled && saveRequestIdRef.current === bootRequestId) {
-          setIsLoading(false)
-        }
+        setIsLoading((current) =>
+          cancelled || saveRequestIdRef.current !== bootRequestId ? current : false,
+        )
       }
     }
 
@@ -259,9 +259,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         setSaveError(message)
         throw error
       } finally {
-        if (requestId === saveRequestIdRef.current) {
-          setIsSaving(false)
-        }
+        setIsSaving((current) => (requestId === saveRequestIdRef.current ? false : current))
       }
     },
     [deckId, deckTitle, html, savedHtml],
@@ -297,9 +295,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         setSaveError(message)
         throw error
       } finally {
-        if (requestId === saveRequestIdRef.current) {
-          setIsLoading(false)
-        }
+        setIsLoading((current) => (requestId === saveRequestIdRef.current ? false : current))
       }
     },
     [deckId, setActiveDeck],

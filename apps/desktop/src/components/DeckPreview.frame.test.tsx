@@ -111,6 +111,11 @@ const editorBridgeOptionsMock = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
   useDeckEditorBridge: (...args: unknown[]) => {
     editorBridgeOptionsMock(...args)
+    // Simulate the real bridge's event-driven selection reporting so the
+    // shell-facing onEditorSelectionChange prop receives the same events the
+    // real editor MessagePort listener emits.
+    const options = args[1] as { onSelectionChange?: (selection: unknown) => void } | undefined
+    options?.onSelectionChange?.(editorBridgeMock.selection)
     return editorBridgeMock
   },
 }))
@@ -143,8 +148,16 @@ vi.mock('@/hooks/useElementSize', () => ({
 
 const plainDeckProps = {
   html: plainCssDeck,
-  isGenerating: false,
-  isStripOpen: false,
+  state: {
+    canRedo: false,
+    canUndo: false,
+    editorBridgeEnabled: false,
+    isDeckLoading: false,
+    isGenerating: false,
+    isPreviewUpdating: false,
+    isStripOpen: false,
+    isTextEditSaving: false,
+  },
   layout: 'desktop' as const,
   deckAnalysis: analyzeDeckInBrowser(plainCssDeck),
 }
@@ -222,8 +235,10 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('does not post editor enable after compromise even if onLoad races', async () => {
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     const iframe = screen.getByTitle('Generated Ark presentation preview')
     fireEvent.load(iframe)
     fireEvent.load(iframe)
@@ -274,9 +289,8 @@ describe('DeckPreview script divergence UI', () => {
   it('hides preview chrome overlays while present mode is open', () => {
     const previewRef = createRef<DeckPreviewHandle>()
     renderDeckPreview({
+      state: { ...plainDeckProps.state, isGenerating: false, isStripOpen: false },
       html: hostileScriptsDeck,
-      isGenerating: false,
-      isStripOpen: false,
       layout: 'desktop',
       deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
       presentHandleRef: previewRef,
@@ -300,7 +314,7 @@ describe('DeckPreview script divergence UI', () => {
     const previewRef = createRef<DeckPreviewHandle>()
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       presentHandleRef: previewRef,
     })
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
@@ -324,9 +338,8 @@ describe('DeckPreview script divergence UI', () => {
 
   it('shows static preview messaging for uploaded scripted decks', () => {
     renderDeckPreview({
+      state: { ...plainDeckProps.state, isGenerating: false, isStripOpen: false },
       html: hostileScriptsDeck,
-      isGenerating: false,
-      isStripOpen: false,
       layout: 'desktop',
       deckAnalysis: analyzeDeckInBrowser(hostileScriptsDeck),
     })
@@ -343,9 +356,8 @@ describe('DeckPreview script divergence UI', () => {
 
   it('shows reveal runtime messaging for approved reveal registry decks', () => {
     renderDeckPreview({
+      state: { ...plainDeckProps.state, isGenerating: false, isStripOpen: false },
       html: revealRegistryDeck,
-      isGenerating: false,
-      isStripOpen: false,
       layout: 'desktop',
       deckAnalysis: analyzeDeckInBrowser(revealRegistryDeck),
     })
@@ -355,8 +367,10 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('enables edit chrome by default when the editor bridge is on', () => {
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     expect(screen.queryByRole('button', { name: 'Edit mode' })).not.toBeInTheDocument()
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
   })
@@ -364,9 +378,9 @@ describe('DeckPreview script divergence UI', () => {
   it('keeps persistent manual editing enabled for custom-JS decks', () => {
     renderDeckPreview({
       ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       html: fullJsDeck,
       deckAnalysis: analyzeDeckInBrowser(fullJsDeck),
-      editorBridgeEnabled: true,
     })
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
@@ -382,9 +396,9 @@ describe('DeckPreview script divergence UI', () => {
   it('keeps persistent editing enabled when approved runtime decks execute init scripts', () => {
     renderDeckPreview({
       ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       html: revealChartDeck,
       deckAnalysis: analyzeDeckInBrowser(revealChartDeck),
-      editorBridgeEnabled: true,
     })
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
@@ -398,8 +412,10 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('keeps slide navigation chrome visible while editing', () => {
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true, isStripOpen: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, isStripOpen: true },
+    })
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Go to slide 1' })).toHaveAttribute(
       'aria-current',
@@ -420,8 +436,7 @@ describe('DeckPreview script divergence UI', () => {
     })
     renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
-      isStripOpen: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true, isStripOpen: true },
       onReorderSlide,
     })
     goToSlideMock.mockClear()
@@ -438,14 +453,17 @@ describe('DeckPreview script divergence UI', () => {
   it('pauses edit chrome when generation starts', () => {
     const { rerender } = renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
     })
 
     expect(screen.getByRole('toolbar', { name: 'Edit mode toolbar' })).toBeInTheDocument()
 
     rerender(
       <TooltipProvider>
-        <DeckPreview {...plainDeckProps} editorBridgeEnabled isGenerating />
+        <DeckPreview
+          {...plainDeckProps}
+          state={{ ...plainDeckProps.state, editorBridgeEnabled: true, isGenerating: true }}
+        />
       </TooltipProvider>,
     )
 
@@ -454,13 +472,19 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('shows the preview update indicator only while a changed deck is refreshing', () => {
-    const { rerender } = renderDeckPreview({ ...plainDeckProps, isGenerating: true })
+    const { rerender } = renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, isGenerating: true },
+    })
 
     expect(screen.queryByText('Updating preview')).not.toBeInTheDocument()
 
     rerender(
       <TooltipProvider>
-        <DeckPreview {...plainDeckProps} isPreviewUpdating />
+        <DeckPreview
+          {...plainDeckProps}
+          state={{ ...plainDeckProps.state, isPreviewUpdating: true }}
+        />
       </TooltipProvider>,
     )
 
@@ -491,7 +515,7 @@ describe('DeckPreview script divergence UI', () => {
           {...plainDeckProps}
           deckAnalysis={analyzeDeckInBrowser('')}
           html=""
-          isGenerating
+          state={{ ...plainDeckProps.state, isGenerating: true }}
         />
       </TooltipProvider>,
     )
@@ -504,11 +528,14 @@ describe('DeckPreview script divergence UI', () => {
   it('uses size-locked preview and thumbnail skeletons while opening a deck', () => {
     const { container } = renderDeckPreview({
       ...plainDeckProps,
+      state: {
+        ...plainDeckProps.state,
+        editorBridgeEnabled: true,
+        isDeckLoading: true,
+        isStripOpen: true,
+      },
       deckAnalysis: analyzeDeckInBrowser(''),
       html: '',
-      editorBridgeEnabled: true,
-      isDeckLoading: true,
-      isStripOpen: true,
     })
 
     const preview = screen.getByRole('status', { name: 'Loading deck preview' })
@@ -543,7 +570,7 @@ describe('DeckPreview script divergence UI', () => {
 
     const { rerender } = renderDeckPreview({
       ...plainDeckProps,
-      editorBridgeEnabled: true,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
       onEditorSelectionChange,
     })
 
@@ -555,8 +582,7 @@ describe('DeckPreview script divergence UI', () => {
       <TooltipProvider>
         <DeckPreview
           {...plainDeckProps}
-          editorBridgeEnabled
-          isGenerating
+          state={{ ...plainDeckProps.state, editorBridgeEnabled: true, isGenerating: true }}
           onEditorSelectionChange={onEditorSelectionChange}
         />
       </TooltipProvider>,
@@ -565,8 +591,10 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('enables the editor bridge when the edit-mode iframe loads', async () => {
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
@@ -588,8 +616,10 @@ describe('DeckPreview script divergence UI', () => {
   it('configures runtime chrome with the preview scale', () => {
     editorBridgeMock.editorReady = true
 
-    renderDeckPreview({ ...plainDeckProps, editorBridgeEnabled: true })
-
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
     expect(editorBridgeMock.configureEditor).toHaveBeenCalledWith(1)
   })
 

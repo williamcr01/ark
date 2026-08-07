@@ -236,6 +236,7 @@ export function useAvailableModels() {
     }
   }, [applyModels, handleLoadFailure])
 
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect -- one-shot model catalog fetch with AbortController cleanup; project has no data-fetching library (rule's documented suppression)
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
@@ -266,9 +267,7 @@ export function useAvailableModels() {
 
         handleLoadFailure(loadError)
       } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
+        setIsLoading((current) => (cancelled ? current : false))
       }
     }
 

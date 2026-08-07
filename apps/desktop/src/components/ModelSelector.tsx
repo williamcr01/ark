@@ -97,17 +97,35 @@ const groupModelsByProvider = (models: AvailableModel[]) => {
     }
   }
 
-  return PROVIDER_ORDER.filter((provider) => (groups.get(provider)?.length ?? 0) > 0).map(
-    (provider) => {
-      const providerModels = groups.get(provider) ?? []
-      return {
-        provider,
-        label: formatProviderLabel(provider),
-        models: providerModels,
-        readyCount: providerModels.filter((model) => model.available).length,
+  const sections: {
+    provider: ProviderId
+    label: string
+    models: AvailableModel[]
+    readyCount: number
+  }[] = []
+
+  for (const provider of PROVIDER_ORDER) {
+    const providerModels = groups.get(provider) ?? []
+    if (providerModels.length === 0) {
+      continue
+    }
+
+    let readyCount = 0
+    for (const model of providerModels) {
+      if (model.available) {
+        readyCount += 1
       }
-    },
-  )
+    }
+
+    sections.push({
+      provider,
+      label: formatProviderLabel(provider),
+      models: providerModels,
+      readyCount,
+    })
+  }
+
+  return sections
 }
 
 const modelMatchesQuery = (model: AvailableModel, query: string) => {

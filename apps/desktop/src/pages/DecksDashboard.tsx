@@ -79,9 +79,7 @@ export function DecksDashboard() {
           setError('Could not load decks.')
         }
       } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
+        setIsLoading((current) => (cancelled ? current : false))
       }
     }
 

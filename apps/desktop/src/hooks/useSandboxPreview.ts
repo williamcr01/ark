@@ -66,6 +66,8 @@ export function useSandboxPreview(
     previewSessionRef.current = previewSession
   }, [previewSession])
 
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect -- one-shot preview-session fetch with AbortController + request-id staleness guards; project has no data-fetching library (rule's documented suppression)
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect -- post-await setters are guarded by requestIdRef/abort checks so stale effect runs are ignored before any state write
   useEffect(() => {
     let effectActive = true
 
@@ -164,9 +166,7 @@ export function useSandboxPreview(
           activeRequestRef.current = null
         }
 
-        if (requestIdRef.current === requestId) {
-          setIsLoading(false)
-        }
+        setIsLoading((current) => (requestIdRef.current === requestId ? false : current))
       }
     }
 

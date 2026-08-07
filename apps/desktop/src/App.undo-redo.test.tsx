@@ -146,8 +146,7 @@ vi.mock('@/components/ChatPanel', () => ({
 
 vi.mock('@/components/DeckPreview', () => ({
   DeckPreview: (props: {
-    canUndo?: boolean
-    canRedo?: boolean
+    state: { canUndo: boolean; canRedo: boolean }
     onUndo?: () => void | Promise<void>
     onRedo?: () => void | Promise<void>
     onPatchEditorOperations?: (
@@ -162,10 +161,10 @@ vi.mock('@/components/DeckPreview', () => ({
     ) => Promise<unknown>
   }) => (
     <div data-testid="deck-preview">
-      <button disabled={!props.canUndo} onClick={() => void props.onUndo?.()} type="button">
+      <button disabled={!props.state.canUndo} onClick={() => void props.onUndo?.()} type="button">
         Undo
       </button>
-      <button disabled={!props.canRedo} onClick={() => void props.onRedo?.()} type="button">
+      <button disabled={!props.state.canRedo} onClick={() => void props.onRedo?.()} type="button">
         Redo
       </button>
       <button

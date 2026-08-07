@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import type {
   EditorNormalizedRect,
   EditorSelectionInfo,
+  EditorSelectionTextStyle,
 } from '@ark/deck-core/deck-editor-bridge.ts'
 import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
@@ -38,6 +39,7 @@ import {
   parsePercentInput,
   showImageSection,
   showTextSection,
+  type InspectorElementKind,
   type InspectorGeometryField,
   type InspectorTextAlign,
 } from '@/lib/element-inspector'
@@ -261,6 +263,317 @@ const GEOMETRY_FIELDS: Array<{ field: InspectorGeometryField; label: string; sum
   { field: 'width', label: 'W', summary: 'Resized element' },
   { field: 'height', label: 'H', summary: 'Resized element' },
 ]
+function InspectorHeader({ selection }: { selection: EditorSelectionInfo }) {
+  return (
+    <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] px-3">
+      <h2 className="text-[11px] font-semibold text-[var(--ark-titlebar-fg)]">Inspector</h2>
+      <span className="flex items-center gap-1">
+        {selection.managed ? (
+          <span className="rounded-full border border-[var(--ark-success)]/30 bg-[var(--ark-success)]/10 px-1.5 py-0.5 text-[10px] text-[var(--ark-success)]">
+            Managed
+          </span>
+        ) : null}
+        {selection.locked ? (
+          <span className="rounded-full border border-[var(--ark-warning)]/30 bg-[var(--ark-warning)]/10 px-1.5 py-0.5 text-[10px] text-[var(--ark-warning)]">
+            Locked
+          </span>
+        ) : null}
+      </span>
+    </div>
+  )
+}
+
+function InspectorIdentitySection({
+  selection,
+  kind,
+}: {
+  selection: EditorSelectionInfo
+  kind: InspectorElementKind
+}) {
+  return (
+    <InspectorSection title="Identity">
+      <InspectorRow label="Kind">{getInspectorKindLabel(kind)}</InspectorRow>
+      <InspectorRow label="Tag">{`<${selection.tagName}>`}</InspectorRow>
+      {selection.role ? <InspectorRow label="Role">{selection.role}</InspectorRow> : null}
+      <InspectorRow label="Slide">{selection.slideIndex + 1}</InspectorRow>
+    </InspectorSection>
+  )
+}
+
+function InspectorGeometrySection({
+  geometry,
+  canModifyGeometry,
+  onCommitField,
+}: {
+  geometry: EditorNormalizedRect | null
+  canModifyGeometry: boolean
+  onCommitField: (field: InspectorGeometryField, raw: string, summary: string) => void
+}) {
+  return (
+    <InspectorSection title="Geometry">
+      {geometry ? (
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+          {GEOMETRY_FIELDS.map(({ field, label, summary }) => (
+            <CommitNumberField
+              disabled={!canModifyGeometry}
+              key={field}
+              label={label}
+              onCommit={(raw) => onCommitField(field, raw, summary)}
+              suffix="%"
+              value={formatPercentValue(geometry[field])}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-[var(--ark-titlebar-muted)]">
+          Geometry unavailable for this selection.
+        </p>
+      )}
+    </InspectorSection>
+  )
+}
+
+function InspectorLayerSection({
+  zIndex,
+  canModifyLayer,
+  onReorder,
+}: {
+  zIndex: number | null
+  canModifyLayer: boolean
+  onReorder: (direction: 'front' | 'back') => void
+}) {
+  return (
+    <InspectorSection title="Layer">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-[var(--ark-titlebar-muted)]">
+          Z-index <span className="text-[var(--ark-titlebar-fg)]">{zIndex ?? 'auto'}</span>
+        </span>
+        <ButtonGroup aria-label="Layer order">
+          <InspectorIconButton
+            disabled={!canModifyLayer}
+            label="Bring forward"
+            onClick={() => onReorder('front')}
+          >
+            <ArrowUpIcon className="size-3.5" />
+          </InspectorIconButton>
+          <InspectorIconButton
+            disabled={!canModifyLayer}
+            label="Send backward"
+            onClick={() => onReorder('back')}
+          >
+            <ArrowDownIcon className="size-3.5" />
+          </InspectorIconButton>
+        </ButtonGroup>
+      </div>
+    </InspectorSection>
+  )
+}
+
+function InspectorTextSection({
+  textStyle,
+  canModify,
+  colorValue,
+  textAlign,
+  onCommitStyle,
+  onCommitFontSize,
+  onCommitLineHeight,
+  onCommitColor,
+}: {
+  textStyle: EditorSelectionTextStyle
+  canModify: boolean
+  colorValue: string
+  textAlign: InspectorTextAlign
+  onCommitStyle: (style: Record<string, string>, summary: string) => void
+  onCommitFontSize: (raw: string) => void
+  onCommitLineHeight: (raw: string) => void
+  onCommitColor: (hex: string) => void
+}) {
+  const colorInputId = useId()
+  const weightSelectId = useId()
+
+  return (
+    <InspectorSection title="Text">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+        <CommitNumberField
+          disabled={!canModify}
+          label="Aa"
+          onCommit={onCommitFontSize}
+          suffix="px"
+          value={String(Math.round(textStyle.fontSize * 10) / 10)}
+        />
+        <CommitNumberField
+          disabled={!canModify}
+          label="Lh"
+          onCommit={onCommitLineHeight}
+          suffix="px"
+          value={
+            textStyle.lineHeight === null ? '' : String(Math.round(textStyle.lineHeight * 10) / 10)
+          }
+        />
+      </div>
+      <label
+        className="flex items-center justify-between gap-2 text-[11px]"
+        htmlFor={weightSelectId}
+      >
+        <span className="text-[var(--ark-titlebar-muted)]">Weight</span>
+        <select
+          aria-label="Font weight"
+          className={cn(fieldClassName, 'w-28 flex-none')}
+          disabled={!canModify}
+          id={weightSelectId}
+          onChange={(event) =>
+            onCommitStyle({ 'font-weight': event.target.value }, 'Updated font weight')
+          }
+          value={normalizeFontWeight(textStyle.fontWeight)}
+        >
+          {FONT_WEIGHT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center justify-between gap-2 text-[11px]" htmlFor={colorInputId}>
+        <span className="text-[var(--ark-titlebar-muted)]">Color</span>
+        <input
+          aria-label="Text color"
+          className="h-6 w-28 flex-none cursor-pointer rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] p-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!canModify}
+          id={colorInputId}
+          onChange={(event) => onCommitColor(event.target.value)}
+          type="color"
+          value={colorValue}
+        />
+      </label>
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-[var(--ark-titlebar-muted)]">Align</span>
+        <ButtonGroup aria-label="Text alignment">
+          {TEXT_ALIGN_OPTIONS.map((option) => (
+            <InspectorIconButton
+              active={textAlign === option.value}
+              disabled={!canModify}
+              key={option.value}
+              label={option.label}
+              onClick={() =>
+                onCommitStyle({ 'text-align': option.value }, 'Updated text alignment')
+              }
+            >
+              {option.icon}
+            </InspectorIconButton>
+          ))}
+        </ButtonGroup>
+      </div>
+    </InspectorSection>
+  )
+}
+
+function InspectorImageSection({
+  selection,
+  canModify,
+  resetAspectOperation,
+  onApply,
+  onCommitImageFit,
+}: {
+  selection: EditorSelectionInfo
+  canModify: boolean
+  resetAspectOperation: DeckElementPatchOperation | null
+  onApply: (operations: DeckElementPatchOperation[], summary: string) => void
+  onCommitImageFit: (fit: ImageFitMode) => void
+}) {
+  const fitSelectId = useId()
+
+  return (
+    <InspectorSection title="Image">
+      <CommitTextField
+        disabled={!canModify}
+        label="Alt text"
+        onCommit={(alt) =>
+          onApply([buildAttrsOperation(selection, { alt })], 'Updated image alt text')
+        }
+        placeholder="Describe image"
+        value={selection.textPreview ?? ''}
+      />
+      <label className="flex items-center justify-between gap-2 text-[11px]" htmlFor={fitSelectId}>
+        <span className="text-[var(--ark-titlebar-muted)]">Fit</span>
+        <select
+          aria-label="Image fit mode"
+          className={cn(fieldClassName, 'w-28 flex-none')}
+          disabled={!canModify}
+          id={fitSelectId}
+          onChange={(event) => onCommitImageFit(event.target.value as ImageFitMode)}
+          value={selection.imageFit ?? 'contain'}
+        >
+          <option value="contain">Contain</option>
+          <option value="cover">Cover</option>
+          <option value="fill">Fill</option>
+        </select>
+      </label>
+      <InspectorRow label="Intrinsic">
+        {selection.imageNaturalSize
+          ? `${selection.imageNaturalSize.width} × ${selection.imageNaturalSize.height} px`
+          : 'Unknown'}
+      </InspectorRow>
+      <button
+        aria-label="Reset to image aspect ratio"
+        className={cn(
+          buttonVariants({ size: 'sm', variant: 'ghost' }),
+          'h-6 justify-start gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] shadow-none',
+          'hover:bg-[var(--ark-titlebar-hover)]',
+          'disabled:cursor-not-allowed disabled:text-[var(--ark-titlebar-muted)]/50',
+        )}
+        disabled={!canModify || resetAspectOperation === null}
+        onClick={() => {
+          if (resetAspectOperation) {
+            onApply([resetAspectOperation], 'Reset image to intrinsic aspect ratio')
+          }
+        }}
+        type="button"
+      >
+        <ScanIcon aria-hidden className="size-3.5" />
+        Reset aspect ratio
+      </button>
+    </InspectorSection>
+  )
+}
+
+function InspectorStateSection({
+  locked,
+  busy,
+  onToggleLock,
+}: {
+  locked: boolean
+  busy: boolean
+  onToggleLock: () => void
+}) {
+  return (
+    <InspectorSection title="State">
+      <button
+        aria-label={locked ? 'Unlock element' : 'Lock element'}
+        className={cn(
+          buttonVariants({ size: 'sm', variant: 'ghost' }),
+          'h-6 justify-start gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] shadow-none',
+          'hover:bg-[var(--ark-titlebar-hover)]',
+          'disabled:cursor-not-allowed disabled:text-[var(--ark-titlebar-muted)]/50',
+        )}
+        disabled={busy}
+        onClick={onToggleLock}
+        type="button"
+      >
+        {locked ? (
+          <>
+            <LockOpenIcon aria-hidden className="size-3.5" />
+            Unlock element
+          </>
+        ) : (
+          <>
+            <LockIcon aria-hidden className="size-3.5" />
+            Lock element
+          </>
+        )}
+      </button>
+    </InspectorSection>
+  )
+}
 
 export function ElementInspector({
   selection,
@@ -270,9 +583,6 @@ export function ElementInspector({
   textEditActive,
   onApplyOperations,
 }: ElementInspectorProps) {
-  const colorInputId = useId()
-  const weightSelectId = useId()
-  const fitSelectId = useId()
   const colorCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The color draft is keyed to the element it was edited on so a selection
   // change discards it without needing a state reset in an effect.
@@ -417,22 +727,7 @@ export function ElementInspector({
 
   return (
     <div className="flex max-h-[min(70vh,28rem)] w-60 flex-col overflow-y-auto rounded-lg bg-[var(--ark-titlebar)] shadow-md ring-1 ring-foreground/10">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--ark-titlebar-border)] px-3">
-        <h2 className="text-[11px] font-semibold text-[var(--ark-titlebar-fg)]">Inspector</h2>
-        <span className="flex items-center gap-1">
-          {selection.managed ? (
-            <span className="rounded-full border border-[var(--ark-success)]/30 bg-[var(--ark-success)]/10 px-1.5 py-0.5 text-[10px] text-[var(--ark-success)]">
-              Managed
-            </span>
-          ) : null}
-          {selection.locked ? (
-            <span className="rounded-full border border-[var(--ark-warning)]/30 bg-[var(--ark-warning)]/10 px-1.5 py-0.5 text-[10px] text-[var(--ark-warning)]">
-              Locked
-            </span>
-          ) : null}
-        </span>
-      </div>
-
+      <InspectorHeader selection={selection} />
       <div className="flex flex-col gap-4 px-3 py-3">
         {disabledReason ? (
           <p
@@ -443,220 +738,46 @@ export function ElementInspector({
           </p>
         ) : null}
 
-        <InspectorSection title="Identity">
-          <InspectorRow label="Kind">{getInspectorKindLabel(kind)}</InspectorRow>
-          <InspectorRow label="Tag">{`<${selection.tagName}>`}</InspectorRow>
-          {selection.role ? <InspectorRow label="Role">{selection.role}</InspectorRow> : null}
-          <InspectorRow label="Slide">{selection.slideIndex + 1}</InspectorRow>
-        </InspectorSection>
-
-        <InspectorSection title="Geometry">
-          {geometry ? (
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
-              {GEOMETRY_FIELDS.map(({ field, label, summary }) => (
-                <CommitNumberField
-                  disabled={!canModifyGeometry}
-                  key={field}
-                  label={label}
-                  onCommit={(raw) => commitGeometryField(field, raw, summary)}
-                  suffix="%"
-                  value={formatPercentValue(geometry[field])}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-[11px] text-[var(--ark-titlebar-muted)]">
-              Geometry unavailable for this selection.
-            </p>
-          )}
-        </InspectorSection>
-
-        <InspectorSection title="Layer">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[var(--ark-titlebar-muted)]">
-              Z-index <span className="text-[var(--ark-titlebar-fg)]">{zIndex ?? 'auto'}</span>
-            </span>
-            <ButtonGroup aria-label="Layer order">
-              <InspectorIconButton
-                disabled={!canModifyLayer}
-                label="Bring forward"
-                onClick={() => commitReorder('front')}
-              >
-                <ArrowUpIcon className="size-3.5" />
-              </InspectorIconButton>
-              <InspectorIconButton
-                disabled={!canModifyLayer}
-                label="Send backward"
-                onClick={() => commitReorder('back')}
-              >
-                <ArrowDownIcon className="size-3.5" />
-              </InspectorIconButton>
-            </ButtonGroup>
-          </div>
-        </InspectorSection>
+        <InspectorIdentitySection kind={kind} selection={selection} />
+        <InspectorGeometrySection
+          canModifyGeometry={canModifyGeometry}
+          geometry={geometry}
+          onCommitField={commitGeometryField}
+        />
+        <InspectorLayerSection
+          canModifyLayer={canModifyLayer}
+          onReorder={commitReorder}
+          zIndex={zIndex}
+        />
 
         {showTextSection(selection) && textStyle ? (
-          <InspectorSection title="Text">
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
-              <CommitNumberField
-                disabled={!canModify}
-                label="Aa"
-                onCommit={commitFontSize}
-                suffix="px"
-                value={String(Math.round(textStyle.fontSize * 10) / 10)}
-              />
-              <CommitNumberField
-                disabled={!canModify}
-                label="Lh"
-                onCommit={commitLineHeight}
-                suffix="px"
-                value={
-                  textStyle.lineHeight === null
-                    ? ''
-                    : String(Math.round(textStyle.lineHeight * 10) / 10)
-                }
-              />
-            </div>
-            <label
-              className="flex items-center justify-between gap-2 text-[11px]"
-              htmlFor={weightSelectId}
-            >
-              <span className="text-[var(--ark-titlebar-muted)]">Weight</span>
-              <select
-                aria-label="Font weight"
-                className={cn(fieldClassName, 'w-28 flex-none')}
-                disabled={!canModify}
-                id={weightSelectId}
-                onChange={(event) =>
-                  commitStyle({ 'font-weight': event.target.value }, 'Updated font weight')
-                }
-                value={normalizeFontWeight(textStyle.fontWeight)}
-              >
-                {FONT_WEIGHT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label
-              className="flex items-center justify-between gap-2 text-[11px]"
-              htmlFor={colorInputId}
-            >
-              <span className="text-[var(--ark-titlebar-muted)]">Color</span>
-              <input
-                aria-label="Text color"
-                className="h-6 w-28 flex-none cursor-pointer rounded-sm border border-[var(--ark-titlebar-border)] bg-[var(--ark-titlebar-active)] p-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!canModify}
-                id={colorInputId}
-                onChange={(event) => commitColor(event.target.value)}
-                type="color"
-                value={colorValue}
-              />
-            </label>
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="text-[var(--ark-titlebar-muted)]">Align</span>
-              <ButtonGroup aria-label="Text alignment">
-                {TEXT_ALIGN_OPTIONS.map((option) => (
-                  <InspectorIconButton
-                    active={textAlign === option.value}
-                    disabled={!canModify}
-                    key={option.value}
-                    label={option.label}
-                    onClick={() =>
-                      commitStyle({ 'text-align': option.value }, 'Updated text alignment')
-                    }
-                  >
-                    {option.icon}
-                  </InspectorIconButton>
-                ))}
-              </ButtonGroup>
-            </div>
-          </InspectorSection>
+          <InspectorTextSection
+            canModify={canModify}
+            colorValue={colorValue}
+            onCommitColor={commitColor}
+            onCommitFontSize={commitFontSize}
+            onCommitLineHeight={commitLineHeight}
+            onCommitStyle={commitStyle}
+            textAlign={textAlign}
+            textStyle={textStyle}
+          />
         ) : null}
 
         {showImageSection(selection) ? (
-          <InspectorSection title="Image">
-            <CommitTextField
-              disabled={!canModify}
-              label="Alt text"
-              onCommit={(alt) =>
-                apply([buildAttrsOperation(selection, { alt })], 'Updated image alt text')
-              }
-              placeholder="Describe image"
-              value={selection.textPreview ?? ''}
-            />
-            <label
-              className="flex items-center justify-between gap-2 text-[11px]"
-              htmlFor={fitSelectId}
-            >
-              <span className="text-[var(--ark-titlebar-muted)]">Fit</span>
-              <select
-                aria-label="Image fit mode"
-                className={cn(fieldClassName, 'w-28 flex-none')}
-                disabled={!canModify}
-                id={fitSelectId}
-                onChange={(event) => commitImageFit(event.target.value as ImageFitMode)}
-                value={selection.imageFit ?? 'contain'}
-              >
-                <option value="contain">Contain</option>
-                <option value="cover">Cover</option>
-                <option value="fill">Fill</option>
-              </select>
-            </label>
-            <InspectorRow label="Intrinsic">
-              {selection.imageNaturalSize
-                ? `${selection.imageNaturalSize.width} × ${selection.imageNaturalSize.height} px`
-                : 'Unknown'}
-            </InspectorRow>
-            <button
-              aria-label="Reset to image aspect ratio"
-              className={cn(
-                buttonVariants({ size: 'sm', variant: 'ghost' }),
-                'h-6 justify-start gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] shadow-none',
-                'hover:bg-[var(--ark-titlebar-hover)]',
-                'disabled:cursor-not-allowed disabled:text-[var(--ark-titlebar-muted)]/50',
-              )}
-              disabled={!canModify || resetAspectOperation === null}
-              onClick={() => {
-                if (resetAspectOperation) {
-                  apply([resetAspectOperation], 'Reset image to intrinsic aspect ratio')
-                }
-              }}
-              type="button"
-            >
-              <ScanIcon aria-hidden className="size-3.5" />
-              Reset aspect ratio
-            </button>
-          </InspectorSection>
+          <InspectorImageSection
+            canModify={canModify}
+            onApply={apply}
+            onCommitImageFit={commitImageFit}
+            resetAspectOperation={resetAspectOperation}
+            selection={selection}
+          />
         ) : null}
 
-        <InspectorSection title="State">
-          <button
-            aria-label={selection.locked ? 'Unlock element' : 'Lock element'}
-            className={cn(
-              buttonVariants({ size: 'sm', variant: 'ghost' }),
-              'h-6 justify-start gap-1.5 rounded-sm border border-[var(--ark-titlebar-border)] px-2 text-[11px] text-[var(--ark-titlebar-fg)] shadow-none',
-              'hover:bg-[var(--ark-titlebar-hover)]',
-              'disabled:cursor-not-allowed disabled:text-[var(--ark-titlebar-muted)]/50',
-            )}
-            disabled={busy}
-            onClick={commitLockToggle}
-            type="button"
-          >
-            {selection.locked ? (
-              <>
-                <LockOpenIcon aria-hidden className="size-3.5" />
-                Unlock element
-              </>
-            ) : (
-              <>
-                <LockIcon aria-hidden className="size-3.5" />
-                Lock element
-              </>
-            )}
-          </button>
-        </InspectorSection>
+        <InspectorStateSection
+          busy={busy}
+          locked={selection.locked}
+          onToggleLock={commitLockToggle}
+        />
       </div>
     </div>
   )

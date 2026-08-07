@@ -28,10 +28,15 @@ export type ParseDeckSlidesOptions = ThumbnailHtmlOptions
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 
 function serializeElementAttrs(element: Element) {
-  return [...element.attributes]
-    .filter((attribute) => !INLINE_HANDLER_PATTERN.test(attribute.name))
-    .map((attribute) => `${attribute.name}="${attribute.value.replace(/"/g, '&quot;')}"`)
-    .join(' ')
+  const serialized: string[] = []
+
+  for (const attribute of [...element.attributes]) {
+    if (!INLINE_HANDLER_PATTERN.test(attribute.name)) {
+      serialized.push(`${attribute.name}="${attribute.value.replace(/"/g, '&quot;')}"`)
+    }
+  }
+
+  return serialized.join(' ')
 }
 
 function stripInlineHandlers(root: ParentNode) {

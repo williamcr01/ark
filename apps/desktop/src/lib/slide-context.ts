@@ -103,6 +103,7 @@ export function resolveContextSlides(
 
   const resolved: ContextSlideEntry[] = []
   const seenIndexes = new Set<number>()
+  const byIndex = new Map(slides.map((slide) => [slide.index, slide]))
 
   for (const entry of entries) {
     if (entry.slideId) {
@@ -118,7 +119,7 @@ export function resolveContextSlides(
       continue
     }
 
-    const match = slides.find((slide) => slide.index === entry.slideIndex)
+    const match = byIndex.get(entry.slideIndex)
     if (!match || seenIndexes.has(match.index)) {
       continue
     }

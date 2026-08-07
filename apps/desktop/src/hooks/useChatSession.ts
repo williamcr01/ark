@@ -322,13 +322,18 @@ export function useChatSession({
 
   const retryFailedPersists = useCallback(
     async (targetDeckId?: string | null) => {
-      const failedInOrder = messagesRef.current
-        .filter((message) => failedPersistIdsRef.current.has(message.id))
-        .map((message) => message.id)
+      const failedInOrder: string[] = []
+
+      for (const message of messagesRef.current) {
+        if (failedPersistIdsRef.current.has(message.id)) {
+          failedInOrder.push(message.id)
+        }
+      }
 
       let allSucceeded = true
 
       for (const messageId of failedInOrder) {
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- sequential retry of failed message persists: persistence is order-sensitive and each retry must complete before the next starts
         const succeeded = await retryPersist(messageId, targetDeckId)
         if (!succeeded) {
           allSucceeded = false

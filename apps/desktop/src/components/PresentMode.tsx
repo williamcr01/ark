@@ -17,6 +17,84 @@ const PRESENT_MODE_BACKDROP = (
   <div aria-hidden className="pointer-events-auto fixed inset-0 z-[40] bg-[#000]" />
 )
 
+function PresentControlsBar({
+  activeSlideIndex,
+  canGoNext,
+  canGoPrevious,
+  controlsVisible,
+  exitPresentMode,
+  goToPresentSlide,
+  slideCount,
+}: {
+  activeSlideIndex: number
+  canGoNext: boolean
+  canGoPrevious: boolean
+  controlsVisible: boolean
+  exitPresentMode: () => void
+  goToPresentSlide: (index: number) => void
+  slideCount: number
+}) {
+  return (
+    <div
+      className={cn(
+        'pointer-events-auto absolute inset-x-0 bottom-0 flex justify-center px-4 pb-5 transition-opacity duration-300 sm:pb-7',
+        controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
+      )}
+    >
+      <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#111]/90 px-2 py-2 shadow-2xl shadow-black/50">
+        <Button
+          aria-label="Previous slide"
+          className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"
+          disabled={!canGoPrevious}
+          onClick={() => {
+            goToPresentSlide(activeSlideIndex - 1)
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronLeftIcon aria-hidden className="size-4" />
+        </Button>
+
+        <div
+          aria-live="polite"
+          className="min-w-28 select-none px-3 text-center text-xs font-medium tabular-nums tracking-[0.18em] text-white/80"
+        >
+          {activeSlideIndex + 1} / {slideCount}
+        </div>
+
+        <Button
+          aria-label="Next slide"
+          className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"
+          disabled={!canGoNext}
+          onClick={() => {
+            goToPresentSlide(activeSlideIndex + 1)
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronRightIcon aria-hidden className="size-4" />
+        </Button>
+
+        <div aria-hidden className="mx-1 h-6 w-px bg-white/10" />
+
+        <Button
+          aria-label="Exit presentation"
+          className="rounded-full border-white/10 bg-white/10 px-4 text-xs font-medium text-white hover:bg-white/20"
+          onClick={exitPresentMode}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <XIcon aria-hidden className="size-3.5" />
+          <span>Exit</span>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 type PresentModeProps = {
   activeSlideIndex: number
   previewCompromised: boolean
@@ -36,9 +114,14 @@ function readElementSize(element: HTMLElement | null): ElementSize {
   return { width, height }
 }
 
-function useElementSize<T extends HTMLElement>() {
+function useElementSize<T extends HTMLElement>(onSizeChange?: (size: ElementSize) => void) {
   const elementRef = useRef<T>(null)
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
+  const onSizeChangeRef = useRef(onSizeChange)
+
+  useEffect(() => {
+    onSizeChangeRef.current = onSizeChange
+  }, [onSizeChange])
 
   useLayoutEffect(() => {
     const element = elementRef.current
@@ -49,6 +132,7 @@ function useElementSize<T extends HTMLElement>() {
 
     const updateSize = () => {
       const next = readElementSize(element)
+      onSizeChangeRef.current?.(next)
 
       setSize((current) => {
         if (
@@ -89,7 +173,15 @@ export function PresentMode({
   const currentSlideIndexRef = useRef(activeSlideIndex)
   const hasExitedRef = useRef(false)
   const hadFullscreenRef = useRef(false)
-  const [viewportRef, viewportSize] = useElementSize<HTMLDivElement>()
+  // Viewport size is reported to the parent event-driven from the ResizeObserver
+  // (the child owns that external subscription), not through an effect.
+  const handleViewportSizeChange = useCallback(
+    (size: ElementSize) => {
+      onViewportSizeChange?.(size)
+    },
+    [onViewportSizeChange],
+  )
+  const [viewportRef] = useElementSize<HTMLDivElement>(handleViewportSizeChange)
   const [controlsVisible, setControlsVisible] = useState(true)
 
   const clearIdleTimer = useCallback(() => {
@@ -128,10 +220,6 @@ export function PresentMode({
   useEffect(() => {
     currentSlideIndexRef.current = activeSlideIndex
   }, [activeSlideIndex])
-
-  useLayoutEffect(() => {
-    onViewportSizeChange?.(viewportSize)
-  }, [onViewportSizeChange, viewportSize])
 
   useEffect(() => {
     scheduleControlsHide()
@@ -294,6 +382,7 @@ export function PresentMode({
   const compromiseCopy = previewCompromiseCopy(previewCompromiseReason)
 
   const presenter = (
+    // react-doctor-disable-next-line react-doctor/prefer-html-dialog -- fullscreen presentation surface: manual focus management, document.fullscreenElement integration, and custom z-index stacking with the reused preview iframe; native <dialog> top-layer semantics conflict with those interactions
     <div
       aria-labelledby="ark-present-mode-title"
       aria-modal="true"
@@ -331,63 +420,15 @@ export function PresentMode({
         </Alert>
       ) : null}
 
-      <div
-        className={cn(
-          'pointer-events-auto absolute inset-x-0 bottom-0 flex justify-center px-4 pb-5 transition-opacity duration-300 sm:pb-7',
-          controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
-        )}
-      >
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#111]/90 px-2 py-2 shadow-2xl shadow-black/50">
-          <Button
-            aria-label="Previous slide"
-            className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"
-            disabled={!canGoPrevious}
-            onClick={() => {
-              goToPresentSlide(activeSlideIndex - 1)
-            }}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronLeftIcon aria-hidden className="size-4" />
-          </Button>
-
-          <div
-            aria-live="polite"
-            className="min-w-28 select-none px-3 text-center text-xs font-medium tabular-nums tracking-[0.18em] text-white/80"
-          >
-            {activeSlideIndex + 1} / {slideCount}
-          </div>
-
-          <Button
-            aria-label="Next slide"
-            className="size-9 rounded-full border-white/10 bg-white/10 text-white hover:bg-white/20 disabled:text-white/40"
-            disabled={!canGoNext}
-            onClick={() => {
-              goToPresentSlide(activeSlideIndex + 1)
-            }}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronRightIcon aria-hidden className="size-4" />
-          </Button>
-
-          <div aria-hidden className="mx-1 h-6 w-px bg-white/10" />
-
-          <Button
-            aria-label="Exit presentation"
-            className="rounded-full border-white/10 bg-white/10 px-4 text-xs font-medium text-white hover:bg-white/20"
-            onClick={exitPresentMode}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <XIcon aria-hidden className="size-3.5" />
-            <span>Exit</span>
-          </Button>
-        </div>
-      </div>
+      <PresentControlsBar
+        activeSlideIndex={activeSlideIndex}
+        canGoNext={canGoNext}
+        canGoPrevious={canGoPrevious}
+        controlsVisible={controlsVisible}
+        exitPresentMode={exitPresentMode}
+        goToPresentSlide={goToPresentSlide}
+        slideCount={slideCount}
+      />
     </div>
   )
 

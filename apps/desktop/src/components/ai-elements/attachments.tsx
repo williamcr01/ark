@@ -39,7 +39,7 @@ const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   video: VideoIcon,
 }
 
-export const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory => {
+const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory => {
   if (data.type === 'source-document') {
     return 'source'
   }
@@ -62,7 +62,7 @@ export const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory 
   return 'unknown'
 }
 
-export const getAttachmentLabel = (data: AttachmentData): string => {
+const getAttachmentLabel = (data: AttachmentData): string => {
   if (data.type === 'source-document') {
     return data.title || data.filename || 'Source'
   }

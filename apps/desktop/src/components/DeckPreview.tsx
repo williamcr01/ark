@@ -80,19 +80,22 @@ export type DeckPreviewProps = {
   deckId?: string | null
   documentRevision?: number | null
   recentGenerationJobId?: string | null
-  isDeckLoading?: boolean
-  isGenerating: boolean
-  isPreviewUpdating?: boolean
-  isStripOpen: boolean
+  /** Orthogonal preview/editor state flags (grouped to keep the props surface small). */
+  state: {
+    isDeckLoading: boolean
+    isGenerating: boolean
+    isPreviewUpdating: boolean
+    isStripOpen: boolean
+    editorBridgeEnabled: boolean
+    isTextEditSaving: boolean
+    canUndo: boolean
+    canRedo: boolean
+  }
   layout: 'desktop' | 'mobile'
   deckAnalysis: DeckBrowserAnalysis
   /** When set, preview/edit bars render into this host so they can span the full shell width. */
   chromeHost?: HTMLElement | null
-  editorBridgeEnabled?: boolean
-  isTextEditSaving?: boolean
   initialSlideIndex?: number
-  canUndo?: boolean
-  canRedo?: boolean
   undoSlideIndex?: number | null
   redoSlideIndex?: number | null
   /** Zero-based slide indexes currently attached as chat context. */
@@ -120,23 +123,16 @@ export type DeckPreviewProps = {
   presentHandleRef?: RefObject<DeckPreviewHandle | null>
 }
 
-export function DeckPreview({
+function useDeckPreviewShell({
   html,
   deckId = null,
   documentRevision = null,
   recentGenerationJobId = null,
-  isDeckLoading = false,
-  isGenerating,
-  isPreviewUpdating = false,
-  isStripOpen,
+  state,
   layout,
   deckAnalysis,
   chromeHost = null,
-  editorBridgeEnabled = false,
-  isTextEditSaving = false,
   initialSlideIndex = 0,
-  canUndo = false,
-  canRedo = false,
   undoSlideIndex = null,
   redoSlideIndex = null,
   contextSlideIndexes,
@@ -150,6 +146,16 @@ export function DeckPreview({
   onPatchEditorOperations,
   presentHandleRef,
 }: DeckPreviewProps) {
+  const {
+    canRedo,
+    canUndo,
+    editorBridgeEnabled,
+    isDeckLoading,
+    isGenerating,
+    isPreviewUpdating,
+    isStripOpen,
+    isTextEditSaving,
+  } = state
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previewStageRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -308,6 +314,19 @@ export function DeckPreview({
   const previewCompromiseReason = bridgeSession.compromiseReason
   const bridgeEnabled = previewEnabled && !previewCompromised
 
+  // Mirror the live selection up to the shell so chat requests can target the
+  // selected element. Reported event-driven from the editor bridge (selection
+  // change messages, plus enable/disable resets) instead of an effect so the
+  // shell never receives child-owned state via an effect. The bridge reports
+  // null whenever the edit chrome is inactive (edit mode off, generating, or
+  // presenting) so a stale id is never sent.
+  const handleBridgeSelectionChange = useCallback(
+    (next: EditorSelectionInfo | null) => {
+      onEditorSelectionChange?.(editChromeActive ? next : null)
+    },
+    [editChromeActive, onEditorSelectionChange],
+  )
+
   // Keep secondary preview work off the critical path until the current main
   // frame has loaded and completed its handshake. In particular, a thumbnail
   // long-poll can occupy an HTTP/1.1 connection for five seconds and fallback
@@ -421,6 +440,7 @@ export function DeckPreview({
     sessionHandshake: previewFrame.handshake,
     canPostToFrame: bridgeSession.canPostToFrame,
     shouldAcceptInbound: bridgeSession.shouldAcceptInbound,
+    onSelectionChange: handleBridgeSelectionChange,
   })
 
   useEffect(() => {
@@ -623,17 +643,6 @@ export function DeckPreview({
     selectedSlideIndex,
   ])
 
-  // Mirror the live selection up to the shell so chat requests can target the
-  // selected element. Report null whenever the edit chrome is inactive (edit
-  // mode off, generating, or presenting) so a stale id is never sent.
-  useEffect(() => {
-    if (!onEditorSelectionChange) {
-      return
-    }
-
-    onEditorSelectionChange(editChromeActive ? selection : null)
-  }, [editChromeActive, onEditorSelectionChange, selection])
-
   useEffect(() => {
     if (!clearEditorSelectionRef) {
       return
@@ -694,7 +703,8 @@ export function DeckPreview({
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const hasStrip = isDeckLoading || hasSlides
-  const stripOrientation = layout === 'desktop' ? 'vertical' : 'horizontal'
+  const stripOrientation: 'vertical' | 'horizontal' =
+    layout === 'desktop' ? 'vertical' : 'horizontal'
   const previewChrome =
     editorBridgeEnabled && isDeckLoading ? (
       <div
@@ -711,15 +721,21 @@ export function DeckPreview({
     ) : editorBridgeEnabled && editChromeActive ? (
       <EditModeToolbar
         activeTool={activeTool}
-        canEditText={canEditSelectedText}
-        canRedo={canRedo}
-        canUndo={canUndo}
-        hasDeck={html.length > 0 && hasSlides}
-        hasSelection={Boolean(selection?.elementId)}
+        state={{
+          canEditText: canEditSelectedText,
+          canRedo,
+          canUndo,
+          hasDeck: html.length > 0 && hasSlides,
+          hasSelection: Boolean(selection?.elementId),
+          isGenerating,
+          isSaving: isTextEditSaving,
+          selectedImage,
+          selectionLocked: selection?.locked ?? false,
+          selectionManaged: selection?.managed ?? false,
+          textEditActive,
+        }}
         imageAlt={selectedImageAlt}
         imageFit={selectedImageFit}
-        isGenerating={isGenerating}
-        isSaving={isTextEditSaving}
         onBringForward={() => handleReorderSelection('front')}
         onDelete={handleDeleteSelection}
         onDuplicate={handleDuplicateSelection}
@@ -731,12 +747,181 @@ export function DeckPreview({
         onSendBackward={() => handleReorderSelection('back')}
         onToolChange={handleToolChange}
         onUndo={handleUndo}
-        selectedImage={selectedImage}
-        selectionLocked={selection?.locked ?? false}
-        selectionManaged={selection?.managed ?? false}
-        textEditActive={textEditActive}
       />
     ) : null
+
+  return {
+    activeSlideIndex,
+    activeSlideIndexRef,
+    activeTool,
+    bridgeSession,
+    chromeHost,
+    clearSelection,
+    contextSlideIndexes,
+    deckId,
+    deferredThumbnailUrls,
+    documentRevision,
+    editChromeActive,
+    editorBridgeActive,
+    editorBridgeEnabled,
+    editorError,
+    enableEditor,
+    geometry,
+    goToSlide,
+    handleImageInputChange,
+    handleInsertImageFile,
+    handleInspectorApply,
+    handlePresentViewportSizeChange,
+    handleReorderSlide,
+    hasStrip,
+    hover,
+    hoverGeometry,
+    hoverSlideBounds,
+    html,
+    iframeRef,
+    imageInputRef,
+    isDeckLoading,
+    isGenerating,
+    isPresentOpen,
+    isPreviewUpdating,
+    isStripOpen,
+    isTextEditSaving,
+    layout,
+    mainPreviewReady,
+    networkIssues,
+    onPatchEditorOperations,
+    onReorderSlide,
+    onToggleContextSlide,
+    parsedDeck,
+    pendingPresentExitIndexRef,
+    previewChrome,
+    previewCompromised,
+    previewCompromiseReason,
+    previewFrame,
+    previewFrameScale,
+    previewFrameStyle,
+    previewStageRef,
+    previewStageStyle,
+    previewViewportRef,
+    runtimeError,
+    runtimeMode,
+    selection,
+    selectionZIndex,
+    setIsPresentOpen,
+    setRuntimeError,
+    slideBounds,
+    stripOrientation,
+    stripParsedDeck,
+    textEditActive,
+    transformPreview,
+    usesStaticPreview,
+  }
+}
+
+function EmptyPreview({
+  isGenerating = false,
+  isPreviewUpdating = false,
+}: {
+  isGenerating?: boolean
+  isPreviewUpdating?: boolean
+}) {
+  const busy = isGenerating || isPreviewUpdating
+
+  return (
+    <Empty className="max-w-xl">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <WandSparklesIcon />
+        </EmptyMedia>
+        <EmptyTitle>Set the stage</EmptyTitle>
+        <EmptyDescription>
+          {busy
+            ? 'The agent is building your deck. Progress shows in the chat panel.'
+            : 'Ask the agent to build a deck, or upload a self-contained HTML presentation from the command strip.'}
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        {busy ? (
+          <span className="text-xs text-muted-foreground" role="status">
+            {isPreviewUpdating ? 'Updating preview…' : 'Building your deck…'}
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">
+            Try: “Create a six-slide launch deck for a privacy-first notes app.”
+          </span>
+        )}
+      </EmptyContent>
+    </Empty>
+  )
+}
+
+export function DeckPreview(props: DeckPreviewProps) {
+  const {
+    activeSlideIndex,
+    activeSlideIndexRef,
+    activeTool,
+    bridgeSession,
+    chromeHost,
+    clearSelection,
+    contextSlideIndexes,
+    deckId,
+    deferredThumbnailUrls,
+    documentRevision,
+    editChromeActive,
+    editorBridgeActive,
+    editorBridgeEnabled,
+    editorError,
+    enableEditor,
+    geometry,
+    goToSlide,
+    handleImageInputChange,
+    handleInsertImageFile,
+    handleInspectorApply,
+    handlePresentViewportSizeChange,
+    handleReorderSlide,
+    hasStrip,
+    hover,
+    hoverGeometry,
+    hoverSlideBounds,
+    html,
+    iframeRef,
+    imageInputRef,
+    isDeckLoading,
+    isGenerating,
+    isPresentOpen,
+    isPreviewUpdating,
+    isStripOpen,
+    isTextEditSaving,
+    layout,
+    mainPreviewReady,
+    networkIssues,
+    onPatchEditorOperations,
+    onReorderSlide,
+    onToggleContextSlide,
+    parsedDeck,
+    pendingPresentExitIndexRef,
+    previewChrome,
+    previewCompromised,
+    previewCompromiseReason,
+    previewFrame,
+    previewFrameScale,
+    previewFrameStyle,
+    previewStageRef,
+    previewStageStyle,
+    previewViewportRef,
+    runtimeError,
+    runtimeMode,
+    selection,
+    selectionZIndex,
+    setIsPresentOpen,
+    setRuntimeError,
+    slideBounds,
+    stripOrientation,
+    stripParsedDeck,
+    textEditActive,
+    transformPreview,
+    usesStaticPreview,
+  } = useDeckPreviewShell(props)
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--ark-stage)]">
@@ -940,42 +1125,5 @@ export function DeckPreview({
         />
       ) : null}
     </section>
-  )
-}
-
-function EmptyPreview({
-  isGenerating = false,
-  isPreviewUpdating = false,
-}: {
-  isGenerating?: boolean
-  isPreviewUpdating?: boolean
-}) {
-  const busy = isGenerating || isPreviewUpdating
-
-  return (
-    <Empty className="max-w-xl">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <WandSparklesIcon />
-        </EmptyMedia>
-        <EmptyTitle>Set the stage</EmptyTitle>
-        <EmptyDescription>
-          {busy
-            ? 'The agent is building your deck. Progress shows in the chat panel.'
-            : 'Ask the agent to build a deck, or upload a self-contained HTML presentation from the command strip.'}
-        </EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        {busy ? (
-          <span className="text-xs text-muted-foreground" role="status">
-            {isPreviewUpdating ? 'Updating preview…' : 'Building your deck…'}
-          </span>
-        ) : (
-          <span className="font-mono text-xs text-muted-foreground">
-            Try: “Create a six-slide launch deck for a privacy-first notes app.”
-          </span>
-        )}
-      </EmptyContent>
-    </Empty>
   )
 }
