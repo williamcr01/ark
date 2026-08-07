@@ -327,8 +327,15 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
       try {
         const deck = await renameDeck(deckId, title)
 
+        // The rename syncs the document <title> server-side, so adopt the
+        // returned HTML and its bumped revision to stay consistent.
+        htmlRef.current = deck.html
         setDeckTitle(deck.title)
         setFilePath(deck.filePath)
+        setHtml(deck.html)
+        setSavedHtml(deck.html)
+        setDocumentRevision(deck.documentRevision)
+        documentRevisionRef.current = deck.documentRevision
         setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not rename the deck.'

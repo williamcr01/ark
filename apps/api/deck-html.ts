@@ -9,6 +9,25 @@ import {
 export const DEFAULT_READ_MAX_LINES = 2000
 export const DEFAULT_READ_MAX_BYTES = 50 * 1024
 
+const escapeHtmlText = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/**
+ * Rewrite the document `<title>` to match a deck title, preserving any
+ * attributes on the opening tag. When the document has no `<title>` and does
+ * have a `<head>`, one is inserted after the opening head tag. Returns the
+ * original html unchanged when neither is possible.
+ */
+export function syncDeckHtmlTitle(html: string, title: string) {
+  const escaped = escapeHtmlText(title)
+  const replaced = html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, (match) => {
+    const openTagEnd = match.indexOf('>') + 1
+    return `${match.slice(0, openTagEnd)}${escaped}</title>`
+  })
+  if (replaced !== html) return replaced
+  return html.replace(/(<head[^>]*>)/i, (match) => `${match}<title>${escaped}</title>`)
+}
+
 export type DeckSlideSummary = {
   index: number
   slideId: string | null

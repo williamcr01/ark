@@ -10,6 +10,7 @@ import {
   readDeckHtmlSlice,
   readDeckSlideHtml,
   summarizeDeckHtml,
+  syncDeckHtmlTitle,
 } from './deck-html.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
@@ -72,5 +73,38 @@ describe('readDeckHtmlSlice', () => {
 describe('summarizeDeckHtml', () => {
   it('mentions slide count for valid decks', () => {
     expect(summarizeDeckHtml(plainCssDeck)).toContain('slide')
+  })
+})
+
+describe('syncDeckHtmlTitle', () => {
+  it('replaces the document title and preserves opening-tag attributes', () => {
+    const html =
+      '<!DOCTYPE html><html><head><title data-x="1">Old</title></head><body></body></html>'
+
+    expect(syncDeckHtmlTitle(html, 'Board plan')).toBe(
+      '<!DOCTYPE html><html><head><title data-x="1">Board plan</title></head><body></body></html>',
+    )
+  })
+
+  it('escapes HTML-sensitive characters in the title', () => {
+    const html = '<html><head><title>Old</title></head><body></body></html>'
+
+    expect(syncDeckHtmlTitle(html, 'Q3 <Plan> & "Review"')).toBe(
+      '<html><head><title>Q3 &lt;Plan&gt; &amp; "Review"</title></head><body></body></html>',
+    )
+  })
+
+  it('inserts a title into the head when the document has none', () => {
+    const html = '<html><head><meta charset="utf-8"></head><body></body></html>'
+
+    expect(syncDeckHtmlTitle(html, 'Board plan')).toBe(
+      '<html><head><title>Board plan</title><meta charset="utf-8"></head><body></body></html>',
+    )
+  })
+
+  it('leaves html without a head or title unchanged', () => {
+    const html = '<html><body><section class="slide"></section></body></html>'
+
+    expect(syncDeckHtmlTitle(html, 'Board plan')).toBe(html)
   })
 })

@@ -56,16 +56,21 @@ describe('createDeckStore', () => {
     expect(await store.getDeck(created.id)).toBeNull()
   })
 
-  it('keeps an explicit metadata title across document saves', async () => {
+  it('syncs the document title on rename, then follows newer HTML titles', async () => {
     const store = await makeStore()
     const created = await store.createDeck(sampleHtml)
-    await store.updateDeckMetadata(created.id, { title: 'Board plan' })
+    const renamed = await store.updateDeckMetadata(created.id, { title: 'Board plan' })
+
+    expect(renamed).toMatchObject({ title: 'Board plan', documentRevision: 2 })
+    expect(renamed?.html).toContain('<title>Board plan</title>')
+
     const updated = await store.updateDeck(
       created.id,
       sampleHtml.replace('Quarterly Review', 'HTML title'),
-      { expectedDocumentRevision: created.documentRevision },
+      { expectedDocumentRevision: renamed!.documentRevision },
     )
-    expect(updated).toMatchObject({ title: 'Board plan', documentRevision: 2 })
+    expect(updated).toMatchObject({ title: 'HTML title', documentRevision: 3 })
+    expect(updated?.html).toContain('<title>HTML title</title>')
   })
 
   it('lists workspaces by most recently updated first', async () => {

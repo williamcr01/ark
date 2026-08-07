@@ -4,6 +4,7 @@ import path from 'node:path'
 import { DatabaseSync, backup } from 'node:sqlite'
 
 import { extractDeckTitle, isValidDeckId, normalizeDeckTitle } from '@ark/contracts'
+import { syncDeckHtmlTitle } from './deck-html.ts'
 import {
   DEFAULT_DECK_ORIGIN,
   deckOriginAfterWrite,
@@ -526,6 +527,32 @@ export class WorkspaceStore {
    * are recognized and do not override the title. Returns null when the file
    * name should not change the title.
    */
+  /**
+   * Adopt a file-derived title: update the title row and keep the document
+   * <title> in sync, bumping document_revision only when the document changes.
+   */
+  private adoptFileName(open: OpenWorkspace, current: WorkspaceRow, title: string) {
+    const now = new Date().toISOString()
+    const syncedHtml = syncDeckHtmlTitle(current.html, title)
+    const htmlChanged = syncedHtml !== current.html
+    open.database.exec('BEGIN IMMEDIATE')
+    try {
+      open.database.prepare('UPDATE workspace SET title = ?, updated_at = ?').run(title, now)
+      if (htmlChanged) {
+        open.database
+          .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
+          .run(syncedHtml, contentHash(syncedHtml), now)
+        open.database
+          .prepare('UPDATE workspace SET document_revision = document_revision + 1')
+          .run()
+      }
+      open.database.exec('COMMIT')
+    } catch (error) {
+      open.database.exec('ROLLBACK')
+      throw error
+    }
+  }
+
   private titleFromFileName(filePath: string, currentTitle: string) {
     const fileStem = safeFileStem(path.basename(filePath).replace(/\.ark$/i, ''))
     const titleStem = safeFileStem(currentTitle)
@@ -624,9 +651,7 @@ export class WorkspaceStore {
     const current = readWorkspace(open)
     const title = this.titleFromFileName(open.path, current.title)
     if (title) {
-      open.database
-        .prepare('UPDATE workspace SET title = ?, updated_at = ?')
-        .run(title, new Date().toISOString())
+      this.adoptFileName(open, current, title)
     }
     open.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(open)
@@ -686,9 +711,7 @@ export class WorkspaceStore {
     const current = readWorkspace(open)
     const title = this.titleFromFileName(open.path, current.title)
     if (title) {
-      open.database
-        .prepare('UPDATE workspace SET title = ?, updated_at = ?')
-        .run(title, new Date().toISOString())
+      this.adoptFileName(open, current, title)
     }
     open.database.prepare("UPDATE workspace SET name_source = 'user'").run()
     const workspace = readWorkspace(open)
@@ -777,6 +800,43 @@ export class WorkspaceStore {
     const previous = readWorkspace(open)
     const title = normalizeDeckTitle(rawTitle)
     const now = new Date().toISOString()
+    // Keep the document <title> in sync so the deck name, the on-disk file
+    // name, and the exported HTML all agree. The revision bumps only when the
+    // document actually changes, so the renderer can adopt the new revision.
+    const syncedHtml = syncDeckHtmlTitle(previous.html, title)
+    const htmlChanged = syncedHtml !== previous.html
+
+    const writeMetadata = (
+      target: OpenWorkspace,
+      nextTitle: string,
+      nextHtml: string,
+      changed: boolean,
+      updatedAt: string,
+      nameSource: 'derived' | null,
+    ) => {
+      target.database.exec('BEGIN IMMEDIATE')
+      try {
+        target.database
+          .prepare(
+            nameSource
+              ? 'UPDATE workspace SET title = ?, updated_at = ?, name_source = ?'
+              : 'UPDATE workspace SET title = ?, updated_at = ?',
+          )
+          .run(nextTitle, updatedAt, ...(nameSource ? [nameSource] : []))
+        if (changed) {
+          target.database
+            .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
+            .run(nextHtml, contentHash(nextHtml), updatedAt)
+          target.database
+            .prepare('UPDATE workspace SET document_revision = document_revision + 1')
+            .run()
+        }
+        target.database.exec('COMMIT')
+      } catch (error) {
+        target.database.exec('ROLLBACK')
+        throw error
+      }
+    }
 
     // Keep the on-disk filename in sync with the title for Ark-managed files in
     // the default workspaces directory, where the name is derived from the
@@ -786,9 +846,7 @@ export class WorkspaceStore {
     // agent-established titles keep renaming the file too.
     if (path.dirname(open.path) === this.defaultDir) {
       const targetPath = await this.uniquePath(title, path.dirname(open.path))
-      open.database
-        .prepare("UPDATE workspace SET title = ?, updated_at = ?, name_source = 'derived'")
-        .run(title, now)
+      writeMetadata(open, title, syncedHtml, htmlChanged, now, 'derived')
       if (targetPath !== open.path) {
         try {
           const workspace = await this.renameOpenWorkspaceFile(open, targetPath)
@@ -796,11 +854,21 @@ export class WorkspaceStore {
           return workspace
         } catch (error) {
           // Roll the file rename back: reopen the original path and restore the
-          // previous title so the deck does not half-rename.
+          // previous metadata so the deck does not half-rename.
           const reopened = this.openFile(open.path)
-          reopened.database
-            .prepare('UPDATE workspace SET title = ?, updated_at = ?')
-            .run(previous.title, previous.updatedAt)
+          writeMetadata(
+            reopened,
+            previous.title,
+            previous.html,
+            htmlChanged,
+            previous.updatedAt,
+            null,
+          )
+          if (htmlChanged) {
+            reopened.database
+              .prepare('UPDATE workspace SET document_revision = ?')
+              .run(previous.documentRevision)
+          }
           throw error
         }
       }
@@ -809,7 +877,7 @@ export class WorkspaceStore {
       return workspace
     }
 
-    open.database.prepare('UPDATE workspace SET title = ?, updated_at = ?').run(title, now)
+    writeMetadata(open, title, syncedHtml, htmlChanged, now, null)
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace

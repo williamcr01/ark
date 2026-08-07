@@ -80,6 +80,22 @@ describe('workspace API routes', () => {
     expect(payload).toMatchObject({ code: 'workspace_already_open' })
   })
 
+  it('syncs the document title and revision when a deck is renamed', async () => {
+    const deck = await createDeck()
+
+    const response = await fetch(`${baseUrl}/api/decks/${deck.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Board plan' }),
+    })
+
+    expect(response.status).toBe(200)
+    const payload = await response.json()
+    expect(payload.deck.title).toBe('Board plan')
+    expect(payload.deck.documentRevision).toBe(2)
+    expect(payload.deck.html).toContain('<title>Board plan</title>')
+  })
+
   it('adopts the file name as the deck title when opening a renamed file', async () => {
     const deck = await createDeck()
     // Unregister the open handle so the file can be re-opened from disk.
@@ -117,9 +133,9 @@ describe('workspace API routes', () => {
     expect(response.status).toBe(200)
     const payload = await response.json()
     expect(payload.deck.title).toBe('Board plan')
-    expect(payload.deck.filePath).toBe(path.join(root, 'Board plan.ark'))
+    expect(path.basename(payload.deck.filePath)).toMatch(/^Board plan( \d+)?\.ark$/)
     await expect(workspaces.get(deck.id)).resolves.toMatchObject({
-      path: path.join(root, 'Board plan.ark'),
+      path: payload.deck.filePath,
     })
   })
 

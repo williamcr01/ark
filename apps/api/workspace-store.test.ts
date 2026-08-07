@@ -114,7 +114,7 @@ describe('WorkspaceStore file operations', () => {
     await expect(store.open(created.path)).resolves.toMatchObject({ origin: 'authored' })
   })
 
-  it('renames the on-disk file to match a new title in the default directory', async () => {
+  it('renames the on-disk file and syncs the document title in the default directory', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
     const originalPath = created.path
@@ -124,6 +124,8 @@ describe('WorkspaceStore file operations', () => {
 
     expect(renamed?.title).toBe('Board plan')
     expect(renamed?.path).toBe(path.join(root, 'Board plan.ark'))
+    expect(renamed?.html).toContain('<title>Board plan</title>')
+    expect(renamed?.documentRevision).toBe(2)
     await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(access(renamed!.path)).resolves.toBeUndefined()
     await expect(workspaces.get(created.id)).resolves.toMatchObject({
@@ -190,20 +192,21 @@ describe('WorkspaceStore file operations', () => {
     await expect(access(retitled!.path)).resolves.toBeUndefined()
   })
 
-  it('keeps the file name when an explicit UI rename blocks agent title adoption', async () => {
+  it('lets an agent title change follow a UI rename once the document title is synced', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
-    await workspaces.rename(created.id, 'Board plan')
-    const renamedPath = (await workspaces.get(created.id))?.path
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+    expect(renamed?.path).toBe(path.join(root, 'Board plan.ark'))
+    expect(renamed?.html).toContain('<title>Board plan</title>')
 
     const updated = await workspaces.updateDocument(
       created.id,
       html.replace('<title>Workspace</title>', '<title>Agent title</title>'),
-      1,
+      renamed!.documentRevision,
     )
 
-    expect(updated?.title).toBe('Board plan')
-    expect(updated?.path).toBe(renamedPath)
+    expect(updated?.title).toBe('Agent title')
+    expect(updated?.path).toBe(path.join(root, 'Agent title.ark'))
   })
 
   it('does not rename a user-placed file in the default directory', async () => {
@@ -265,6 +268,18 @@ describe('WorkspaceStore file operations', () => {
     expect(updated?.path).toBe(path.join(root, 'Board plan.ark'))
   })
 
+  it('does not bump the revision when a rename cannot sync the document title', async () => {
+    const workspaces = await setup()
+    const noTitleHtml = '<!DOCTYPE html><html><body><section class="slide"></section></body></html>'
+    const created = await workspaces.create(noTitleHtml)
+
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+
+    expect(renamed?.title).toBe('Board plan')
+    expect(renamed?.html).toBe(noTitleHtml)
+    expect(renamed?.documentRevision).toBe(1)
+  })
+
   it('adopts an externally renamed file name as the deck title on open', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
@@ -279,6 +294,8 @@ describe('WorkspaceStore file operations', () => {
 
     expect(opened?.title).toBe('Final')
     expect(opened?.path).toBe(renamedPath)
+    expect(opened?.html).toContain('<title>Final</title>')
+    expect(opened?.documentRevision).toBe(2)
     await expect(store.listRecent()).resolves.toEqual([
       expect.objectContaining({ id: created.id, title: 'Final', path: renamedPath }),
     ])

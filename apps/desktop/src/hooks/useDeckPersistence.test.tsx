@@ -127,8 +127,15 @@ describe('useDeckPersistence', () => {
     expect(result.current.filePath).toBe(savedAs.filePath)
   })
 
-  it('adopts the renamed workspace path alongside the new title', async () => {
-    const renamed = { ...deck, title: 'Board plan', filePath: '/tmp/Board plan.ark' }
+  it('adopts the renamed workspace path, document, and revision', async () => {
+    const renamedHtml = html.replace('<title>Deck</title>', '<title>Board plan</title>')
+    const renamed = {
+      ...deck,
+      title: 'Board plan',
+      html: renamedHtml,
+      filePath: '/tmp/Board plan.ark',
+      documentRevision: 2,
+    }
     const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
       const url = String(input)
       if (url === '/api/decks') return jsonResponse({ decks: [summary] })
@@ -148,5 +155,7 @@ describe('useDeckPersistence', () => {
 
     expect(result.current.deckTitle).toBe('Board plan')
     expect(result.current.filePath).toBe('/tmp/Board plan.ark')
+    expect(result.current.html).toBe(renamedHtml)
+    expect(result.current.documentRevision).toBe(2)
   })
 })
