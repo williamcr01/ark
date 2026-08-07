@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { memo, useMemo, useRef, useState, useEffect, useCallback, useEffectEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { type ChatAttachment } from '@ark/deck-core/chat.ts'
@@ -63,6 +63,34 @@ function parseInitialSlideIndex(value: string | null) {
 
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
+const CHAT_OPEN_PREFERENCE_KEY = 'ark:chat-open'
+
+function loadChatOpenPreference(): boolean | null {
+  try {
+    const value = window.localStorage.getItem(CHAT_OPEN_PREFERENCE_KEY)
+    if (value === '1') return true
+    if (value === '0') return false
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** The titlebar chat toggle sits outside the drawer, so its own pointer/focus events
+ *  would dismiss the drawer, and the click that follows would then reopen it. Treat
+ *  events originating from that button as if they happened inside the drawer. */
+function isChatPanelToggleTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[aria-controls="ark-chat-panel"]') !== null
+}
+
+function storeChatOpenPreference(open: boolean) {
+  try {
+    window.localStorage.setItem(CHAT_OPEN_PREFERENCE_KEY, open ? '1' : '0')
+  } catch {
+    // Storage can be unavailable (e.g. private browsing); the preference just won't persist.
+  }
 }
 
 async function uploadPromptAttachments(
@@ -158,13 +186,71 @@ function App() {
       toast.warning('Could not refresh chat from server — showing cached messages')
     }, []),
   })
+  const isDesktop = useMediaQuery('(min-width: 1180px)')
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const [input, setInput] = useState('')
   const [mcpInteraction, setMcpInteraction] = useState<McpPendingInteraction | null>(null)
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
-  const [isChatOpen, setIsChatOpen] = useState(true)
+  // The agent panel preference persists across sessions; layout defaults apply when unset
+  // (open side-by-side on desktop, closed as a drawer on narrow windows). The drawer must
+  // never force itself open over the deck, so it closes when the layout collapses to mobile.
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(() => loadChatOpenPreference() ?? isDesktop)
   const [isStripOpen, setIsStripOpen] = useState(true)
+  // When the layout collapses to mobile, close the agent drawer *before* the sheet mounts so
+  // it never pops open over the deck and never races a close the user makes at the same
+  // moment (an effect-based close happened a frame too late: the drawer mounted open, then
+  // closed, and a close click in between reopened it). React re-renders immediately when
+  // state is set during render, so the sheet mounts closed. This is a layout accommodation,
+  // not a user preference, so it is not persisted.
+  const prevIsDesktopRef = useRef(isDesktop)
+  if (prevIsDesktopRef.current !== isDesktop) {
+    prevIsDesktopRef.current = isDesktop
+    if (!isDesktop && isChatOpen) {
+      setIsChatOpen(false)
+    }
+  }
+  const handleToggleChat = useCallback(() => {
+    const next = !isChatOpen
+    setIsChatOpen(next)
+    storeChatOpenPreference(next)
+  }, [isChatOpen])
+  const handleChatOpenChange = useCallback(
+    (open: boolean) => {
+      // Radix reports only user-initiated changes (close button, ESC, outside click);
+      // programmatic `open` prop changes never reach this callback. While the drawer is
+      // closed it stays force-mounted, so stray outside interactions still fire this
+      // callback with `false`; skip them instead of clobbering the stored preference.
+      if (open === isChatOpen) {
+        return
+      }
+      setIsChatOpen(open)
+      storeChatOpenPreference(open)
+    },
+    [isChatOpen],
+  )
+  const handleChatShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
+      return
+    }
+    if (event.key.toLowerCase() !== 'b') {
+      return
+    }
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')
+    ) {
+      return
+    }
+    event.preventDefault()
+    handleToggleChat()
+  })
+  // Toggle the agent panel with Ctrl/Cmd+B, mirroring common sidebar shortcuts.
+  useEffect(() => {
+    window.addEventListener('keydown', handleChatShortcut)
+    return () => window.removeEventListener('keydown', handleChatShortcut)
+  }, [])
   const deckPreviewRef = useRef<DeckPreviewHandle>(null)
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
@@ -172,8 +258,6 @@ function App() {
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const [deckChromeHost, setDeckChromeHost] = useState<HTMLDivElement | null>(null)
-  const isDesktop = useMediaQuery('(min-width: 1180px)')
-  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const { preference, resolvedAppearance, setPreference } = useAppearance()
   const {
     canGenerate,
@@ -944,7 +1028,7 @@ function App() {
           onShareProject={handleShareProject}
           onPresent={() => deckPreviewRef.current?.openPresent()}
           onRenameDeck={handleRenameDeck}
-          onToggleChat={() => setIsChatOpen((current) => !current)}
+          onToggleChat={handleToggleChat}
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onAppearanceChange={setPreference}
           onUploadClick={handleUploadClick}
@@ -981,14 +1065,27 @@ function App() {
           ) : (
             <>
               <div className="min-h-0 flex-1 overflow-hidden">{deckPreview}</div>
-              <Sheet onOpenChange={setIsChatOpen} open={isChatOpen}>
+              {/*
+                Non-modal drawer: Radix renders no backdrop for modal={false}, so the
+                deck stays visible and interactive while the agent panel is open.
+              */}
+              <Sheet modal={false} onOpenChange={handleChatOpenChange} open={isChatOpen}>
                 <SheetContent
                   aria-describedby="ark-agent-sheet-description"
                   aria-labelledby="ark-agent-sheet-title"
                   className="gap-0 p-0"
                   forceMount
                   id="ark-chat-panel"
-                  showCloseButton={false}
+                  onFocusOutside={(event) => {
+                    if (isChatPanelToggleTarget(event.target)) {
+                      event.preventDefault()
+                    }
+                  }}
+                  onPointerDownOutside={(event) => {
+                    if (isChatPanelToggleTarget(event.target)) {
+                      event.preventDefault()
+                    }
+                  }}
                 >
                   <SheetTitle className="sr-only" id="ark-agent-sheet-title">
                     Agent

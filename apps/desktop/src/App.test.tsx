@@ -1,6 +1,7 @@
 import { act, fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getTestLocalStorage } from '@/test/storage'
 import { renderWithRouter } from '@/test/render-with-router'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
@@ -90,7 +91,12 @@ vi.mock('@/hooks/useDeckGenerationFlow', () => ({
 
 vi.mock('@/components/AppTitleBar', () => ({
   AppTitleBar: ({ onToggleChat }: { onToggleChat: () => void }) => (
-    <button data-testid="toggle-chat" type="button" onClick={onToggleChat}>
+    <button
+      aria-controls="ark-chat-panel"
+      data-testid="toggle-chat"
+      type="button"
+      onClick={onToggleChat}
+    >
       Toggle chat
     </button>
   ),
@@ -204,11 +210,221 @@ describe('App chat panel layout', () => {
     const { container, getByTestId } = renderWithRouter(<App />)
 
     expect(getByTestId('deck-preview')).toBeInTheDocument()
-    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    // The agent drawer starts closed on mobile but the chat stays mounted (forceMount).
+    expect(container.ownerDocument.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    fireEvent.click(getByTestId('toggle-chat'))
     fireEvent.click(getByTestId('toggle-chat'))
 
     expect(container.ownerDocument.querySelectorAll('[data-testid="chat-panel"]')).toHaveLength(1)
     expect(deckPreviewLifecycle).toEqual({ mounts: 1, unmounts: 0 })
+  })
+
+  it('renders the mobile agent drawer without a dimming modal overlay', () => {
+    mediaState.isDesktop = false
+    const { container, getByTestId } = renderWithRouter(<App />)
+
+    // Non-modal drawer: no dark backdrop covers the deck, and opening the drawer
+    // must not add one either.
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(container.ownerDocument.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+    expect(container.ownerDocument.querySelector('[class*="ark-overlay"]')).toBeNull()
+  })
+
+  it('closes the agent drawer when the layout collapses to mobile', () => {
+    mediaState.isDesktop = true
+    const { getByTestId, rerender } = renderWithRouter(<App />)
+
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+
+    mediaState.isDesktop = false
+    rerender(<App />)
+
+    const sheet = document.querySelector('[data-slot="sheet-content"]')
+    expect(sheet).toHaveAttribute('data-state', 'closed')
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+  })
+
+  it('restores a persisted closed chat panel on desktop', () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '0')
+    const { queryByTestId } = renderWithRouter(<App />)
+
+    expect(queryByTestId('chat-panel')).not.toBeInTheDocument()
+  })
+
+  it('keeps a persisted open chat on mobile (layout collapse does not override it)', () => {
+    mediaState.isDesktop = false
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { getByTestId } = renderWithRouter(<App />)
+
+    expect(getByTestId('deck-preview')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+  })
+
+  it('persists the chat panel preference when toggled', () => {
+    mediaState.isDesktop = true
+    const { getByTestId } = renderWithRouter(<App />)
+
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+  })
+
+  it('toggles the chat panel with the Ctrl/Cmd+B shortcut', () => {
+    mediaState.isDesktop = true
+    const { getByTestId, queryByTestId } = renderWithRouter(<App />)
+
+    fireEvent.keyDown(window, { key: 'b', metaKey: true })
+    expect(queryByTestId('chat-panel')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'B', ctrlKey: true })
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+  })
+
+  it('ignores the chat panel shortcut while typing', () => {
+    mediaState.isDesktop = true
+    const { getByTestId } = renderWithRouter(<App />)
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+
+    fireEvent.keyDown(input, { key: 'b', metaKey: true })
+
+    expect(getByTestId('chat-panel')).toBeInTheDocument()
+    input.remove()
+  })
+
+  it('closes the mobile agent drawer from its in-drawer close button and persists', () => {
+    mediaState.isDesktop = false
+    const { getByTestId } = renderWithRouter(<App />)
+
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+
+    const closeButton = document.querySelector('button[aria-label="Close"]')
+    expect(closeButton).not.toBeNull()
+    fireEvent.click(closeButton!)
+
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+  })
+
+  it('does not persist the auto-close when the layout collapses to mobile', () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { rerender } = renderWithRouter(<App />)
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+
+    mediaState.isDesktop = false
+    rerender(<App />)
+
+    // The drawer mounts closed (no open flash), and the collapse is a layout
+    // accommodation, so the stored user preference survives.
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+  })
+
+  it('keeps the drawer closed across repeated layout jitter after the user closes it', () => {
+    mediaState.isDesktop = false
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { rerender } = renderWithRouter(<App />)
+
+    // Starts open from the persisted preference, then the user closes it once.
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+    fireEvent.click(document.querySelector('button[aria-label="Close"]')!)
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+
+    // Drag jitter across the breakpoint must not make the drawer come back.
+    mediaState.isDesktop = true
+    rerender(<App />)
+    mediaState.isDesktop = false
+    rerender(<App />)
+    mediaState.isDesktop = true
+    rerender(<App />)
+    mediaState.isDesktop = false
+    rerender(<App />)
+
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+  })
+
+  it('keeps the drawer closed when the titlebar toggle is clicked (full pointer/focus/click sequence)', async () => {
+    mediaState.isDesktop = false
+    const { getByTestId } = renderWithRouter(<App />)
+    // Radix attaches its pointerdown-outside listener asynchronously (setTimeout 0).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Open the drawer first.
+    fireEvent.click(getByTestId('toggle-chat'))
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'open',
+    )
+
+    // A real click begins with pointerdown and a focus change on the button. Without the
+    // outside-dismiss guard those dismiss the drawer, and the click then reopens it.
+    fireEvent.pointerDown(getByTestId('toggle-chat'))
+    fireEvent.focusIn(getByTestId('toggle-chat'))
+    fireEvent.click(getByTestId('toggle-chat'))
+
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('0')
+  })
+
+  it('keeps the stored chat preference when outside clicks land while the drawer is closed', async () => {
+    mediaState.isDesktop = true
+    getTestLocalStorage().setItem('ark:chat-open', '1')
+    const { rerender } = renderWithRouter(<App />)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Collapse to mobile: drawer closes as an accommodation, preference intact.
+    mediaState.isDesktop = false
+    rerender(<App />)
+    expect(document.querySelector('[data-slot="sheet-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    )
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
+
+    // Clicking the deck while the (force-mounted) drawer is closed must not clobber it.
+    fireEvent.pointerDown(document.body)
+    expect(getTestLocalStorage().getItem('ark:chat-open')).toBe('1')
   })
 
   it('uploads prompt images into the new workspace before generation', async () => {

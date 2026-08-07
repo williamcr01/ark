@@ -151,7 +151,7 @@ describe('AppTitleBar accessibility', () => {
   it('keeps panel controls unhighlighted and swaps to the icon without an arrow when closed', () => {
     renderTitleBar({ isChatOpen: true, isStripOpen: false })
 
-    const chatToggle = screen.getByRole('button', { name: 'Hide chat panel' })
+    const chatToggle = screen.getByRole('button', { name: /Hide chat panel/ })
     const stripToggle = screen.getByRole('button', { name: 'Show slide thumbnails' })
 
     expect(chatToggle).not.toHaveAttribute('aria-pressed')
@@ -174,7 +174,7 @@ describe('AppTitleBar accessibility', () => {
     const onToggleChat = vi.fn()
     renderTitleBar({ onToggleChat })
 
-    const chatToggle = screen.getByRole('button', { name: 'Show chat panel' })
+    const chatToggle = screen.getByRole('button', { name: /Show chat panel/ })
     chatToggle.focus()
     await user.keyboard('{Enter}')
 
