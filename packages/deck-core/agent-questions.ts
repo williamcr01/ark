@@ -38,7 +38,7 @@ export function formatAgentQuestionAnswers(
   answers: AgentQuestionAnswers,
 ) {
   return [
-    `${request.title} — answers:`,
+    `${request.title}: answers:`,
     ...request.questions.map((question) => {
       const answer = answers[question.id]
       const value = Array.isArray(answer) ? answer.join(', ') : answer

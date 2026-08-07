@@ -625,7 +625,7 @@ export function validateRuntimeAssetReferences(
 
 export function buildRuntimeRegistryPromptSection() {
   const lines = [
-    'Approved deck runtimes (use only pinned Ark-served assets — never external CDNs):',
+    'Approved deck runtimes (use only pinned Ark-served assets; never external CDNs):',
   ]
 
   for (const runtime of APPROVED_RUNTIMES) {

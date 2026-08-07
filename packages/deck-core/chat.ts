@@ -720,7 +720,7 @@ The current deck is available in the job workspace. Inspect it with the availabl
   }
 
   const blankDeckNote = currentHtml.trim()
-    ? '\n\nThe workspace holds an empty starter deck with no authored content. Do not read or preserve it — write_deck replaces it outright.'
+    ? '\n\nThe workspace holds an empty starter deck with no authored content. Do not read or preserve it; write_deck replaces it outright.'
     : ''
 
   return `Create a new complete Ark HTML slide deck from this user request:

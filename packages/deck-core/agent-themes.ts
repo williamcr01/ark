@@ -33,7 +33,7 @@ export type ThemeProposalRequest = z.infer<typeof themeProposalRequestSchema>
 export function formatThemeChoice(request: ThemeProposalRequest, themeId: string) {
   const theme = request.themes.find((entry) => entry.id === themeId)
   const name = theme?.name ?? themeId
-  return `${request.title} — theme choice:\n- Theme: ${name} (id: ${themeId})`
+  return `${request.title}: theme choice:\n- Theme: ${name} (id: ${themeId})`
 }
 
 /** Recover the chosen theme id from a formatted choice message. */

@@ -33,7 +33,7 @@ function formatTrailAnswer(question: AgentQuestion, record: StepRecord) {
     if (written) parts.push(written)
     return parts.join(', ') || 'No answer'
   }
-  if (answer && written) return `${answer} — ${written}`
+  if (answer && written) return `${answer}: ${written}`
   return answer || written || 'No answer'
 }
 
@@ -62,7 +62,7 @@ function combineAnswers(
     }
 
     if (selected && written) {
-      answers[question.id] = `${selected} — ${written}`
+      answers[question.id] = `${selected}: ${written}`
     } else if (typeof selected === 'string' && selected) {
       answers[question.id] = selected
     } else if (written) {
@@ -141,7 +141,7 @@ function AnsweredTrail({
             <PencilIcon aria-hidden className="mt-0.5 size-3 shrink-0 opacity-60" />
             <span className="min-w-0">
               <span className="text-foreground/80">{item.question}</span>
-              <span className="text-muted-foreground"> — {formatTrailAnswer(item, record)}</span>
+              <span className="text-muted-foreground">: {formatTrailAnswer(item, record)}</span>
             </span>
           </button>
         </li>

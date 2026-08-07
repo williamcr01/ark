@@ -33,7 +33,7 @@ describe('agent theme chat helpers', () => {
       id: 'u2',
       role: 'user',
       content:
-        'Pick a visual direction — theme choice:\n- Theme: Midnight Editorial (id: midnight)',
+        'Pick a visual direction: theme choice:\n- Theme: Midnight Editorial (id: midnight)',
     }
     const freeform: ChatMessage = {
       id: 'u3',
