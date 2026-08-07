@@ -105,6 +105,21 @@ describe('read_deck tool', () => {
 })
 
 describe('attachment tools', () => {
+  it('always registers attachment tools and errors when none are available', async () => {
+    const tools = createDeckTools(createDeckWorkspace(managedDeck))
+    expect(tools.list_attachments).toBeDefined()
+    expect(tools.read_attachment).toBeDefined()
+
+    const list = await (tools.list_attachments.execute as unknown as ToolExecute)({}, {})
+    const read = await (tools.read_attachment.execute as unknown as ToolExecute)(
+      { id: 'missing' },
+      {},
+    )
+
+    expect(list).toEqual({ error: 'No attachments available for this conversation.' })
+    expect(read).toEqual({ error: 'No attachments available for this conversation.' })
+  })
+
   it('lists attachments and pages through text without putting bytes in the prompt', async () => {
     const attachments = [
       {

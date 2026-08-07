@@ -60,6 +60,16 @@ export const providerTokenUsageSchema = z.object({
   inputTokens: z.number().int().min(0).optional(),
   outputTokens: z.number().int().min(0).optional(),
   totalTokens: z.number().int().min(0).optional(),
+  /** Non-cached input tokens. Step-summed across the multi-step tool loop. */
+  noCacheTokens: z.number().int().min(0).optional(),
+  /**
+   * Input tokens served from the provider prompt cache.
+   * Step-summed across the multi-step tool loop (the same cached prefix is
+   * counted once per step — that measures savings, not unique cached tokens).
+   */
+  cacheReadTokens: z.number().int().min(0).optional(),
+  /** Input tokens written into the provider prompt cache. Step-summed. */
+  cacheWriteTokens: z.number().int().min(0).optional(),
 })
 
 export const providerCallMetricsSchema = z.object({

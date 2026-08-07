@@ -33,6 +33,7 @@ import {
 } from './chat-persistence.ts'
 import { cloneGenerationJobRequest, type GenerationJobStore } from './generation-job-record.ts'
 import { createLanguageModel } from './provider-runtime.ts'
+import { buildOpaquePromptCacheKey } from './prompt-cache-options.ts'
 import { categorizeProviderError } from './observability/provider-errors.ts'
 import { createLogger } from './observability/logger.ts'
 import {
@@ -263,6 +264,11 @@ export function createGenerationJobRunner({
         editorSelection: currentJob.request.editorSelection,
         slideContexts: currentJob.request.slideContexts,
         reasoningEffort: currentJob.request.reasoningEffort,
+        promptCacheKey: buildOpaquePromptCacheKey({
+          deckId: currentJob.deckId,
+          chatThreadId: currentJob.chatThreadId,
+          jobId: currentJob.id,
+        }),
         abortSignal: abortController.signal,
         logger: jobLogger,
         attachmentInspector,

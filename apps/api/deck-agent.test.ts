@@ -35,6 +35,20 @@ const mockUsage = {
   },
 }
 
+const mockCachedUsage = {
+  inputTokens: {
+    total: 1200,
+    noCache: 200,
+    cacheRead: 900,
+    cacheWrite: 100,
+  },
+  outputTokens: {
+    total: 8,
+    text: 8,
+    reasoning: 0,
+  },
+}
+
 const streamTextReply = (text: string) => ({
   stream: simulateReadableStream({
     chunks: [
@@ -303,6 +317,53 @@ describe('extractAgentTranscriptParts', () => {
 })
 
 describe('runDeckAgent', () => {
+  it('exposes step-summed prompt-cache token usage in provider metrics', async () => {
+    const replies = [
+      streamToolCallReply('call-edit', 'edit_deck', {
+        edits: [{ oldText: 'Hello', newText: 'Cached' }],
+      }),
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'text-start', id: 'text-1' },
+            { type: 'text-delta', id: 'text-1', delta: 'Updated the title.' },
+            { type: 'text-end', id: 'text-1' },
+            {
+              type: 'finish',
+              finishReason: 'stop' as const,
+              usage: mockCachedUsage,
+            },
+          ],
+        }),
+      },
+    ]
+    const model = new MockLanguageModelV3({
+      doStream: async () => replies.shift()!,
+    })
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'anthropic',
+      modelRef: 'anthropic:claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // totalUsage sums every step; first step uses mockUsage, second mockCachedUsage.
+    expect(result.providerMetrics.tokenUsage).toMatchObject({
+      inputTokens: 1210,
+      outputTokens: 16,
+      totalTokens: 1226,
+      noCacheTokens: 210,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 100,
+    })
+  })
+
   it('continues after parse_deck so a later step can update the deck', async () => {
     const replies = [
       streamToolCallReply('call-parse', 'parse_deck', {}),
