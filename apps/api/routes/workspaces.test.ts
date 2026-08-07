@@ -80,6 +80,27 @@ describe('workspace API routes', () => {
     expect(payload).toMatchObject({ code: 'workspace_already_open' })
   })
 
+  it('renames the managed file when a document title change lands', async () => {
+    const deck = await createDeck()
+
+    const response = await fetch(`${baseUrl}/api/decks/${deck.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: sampleHtml.replace('<title>Route Deck</title>', '<title>Board plan</title>'),
+        expectedDocumentRevision: 1,
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    const payload = await response.json()
+    expect(payload.deck.title).toBe('Board plan')
+    expect(payload.deck.filePath).toBe(path.join(root, 'Board plan.ark'))
+    await expect(workspaces.get(deck.id)).resolves.toMatchObject({
+      path: path.join(root, 'Board plan.ark'),
+    })
+  })
+
   it('overwrites an existing file when Save As asks for it explicitly', async () => {
     const deck = await createDeck()
     const targetPath = path.join(root, 'Replace me.ark')

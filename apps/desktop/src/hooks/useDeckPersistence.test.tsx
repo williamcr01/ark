@@ -74,12 +74,13 @@ describe('useDeckPersistence', () => {
     )
   })
 
-  it('saves into the open workspace and adopts its next document revision', async () => {
+  it('saves into the open workspace and adopts its next document revision and path', async () => {
     const updated = {
       ...deck,
       html: html.replace('</body>', '<p>Saved</p></body>'),
       updatedAt: '2026-01-02T00:00:00.000Z',
       documentRevision: 2,
+      filePath: '/tmp/Board plan.ark',
     }
     const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
       const url = String(input)
@@ -100,6 +101,7 @@ describe('useDeckPersistence', () => {
 
     expect(result.current.html).toBe(updated.html)
     expect(result.current.documentRevision).toBe(2)
+    expect(result.current.filePath).toBe('/tmp/Board plan.ark')
     expect(result.current.isDirty).toBe(false)
   })
 

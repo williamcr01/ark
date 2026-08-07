@@ -180,7 +180,7 @@ user commits edit → update HTML in memory → debounce ~300 ms
 
 Immediate flush on: close, deck switch, Present mode, export/share, Save As. Drags/resizes save once per gesture (existing 400 ms nudge coalescing carries over). UI states: Saving… / Saved / Save failed.
 
-Save As / Move / Share into a path that already exists: the API refuses with `409 workspace_file_exists` unless the request sets `overwrite: true`, in which case the existing file is replaced (the "already open" case always refuses with `workspace_already_open` — an open workspace is never clobbered). The renderer asks the user before sending `overwrite: true`, and reopens the dialog at the conflicting path for "choose a different name".
+Save As / Move / Share into a path that already exists: the API refuses with `409 workspace_file_exists` unless the request sets `overwrite: true`, in which case the existing file is replaced (the "already open" case always refuses with `workspace_already_open` — an open workspace is never clobbered). The renderer asks the user before sending `overwrite: true`, and reopens the dialog at the conflicting path for "choose a different name". Save As / Move / Open mark the file as user-placed, so later agent title changes never rename it.
 
 Pragmas:
 
@@ -200,7 +200,8 @@ Concurrency: the main process keeps a registry `workspaceId → { path, open han
 ## Default location and recent index
 
 - Default: `Documents/Ark/`, configurable via native directory picker.
-- Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`. Ark may _suggest_ renaming when the agent establishes a title; never silently rename/move. A user-initiated rename (title bar / dashboard) does rename the `.ark` file in the default directory to match the new title (collision-safe); files at user-chosen paths keep their names — Move exists for that.
+- Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`.
+- The on-disk filename follows the deck title whenever the title changes (user rename in the title bar/dashboard, or an agent-established `<title>` that the UI adopts), as long as the name is Ark-derived (`name_source = 'derived'`) and the file lives in the default directory. Renames are collision-safe and never overwrite. User-placed files (opened, Save As, Move) keep their names (`name_source = 'user'`) — Move exists for explicit renaming.
 - Support Save As…, Move to…, Reveal in file manager.
 - Dashboard = recent-file index at `<userData>/recent-workspaces.json`: workspace ID, path, cached title/updated-time/cover, last opened. Cache is disposable; `.ark` is authoritative. Missing file → "File not found · [Locate] [Remove from recent]". Ark may scan the default directory, never arbitrary drives.
 

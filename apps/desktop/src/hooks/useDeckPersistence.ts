@@ -244,6 +244,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         deckIdRef.current = deck.id
         setDeckId(deck.id)
         setDeckTitle(deck.title)
+        setFilePath(deck.filePath)
         setDocumentRevision(deck.documentRevision)
         documentRevisionRef.current = deck.documentRevision
         setSavedHtml(deck.html)
