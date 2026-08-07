@@ -93,10 +93,6 @@ export function GeneralSettingsSection({
           />
           <span className="flex flex-col gap-0.5">
             <span className="font-medium">Show Ark agent prompts in a modal</span>
-            <span className="text-xs text-muted-foreground">
-              Off by default; when enabled, normal agent questions and theme choices open over the
-              app.
-            </span>
           </span>
         </label>
       </section>
