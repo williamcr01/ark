@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createDeck, fetchDeck, listDecks, renameDeck, updateDeck } from './deck-api'
+import {
+  createDeck,
+  fetchDeck,
+  listDecks,
+  moveWorkspace,
+  renameDeck,
+  saveWorkspaceAs,
+  updateDeck,
+} from './deck-api'
 
 const deck = {
   id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
@@ -92,6 +100,31 @@ describe('deck-api', () => {
       expect.objectContaining({
         body: JSON.stringify({ title: 'Plan' }),
         method: 'PATCH',
+      }),
+    )
+  })
+
+  it('sends the overwrite flag only when Save As or Move should replace', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deck }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(saveWorkspaceAs(deck.id, '/tmp/Target.ark', true)).resolves.toEqual(deck)
+    await expect(moveWorkspace(deck.id, '/tmp/Target.ark')).resolves.toEqual(deck)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      `/api/decks/${deck.id}/save-as`,
+      expect.objectContaining({
+        body: JSON.stringify({ path: '/tmp/Target.ark', overwrite: true }),
+        method: 'POST',
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `/api/decks/${deck.id}/move`,
+      expect.objectContaining({
+        body: JSON.stringify({ path: '/tmp/Target.ark', overwrite: false }),
+        method: 'POST',
       }),
     )
   })

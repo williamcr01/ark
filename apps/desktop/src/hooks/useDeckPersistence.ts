@@ -387,23 +387,23 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     [applyWorkspaceAction],
   )
   const saveAs = useCallback(
-    (path: string) => {
+    (path: string, overwrite = false) => {
       if (!deckId) throw new Error('No workspace is open.')
-      return applyWorkspaceAction(() => saveWorkspaceAs(deckId, path))
+      return applyWorkspaceAction(() => saveWorkspaceAs(deckId, path, overwrite))
     },
     [applyWorkspaceAction, deckId],
   )
   const moveTo = useCallback(
-    (path: string) => {
+    (path: string, overwrite = false) => {
       if (!deckId) throw new Error('No workspace is open.')
-      return applyWorkspaceAction(() => moveWorkspace(deckId, path))
+      return applyWorkspaceAction(() => moveWorkspace(deckId, path, overwrite))
     },
     [applyWorkspaceAction, deckId],
   )
   const duplicate = useCallback(
-    (mode: 'presentation' | 'complete', path?: string) => {
+    (mode: 'presentation' | 'complete', path?: string, overwrite = false) => {
       if (!deckId) throw new Error('No workspace is open.')
-      return duplicateWorkspace(deckId, mode, path)
+      return duplicateWorkspace(deckId, mode, path, overwrite)
     },
     [deckId],
   )

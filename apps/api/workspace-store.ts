@@ -476,6 +476,16 @@ export class WorkspaceStore {
     await this.persistRecent()
   }
 
+  private async exists(filePath: string) {
+    try {
+      await access(filePath)
+      return true
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      return false
+    }
+  }
+
   private async uniquePath(title: string, directory: string = this.rootDir) {
     const stem = safeFileStem(title)
     for (let suffix = 1; ; suffix += 1) {
@@ -494,6 +504,7 @@ export class WorkspaceStore {
     targetPath?: string,
     embeddedAssets: readonly EmbeddedAsset[] = [],
     origin: DeckOrigin = DEFAULT_DECK_ORIGIN,
+    overwrite = false,
   ) {
     await this.index()
     const id = requestedId ?? randomUUID()
@@ -502,12 +513,12 @@ export class WorkspaceStore {
     const title = extractDeckTitle(html)
     const filePath = path.resolve(targetPath ?? (await this.uniquePath(title)))
     await mkdir(path.dirname(filePath), { recursive: true })
-    try {
-      await access(filePath)
+    if (this.byPath.has(filePath)) throw new Error('The selected workspace is already open.')
+    const targetExists = await this.exists(filePath)
+    if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
+    if (targetExists) await unlink(filePath)
     const database = new DatabaseSync(filePath)
 
     try {
@@ -824,7 +835,7 @@ export class WorkspaceStore {
     return true
   }
 
-  async saveAs(id: string, targetPath: string) {
+  async saveAs(id: string, targetPath: string, overwrite = false) {
     await this.index()
     const open = this.openById(id)
     if (!open) return null
@@ -832,12 +843,11 @@ export class WorkspaceStore {
     if (resolved === open.path) return readWorkspace(open)
     if (this.byPath.has(resolved)) throw new Error('The selected workspace is already open.')
     await mkdir(path.dirname(resolved), { recursive: true })
-    try {
-      await access(resolved)
+    const targetExists = await this.exists(resolved)
+    if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
+    if (targetExists) await unlink(resolved)
     await backup(open.database, resolved)
     open.database.close()
     this.byId.delete(id)
@@ -847,7 +857,7 @@ export class WorkspaceStore {
     return workspace
   }
 
-  async move(id: string, targetPath: string) {
+  async move(id: string, targetPath: string, overwrite = false) {
     await this.index()
     const open = this.openById(id)
     if (!open) return null
@@ -855,12 +865,11 @@ export class WorkspaceStore {
     if (resolved === open.path) return readWorkspace(open)
     if (this.byPath.has(resolved)) throw new Error('The selected workspace is already open.')
     await mkdir(path.dirname(resolved), { recursive: true })
-    try {
-      await access(resolved)
+    const targetExists = await this.exists(resolved)
+    if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
+    if (targetExists) await unlink(resolved)
     open.database.close()
     this.byId.delete(id)
     this.byPath.delete(open.path)
@@ -880,6 +889,7 @@ export class WorkspaceStore {
     mode: 'presentation' | 'complete',
     targetPath?: string,
     selectedThreadIds?: readonly string[],
+    overwrite = false,
   ) {
     await this.index()
     const source = this.openById(id)
@@ -916,6 +926,8 @@ export class WorkspaceStore {
       randomUUID(),
       targetPath ?? (await this.uniquePath(`${current.title} Copy`)),
       assets,
+      DEFAULT_DECK_ORIGIN,
+      overwrite,
     )
     const destination = await this.database(copy.id)
     if (!destination) throw new Error('Could not open duplicated workspace.')

@@ -148,6 +148,58 @@ describe('WorkspaceStore file operations', () => {
     await expect(access(path.join(root, 'Board plan.ark'))).resolves.toBeUndefined()
   })
 
+  it('overwrites an existing file on Save As only when explicitly allowed', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const targetPath = path.join(root, 'Taken.ark')
+    await writeFile(targetPath, 'keep this', 'utf8')
+
+    await expect(workspaces.saveAs(created.id, targetPath)).rejects.toThrow('already exists')
+    await expect(readFile(targetPath, 'utf8')).resolves.toBe('keep this')
+
+    const saved = await workspaces.saveAs(created.id, targetPath, true)
+
+    expect(saved?.path).toBe(targetPath)
+    await expect(workspaces.open(targetPath)).resolves.toMatchObject({ id: created.id })
+  })
+
+  it('overwrites an existing file on Move only when explicitly allowed', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const targetPath = path.join(root, 'Taken.ark')
+    await writeFile(targetPath, 'keep this', 'utf8')
+    const originalPath = created.path
+
+    await expect(workspaces.move(created.id, targetPath)).rejects.toThrow('already exists')
+    await expect(readFile(targetPath, 'utf8')).resolves.toBe('keep this')
+
+    const moved = await workspaces.move(created.id, targetPath, true)
+
+    expect(moved?.path).toBe(targetPath)
+    await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(workspaces.open(targetPath)).resolves.toMatchObject({ id: created.id })
+  })
+
+  it('overwrites an existing file when duplicating into an explicit path', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const targetPath = path.join(root, 'Taken.ark')
+    await writeFile(targetPath, 'not a workspace', 'utf8')
+
+    await expect(workspaces.duplicate(created.id, 'complete', targetPath)).rejects.toThrow(
+      'already exists',
+    )
+    await expect(readFile(targetPath, 'utf8')).resolves.toBe('not a workspace')
+
+    const copy = await workspaces.duplicate(created.id, 'complete', targetPath, undefined, true)
+
+    expect(copy?.path).toBe(targetPath)
+    await expect(workspaces.open(targetPath)).resolves.toMatchObject({
+      id: copy?.id,
+      html: expect.stringContaining('Hello'),
+    })
+  })
+
   it('keeps a user-chosen path name when renaming outside the default directory', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)

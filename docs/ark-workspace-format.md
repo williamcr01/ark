@@ -180,6 +180,8 @@ user commits edit → update HTML in memory → debounce ~300 ms
 
 Immediate flush on: close, deck switch, Present mode, export/share, Save As. Drags/resizes save once per gesture (existing 400 ms nudge coalescing carries over). UI states: Saving… / Saved / Save failed.
 
+Save As / Move / Share into a path that already exists: the API refuses with `409 workspace_file_exists` unless the request sets `overwrite: true`, in which case the existing file is replaced (the "already open" case always refuses with `workspace_already_open` — an open workspace is never clobbered). The renderer asks the user before sending `overwrite: true`, and reopens the dialog at the conflicting path for "choose a different name".
+
 Pragmas:
 
 ```

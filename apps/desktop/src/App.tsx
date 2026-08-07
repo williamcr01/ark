@@ -37,6 +37,7 @@ import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-co
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
 import {
+  ApiResponseError,
   MAX_SLIDE_CONTEXTS,
   type ExternalDeckUpdate,
   type McpInteractionAnswer,
@@ -678,14 +679,78 @@ function useAppShell() {
     const deck = await openWorkspaceFile(path)
     navigate(`/decks/${deck.id}`)
   }, [navigate, openWorkspaceFile])
-  const handleSaveAs = useCallback(async () => {
-    const path = await window.arkDesktop.files.chooseWorkspacePath(workspaceFileName)
-    if (path) await saveAs(path)
-  }, [saveAs, workspaceFileName])
-  const handleMove = useCallback(async () => {
-    const path = await window.arkDesktop.files.chooseWorkspacePath(workspaceFileName)
-    if (path) await moveTo(path)
-  }, [moveTo, workspaceFileName])
+  /**
+   * Pick a workspace path and run a save-style action, resolving conflicts with
+   * the user instead of failing silently: an existing file offers overwrite or
+   * re-picking a different name; an already-open workspace asks for a different
+   * name. The dialog reopens at the conflicting path so the new name lands in
+   * the same location.
+   */
+  const runWorkspacePickFlow = useCallback(
+    async (
+      action: (path: string, overwrite: boolean) => Promise<unknown>,
+      successMessage: string,
+    ) => {
+      let suggestedPath: string | null = null
+
+      for (;;) {
+        const path = await window.arkDesktop.files.chooseWorkspacePath(
+          workspaceFileName,
+          suggestedPath ?? undefined,
+        )
+        if (!path) return
+
+        try {
+          await action(path, false)
+          toast.success(successMessage)
+          return
+        } catch (error) {
+          if (error instanceof ApiResponseError && error.code === 'workspace_file_exists') {
+            const fileName = path.split(/[\\/]/).pop() ?? path
+            const overwrite = window.confirm(
+              `"${fileName}" already exists in that location. Overwrite it?`,
+            )
+
+            if (!overwrite) {
+              suggestedPath = path
+              continue
+            }
+
+            try {
+              await action(path, true)
+              toast.success(successMessage)
+            } catch (overwriteError) {
+              toast.error(
+                overwriteError instanceof Error
+                  ? overwriteError.message
+                  : 'Could not save the workspace.',
+              )
+            }
+            return
+          }
+
+          if (error instanceof ApiResponseError && error.code === 'workspace_already_open') {
+            toast.error('That workspace is already open in Ark. Choose a different name.')
+            suggestedPath = path
+            continue
+          }
+
+          toast.error(error instanceof Error ? error.message : 'Could not save the workspace.')
+          return
+        }
+      }
+    },
+    [workspaceFileName],
+  )
+
+  const handleSaveAs = useCallback(
+    () => runWorkspacePickFlow((path, overwrite) => saveAs(path, overwrite), 'Workspace saved'),
+    [runWorkspacePickFlow, saveAs],
+  )
+  const handleMove = useCallback(
+    () => runWorkspacePickFlow((path, overwrite) => moveTo(path, overwrite), 'Workspace moved'),
+    [runWorkspacePickFlow, moveTo],
+  )
   const handleDuplicate = useCallback(async () => {
     const deck = await duplicate('presentation')
     navigate(`/decks/${deck.id}`)
@@ -698,9 +763,11 @@ function useAppShell() {
     ) {
       return
     }
-    const path = await window.arkDesktop.files.chooseWorkspacePath(workspaceFileName)
-    if (path) await duplicate('complete', path)
-  }, [duplicate, workspaceFileName])
+    await runWorkspacePickFlow(
+      (path, overwrite) => duplicate('complete', path, overwrite),
+      'Ark project shared',
+    )
+  }, [duplicate, runWorkspacePickFlow])
 
   const handlePromptSubmit = async (message: PromptInputMessage) => {
     const hasAttachments = message.files.length > 0
