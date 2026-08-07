@@ -786,7 +786,7 @@ describe('deck editor bridge protocol', () => {
       'function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis',
     )
     expect(script).toContain('function applySnapGuides(slide, guides, cache)')
-    expect(script).toContain('liveTransform: true')
+    expect(script).toContain('liveTransform:')
     expect(script).toContain('liveTransformBase')
     expect(script).toContain("willChange = 'transform'")
     expect(script).toContain('data.type === C.TRANSFORM_END')
@@ -1351,6 +1351,110 @@ describe('deck editor bridge protocol', () => {
 
     expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
       true,
+    )
+    dom.window.close()
+  })
+
+  it('preserves stylesheet-authored transforms during a live move preview', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<style>#heading { transform: translate(-50%, -50%); }</style><section class="slide"><h1 id="heading">Title</h1></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
+    const heading = dom.window.document.querySelector<HTMLElement>('#heading')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    heading.getBoundingClientRect = () =>
+      heading.style.position === 'absolute'
+        ? rect(
+            Number.parseFloat(heading.style.left) || 200,
+            Number.parseFloat(heading.style.top) || 100,
+            Number.parseFloat(heading.style.width) || 400,
+            80,
+          )
+        : rect(100, 100, 400, 80)
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 20, 110, 110))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 20, 210, 110))
+    await new Promise((resolve) => dom.window.requestAnimationFrame(() => resolve(undefined)))
+
+    expect(heading.style.transform).toBe('')
+    expect(heading.hasAttribute('data-ark-editor-live-transform')).toBe(false)
+    expect(dom.window.getComputedStyle(heading).transform).toContain('translate')
+
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 20, 210, 110))
+    expect(heading.style.transform).toBe('')
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    dom.window.close()
+  })
+
+  it('composes a live move when inline transform is the none keyword', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 id="heading" style="transform: none">Title</h1></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
+    const heading = dom.window.document.querySelector<HTMLElement>('#heading')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    heading.getBoundingClientRect = () => rect(100, 100, 400, 80)
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 21, 110, 110))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 21, 210, 110))
+    await new Promise((resolve) => dom.window.requestAnimationFrame(() => resolve(undefined)))
+
+    expect(heading.style.transform).toMatch(/^translate\(/)
+    expect(heading.style.transform).not.toContain('none')
+
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 21, 210, 110))
+    expect(heading.style.transform).toBe('none')
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    dom.window.close()
+  })
+
+  it('cancels a started transform when the active slide disappears', async () => {
+    const { dom, messages, shellPort } = await loadEditorRuntime(
+      '<section class="slide"><h1 id="heading">Title</h1></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
+    const heading = dom.window.document.querySelector<HTMLElement>('#heading')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    heading.getBoundingClientRect = () => rect(100, 100, 400, 80)
+    Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(heading, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    heading.dispatchEvent(pointerEvent(dom, 'pointerdown', 22, 110, 110))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 22, 210, 110))
+    await new Promise((resolve) => dom.window.requestAnimationFrame(() => resolve(undefined)))
+    messages.length = 0
+
+    slide.remove()
+    shellPort.postMessage(createEditorTransformEndMessage())
+
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
+      false,
     )
     dom.window.close()
   })

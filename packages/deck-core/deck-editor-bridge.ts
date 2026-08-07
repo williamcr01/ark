@@ -2240,6 +2240,10 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
+  function isNonComposableTransform(value) {
+    return /^(none|initial|inherit|unset|revert|revert-layer)$/i.test((value || '').trim());
+  }
+
   function clearLiveTransform(element, cache) {
     // Only clear transforms we applied for the gesture preview — restore any
     // authored inline transform we composed with during the drag.
@@ -2257,7 +2261,10 @@ export function buildDeckEditorBridgeRuntimeScript(
     var slideRect = cache.slideRect;
     var dx = (rect.x - startGeometry.x) * slideRect.width / positionContext.scaleX;
     var dy = (rect.y - startGeometry.y) * slideRect.height / positionContext.scaleY;
-    var base = cache.liveTransformBase ? ' ' + cache.liveTransformBase : '';
+    var composedBase = cache.liveTransformBase && !isNonComposableTransform(cache.liveTransformBase)
+      ? cache.liveTransformBase
+      : '';
+    var base = composedBase ? ' ' + composedBase : '';
     element.setAttribute('data-ark-editor-live-transform', '');
     element.style.willChange = 'transform';
     element.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)' + base;
@@ -3302,9 +3309,15 @@ export function buildDeckEditorBridgeRuntimeScript(
         logicalWidth: prepared.logicalWidth,
         positionContext: prepared.positionContext,
         cache: Object.assign(prepared.cache, {
-          // Always preview moves with compositor transforms; authored inline
-          // transforms are composed via liveTransformBase.
-          liveTransform: true,
+          // Use compositor previews unless a stylesheet-authored transform
+          // cannot be safely composed through an inline translate. Inline
+          // transforms (including the CSS none keyword) are restored/composed by the cache.
+          liveTransform:
+            !prepared.cache.authoredTransform ||
+            Boolean(
+              prepared.cache.liveTransformBase &&
+                !isNonComposableTransform(prepared.cache.liveTransformBase),
+            ),
         }),
         started: false,
         snapRects: collectSnapRects(slide, target),
@@ -3335,6 +3348,7 @@ export function buildDeckEditorBridgeRuntimeScript(
 
       transformState = null;
       clearEditorOverlays();
+      postToParent({ type: C.TRANSFORM_CANCEL });
       return true;
     }
 

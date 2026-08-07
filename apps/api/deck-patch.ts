@@ -469,6 +469,8 @@ export function applyDeckPatches(
     closeDom()
   }
 
+  const getLiveDom = (): JSDOM | null => dom
+
   const getDomContext = (): PatchContext => {
     if (!dom) {
       dom = new JSDOM(workingHtml)
@@ -539,9 +541,10 @@ export function applyDeckPatches(
 
   // Validate on the live document before serialize so the route/tool path can
   // skip a second full JSDOM parse (issue #287 persistence latency).
-  if (dom) {
-    workingHtml = serializeDeckHtml(dom)
-    validation = validateDeckDocumentOnServer(dom.window.document, workingHtml)
+  const liveDom = getLiveDom()
+  if (liveDom) {
+    workingHtml = serializeDeckHtml(liveDom)
+    validation = validateDeckDocumentOnServer(liveDom.window.document, workingHtml)
     closeDom()
   } else {
     flushDom()

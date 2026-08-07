@@ -22,6 +22,7 @@
     "smoke:desktop": "pnpm build && node scripts/smoke-desktop.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "bench:editor-patch": "tsx scripts/bench-editor-patch.ts",
+    "profile:editor-drag": "node scripts/profile-editor-drag.mjs",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check"

@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 
 import type { EditorNormalizedRect, EditorSurface } from '@ark/deck-core/deck-editor-bridge.ts'
 import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
@@ -43,35 +43,60 @@ export const EditorSelectionOverlay = forwardRef<
 ) {
   const selectionBoxRef = useRef<HTMLDivElement>(null)
   const scaleRef = useRef(scale)
-  scaleRef.current = scale
+  const committedGeometryRef = useRef(geometry)
+  const committedSlideBoundsRef = useRef(slideBounds)
+  const transformPreviewRef = useRef<{
+    geometry: EditorNormalizedRect
+    slideBounds?: EditorNormalizedRect | null
+  } | null>(null)
+  const writeGeometry = (
+    nextGeometry: EditorNormalizedRect | null,
+    nextSlideBounds?: EditorNormalizedRect | null,
+  ) => {
+    const node = selectionBoxRef.current
+
+    if (!node || !nextGeometry || scaleRef.current <= 0) {
+      return
+    }
+
+    const rect = normalizedRectToStagePixels(
+      nextGeometry,
+      scaleRef.current,
+      nextSlideBounds ?? undefined,
+    )
+    node.style.left = `${rect.left}px`
+    node.style.top = `${rect.top}px`
+    node.style.width = `${rect.width}px`
+    node.style.height = `${rect.height}px`
+  }
 
   useImperativeHandle(
     ref,
     () => ({
       applyTransformPreview(nextGeometry, nextSlideBounds) {
-        const node = selectionBoxRef.current
-
-        if (!node || scaleRef.current <= 0) {
-          return
-        }
-
-        const rect = normalizedRectToStagePixels(
-          nextGeometry,
-          scaleRef.current,
-          nextSlideBounds ?? undefined,
-        )
-        node.style.left = `${rect.left}px`
-        node.style.top = `${rect.top}px`
-        node.style.width = `${rect.width}px`
-        node.style.height = `${rect.height}px`
+        transformPreviewRef.current = { geometry: nextGeometry, slideBounds: nextSlideBounds }
+        writeGeometry(nextGeometry, nextSlideBounds)
       },
       clearTransformPreview() {
-        // React props reassert committed geometry on the next render after
-        // transformPreview clears; nothing to undo on the node itself.
+        transformPreviewRef.current = null
+        writeGeometry(committedGeometryRef.current, committedSlideBoundsRef.current)
       },
     }),
     [],
   )
+
+  // Keep refs in sync before the parent can issue another imperative preview
+  // command, then restore an active preview after React reasserts committed style.
+  useLayoutEffect(() => {
+    scaleRef.current = scale
+    committedGeometryRef.current = geometry
+    committedSlideBoundsRef.current = slideBounds
+
+    const preview = transformPreviewRef.current
+    if (preview) {
+      writeGeometry(preview.geometry, preview.slideBounds)
+    }
+  }, [geometry, scale, slideBounds])
 
   if (scale <= 0) {
     return null

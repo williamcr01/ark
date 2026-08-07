@@ -148,7 +148,9 @@ export function useDeckEditorBridge(
   // when a prop changes" pattern — not an effect).
   if (trackedGenerationKey !== iframeGenerationKey) {
     setTrackedGenerationKey(iframeGenerationKey)
+    // react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- reset transient bridge state at the iframe generation boundary before any child messages can arrive
     transformPreviewRef.current = null
+    // react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- reset selection identity with the same render-time generation boundary
     selectionIdentityRef.current = null
     setState(initialState)
   }
