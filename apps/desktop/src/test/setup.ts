@@ -86,6 +86,7 @@ if (isJsdomEnvironment) {
       selectedModel: null,
       defaultWorkspaceDirectory: null,
       mcpAutoStart: false,
+      agentInteractionsInModal: false,
     }
     window.arkDesktop = {
       credentials: {

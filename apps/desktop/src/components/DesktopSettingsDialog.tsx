@@ -12,6 +12,7 @@ export type SettingsTab = 'general' | 'mcp' | 'providers'
 export function DesktopSettingsDialog({
   appearancePreference,
   initialTab = 'general',
+  onAgentInteractionsInModalChange,
   onAppearanceChange,
   onCredentialsChanged,
   onOpenChange,
@@ -19,6 +20,7 @@ export function DesktopSettingsDialog({
 }: {
   appearancePreference: AppearancePreference
   initialTab?: SettingsTab
+  onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange: (preference: AppearancePreference) => void
   onCredentialsChanged: () => void | Promise<void>
   onOpenChange: (open: boolean) => void
@@ -49,6 +51,7 @@ export function DesktopSettingsDialog({
             <TabsContent value="general">
               <GeneralSettingsSection
                 appearancePreference={appearancePreference}
+                onAgentInteractionsInModalChange={onAgentInteractionsInModalChange}
                 onAppearanceChange={onAppearanceChange}
                 onMessage={setMessage}
                 open={open}

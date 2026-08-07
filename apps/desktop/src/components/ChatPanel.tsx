@@ -578,6 +578,8 @@ export type ChatPanelProps = {
   modelsError: string
   modelWarnings: string[]
   canGenerate: boolean
+  /** Keep normal ask_user/theme tools in the global modal instead of this panel. */
+  interactiveToolsInModal?: boolean
   /** Context chips (selected element / attached slides) in the composer attachment row. */
   contextSlot?: ReactNode
   onInputChange: (value: string) => void
@@ -615,6 +617,7 @@ export function ChatPanel({
   modelWarnings,
   canGenerate,
   contextSlot,
+  interactiveToolsInModal = false,
   onInputChange,
   onModelSelect,
   onPromptSubmit,
@@ -668,10 +671,22 @@ export function ChatPanel({
   const pendingAgentQuestions = onQuestionSubmit ? findPendingAgentQuestions(messages) : null
   const pendingThemeProposal = onQuestionSubmit ? findPendingThemeProposal(messages) : null
   const activeQuestions =
-    mcpInteraction?.kind === 'questions' ? mcpInteraction.request : pendingAgentQuestions
+    mcpInteraction?.kind === 'questions'
+      ? mcpInteraction.request
+      : interactiveToolsInModal
+        ? null
+        : pendingAgentQuestions
   const activeThemes =
-    mcpInteraction?.kind === 'themes' ? mcpInteraction.request : pendingThemeProposal
-  const interactionActive = Boolean(activeQuestions || activeThemes)
+    mcpInteraction?.kind === 'themes'
+      ? mcpInteraction.request
+      : interactiveToolsInModal
+        ? null
+        : pendingThemeProposal
+  const interactionActive = Boolean(
+    activeQuestions ||
+    activeThemes ||
+    (interactiveToolsInModal && (pendingAgentQuestions || pendingThemeProposal)),
+  )
   const isSubmitDisabled = isGenerating || !canGenerate || interactionActive
 
   return (

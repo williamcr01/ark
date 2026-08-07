@@ -27,6 +27,7 @@ describe('DesktopSettingsStore', () => {
       selectedModel: 'openai:gpt-5.6-luna',
       reasoningEffortByModel: { 'openai:gpt-5.6-luna': 'high' },
       defaultWorkspaceDirectory: longWorkspaceDirectory,
+      agentInteractionsInModal: true,
     })
 
     const restored = new DesktopSettingsStore(filePath)
@@ -37,6 +38,7 @@ describe('DesktopSettingsStore', () => {
       selectedModel: 'openai:gpt-5.6-luna',
       reasoningEffortByModel: { 'openai:gpt-5.6-luna': 'high' },
       defaultWorkspaceDirectory: longWorkspaceDirectory,
+      agentInteractionsInModal: true,
     })
     expect(JSON.parse(await readFile(filePath, 'utf8'))).toMatchObject({ version: 1 })
   })
@@ -48,6 +50,9 @@ describe('DesktopSettingsStore', () => {
 
     await expect(store.update({ appearance: 'javascript' })).rejects.toThrow(
       'Invalid appearance preference.',
+    )
+    await expect(store.update({ agentInteractionsInModal: 'yes' })).rejects.toThrow(
+      'Invalid agent interaction display preference.',
     )
     expect(await readFile(filePath, 'utf8')).toBe(before)
   })

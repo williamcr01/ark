@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { type ChatAttachment } from '@ark/deck-core/chat.ts'
 import { toast } from 'sonner'
 
+import { AgentInteractionModal } from '@/components/AgentInteractionModal'
 import { AppTitleBar } from '@/components/AppTitleBar'
 import { ChatContextChips } from '@/components/ChatContextChips'
 import { ChatPanel } from '@/components/ChatPanel'
@@ -29,6 +30,9 @@ import {
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat-panel-layout'
 import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
+import { findPendingAgentQuestions } from '@/lib/agent-questions'
+import { findPendingThemeProposal } from '@/lib/agent-themes'
+import { getDesktopSettings } from '@/lib/desktop-settings'
 import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
 import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
@@ -189,6 +193,9 @@ function App() {
   const isDesktop = useMediaQuery('(min-width: 1180px)')
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const [input, setInput] = useState('')
+  const [agentInteractionsInModal, setAgentInteractionsInModal] = useState(
+    () => getDesktopSettings().agentInteractionsInModal === true,
+  )
   const [mcpInteraction, setMcpInteraction] = useState<McpPendingInteraction | null>(null)
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
@@ -308,7 +315,13 @@ function App() {
 
   const cancelMcpInteraction = useCallback(async () => {
     if (!activeMcpInteraction) return
-    await window.arkDesktop.mcp.cancelInteraction(activeMcpInteraction.id)
+    try {
+      await window.arkDesktop.mcp.cancelInteraction(activeMcpInteraction.id)
+    } catch (cancelError) {
+      toast.error(
+        cancelError instanceof Error ? cancelError.message : 'Could not cancel the interaction',
+      )
+    }
   }, [activeMcpInteraction])
 
   const handleModelSelect = useCallback(
@@ -371,6 +384,9 @@ function App() {
       resetEditHistory()
     }, [resetEditHistory]),
   })
+
+  const normalAgentQuestions = agentInteractionsInModal ? findPendingAgentQuestions(messages) : null
+  const normalThemeProposal = agentInteractionsInModal ? findPendingThemeProposal(messages) : null
 
   useEffect(() => {
     startRevealThumbnailStylesPreload()
@@ -942,8 +958,8 @@ function App() {
       input={input}
       isGenerating={isGenerating}
       isLoadingModels={isLoadingModels}
+      interactiveToolsInModal={agentInteractionsInModal}
       messages={messages}
-      mcpInteraction={activeMcpInteraction}
       models={models}
       modelsError={modelsError}
       modelWarnings={modelWarnings}
@@ -951,12 +967,6 @@ function App() {
       onCancelGeneration={handleCancelGeneration}
       onInputChange={setInput}
       onModelSelect={handleModelSelect}
-      onMcpInteractionCancel={() => {
-        void cancelMcpInteraction()
-      }}
-      onMcpInteractionSubmit={(answer) => {
-        void respondToMcpInteraction(answer)
-      }}
       onPromptSubmit={handlePromptSubmit}
       onQuestionSubmit={(content) => {
         void generateDeck(content)
@@ -1017,6 +1027,7 @@ function App() {
           isStripOpen={isStripOpen}
           appearancePreference={preference}
           onDownload={handleDownload}
+          onAgentInteractionsInModalChange={setAgentInteractionsInModal}
           onHtmlUpload={handleHtmlUpload}
           onCredentialsChanged={loadModels}
           onNewDeck={handleNewDeck}
@@ -1100,6 +1111,21 @@ function App() {
           )}
         </main>
       </div>
+      <AgentInteractionModal
+        agentQuestions={normalAgentQuestions}
+        disabled={isGenerating || !canGenerateForDeck}
+        mcpInteraction={activeMcpInteraction}
+        onAgentQuestionSubmit={(content) => {
+          void generateDeck(content)
+        }}
+        onMcpInteractionCancel={() => {
+          void cancelMcpInteraction()
+        }}
+        onMcpInteractionSubmit={(answer) => {
+          void respondToMcpInteraction(answer)
+        }}
+        themeProposal={normalThemeProposal}
+      />
       <Toaster position="bottom-center" />
     </TooltipProvider>
   )

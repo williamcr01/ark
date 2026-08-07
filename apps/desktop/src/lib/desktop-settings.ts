@@ -9,6 +9,7 @@ export type DesktopSettings = {
   selectedModel: string | null
   defaultWorkspaceDirectory: string | null
   mcpAutoStart: boolean
+  agentInteractionsInModal: boolean
 }
 
 const APPEARANCE_KEY = 'ark:appearance'
@@ -31,6 +32,7 @@ const defaults = (): DesktopSettings => ({
   selectedModel: null,
   defaultWorkspaceDirectory: null,
   mcpAutoStart: false,
+  agentInteractionsInModal: false,
 })
 
 let current = defaults()
@@ -84,7 +86,7 @@ export function getDesktopSettings() {
 
 export function updateDesktopSettings(patch: Partial<DesktopSettings>) {
   current = { ...current, ...patch }
-  return window.arkDesktop.settings.update(patch).catch(() => current)
+  return Promise.resolve(window.arkDesktop.settings.update(patch)).catch(() => current)
 }
 
 export function resetDesktopSettingsForTests(settings: Partial<DesktopSettings> = {}) {

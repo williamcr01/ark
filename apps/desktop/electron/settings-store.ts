@@ -13,6 +13,7 @@ export type DesktopSettings = {
   selectedModel: string | null
   defaultWorkspaceDirectory: string | null
   mcpAutoStart: boolean
+  agentInteractionsInModal: boolean
 }
 
 type SettingsFile = DesktopSettings & { version: 1 }
@@ -34,6 +35,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   selectedModel: null,
   defaultWorkspaceDirectory: null,
   mcpAutoStart: false,
+  agentInteractionsInModal: false,
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,6 +77,7 @@ function parseSettings(value: unknown): DesktopSettings {
     selectedModel: parseSelectedModel(value.selectedModel),
     defaultWorkspaceDirectory: parseWorkspaceDirectory(value.defaultWorkspaceDirectory),
     mcpAutoStart: value.mcpAutoStart === true,
+    agentInteractionsInModal: value.agentInteractionsInModal === true,
   }
 }
 
@@ -127,6 +130,12 @@ function parsePatch(value: unknown): Partial<DesktopSettings> {
       throw new Error('Invalid MCP autostart preference.')
     }
     patch.mcpAutoStart = value.mcpAutoStart
+  }
+  if ('agentInteractionsInModal' in value) {
+    if (typeof value.agentInteractionsInModal !== 'boolean') {
+      throw new Error('Invalid agent interaction display preference.')
+    }
+    patch.agentInteractionsInModal = value.agentInteractionsInModal
   }
 
   return patch

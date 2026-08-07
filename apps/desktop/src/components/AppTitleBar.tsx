@@ -318,6 +318,7 @@ export type AppTitleBarProps = {
   isGenerating: boolean
   isStripOpen: boolean
   onPresent: () => void
+  onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
@@ -358,6 +359,7 @@ export function AppTitleBar({
   onDuplicate,
   onShareProject,
   onPresent,
+  onAgentInteractionsInModalChange,
   onRenameDeck,
   onToggleChat,
   onToggleStrip,
@@ -529,6 +531,7 @@ export function AppTitleBar({
       <DesktopSettingsDialog
         appearancePreference={appearancePreference}
         initialTab={settingsTab}
+        onAgentInteractionsInModalChange={onAgentInteractionsInModalChange}
         onAppearanceChange={onAppearanceChange}
         onCredentialsChanged={onCredentialsChanged}
         onOpenChange={setSettingsOpen}
