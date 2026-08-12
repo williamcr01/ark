@@ -2240,14 +2240,18 @@ export function buildDeckEditorBridgeRuntimeScript(
     );
   }
 
-  function clearLiveTransform(element) {
-    // Only clear transforms we applied for the gesture preview — never wipe an
-    // authored translate(-50%, -50%) (or similar) on the left/top preview path.
+  function isNonComposableTransform(value) {
+    return /^(none|initial|inherit|unset|revert|revert-layer)$/i.test((value || '').trim());
+  }
+
+  function clearLiveTransform(element, cache) {
+    // Only clear transforms we applied for the gesture preview — restore any
+    // authored inline transform we composed with during the drag.
     if (!element.hasAttribute('data-ark-editor-live-transform')) {
       return;
     }
 
-    element.style.transform = '';
+    element.style.transform = (cache && cache.liveTransformBase) || '';
     element.style.willChange = '';
     element.removeAttribute('data-ark-editor-live-transform');
   }
@@ -2257,9 +2261,13 @@ export function buildDeckEditorBridgeRuntimeScript(
     var slideRect = cache.slideRect;
     var dx = (rect.x - startGeometry.x) * slideRect.width / positionContext.scaleX;
     var dy = (rect.y - startGeometry.y) * slideRect.height / positionContext.scaleY;
+    var composedBase = cache.liveTransformBase && !isNonComposableTransform(cache.liveTransformBase)
+      ? cache.liveTransformBase
+      : '';
+    var base = composedBase ? ' ' + composedBase : '';
     element.setAttribute('data-ark-editor-live-transform', '');
     element.style.willChange = 'transform';
-    element.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+    element.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)' + base;
     postToParent({
       type: C.TRANSFORM_PREVIEW,
       elementId: resolveElementId(element, slide, currentSlideIndex),
@@ -2291,7 +2299,7 @@ export function buildDeckEditorBridgeRuntimeScript(
       );
     }
 
-    clearLiveTransform(element);
+    clearLiveTransform(element, cache);
 
     var spacerFootprint = cache && cache.spacerFootprint ? cache.spacerFootprint : null;
 
@@ -2765,6 +2773,9 @@ export function buildDeckEditorBridgeRuntimeScript(
       marginLeft: Number.parseFloat(computed.marginLeft) || 0,
       marginTop: Number.parseFloat(computed.marginTop) || 0,
       authoredTransform: authoredTransform,
+      // Compose live translate() with any inline authored transform so moves
+      // stay on the compositor even for translate(-50%, -50%) elements.
+      liveTransformBase: element.style.transform || '',
     };
 
     // Resize still needs absolute layout for edge math; moves stay in-flow and
@@ -2839,10 +2850,12 @@ export function buildDeckEditorBridgeRuntimeScript(
   }
 
   function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis, cache) {
-    clearGuides();
+    // Pure geometry — guide DOM writes happen after the live transform preview
+    // so we never force a layout read between snap-guide mutations and gBCR.
+    var guides = [];
 
     if (disabled) {
-      return clampRect(rect);
+      return { rect: clampRect(rect), guides: guides };
     }
 
     var slideRect = (cache && cache.slideRect) || getSlideCoordinateRect(slide);
@@ -2867,15 +2880,23 @@ export function buildDeckEditorBridgeRuntimeScript(
 
     if (xSnap) {
       rect.x += xSnap.difference;
-      showGuide(slide, 'x', xSnap.target, cache);
+      guides.push({ axis: 'x', position: xSnap.target });
     }
 
     if (ySnap) {
       rect.y += ySnap.difference;
-      showGuide(slide, 'y', ySnap.target, cache);
+      guides.push({ axis: 'y', position: ySnap.target });
     }
 
-    return clampRect(rect);
+    return { rect: clampRect(rect), guides: guides };
+  }
+
+  function applySnapGuides(slide, guides, cache) {
+    clearGuides();
+
+    for (var i = 0; i < guides.length; i++) {
+      showGuide(slide, guides[i].axis, guides[i].position, cache);
+    }
   }
 
   function ensureMarquee(slide) {
@@ -3023,7 +3044,7 @@ export function buildDeckEditorBridgeRuntimeScript(
         }
       }
 
-      var moved = snapMoveRect({
+      var snapped = snapMoveRect({
         x: transformState.startGeometry.x + deltaX,
         y: transformState.startGeometry.y + deltaY,
         width: transformState.startGeometry.width,
@@ -3032,13 +3053,14 @@ export function buildDeckEditorBridgeRuntimeScript(
       transformState.lastGeometry = applyTransform(
         transformState.element,
         slide,
-        moved,
+        snapped.rect,
         true,
         'move',
         transformState.adopted,
         transformState.positionContext,
         cache,
       );
+      applySnapGuides(slide, snapped.guides, cache);
       return;
     }
 
@@ -3287,9 +3309,15 @@ export function buildDeckEditorBridgeRuntimeScript(
         logicalWidth: prepared.logicalWidth,
         positionContext: prepared.positionContext,
         cache: Object.assign(prepared.cache, {
-          // Authored transforms (e.g. translate(-50%, -50%)) must keep the
-          // left/top preview path so we do not clobber them.
-          liveTransform: !prepared.cache.authoredTransform,
+          // Use compositor previews unless a stylesheet-authored transform
+          // cannot be safely composed through an inline translate. Inline
+          // transforms (including the CSS none keyword) are restored/composed by the cache.
+          liveTransform:
+            !prepared.cache.authoredTransform ||
+            Boolean(
+              prepared.cache.liveTransformBase &&
+                !isNonComposableTransform(prepared.cache.liveTransformBase),
+            ),
         }),
         started: false,
         snapRects: collectSnapRects(slide, target),
@@ -3313,13 +3341,14 @@ export function buildDeckEditorBridgeRuntimeScript(
     // the snapshot when the slide is gone instead of flushing into null.
     if (!slide) {
       if (transformState.element) {
-        clearLiveTransform(transformState.element);
+        clearLiveTransform(transformState.element, transformState.cache);
         restoreInlineStyle(transformState.element, transformState.snapshot);
         cleanupAdoptSideEffects(transformState.element, transformState.cache);
       }
 
       transformState = null;
       clearEditorOverlays();
+      postToParent({ type: C.TRANSFORM_CANCEL });
       return true;
     }
 
@@ -3418,7 +3447,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     cancelTransformRaf();
 
     if (transformState.element) {
-      clearLiveTransform(transformState.element);
+      clearLiveTransform(transformState.element, transformState.cache);
       restoreInlineStyle(transformState.element, transformState.snapshot);
       cleanupAdoptSideEffects(transformState.element, transformState.cache);
     }
@@ -3517,7 +3546,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     var state = nudgeState;
     nudgeState = null;
     window.clearTimeout(state.timer);
-    clearLiveTransform(state.element);
+    clearLiveTransform(state.element, state.cache);
     restoreInlineStyle(state.element, state.snapshot);
     cleanupAdoptSideEffects(state.element, state.cache);
     clearGuides();
@@ -3608,7 +3637,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     cancelTransformRaf();
 
     if (transformState.element) {
-      clearLiveTransform(transformState.element);
+      clearLiveTransform(transformState.element, transformState.cache);
       restoreInlineStyle(transformState.element, transformState.snapshot);
       cleanupAdoptSideEffects(transformState.element, transformState.cache);
     }

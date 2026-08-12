@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+import { applyDeckPatches } from './deck-patch.ts'
 import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
 import { createLogger, type StructuredLogEntry } from './observability/logger.ts'
@@ -46,6 +47,29 @@ describe('deck operation observability', () => {
     const validation = validateDeckHtmlOnServer(plainCssDeck, { logger })
 
     expect(validation.valid).toBe(true)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      event: 'deck.validation.completed',
+      durationMs: expect.any(Number),
+      fields: {
+        htmlBytes: expect.any(Number),
+        valid: true,
+        issueCount: 0,
+      },
+    })
+  })
+
+  it('logs reused live-DOM validation when applying a patch', () => {
+    const { entries, logger } = createCapturingLogger()
+
+    const patched = applyDeckPatches(
+      plainCssDeck,
+      [{ op: 'update_slide_title', slideIndex: 0, title: 'Planning' }],
+      { logger },
+    )
+
+    expect(patched.ok).toBe(true)
+    expect(patched.validation?.valid).toBe(true)
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({
       event: 'deck.validation.completed',

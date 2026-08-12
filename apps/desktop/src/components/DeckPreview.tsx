@@ -13,7 +13,10 @@ import { createPortal } from 'react-dom'
 import { WandSparklesIcon } from 'lucide-react'
 
 import { EditModeToolbar } from '@/components/EditModeToolbar'
-import { EditorSelectionOverlay } from '@/components/EditorSelectionOverlay'
+import {
+  EditorSelectionOverlay,
+  type EditorSelectionOverlayHandle,
+} from '@/components/EditorSelectionOverlay'
 import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlays'
 import { PresentMode } from '@/components/PresentMode'
 import { SelectionInspectorChrome } from '@/components/SelectionInspectorChrome'
@@ -205,6 +208,7 @@ function useDeckPreviewShell({
     previewHtml,
     previewReloadRevision,
     previewContentRevision,
+    livePatchPending,
     beginLivePatch: beginLivePreviewPatch,
     finishLivePatch: finishPreviewSourcePatch,
     rollbackLivePatch: reloadCanonicalPreview,
@@ -378,10 +382,11 @@ function useDeckPreviewShell({
       // case on the reload path the editor coordinator already handles.
       !textEditActiveRef.current
   })
+  // Thumbnail status fetch waits for main-frame readiness and for any in-flight
+  // live editor patch so it cannot contend with pointer-up persistence (#287).
+  const thumbnailsEnabled = mainPreviewReady && !livePatchPending
   const { thumbnailUrls } = useDeckThumbnails(deckId, documentRevision, parsedDeck.slideCount, {
-    // Always-on edit chrome stays active while previewing; only wait for the
-    // main frame so thumbnail polling does not compete with first paint.
-    enabled: mainPreviewReady,
+    enabled: thumbnailsEnabled,
   })
   // Defer strip updates so rapid undo/redo does not remount every thumbnail iframe
   // while the main preview is still settling (manual-edit smoke / CDP context lookup).
@@ -422,6 +427,7 @@ function useDeckPreviewShell({
     transformCommit,
     transformCancelSequence,
     textEditActive,
+    setTransformPreviewListener,
     enableEditor,
     configureEditor,
     disableEditor,
@@ -479,6 +485,23 @@ function useDeckPreviewShell({
   useEffect(() => {
     textEditActiveRef.current = textEditActive
   }, [textEditActive])
+
+  const selectionOverlayRef = useRef<EditorSelectionOverlayHandle>(null)
+
+  useLayoutEffect(() => {
+    setTransformPreviewListener((preview) => {
+      if (!preview) {
+        selectionOverlayRef.current?.clearTransformPreview()
+        return
+      }
+
+      selectionOverlayRef.current?.applyTransformPreview(preview.geometry, preview.slideBounds)
+    })
+
+    return () => {
+      setTransformPreviewListener(null)
+    }
+  }, [setTransformPreviewListener])
 
   useLayoutEffect(() => {
     clearSelectionRef.current = clearSelection
@@ -812,6 +835,7 @@ function useDeckPreviewShell({
     slideBounds,
     stripOrientation,
     stripParsedDeck,
+    selectionOverlayRef,
     textEditActive,
     transformPreview,
     usesStaticPreview,
@@ -917,6 +941,7 @@ export function DeckPreview(props: DeckPreviewProps) {
     setRuntimeError,
     slideBounds,
     stripOrientation,
+    selectionOverlayRef,
     stripParsedDeck,
     textEditActive,
     transformPreview,
@@ -1066,6 +1091,7 @@ export function DeckPreview(props: DeckPreviewProps) {
                     hoverSurface={hover?.surface}
                     isEditing={textEditActive}
                     locked={selection?.locked ?? false}
+                    ref={selectionOverlayRef}
                     scale={previewFrameScale}
                     slideBounds={slideBounds}
                     surface={selection?.surface}
@@ -1073,12 +1099,12 @@ export function DeckPreview(props: DeckPreviewProps) {
                 ) : null}
                 {editorBridgeEnabled && editChromeActive ? (
                   <SelectionInspectorChrome
-                    geometry={transformPreview?.geometry ?? geometry}
+                    geometry={geometry}
                     isSaving={isTextEditSaving}
                     onApplyOperations={onPatchEditorOperations ? handleInspectorApply : undefined}
                     scale={previewFrameScale}
                     selection={selection}
-                    slideBounds={transformPreview?.slideBounds ?? slideBounds}
+                    slideBounds={slideBounds}
                     textEditActive={textEditActive}
                     transforming={Boolean(transformPreview)}
                     zIndex={selectionZIndex}

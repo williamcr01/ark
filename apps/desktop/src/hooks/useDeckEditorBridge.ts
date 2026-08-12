@@ -52,6 +52,7 @@ export type DeckEditorBridgeState = {
   slideBounds: EditorNormalizedRect | null
   selectionZIndex: number | null
   editorError: string | null
+  /** First preview frame as a gesture-in-progress marker; latest geometry is delivered through the ref/listener. */
   transformPreview: EditorTransformPreviewMessage | null
   transformCommit: EditorTransformCommitMessage | null
   transformCancelSequence: number
@@ -129,6 +130,13 @@ export function useDeckEditorBridge(
   const canPostToFrameRef = useRef(canPostToFrame)
   const shouldAcceptInboundRef = useRef(shouldAcceptInbound)
   const enabledRef = useRef(enabled)
+  // Per-frame preview geometry stays off the React state path — overlays subscribe
+  // and write DOM imperatively (issue #287).
+  const transformPreviewRef = useRef<EditorTransformPreviewMessage | null>(null)
+  const transformPreviewListenerRef = useRef<
+    ((preview: EditorTransformPreviewMessage | null) => void) | null
+  >(null)
+  const selectionIdentityRef = useRef<{ elementId: string; slideIndex: number } | null>(null)
 
   useLayoutEffect(() => {
     enabledRef.current = enabled
@@ -141,6 +149,10 @@ export function useDeckEditorBridge(
   // when a prop changes" pattern — not an effect).
   if (trackedGenerationKey !== iframeGenerationKey) {
     setTrackedGenerationKey(iframeGenerationKey)
+    // react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- reset transient bridge state at the iframe generation boundary before any child messages can arrive
+    transformPreviewRef.current = null
+    // react-doctor-disable-next-line react-doctor/no-ref-current-in-render -- reset selection identity with the same render-time generation boundary
+    selectionIdentityRef.current = null
     setState(initialState)
   }
 
@@ -206,6 +218,19 @@ export function useDeckEditorBridge(
     }
   }, [enabled, postToFrame])
 
+  const setTransformPreviewListener = useCallback(
+    (listener: ((preview: EditorTransformPreviewMessage | null) => void) | null) => {
+      transformPreviewListenerRef.current = listener
+      listener?.(transformPreviewRef.current)
+    },
+    [],
+  )
+
+  const publishTransformPreview = useCallback((preview: EditorTransformPreviewMessage | null) => {
+    transformPreviewRef.current = preview
+    transformPreviewListenerRef.current?.(preview)
+  }, [])
+
   const enableEditor = useCallback(
     (slideIndex = activeSlideIndex, tool: EditorTool = 'select', scale?: number) => {
       // Preserve readiness and in-flight commit requests across re-enable so
@@ -213,6 +238,8 @@ export function useDeckEditorBridge(
       // enable/ready loop when editorReady would flip false → true).
       // Do not preserve selection/geometry/text-edit UI state: slide-change
       // re-enables must not leave the inspector targeting another slide.
+      publishTransformPreview(null)
+      selectionIdentityRef.current = null
       setState((current) => ({
         ...initialState,
         editorError: null,
@@ -227,7 +254,7 @@ export function useDeckEditorBridge(
       onSelectionChange?.(null)
       return postToFrame(createEditorEnableMessage(slideIndex, tool, scale))
     },
-    [activeSlideIndex, onSelectionChange, postToFrame],
+    [activeSlideIndex, onSelectionChange, postToFrame, publishTransformPreview],
   )
 
   const configureEditor = useCallback(
@@ -239,12 +266,14 @@ export function useDeckEditorBridge(
     const posted = postToFrame(createEditorDisableMessage())
 
     if (posted) {
+      publishTransformPreview(null)
+      selectionIdentityRef.current = null
       setState(initialState)
       onSelectionChange?.(null)
     }
 
     return posted
-  }, [onSelectionChange, postToFrame])
+  }, [onSelectionChange, postToFrame, publishTransformPreview])
 
   const selectElement = useCallback(
     (elementId: string, slideIndex = activeSlideIndex) =>
@@ -319,23 +348,29 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorSelectionChangeMessage(data)) {
-        setState((current) => {
-          const sameSelection =
-            data.selection !== null &&
-            current.selection?.elementId === data.selection.elementId &&
-            current.selection.slideIndex === data.selection.slideIndex
+        const sameSelection =
+          data.selection !== null &&
+          selectionIdentityRef.current?.elementId === data.selection.elementId &&
+          selectionIdentityRef.current?.slideIndex === data.selection.slideIndex
 
-          return {
-            ...current,
-            selection: data.selection,
-            // Drop overlay geometry whenever selection identity changes so a
-            // previous element's box never flashes on the new selection.
-            geometry: sameSelection ? current.geometry : null,
-            slideBounds: sameSelection ? current.slideBounds : null,
-            selectionZIndex: sameSelection ? current.selectionZIndex : null,
-            transformPreview: sameSelection ? current.transformPreview : null,
-          }
-        })
+        selectionIdentityRef.current = data.selection
+          ? { elementId: data.selection.elementId, slideIndex: data.selection.slideIndex }
+          : null
+
+        if (!sameSelection) {
+          publishTransformPreview(null)
+        }
+
+        setState((current) => ({
+          ...current,
+          selection: data.selection,
+          // Drop overlay geometry whenever selection identity changes so a
+          // previous element's box never flashes on the new selection.
+          geometry: sameSelection ? current.geometry : null,
+          slideBounds: sameSelection ? current.slideBounds : null,
+          selectionZIndex: sameSelection ? current.selectionZIndex : null,
+          transformPreview: sameSelection ? current.transformPreview : null,
+        }))
         onSelectionChange?.(data.selection)
         return
       }
@@ -390,21 +425,45 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorTransformPreviewMessage(data)) {
+        publishTransformPreview(data)
         setState((current) => {
-          if (current.selection?.elementId !== data.elementId) {
-            return {
-              ...current,
-              transformPreview: data,
-              transformCommit: null,
-            }
+          // First preview frame flips transforming chrome once; later frames only
+          // update the imperative overlay listener.
+          if (current.transformPreview) {
+            return current
           }
 
           return {
             ...current,
             transformPreview: data,
             transformCommit: null,
-            // Keep overlay geometry in the same update so chrome does not lag a
-            // frame behind the iframe transform preview.
+          }
+        })
+        return
+      }
+
+      if (isEditorTransformCommitMessage(data)) {
+        if (
+          selectionIdentityRef.current?.elementId !== data.elementId ||
+          selectionIdentityRef.current.slideIndex !== data.slideIndex
+        ) {
+          // Ignore a late commit for an element that is no longer selected.
+          return
+        }
+
+        publishTransformPreview(null)
+        setState((current) => {
+          if (
+            current.selection?.elementId !== data.elementId ||
+            current.selection.slideIndex !== data.slideIndex
+          ) {
+            return current
+          }
+
+          return {
+            ...current,
+            transformCommit: data,
+            transformPreview: null,
             geometry: data.geometry,
             slideBounds: data.slideBounds ?? current.slideBounds,
             selectionZIndex:
@@ -416,16 +475,8 @@ export function useDeckEditorBridge(
         return
       }
 
-      if (isEditorTransformCommitMessage(data)) {
-        setState((current) => ({
-          ...current,
-          transformCommit: data,
-          transformPreview: null,
-        }))
-        return
-      }
-
       if (isEditorTransformCancelMessage(data)) {
+        publishTransformPreview(null)
         setState((current) => ({
           ...current,
           transformPreview: null,
@@ -470,7 +521,7 @@ export function useDeckEditorBridge(
         onEditorError?.(data.message, data.code)
       }
     },
-    [onEditorError, onSelectionChange],
+    [onEditorError, onSelectionChange, publishTransformPreview],
   )
   const runtimeMessageHandlerRef = useRef(handleRuntimeMessage)
 
@@ -551,6 +602,8 @@ export function useDeckEditorBridge(
 
   return {
     ...state,
+    transformPreviewRef,
+    setTransformPreviewListener,
     enableEditor,
     configureEditor,
     disableEditor,

@@ -62,6 +62,7 @@ const editorBridgeMock = vi.hoisted(() => ({
   transformPreview: null as EditorTransformPreviewMessage | null,
   transformCommit: null as EditorTransformCommitMessage | null,
   transformCancelSequence: 0,
+  setTransformPreviewListener: vi.fn(),
   enableEditor: vi.fn(),
   configureEditor: vi.fn(),
   disableEditor: vi.fn(),

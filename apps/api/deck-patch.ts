@@ -11,12 +11,16 @@ import {
   isTextReplacePatchOperation,
   summarizePatchOperation,
 } from '@ark/deck-core/deck-patch.ts'
+import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
 import { applyDeckEdits } from './deck-edit.ts'
 import { applyElementPatch } from './deck-element-patch.ts'
 import { stampEditableElementIds } from './deck-editable-elements.ts'
+import { validateDeckDocumentOnServer } from './deck-validate.ts'
+import type { Logger } from './observability/logger.ts'
 
 export type ApplyDeckPatchesOptions = {
   activeSlideIndex?: number
+  logger?: Logger
 }
 
 type ResolvedSlide = {
@@ -445,6 +449,18 @@ export function applyDeckPatches(
   let activeSlideIndex = options.activeSlideIndex
   let appliedCount = 0
   let dom: JSDOM | null = null
+  let validation: DeckValidationReport | undefined
+
+  const closeDom = () => {
+    if (!dom) {
+      return
+    }
+
+    // Release the jsdom window when available; ignore environments without close().
+    const maybeClose = (dom.window as unknown as { close?: () => void }).close
+    maybeClose?.()
+    dom = null
+  }
 
   const flushDom = () => {
     if (!dom) {
@@ -452,11 +468,10 @@ export function applyDeckPatches(
     }
 
     workingHtml = serializeDeckHtml(dom)
-    // Release the jsdom window when available; ignore environments without close().
-    const maybeClose = (dom.window as unknown as { close?: () => void }).close
-    maybeClose?.()
-    dom = null
+    closeDom()
   }
+
+  const getLiveDom = (): JSDOM | null => dom
 
   const getDomContext = (): PatchContext => {
     if (!dom) {
@@ -526,7 +541,20 @@ export function applyDeckPatches(
     appliedCount += 1
   }
 
-  flushDom()
+  // Validate on the live document before serialize so the route/tool path can
+  // skip a second full JSDOM parse (issue #287 persistence latency).
+  const liveDom = getLiveDom()
+  if (liveDom) {
+    workingHtml = serializeDeckHtml(liveDom)
+    validation = validateDeckDocumentOnServer(
+      liveDom.window.document,
+      workingHtml,
+      options.logger ? { logger: options.logger } : undefined,
+    )
+    closeDom()
+  } else {
+    flushDom()
+  }
 
   if (workingHtml === html) {
     return { ok: false, error: 'Patch operations did not change the deck.' }
@@ -543,6 +571,7 @@ export function applyDeckPatches(
     summary,
     suggestedActiveSlideIndex: activeSlideIndex,
     appliedCount,
+    ...(validation ? { validation } : {}),
   }
 }
 

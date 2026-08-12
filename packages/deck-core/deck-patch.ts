@@ -228,6 +228,11 @@ export type DeckPatchSuccess = {
   summary: string
   suggestedActiveSlideIndex?: number
   appliedCount: number
+  /**
+   * Present when the patch pipeline validated the live document before
+   * serialize, so callers can skip a second full HTML parse.
+   */
+  validation?: import('./deck-validate.ts').DeckValidationReport
 }
 
 export type DeckPatchFailure = {
