@@ -24,6 +24,7 @@
     "test": "NODE_COMPILE_CACHE=node_modules/.cache/ark-test-compile pnpm --dir ../.. exec vitest run --config vitest.config.ts --project '@ark/desktop-*'"
   },
   "dependencies": {
+    "@ark/agent": "workspace:*",
     "@ark/ai": "workspace:*",
     "@ark/api": "workspace:*",
     "@ark/chat": "workspace:*",

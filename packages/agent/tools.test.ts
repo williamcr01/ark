@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { createDeckTools } from './deck-tools.ts'
-import { createDeckWorkspace } from './deck-workspace.ts'
+import { createDeckTools } from './tools.ts'
+import { createDeckWorkspace } from './workspace.ts'
 
 const managedDeck = `<!DOCTYPE html>
 <html lang="en">

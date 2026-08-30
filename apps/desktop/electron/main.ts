@@ -25,7 +25,7 @@ import {
   type McpStatus,
   type ProviderId,
 } from '@ark/contracts'
-import { mcpDiscoveryPath } from '@ark/mcp-server/discovery.ts'
+import { mcpDiscoveryPath } from '@ark/mcp/discovery.ts'
 import { runMcpBridge } from '@ark/mcp-server/bridge.ts'
 
 import { SecureCredentialStore } from './credential-store.ts'
@@ -182,8 +182,8 @@ async function startDesktop() {
     import('@ark/sandbox/sandbox-host.ts'),
     import('@ark/storage/stores/preview-sessions.ts'),
     import('@ark/api/thumbnails/render-host.ts'),
-    import('@ark/api/mcp-service.ts'),
-    import('@ark/api/mcp-interactions.ts'),
+    import('@ark/mcp/service.ts'),
+    import('@ark/mcp/interactions.ts'),
     import('@ark/ai/credentials.ts'),
     import('@ark/ai/models.ts'),
   ])

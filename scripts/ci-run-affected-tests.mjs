@@ -10,6 +10,7 @@ const workspaceProjects = new Map([
   ['apps/sandbox', '@ark/sandbox'],
   ['apps/desktop', '@ark/desktop-*'],
   ['packages/contracts', '@ark/contracts'],
+  ['packages/agent', '@ark/agent'],
   ['packages/ai', '@ark/ai'],
   ['packages/chat', '@ark/chat'],
   ['packages/deck', '@ark/deck'],

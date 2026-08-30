@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toGenerationJobApi } from './generation-job-wire.ts'
+import { toGenerationJobApi } from './job-wire.ts'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 const jobId = 'a0000000-0000-4000-8000-000000000001'

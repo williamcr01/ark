@@ -35,7 +35,7 @@ import {
   simpleErrorResponseSchema,
   uploadAssetResponseSchema,
 } from '@ark/contracts'
-import { type RunDeckAgentResult } from './deck-agent.ts'
+import { type RunDeckAgentResult } from '@ark/agent/agent.ts'
 import { createApp } from './app.ts'
 import { createAssetStore } from '@ark/storage/stores/asset-store.ts'
 import { createChatStore } from '@ark/storage/stores/chat-store.ts'
@@ -46,7 +46,7 @@ import {
   type PreviewSessionStore,
 } from '@ark/storage/stores/preview-sessions.ts'
 import type { ThumbnailService } from './thumbnails/service.ts'
-import { createGenerationJobRunner } from './generation-job-runner.ts'
+import { createGenerationJobRunner } from '@ark/agent/job-runner.ts'
 import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>

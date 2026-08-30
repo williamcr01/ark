@@ -170,7 +170,14 @@
                 "message": "Import API contracts from @ark/contracts only."
               },
               {
-                "group": ["@ark/storage", "@ark/storage/*"],
+                "group": [
+                  "@ark/agent",
+                  "@ark/agent/*",
+                  "@ark/mcp",
+                  "@ark/mcp/*",
+                  "@ark/storage",
+                  "@ark/storage/*"
+                ],
                 "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
               }
             ]
@@ -250,6 +257,8 @@
     },
     {
       "files": [
+        "packages/agent/**/*.ts",
+        "packages/mcp/**/*.ts",
         "packages/storage/**/*.ts",
         "packages/telemetry/request-id.ts",
         "packages/**/*-disk.ts",

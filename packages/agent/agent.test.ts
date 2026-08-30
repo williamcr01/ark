@@ -7,9 +7,9 @@ import {
   extractAgentTranscriptParts,
   hasAwaitingUserToolResult,
   runDeckAgent,
-} from './deck-agent.ts'
-import { createActiveDeckTools } from './deck-tool-catalog.ts'
-import { createDeckWorkspace } from './deck-workspace.ts'
+} from './agent.ts'
+import { createActiveDeckTools } from './tool-catalog.ts'
+import { createDeckWorkspace } from './workspace.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">

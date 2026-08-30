@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createMcpInteractionStore, McpInteractionError } from './mcp-interactions.ts'
+import { createMcpInteractionStore, McpInteractionError } from './interactions.ts'
 
 const target = {
   deckId: '00000000-0000-4000-8000-000000000001',
