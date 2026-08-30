@@ -9,12 +9,12 @@ import {
   isDeckRuntimeErrorMessage,
   isDeckSlideChangeMessage,
   type DeckMetadata,
-} from '@ark/deck-core/deck-bridge.ts'
+} from '@ark/deck-preview/deck-bridge.ts'
 import {
   mapPreservedSlideIndexFromHtml,
   resolvePatchActiveSlideIndex,
   type DeckSlidePatch,
-} from '@ark/deck-core/deck-slide-patch.ts'
+} from '@ark/deck-preview/slide-patch.ts'
 import {
   DECK_BRIDGE_POST_MESSAGE_TARGET,
   isAllowedBridgeMessageOrigin,

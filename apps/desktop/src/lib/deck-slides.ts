@@ -2,11 +2,11 @@ import {
   findSlideElements,
   stripDeckScriptsForPreview,
   stripHostileNavigationVectors,
-} from '@ark/deck-core/deck-preview-slides.ts'
+} from '@ark/deck-preview/preview-slides.ts'
 import {
   createThumbnailSrcDocBuilder,
   type ThumbnailHtmlOptions,
-} from '@ark/deck-core/deck-thumbnail-html.ts'
+} from '@ark/deck-preview/thumbnail-html.ts'
 import { startRevealThumbnailStylesPreload } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 import { detectRuntimeModeFromDocument } from './deck-runtime'
 

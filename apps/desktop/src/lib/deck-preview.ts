@@ -4,7 +4,7 @@ import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck/document/metadata.ts'
-import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-core/deck-preview-html.ts'
+import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-preview/preview-html.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 /**
@@ -23,7 +23,7 @@ export {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_EVENT,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-} from '@ark/deck-core/deck-bridge.ts'
+} from '@ark/deck-preview/deck-bridge.ts'
 
 export const PREVIEW_FRAME_WIDTH = ARK_SLIDE_REFERENCE_WIDTH
 export const PREVIEW_FRAME_HEIGHT = ARK_SLIDE_REFERENCE_HEIGHT

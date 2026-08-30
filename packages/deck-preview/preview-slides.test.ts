@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
-import {
-  stripDeckScriptsForPreview,
-  stripHostileNavigationFromHtml,
-} from './deck-preview-slides.ts'
+import { stripDeckScriptsForPreview, stripHostileNavigationFromHtml } from './preview-slides.ts'
 
 function parseHtml(html: string) {
   return new DOMParser().parseFromString(html, 'text/html')

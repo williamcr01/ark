@@ -7,7 +7,7 @@ import {
   deckUsesChartJsAddon,
   hasApprovedRevealRuntimeInDocument,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
-import { buildPreviewDocument, injectPreviewHandshake } from './deck-preview-html.ts'
+import { buildPreviewDocument, injectPreviewHandshake } from './preview-html.ts'
 
 function countMetaRefresh(doc: Document) {
   return [...doc.querySelectorAll('meta')].filter(

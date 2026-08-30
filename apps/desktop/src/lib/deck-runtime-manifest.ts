@@ -27,7 +27,7 @@ import {
   type DeckRuntimeManifest,
 } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { hasApprovedRevealRuntimeInDocument } from '@ark/runtime-registry/deck-runtime-registry.ts'
-import { findSlideElements, SLIDE_SELECTOR_CHAIN } from '@ark/deck-core/deck-preview-slides.ts'
+import { findSlideElements, SLIDE_SELECTOR_CHAIN } from '@ark/deck-preview/preview-slides.ts'
 import { hasRevealSlideStructure } from '@ark/deck/document/reveal-slide-index.ts'
 import {
   validateDeckDocumentInBrowser,

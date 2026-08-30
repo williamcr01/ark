@@ -1,5 +1,5 @@
 import type { EditorSelectionContext } from '@ark/deck-core/chat.ts'
-import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime/deck-editor-bridge.ts'
 
 const MAX_TEXT_PREVIEW_LENGTH = 280
 

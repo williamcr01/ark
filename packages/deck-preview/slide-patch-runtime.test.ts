@@ -10,8 +10,8 @@ import {
   isDeckSlideChangeMessage,
   type DeckSlidePatchOperation,
 } from './deck-bridge.ts'
-import { createDeckSlideSnapshot, diffDeckSlideSnapshots } from './deck-slide-patch.ts'
-import { findSlideElements, SLIDE_SELECTOR_CHAIN } from './deck-preview-slides.ts'
+import { createDeckSlideSnapshot, diffDeckSlideSnapshots } from './slide-patch.ts'
+import { findSlideElements, SLIDE_SELECTOR_CHAIN } from './preview-slides.ts'
 
 const inboundMessages: unknown[] = []
 

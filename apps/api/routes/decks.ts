@@ -10,7 +10,7 @@ import {
 import { type DeckStore, isValidDeckId } from '../deck-record.ts'
 import type { AssetStore } from '../asset-record.ts'
 import { resolveArkAssetUrls } from '../asset-resolve.ts'
-import { stripDeckScriptsForPreview } from '@ark/deck-core/deck-preview-slides.ts'
+import { stripDeckScriptsForPreview } from '@ark/deck-preview/preview-slides.ts'
 import { buildDeckRuntimeManifestFromValidation } from '../deck-manifest.ts'
 import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 import { getRequestLogger } from '../observability/index.ts'

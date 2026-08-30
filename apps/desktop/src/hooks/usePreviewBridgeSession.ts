@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
-import { isDeckHandshakeMessage, type DeckHandshakeMessage } from '@ark/deck-core/deck-bridge.ts'
+import { isDeckHandshakeMessage, type DeckHandshakeMessage } from '@ark/deck-preview/deck-bridge.ts'
 import { isAllowedBridgeMessageOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 export type PreviewBridgeSessionPhase = 'idle' | 'awaiting-handshake' | 'armed' | 'compromised'

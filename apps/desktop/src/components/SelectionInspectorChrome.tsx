@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import type {
   EditorNormalizedRect,
   EditorSelectionInfo,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime/deck-editor-bridge.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 
 const SETTINGS_BUTTON_SIZE = 28

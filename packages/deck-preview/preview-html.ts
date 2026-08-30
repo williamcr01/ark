@@ -7,7 +7,7 @@ import {
 import {
   buildDeckEditorBridgeRuntimeScript,
   EDITOR_SESSION_HANDOFF_KEY,
-} from './deck-editor-bridge.ts'
+} from '@ark/editor-runtime/deck-editor-bridge.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import {
   detectRuntimeModeFromDocument,
@@ -19,13 +19,13 @@ import {
   toAbsoluteRuntimeAssetSource,
   type DeckRuntimeMode,
 } from '@ark/runtime-registry/deck-runtime.ts'
-import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
+import { generateCspNonce } from './csp-nonce.ts'
 import {
   findSlideElements,
   SLIDE_SELECTOR_CHAIN,
   stripHostileNavigationFromHtml,
   stripHostileNavigationVectors,
-} from './deck-preview-slides.ts'
+} from './preview-slides.ts'
 import {
   deckUsesChartJsAddon,
   getApprovedRuntimeAssetUrls,

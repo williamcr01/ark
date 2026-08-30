@@ -1,4 +1,4 @@
-import type { EditorNormalizedRect } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorNormalizedRect } from '@ark/editor-runtime/deck-editor-bridge.ts'
 import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
 
 export type StagePixelRect = {

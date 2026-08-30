@@ -5,7 +5,7 @@ import {
   diffDeckSlideSnapshots,
   type DeckSlidePatch,
   type DeckSlideSnapshot,
-} from '@ark/deck-core/deck-slide-patch.ts'
+} from '@ark/deck-preview/slide-patch.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 import type { PatchDeckResponse } from '@/lib/deck-api'

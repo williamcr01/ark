@@ -1,7 +1,7 @@
 import type {
   EditorNormalizedRect,
   EditorTransformCommitMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime/deck-editor-bridge.ts'
 import { buildTextBoxHtml } from '@ark/deck/patch/text-box.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 

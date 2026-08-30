@@ -12,7 +12,7 @@ import {
   diffDeckSlideSnapshots,
   mapPreservedSlideIndex,
   resolvePatchActiveSlideIndex,
-} from './deck-slide-patch.ts'
+} from './slide-patch.ts'
 
 function snapshot(html: string) {
   const result = createDeckSlideSnapshot(html)

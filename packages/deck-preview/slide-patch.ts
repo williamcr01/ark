@@ -17,10 +17,7 @@ import {
   runtimeModeAllowsDeckScripts,
 } from '@ark/runtime-registry/deck-runtime.ts'
 import type { DeckSlidePatchOperation } from './deck-bridge.ts'
-import {
-  absolutizePreviewAssetReferences,
-  stripPreviewScriptsAndHandlers,
-} from './deck-preview-html.ts'
+import { absolutizePreviewAssetReferences, stripPreviewScriptsAndHandlers } from './preview-html.ts'
 import { findSlideElements } from '@ark/deck/document/slides.ts'
 import { stripHostileNavigationVectors } from '@ark/deck/document/sanitize.ts'
 

@@ -103,6 +103,12 @@ importers:
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
+      '@ark/deck-preview':
+        specifier: workspace:*
+        version: link:../../packages/deck-preview
+      '@ark/editor-runtime':
+        specifier: workspace:*
+        version: link:../../packages/editor-runtime
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../../packages/runtime-registry
@@ -161,6 +167,12 @@ importers:
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
+      '@ark/deck-preview':
+        specifier: workspace:*
+        version: link:../../packages/deck-preview
+      '@ark/editor-runtime':
+        specifier: workspace:*
+        version: link:../../packages/editor-runtime
       '@ark/mcp':
         specifier: workspace:*
         version: link:../mcp
@@ -343,6 +355,9 @@ importers:
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
+      '@ark/deck-preview':
+        specifier: workspace:*
+        version: link:../../packages/deck-preview
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../../packages/runtime-registry
@@ -411,6 +426,9 @@ importers:
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@ark/deck-preview':
+        specifier: workspace:*
+        version: link:../deck-preview
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -464,6 +482,9 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
+      '@ark/deck-preview':
+        specifier: workspace:*
+        version: link:../deck-preview
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -473,6 +494,53 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/deck-preview:
+    dependencies:
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
+      '@ark/editor-runtime':
+        specifier: workspace:*
+        version: link:../editor-runtime
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../runtime-registry
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/editor-runtime:
+    dependencies:
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../runtime-registry
     devDependencies:
       '@types/node':
         specifier: ^24.12.3
