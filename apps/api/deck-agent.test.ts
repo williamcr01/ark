@@ -339,7 +339,19 @@ describe('runDeckAgent prompt caching', () => {
     return { calls, model }
   }
 
-  it('marks the Anthropic system prefix with ephemeral cacheControl on every step', async () => {
+  const anthropicCacheControl = { cacheControl: { type: 'ephemeral' } }
+
+  const cacheControlOf = (message: LanguageModelV3CallOptions['prompt'][number]) => {
+    if (message.providerOptions?.anthropic) return message.providerOptions.anthropic
+    if (!Array.isArray(message.content)) return undefined
+    const last = message.content.at(-1)
+    return last && 'providerOptions' in last ? last.providerOptions?.anthropic : undefined
+  }
+
+  const nonSystemMessages = (prompt: LanguageModelV3CallOptions['prompt']) =>
+    prompt.filter((message) => message.role !== 'system')
+
+  it('marks Anthropic system prefix and trailing transcript on every step', async () => {
     const { calls, model } = recordingModel()
 
     const result = await runDeckAgent({
@@ -353,23 +365,31 @@ describe('runDeckAgent prompt caching', () => {
 
     expect(result.ok).toBe(true)
     expect(calls).toHaveLength(2)
-    for (const call of calls) {
+    for (const [step, call] of calls.entries()) {
       const system = call.prompt[0]
       expect(system.role).toBe('system')
-      expect(system.providerOptions).toEqual({
-        anthropic: { cacheControl: { type: 'ephemeral' } },
-      })
-      // The breakpoint covers tools + system only; the transcript stays uncached.
-      for (const message of call.prompt.slice(1)) {
-        expect(message.providerOptions).toBeUndefined()
-      }
-      // promptCacheKey is an OpenAI-only routing hint — it must not leak here.
+      expect(system.providerOptions).toEqual({ anthropic: anthropicCacheControl })
       expect(call.providerOptions?.openai).toBeUndefined()
+
+      const transcript = nonSystemMessages(call.prompt)
+      expect(transcript.length).toBeGreaterThan(0)
+      const trailing = transcript.slice(-Math.min(2, transcript.length))
+      for (const message of trailing) {
+        expect(cacheControlOf(message)).toEqual(anthropicCacheControl)
+      }
+      if (step === 1) {
+        expect(transcript.length).toBeGreaterThan(1)
+        expect(cacheControlOf(transcript.at(-1)!)).toEqual(anthropicCacheControl)
+        if (transcript.length > 2) {
+          expect(cacheControlOf(transcript[0])).toBeUndefined()
+        }
+      }
     }
   })
 
   it('sends the opaque promptCacheKey to OpenAI alongside reasoning options', async () => {
     const { calls, model } = recordingModel()
+    const opaqueKey = 'deck-1'
 
     const result = await runDeckAgent({
       model,
@@ -378,18 +398,18 @@ describe('runDeckAgent prompt caching', () => {
       messages: [{ role: 'user', content: 'Update the title' }],
       currentHtml: sampleHtml,
       reasoningEffort: 'high',
-      promptCacheKey: 'deck-1',
+      promptCacheKey: opaqueKey,
     })
 
     expect(result.ok).toBe(true)
     expect(calls).toHaveLength(2)
     for (const call of calls) {
-      // Merging must keep both bags: reasoning options and the cache key.
       expect(call.providerOptions?.openai).toMatchObject({
-        promptCacheKey: 'deck-1',
+        promptCacheKey: opaqueKey,
         reasoningEffort: 'high',
       })
-      // OpenAI takes a plain string system prompt — no Anthropic cacheControl.
+      expect(String(call.providerOptions?.openai?.promptCacheKey)).toBe(opaqueKey)
+      expect(JSON.stringify(call.providerOptions)).not.toContain('Update the title')
       expect(call.prompt[0].providerOptions).toBeUndefined()
     }
   })
@@ -411,10 +431,13 @@ describe('runDeckAgent prompt caching', () => {
     for (const call of calls) {
       expect(call.prompt[0].providerOptions).toBeUndefined()
       expect(call.providerOptions).toBeUndefined()
+      for (const message of call.prompt) {
+        expect(cacheControlOf(message)).toBeUndefined()
+      }
     }
   })
 
-  it('falls back to an uncached call when no opaque key is available', async () => {
+  it('omits OpenAI promptCacheKey when no opaque id is available', async () => {
     const { calls, model } = recordingModel()
 
     const result = await runDeckAgent({
@@ -427,6 +450,28 @@ describe('runDeckAgent prompt caching', () => {
 
     expect(result.ok).toBe(true)
     expect(calls[0].providerOptions).toBeUndefined()
+  })
+
+  it('does not send Anthropic cacheControl or OpenAI promptCacheKey for other providers', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'xai',
+      modelRef: 'xai:grok-4',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.providerOptions?.openai).toBeUndefined()
+      for (const message of call.prompt) {
+        expect(cacheControlOf(message)).toBeUndefined()
+      }
+    }
   })
 })
 

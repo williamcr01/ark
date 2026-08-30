@@ -25,6 +25,7 @@ import {
   type DeckToolDefinition,
 } from './deck-tool-catalog.ts'
 import {
+  applyAnthropicConversationCacheBreakpoints,
   buildCachedSystemPrompt,
   buildPromptCacheProviderOptions,
   mergeProviderOptions,
@@ -89,8 +90,8 @@ export type RunDeckAgentOptions = {
   slideContexts?: SlideContext[]
   reasoningEffort?: ReasoningEffort
   /**
-   * Opaque ID for OpenAI prompt-cache routing affinity (deck/chat/job id only).
-   * Never pass user content or secrets.
+   * Opaque deck or chat-thread id for OpenAI prompt-cache routing.
+   * Never job id, user content, or secrets.
    */
   promptCacheKey?: string | null
   abortSignal?: AbortSignal
@@ -622,6 +623,13 @@ export async function runDeckAgent({
         hasAwaitingUserToolResult('propose_themes'),
         isLoopFinished(),
       ],
+      ...(provider === 'anthropic'
+        ? {
+            prepareStep: ({ messages }) => ({
+              messages: applyAnthropicConversationCacheBreakpoints(messages),
+            }),
+          }
+        : {}),
       // Use stable sampling for models without a reasoning-effort control.
       ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
       ...(providerOptions ? { providerOptions } : {}),

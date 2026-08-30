@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applyAnthropicConversationCacheBreakpoints,
   buildCachedSystemPrompt,
   buildOpaquePromptCacheKey,
   buildPromptCacheProviderOptions,
@@ -77,6 +78,40 @@ describe('buildCachedSystemPrompt', () => {
   it('leaves non-Anthropic system prompts as plain strings', () => {
     expect(buildCachedSystemPrompt('openai', 'stable prefix')).toBe('stable prefix')
     expect(buildCachedSystemPrompt('google', 'stable prefix')).toBe('stable prefix')
+  })
+})
+
+describe('applyAnthropicConversationCacheBreakpoints', () => {
+  const cacheControl = { anthropic: { cacheControl: { type: 'ephemeral' } } }
+
+  it('stamps the last two non-system messages and leaves earlier ones unmarked', () => {
+    const stamped = applyAnthropicConversationCacheBreakpoints([
+      { role: 'user', content: 'one' },
+      { role: 'assistant', content: 'two' },
+      { role: 'user', content: 'three' },
+    ])
+    expect(stamped[0].providerOptions).toBeUndefined()
+    expect(stamped[1].providerOptions).toEqual(cacheControl)
+    expect(stamped[2].providerOptions).toEqual(cacheControl)
+  })
+
+  it('does not mutate the original messages', () => {
+    const original = [
+      { role: 'user' as const, content: 'one' },
+      { role: 'assistant' as const, content: 'two' },
+    ]
+    applyAnthropicConversationCacheBreakpoints(original)
+    expect(original[0].providerOptions).toBeUndefined()
+    expect(original[1].providerOptions).toBeUndefined()
+  })
+
+  it('skips system messages when choosing the trailing breakpoint', () => {
+    const stamped = applyAnthropicConversationCacheBreakpoints([
+      { role: 'system', content: 'stable' },
+      { role: 'user', content: 'ask' },
+    ])
+    expect(stamped[0].providerOptions).toBeUndefined()
+    expect(stamped[1].providerOptions).toEqual(cacheControl)
   })
 })
 
