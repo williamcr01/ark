@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createAssetStore } from '../asset-store.ts'
-import { createDeckStore } from '../deck-store.ts'
-import { createWorkspaceStore, type WorkspaceStore } from '../workspace-store.ts'
+import { createAssetStore } from '@ark/storage/stores/asset-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 import type { ThumbnailRenderer } from './renderer.ts'
 import { createThumbnailService, thumbnailManifestHash, type ThumbnailService } from './service.ts'
 

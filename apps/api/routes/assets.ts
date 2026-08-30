@@ -2,9 +2,13 @@ import express, { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody, uploadAssetRequestSchema } from '@ark/contracts'
 import { getAssetCategory, isValidAssetId } from '@ark/deck/document/assets.ts'
-import { type AssetSource, type AssetStore, toAssetMetadata } from '../asset-record.ts'
-import { validateAssetUpload } from '../asset-validate.ts'
-import { type DeckStore, isValidDeckId } from '../deck-record.ts'
+import {
+  type AssetSource,
+  type AssetStore,
+  toAssetMetadata,
+} from '@ark/storage/records/asset-record.ts'
+import { validateAssetUpload } from '@ark/storage/records/asset-validate.ts'
+import { type DeckStore, isValidDeckId } from '@ark/storage/records/deck-record.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 

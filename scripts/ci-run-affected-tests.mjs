@@ -17,6 +17,7 @@ const workspaceProjects = new Map([
   ['packages/editor-runtime', '@ark/editor-runtime'],
   ['packages/mcp', '@ark/mcp'],
   ['packages/runtime-registry', '@ark/runtime-registry'],
+  ['packages/storage', '@ark/storage'],
   ['packages/telemetry', '@ark/telemetry'],
 ])
 

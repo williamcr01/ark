@@ -2,6 +2,17 @@ import { z } from 'zod'
 
 import { providerErrorCodeSchema } from '@ark/ai/provider-error-code.ts'
 import {
+  DECK_ID_PATTERN,
+  deckIdSchema,
+  isValidDeckId,
+  UUID_V4_PATTERN,
+} from '@ark/deck/document/id.ts'
+import {
+  GENERATION_JOB_ID_PATTERN,
+  generationJobIdSchema,
+  isValidGenerationJobId,
+} from '@ark/chat/generation-job.ts'
+import {
   PROVIDER_ENV_KEYS,
   PROVIDER_LABELS,
   providerIdSchema,
@@ -13,28 +24,11 @@ import {
   type ReasoningEffort,
 } from '@ark/ai/reasoning-effort.ts'
 
+export { DECK_ID_PATTERN, deckIdSchema, isValidDeckId, UUID_V4_PATTERN }
+export { GENERATION_JOB_ID_PATTERN, generationJobIdSchema, isValidGenerationJobId }
 export { PROVIDER_ENV_KEYS, PROVIDER_LABELS, providerIdSchema, reasoningEffortSchema }
 export { REASONING_EFFORT_LABELS }
 export type { ProviderId, ReasoningEffort }
-
-export const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-export const DECK_ID_PATTERN = UUID_V4_PATTERN
-
-export const GENERATION_JOB_ID_PATTERN = UUID_V4_PATTERN
-
-export const deckIdSchema = z.string().regex(UUID_V4_PATTERN, 'Invalid deck id.')
-
-export const generationJobIdSchema = z.string().regex(UUID_V4_PATTERN, 'Invalid generation job id.')
-
-export function isValidDeckId(id: string) {
-  return DECK_ID_PATTERN.test(id)
-}
-
-export function isValidGenerationJobId(id: string) {
-  return GENERATION_JOB_ID_PATTERN.test(id)
-}
 
 export const requestIdSchema = z.string().uuid()
 

@@ -5,8 +5,8 @@ import {
   deckChatQuerySchema,
   parseRequestBody,
 } from '@ark/contracts'
-import { type ChatStore, normalizeChatMessageLimit } from '../chat-record.ts'
-import { type DeckStore, isValidDeckId } from '../deck-record.ts'
+import { type ChatStore, normalizeChatMessageLimit } from '@ark/storage/records/chat-record.ts'
+import { type DeckStore, isValidDeckId } from '@ark/storage/records/deck-record.ts'
 import { getApiErrorFromUnknown, sendApiError, toChatApiMessage } from './shared.ts'
 
 export function createDeckChatRouter(deps: { deckStore: DeckStore; chatStore: ChatStore }): Router {

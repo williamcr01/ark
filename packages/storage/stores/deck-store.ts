@@ -7,9 +7,9 @@ import {
   extractDeckTitle,
   isValidDeckId,
   normalizeDeckTitle,
-} from './deck-record.ts'
+} from '../records/deck-record.ts'
 import { createWorkspaceStore, type WorkspaceRow, type WorkspaceStore } from './workspace-store.ts'
-import { extractEmbeddedAssets } from './embedded-assets.ts'
+import { extractEmbeddedAssets } from '../records/embedded-assets.ts'
 
 export { extractDeckTitle, isValidDeckId, normalizeDeckTitle }
 export type { DeckStore, DeckSummary, DeckSaveOptions, DeckUpdateOptions, StoredDeck }

@@ -1,3 +1,6 @@
+import { z } from 'zod'
+
+import { UUID_V4_PATTERN } from '@ark/deck/document/id.ts'
 import type { ProviderTokenUsage } from '@ark/ai/provider-token-usage.ts'
 import type {
   AgentStep,
@@ -179,4 +182,12 @@ export function normalizeGenerationJobStatusFromStorage(status: unknown): Genera
   }
 
   return 'failed'
+}
+
+export const GENERATION_JOB_ID_PATTERN = UUID_V4_PATTERN
+
+export const generationJobIdSchema = z.string().regex(UUID_V4_PATTERN, 'Invalid generation job id.')
+
+export function isValidGenerationJobId(id: string) {
+  return GENERATION_JOB_ID_PATTERN.test(id)
 }

@@ -7,8 +7,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { createApp } from '../app.ts'
-import { createDeckStore } from '../deck-store.ts'
-import { createWorkspaceStore, type WorkspaceStore } from '../workspace-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html><html><head><title>Route Deck</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 

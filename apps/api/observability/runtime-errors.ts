@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { isValidDeckId } from '../deck-record.ts'
+import { isValidDeckId } from '@ark/storage/records/deck-record.ts'
 import {
   runtimeErrorInputSchema,
   type RuntimeErrorInput,

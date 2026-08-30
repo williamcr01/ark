@@ -180,7 +180,7 @@ async function startDesktop() {
   ] = await Promise.all([
     import('@ark/api/app.ts'),
     import('@ark/sandbox/sandbox-host.ts'),
-    import('@ark/api/preview-sessions.ts'),
+    import('@ark/storage/stores/preview-sessions.ts'),
     import('@ark/api/thumbnails/render-host.ts'),
     import('@ark/api/mcp-service.ts'),
     import('@ark/api/mcp-interactions.ts'),

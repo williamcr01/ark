@@ -1,9 +1,12 @@
 import { THUMBNAIL_LONG_POLL_MAX_WAIT_MS } from '@ark/contracts'
-import type { DeckStore } from '../deck-record.ts'
-import { buildDeckRuntimeManifestFromHtml, hashRuntimeManifest } from '../deck-manifest.ts'
-import type { WorkspaceStore } from '../workspace-store.ts'
-import type { AssetStore } from '../asset-record.ts'
-import { resolveArkAssetUrls } from '../asset-resolve.ts'
+import type { DeckStore } from '@ark/storage/records/deck-record.ts'
+import {
+  buildDeckRuntimeManifestFromHtml,
+  hashRuntimeManifest,
+} from '@ark/storage/fs/deck-manifest.ts'
+import type { WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
+import type { AssetStore } from '@ark/storage/records/asset-record.ts'
+import { resolveArkAssetUrls } from '@ark/storage/records/asset-resolve.ts'
 import {
   THUMBNAIL_MAX_SLIDES,
   THUMBNAIL_OUTPUT_HEIGHT,

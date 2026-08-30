@@ -11,7 +11,7 @@ import {
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
 } from '@ark/deck-preview/deck-bridge.ts'
 import { buildSandboxResponseCsp } from '@ark/runtime-registry/sandbox-origin.ts'
-import { type PreviewSessionStore } from '../preview-sessions.ts'
+import { type PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 
 /** Header the hidden Electron renderer must send on every render-host request. */
 export const THUMBNAIL_RENDER_SECRET_HEADER = 'x-ark-thumbnail-render-secret'

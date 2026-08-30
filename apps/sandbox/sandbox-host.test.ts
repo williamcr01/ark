@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { buildSandboxRenderUrl } from '@ark/runtime-registry/sandbox-origin.ts'
 import { createApp } from '@ark/api/app.ts'
 import { createSandboxHost } from './sandbox-host.ts'
-import { createPreviewSessionStore } from '@ark/api/preview-sessions.ts'
+import { createPreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 
 const plainCssDeck = `<!DOCTYPE html>
 <html lang="en">

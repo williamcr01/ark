@@ -10,7 +10,10 @@ import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 import { manifestIndicatesScriptStripping } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { detectRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
 
-const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
+const fixtureDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../test/fixtures',
+)
 
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
 const revealDeck = readFileSync(path.join(fixtureDir, 'reveal-deck.html'), 'utf8')

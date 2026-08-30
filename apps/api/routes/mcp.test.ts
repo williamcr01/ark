@@ -7,9 +7,9 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createApp } from '../app.ts'
-import { createDeckStore } from '../deck-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
 import { createMcpServiceState } from '../mcp-service.ts'
-import { createWorkspaceStore, type WorkspaceStore } from '../workspace-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const html = `<!DOCTYPE html><html><head><title>Route Deck</title></head><body><section class="slide"><h1>One</h1></section></body></html>`
 

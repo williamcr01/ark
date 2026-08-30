@@ -5,7 +5,7 @@ import {
   deckThumbnailsQuerySchema,
   parseQueryParams,
 } from '@ark/contracts'
-import { type DeckStore, isValidDeckId } from '../deck-record.ts'
+import { type DeckStore, isValidDeckId } from '@ark/storage/records/deck-record.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 import { thumbnailManifestHash, type ThumbnailService } from '../thumbnails/service.ts'

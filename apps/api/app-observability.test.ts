@@ -7,15 +7,15 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from './app.ts'
-import { createChatStore } from './chat-store.ts'
-import { createDeckStore } from './deck-store.ts'
-import { createGenerationJobStore } from './generation-job-store.ts'
+import { createChatStore } from '@ark/storage/stores/chat-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createGenerationJobStore } from '@ark/storage/stores/generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
 import { type RunDeckAgentResult } from './deck-agent.ts'
 import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 import { REQUEST_ID_HEADER } from '@ark/telemetry/request-id.ts'
 import { createRuntimeErrorStore } from './observability/runtime-errors.ts'
-import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">

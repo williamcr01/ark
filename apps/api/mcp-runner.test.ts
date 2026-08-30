@@ -4,11 +4,11 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createDeckStore } from './deck-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
 import { createMcpRunner, McpRunnerError } from './mcp-runner.ts'
 import { createMcpServiceState } from './mcp-service.ts'
 import { createMcpInteractionStore } from './mcp-interactions.ts'
-import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const html = `<!DOCTYPE html><html><head><title>MCP Deck</title></head><body><section class="slide"><h1>Opening</h1></section></body></html>`
 

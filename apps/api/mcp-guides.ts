@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildAgentGuidesPromptSection } from './agent-guides.ts'
-import { REPO_ROOT } from './repo-root.ts'
+import { REPO_ROOT } from '@ark/storage/fs/repo-root.ts'
 
 export function buildMcpAuthoringGuide() {
   const directory = process.env.ARK_MCP_GUIDES_DIR?.trim() || path.join(REPO_ROOT, 'mcp-guides')

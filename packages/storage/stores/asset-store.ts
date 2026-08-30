@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 
-import type { AssetRecord, AssetStore, CreateAssetInput } from './asset-record.ts'
+import type { AssetRecord, AssetStore, CreateAssetInput } from '../records/asset-record.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
 function toRecord(deckId: string, row: Record<string, unknown>): AssetRecord {
