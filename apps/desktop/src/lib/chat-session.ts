@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@ark/deck-core/chat.ts'
+import type { ChatMessage } from '@ark/chat/chat.ts'
 
 const CHAT_SESSION_STORAGE_PREFIX = 'ark:chat-session:'
 

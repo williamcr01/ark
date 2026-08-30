@@ -1,5 +1,5 @@
 {
-  "name": "@ark/deck-core",
+  "name": "@ark/chat",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,14 +12,11 @@
   "dependencies": {
     "@ark/ai": "workspace:*",
     "@ark/deck": "workspace:*",
-    "@ark/deck-preview": "workspace:*",
-    "@ark/runtime-registry": "workspace:*",
-    "ai": "^6.0.199",
+    "ai": "^6.0.233",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.12.3",
-    "jsdom": "^29.1.1",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.9"
   }

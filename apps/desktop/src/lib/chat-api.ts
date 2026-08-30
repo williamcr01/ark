@@ -1,5 +1,5 @@
 import type { AppendChatMessageRequest } from '@ark/contracts'
-import { CHAT_HISTORY_PAGE_SIZE } from '@ark/deck-core/chat-thread.ts'
+import { CHAT_HISTORY_PAGE_SIZE } from '@ark/chat/chat-thread.ts'
 import {
   appendChatMessageResponseSchema,
   deckChatResponseSchema,

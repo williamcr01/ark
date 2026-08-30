@@ -29,14 +29,15 @@ const PROJECTS = [
   'apps/api/tsconfig.json',
   'apps/mcp/tsconfig.json',
   'apps/sandbox/tsconfig.json',
+  'packages/ai/tsconfig.json',
+  'packages/chat/tsconfig.json',
   'packages/contracts/tsconfig.json',
   'packages/deck/tsconfig.json',
   'packages/deck-preview/tsconfig.json',
   'packages/editor-runtime/tsconfig.json',
-  'packages/ai/tsconfig.json',
-  'packages/telemetry/tsconfig.json',
-  'packages/deck-core/tsconfig.json',
+  'packages/mcp/tsconfig.json',
   'packages/runtime-registry/tsconfig.json',
+  'packages/telemetry/tsconfig.json',
 ]
 
 /** Keep below CPU count: each `tsc` is memory-heavy and oversubscription regresses. */

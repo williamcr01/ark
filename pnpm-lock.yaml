@@ -94,21 +94,24 @@ importers:
       '@ark/ai':
         specifier: workspace:*
         version: link:../../packages/ai
+      '@ark/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@ark/deck':
         specifier: workspace:*
         version: link:../../packages/deck
-      '@ark/deck-core':
-        specifier: workspace:*
-        version: link:../../packages/deck-core
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
       '@ark/editor-runtime':
         specifier: workspace:*
         version: link:../../packages/editor-runtime
+      '@ark/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../../packages/runtime-registry
@@ -158,15 +161,15 @@ importers:
       '@ark/api':
         specifier: workspace:*
         version: link:../api
+      '@ark/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@ark/deck':
         specifier: workspace:*
         version: link:../../packages/deck
-      '@ark/deck-core':
-        specifier: workspace:*
-        version: link:../../packages/deck-core
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
@@ -174,6 +177,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/editor-runtime
       '@ark/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@ark/mcp-server':
         specifier: workspace:*
         version: link:../mcp
       '@ark/runtime-registry':
@@ -318,15 +324,18 @@ importers:
 
   apps/mcp:
     dependencies:
+      '@ark/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@ark/deck':
         specifier: workspace:*
         version: link:../../packages/deck
-      '@ark/deck-core':
+      '@ark/mcp':
         specifier: workspace:*
-        version: link:../../packages/deck-core
+        version: link:../../packages/mcp
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
@@ -349,15 +358,18 @@ importers:
       '@ark/api':
         specifier: workspace:*
         version: link:../api
+      '@ark/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@ark/deck':
         specifier: workspace:*
         version: link:../../packages/deck
-      '@ark/deck-core':
-        specifier: workspace:*
-        version: link:../../packages/deck-core
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
+      '@ark/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../../packages/runtime-registry
@@ -415,7 +427,7 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
-  packages/contracts:
+  packages/chat:
     dependencies:
       '@ark/ai':
         specifier: workspace:*
@@ -423,12 +435,40 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
-      '@ark/deck-core':
+      ai:
+        specifier: ^6.0.233
+        version: 6.0.233(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/contracts:
+    dependencies:
+      '@ark/ai':
         specifier: workspace:*
-        version: link:../deck-core
+        version: link:../ai
+      '@ark/chat':
+        specifier: workspace:*
+        version: link:../chat
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../deck-preview
+      '@ark/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -467,40 +507,6 @@ importers:
       '@types/node':
         specifier: ^24.12.3
         version: 24.13.1
-      typescript:
-        specifier: npm:@typescript/typescript6@6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: ^4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
-
-  packages/deck-core:
-    dependencies:
-      '@ark/ai':
-        specifier: workspace:*
-        version: link:../ai
-      '@ark/deck':
-        specifier: workspace:*
-        version: link:../deck
-      '@ark/deck-preview':
-        specifier: workspace:*
-        version: link:../deck-preview
-      '@ark/runtime-registry':
-        specifier: workspace:*
-        version: link:../runtime-registry
-      ai:
-        specifier: ^6.0.199
-        version: 6.0.199(zod@4.4.3)
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/node':
-        specifier: ^24.12.3
-        version: 24.13.1
-      jsdom:
-        specifier: ^29.1.1
-        version: 29.1.1(@noble/hashes@2.2.0)
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -548,6 +554,28 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@2.2.0)
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/mcp:
+    dependencies:
+      '@ark/chat':
+        specifier: workspace:*
+        version: link:../chat
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'

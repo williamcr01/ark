@@ -1,8 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { agentQuestionRequestSchema } from '@ark/deck-core/agent-questions.ts'
-import { themeProposalRequestSchema } from '@ark/deck-core/agent-themes.ts'
+import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
+import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
 import { applyDeckEdits } from '@ark/deck/patch/text-edit.ts'
 import {
   deckEditInputSchema,
@@ -10,7 +10,7 @@ import {
   deckReadInputSchema,
   deckSlidePatchInputSchema,
   deckWriteInputSchema,
-} from '@ark/deck-core/mcp-tool-catalog.ts'
+} from '@ark/mcp/tool-catalog.ts'
 import {
   listDeckSlides,
   parseDeckStructure,

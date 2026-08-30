@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ChatMessage } from '@ark/deck-core/chat.ts'
+import type { ChatMessage } from '@ark/chat/chat.ts'
 import { findThemeChoiceAfter, isThemeChoiceMessage } from '@/lib/agent-themes'
 
 const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`

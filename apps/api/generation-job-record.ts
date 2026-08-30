@@ -7,7 +7,7 @@ import type {
   GenerationJobRequest,
   GenerationJobResult,
   GenerationJobStatus,
-} from '@ark/deck-core/generation-job.ts'
+} from '@ark/chat/generation-job.ts'
 
 type GenerationJobPatch = Partial<{
   status: GenerationJobStatus

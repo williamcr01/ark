@@ -2,8 +2,8 @@ import { lazy, Suspense } from 'react'
 
 import type { ResolvedAppearance } from '@/hooks/useAppearance'
 import { getAgentPresenceState } from '@/lib/agent-presence'
-import type { AgentStep } from '@ark/deck-core/chat.ts'
-import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
+import type { AgentStep } from '@ark/chat/chat.ts'
+import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 
 const ThinkingOrb = lazy(() =>
   import('thinking-orbs').then((module) => ({ default: module.ThinkingOrb })),

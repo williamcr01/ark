@@ -1,11 +1,7 @@
 import type { ExternalDeckUpdate, McpToolResponse } from '@ark/contracts'
-import type { AgentQuestionRequest } from '@ark/deck-core/agent-questions.ts'
-import type { ThemeProposalRequest } from '@ark/deck-core/agent-themes.ts'
-import {
-  MCP_TOOL_CATALOG,
-  isMcpToolName,
-  type McpToolName,
-} from '@ark/deck-core/mcp-tool-catalog.ts'
+import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
+import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
+import { MCP_TOOL_CATALOG, isMcpToolName, type McpToolName } from '@ark/mcp/tool-catalog.ts'
 import { createActiveDeckTools } from './deck-tool-catalog.ts'
 import type { DeckStore } from './deck-record.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'

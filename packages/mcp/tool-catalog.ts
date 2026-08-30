@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-import { agentQuestionRequestSchema } from './agent-questions.ts'
-import { themeProposalRequestSchema } from './agent-themes.ts'
+import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
+import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
 import {
   deckElementPatchOperationSchema,
   deckSlidePatchOperationSchema,

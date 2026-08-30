@@ -1,4 +1,4 @@
-import type { EditorSelectionContext, SlideContext } from '@ark/deck-core/chat.ts'
+import type { EditorSelectionContext, SlideContext } from '@ark/chat/chat.ts'
 import type { ContextChipElement, ContextChipSlide } from '@/components/ChatContextChips'
 
 /** Map persisted/job context into chip props for history rendering. */

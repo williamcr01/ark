@@ -4,7 +4,7 @@ import {
   type GenerationJobApi,
   type StartGenerationJobRequest,
 } from '@ark/contracts'
-import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
+import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 
 export type { GenerationJobApi, StartGenerationJobRequest }
 

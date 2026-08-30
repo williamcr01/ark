@@ -4,7 +4,7 @@ import {
   TERMINAL_GENERATION_JOB_STATUSES,
   type CreateGenerationJobInput,
   type GenerationJob,
-} from '@ark/deck-core/generation-job.ts'
+} from '@ark/chat/generation-job.ts'
 import {
   type GenerationJobStore,
   cloneGenerationJobRequest,

@@ -6,15 +6,15 @@ import {
   collectAssetIdsFromMessages,
   isReadableTextMediaType,
   parseGenerateMessages,
-} from '@ark/deck-core/chat.ts'
-import type { ApiChatMessage, ChatAttachment } from '@ark/deck-core/chat.ts'
+} from '@ark/chat/chat.ts'
+import type { ApiChatMessage, ChatAttachment } from '@ark/chat/chat.ts'
 import type {
   CreateGenerationJobInput,
   GenerationJob,
   GenerationJobStatus,
-} from '@ark/deck-core/generation-job.ts'
+} from '@ark/chat/generation-job.ts'
 import { type GenerationJobResponse, type StartGenerationJobRequest } from '@ark/contracts'
-import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/deck-core/generation-job.ts'
+import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/chat/generation-job.ts'
 import { buildArkAssetUrl } from '@ark/deck/document/assets.ts'
 import { deckOriginIsUnauthored } from '@ark/deck/document/origin.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
@@ -145,7 +145,7 @@ export function createGenerationJobRunner({
     options: {
       status: GenerationJobStatus
       steps: GenerationJob['progress']['steps']
-      transcriptParts?: import('@ark/deck-core/chat.ts').ChatMessagePart[]
+      transcriptParts?: import('@ark/chat/chat.ts').ChatMessagePart[]
       assistantText?: string | null
       deckId: string
       error?: GenerationJob['error']

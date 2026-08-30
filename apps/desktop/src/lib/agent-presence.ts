@@ -1,5 +1,5 @@
-import type { AgentStep } from '@ark/deck-core/chat.ts'
-import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
+import type { AgentStep } from '@ark/chat/chat.ts'
+import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 
 export type AgentPresenceState =
   'listening' | 'solving' | 'searching' | 'shaping' | 'composing' | 'working'
