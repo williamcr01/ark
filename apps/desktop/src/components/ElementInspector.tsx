@@ -14,7 +14,7 @@ import {
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { buttonVariants } from '@/components/ui/button-variants'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type {
   EditorNormalizedRect,
   EditorSelectionInfo,
@@ -42,7 +42,7 @@ import {
   type InspectorElementKind,
   type InspectorGeometryField,
   type InspectorTextAlign,
-} from '@/lib/element-inspector'
+} from '@/lib/editor/element-inspector'
 
 const COLOR_COMMIT_DEBOUNCE_MS = 400
 

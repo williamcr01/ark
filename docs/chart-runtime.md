@@ -168,7 +168,7 @@ Until zip export lands, offline sharing needs either Ark to serve `/api/runtimes
 
 ## Agent rules
 
-Model-facing Chart.js instructions live in [`agent-guides/20-chart-js.md`](../agent-guides/20-chart-js.md) (always appended to the deck agent system prompt). Live registry URLs still come from `buildRuntimeRegistryPromptSection()` in `apps/api/deck-agent.ts`.
+Model-facing Chart.js instructions live in [`agent-guides/20-chart-js.md`](../agent-guides/20-chart-js.md) (always appended to the deck agent system prompt). Live registry URLs still come from `buildRuntimeRegistryPromptSection()` in `packages/agent/agent.ts`.
 
 1. Prefer inline SVG for simple static charts.
 2. Use Chart.js only when interactivity / multi-series warrants it.

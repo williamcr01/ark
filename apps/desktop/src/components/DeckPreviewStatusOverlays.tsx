@@ -2,8 +2,8 @@ import { Loader2Icon, ShieldAlertIcon, ShieldCheckIcon, XIcon } from 'lucide-rea
 
 import { Button } from '@/components/ui/button'
 import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
-import { previewCompromiseCopy } from '@/lib/preview-compromise-copy'
-import { cn } from '@/lib/utils'
+import { previewCompromiseCopy } from '@/lib/ui/preview-compromise-copy'
+import { cn } from '@/lib/ui/utils'
 
 type DeckPreviewStatusOverlaysProps = {
   compromised: boolean

@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Input } from '@/components/ui/input'
 import type { AppearancePreference } from '@/hooks/useAppearance'
-import { updateDesktopSettings } from '@/lib/desktop-settings'
+import { updateDesktopSettings } from '@/lib/ui/desktop-settings'
 
 export function GeneralSettingsSection({
   appearancePreference,

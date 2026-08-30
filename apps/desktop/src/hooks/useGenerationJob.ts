@@ -16,7 +16,7 @@ import {
   isActiveGenerationJobStatus,
   retryGenerationJob,
   startGenerationJob,
-} from '@/lib/generation-job-api'
+} from '@/lib/api/generation-job-api'
 
 const GENERATION_JOB_STORAGE_PREFIX = 'ark:generation-job:'
 

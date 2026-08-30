@@ -2,7 +2,7 @@
 
 Markdown files in this directory are **always** appended to the deck agent system prompt on every generation job.
 
-They are for longer reference material (runtime authoring patterns, examples, best practices) that would bloat the core system prompt in `apps/api/deck-agent.ts`.
+They are for longer reference material (runtime authoring patterns, examples, best practices) that would bloat the core system prompt in `packages/agent/agent.ts`.
 
 ## Convention
 

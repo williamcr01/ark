@@ -1,4 +1,4 @@
-import { resolveDownloadHtml, type DeckDownloadVariant } from '@/lib/deck-export'
+import { resolveDownloadHtml, type DeckDownloadVariant } from '@/lib/deck/deck-export'
 import {
   formatDeckValidationSummary,
   type DeckValidationReport,

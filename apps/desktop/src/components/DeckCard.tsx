@@ -11,8 +11,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeckThumbnails } from '@/hooks/useDeckThumbnails'
-import { cn } from '@/lib/utils'
-import type { DeckSummary } from '@/lib/deck-api'
+import { cn } from '@/lib/ui/utils'
+import type { DeckSummary } from '@/lib/api/deck-api'
 
 function formatUpdatedAt(updatedAt: string) {
   const date = new Date(updatedAt)

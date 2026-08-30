@@ -3,9 +3,9 @@ import {
   detectRuntimeMode,
   runtimeModeAllowsDeckScripts,
   usesRevealRuntimeAdapter,
-} from '@/lib/deck-runtime'
-import { manifestIndicatesScriptStripping } from '@/lib/deck-runtime-manifest'
-import { stripDeckScriptsForPreview } from '@/lib/deck-slides'
+} from '@/lib/deck/deck-runtime'
+import { manifestIndicatesScriptStripping } from '@/lib/deck/deck-runtime-manifest'
+import { stripDeckScriptsForPreview } from '@/lib/deck/deck-slides'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 

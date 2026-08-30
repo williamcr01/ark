@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { AgentPresence } from './AgentPresence'
-import { getAgentPresenceState } from '@/lib/agent-presence'
+import { getAgentPresenceState } from '@/lib/chat/agent-presence'
 
 describe('AgentPresence', () => {
   it.each([

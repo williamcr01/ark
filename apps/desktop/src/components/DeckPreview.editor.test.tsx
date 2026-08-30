@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
-import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
+import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'
 import {
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
@@ -132,7 +132,7 @@ vi.mock('@/hooks/useDeckThumbnails', () => ({
   useDeckThumbnails: useDeckThumbnailsMock,
 }))
 
-vi.mock('@/lib/runtime-error-api', () => ({
+vi.mock('@/lib/api/runtime-error-api', () => ({
   reportRuntimeError: reportRuntimeErrorMock,
 }))
 

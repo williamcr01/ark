@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { reconcileChatMessages } from '@/lib/chat-reconcile'
+import { reconcileChatMessages } from '@/lib/chat/chat-reconcile'
 
 describe('reconcileChatMessages', () => {
   it('keeps only explicitly failed local-only messages', () => {

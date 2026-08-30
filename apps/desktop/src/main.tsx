@@ -1,15 +1,11 @@
-import { lazy, StrictMode, Suspense } from 'react'
+import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter } from 'react-router'
 
-import { initializeDesktopSettings } from '@/lib/desktop-settings'
+import { initializeDesktopSettings } from '@/lib/ui/desktop-settings'
 
+import { AppRoutes } from './routes.tsx'
 import './index.css'
-
-export const App = lazy(() => import('./App.tsx'))
-export const DecksDashboard = lazy(() =>
-  import('./pages/DecksDashboard.tsx').then((module) => ({ default: module.DecksDashboard })),
-)
 
 void initializeDesktopSettings()
   .catch(() => undefined)
@@ -27,13 +23,7 @@ void initializeDesktopSettings()
               </div>
             }
           >
-            <Routes>
-              <Route path="/" element={<Navigate replace to="/decks" />} />
-              <Route path="/decks" element={<DecksDashboard />} />
-              <Route path="/decks/:deckId" element={<App />} />
-              <Route path="/deck/:deckId" element={<App />} />
-              <Route path="*" element={<Navigate replace to="/decks" />} />
-            </Routes>
+            <AppRoutes />
           </Suspense>
         </BrowserRouter>
       </StrictMode>,

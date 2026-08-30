@@ -4,9 +4,12 @@ import { toast } from 'sonner'
 import {
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
-} from '@/lib/deck-editor-patches'
-import { buildImageInsertOperation, prepareImageInsertFromFile } from '@/lib/deck-image-insert'
-import { isTextEditableSelection } from '@/lib/deck-text-edit'
+} from '@/lib/editor/deck-editor-patches'
+import {
+  buildImageInsertOperation,
+  prepareImageInsertFromFile,
+} from '@/lib/editor/deck-image-insert'
+import { isTextEditableSelection } from '@/lib/editor/deck-text-edit'
 import type { DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
 import type { DeckEditorBridgeState } from '@/hooks/useDeckEditorBridge'
 import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { writeChatSession } from '@/lib/chat-session'
+import { writeChatSession } from '@/lib/chat/chat-session'
 import { getTestLocalStorage } from '@/test/storage'
 
 import { DecksDashboard } from './DecksDashboard'
@@ -23,7 +23,7 @@ const useDeckThumbnailsMock = vi.hoisted(() =>
   })),
 )
 
-vi.mock('@/lib/deck-api', () => deckApiMocks)
+vi.mock('@/lib/api/deck-api', () => deckApiMocks)
 
 vi.mock('@/hooks/useDeckThumbnails', () => ({
   useDeckThumbnails: useDeckThumbnailsMock,

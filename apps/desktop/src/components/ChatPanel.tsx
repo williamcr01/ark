@@ -35,7 +35,7 @@ import {
 } from '@/components/ai-elements/conversation'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import { ContextChipList } from '@/components/ChatContextChips'
-import { contextToChipProps } from '@/lib/chat-context-chips'
+import { contextToChipProps } from '@/lib/chat/chat-context-chips'
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -85,13 +85,13 @@ import {
   findAskUserAnswerAfter,
   findPendingAgentQuestions,
   isAskUserAnswerMessage,
-} from '@/lib/agent-questions'
+} from '@/lib/chat/agent-questions'
 import {
   findPendingThemeProposal,
   findThemeChoiceAfter,
   isThemeChoiceMessage,
-} from '@/lib/agent-themes'
-import { cn } from '@/lib/utils'
+} from '@/lib/chat/agent-themes'
+import { cn } from '@/lib/ui/utils'
 
 const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
   ComponentType<BorderBeamProps>

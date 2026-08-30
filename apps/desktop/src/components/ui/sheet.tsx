@@ -2,7 +2,7 @@ import { Dialog as SheetPrimitive } from 'radix-ui'
 import type * as React from 'react'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import { XIcon } from 'lucide-react'
 
 const Sheet = SheetPrimitive.Root

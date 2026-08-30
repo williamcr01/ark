@@ -15,7 +15,7 @@ import {
   type DeckSummary,
   type PatchDeckResponse,
   type StoredDeck,
-} from '@/lib/deck-api'
+} from '@/lib/api/deck-api'
 import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import { extractDeckTitle } from '@ark/contracts'
 

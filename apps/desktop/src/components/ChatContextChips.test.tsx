@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { EditorSelectionInfo } from '@ark/editor-runtime'
 
 import { ChatContextChips, ContextChipList } from './ChatContextChips'
-import { contextToChipProps } from '@/lib/chat-context-chips'
+import { contextToChipProps } from '@/lib/chat/chat-context-chips'
 
 const selection: EditorSelectionInfo = {
   elementId: 'ark-el-1',

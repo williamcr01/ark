@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import type { ElementSize } from '@/lib/deck-preview'
+import type { ElementSize } from '@/lib/deck/deck-preview'
 
 export function useElementSize<T extends HTMLElement>() {
   const elementRef = useRef<T>(null)

@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import { REASONING_EFFORT_LABELS, type ReasoningEffort } from '@ark/contracts'
 
 import type { AvailableModel } from '@/hooks/useAvailableModels'
-import { getDesktopSettings, updateDesktopSettings } from '@/lib/desktop-settings'
+import { getDesktopSettings, updateDesktopSettings } from '@/lib/ui/desktop-settings'
 
 export type { ReasoningEffort }
 

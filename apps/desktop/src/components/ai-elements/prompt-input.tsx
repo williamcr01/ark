@@ -13,7 +13,7 @@ import {
 } from '@/components/ai-elements/attachments'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type { ChatStatus, FileUIPart } from 'ai'
 import { ArrowUpIcon, ImageIcon, Monitor, PlusIcon, SquareIcon, XIcon } from 'lucide-react'
 import { nanoid } from 'nanoid'

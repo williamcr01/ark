@@ -5,10 +5,10 @@ import { toast } from 'sonner'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { type ElementSize } from '@/lib/deck-preview'
-import { previewCompromiseCopy } from '@/lib/preview-compromise-copy'
+import { type ElementSize } from '@/lib/deck/deck-preview'
+import { previewCompromiseCopy } from '@/lib/ui/preview-compromise-copy'
 import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 const CONTROLS_IDLE_MS = 2500
 const FOCUSABLE_SELECTOR =

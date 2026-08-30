@@ -15,8 +15,8 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('@/lib/generation-job-api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/generation-job-api')>()
+vi.mock('@/lib/api/generation-job-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/generation-job-api')>()
   return {
     ...actual,
     startGenerationJob: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('@/lib/generation-job-api', async (importOriginal) => {
 })
 
 const { startGenerationJob, fetchGenerationJob, cancelGenerationJob, retryGenerationJob } =
-  await import('@/lib/generation-job-api')
+  await import('@/lib/api/generation-job-api')
 
 const startGenerationJobMock = vi.mocked(startGenerationJob)
 const fetchGenerationJobMock = vi.mocked(fetchGenerationJob)

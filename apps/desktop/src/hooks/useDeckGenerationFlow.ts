@@ -11,8 +11,8 @@ import type {
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
 import type { ReasoningEffort } from '@ark/contracts'
-import { describeDeckValidation } from '@/lib/deck-io'
-import { newId } from '@/lib/id'
+import { describeDeckValidation } from '@/lib/deck/deck-io'
+import { newId } from '@/lib/ui/id'
 
 import { useGenerationJob, type GenerationJobOutcome } from './useGenerationJob'
 
