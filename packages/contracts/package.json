@@ -14,8 +14,6 @@
     "@ark/ai": "workspace:*",
     "@ark/chat": "workspace:*",
     "@ark/deck": "workspace:*",
-    "@ark/deck-preview": "workspace:*",
-    "@ark/mcp": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "@ark/storage": "workspace:*",
     "zod": "^4.4.3"

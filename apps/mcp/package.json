@@ -10,10 +10,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@ark/agent": "workspace:*",
-    "@ark/chat": "workspace:*",
     "@ark/contracts": "workspace:*",
-    "@ark/deck": "workspace:*",
     "@ark/mcp": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "^4.4.3"

@@ -33,7 +33,7 @@ export type GenerationJobStore = {
   listJobsForDeck: (deckId: string) => Promise<GenerationJob[]>
 }
 
-import { isValidGenerationJobId } from '@ark/contracts'
+import { isValidGenerationJobId } from '@ark/chat/generation-job.ts'
 
 export { isValidGenerationJobId }
 

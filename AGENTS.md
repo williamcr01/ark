@@ -52,6 +52,18 @@ ark/
 │   ├── telemetry/          #  0  logging, redaction, request ids, timing
 │   ├── deck/               #  1  the deck document model: read, patch, validate
 │   ├── ai/                 #  1  providers, models, credentials, provider options
+│   ├── editor-runtime/     #  2  manual editor protocol + injected script
+│   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
+│   ├── deck-preview/       #  3  deck → preview document, parent ↔ frame protocol
+│   ├── storage/            #  4  records, stores, the `.ark` workspace file
+│   ├── contracts/          #  5  HTTP API Zod schemas + OpenAPI registry
+│   ├── agent/              #  6  the generation loop, its tools, the job runner
+│   └── mcp/                #  7  Ark's deck tools exposed to external agents
+├── packages/               #  L  package                one job
+│   ├── runtime-registry/   #  0  approved runtime assets, pinned versions
+│   ├── telemetry/          #  0  logging, redaction, request ids, timing
+│   ├── deck/               #  1  the deck document model: read, patch, validate
+│   ├── ai/                 #  1  providers, models, credentials, provider options
 │   ├── deck-preview/       #  2  deck → preview document, parent ↔ frame protocol
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
@@ -70,8 +82,10 @@ ark/
 
 ## Import boundaries
 
-Enforced by `no-restricted-imports` (`eslint.config.js`, `.oxlintrc.json`) and by pnpm, which
-refuses a workspace dependency cycle. `pnpm lint` fails on a violation.
+Enforced by `no-restricted-imports` (`eslint.config.js`, `.oxlintrc.json`) and by
+`scripts/check-package-boundaries.mjs`, which checks the whole graph: every import must go to a
+strictly lower layer, every workspace dependency must be both declared and used, and the root
+`tsconfig.json` must reference every project. `pnpm lint` runs both.
 
 - **A package may only import from a lower layer.** Two packages that need each other means one of
   them holds something that belongs further down. When a lower layer needs a shared type, define it
@@ -79,7 +93,7 @@ refuses a workspace dependency cycle. `pnpm lint` fails on a violation.
   re-exports the provider and reasoning enums from `@ark/ai`, deck ids and titles from `@ark/deck`,
   and job ids from `@ark/chat`.
 - **Browser-safe packages** (no `node:*`, no Express, no React): `runtime-registry`, `telemetry`,
-  `deck`, `ai`, `deck-preview`, `editor-runtime`, `chat`, `contracts`. Two files opt out by name:
+  `deck`, `ai`, `editor-runtime`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
   `runtime-stylesheet-disk.ts` and `telemetry/request-id.ts`.
 - **Server-only packages**: `storage`, `agent`, `mcp`. `apps/desktop/src` must not import them.
 - `apps/desktop/src` (the renderer) may import browser-safe packages only — never `apps/api`.

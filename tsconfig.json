@@ -1,11 +1,50 @@
 {
   "files": [],
   "references": [
-    { "path": "./apps/desktop" },
-    { "path": "./apps/api" },
-    { "path": "./apps/sandbox" },
-    { "path": "./packages/contracts" },
-    { "path": "./packages/deck-core" },
-    { "path": "./packages/runtime-registry" }
+    {
+      "path": "./apps/desktop"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/sandbox"
+    },
+    {
+      "path": "./apps/mcp"
+    },
+    {
+      "path": "./packages/agent"
+    },
+    {
+      "path": "./packages/ai"
+    },
+    {
+      "path": "./packages/chat"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/deck"
+    },
+    {
+      "path": "./packages/deck-preview"
+    },
+    {
+      "path": "./packages/editor-runtime"
+    },
+    {
+      "path": "./packages/mcp"
+    },
+    {
+      "path": "./packages/runtime-registry"
+    },
+    {
+      "path": "./packages/storage"
+    },
+    {
+      "path": "./packages/telemetry"
+    }
   ]
 }

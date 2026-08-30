@@ -109,9 +109,6 @@ importers:
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
-      '@ark/editor-runtime':
-        specifier: workspace:*
-        version: link:../../packages/editor-runtime
       '@ark/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -161,9 +158,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@ark/agent':
-        specifier: workspace:*
-        version: link:../../packages/agent
       '@ark/ai':
         specifier: workspace:*
         version: link:../../packages/ai
@@ -336,18 +330,9 @@ importers:
 
   apps/mcp:
     dependencies:
-      '@ark/agent':
-        specifier: workspace:*
-        version: link:../../packages/agent
-      '@ark/chat':
-        specifier: workspace:*
-        version: link:../../packages/chat
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@ark/deck':
-        specifier: workspace:*
-        version: link:../../packages/deck
       '@ark/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -373,18 +358,9 @@ importers:
       '@ark/api':
         specifier: workspace:*
         version: link:../api
-      '@ark/chat':
-        specifier: workspace:*
-        version: link:../../packages/chat
-      '@ark/deck':
-        specifier: workspace:*
-        version: link:../../packages/deck
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
-      '@ark/mcp':
-        specifier: workspace:*
-        version: link:../../packages/mcp
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../../packages/runtime-registry
@@ -521,12 +497,6 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
-      '@ark/deck-preview':
-        specifier: workspace:*
-        version: link:../deck-preview
-      '@ark/mcp':
-        specifier: workspace:*
-        version: link:../mcp
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -633,9 +603,6 @@ importers:
       '@ark/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@ark/deck':
-        specifier: workspace:*
-        version: link:../deck
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry

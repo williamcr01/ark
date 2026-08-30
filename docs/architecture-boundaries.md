@@ -14,28 +14,35 @@ only. Boundary violations fail `pnpm lint`.
 | 0     | `@ark/telemetry`        | Structured logging, redaction, request ids, timing             |
 | 1     | `@ark/deck`             | The deck document model: read, patch, validate                 |
 | 1     | `@ark/ai`               | Providers, models, credentials, provider options               |
-| 2     | `@ark/deck-preview`     | Deck → preview document, and the parent ↔ frame protocol       |
 | 2     | `@ark/editor-runtime`   | The manual editor protocol and its injected script             |
 | 2     | `@ark/chat`             | The conversation model: messages, steps, jobs, agent protocols |
-| 3     | `@ark/storage`          | Persistence: records, stores, the `.ark` workspace file        |
-| 4     | `@ark/contracts`        | The local HTTP API's Zod schemas and OpenAPI registry          |
-| 5     | `@ark/agent`            | Running a generation: the loop, its tools, the job runner      |
-| 5     | `@ark/mcp`              | Exposing Ark's deck tools to external agents over MCP          |
+| 3     | `@ark/deck-preview`     | Deck → preview document, and the parent ↔ frame protocol       |
+| 4     | `@ark/storage`          | Persistence: records, stores, the `.ark` workspace file        |
+| 5     | `@ark/contracts`        | The local HTTP API's Zod schemas and OpenAPI registry          |
+| 6     | `@ark/agent`            | Running a generation: the loop, its tools, the job runner      |
+| 7     | `@ark/mcp`              | Exposing Ark's deck tools to external agents over MCP          |
 
 ```text
 runtime-registry, telemetry
   └► deck, ai
-       └► deck-preview, editor-runtime, chat
-            └► storage
-                 └► contracts
-                      └► agent, mcp
-                           └► apps/*
+       └► editor-runtime, chat
+            └► deck-preview
+                 └► storage
+                      └► contracts
+                           └► agent
+                                └► mcp
+                                     └► apps/*
 ```
 
 `@ark/agent` and `@ark/mcp` sit **above** `@ark/contracts`, not below it. A job runner is handed an
 HTTP request shape and hands back an HTTP response shape; putting it under contracts would mean
 inventing a parallel set of input types for no gain. Nothing in contracts imports either package,
 so the order stays acyclic.
+
+`pnpm check:boundaries` (run by `pnpm lint`) enforces this graph: every import must go to a
+strictly lower layer, every workspace dependency must be both declared and used, and the root
+`tsconfig.json` must reference every project. A declared dependency nothing imports is rejected
+too — a phantom edge can make the graph cyclic without any source file being wrong.
 
 ## The apps
 
@@ -59,7 +66,7 @@ model all live in packages.
 Packages are one or the other, and it is enforced:
 
 - **Browser-safe** — no `node:*`, no Express, no React. `runtime-registry`, `telemetry`, `deck`,
-  `ai`, `deck-preview`, `editor-runtime`, `chat`, `contracts`. The renderer bundles these.
+  `ai`, `editor-runtime`, `chat`, `deck-preview`, `contracts`. The renderer bundles these.
   Two files opt out by name: `runtime-registry/runtime-stylesheet-disk.ts` and
   `telemetry/request-id.ts`, which needs `node:crypto`.
 - **Server-only** — `node:*` allowed, still no Express or React. `storage`, `agent`, `mcp`.
@@ -82,8 +89,9 @@ enums from `@ark/ai`, deck ids and titles from `@ark/deck`, and job ids from `@a
 5. **A package may only import from a lower layer.** Two packages that need each other means one of
    them holds something that belongs further down.
 
-Enforced by `no-restricted-imports` in `eslint.config.js` and `.oxlintrc.json`, and by pnpm, which
-refuses a workspace dependency cycle.
+Rules 1-4 are enforced by `no-restricted-imports` in `eslint.config.js` and `.oxlintrc.json`.
+Rule 5 is enforced by `scripts/check-package-boundaries.mjs`, which ESLint cannot express: it needs
+the whole graph, not one file's imports.
 
 ## Runtime boundary
 

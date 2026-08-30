@@ -1,10 +1,13 @@
 import type { EmbeddedAsset } from './embedded-assets.ts'
 
-export type { DeckSummary, StoredDeck, DeckOrigin } from '@ark/contracts'
+export type { DeckSummary, StoredDeck } from './stored-deck.ts'
+export type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
-export { isValidDeckId, normalizeDeckTitle, extractDeckTitle } from '@ark/contracts'
+export { isValidDeckId } from '@ark/deck/document/id.ts'
+export { extractDeckTitle, normalizeDeckTitle } from '@ark/deck/document/title.ts'
 
-import type { DeckOrigin, DeckSummary, StoredDeck } from '@ark/contracts'
+import type { DeckOrigin } from '@ark/deck/document/origin.ts'
+import type { DeckSummary, StoredDeck } from './stored-deck.ts'
 
 export type DeckSaveOptions = {
   embeddedAssets?: EmbeddedAsset[]
