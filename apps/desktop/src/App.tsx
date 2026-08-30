@@ -37,7 +37,7 @@ import type {
   DeckElementPatchOperation,
   DeckPatchOperation,
 } from '@ark/deck/patch/patch-request.ts'
-import type { EditorSelectionInfo } from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime'
 import { buildManualEditProvenance } from '@ark/deck/document/edit-provenance.ts'
 import {
   ApiResponseError,

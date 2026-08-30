@@ -16,7 +16,7 @@ import {
   createEditorTextCommitMessage,
   isEditorRuntimeMessage,
   parseEditorMessage,
-} from '@ark/editor-runtime/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 import hostileEditorPostmessageDeck from '@fixtures/hostile-editor-postmessage-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import { getPreviewHtml } from '@/lib/deck-preview'

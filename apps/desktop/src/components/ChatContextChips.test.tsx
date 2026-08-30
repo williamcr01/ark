@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { EditorSelectionInfo } from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime'
 
 import { ChatContextChips, ContextChipList } from './ChatContextChips'
 import { contextToChipProps } from '@/lib/chat-context-chips'

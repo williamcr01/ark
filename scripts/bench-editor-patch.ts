@@ -12,10 +12,10 @@ import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
 
-import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
 
-import { applyDeckPatches } from '../apps/api/deck-patch.ts'
-import { validateDeckHtmlOnServer } from '../apps/api/deck-validate.ts'
+import { applyDeckPatches } from '../packages/deck/patch/slide-ops.ts'
+import { validateDeckHtmlOnServer } from '../packages/deck/validate/timed.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 

@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 
-import type { EditorNormalizedRect, EditorSurface } from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorNormalizedRect, EditorSurface } from '@ark/editor-runtime'
 import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
 import { cn } from '@/lib/utils'
 

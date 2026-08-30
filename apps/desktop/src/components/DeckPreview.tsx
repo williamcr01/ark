@@ -57,7 +57,7 @@ import type { DeckBrowserAnalysis } from '@/lib/deck-analysis'
 import { clientPointToNormalizedSlidePoint } from '@/lib/deck-image-insert'
 import { reportRuntimeError } from '@/lib/runtime-error-api'
 import { cn } from '@/lib/utils'
-import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'
 import type { DeckSlidePatch } from '@ark/deck-preview/slide-patch.ts'
 
 export type { DeckTextEditCommit } from '@/hooks/useDeckEditorPatchCoordinator'
