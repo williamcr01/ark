@@ -14,7 +14,7 @@ import {
   type EditorNormalizedRect,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
-} from '@ark/editor-runtime/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 
 import { DeckPreview, type DeckPreviewHandle } from './DeckPreview'
 

@@ -1,9 +1,6 @@
 /** Selected element inspector helpers (issue #84). */
 
-import type {
-  EditorNormalizedRect,
-  EditorSelectionInfo,
-} from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorNormalizedRect, EditorSelectionInfo } from '@ark/editor-runtime'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import { isInlineTextEditableTag } from '@ark/deck/document/editable.ts'
 import { isTextBoxEditableValue } from '@ark/deck/patch/text-box.ts'

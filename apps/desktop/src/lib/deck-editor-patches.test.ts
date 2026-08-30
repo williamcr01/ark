@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createEditorTransformCommitMessage } from '@ark/editor-runtime/deck-editor-bridge.ts'
+import { createEditorTransformCommitMessage } from '@ark/editor-runtime'
 import {
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,

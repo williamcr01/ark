@@ -6,10 +6,7 @@ import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
 import { cn } from '@/lib/utils'
-import type {
-  EditorNormalizedRect,
-  EditorSelectionInfo,
-} from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorNormalizedRect, EditorSelectionInfo } from '@ark/editor-runtime'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 
 const SETTINGS_BUTTON_SIZE = 28

@@ -1,6 +1,6 @@
 import { BoxSelectIcon, PresentationIcon } from 'lucide-react'
 
-import type { EditorSelectionInfo } from '@ark/editor-runtime/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime'
 import {
   Attachment,
   AttachmentInfo,

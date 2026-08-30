@@ -4,10 +4,7 @@ import {
   buildDeckHandshakeSentinelScript,
   buildRevealNavRuntimeScript,
 } from './deck-bridge.ts'
-import {
-  buildDeckEditorBridgeRuntimeScript,
-  EDITOR_SESSION_HANDOFF_KEY,
-} from '@ark/editor-runtime/deck-editor-bridge.ts'
+import { buildDeckEditorBridgeRuntimeScript, EDITOR_SESSION_HANDOFF_KEY } from '@ark/editor-runtime'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import {
   detectRuntimeModeFromDocument,

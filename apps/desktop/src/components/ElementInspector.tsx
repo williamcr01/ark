@@ -19,7 +19,7 @@ import type {
   EditorNormalizedRect,
   EditorSelectionInfo,
   EditorSelectionTextStyle,
-} from '@ark/editor-runtime/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import {
