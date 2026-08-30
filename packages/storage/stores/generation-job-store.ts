@@ -9,7 +9,7 @@ import {
   type GenerationJobStore,
   cloneGenerationJobRequest,
   createEmptyGenerationJobProgress,
-} from './generation-job-record.ts'
+} from '../records/generation-job-record.ts'
 
 export const MAX_RETAINED_TERMINAL_JOBS = 50
 

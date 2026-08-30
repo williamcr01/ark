@@ -22,7 +22,7 @@ import {
   simpleErrorResponseSchema,
 } from '@ark/contracts'
 import { createApp } from './app.ts'
-import { createDeckStore } from './deck-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">

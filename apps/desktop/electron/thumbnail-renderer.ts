@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { BrowserWindow, session } from 'electron'
-import type { PreviewSessionStore } from '@ark/api/preview-sessions.ts'
+import type { PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 import { parseDeckHtml } from '@ark/deck/document/parser.ts'
 import {
   THUMBNAIL_RENDER_ABORTED_ERROR,

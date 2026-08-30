@@ -3,11 +3,11 @@ import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
 import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
 import { MCP_TOOL_CATALOG, isMcpToolName, type McpToolName } from '@ark/mcp/tool-catalog.ts'
 import { createActiveDeckTools } from './deck-tool-catalog.ts'
-import type { DeckStore } from './deck-record.ts'
+import type { DeckStore } from '@ark/storage/records/deck-record.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { parseDeckStructure } from './deck-html.ts'
 import { buildMcpAuthoringGuide } from './mcp-guides.ts'
-import { WorkspaceDocumentConflictError } from './workspace-store.ts'
+import { WorkspaceDocumentConflictError } from '@ark/storage/stores/workspace-store.ts'
 import type { McpServiceState } from './mcp-service.ts'
 import {
   createMcpInteractionStore,

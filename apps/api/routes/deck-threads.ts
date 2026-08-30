@@ -6,7 +6,7 @@ import {
   parseRequestBody,
   updateChatThreadRequestSchema,
 } from '@ark/contracts'
-import { isValidChatThreadId, type ChatStore } from '../chat-record.ts'
+import { isValidChatThreadId, type ChatStore } from '@ark/storage/records/chat-record.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 
 const sendThreadError = (response: import('express').Response, error: unknown) => {

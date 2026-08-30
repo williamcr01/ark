@@ -6,11 +6,14 @@ import {
   resolveAppOrigin,
   resolveSandboxOrigin,
 } from '@ark/runtime-registry/sandbox-origin.ts'
-import { PreviewSessionCapacityError, type PreviewSessionStore } from '../preview-sessions.ts'
+import {
+  PreviewSessionCapacityError,
+  type PreviewSessionStore,
+} from '@ark/storage/stores/preview-sessions.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
-import type { AssetStore } from '../asset-record.ts'
-import { resolveArkAssetUrls } from '../asset-resolve.ts'
+import type { AssetStore } from '@ark/storage/records/asset-record.ts'
+import { resolveArkAssetUrls } from '@ark/storage/records/asset-resolve.ts'
 
 // Preview sessions carry full deck HTML — align with the global 12mb JSON parser
 // used for deck create/update. The in-memory store still enforces its own caps.

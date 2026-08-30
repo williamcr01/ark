@@ -20,18 +20,21 @@ import { deckOriginIsUnauthored } from '@ark/deck/document/origin.ts'
 import { toGenerationJobApi } from './generation-job-wire.ts'
 import { runDeckAgent, type RunDeckAgentResult } from './deck-agent.ts'
 import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
-import { type DeckStore } from './deck-record.ts'
-import { type ChatStore } from './chat-record.ts'
-import { resolveAssetAttachments } from './asset-resolve.ts'
-import { type AssetRecord, type AssetStore } from './asset-record.ts'
+import { type DeckStore } from '@ark/storage/records/deck-record.ts'
+import { type ChatStore } from '@ark/storage/records/chat-record.ts'
+import { resolveAssetAttachments } from '@ark/storage/records/asset-resolve.ts'
+import { type AssetRecord, type AssetStore } from '@ark/storage/records/asset-record.ts'
 import {
   ensureChatThreadForJob,
   formatTerminalGenerationChatContent,
   persistAssistantGenerationMessage,
   persistInitialDeckChatHistory,
   persistLatestUserMessage,
-} from './chat-persistence.ts'
-import { cloneGenerationJobRequest, type GenerationJobStore } from './generation-job-record.ts'
+} from '@ark/storage/records/chat-persistence.ts'
+import {
+  cloneGenerationJobRequest,
+  type GenerationJobStore,
+} from '@ark/storage/records/generation-job-record.ts'
 import { createLanguageModel } from '@ark/ai/provider-runtime.ts'
 import { buildOpaquePromptCacheKey } from '@ark/ai/prompt-cache-options.ts'
 import { categorizeProviderError } from '@ark/ai/provider-errors.ts'
@@ -42,7 +45,7 @@ import {
   resolveCatalogReasoningEffort,
 } from '@ark/ai/model-catalog.ts'
 import { clearModelCatalogCache } from '@ark/ai/models.ts'
-import { WorkspaceDocumentConflictError } from './workspace-store.ts'
+import { WorkspaceDocumentConflictError } from '@ark/storage/stores/workspace-store.ts'
 
 function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | undefined) {
   if (errorCategory === 'invalid_api_key' || errorCategory === 'missing_api_key') {

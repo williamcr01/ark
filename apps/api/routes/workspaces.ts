@@ -8,7 +8,7 @@ import {
   type ApiErrorPayload,
   type StoredDeck,
 } from '@ark/contracts'
-import type { WorkspaceRow, WorkspaceStore } from '../workspace-store.ts'
+import type { WorkspaceRow, WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 
 const toDeck = (workspace: WorkspaceRow): StoredDeck => ({

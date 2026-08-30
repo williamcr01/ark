@@ -19,6 +19,7 @@ test('typecheck covers every workspace tsconfig used by build', () => {
     'packages/editor-runtime/tsconfig.json',
     'packages/mcp/tsconfig.json',
     'packages/runtime-registry/tsconfig.json',
+    'packages/storage/tsconfig.json',
     'packages/telemetry/tsconfig.json',
   ])
   for (const project of PROJECTS) {

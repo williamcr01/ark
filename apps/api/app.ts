@@ -1,17 +1,20 @@
 import express from 'express'
 
-import { createDeckStore, workspaceStoreFor } from './deck-store.ts'
-import { createChatStore } from './chat-store.ts'
-import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
-import { createAssetStore } from './asset-store.ts'
-import { type AssetStore } from './asset-record.ts'
-import { type ChatStore } from './chat-record.ts'
-import { type DeckStore } from './deck-record.ts'
-import { type GenerationJobStore } from './generation-job-record.ts'
-import { createGenerationJobStore } from './generation-job-store.ts'
+import { createDeckStore, workspaceStoreFor } from '@ark/storage/stores/deck-store.ts'
+import { createChatStore } from '@ark/storage/stores/chat-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
+import { createAssetStore } from '@ark/storage/stores/asset-store.ts'
+import { type AssetStore } from '@ark/storage/records/asset-record.ts'
+import { type ChatStore } from '@ark/storage/records/chat-record.ts'
+import { type DeckStore } from '@ark/storage/records/deck-record.ts'
+import { type GenerationJobStore } from '@ark/storage/records/generation-job-record.ts'
+import { createGenerationJobStore } from '@ark/storage/stores/generation-job-store.ts'
 import { createGenerationJobRunner, type GenerationJobRunner } from './generation-job-runner.ts'
 import { getDefaultModel } from '@ark/ai/models.ts'
-import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
+import {
+  createPreviewSessionStore,
+  type PreviewSessionStore,
+} from '@ark/storage/stores/preview-sessions.ts'
 import {
   createObservabilityMiddleware,
   createRuntimeErrorStore,

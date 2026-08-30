@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { BrowserWindow, session, type Session } from 'electron'
-import type { PreviewSessionStore } from '@ark/api/preview-sessions.ts'
+import type { PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 
 vi.mock('electron', () => ({
   BrowserWindow: vi.fn(),

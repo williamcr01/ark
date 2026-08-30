@@ -1,362 +1,40 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { DatabaseSync, backup } from 'node:sqlite'
 
-import { extractDeckTitle, isValidDeckId, normalizeDeckTitle } from '@ark/contracts'
-import { syncDeckHtmlTitle } from './deck-html.ts'
+import { extractDeckTitle, normalizeDeckTitle } from '@ark/deck/document/title.ts'
+import { isValidDeckId } from '@ark/deck/document/id.ts'
+import { syncDeckHtmlTitle } from '@ark/deck/document/title.ts'
 import {
   DEFAULT_DECK_ORIGIN,
   deckOriginAfterWrite,
-  normalizeDeckOrigin,
   type DeckOrigin,
 } from '@ark/deck/document/origin.ts'
-import { resolveArkDataDir } from './data-dir.ts'
-import type { EmbeddedAsset } from './embedded-assets.ts'
-
-export const ARK_WORKSPACE_FORMAT_VERSION = 1
-export const ARK_APPLICATION_ID = 0x41524b31
-const ASSET_GC_GRACE_MS = 60_000
-
-const defaultWorkspaceDir = () =>
-  process.env.ARK_WORKSPACES_DIR?.trim() || resolveArkDataDir('workspaces')
-const recentWorkspacesPath = () =>
-  process.env.ARK_RECENT_WORKSPACES_PATH?.trim() || resolveArkDataDir('recent-workspaces.json')
-
-type RecentWorkspace = {
-  id: string
-  path: string
-  title: string
-  updatedAt: string
-  lastOpened: string
-  cover?: string
-}
-
-const SCHEMA = `
-  CREATE TABLE workspace (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    format_version INTEGER NOT NULL,
-    document_revision INTEGER NOT NULL DEFAULT 1,
-    origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'
-  );
-  CREATE TABLE document (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    html TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-  CREATE TABLE threads (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    visibility TEXT NOT NULL DEFAULT 'private',
-    created_by TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    archived_at TEXT
-  );
-  CREATE TABLE messages (
-    id TEXT PRIMARY KEY,
-    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-    sequence INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    content_json TEXT NOT NULL,
-    created_by TEXT,
-    model TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT,
-    UNIQUE(thread_id, sequence)
-  );
-  CREATE TABLE blobs (
-    checksum TEXT PRIMARY KEY,
-    media_type TEXT NOT NULL,
-    byte_size INTEGER NOT NULL,
-    bytes BLOB NOT NULL,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE assets (
-    id TEXT PRIMARY KEY,
-    blob_checksum TEXT NOT NULL REFERENCES blobs(checksum),
-    filename TEXT NOT NULL,
-    media_type TEXT NOT NULL,
-    category TEXT NOT NULL,
-    source TEXT NOT NULL,
-    created_by TEXT,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE asset_references (
-    asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-    owner_type TEXT NOT NULL,
-    owner_id TEXT NOT NULL,
-    purpose TEXT NOT NULL,
-    PRIMARY KEY (asset_id, owner_type, owner_id, purpose)
-  );
-  CREATE TABLE thumbnails (
-    slide_hash TEXT NOT NULL,
-    renderer_version TEXT NOT NULL,
-    manifest_hash TEXT NOT NULL,
-    media_type TEXT NOT NULL,
-    width INTEGER NOT NULL,
-    height INTEGER NOT NULL,
-    image BLOB NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (slide_hash, renderer_version, manifest_hash)
-  );
-`
-
-export type WorkspaceRow = {
-  id: string
-  title: string
-  createdAt: string
-  updatedAt: string
-  documentRevision: number
-  origin: DeckOrigin
-  html: string
-  path: string
-}
-
-export class WorkspaceDocumentConflictError extends Error {
-  readonly code = 'document_conflict'
-  readonly currentDocumentRevision: number
-
-  constructor(currentDocumentRevision: number) {
-    super('The deck changed. Re-read it and retry against the latest revision.')
-    this.name = 'WorkspaceDocumentConflictError'
-    this.currentDocumentRevision = currentDocumentRevision
-  }
-}
-
-type WorkspaceMetadata = Omit<WorkspaceRow, 'html'>
-
-/**
- * What can be read from a closed file without migrating it: `inspectWorkspaceFile`
- * opens read-only, so it must not touch columns an older file may still lack.
- */
-type WorkspaceIdentity = Omit<WorkspaceMetadata, 'origin'>
-
-type OpenWorkspace = {
-  id: string
-  path: string
-  database: DatabaseSync
-}
-
-function contentHash(html: string) {
-  return createHash('sha256').update(html).digest('hex')
-}
-
-function configure(database: DatabaseSync) {
-  database.exec(`
-    PRAGMA foreign_keys = ON;
-    PRAGMA journal_mode = DELETE;
-    PRAGMA synchronous = FULL;
-    PRAGMA busy_timeout = 4000;
-  `)
-}
-
-/**
- * Bring an existing `.ark` file up to the current schema. Additive columns with
- * defaults keep the format version stable: older Ark builds select named columns
- * and simply ignore what they do not know about.
- */
-function migrate(database: DatabaseSync) {
-  const columns = database.prepare('PRAGMA table_info(workspace)').all() as Array<{ name: string }>
-
-  if (!columns.some((column) => column.name === 'origin')) {
-    database.exec(
-      `ALTER TABLE workspace ADD COLUMN origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'`,
-    )
-  }
-}
-
-function syncDocumentAssetReferences(database: DatabaseSync, html: string) {
-  const ids = [
-    ...new Set(
-      [...html.matchAll(/ark-asset:([0-9a-f-]{36})/gi)].map((match) => match[1]!.toLowerCase()),
-    ),
-  ]
-  for (const id of ids) {
-    if (!database.prepare('SELECT 1 FROM assets WHERE id = ?').get(id)) {
-      throw new Error(`Unknown Ark asset: ${id}`)
-    }
-  }
-  database.prepare("DELETE FROM asset_references WHERE owner_type = 'document'").run()
-  const insert = database.prepare(
-    `INSERT INTO asset_references
-     (asset_id, owner_type, owner_id, purpose) VALUES (?, 'document', '1', 'embedded')`,
-  )
-  for (const id of ids) insert.run(id)
-}
-
-function garbageCollectUnreferencedAssets(database: DatabaseSync) {
-  const cutoff = new Date(Date.now() - ASSET_GC_GRACE_MS).toISOString()
-  database
-    .prepare(
-      `
-    DELETE FROM assets
-    WHERE NOT EXISTS (
-      SELECT 1 FROM asset_references WHERE asset_references.asset_id = assets.id
-    ) AND created_at <= ?
-  `,
-    )
-    .run(cutoff)
-  database.exec(`
-    DELETE FROM blobs
-    WHERE NOT EXISTS (
-      SELECT 1 FROM assets WHERE assets.blob_checksum = blobs.checksum
-    );
-  `)
-}
-
-function insertEmbeddedAssets(database: DatabaseSync, assets: readonly EmbeddedAsset[]) {
-  const now = new Date().toISOString()
-  for (const asset of assets) {
-    const checksum = createHash('sha256').update(asset.bytes).digest('hex')
-    database
-      .prepare(
-        `INSERT OR IGNORE INTO blobs
-         (checksum, media_type, byte_size, bytes, created_at) VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(checksum, asset.mediaType, asset.bytes.byteLength, asset.bytes, now)
-    database
-      .prepare(
-        `INSERT INTO assets
-         (id, blob_checksum, filename, media_type, category, source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(asset.id, checksum, asset.filename, asset.mediaType, asset.category, asset.source, now)
-  }
-}
-
-function readWorkspace(open: OpenWorkspace): WorkspaceRow {
-  const row = open.database
-    .prepare(
-      `SELECT w.id, w.title, w.created_at, w.updated_at, w.document_revision, w.origin, d.html
-       FROM workspace w JOIN document d ON d.id = 1`,
-    )
-    .get() as
-    | {
-        id: string
-        title: string
-        created_at: string
-        updated_at: string
-        document_revision: number
-        origin: string
-        html: string
-      }
-    | undefined
-
-  if (!row) throw new Error('Invalid Ark workspace: workspace document is missing.')
-  return {
-    id: row.id,
-    title: row.title,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    documentRevision: row.document_revision,
-    origin: normalizeDeckOrigin(row.origin),
-    html: row.html,
-    path: open.path,
-  }
-}
-
-function readWorkspaceMetadata(open: OpenWorkspace): WorkspaceMetadata {
-  const row = open.database
-    .prepare('SELECT id, title, created_at, updated_at, document_revision, origin FROM workspace')
-    .get() as
-    | {
-        id: string
-        title: string
-        created_at: string
-        updated_at: string
-        document_revision: number
-        origin: string
-      }
-    | undefined
-
-  if (!row) throw new Error('Invalid Ark workspace: metadata is missing.')
-  return {
-    id: row.id,
-    title: row.title,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    documentRevision: row.document_revision,
-    origin: normalizeDeckOrigin(row.origin),
-    path: open.path,
-  }
-}
-
-function inspectWorkspaceFile(filePath: string): WorkspaceIdentity {
-  const resolved = path.resolve(filePath)
-  let database: DatabaseSync
-  try {
-    database = new DatabaseSync(resolved, { readOnly: true })
-  } catch (error) {
-    throw new Error('Could not open Ark workspace.', { cause: error })
-  }
-
-  try {
-    const applicationId = database.prepare('PRAGMA application_id').get() as {
-      application_id: number
-    }
-    const userVersion = database.prepare('PRAGMA user_version').get() as {
-      user_version: number
-    }
-    const row = database
-      .prepare(
-        `SELECT id, title, created_at, updated_at, document_revision, format_version
-         FROM workspace`,
-      )
-      .get() as
-      | {
-          id: string
-          title: string
-          created_at: string
-          updated_at: string
-          document_revision: number
-          format_version: number
-        }
-      | undefined
-
-    if (
-      applicationId.application_id !== ARK_APPLICATION_ID ||
-      userVersion.user_version !== ARK_WORKSPACE_FORMAT_VERSION ||
-      row?.format_version !== ARK_WORKSPACE_FORMAT_VERSION ||
-      !row ||
-      !isValidDeckId(row.id)
-    ) {
-      throw new Error('Unsupported or invalid Ark workspace.')
-    }
-
-    return {
-      id: row.id,
-      title: row.title,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      documentRevision: row.document_revision,
-      path: resolved,
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Unsupported or invalid Ark workspace.') {
-      throw error
-    }
-    throw new Error('Unsupported or invalid Ark workspace.', { cause: error })
-  } finally {
-    database.close()
-  }
-}
-
-function safeFileStem(title: string) {
-  return (
-    normalizeDeckTitle(title)
-      // Intentionally strips control characters from filesystem names.
-      // eslint-disable-next-line no-control-regex
-      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-      .replace(/[. ]+$/g, '')
-      .replace(/\s+/g, ' ')
-      .slice(0, 120) || 'Untitled Presentation'
-  )
-}
+import type { EmbeddedAsset } from '../../records/embedded-assets.ts'
+import {
+  garbageCollectUnreferencedAssets,
+  insertEmbeddedAssets,
+  syncDocumentAssetReferences,
+} from './assets.ts'
+import {
+  defaultWorkspaceDir,
+  inspectWorkspaceFile,
+  readWorkspace,
+  readWorkspaceMetadata,
+  recentWorkspacesPath,
+  safeFileStem,
+} from './file.ts'
+import {
+  ARK_APPLICATION_ID,
+  ARK_WORKSPACE_FORMAT_VERSION,
+  configure,
+  contentHash,
+  migrate,
+  SCHEMA,
+} from './schema.ts'
+import { WorkspaceDocumentConflictError } from './types.ts'
+import type { OpenWorkspace, RecentWorkspace, WorkspaceRow } from './types.ts'
 
 export class WorkspaceStore {
   private defaultDir: string

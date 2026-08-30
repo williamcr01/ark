@@ -13,10 +13,10 @@ import {
   uploadAssetResponseSchema,
 } from '@ark/contracts'
 import { createApp } from '../app.ts'
-import { resolveAssetAttachments } from '../asset-resolve.ts'
-import { createAssetStore, type AssetStore } from '../asset-store.ts'
-import { createDeckStore } from '../deck-store.ts'
-import { createWorkspaceStore, type WorkspaceStore } from '../workspace-store.ts'
+import { resolveAssetAttachments } from '@ark/storage/records/asset-resolve.ts'
+import { createAssetStore, type AssetStore } from '@ark/storage/stores/asset-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html><html><head><title>Assets Deck</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 const PNG_BYTES = Buffer.from([

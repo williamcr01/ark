@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { persistAssistantGenerationMessage } from './chat-persistence.ts'
+import { persistAssistantGenerationMessage } from '../records/chat-persistence.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'

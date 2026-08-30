@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 
-import { REPO_ROOT } from './repo-root.ts'
+import { REPO_ROOT } from '@ark/storage/fs/repo-root.ts'
 
 export const DEFAULT_AGENT_GUIDES_MAX_BYTES = 131_072
 

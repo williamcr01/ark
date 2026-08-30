@@ -37,14 +37,17 @@ import {
 } from '@ark/contracts'
 import { type RunDeckAgentResult } from './deck-agent.ts'
 import { createApp } from './app.ts'
-import { createAssetStore } from './asset-store.ts'
-import { createChatStore } from './chat-store.ts'
-import { createDeckStore } from './deck-store.ts'
-import { createGenerationJobStore } from './generation-job-store.ts'
-import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
+import { createAssetStore } from '@ark/storage/stores/asset-store.ts'
+import { createChatStore } from '@ark/storage/stores/chat-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createGenerationJobStore } from '@ark/storage/stores/generation-job-store.ts'
+import {
+  createPreviewSessionStore,
+  type PreviewSessionStore,
+} from '@ark/storage/stores/preview-sessions.ts'
 import type { ThumbnailService } from './thumbnails/service.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
-import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">

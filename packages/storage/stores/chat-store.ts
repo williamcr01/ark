@@ -10,7 +10,7 @@ import {
   assertValidDeckIdForChat,
   isValidChatMessageId,
   normalizeChatMessageLimit,
-} from './chat-record.ts'
+} from '../records/chat-record.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 
 function activeThread(database: DatabaseSync, deckId: string, revision: number): ChatThread | null {
