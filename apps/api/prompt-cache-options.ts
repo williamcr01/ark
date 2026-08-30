@@ -1,19 +1,20 @@
 import type { SystemModelMessage } from 'ai'
 
-type JsonPrimitive = string | number | boolean | null
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
-export type ProviderOptions = Record<string, { [key: string]: JsonValue }>
+import type { ProviderOptions } from './provider-options.ts'
 
 /**
  * Opaque routing key for OpenAI prompt-cache affinity.
  * Never put user/deck content or secrets here — IDs only.
+ *
+ * Deliberately has no per-job fallback: a key unique to one job fragments
+ * routing affinity worse than sending no key at all, since OpenAI falls back to
+ * prefix-hash routing when the field is absent.
  */
 export function buildOpaquePromptCacheKey(input: {
   deckId?: string | null
   chatThreadId?: string | null
-  jobId?: string | null
 }): string | undefined {
-  return input.deckId ?? input.chatThreadId ?? input.jobId ?? undefined
+  return input.deckId ?? input.chatThreadId ?? undefined
 }
 
 /** Merge AI SDK providerOptions bags (later entries win per provider key). */
@@ -51,7 +52,24 @@ export function buildPromptCacheProviderOptions(input: {
   return undefined
 }
 
-/** Mark the stable system prefix for Anthropic prompt caching. */
+/**
+ * Mark the stable system prefix for Anthropic prompt caching.
+ *
+ * Anthropic's cache prefix runs tools -> system -> messages, so this single
+ * breakpoint covers the tool schemas and the system prompt (core instructions,
+ * runtime registry, and agent guides) — all byte-stable across steps and jobs.
+ *
+ * Scope note: the message transcript stays uncached. It is the part that grows
+ * with every tool result, so long edit loops still re-pay full input price for
+ * it. Conversation-level (moving-breakpoint) caching is deferred by issue #288
+ * step 3 and is the follow-up that captures that win.
+ *
+ * Cost note: a cache write costs ~25% more than uncached input, so a cold
+ * single-step job (an `ask_user` or `propose_themes` round that stops at the
+ * pause tool) pays the write premium without a matching read. Multi-step edits
+ * repay it from the second step onward; the cache telemetry added alongside
+ * this measures the real balance.
+ */
 export function buildCachedSystemPrompt(
   provider: string,
   system: string,

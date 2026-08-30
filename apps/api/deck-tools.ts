@@ -390,20 +390,17 @@ export function createDeckTools(
       },
     }),
     // Always register attachment tools so the tool-schema prefix stays stable for
-    // provider prompt caching. Return an error at call time when unavailable.
+    // provider prompt caching. Handle the unavailable case at call time instead:
+    // an empty list for list_attachments (zero attachments is a valid answer, not
+    // a failed call), an error only for read_attachment (that call is invalid).
     list_attachments: tool({
       description:
         'List all files attached to this deck conversation. Use before reading reference material or placing attached images in the deck.',
       inputSchema: z.object({}),
-      execute: async () => {
-        if (!attachmentInspector) {
-          return { error: 'No attachments available for this conversation.' }
-        }
-        return {
-          attachmentCount: attachmentInspector.attachments.length,
-          attachments: attachmentInspector.attachments,
-        }
-      },
+      execute: async () => ({
+        attachmentCount: attachmentInspector?.attachments.length ?? 0,
+        attachments: attachmentInspector?.attachments ?? [],
+      }),
     }),
     read_attachment: tool({
       description:

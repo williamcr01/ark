@@ -105,7 +105,7 @@ describe('read_deck tool', () => {
 })
 
 describe('attachment tools', () => {
-  it('always registers attachment tools and errors when none are available', async () => {
+  it('always registers attachment tools so the cached tool prefix stays stable', async () => {
     const tools = createDeckTools(createDeckWorkspace(managedDeck))
     expect(tools.list_attachments).toBeDefined()
     expect(tools.read_attachment).toBeDefined()
@@ -116,7 +116,9 @@ describe('attachment tools', () => {
       {},
     )
 
-    expect(list).toEqual({ error: 'No attachments available for this conversation.' })
+    // Zero attachments is a valid answer, not a failed call.
+    expect(list).toEqual({ attachmentCount: 0, attachments: [] })
+    // Reading a specific attachment that cannot exist is genuinely an error.
     expect(read).toEqual({ error: 'No attachments available for this conversation.' })
   })
 

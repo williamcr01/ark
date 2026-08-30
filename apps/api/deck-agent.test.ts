@@ -1,3 +1,4 @@
+import type { LanguageModelV3CallOptions } from '@ai-sdk/provider'
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 
@@ -313,6 +314,119 @@ describe('extractAgentTranscriptParts', () => {
       recovery: { toolName: 'read_deck', input: { offset: 2 } },
       output: { content: 'x'.repeat(10_000), nextOffset: 2 },
     })
+  })
+})
+
+describe('runDeckAgent prompt caching', () => {
+  /**
+   * Capture the converted model calls so we can assert what the provider receives.
+   * Runs a two-step loop (tool call, then summary) so per-step options are covered.
+   */
+  const recordingModel = () => {
+    const calls: LanguageModelV3CallOptions[] = []
+    const replies = [
+      streamToolCallReply('call-edit', 'edit_deck', {
+        edits: [{ oldText: 'Hello', newText: 'Cached' }],
+      }),
+      streamTextReply('Updated the title.'),
+    ]
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        calls.push(options)
+        return replies.shift()!
+      },
+    })
+    return { calls, model }
+  }
+
+  it('marks the Anthropic system prefix with ephemeral cacheControl on every step', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'anthropic',
+      modelRef: 'anthropic:claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      const system = call.prompt[0]
+      expect(system.role).toBe('system')
+      expect(system.providerOptions).toEqual({
+        anthropic: { cacheControl: { type: 'ephemeral' } },
+      })
+      // The breakpoint covers tools + system only; the transcript stays uncached.
+      for (const message of call.prompt.slice(1)) {
+        expect(message.providerOptions).toBeUndefined()
+      }
+      // promptCacheKey is an OpenAI-only routing hint — it must not leak here.
+      expect(call.providerOptions?.openai).toBeUndefined()
+    }
+  })
+
+  it('sends the opaque promptCacheKey to OpenAI alongside reasoning options', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'openai',
+      modelRef: 'openai:gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      reasoningEffort: 'high',
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      // Merging must keep both bags: reasoning options and the cache key.
+      expect(call.providerOptions?.openai).toMatchObject({
+        promptCacheKey: 'deck-1',
+        reasoningEffort: 'high',
+      })
+      // OpenAI takes a plain string system prompt — no Anthropic cacheControl.
+      expect(call.prompt[0].providerOptions).toBeUndefined()
+    }
+  })
+
+  it('omits cache options entirely for Google (implicit caching, telemetry only)', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'google',
+      modelRef: 'google:gemini-2.5-pro',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.prompt[0].providerOptions).toBeUndefined()
+      expect(call.providerOptions).toBeUndefined()
+    }
+  })
+
+  it('falls back to an uncached call when no opaque key is available', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'openai',
+      modelRef: 'openai:gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls[0].providerOptions).toBeUndefined()
   })
 })
 

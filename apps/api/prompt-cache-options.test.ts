@@ -8,23 +8,24 @@ import {
 } from './prompt-cache-options.ts'
 
 describe('buildOpaquePromptCacheKey', () => {
-  it('prefers deck id, then chat thread, then job id', () => {
+  it('prefers deck id, then chat thread', () => {
     expect(
       buildOpaquePromptCacheKey({
         deckId: 'deck-1',
         chatThreadId: 'thread-1',
-        jobId: 'job-1',
       }),
     ).toBe('deck-1')
     expect(
       buildOpaquePromptCacheKey({
         deckId: null,
         chatThreadId: 'thread-1',
-        jobId: 'job-1',
       }),
     ).toBe('thread-1')
-    expect(buildOpaquePromptCacheKey({ jobId: 'job-1' })).toBe('job-1')
+  })
+
+  it('returns no key rather than a per-job key that would fragment routing affinity', () => {
     expect(buildOpaquePromptCacheKey({})).toBeUndefined()
+    expect(buildOpaquePromptCacheKey({ deckId: null, chatThreadId: null })).toBeUndefined()
   })
 })
 

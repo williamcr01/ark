@@ -59,7 +59,7 @@ export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
-Call list_attachments before using attached files; the tools return an error when none are available.
+Call list_attachments before using attached files; it returns an empty list when this conversation has none.
 Attached images are optional design inputs: place them when the user's request or the presentation design clearly calls for them, but do not force every attachment into the deck.
 For an image, use the exact Ark URL returned by the attachment tools; never reproduce base64 bytes, invent an asset URL, or substitute a remote URL. Add meaningful alt text. Use object-fit: cover for photographic crops and contain for logos, diagrams, screenshots, or anything that must not be cropped.
 

@@ -267,7 +267,6 @@ export function createGenerationJobRunner({
         promptCacheKey: buildOpaquePromptCacheKey({
           deckId: currentJob.deckId,
           chatThreadId: currentJob.chatThreadId,
-          jobId: currentJob.id,
         }),
         abortSignal: abortController.signal,
         logger: jobLogger,
