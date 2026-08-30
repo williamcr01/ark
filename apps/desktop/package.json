@@ -29,6 +29,8 @@
     "@ark/contracts": "workspace:*",
     "@ark/deck": "workspace:*",
     "@ark/deck-core": "workspace:*",
+    "@ark/deck-preview": "workspace:*",
+    "@ark/editor-runtime": "workspace:*",
     "@ark/mcp": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "@ark/sandbox": "workspace:*",

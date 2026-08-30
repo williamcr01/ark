@@ -12,7 +12,7 @@ import {
   type EditorNormalizedRect,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime/deck-editor-bridge.ts'
 
 import { DeckPreview } from './DeckPreview'
 

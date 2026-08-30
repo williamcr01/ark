@@ -9,7 +9,7 @@ import { buildImageInsertOperation, prepareImageInsertFromFile } from '@/lib/dec
 import { isTextEditableSelection } from '@/lib/deck-text-edit'
 import type { DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
 import type { DeckEditorBridgeState } from '@/hooks/useDeckEditorBridge'
-import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime/deck-editor-bridge.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import { STABLE_ELEMENT_ID_PREFIX } from '@ark/deck/document/metadata.ts'

@@ -23,7 +23,7 @@ import {
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
   type EditorTransformPreviewMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime/deck-editor-bridge.ts'
 import {
   OPAQUE_SANDBOX_ORIGIN,
   resolveSandboxOrigin,

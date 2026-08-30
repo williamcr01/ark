@@ -1,4 +1,4 @@
-import type { EditorNormalizedRect } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorNormalizedRect } from '@ark/editor-runtime/deck-editor-bridge.ts'
 import {
   buildImageHtml,
   computeImageGeometry,

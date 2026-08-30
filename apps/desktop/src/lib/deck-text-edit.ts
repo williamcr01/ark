@@ -1,4 +1,4 @@
-import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime/deck-editor-bridge.ts'
 import { isInlineTextEditableTag } from '@ark/deck/document/editable.ts'
 import { isTextBoxEditableValue } from '@ark/deck/patch/text-box.ts'
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime/deck-editor-bridge.ts'
 
 import {
   buildGeometryFieldOperation,
