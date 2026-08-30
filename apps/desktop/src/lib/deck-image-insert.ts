@@ -6,9 +6,9 @@ import {
   type ImageFitMode,
   validateImageFile,
   validateImageSrcForInsert,
-} from '@ark/deck-core/deck-image.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import { buildArkAssetUrl } from '@ark/deck-core/assets.ts'
+} from '@ark/deck/document/image.ts'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
+import { buildArkAssetUrl } from '@ark/deck/document/assets.ts'
 import { uploadDeckAsset } from './asset-api'
 
 export type PreparedImageInsert = {

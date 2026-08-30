@@ -2,7 +2,7 @@ import { resolveDownloadHtml, type DeckDownloadVariant } from '@/lib/deck-export
 import {
   formatDeckValidationSummary,
   type DeckValidationReport,
-} from '@ark/deck-core/deck-validate.ts'
+} from '@ark/deck/validate/document.ts'
 import { validateDeckHtmlInBrowser } from './deck-validate.ts'
 
 export type DownloadHtmlOptions = {

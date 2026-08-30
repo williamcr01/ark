@@ -7,7 +7,7 @@ import type {
   EditableElementStyle,
   ParsedEditableElement,
   SlideEditableElements,
-} from '@ark/deck-core/deck-editable.ts'
+} from '@ark/deck/document/editable.ts'
 import {
   ARK_EDITABLE_ATTR,
   ARK_ELEMENT_ID_ATTR,
@@ -19,8 +19,8 @@ import {
   STABLE_ELEMENT_ID_PREFIX,
   TRANSIENT_ELEMENT_ID_PREFIX,
   TRANSIENT_SLIDE_ID_PREFIX,
-} from '@ark/deck-core/deck-metadata.ts'
-import { ARK_TEXT_BOX_CLASS } from '@ark/deck-core/deck-text-box.ts'
+} from '@ark/deck/document/metadata.ts'
+import { ARK_TEXT_BOX_CLASS } from '@ark/deck/patch/text-box.ts'
 
 const UNSAFE_TAGS = new Set([
   'script',

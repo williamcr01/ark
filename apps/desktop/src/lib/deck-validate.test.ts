@@ -9,7 +9,7 @@ import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
 import revealDeck from '@fixtures/reveal-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 
-import { formatDeckValidationSummary } from '@ark/deck-core/deck-validate.ts'
+import { formatDeckValidationSummary } from '@ark/deck/validate/document.ts'
 import { validateDeckHtmlInBrowser } from './deck-validate.ts'
 
 describe('validateDeckHtmlInBrowser', () => {

@@ -2,7 +2,10 @@ import { z } from 'zod'
 
 import { agentQuestionRequestSchema } from './agent-questions.ts'
 import { themeProposalRequestSchema } from './agent-themes.ts'
-import { deckElementPatchOperationSchema, deckSlidePatchOperationSchema } from './deck-patch.ts'
+import {
+  deckElementPatchOperationSchema,
+  deckSlidePatchOperationSchema,
+} from '@ark/deck/patch/patch-request.ts'
 
 const targetSchema = z.object({
   deckId: z.string().uuid().optional().describe('Deck id returned by the latest read.'),

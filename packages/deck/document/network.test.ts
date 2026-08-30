@@ -12,7 +12,7 @@ import {
   parseDeckAssetAllowlist,
   PREVIEW_CSP,
   PREVIEW_CSP_META_TAG,
-} from './deck-network'
+} from './network.ts'
 
 describe('deck-network', () => {
   it('detects external URLs', () => {

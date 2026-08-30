@@ -3,9 +3,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 
-const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
+const fixtureDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../test/fixtures',
+)
 
 const fullJsDeck = readFileSync(path.join(fixtureDir, 'full-js-deck.html'), 'utf8')
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')

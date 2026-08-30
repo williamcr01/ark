@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { isDeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
-import { DECK_ORIGINS } from '@ark/deck-core/deck-origin.ts'
+import { DECK_ORIGINS } from '@ark/deck/document/origin.ts'
 import { deckIdSchema, withRequestId } from './common.ts'
 
 export { isValidDeckId } from './common.ts'
@@ -12,7 +12,7 @@ export {
   isDeckOrigin,
   normalizeDeckOrigin,
   type DeckOrigin,
-} from '@ark/deck-core/deck-origin.ts'
+} from '@ark/deck/document/origin.ts'
 
 export const deckOriginSchema = z.enum(DECK_ORIGINS)
 
@@ -184,15 +184,7 @@ export const deckConflictErrorResponseSchema = withRequestId({
 
 export type DeckConflictErrorResponse = z.infer<typeof deckConflictErrorResponseSchema>
 
-export { deckPatchRequestSchema } from '@ark/deck-core/deck-patch.ts'
-export type { DeckPatchRequest } from '@ark/deck-core/deck-patch.ts'
+export { deckPatchRequestSchema } from '@ark/deck/patch/patch-request.ts'
+export type { DeckPatchRequest } from '@ark/deck/patch/patch-request.ts'
 
-export function normalizeDeckTitle(title: unknown) {
-  return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled deck'
-}
-
-/** Extract a display title from deck HTML (`<title>`), matching server persistence. */
-export function extractDeckTitle(html: string) {
-  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
-  return normalizeDeckTitle(match?.[1])
-}
+export { extractDeckTitle, normalizeDeckTitle } from '@ark/deck/document/title.ts'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isInlineTextEditableTag } from './deck-editable'
+import { isInlineTextEditableTag } from './editable.ts'
 
 describe('deck editable text tags', () => {
   it('recognizes supported inline text tags', () => {

@@ -1,12 +1,12 @@
-import type { EditorNormalizedRect } from './deck-editor-bridge.ts'
-import { clampNormalizedRect } from './deck-text-box.ts'
+import type { NormalizedRect as EditorNormalizedRect } from './geometry.ts'
+import { clampNormalizedRect } from '../patch/text-box.ts'
 import {
   ARK_EDITABLE_ATTR,
   ARK_MANAGED_ATTR,
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from './deck-metadata.ts'
-import { isExternalUrl } from './deck-network.ts'
+} from './metadata.ts'
+import { isExternalUrl } from './network.ts'
 
 /** Editable kind value for Ark-managed images. */
 export const ARK_IMAGE_EDITABLE_VALUE = 'image' as const

@@ -2,7 +2,7 @@ import {
   validateDeckDocument,
   validateDeckHtml,
   type DeckValidationReport,
-} from '@ark/deck-core/deck-validate.ts'
+} from '@ark/deck/validate/document.ts'
 
 export type { DeckValidationReport }
 

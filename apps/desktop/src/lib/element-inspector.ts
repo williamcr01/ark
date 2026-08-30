@@ -4,13 +4,13 @@ import type {
   EditorNormalizedRect,
   EditorSelectionInfo,
 } from '@ark/deck-core/deck-editor-bridge.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import { isInlineTextEditableTag } from '@ark/deck-core/deck-editable.ts'
-import { isTextBoxEditableValue } from '@ark/deck-core/deck-text-box.ts'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
+import { isInlineTextEditableTag } from '@ark/deck/document/editable.ts'
+import { isTextBoxEditableValue } from '@ark/deck/patch/text-box.ts'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from '@ark/deck-core/deck-metadata.ts'
+} from '@ark/deck/document/metadata.ts'
 
 export type InspectorElementKind = 'text-box' | 'image' | 'text' | 'element'
 

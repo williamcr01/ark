@@ -118,7 +118,7 @@ export type DeckPreviewProps = {
     activeSlideIndex: number,
   ) => Promise<DeckPreviewPatchResult | undefined>
   onPatchEditorOperations?: (
-    operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
+    operations: import('@ark/deck/patch/patch-request.ts').DeckElementPatchOperation[],
     activeSlideIndex: number,
     summary: string,
   ) => Promise<DeckPreviewPatchResult | undefined>

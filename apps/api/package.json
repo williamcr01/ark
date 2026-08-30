@@ -15,6 +15,7 @@
     "@ai-sdk/openai": "^3.0.86",
     "@ark/ai": "workspace:*",
     "@ark/contracts": "workspace:*",
+    "@ark/deck": "workspace:*",
     "@ark/deck-core": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "@ark/telemetry": "workspace:*",

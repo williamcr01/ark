@@ -9,7 +9,7 @@ import {
   revealLinearIndexToHV,
   revealSlideCountFromRoot,
   revealSlideToLinearIndex,
-} from './reveal-slide-index'
+} from './reveal-slide-index.ts'
 
 const horizontalOnlyReveal = `<!DOCTYPE html>
 <html>

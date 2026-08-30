@@ -8,7 +8,7 @@ import {
   findRevealSlidesContainer,
   hasRevealSlideStructure,
   revealLinearIndexToHV,
-} from './reveal-slide-index.ts'
+} from '@ark/deck/document/reveal-slide-index.ts'
 import {
   injectRuntimeCsp,
   STRICT_DECK_CSP,
@@ -16,7 +16,7 @@ import {
 } from '@ark/runtime-registry/deck-runtime.ts'
 import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
 import { getApprovedRuntimeStylesheetContent } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
-import { absolutizeArkAssetReferences, scopeArkAssetReferences } from './assets.ts'
+import { absolutizeArkAssetReferences, scopeArkAssetReferences } from '@ark/deck/document/assets.ts'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 

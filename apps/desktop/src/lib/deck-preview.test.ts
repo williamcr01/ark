@@ -13,7 +13,7 @@ import {
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from '@ark/deck-core/deck-metadata.ts'
+} from '@ark/deck/document/metadata.ts'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import chartRegistryDeck from '@fixtures/chart-registry-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'

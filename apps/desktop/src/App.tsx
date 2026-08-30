@@ -33,9 +33,12 @@ import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
 import { findPendingAgentQuestions } from '@/lib/agent-questions'
 import { findPendingThemeProposal } from '@/lib/agent-themes'
 import { getDesktopSettings } from '@/lib/desktop-settings'
-import type { DeckElementPatchOperation, DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import type {
+  DeckElementPatchOperation,
+  DeckPatchOperation,
+} from '@ark/deck/patch/patch-request.ts'
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
-import { buildManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
+import { buildManualEditProvenance } from '@ark/deck/document/edit-provenance.ts'
 import {
   ApiResponseError,
   MAX_SLIDE_CONTEXTS,

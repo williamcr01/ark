@@ -3,9 +3,9 @@ import {
   buildDeckRuntimeManifestFromParts,
   type DeckRuntimeManifest,
 } from '@ark/runtime-registry/deck-runtime-manifest.ts'
-import { parseDeckHtml } from './deck-parser.ts'
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
+import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 
 export function hashRuntimeManifest(manifest: DeckRuntimeManifest) {
   const sorted = Object.fromEntries(

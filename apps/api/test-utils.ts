@@ -1,4 +1,4 @@
-import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
+import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 
 export const stubStaticRuntimeManifest = {

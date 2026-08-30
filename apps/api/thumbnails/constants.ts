@@ -1,7 +1,7 @@
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from '@ark/deck-core/deck-metadata.ts'
+} from '@ark/deck/document/metadata.ts'
 
 export const THUMBNAIL_VIEWPORT_WIDTH = ARK_SLIDE_REFERENCE_WIDTH
 export const THUMBNAIL_VIEWPORT_HEIGHT = ARK_SLIDE_REFERENCE_HEIGHT

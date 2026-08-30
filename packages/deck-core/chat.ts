@@ -1,7 +1,7 @@
 import type { FilePart, ModelMessage, TextPart } from 'ai'
 
-import { isValidAssetId, parseAssetIdFromUrl } from './assets.ts'
-import { deckOriginIsUnauthored, type DeckOrigin } from './deck-origin.ts'
+import { isValidAssetId, parseAssetIdFromUrl } from '@ark/deck/document/assets.ts'
+import { deckOriginIsUnauthored, type DeckOrigin } from '@ark/deck/document/origin.ts'
 
 export type ChatMessageRole = 'user' | 'assistant'
 

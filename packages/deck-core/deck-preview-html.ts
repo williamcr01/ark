@@ -32,7 +32,7 @@ import {
   hasApprovedRevealRuntimeInDocument,
   isApprovedRuntimeAssetUrl,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
-import { absolutizeArkAssetReferences } from './assets.ts'
+import { absolutizeArkAssetReferences } from '@ark/deck/document/assets.ts'
 
 export type PreviewHtmlOptions = {
   parentOrigin?: string

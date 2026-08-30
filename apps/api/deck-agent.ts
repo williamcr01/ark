@@ -9,14 +9,14 @@ import {
   type SlideContext,
 } from '@ark/deck-core/chat.ts'
 import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
-import type { DeckOrigin } from '@ark/deck-core/deck-origin.ts'
+import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'
 import { type DeckAttachmentInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
-import { validateDeckHtmlOnServer } from './deck-validate.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import {
   createActiveDeckTools,

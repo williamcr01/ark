@@ -1,4 +1,4 @@
-import { collectExternalUrls, NETWORK_REQUEST_ERROR_MESSAGE } from './deck-network.ts'
+import { collectExternalUrls, NETWORK_REQUEST_ERROR_MESSAGE } from '../document/network.ts'
 import {
   collectInvalidRuntimeMarkers,
   collectRuntimeAssetReferences,
@@ -9,7 +9,7 @@ import {
   validateRuntimeAssetReferences,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
 
-import { findSlideElements } from './deck-preview-slides.ts'
+import { findSlideElements } from '../document/slides.ts'
 import {
   detectRuntimeModeFromDocument,
   documentAllowsDeckInitScripts,

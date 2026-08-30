@@ -4,7 +4,7 @@ import {
   buildDeckAssetProxyUrl,
   isAllowedAssetHost,
   parseDeckAssetAllowlist,
-} from '@ark/deck-core/deck-network.ts'
+} from '@ark/deck/document/network.ts'
 import { categorizeAssetProxyFailure } from '@ark/ai/provider-errors.ts'
 import { getRequestLogger } from './observability/middleware.ts'
 

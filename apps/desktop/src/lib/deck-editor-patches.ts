@@ -2,8 +2,8 @@ import type {
   EditorNormalizedRect,
   EditorTransformCommitMessage,
 } from '@ark/deck-core/deck-editor-bridge.ts'
-import { buildTextBoxHtml } from '@ark/deck-core/deck-text-box.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import { buildTextBoxHtml } from '@ark/deck/patch/text-box.ts'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 
 const TRANSFORM_EPSILON = 0.0005
 

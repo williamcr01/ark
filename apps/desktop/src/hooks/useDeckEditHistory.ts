@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 
-import type { ManualEditProvenance } from '@ark/deck-core/deck-edit-provenance.ts'
+import type { ManualEditProvenance } from '@ark/deck/document/edit-provenance.ts'
 
 export type ExternalEditProvenance = {
   source: 'external'

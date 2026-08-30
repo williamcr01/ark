@@ -1,4 +1,4 @@
-import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import {
   deckListResponseSchema,
   deckPatchResponseSchema,

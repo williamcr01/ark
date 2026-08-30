@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR } from './deck-metadata.ts'
+import { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR } from '../document/metadata.ts'
 
 export { ARK_ELEMENT_ID_ATTR, ARK_SLIDE_ID_ATTR }
 
@@ -232,7 +232,7 @@ export type DeckPatchSuccess = {
    * Present when the patch pipeline validated the live document before
    * serialize, so callers can skip a second full HTML parse.
    */
-  validation?: import('./deck-validate.ts').DeckValidationReport
+  validation?: import('../validate/document.ts').DeckValidationReport
 }
 
 export type DeckPatchFailure = {

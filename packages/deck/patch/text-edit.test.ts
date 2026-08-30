@@ -3,9 +3,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { applyDeckEdits } from './deck-edit.ts'
+import { applyDeckEdits } from './text-edit.ts'
 
-const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
+const fixtureDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../test/fixtures',
+)
 
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')
 

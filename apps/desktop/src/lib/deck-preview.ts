@@ -3,7 +3,7 @@ import type { CSSProperties, IframeHTMLAttributes } from 'react'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from '@ark/deck-core/deck-metadata.ts'
+} from '@ark/deck/document/metadata.ts'
 import { buildPreviewHtml, type PreviewHtmlOptions } from '@ark/deck-core/deck-preview-html.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 

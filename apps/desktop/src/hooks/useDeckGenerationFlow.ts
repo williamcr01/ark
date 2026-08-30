@@ -8,7 +8,7 @@ import type {
   EditorSelectionContext,
   SlideContext,
 } from '@ark/deck-core/chat.ts'
-import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
+import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import {
   formatModelGenerationFailure,
   isModelGenerationError,

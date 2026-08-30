@@ -1,5 +1,5 @@
-import type { AssetCategory, AssetMetadata, AssetSource } from '@ark/deck-core/assets.ts'
-import { buildAssetUrl, isValidAssetId } from '@ark/deck-core/assets.ts'
+import type { AssetCategory, AssetMetadata, AssetSource } from '@ark/deck/document/assets.ts'
+import { buildAssetUrl, isValidAssetId } from '@ark/deck/document/assets.ts'
 
 export type { AssetCategory, AssetMetadata, AssetSource }
 export { isValidAssetId }

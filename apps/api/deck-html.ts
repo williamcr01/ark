@@ -4,7 +4,7 @@ import {
   toDeckSlideSummaries,
   type DeckParseOptions,
   type DeckParseResult,
-} from './deck-parser.ts'
+} from '@ark/deck/document/parser.ts'
 
 export const DEFAULT_READ_MAX_LINES = 2000
 export const DEFAULT_READ_MAX_BYTES = 50 * 1024

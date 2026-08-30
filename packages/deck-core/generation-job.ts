@@ -6,7 +6,7 @@ import type {
   EditorSelectionContext,
   SlideContext,
 } from './chat.ts'
-import type { DeckOrigin } from './deck-origin.ts'
+import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
 export type GenerationJobStatus =
   'queued' | 'running' | 'canceling' | 'succeeded' | 'failed' | 'canceled'
