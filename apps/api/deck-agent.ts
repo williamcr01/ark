@@ -17,7 +17,7 @@ import { createDeckWorkspace } from './deck-workspace.ts'
 import { type DeckAttachmentInspector } from './deck-tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import type { Logger } from './observability/logger.ts'
+import type { Logger } from '@ark/telemetry/logger.ts'
 import {
   createActiveDeckTools,
   findToolDefinition,
@@ -29,9 +29,9 @@ import {
   buildCachedSystemPrompt,
   buildPromptCacheProviderOptions,
   mergeProviderOptions,
-} from './prompt-cache-options.ts'
-import { normalizeProviderTokenUsage } from './provider-token-usage.ts'
-import { buildReasoningProviderOptions } from './reasoning-options.ts'
+} from '@ark/ai/prompt-cache-options.ts'
+import { normalizeProviderTokenUsage } from '@ark/ai/token-usage.ts'
+import { buildReasoningProviderOptions } from '@ark/ai/reasoning-options.ts'
 
 /** Stop only after a successful pause tool (failed propose_themes can retry in-loop). */
 export function hasAwaitingUserToolResult(toolName: string) {
@@ -709,7 +709,7 @@ export async function runDeckAgent({
       })
     }
   } catch (error) {
-    const { categorizeProviderError } = await import('./observability/provider-errors.ts')
+    const { categorizeProviderError } = await import('@ark/ai/provider-errors.ts')
     const details = categorizeProviderError(error)
 
     return {

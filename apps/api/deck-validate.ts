@@ -5,8 +5,8 @@ import {
   validateDeckHtml,
   type DeckValidationReport,
 } from '@ark/deck-core/deck-validate.ts'
-import type { Logger } from './observability/logger.ts'
-import { logTimedEvent, measureSync } from './observability/timing.ts'
+import type { Logger } from '@ark/telemetry/logger.ts'
+import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 
 export type { DeckValidationReport }
 

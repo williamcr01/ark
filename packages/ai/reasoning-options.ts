@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from '@ark/contracts'
+import type { ReasoningEffort } from './reasoning-effort.ts'
 
 import { findCatalogEntryByRef, type ReasoningTransport } from './model-catalog.ts'
 import type { ProviderOptions } from './provider-options.ts'

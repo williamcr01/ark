@@ -1,11 +1,15 @@
 import { z } from 'zod'
 
 import {
-  apiErrorPayloadSchema,
-  providerIdSchema,
-  reasoningEffortSchema,
-  withRequestId,
-} from './common.ts'
+  modelInfoSchema,
+  modelUnavailableReasonSchema,
+  type ModelInfo,
+} from '@ark/ai/model-info.ts'
+
+export { modelInfoSchema, modelUnavailableReasonSchema }
+export type { ModelInfo }
+
+import { apiErrorPayloadSchema, providerIdSchema, withRequestId } from './common.ts'
 
 export const healthResponseSchema = withRequestId({
   ok: z.literal(true),
@@ -26,25 +30,6 @@ export const healthResponseSchema = withRequestId({
 })
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>
-
-export const modelUnavailableReasonSchema = z.enum(['missing_api_key', 'not_found'])
-
-export const modelInfoSchema = z.object({
-  id: z.string(),
-  provider: providerIdSchema,
-  modelId: z.string(),
-  name: z.string().optional(),
-  available: z.boolean(),
-  unavailableReason: modelUnavailableReasonSchema.optional(),
-  /** Supported thinking-effort levels for this model (empty/omitted = no effort control). */
-  reasoningEfforts: z.array(reasoningEffortSchema).optional(),
-  /** Default effort when the model supports reasoning and the client has no preference. */
-  defaultReasoningEffort: reasoningEffortSchema.optional(),
-  /** Whether chat attachments / deck assets may be sent to this model. */
-  supportsAttachments: z.boolean(),
-})
-
-export type ModelInfo = z.infer<typeof modelInfoSchema>
 
 export const modelsResponseSchema = withRequestId({
   defaultModel: z.string(),

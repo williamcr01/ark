@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { createLogger, type StructuredLogEntry } from './observability/logger.ts'
+import { createLogger, type StructuredLogEntry } from '@ark/telemetry/logger.ts'
 import {
   createPreviewSessionStore,
   DEFAULT_PREVIEW_SESSION_THUMBNAIL_HEADROOM,

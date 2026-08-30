@@ -1,5 +1,22 @@
 import { z } from 'zod'
 
+import { providerErrorCodeSchema } from '@ark/ai/provider-error-code.ts'
+import {
+  PROVIDER_ENV_KEYS,
+  PROVIDER_LABELS,
+  providerIdSchema,
+  type ProviderId,
+} from '@ark/ai/provider-id.ts'
+import {
+  REASONING_EFFORT_LABELS,
+  reasoningEffortSchema,
+  type ReasoningEffort,
+} from '@ark/ai/reasoning-effort.ts'
+
+export { PROVIDER_ENV_KEYS, PROVIDER_LABELS, providerIdSchema, reasoningEffortSchema }
+export { REASONING_EFFORT_LABELS }
+export type { ProviderId, ReasoningEffort }
+
 export const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -21,40 +38,8 @@ export function isValidGenerationJobId(id: string) {
 
 export const requestIdSchema = z.string().uuid()
 
-export const providerIdSchema = z.enum(['openai', 'anthropic', 'google'])
-
-export type ProviderId = z.infer<typeof providerIdSchema>
-
-/**
- * Reasoning / thinking effort levels across providers.
- * Exact supported values are model-specific and advertised on ModelInfo.reasoningEfforts.
- */
-export const reasoningEffortSchema = z.enum([
-  'none',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'max',
-])
-
-export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>
-
-export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
-  none: 'None',
-  minimal: 'Minimal',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Extra High',
-  max: 'Max',
-}
-
 export const apiErrorCodeSchema = z.enum([
-  'missing_api_key',
-  'invalid_api_key',
-  'provider_error',
+  ...providerErrorCodeSchema.options,
   'document_conflict',
   'workspace_file_exists',
   'workspace_already_open',

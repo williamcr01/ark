@@ -30,6 +30,8 @@ const PROJECTS = [
   'apps/mcp/tsconfig.json',
   'apps/sandbox/tsconfig.json',
   'packages/contracts/tsconfig.json',
+  'packages/ai/tsconfig.json',
+  'packages/telemetry/tsconfig.json',
   'packages/deck-core/tsconfig.json',
   'packages/runtime-registry/tsconfig.json',
 ]

@@ -91,6 +91,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.86
         version: 3.0.86(zod@4.4.3)
+      '@ark/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -100,6 +103,9 @@ importers:
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../../packages/runtime-registry
+      '@ark/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
       ai:
         specifier: ^6.0.233
         version: 6.0.233(zod@4.4.3)
@@ -137,6 +143,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@ark/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@ark/api':
         specifier: workspace:*
         version: link:../api
@@ -351,8 +360,39 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/ai:
+    dependencies:
+      '@ai-sdk/anthropic':
+        specifier: ^3.0.99
+        version: 3.0.99(zod@4.4.3)
+      '@ai-sdk/google':
+        specifier: ^3.0.98
+        version: 3.0.98(zod@4.4.3)
+      '@ai-sdk/openai':
+        specifier: ^3.0.86
+        version: 3.0.86(zod@4.4.3)
+      ai:
+        specifier: ^6.0.233
+        version: 6.0.233(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/contracts:
     dependencies:
+      '@ark/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../deck-core
@@ -372,6 +412,9 @@ importers:
 
   packages/deck-core:
     dependencies:
+      '@ark/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -396,6 +439,18 @@ importers:
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/runtime-registry:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/telemetry:
     devDependencies:
       '@types/node':
         specifier: ^24.12.3

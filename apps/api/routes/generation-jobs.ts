@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody, startGenerationJobRequestSchema } from '@ark/contracts'
-import { hasAnyConfiguredProvider, missingApiKeyError } from '../credentials.ts'
+import { hasAnyConfiguredProvider, missingApiKeyError } from '@ark/ai/credentials.ts'
 import { isValidDeckId } from '../deck-record.ts'
 import { isValidGenerationJobId } from '../generation-job-record.ts'
 import { toGenerationJobResponse, type GenerationJobRunner } from '../generation-job-runner.ts'

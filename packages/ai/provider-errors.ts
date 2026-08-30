@@ -1,6 +1,6 @@
 import { APICallError } from 'ai'
 
-import type { ApiErrorCode } from '../credentials.ts'
+import type { ApiErrorCode } from './credentials.ts'
 
 export type ProviderErrorCategory =
   | 'missing_api_key'

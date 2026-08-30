@@ -4,8 +4,8 @@ import type { SlideEditableElements } from '@ark/deck-core/deck-editable.ts'
 import { parseEditableElements, resolveSlideId } from './deck-editable-elements.ts'
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '@ark/deck-core/deck-preview-slides.ts'
 import { extractDeckTitle } from './deck-record.ts'
-import type { Logger } from './observability/logger.ts'
-import { logTimedEvent, measureSync } from './observability/timing.ts'
+import type { Logger } from '@ark/telemetry/logger.ts'
+import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 
 export type DeckStructure = 'plain' | 'reveal' | 'unknown'
 

@@ -7,7 +7,7 @@ import {
   type RuntimeErrorRepairContext,
   type RuntimeErrorSeverity,
 } from '@ark/contracts'
-import { sanitizeRuntimeErrorText } from './redact.ts'
+import { sanitizeRuntimeErrorText } from '@ark/telemetry/redact.ts'
 
 export type { RuntimeErrorInput, RuntimeErrorSeverity } from '@ark/contracts'
 

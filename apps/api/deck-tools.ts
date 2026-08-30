@@ -19,7 +19,7 @@ import {
   readDeckSlideHtml,
 } from './deck-html.ts'
 import { validateDeckHtmlOnServer, type DeckValidationReport } from './deck-validate.ts'
-import type { Logger } from './observability/logger.ts'
+import type { Logger } from '@ark/telemetry/logger.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
 
 export type DeckAttachmentSummary = {

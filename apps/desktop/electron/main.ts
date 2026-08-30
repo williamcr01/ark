@@ -184,8 +184,8 @@ async function startDesktop() {
     import('@ark/api/thumbnails/render-host.ts'),
     import('@ark/api/mcp-service.ts'),
     import('@ark/api/mcp-interactions.ts'),
-    import('@ark/api/credentials.ts'),
-    import('@ark/api/models.ts'),
+    import('@ark/ai/credentials.ts'),
+    import('@ark/ai/models.ts'),
   ])
 
   const credentialStore = new SecureCredentialStore(path.join(app.getPath('userData'), 'auth.json'))

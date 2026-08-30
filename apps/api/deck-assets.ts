@@ -5,7 +5,7 @@ import {
   isAllowedAssetHost,
   parseDeckAssetAllowlist,
 } from '@ark/deck-core/deck-network.ts'
-import { categorizeAssetProxyFailure } from './observability/provider-errors.ts'
+import { categorizeAssetProxyFailure } from '@ark/ai/provider-errors.ts'
 import { getRequestLogger } from './observability/middleware.ts'
 
 const MAX_ASSET_BYTES = 5 * 1024 * 1024

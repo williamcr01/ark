@@ -8,7 +8,7 @@ import {
 } from '@ark/runtime-registry/sandbox-origin.ts'
 import { PreviewSessionCapacityError, type PreviewSessionStore } from '../preview-sessions.ts'
 import { getRequestLogger } from '../observability/index.ts'
-import { logTimedEvent, measureSync } from '../observability/timing.ts'
+import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 import type { AssetStore } from '../asset-record.ts'
 import { resolveArkAssetUrls } from '../asset-resolve.ts'
 
