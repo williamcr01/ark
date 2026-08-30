@@ -1,6 +1,6 @@
 import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
-import { isInlineTextEditableTag } from '@ark/deck-core/deck-editable.ts'
-import { isTextBoxEditableValue } from '@ark/deck-core/deck-text-box.ts'
+import { isInlineTextEditableTag } from '@ark/deck/document/editable.ts'
+import { isTextBoxEditableValue } from '@ark/deck/patch/text-box.ts'
 
 /** Plain-text inline editing only; nested markup inside elements is flattened on save. */
 export function isTextEditableSelection(selection: EditorSelectionInfo | null) {

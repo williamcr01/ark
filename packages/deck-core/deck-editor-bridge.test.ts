@@ -37,7 +37,7 @@ import {
   isEditorShellMessage,
   parseEditorMessage,
 } from './deck-editor-bridge'
-import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable'
+import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
 
 type RuntimeMessage = Record<string, unknown>
 

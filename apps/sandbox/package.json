@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@ark/api": "workspace:*",
+    "@ark/deck": "workspace:*",
     "@ark/deck-core": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "express": "^5.2.1",

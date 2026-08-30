@@ -21,7 +21,8 @@ import {
   absolutizePreviewAssetReferences,
   stripPreviewScriptsAndHandlers,
 } from './deck-preview-html.ts'
-import { findSlideElements, stripHostileNavigationVectors } from './deck-preview-slides.ts'
+import { findSlideElements } from '@ark/deck/document/slides.ts'
+import { stripHostileNavigationVectors } from '@ark/deck/document/sanitize.ts'
 
 /** Placeholder element left where the slide list was, so skeletons stay count-independent. */
 const SLIDE_SLOT_TAG = 'ark-slide-slot'

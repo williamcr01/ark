@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildManualEditProvenance, summarizeManualEditOperations } from './deck-edit-provenance.ts'
-import type { DeckElementPatchOperation } from './deck-patch.ts'
+import { buildManualEditProvenance, summarizeManualEditOperations } from './edit-provenance.ts'
+import type { DeckElementPatchOperation } from '../patch/patch-request.ts'
 
 describe('summarizeManualEditOperations', () => {
   it('labels a single replace_text edit', () => {

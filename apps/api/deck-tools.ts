@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { agentQuestionRequestSchema } from '@ark/deck-core/agent-questions.ts'
 import { themeProposalRequestSchema } from '@ark/deck-core/agent-themes.ts'
-import { applyDeckEdits } from './deck-edit.ts'
+import { applyDeckEdits } from '@ark/deck/patch/text-edit.ts'
 import {
   deckEditInputSchema,
   deckElementPatchInputSchema,
@@ -18,7 +18,7 @@ import {
   readDeckHtmlSlice,
   readDeckSlideHtml,
 } from './deck-html.ts'
-import { validateDeckHtmlOnServer, type DeckValidationReport } from './deck-validate.ts'
+import { validateDeckHtmlOnServer, type DeckValidationReport } from '@ark/deck/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
 
@@ -260,7 +260,7 @@ export function createDeckTools(
           }
         }
 
-        const { applyDeckPatches } = await import('./deck-patch.ts')
+        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {
@@ -312,7 +312,7 @@ export function createDeckTools(
           }
         }
 
-        const { applyDeckPatches } = await import('./deck-patch.ts')
+        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {

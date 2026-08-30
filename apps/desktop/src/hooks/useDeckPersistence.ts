@@ -16,7 +16,7 @@ import {
   type PatchDeckResponse,
   type StoredDeck,
 } from '@/lib/deck-api'
-import type { DeckPatchOperation } from '@ark/deck-core/deck-patch.ts'
+import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import { extractDeckTitle } from '@ark/contracts'
 
 /** A blank white slide: no starter content, so the first edit or generation owns the deck. */

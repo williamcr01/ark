@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { withRequestId } from './common.ts'
-import { ASSET_SOURCES, MAX_ASSET_UPLOAD_BYTES } from '@ark/deck-core/assets.ts'
+import { ASSET_SOURCES, MAX_ASSET_UPLOAD_BYTES } from '@ark/deck/document/assets.ts'
 
 export const assetCategorySchema = z.enum(['image', 'text', 'pdf', 'other'])
 

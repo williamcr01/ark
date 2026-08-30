@@ -5,7 +5,7 @@ import {
   getAssetCategory,
   MAX_ASSET_UPLOAD_BYTES,
   type AssetSource,
-} from '@ark/deck-core/assets.ts'
+} from '@ark/deck/document/assets.ts'
 
 export type EmbeddedAsset = {
   id: string

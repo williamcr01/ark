@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ark/ai": "workspace:*",
+    "@ark/deck": "workspace:*",
     "@ark/deck-core": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "zod": "^4.4.3"

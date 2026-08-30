@@ -1,5 +1,5 @@
 import type { ChatAttachment } from '@ark/deck-core/chat.ts'
-import { isValidAssetId } from '@ark/deck-core/assets.ts'
+import { isValidAssetId } from '@ark/deck/document/assets.ts'
 import { isValidDeckId } from '@ark/contracts'
 import { type AssetStore } from './asset-record.ts'
 

@@ -97,6 +97,9 @@ importers:
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../../packages/deck
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
@@ -152,6 +155,9 @@ importers:
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../../packages/deck
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
@@ -303,6 +309,9 @@ importers:
       '@ark/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../../packages/deck
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
@@ -328,6 +337,9 @@ importers:
       '@ark/api':
         specifier: workspace:*
         version: link:../api
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../../packages/deck
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../../packages/deck-core
@@ -393,6 +405,9 @@ importers:
       '@ark/ai':
         specifier: workspace:*
         version: link:../ai
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
       '@ark/deck-core':
         specifier: workspace:*
         version: link:../deck-core
@@ -410,11 +425,45 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/deck:
+    dependencies:
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../runtime-registry
+      '@ark/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
+      nanoid:
+        specifier: 5.1.16
+        version: 5.1.16
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/deck-core:
     dependencies:
       '@ark/ai':
         specifier: workspace:*
         version: link:../ai
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry

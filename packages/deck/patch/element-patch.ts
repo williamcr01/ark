@@ -10,15 +10,15 @@ import {
   ARK_SPACER_ATTR,
   ARK_SPACER_FOR_ATTR,
   TRANSIENT_ELEMENT_ID_PREFIX,
-} from '@ark/deck-core/deck-metadata.ts'
-import { validateImageSrcForInsert } from '@ark/deck-core/deck-image.ts'
-import { isExternalUrl } from '@ark/deck-core/deck-network.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
+} from '@ark/deck/document/metadata.ts'
+import { validateImageSrcForInsert } from '@ark/deck/document/image.ts'
+import { isExternalUrl } from '@ark/deck/document/network.ts'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import {
   createElementId,
   parseEditableElementsForSlide,
   stampEditableElementIds,
-} from './deck-editable-elements.ts'
+} from './editable-elements.ts'
 
 export type ElementPatchContext = {
   doc: Document

@@ -11,7 +11,7 @@ import {
   validateImageFile,
   validateImageMimeType,
   validateImageSrcForInsert,
-} from './deck-image.ts'
+} from './image.ts'
 
 const tinyPngDataUrl =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='

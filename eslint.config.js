@@ -18,7 +18,7 @@ const apiContractPatterns = [
  * They may import `node:*`; the renderer may not import them. Everything else under `packages/`
  * is browser-safe and stays free of Node built-ins so the renderer can bundle it.
  */
-const SERVER_ONLY_PACKAGES = ['ai', 'telemetry']
+const SERVER_ONLY_PACKAGES = ['ai']
 
 const serverOnlyPackageFiles = SERVER_ONLY_PACKAGES.map((name) => `packages/${name}/**/*.ts`)
 
@@ -158,6 +158,8 @@ export default defineConfig([
     ignores: [
       ...serverOnlyPackageFiles,
       'packages/**/*-disk.ts',
+      // node:crypto for request-id generation; the rest of @ark/telemetry is browser-safe.
+      'packages/telemetry/request-id.ts',
       'packages/**/*.test.ts',
       'packages/**/*.spec.ts',
       'packages/**/vitest.config.ts',

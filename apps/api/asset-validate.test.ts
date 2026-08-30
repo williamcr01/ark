@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_ASSET_UPLOAD_BYTES } from '@ark/deck-core/assets.ts'
+import { MAX_ASSET_UPLOAD_BYTES } from '@ark/deck/document/assets.ts'
 
 import {
   computeChecksum,

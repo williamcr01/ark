@@ -8,7 +8,7 @@ import {
   isSuspiciousAssetFilename,
   resolveAssetMediaType,
   sanitizeAssetFilename,
-} from '@ark/deck-core/assets.ts'
+} from '@ark/deck/document/assets.ts'
 
 export type AssetValidationError = {
   code:

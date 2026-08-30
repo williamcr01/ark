@@ -10,7 +10,7 @@ import {
   deckOriginAfterWrite,
   normalizeDeckOrigin,
   type DeckOrigin,
-} from '@ark/deck-core/deck-origin.ts'
+} from '@ark/deck/document/origin.ts'
 import { resolveArkDataDir } from './data-dir.ts'
 import type { EmbeddedAsset } from './embedded-assets.ts'
 

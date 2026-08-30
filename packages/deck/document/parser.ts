@@ -1,9 +1,10 @@
 import { JSDOM } from 'jsdom'
 
-import type { SlideEditableElements } from '@ark/deck-core/deck-editable.ts'
-import { parseEditableElements, resolveSlideId } from './deck-editable-elements.ts'
-import { SLIDE_SELECTOR_CHAIN, findSlideElements } from '@ark/deck-core/deck-preview-slides.ts'
-import { extractDeckTitle } from './deck-record.ts'
+import type { SlideEditableElements } from '@ark/deck/document/editable.ts'
+import { parseEditableElements, resolveSlideId } from '../patch/editable-elements.ts'
+import { SLIDE_SELECTOR_CHAIN, findSlideElements } from './slides.ts'
+import { utf8ByteLength } from './utf8.ts'
+import { extractDeckTitle } from './title.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 
@@ -301,7 +302,7 @@ export function parseDeckHtml(html: string, options: DeckParseOptions = {}): Dec
 
   if (options.logger) {
     logTimedEvent(options.logger, 'deck.parse.completed', durationMs, {
-      htmlBytes: Buffer.byteLength(html, 'utf8'),
+      htmlBytes: utf8ByteLength(html),
       slideCount: result.slideCount,
       structure: result.structure,
       scriptCount: result.scripts.length,

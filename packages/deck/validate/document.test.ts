@@ -6,7 +6,7 @@ import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealDeck from '@fixtures/reveal-deck.html?raw'
 
-import { validateDeckHtml } from '@ark/deck-core/deck-validate.ts'
+import { validateDeckHtml } from '@ark/deck/validate/document.ts'
 
 describe('validateDeckHtml with JSDOM', () => {
   it('detects runtime modes on the server path without browser DOMParser', () => {

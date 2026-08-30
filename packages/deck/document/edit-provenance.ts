@@ -1,4 +1,4 @@
-import type { DeckPatchOperation } from './deck-patch.ts'
+import type { DeckPatchOperation } from '../patch/patch-request.ts'
 
 /**
  * Provenance metadata for a manual editor operation (issue #82).

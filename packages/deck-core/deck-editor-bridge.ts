@@ -8,13 +8,13 @@
  * @see docs/deck-editor-bridge.md
  */
 
-import { INLINE_TEXT_EDITABLE_TAGS } from './deck-editable.ts'
+import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
 import {
   ARK_TEXT_BOX_CLASS,
   ARK_TEXT_BOX_EDITABLE_VALUE,
   DEFAULT_TEXT_BOX_NORMALIZED_SIZE,
   MIN_TEXT_BOX_NORMALIZED_SIZE,
-} from './deck-text-box.ts'
+} from '@ark/deck/patch/text-box.ts'
 import {
   ARK_ELEMENT_ID_ATTR,
   ARK_LOCKED_ATTR,
@@ -23,8 +23,10 @@ import {
   ARK_SPACER_ATTR,
   ARK_SPACER_FOR_ATTR,
   TRANSIENT_ELEMENT_ID_PREFIX,
-} from './deck-metadata.ts'
+} from '@ark/deck/document/metadata.ts'
 import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
+
+import type { NormalizedRect as EditorNormalizedRect } from '@ark/deck/document/geometry.ts'
 
 export const EDITOR_BRIDGE_PROTOCOL_VERSION = 1 as const
 export const EDITOR_SESSION_HANDOFF_KEY = '__arkEditorSessionV1' as const
@@ -104,12 +106,7 @@ export type EditorTool = 'select' | 'text' | 'insert'
 export type EditorSurface = 'light' | 'dark'
 export type EditorShortcutAction = 'undo' | 'redo' | 'duplicate'
 
-export type EditorNormalizedRect = {
-  x: number
-  y: number
-  width: number
-  height: number
-}
+export type { EditorNormalizedRect }
 
 /** Local CSS-px flow footprint preserved when adopting an in-flow element. */
 export type EditorAdoptSpacer = {

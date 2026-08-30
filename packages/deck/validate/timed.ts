@@ -1,10 +1,8 @@
 import { JSDOM } from 'jsdom'
 
-import {
-  validateDeckDocument,
-  validateDeckHtml,
-  type DeckValidationReport,
-} from '@ark/deck-core/deck-validate.ts'
+import { utf8ByteLength } from '../document/utf8.ts'
+
+import { validateDeckDocument, validateDeckHtml, type DeckValidationReport } from './document.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 
@@ -23,7 +21,7 @@ export function validateDeckDocumentOnServer(
 
   if (options.logger) {
     logTimedEvent(options.logger, 'deck.validation.completed', durationMs, {
-      htmlBytes: Buffer.byteLength(html, 'utf8'),
+      htmlBytes: utf8ByteLength(html),
       valid: result.valid,
       issueCount: result.issues.length,
     })
@@ -42,7 +40,7 @@ export function validateDeckHtmlOnServer(
 
   if (options.logger) {
     logTimedEvent(options.logger, 'deck.validation.completed', durationMs, {
-      htmlBytes: Buffer.byteLength(html, 'utf8'),
+      htmlBytes: utf8ByteLength(html),
       valid: result.valid,
       issueCount: result.issues.length,
     })

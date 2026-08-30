@@ -1,8 +1,8 @@
 import { JSDOM } from 'jsdom'
 import { nanoid } from 'nanoid'
 
-import { findSlideElements } from '@ark/deck-core/deck-preview-slides.ts'
-import { ARK_SLIDE_ID_ATTR } from '@ark/deck-core/deck-metadata.ts'
+import { findSlideElements } from '../document/slides.ts'
+import { ARK_SLIDE_ID_ATTR } from '@ark/deck/document/metadata.ts'
 import {
   type DeckPatchOperation,
   type DeckPatchResult,
@@ -10,12 +10,12 @@ import {
   isSlidePatchOperation,
   isTextReplacePatchOperation,
   summarizePatchOperation,
-} from '@ark/deck-core/deck-patch.ts'
-import type { DeckValidationReport } from '@ark/deck-core/deck-validate.ts'
-import { applyDeckEdits } from './deck-edit.ts'
-import { applyElementPatch } from './deck-element-patch.ts'
-import { stampEditableElementIds } from './deck-editable-elements.ts'
-import { validateDeckDocumentOnServer } from './deck-validate.ts'
+} from '@ark/deck/patch/patch-request.ts'
+import type { DeckValidationReport } from '@ark/deck/validate/timed.ts'
+import { applyDeckEdits } from './text-edit.ts'
+import { applyElementPatch } from './element-patch.ts'
+import { stampEditableElementIds } from './editable-elements.ts'
+import { validateDeckDocumentOnServer } from '../validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 
 export type ApplyDeckPatchesOptions = {

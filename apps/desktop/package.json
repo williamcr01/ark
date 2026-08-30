@@ -27,6 +27,7 @@
     "@ark/ai": "workspace:*",
     "@ark/api": "workspace:*",
     "@ark/contracts": "workspace:*",
+    "@ark/deck": "workspace:*",
     "@ark/deck-core": "workspace:*",
     "@ark/mcp": "workspace:*",
     "@ark/runtime-registry": "workspace:*",

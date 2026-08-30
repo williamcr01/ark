@@ -20,8 +20,8 @@ import type {
   EditorSelectionInfo,
   EditorSelectionTextStyle,
 } from '@ark/deck-core/deck-editor-bridge.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
+import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import {
   buildAttrsOperation,
   buildGeometryFieldOperation,

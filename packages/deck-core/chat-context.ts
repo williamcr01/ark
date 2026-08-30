@@ -10,7 +10,7 @@ import {
   type JsonValue,
   type SlideContext,
 } from './chat.ts'
-import type { DeckOrigin } from './deck-origin.ts'
+import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
 const stringBytes = (value: string) => new TextEncoder().encode(value).byteLength

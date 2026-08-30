@@ -5,10 +5,10 @@ import {
   ARK_MANAGED_ATTR,
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from '@ark/deck-core/deck-metadata.ts'
-import { buildDeckAssetProxyUrl } from '@ark/deck-core/deck-network.ts'
-import { applyDeckPatches } from './deck-patch.ts'
-import { parseDeckHtml } from './deck-parser.ts'
+} from '@ark/deck/document/metadata.ts'
+import { buildDeckAssetProxyUrl } from '@ark/deck/document/network.ts'
+import { applyDeckPatches } from './slide-ops.ts'
+import { parseDeckHtml } from '../document/parser.ts'
 
 const arkManagedDeck = `<!DOCTYPE html>
 <html lang="en">

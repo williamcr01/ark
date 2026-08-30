@@ -1,11 +1,11 @@
-import type { EditorNormalizedRect } from './deck-editor-bridge.ts'
+import type { NormalizedRect as EditorNormalizedRect } from '../document/geometry.ts'
 import {
   ARK_EDITABLE_ATTR,
   ARK_MANAGED_ATTR,
   ARK_ROLE_ATTR,
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
-} from './deck-metadata.ts'
+} from '../document/metadata.ts'
 
 export const ARK_TEXT_BOX_CLASS = 'ark-text-box' as const
 export const ARK_TEXT_BOX_EDITABLE_VALUE = 'text-box' as const

@@ -7,7 +7,7 @@ import {
   isElementPatchOperation,
   isSlidePatchOperation,
   summarizePatchOperation,
-} from './deck-patch.ts'
+} from './patch-request.ts'
 
 describe('deck patch schema', () => {
   it('accepts slide-level operations', () => {

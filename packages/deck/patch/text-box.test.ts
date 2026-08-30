@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ARK_SLIDE_REFERENCE_HEIGHT, ARK_SLIDE_REFERENCE_WIDTH } from './deck-metadata.ts'
+import { ARK_SLIDE_REFERENCE_HEIGHT, ARK_SLIDE_REFERENCE_WIDTH } from '../document/metadata.ts'
 import {
   buildTextBoxHtml,
   clampNormalizedRect,
@@ -9,7 +9,7 @@ import {
   MIN_TEXT_BOX_NORMALIZED_SIZE,
   normalizedRectFromPoints,
   normalizedRectToInlineStyle,
-} from './deck-text-box.ts'
+} from './text-box.ts'
 
 describe('deck-text-box', () => {
   it('clamps normalized geometry to the slide bounds', () => {
