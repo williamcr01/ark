@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
+import { extractHtmlDocument, finalizeGeneratedDeck } from './response.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
 

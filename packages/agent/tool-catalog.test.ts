@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildDeckAgentSystemPrompt } from './deck-agent.ts'
-import { createActiveDeckTools } from './deck-tool-catalog.ts'
-import { createDeckWorkspace } from './deck-workspace.ts'
+import { buildDeckAgentSystemPrompt } from './agent.ts'
+import { createActiveDeckTools } from './tool-catalog.ts'
+import { createDeckWorkspace } from './workspace.ts'
 
 describe('deck tool catalog', () => {
   it('keeps registered tools in sync and omits tool list from system prompt', () => {

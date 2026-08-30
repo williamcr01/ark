@@ -12,10 +12,10 @@ import { assembleDeckAgentContext } from '@ark/chat/chat-context.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/chat/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
-import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
-import { createDeckWorkspace } from './deck-workspace.ts'
-import { type DeckAttachmentInspector } from './deck-tools.ts'
-import { extractHtmlDocument, finalizeGeneratedDeck } from './generate-response.ts'
+import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './guides.ts'
+import { createDeckWorkspace } from './workspace.ts'
+import { type DeckAttachmentInspector } from './tools.ts'
+import { extractHtmlDocument, finalizeGeneratedDeck } from './response.ts'
 import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import {
@@ -23,7 +23,7 @@ import {
   findToolDefinition,
   normalizeTranscriptValue,
   type DeckToolDefinition,
-} from './deck-tool-catalog.ts'
+} from './tool-catalog.ts'
 import {
   applyAnthropicConversationCacheBreakpoints,
   buildCachedSystemPrompt,

@@ -10,17 +10,17 @@ import {
   deckReadInputSchema,
   deckSlidePatchInputSchema,
   deckWriteInputSchema,
-} from '@ark/mcp/tool-catalog.ts'
+} from './tool-schemas.ts'
 import {
   listDeckSlides,
   parseDeckStructure,
   readDeckCharacterSlice,
   readDeckHtmlSlice,
   readDeckSlideHtml,
-} from './deck-html.ts'
+} from './document.ts'
 import { validateDeckHtmlOnServer, type DeckValidationReport } from '@ark/deck/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
-import { type DeckWorkspace, setDeckWorkspaceHtml } from './deck-workspace.ts'
+import { type DeckWorkspace, setDeckWorkspaceHtml } from './workspace.ts'
 
 export type DeckAttachmentSummary = {
   id: string

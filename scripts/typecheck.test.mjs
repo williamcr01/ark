@@ -12,6 +12,7 @@ test('typecheck covers every workspace tsconfig used by build', () => {
     'apps/mcp/tsconfig.json',
     'apps/sandbox/tsconfig.json',
     'packages/ai/tsconfig.json',
+    'packages/agent/tsconfig.json',
     'packages/chat/tsconfig.json',
     'packages/contracts/tsconfig.json',
     'packages/deck/tsconfig.json',

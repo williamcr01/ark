@@ -9,7 +9,7 @@ import {
   MCP_TOOL_CATALOG,
   type McpToolName,
 } from '@ark/mcp/tool-catalog.ts'
-import { readMcpDiscovery } from './discovery.ts'
+import { readMcpDiscovery } from '@ark/mcp/discovery.ts'
 
 function processIsAlive(pid: number) {
   try {

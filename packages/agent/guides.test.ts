@@ -9,8 +9,8 @@ import {
   buildAgentGuidesPromptSection,
   loadAgentGuides,
   resetAgentGuidesCache,
-} from './agent-guides.ts'
-import { buildDeckAgentSystemPrompt } from './deck-agent.ts'
+} from './guides.ts'
+import { buildDeckAgentSystemPrompt } from './agent.ts'
 
 function writeGuideDir(files: Record<string, string>): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'ark-agent-guides-'))

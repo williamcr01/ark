@@ -10,6 +10,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@ark/agent": "workspace:*",
     "@ark/chat": "workspace:*",
     "@ark/contracts": "workspace:*",
     "@ark/deck": "workspace:*",

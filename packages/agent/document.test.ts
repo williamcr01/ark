@@ -11,7 +11,7 @@ import {
   readDeckSlideHtml,
   summarizeDeckHtml,
   syncDeckHtmlTitle,
-} from './deck-html.ts'
+} from './document.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
 

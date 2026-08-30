@@ -1,19 +1,19 @@
 import type { ExternalDeckUpdate, McpToolResponse } from '@ark/contracts'
 import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
 import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
-import { MCP_TOOL_CATALOG, isMcpToolName, type McpToolName } from '@ark/mcp/tool-catalog.ts'
-import { createActiveDeckTools } from './deck-tool-catalog.ts'
+import { MCP_TOOL_CATALOG, isMcpToolName, type McpToolName } from './tool-catalog.ts'
+import { createActiveDeckTools } from '@ark/agent/tool-catalog.ts'
 import type { DeckStore } from '@ark/storage/records/deck-record.ts'
-import { createDeckWorkspace } from './deck-workspace.ts'
-import { parseDeckStructure } from './deck-html.ts'
-import { buildMcpAuthoringGuide } from './mcp-guides.ts'
+import { createDeckWorkspace } from '@ark/agent/workspace.ts'
+import { parseDeckStructure } from '@ark/agent/document.ts'
+import { buildMcpAuthoringGuide } from './guides.ts'
 import { WorkspaceDocumentConflictError } from '@ark/storage/stores/workspace-store.ts'
-import type { McpServiceState } from './mcp-service.ts'
+import type { McpServiceState } from './service.ts'
 import {
   createMcpInteractionStore,
   McpInteractionError,
   type McpInteractionStore,
-} from './mcp-interactions.ts'
+} from './interactions.ts'
 
 type ToolExecute = (input: unknown, options: unknown) => Promise<unknown>
 
