@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { GenerationJob } from '@ark/deck-core/generation-job.ts'
+import type { GenerationJob } from '@ark/chat/generation-job.ts'
 import { createAssetStore } from './asset-store.ts'
 import { createChatStore } from './chat-store.ts'
 import { createDeckStore } from './deck-store.ts'

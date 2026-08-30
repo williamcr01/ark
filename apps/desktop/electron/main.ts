@@ -25,8 +25,8 @@ import {
   type McpStatus,
   type ProviderId,
 } from '@ark/contracts'
-import { mcpDiscoveryPath } from '@ark/mcp/discovery.ts'
-import { runMcpBridge } from '@ark/mcp/bridge.ts'
+import { mcpDiscoveryPath } from '@ark/mcp-server/discovery.ts'
+import { runMcpBridge } from '@ark/mcp-server/bridge.ts'
 
 import { SecureCredentialStore } from './credential-store.ts'
 import { getRendererContentSecurityPolicy } from './renderer-security.ts'

@@ -7,12 +7,9 @@ import type {
   ChatMessage,
   EditorSelectionContext,
   SlideContext,
-} from '@ark/deck-core/chat.ts'
+} from '@ark/chat/chat.ts'
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
-import {
-  formatModelGenerationFailure,
-  isModelGenerationError,
-} from '@ark/deck-core/generation-job.ts'
+import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
 import type { ReasoningEffort } from '@ark/contracts'
 import { describeDeckValidation } from '@/lib/deck-io'
 import { newId } from '@/lib/id'

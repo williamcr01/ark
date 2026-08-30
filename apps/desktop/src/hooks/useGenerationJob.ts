@@ -8,7 +8,7 @@ import {
   type ChatMessage,
   type EditorSelectionContext,
   type SlideContext,
-} from '@ark/deck-core/chat.ts'
+} from '@ark/chat/chat.ts'
 import type { GenerationJobApi, GenerationJobStatus, ReasoningEffort } from '@ark/contracts'
 import {
   cancelGenerationJob,

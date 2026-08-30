@@ -1,5 +1,5 @@
 import { MAX_SLIDE_CONTEXTS } from '@ark/contracts'
-import type { SlideContext } from '@ark/deck-core/chat.ts'
+import type { SlideContext } from '@ark/chat/chat.ts'
 
 const MAX_TITLE_LENGTH = 200
 

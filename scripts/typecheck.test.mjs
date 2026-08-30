@@ -9,10 +9,17 @@ test('typecheck covers every workspace tsconfig used by build', () => {
     'apps/desktop/tsconfig.app.json',
     'apps/desktop/tsconfig.node.json',
     'apps/api/tsconfig.json',
+    'apps/mcp/tsconfig.json',
     'apps/sandbox/tsconfig.json',
+    'packages/ai/tsconfig.json',
+    'packages/chat/tsconfig.json',
     'packages/contracts/tsconfig.json',
-    'packages/deck-core/tsconfig.json',
+    'packages/deck/tsconfig.json',
+    'packages/deck-preview/tsconfig.json',
+    'packages/editor-runtime/tsconfig.json',
+    'packages/mcp/tsconfig.json',
     'packages/runtime-registry/tsconfig.json',
+    'packages/telemetry/tsconfig.json',
   ])
   for (const project of PROJECTS) {
     assert.ok(existsSync(project), `missing ${project}`)

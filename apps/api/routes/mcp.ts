@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express'
 
 import { mcpToolRequestSchema, type McpActivityEvent, type McpToolResponse } from '@ark/contracts'
-import { isMcpToolName } from '@ark/deck-core/mcp-tool-catalog.ts'
+import { isMcpToolName } from '@ark/mcp/tool-catalog.ts'
 import type { McpServiceState } from '../mcp-service.ts'
 import { McpRunnerError } from '../mcp-runner.ts'
 import { getRequestLogger } from '../observability/index.ts'

@@ -1,7 +1,7 @@
 import { memo, useMemo, useRef, useState, useEffect, useCallback, useEffectEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { type ChatAttachment } from '@ark/deck-core/chat.ts'
+import { type ChatAttachment } from '@ark/chat/chat.ts'
 import { toast } from 'sonner'
 
 import { AgentInteractionModal } from '@/components/AgentInteractionModal'

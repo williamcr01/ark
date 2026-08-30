@@ -8,7 +8,7 @@ import {
 
 import { toast } from 'sonner'
 
-import type { ChatMessage } from '@ark/deck-core/chat.ts'
+import type { ChatMessage } from '@ark/chat/chat.ts'
 import {
   describeDeckValidation,
   downloadHtml,

@@ -1,4 +1,4 @@
-import type { GenerationJob } from '@ark/deck-core/generation-job.ts'
+import type { GenerationJob } from '@ark/chat/generation-job.ts'
 import { deckValidationReportSchema } from '@ark/contracts'
 import type { GenerationJobApi } from '@ark/contracts'
 

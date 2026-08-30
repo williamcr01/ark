@@ -1,5 +1,5 @@
 {
-  "name": "@ark/mcp",
+  "name": "@ark/mcp-server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,9 +10,10 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@ark/chat": "workspace:*",
     "@ark/contracts": "workspace:*",
     "@ark/deck": "workspace:*",
-    "@ark/deck-core": "workspace:*",
+    "@ark/mcp": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "^4.4.3"
   },

@@ -8,7 +8,7 @@ import {
   MCP_SERVER_INSTRUCTIONS,
   MCP_TOOL_CATALOG,
   type McpToolName,
-} from '@ark/deck-core/mcp-tool-catalog.ts'
+} from '@ark/mcp/tool-catalog.ts'
 import { readMcpDiscovery } from './discovery.ts'
 
 function processIsAlive(pid: number) {

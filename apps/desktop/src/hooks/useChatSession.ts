@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { ChatMessage } from '@ark/deck-core/chat.ts'
-import { persistedMessageToChatMessage } from '@ark/deck-core/chat-thread.ts'
+import type { ChatMessage } from '@ark/chat/chat.ts'
+import { persistedMessageToChatMessage } from '@ark/chat/chat-thread.ts'
 import { appendDeckChatMessage, clearDeckChat, fetchAllDeckChat } from '@/lib/chat-api'
 import { reconcileChatMessages } from '@/lib/chat-reconcile'
 import {

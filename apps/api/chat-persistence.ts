@@ -2,17 +2,14 @@ import {
   buildAssistantMessageContent,
   type ApiChatMessage,
   type ChatMessagePart,
-} from '@ark/deck-core/chat.ts'
-import { projectAssistantTurnForPersistence } from '@ark/deck-core/chat-context.ts'
+} from '@ark/chat/chat.ts'
+import { projectAssistantTurnForPersistence } from '@ark/chat/chat-context.ts'
 import type {
   GenerationJob,
   GenerationJobError,
   GenerationJobStatus,
-} from '@ark/deck-core/generation-job.ts'
-import {
-  formatModelGenerationFailure,
-  isModelGenerationError,
-} from '@ark/deck-core/generation-job.ts'
+} from '@ark/chat/generation-job.ts'
+import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
 import type { ChatStore } from './chat-record.ts'
 import type { DeckStore } from './deck-record.ts'
 

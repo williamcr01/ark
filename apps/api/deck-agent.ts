@@ -7,10 +7,10 @@ import {
   type EditorSelectionContext,
   type JsonValue,
   type SlideContext,
-} from '@ark/deck-core/chat.ts'
-import { assembleDeckAgentContext } from '@ark/deck-core/chat-context.ts'
+} from '@ark/chat/chat.ts'
+import { assembleDeckAgentContext } from '@ark/chat/chat-context.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
-import type { ProviderCallMetrics, ReasoningEffort } from '@ark/deck-core/generation-job.ts'
+import type { ProviderCallMetrics, ReasoningEffort } from '@ark/chat/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './agent-guides.ts'
 import { createDeckWorkspace } from './deck-workspace.ts'

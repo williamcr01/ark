@@ -65,26 +65,21 @@ import type { ResolvedAppearance } from '@/hooks/useAppearance'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
-import type {
-  AgentStep,
-  ChatAttachment,
-  ChatMessage,
-  ChatMessagePart,
-} from '@ark/deck-core/chat.ts'
-import { agentStepsToChatParts, MAX_CHAT_ATTACHMENT_BYTES } from '@ark/deck-core/chat.ts'
+import type { AgentStep, ChatAttachment, ChatMessage, ChatMessagePart } from '@ark/chat/chat.ts'
+import { agentStepsToChatParts, MAX_CHAT_ATTACHMENT_BYTES } from '@ark/chat/chat.ts'
 import {
   agentQuestionRequestSchema,
   formatAgentQuestionAnswers,
   parseAgentQuestionAnswerLines,
   type AgentQuestionRequest,
-} from '@ark/deck-core/agent-questions.ts'
+} from '@ark/chat/agent-questions.ts'
 import {
   formatThemeChoice,
   parseThemeChoiceName,
   themeProposalRequestSchema,
   type ThemeProposalRequest,
-} from '@ark/deck-core/agent-themes.ts'
-import type { GenerationJobStatus } from '@ark/deck-core/generation-job.ts'
+} from '@ark/chat/agent-themes.ts'
+import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import {
   findAskUserAnswerAfter,
@@ -105,7 +100,7 @@ const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
 /** `--radius: 0.625rem`, i.e. what `rounded-lg` resolves to, in px. */
 const ARK_RADIUS_LG = 10
 
-export type { ChatMessage } from '@ark/deck-core/chat.ts'
+export type { ChatMessage } from '@ark/chat/chat.ts'
 
 type ChatAlertId = 'generation' | 'attachment' | 'models' | 'model-warnings'
 
