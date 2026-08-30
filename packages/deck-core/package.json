@@ -10,6 +10,7 @@
     "./*": "./*"
   },
   "dependencies": {
+    "@ark/ai": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "ai": "^6.0.199",
     "zod": "^4.4.3"

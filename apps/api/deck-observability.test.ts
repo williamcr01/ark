@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { applyDeckPatches } from './deck-patch.ts'
 import { parseDeckHtml } from './deck-parser.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import { createLogger, type StructuredLogEntry } from './observability/logger.ts'
+import { createLogger, type StructuredLogEntry } from '@ark/telemetry/logger.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
 const plainCssDeck = readFileSync(path.join(fixtureDir, 'plain-css-deck.html'), 'utf8')

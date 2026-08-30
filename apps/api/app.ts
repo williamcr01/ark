@@ -10,7 +10,7 @@ import { type DeckStore } from './deck-record.ts'
 import { type GenerationJobStore } from './generation-job-record.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner, type GenerationJobRunner } from './generation-job-runner.ts'
-import { getDefaultModel } from './models.ts'
+import { getDefaultModel } from '@ark/ai/models.ts'
 import { createPreviewSessionStore, type PreviewSessionStore } from './preview-sessions.ts'
 import {
   createObservabilityMiddleware,

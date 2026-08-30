@@ -1,7 +1,11 @@
 import type { NextFunction, Request, Response } from 'express'
 
-import { createLogger, type Logger } from './logger.ts'
-import { attachRequestIdToJsonBody, REQUEST_ID_HEADER, resolveRequestId } from './request-id.ts'
+import { createLogger, type Logger } from '@ark/telemetry/logger.ts'
+import {
+  attachRequestIdToJsonBody,
+  REQUEST_ID_HEADER,
+  resolveRequestId,
+} from '@ark/telemetry/request-id.ts'
 
 type RequestContext = {
   requestId: string

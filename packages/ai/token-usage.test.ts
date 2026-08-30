@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeProviderTokenUsage } from './provider-token-usage.ts'
+import { normalizeProviderTokenUsage } from './token-usage.ts'
 
 describe('normalizeProviderTokenUsage', () => {
   it('plumbs cache read/write/no-cache details from AI SDK usage', () => {

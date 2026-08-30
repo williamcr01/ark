@@ -16,7 +16,7 @@ import { applyDeckEdits } from './deck-edit.ts'
 import { applyElementPatch } from './deck-element-patch.ts'
 import { stampEditableElementIds } from './deck-editable-elements.ts'
 import { validateDeckDocumentOnServer } from './deck-validate.ts'
-import type { Logger } from './observability/logger.ts'
+import type { Logger } from '@ark/telemetry/logger.ts'
 
 export type ApplyDeckPatchesOptions = {
   activeSlideIndex?: number

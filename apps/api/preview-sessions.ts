@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { nanoid } from 'nanoid'
 
-import { createLogger, type Logger } from './observability/logger.ts'
+import { createLogger, type Logger } from '@ark/telemetry/logger.ts'
 
 export type ThumbnailPreviewCache = {
   html: string

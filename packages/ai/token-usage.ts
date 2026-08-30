@@ -1,4 +1,4 @@
-import type { ProviderTokenUsage } from '@ark/deck-core/generation-job.ts'
+import type { ProviderTokenUsage } from './provider-token-usage.ts'
 
 /** Normalize AI SDK usage (including step-summed cache details) into job metrics. */
 export function normalizeProviderTokenUsage(usage: {

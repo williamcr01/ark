@@ -1,7 +1,11 @@
 import { APICallError } from 'ai'
 
-export type { ApiErrorCode, ApiErrorPayload, ProviderId } from '@ark/contracts'
-import type { ApiErrorPayload, ProviderId } from '@ark/contracts'
+import { PROVIDER_ENV_KEYS, PROVIDER_LABELS, type ProviderId } from './provider-id.ts'
+import type { ProviderErrorCode, ProviderErrorPayload } from './provider-error-code.ts'
+
+export type { ProviderId }
+export type { ProviderErrorCode as ApiErrorCode, ProviderErrorPayload as ApiErrorPayload }
+export { PROVIDER_ENV_KEYS, PROVIDER_LABELS }
 
 const PLACEHOLDER_API_KEYS = new Set([
   'your_openai_api_key_here',
@@ -11,12 +15,6 @@ const PLACEHOLDER_API_KEYS = new Set([
   'sk-your-key-here',
 ])
 
-const PROVIDER_ENV_KEYS: Record<ProviderId, string> = {
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  google: 'GOOGLE_GENERATIVE_AI_API_KEY',
-}
-
 export type ProviderApiKeySource = {
   getApiKey: (provider: ProviderId) => string | null
 }
@@ -25,12 +23,6 @@ let providerApiKeySource: ProviderApiKeySource | null = null
 
 export function setProviderApiKeySource(source: ProviderApiKeySource | null) {
   providerApiKeySource = source
-}
-
-export const PROVIDER_LABELS: Record<ProviderId, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Claude',
-  google: 'Gemini',
 }
 
 export const getProviderApiKey = (provider: ProviderId): string | null => {
@@ -62,12 +54,12 @@ export const getProviderStatus = () =>
     ]),
   ) as Record<ProviderId, { configured: boolean }>
 
-export const missingApiKeyError = (): ApiErrorPayload => ({
+export const missingApiKeyError = (): ProviderErrorPayload => ({
   code: 'missing_api_key',
   error: 'No API keys configured. Add a provider key in Settings.',
 })
 
-export const invalidApiKeyError = (provider?: ProviderId): ApiErrorPayload => ({
+export const invalidApiKeyError = (provider?: ProviderId): ProviderErrorPayload => ({
   code: 'invalid_api_key',
   error: provider
     ? `The ${PROVIDER_LABELS[provider]} API key is invalid or expired. Update it in Settings.`
@@ -78,7 +70,7 @@ export const parseProviderHttpError = (
   provider: ProviderId,
   status: number,
   body: string,
-): ApiErrorPayload => {
+): ProviderErrorPayload => {
   if (status === 401 || status === 403) {
     return invalidApiKeyError(provider)
   }
@@ -114,7 +106,7 @@ export const parseProviderHttpError = (
   }
 }
 
-export const parseProviderError = (error: unknown): ApiErrorPayload => {
+export const parseProviderError = (error: unknown): ProviderErrorPayload => {
   if (APICallError.isInstance(error)) {
     if (error.statusCode === 401 || error.statusCode === 403) {
       return invalidApiKeyError()

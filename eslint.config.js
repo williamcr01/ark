@@ -13,11 +13,25 @@ const apiContractPatterns = [
   },
 ]
 
+/**
+ * Packages that run only in Node (the local API, the Electron main process, the MCP server).
+ * They may import `node:*`; the renderer may not import them. Everything else under `packages/`
+ * is browser-safe and stays free of Node built-ins so the renderer can bundle it.
+ */
+const SERVER_ONLY_PACKAGES = ['ai', 'telemetry']
+
+const serverOnlyPackageFiles = SERVER_ONLY_PACKAGES.map((name) => `packages/${name}/**/*.ts`)
+
 const boundaryPatterns = {
   renderer: [
     {
       group: ['**/apps/api/**', '@ark/api', '@ark/api/*'],
       message: 'Frontend code must not import from apps/api. Use workspace packages instead.',
+    },
+    {
+      group: SERVER_ONLY_PACKAGES.flatMap((name) => [`@ark/${name}`, `@ark/${name}/*`]),
+      message:
+        'Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts.',
     },
   ],
   api: [
@@ -125,8 +139,29 @@ export default defineConfig([
     },
   },
   {
+    // Every package: no imports from apps/, no environment-specific frameworks.
     files: ['packages/**/*.ts'],
-    ignores: ['packages/**/*.test.ts', 'packages/**/*.spec.ts', 'packages/**/vitest.config.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: boundaryPatterns.packages,
+          paths: environmentOnlyPaths,
+        },
+      ],
+    },
+  },
+  {
+    // Browser-safe packages additionally stay free of Node built-ins so the renderer
+    // can bundle them. Server-only packages, `*-disk.ts` files, and tests are exempt.
+    files: ['packages/**/*.ts'],
+    ignores: [
+      ...serverOnlyPackageFiles,
+      'packages/**/*-disk.ts',
+      'packages/**/*.test.ts',
+      'packages/**/*.spec.ts',
+      'packages/**/vitest.config.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -136,45 +171,9 @@ export default defineConfig([
             {
               group: ['node:*'],
               message:
-                'Packages must not use Node built-ins unless the file name makes the environment explicit (e.g. *-disk.ts).',
+                'Browser-safe packages must not use Node built-ins. Move the module to a server-only package, or make the environment explicit in the file name (*-disk.ts).',
             },
           ],
-          paths: environmentOnlyPaths,
-        },
-      ],
-    },
-  },
-  {
-    files: ['packages/**/*-disk.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: boundaryPatterns.packages,
-          paths: environmentOnlyPaths,
-        },
-      ],
-    },
-  },
-  {
-    files: ['packages/contracts/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: boundaryPatterns.packages,
-          paths: environmentOnlyPaths,
-        },
-      ],
-    },
-  },
-  {
-    files: ['packages/**/*.test.ts', 'packages/**/*.spec.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: boundaryPatterns.packages,
           paths: environmentOnlyPaths,
         },
       ],

@@ -1,4 +1,5 @@
-import type { ProviderId, ReasoningEffort } from '@ark/contracts'
+import type { ProviderId } from './provider-id.ts'
+import type { ReasoningEffort } from './reasoning-effort.ts'
 
 /**
  * How Ark maps a UI effort level onto providerOptions for a given model.

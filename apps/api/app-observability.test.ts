@@ -13,7 +13,7 @@ import { createGenerationJobStore } from './generation-job-store.ts'
 import { createGenerationJobRunner } from './generation-job-runner.ts'
 import { type RunDeckAgentResult } from './deck-agent.ts'
 import { validateDeckHtmlOnServer } from './deck-validate.ts'
-import { REQUEST_ID_HEADER } from './observability/request-id.ts'
+import { REQUEST_ID_HEADER } from '@ark/telemetry/request-id.ts'
 import { createRuntimeErrorStore } from './observability/runtime-errors.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 

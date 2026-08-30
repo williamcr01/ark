@@ -32,16 +32,16 @@ import {
   persistLatestUserMessage,
 } from './chat-persistence.ts'
 import { cloneGenerationJobRequest, type GenerationJobStore } from './generation-job-record.ts'
-import { createLanguageModel } from './provider-runtime.ts'
-import { buildOpaquePromptCacheKey } from './prompt-cache-options.ts'
-import { categorizeProviderError } from './observability/provider-errors.ts'
-import { createLogger } from './observability/logger.ts'
+import { createLanguageModel } from '@ark/ai/provider-runtime.ts'
+import { buildOpaquePromptCacheKey } from '@ark/ai/prompt-cache-options.ts'
+import { categorizeProviderError } from '@ark/ai/provider-errors.ts'
+import { createLogger } from '@ark/telemetry/logger.ts'
 import {
   catalogSupportsAttachments,
   findCatalogEntryByRef,
   resolveCatalogReasoningEffort,
-} from './model-catalog.ts'
-import { clearModelCatalogCache } from './models.ts'
+} from '@ark/ai/model-catalog.ts'
+import { clearModelCatalogCache } from '@ark/ai/models.ts'
 import { WorkspaceDocumentConflictError } from './workspace-store.ts'
 
 function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | undefined) {

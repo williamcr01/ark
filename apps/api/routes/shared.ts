@@ -1,7 +1,8 @@
 import { type Response } from 'express'
 
 import type { AppendChatMessageRequest } from '@ark/contracts'
-import { parseProviderError, type ApiErrorPayload } from '../credentials.ts'
+import type { ApiErrorPayload } from '@ark/contracts'
+import { parseProviderError } from '@ark/ai/credentials.ts'
 import { validateDeckHtmlOnServer } from '../deck-validate.ts'
 import { getRequestLogger } from '../observability/index.ts'
 

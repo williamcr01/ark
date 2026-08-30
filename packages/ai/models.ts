@@ -1,4 +1,6 @@
-import type { ModelInfo, ProviderId, ReasoningEffort } from '@ark/contracts'
+import type { ModelInfo } from './model-info.ts'
+import type { ProviderId } from './provider-id.ts'
+import type { ReasoningEffort } from './reasoning-effort.ts'
 import { getProviderApiKey, parseProviderHttpError, PROVIDER_LABELS } from './credentials.ts'
 import {
   DEFAULT_MODEL_REF,
