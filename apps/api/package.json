@@ -19,7 +19,7 @@
     "ai": "^6.0.233",
     "express": "^5.2.1",
     "jsdom": "^29.1.1",
-    "nanoid": "^5.1.11",
+    "nanoid": "^5.1.16",
     "zod": "^4.4.3"
   },
   "devDependencies": {

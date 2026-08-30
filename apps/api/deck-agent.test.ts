@@ -1,3 +1,4 @@
+import type { LanguageModelV3CallOptions } from '@ai-sdk/provider'
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 
@@ -27,6 +28,20 @@ const mockUsage = {
     noCache: 10,
     cacheRead: 0,
     cacheWrite: 0,
+  },
+  outputTokens: {
+    total: 8,
+    text: 8,
+    reasoning: 0,
+  },
+}
+
+const mockCachedUsage = {
+  inputTokens: {
+    total: 1200,
+    noCache: 200,
+    cacheRead: 900,
+    cacheWrite: 100,
   },
   outputTokens: {
     total: 8,
@@ -302,7 +317,212 @@ describe('extractAgentTranscriptParts', () => {
   })
 })
 
+describe('runDeckAgent prompt caching', () => {
+  /**
+   * Capture the converted model calls so we can assert what the provider receives.
+   * Runs a two-step loop (tool call, then summary) so per-step options are covered.
+   */
+  const recordingModel = () => {
+    const calls: LanguageModelV3CallOptions[] = []
+    const replies = [
+      streamToolCallReply('call-edit', 'edit_deck', {
+        edits: [{ oldText: 'Hello', newText: 'Cached' }],
+      }),
+      streamTextReply('Updated the title.'),
+    ]
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        calls.push(options)
+        return replies.shift()!
+      },
+    })
+    return { calls, model }
+  }
+
+  const anthropicCacheControl = { cacheControl: { type: 'ephemeral' } }
+
+  const cacheControlOf = (message: LanguageModelV3CallOptions['prompt'][number]) => {
+    if (message.providerOptions?.anthropic) return message.providerOptions.anthropic
+    if (!Array.isArray(message.content)) return undefined
+    const last = message.content.at(-1)
+    return last && 'providerOptions' in last ? last.providerOptions?.anthropic : undefined
+  }
+
+  const nonSystemMessages = (prompt: LanguageModelV3CallOptions['prompt']) =>
+    prompt.filter((message) => message.role !== 'system')
+
+  it('marks Anthropic system prefix and trailing transcript on every step', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'anthropic',
+      modelRef: 'anthropic:claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const [step, call] of calls.entries()) {
+      const system = call.prompt[0]
+      expect(system.role).toBe('system')
+      expect(system.providerOptions).toEqual({ anthropic: anthropicCacheControl })
+      expect(call.providerOptions?.openai).toBeUndefined()
+
+      const transcript = nonSystemMessages(call.prompt)
+      expect(transcript.length).toBeGreaterThan(0)
+      const trailing = transcript.slice(-Math.min(2, transcript.length))
+      for (const message of trailing) {
+        expect(cacheControlOf(message)).toEqual(anthropicCacheControl)
+      }
+      if (step === 1) {
+        expect(transcript.length).toBeGreaterThan(1)
+        expect(cacheControlOf(transcript.at(-1)!)).toEqual(anthropicCacheControl)
+        if (transcript.length > 2) {
+          expect(cacheControlOf(transcript[0])).toBeUndefined()
+        }
+      }
+    }
+  })
+
+  it('sends the opaque promptCacheKey to OpenAI alongside reasoning options', async () => {
+    const { calls, model } = recordingModel()
+    const opaqueKey = 'deck-1'
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'openai',
+      modelRef: 'openai:gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      reasoningEffort: 'high',
+      promptCacheKey: opaqueKey,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.providerOptions?.openai).toMatchObject({
+        promptCacheKey: opaqueKey,
+        reasoningEffort: 'high',
+      })
+      expect(String(call.providerOptions?.openai?.promptCacheKey)).toBe(opaqueKey)
+      expect(JSON.stringify(call.providerOptions)).not.toContain('Update the title')
+      expect(call.prompt[0].providerOptions).toBeUndefined()
+    }
+  })
+
+  it('omits cache options entirely for Google (implicit caching, telemetry only)', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'google',
+      modelRef: 'google:gemini-2.5-pro',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.prompt[0].providerOptions).toBeUndefined()
+      expect(call.providerOptions).toBeUndefined()
+      for (const message of call.prompt) {
+        expect(cacheControlOf(message)).toBeUndefined()
+      }
+    }
+  })
+
+  it('omits OpenAI promptCacheKey when no opaque id is available', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'openai',
+      modelRef: 'openai:gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls[0].providerOptions).toBeUndefined()
+  })
+
+  it('does not send Anthropic cacheControl or OpenAI promptCacheKey for other providers', async () => {
+    const { calls, model } = recordingModel()
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'xai',
+      modelRef: 'xai:grok-4',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.providerOptions?.openai).toBeUndefined()
+      for (const message of call.prompt) {
+        expect(cacheControlOf(message)).toBeUndefined()
+      }
+    }
+  })
+})
+
 describe('runDeckAgent', () => {
+  it('exposes step-summed prompt-cache token usage in provider metrics', async () => {
+    const replies = [
+      streamToolCallReply('call-edit', 'edit_deck', {
+        edits: [{ oldText: 'Hello', newText: 'Cached' }],
+      }),
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'text-start', id: 'text-1' },
+            { type: 'text-delta', id: 'text-1', delta: 'Updated the title.' },
+            { type: 'text-end', id: 'text-1' },
+            {
+              type: 'finish',
+              finishReason: 'stop' as const,
+              usage: mockCachedUsage,
+            },
+          ],
+        }),
+      },
+    ]
+    const model = new MockLanguageModelV3({
+      doStream: async () => replies.shift()!,
+    })
+
+    const result = await runDeckAgent({
+      model,
+      provider: 'anthropic',
+      modelRef: 'anthropic:claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'Update the title' }],
+      currentHtml: sampleHtml,
+      promptCacheKey: 'deck-1',
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // totalUsage sums every step; first step uses mockUsage, second mockCachedUsage.
+    expect(result.providerMetrics.tokenUsage).toMatchObject({
+      inputTokens: 1210,
+      outputTokens: 16,
+      totalTokens: 1226,
+      noCacheTokens: 210,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 100,
+    })
+  })
+
   it('continues after parse_deck so a later step can update the deck', async () => {
     const replies = [
       streamToolCallReply('call-parse', 'parse_deck', {}),

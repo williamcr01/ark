@@ -1,6 +1,7 @@
 import type { ReasoningEffort } from '@ark/contracts'
 
 import { findCatalogEntryByRef, type ReasoningTransport } from './model-catalog.ts'
+import type { ProviderOptions } from './provider-options.ts'
 
 const ANTHROPIC_THINKING_BUDGET: Record<
   Extract<ReasoningEffort, 'low' | 'medium' | 'high' | 'xhigh'>,
@@ -11,10 +12,6 @@ const ANTHROPIC_THINKING_BUDGET: Record<
   high: 16_384,
   xhigh: 32_768,
 }
-
-type JsonPrimitive = string | number | boolean | null
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
-type ProviderOptions = Record<string, { [key: string]: JsonValue }>
 
 const resolveTransport = (modelRef: string): ReasoningTransport => {
   const entry = findCatalogEntryByRef(modelRef)

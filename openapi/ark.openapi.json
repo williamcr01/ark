@@ -4065,7 +4065,22 @@
                                   "properties": {
                                     "inputTokens": { "type": "integer", "minimum": 0 },
                                     "outputTokens": { "type": "integer", "minimum": 0 },
-                                    "totalTokens": { "type": "integer", "minimum": 0 }
+                                    "totalTokens": { "type": "integer", "minimum": 0 },
+                                    "noCacheTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Non-cached input tokens. Step-summed across the multi-step tool loop."
+                                    },
+                                    "cacheReadTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens served from the provider prompt cache. Step-summed across the multi-step tool loop (the same cached prefix is counted once per step — that measures savings, not unique cached tokens)."
+                                    },
+                                    "cacheWriteTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens written into the provider prompt cache. Step-summed."
+                                    }
                                   }
                                 },
                                 "finishReason": { "type": "string", "nullable": true },
@@ -4448,7 +4463,22 @@
                                   "properties": {
                                     "inputTokens": { "type": "integer", "minimum": 0 },
                                     "outputTokens": { "type": "integer", "minimum": 0 },
-                                    "totalTokens": { "type": "integer", "minimum": 0 }
+                                    "totalTokens": { "type": "integer", "minimum": 0 },
+                                    "noCacheTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Non-cached input tokens. Step-summed across the multi-step tool loop."
+                                    },
+                                    "cacheReadTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens served from the provider prompt cache. Step-summed across the multi-step tool loop (the same cached prefix is counted once per step — that measures savings, not unique cached tokens)."
+                                    },
+                                    "cacheWriteTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens written into the provider prompt cache. Step-summed."
+                                    }
                                   }
                                 },
                                 "finishReason": { "type": "string", "nullable": true },
@@ -4801,7 +4831,22 @@
                                   "properties": {
                                     "inputTokens": { "type": "integer", "minimum": 0 },
                                     "outputTokens": { "type": "integer", "minimum": 0 },
-                                    "totalTokens": { "type": "integer", "minimum": 0 }
+                                    "totalTokens": { "type": "integer", "minimum": 0 },
+                                    "noCacheTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Non-cached input tokens. Step-summed across the multi-step tool loop."
+                                    },
+                                    "cacheReadTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens served from the provider prompt cache. Step-summed across the multi-step tool loop (the same cached prefix is counted once per step — that measures savings, not unique cached tokens)."
+                                    },
+                                    "cacheWriteTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens written into the provider prompt cache. Step-summed."
+                                    }
                                   }
                                 },
                                 "finishReason": { "type": "string", "nullable": true },
@@ -5154,7 +5199,22 @@
                                   "properties": {
                                     "inputTokens": { "type": "integer", "minimum": 0 },
                                     "outputTokens": { "type": "integer", "minimum": 0 },
-                                    "totalTokens": { "type": "integer", "minimum": 0 }
+                                    "totalTokens": { "type": "integer", "minimum": 0 },
+                                    "noCacheTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Non-cached input tokens. Step-summed across the multi-step tool loop."
+                                    },
+                                    "cacheReadTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens served from the provider prompt cache. Step-summed across the multi-step tool loop (the same cached prefix is counted once per step — that measures savings, not unique cached tokens)."
+                                    },
+                                    "cacheWriteTokens": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "description": "Input tokens written into the provider prompt cache. Step-summed."
+                                    }
                                   }
                                 },
                                 "finishReason": { "type": "string", "nullable": true },

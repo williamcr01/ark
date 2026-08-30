@@ -24,6 +24,13 @@ import {
   normalizeTranscriptValue,
   type DeckToolDefinition,
 } from './deck-tool-catalog.ts'
+import {
+  applyAnthropicConversationCacheBreakpoints,
+  buildCachedSystemPrompt,
+  buildPromptCacheProviderOptions,
+  mergeProviderOptions,
+} from './prompt-cache-options.ts'
+import { normalizeProviderTokenUsage } from './provider-token-usage.ts'
 import { buildReasoningProviderOptions } from './reasoning-options.ts'
 
 /** Stop only after a successful pause tool (failed propose_themes can retry in-loop). */
@@ -53,7 +60,7 @@ export function buildDeckAgentSystemPrompt() {
   const core = `You are Ark, an expert presentation designer and front-end engineer.
 
 You edit slide decks as a single self-contained HTML document using the provided tools.
-When attachment tools are available, call list_attachments before using attached files.
+Call list_attachments before using attached files; it returns an empty list when this conversation has none.
 Attached images are optional design inputs: place them when the user's request or the presentation design clearly calls for them, but do not force every attachment into the deck.
 For an image, use the exact Ark URL returned by the attachment tools; never reproduce base64 bytes, invent an asset URL, or substitute a remote URL. Add meaningful alt text. Use object-fit: cover for photographic crops and contain for logos, diagrams, screenshots, or anything that must not be cropped.
 
@@ -82,6 +89,11 @@ export type RunDeckAgentOptions = {
   editorSelection?: EditorSelectionContext
   slideContexts?: SlideContext[]
   reasoningEffort?: ReasoningEffort
+  /**
+   * Opaque deck or chat-thread id for OpenAI prompt-cache routing.
+   * Never job id, user content, or secrets.
+   */
+  promptCacheKey?: string | null
   abortSignal?: AbortSignal
   onStepProgress?: (steps: AgentStep[]) => void | Promise<void>
   logger?: Logger
@@ -92,11 +104,7 @@ function buildProviderMetrics(input: {
   provider: string
   modelRef: string
   latencyMs: number
-  usage?: {
-    inputTokens?: number
-    outputTokens?: number
-    totalTokens?: number
-  }
+  usage?: ReturnType<typeof normalizeProviderTokenUsage>
   finishReason?: string | null
   errorCategory?: string | null
 }): ProviderCallMetrics {
@@ -104,13 +112,7 @@ function buildProviderMetrics(input: {
     latencyMs: input.latencyMs,
     model: input.modelRef,
     provider: input.provider,
-    tokenUsage: input.usage
-      ? {
-          inputTokens: input.usage.inputTokens,
-          outputTokens: input.usage.outputTokens,
-          totalTokens: input.usage.totalTokens,
-        }
-      : null,
+    tokenUsage: input.usage ?? null,
     finishReason: input.finishReason ?? null,
     retryCount: 0,
     errorCategory: input.errorCategory ?? null,
@@ -570,6 +572,7 @@ export async function runDeckAgent({
   editorSelection,
   slideContexts,
   reasoningEffort,
+  promptCacheKey,
   abortSignal,
   onStepProgress,
   logger,
@@ -601,9 +604,10 @@ export async function runDeckAgent({
     ...context.metadata,
     ...guideMetadata,
   })
-  const providerOptions = reasoningEffort
-    ? buildReasoningProviderOptions(reasoningEffort, modelRef)
-    : undefined
+  const providerOptions = mergeProviderOptions(
+    reasoningEffort ? buildReasoningProviderOptions(reasoningEffort, modelRef) : undefined,
+    buildPromptCacheProviderOptions({ provider, promptCacheKey }),
+  )
 
   let result
 
@@ -611,7 +615,7 @@ export async function runDeckAgent({
     let streamError: unknown
     const stream = streamText({
       model,
-      system: buildDeckAgentSystemPrompt(),
+      system: buildCachedSystemPrompt(provider, buildDeckAgentSystemPrompt()),
       messages: context.modelMessages,
       tools,
       stopWhen: [
@@ -619,9 +623,16 @@ export async function runDeckAgent({
         hasAwaitingUserToolResult('propose_themes'),
         isLoopFinished(),
       ],
+      ...(provider === 'anthropic'
+        ? {
+            prepareStep: ({ messages }) => ({
+              messages: applyAnthropicConversationCacheBreakpoints(messages),
+            }),
+          }
+        : {}),
       // Use stable sampling for models without a reasoning-effort control.
       ...(reasoningEffort || provider === 'google' ? {} : { temperature: 0.4 }),
-      ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
+      ...(providerOptions ? { providerOptions } : {}),
       abortSignal,
       onError: ({ error }) => {
         streamError ??= error
@@ -719,11 +730,7 @@ export async function runDeckAgent({
     provider,
     modelRef,
     latencyMs: Math.round(performance.now() - startedAt),
-    usage: {
-      inputTokens: result.totalUsage.inputTokens,
-      outputTokens: result.totalUsage.outputTokens,
-      totalTokens: result.totalUsage.totalTokens,
-    },
+    usage: normalizeProviderTokenUsage(result.totalUsage),
     finishReason: result.finishReason,
   })
 
