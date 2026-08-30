@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react'
 import { SlidersHorizontalIcon } from 'lucide-react'
 
 import { ElementInspector } from '@/components/ElementInspector'
-import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
+import { normalizedRectToStagePixels } from '@/lib/editor/editor-overlay-geometry'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
-import { cn } from '@/lib/utils'
+import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck/deck-preview'
+import { cn } from '@/lib/ui/utils'
 import type { EditorNormalizedRect, EditorSelectionInfo } from '@ark/editor-runtime'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 

@@ -9,7 +9,7 @@ import {
   AttachmentRemove,
   Attachments,
 } from '@/components/ai-elements/attachments'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 export type ContextChipElement = {
   slideIndex: number

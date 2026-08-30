@@ -50,7 +50,7 @@ function applyReplacements(content: string, replacements: MatchedEdit[]) {
 }
 
 /**
- * Apply exact-match edits against the original HTML (pi-style).
+ * Apply exact-match edits against the original HTML.
  * Each oldText must appear exactly once, and edit regions must not overlap.
  */
 export function applyDeckEdits(html: string, edits: DeckEdit[]): ApplyDeckEditsResult {

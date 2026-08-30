@@ -1,5 +1,5 @@
 import type { EditorNormalizedRect } from '@ark/editor-runtime'
-import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
+import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck/deck-preview'
 
 export type StagePixelRect = {
   left: number

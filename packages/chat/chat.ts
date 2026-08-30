@@ -140,7 +140,7 @@ export type ChatMessageContext = {
 }
 
 /**
- * Context policy (pi-style): every generation request replays the full visible
+ * Context policy: every generation request replays the full visible
  * conversation. Durable assistant turns retain every logical step using bounded,
  * recoverable tool projections. Mutations are never recommended for replay.
  * Model context is assembled separately and may summarize older steps in a

@@ -2,7 +2,7 @@ import { ToggleGroup as ToggleGroupPrimitive } from 'radix-ui'
 import type * as React from 'react'
 
 import { toggleVariants } from '@/components/ui/toggle-variants'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 function ToggleGroup({
   className,

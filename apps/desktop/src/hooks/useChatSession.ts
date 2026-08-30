@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { ChatMessage } from '@ark/chat/chat.ts'
 import { persistedMessageToChatMessage } from '@ark/chat/chat-thread.ts'
-import { appendDeckChatMessage, clearDeckChat, fetchAllDeckChat } from '@/lib/chat-api'
-import { reconcileChatMessages } from '@/lib/chat-reconcile'
+import { appendDeckChatMessage, clearDeckChat, fetchAllDeckChat } from '@/lib/api/chat-api'
+import { reconcileChatMessages } from '@/lib/chat/chat-reconcile'
 import {
   clearChatSession,
   createChatSession,
   readChatSession,
   writeChatSession,
-} from '@/lib/chat-session'
+} from '@/lib/chat/chat-session'
 
 export type MessageDeliveryStatus = 'saving' | 'saved' | 'failed'
 

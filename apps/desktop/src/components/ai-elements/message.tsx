@@ -1,6 +1,6 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type { MessageResponseProps as MessageResponseInnerProps } from './message-response'
 import type { UIMessage } from 'ai'
 import type { HTMLAttributes } from 'react'

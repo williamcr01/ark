@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { parseDeckSlides, type ParsedDeck } from '@/lib/deck-slides'
+import { parseDeckSlides, type ParsedDeck } from '@/lib/deck/deck-slides'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 

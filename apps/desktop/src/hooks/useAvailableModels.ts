@@ -8,7 +8,7 @@ import {
   type ModelInfo,
   type ProviderId,
 } from '@ark/contracts'
-import { getDesktopSettings, updateDesktopSettings } from '@/lib/desktop-settings'
+import { getDesktopSettings, updateDesktopSettings } from '@/lib/ui/desktop-settings'
 
 export type { ProviderId, ApiErrorCode }
 export type AvailableModel = ModelInfo

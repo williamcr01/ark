@@ -36,10 +36,10 @@ import {
   getThumbnailSandbox,
   injectRuntimeCsp,
   runtimeModeAllowsDeckScripts,
-} from '@/lib/deck-runtime'
-import { getPreviewHtml, PREVIEW_IFRAME_SECURITY_PROPS } from '@/lib/deck-preview'
-import { parseDeckSlides, stripDeckScriptsForPreview } from '@/lib/deck-slides'
-import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
+} from '@/lib/deck/deck-runtime'
+import { getPreviewHtml, PREVIEW_IFRAME_SECURITY_PROPS } from '@/lib/deck/deck-preview'
+import { parseDeckSlides, stripDeckScriptsForPreview } from '@/lib/deck/deck-slides'
+import { validateDeckHtmlInBrowser } from '../lib/deck/deck-validate.ts'
 
 type SecurityFixture = {
   name: string

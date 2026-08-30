@@ -1,6 +1,6 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import { memo, useEffect, useState, type ComponentProps } from 'react'
 import { Streamdown } from 'streamdown'
 

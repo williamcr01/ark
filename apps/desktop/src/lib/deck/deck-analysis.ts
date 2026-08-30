@@ -1,21 +1,21 @@
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
-import type { DeckRuntimeMode } from '@/lib/deck-runtime'
-import { documentAllowsDeckInitScripts } from '@/lib/deck-runtime'
+import type { DeckRuntimeMode } from '@/lib/deck/deck-runtime'
+import { documentAllowsDeckInitScripts } from '@/lib/deck/deck-runtime'
 import {
   buildDeckRuntimeManifestFromBrowserDocument,
   manifestIndicatesScriptStripping,
-} from '@/lib/deck-runtime-manifest'
-import { deckDocumentHasExecutableContent } from '@/lib/deck-export'
+} from '@/lib/deck/deck-runtime-manifest'
+import { deckDocumentHasExecutableContent } from '@/lib/deck/deck-export'
 import {
   parseDeckSlideDocument,
   type ParsedDeck,
   type ParseDeckSlidesOptions,
-} from '@/lib/deck-slides'
+} from '@/lib/deck/deck-slides'
 import {
   validateDeckDocumentInBrowser,
   validateDeckHtmlInBrowser,
   type DeckValidationReport,
-} from '@/lib/deck-validate'
+} from '@/lib/deck/deck-validate'
 
 export type DeckBrowserAnalysis = ParsedDeck & {
   validation: DeckValidationReport

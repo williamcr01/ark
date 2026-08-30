@@ -1,7 +1,7 @@
 import claudeLogo from '@/assets/providers/claude-color.svg'
 import geminiLogo from '@/assets/providers/gemini-color.svg'
 import openaiLogo from '@/assets/providers/openai.svg'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type { ProviderId } from '@ark/contracts'
 
 const PROVIDER_LOGOS: Record<ProviderId, string> = {

@@ -69,8 +69,8 @@ export function getPreviewFrameStyle(scale: number): CSSProperties {
   }
 }
 
-export type { DeckRuntimeMode } from '@/lib/deck-runtime'
-export { detectRuntimeMode, getPreviewSandbox, getThumbnailSandbox } from '@/lib/deck-runtime'
+export type { DeckRuntimeMode } from '@/lib/deck/deck-runtime'
+export { detectRuntimeMode, getPreviewSandbox, getThumbnailSandbox } from '@/lib/deck/deck-runtime'
 
 export function getPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   return buildPreviewHtml(html, {

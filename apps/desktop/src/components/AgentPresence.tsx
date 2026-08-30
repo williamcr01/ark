@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react'
 
 import type { ResolvedAppearance } from '@/hooks/useAppearance'
-import { getAgentPresenceState } from '@/lib/agent-presence'
+import { getAgentPresenceState } from '@/lib/chat/agent-presence'
 import type { AgentStep } from '@ark/chat/chat.ts'
 import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 

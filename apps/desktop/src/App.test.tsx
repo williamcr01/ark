@@ -1,7 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { resetDesktopSettingsForTests } from '@/lib/desktop-settings'
+import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
 import { getTestLocalStorage } from '@/test/storage'
 import { renderWithRouter } from '@/test/render-with-router'
 
@@ -20,7 +20,7 @@ const assetApi = vi.hoisted(() => ({
   uploadDeckAsset: vi.fn(),
 }))
 
-vi.mock('@/lib/asset-api', () => assetApi)
+vi.mock('@/lib/api/asset-api', () => assetApi)
 
 vi.mock('@/hooks/useMediaQuery', () => ({
   useMediaQuery: () => mediaState.isDesktop,

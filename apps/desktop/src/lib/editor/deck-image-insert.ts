@@ -9,7 +9,7 @@ import {
 } from '@ark/deck/document/image.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import { buildArkAssetUrl } from '@ark/deck/document/assets.ts'
-import { uploadDeckAsset } from './asset-api'
+import { uploadDeckAsset } from '../api/asset-api'
 
 export type PreparedImageInsert = {
   asset: Extract<DeckAssetRef, { kind: 'asset-id' }>

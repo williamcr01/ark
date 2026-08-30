@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck-preview'
-import { FULL_STAGE_SLIDE_BOUNDS, normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
+import { PREVIEW_FRAME_HEIGHT, PREVIEW_FRAME_WIDTH } from '@/lib/deck/deck-preview'
+import {
+  FULL_STAGE_SLIDE_BOUNDS,
+  normalizedRectToStagePixels,
+} from '@/lib/editor/editor-overlay-geometry'
 
 describe('normalizedRectToStagePixels', () => {
   const geometry = { x: 0.1, y: 0.2, width: 0.5, height: 0.25 }
