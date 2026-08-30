@@ -5,14 +5,14 @@ import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
-import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
+import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'
 import {
   createEditorTransformCommitMessage,
   createEditorTransformPreviewMessage,
   type EditorNormalizedRect,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 
 import { DeckPreview } from './DeckPreview'
 
@@ -132,7 +132,7 @@ vi.mock('@/hooks/useDeckThumbnails', () => ({
   useDeckThumbnails: useDeckThumbnailsMock,
 }))
 
-vi.mock('@/lib/runtime-error-api', () => ({
+vi.mock('@/lib/api/runtime-error-api', () => ({
   reportRuntimeError: reportRuntimeErrorMock,
 }))
 

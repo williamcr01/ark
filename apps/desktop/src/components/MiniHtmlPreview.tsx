@@ -7,8 +7,8 @@ import {
   PREVIEW_FRAME_HEIGHT,
   PREVIEW_FRAME_WIDTH,
   PREVIEW_IFRAME_SECURITY_PROPS,
-} from '@/lib/deck-preview'
-import { cn } from '@/lib/utils'
+} from '@/lib/deck/deck-preview'
+import { cn } from '@/lib/ui/utils'
 
 type MiniHtmlPreviewProps = {
   html: string

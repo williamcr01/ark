@@ -6,8 +6,8 @@ import {
   injectPreviewHandshake,
   type PreviewDocumentResult,
   type PreviewHtmlOptions,
-} from '@ark/deck-core/deck-preview-html.ts'
-import { generateCspNonce } from '@ark/runtime-registry/csp-nonce.ts'
+} from '@ark/deck-preview/preview-html.ts'
+import { generateCspNonce } from '@ark/deck-preview/csp-nonce.ts'
 import {
   detectRuntimeMode,
   documentAllowsDeckInitScripts,

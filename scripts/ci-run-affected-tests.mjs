@@ -6,12 +6,20 @@ import { relative, resolve } from 'node:path'
 
 const workspaceProjects = new Map([
   ['apps/api', '@ark/api-*'],
-  ['apps/mcp', '@ark/mcp'],
+  ['apps/mcp', '@ark/mcp-server'],
   ['apps/sandbox', '@ark/sandbox'],
   ['apps/desktop', '@ark/desktop-*'],
   ['packages/contracts', '@ark/contracts'],
-  ['packages/deck-core', '@ark/deck-core'],
+  ['packages/agent', '@ark/agent'],
+  ['packages/ai', '@ark/ai'],
+  ['packages/chat', '@ark/chat'],
+  ['packages/deck', '@ark/deck'],
+  ['packages/deck-preview', '@ark/deck-preview'],
+  ['packages/editor-runtime', '@ark/editor-runtime'],
+  ['packages/mcp', '@ark/mcp'],
   ['packages/runtime-registry', '@ark/runtime-registry'],
+  ['packages/storage', '@ark/storage'],
+  ['packages/telemetry', '@ark/telemetry'],
 ])
 
 function parseArguments(argv) {

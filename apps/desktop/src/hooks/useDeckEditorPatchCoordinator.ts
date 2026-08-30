@@ -4,15 +4,18 @@ import { toast } from 'sonner'
 import {
   buildTextBoxInsertOperation,
   buildTransformPatchOperations,
-} from '@/lib/deck-editor-patches'
-import { buildImageInsertOperation, prepareImageInsertFromFile } from '@/lib/deck-image-insert'
-import { isTextEditableSelection } from '@/lib/deck-text-edit'
+} from '@/lib/editor/deck-editor-patches'
+import {
+  buildImageInsertOperation,
+  prepareImageInsertFromFile,
+} from '@/lib/editor/deck-image-insert'
+import { isTextEditableSelection } from '@/lib/editor/deck-text-edit'
 import type { DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
 import type { DeckEditorBridgeState } from '@/hooks/useDeckEditorBridge'
-import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
-import { STABLE_ELEMENT_ID_PREFIX } from '@ark/deck-core/deck-metadata.ts'
+import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
+import type { ImageFitMode } from '@ark/deck/document/image.ts'
+import { STABLE_ELEMENT_ID_PREFIX } from '@ark/deck/document/metadata.ts'
 
 type PatchOperations = (
   operations: DeckElementPatchOperation[],

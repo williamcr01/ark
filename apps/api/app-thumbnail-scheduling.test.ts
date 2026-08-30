@@ -7,7 +7,7 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createApp } from './app.ts'
-import { createDeckStore } from './deck-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
 import type { ThumbnailService } from './thumbnails/service.ts'
 
 const sampleHtml = `<!DOCTYPE html>

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 /**
  * Composer chips are `h-8`. Anchoring the panel with `side="top"` and a negative

@@ -12,10 +12,10 @@ import type {
   AgentQuestion,
   AgentQuestionAnswers,
   AgentQuestionRequest,
-} from '@ark/deck-core/agent-questions.ts'
+} from '@ark/chat/agent-questions.ts'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 type StepRecord = {
   status: 'answered' | 'skipped'

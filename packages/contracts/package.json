@@ -11,8 +11,11 @@
     "./*": "./*"
   },
   "dependencies": {
-    "@ark/deck-core": "workspace:*",
+    "@ark/ai": "workspace:*",
+    "@ark/chat": "workspace:*",
+    "@ark/deck": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
+    "@ark/storage": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

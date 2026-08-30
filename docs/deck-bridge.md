@@ -1,13 +1,13 @@
 # Ark deck runtime bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `packages/deck-core/deck-bridge.ts`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `packages/deck-preview/deck-bridge.ts`.
 
 The shell-side lifecycle and ownership boundaries are summarized in
 [deck-preview-orchestration.md](./deck-preview-orchestration.md). `DeckPreview`
 retains iframe generation and frame-load security decisions while source
 synchronization and shell shortcuts have narrow, transport-free owners.
 
-When the user enables **Edit** mode in the preview chrome, Ark also injects a separate manual editor runtime (`packages/deck-core/deck-editor-bridge.ts`) that handles `ark:editor-*` messages for selection, geometry, and inline text editing. See [deck-editor-bridge.md](./deck-editor-bridge.md) for that protocol.
+When the user enables **Edit** mode in the preview chrome, Ark also injects a separate manual editor runtime (`packages/editor-runtime/`) that handles `ark:editor-*` messages for selection, geometry, and inline text editing. See [deck-editor-bridge.md](./deck-editor-bridge.md) for that protocol.
 
 ## Transport
 
@@ -60,7 +60,7 @@ The patch also carries a `slideIndexMap` (previous index → next index, or `-1`
 when that slide was removed/replaced) so the shell can keep the viewer on the
 same content across inserts and deletes before the active position.
 
-The shell (`packages/deck-core/deck-slide-patch.ts`) only produces a patch when:
+The shell (`packages/deck-preview/slide-patch.ts`) only produces a patch when:
 
 - the deck's scripts are stripped in preview (plain decks and approved reveal
   decks without the Chart.js addon) — replayed markup never re-runs deck script,
@@ -235,7 +235,7 @@ In CSS-only preview (no approved reveal runtime script), Ark still detects `runt
 
 ## Shell helpers
 
-`packages/deck-core/deck-bridge.ts` exports:
+`packages/deck-preview/deck-bridge.ts` exports:
 
 - Message constants and TypeScript types
 - `createDeckGotoMessage`, `createDeckReadyMessage`, etc.

@@ -16,11 +16,11 @@ import {
   createEditorTextCommitMessage,
   isEditorRuntimeMessage,
   parseEditorMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 import hostileEditorPostmessageDeck from '@fixtures/hostile-editor-postmessage-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
-import { getPreviewHtml } from '@/lib/deck-preview'
-import { detectRuntimeMode } from '@/lib/deck-runtime'
+import { getPreviewHtml } from '@/lib/deck/deck-preview'
+import { detectRuntimeMode } from '@/lib/deck/deck-runtime'
 
 const malformedEditorPayloads: unknown[] = [
   {

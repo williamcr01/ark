@@ -28,7 +28,7 @@ import {
 } from '@/hooks/useAvailableModels'
 import { formatReasoningEffortLabel, type ReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useSequencedPresence } from '@/hooks/useSequencedPresence'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type { ProviderId } from '@ark/contracts'
 
 function ModelSelectorTriggerLabel({

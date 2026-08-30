@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { clearChatSession, readChatSession, writeChatSession } from '@/lib/chat-session'
+import { clearChatSession, readChatSession, writeChatSession } from '@/lib/chat/chat-session'
 import { useChatSession } from '@/hooks/useChatSession'
 
 describe('useChatSession', () => {

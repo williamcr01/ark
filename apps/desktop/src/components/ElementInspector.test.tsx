@@ -4,7 +4,7 @@ import { type ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
-import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime'
 
 import { ElementInspector } from './ElementInspector'
 

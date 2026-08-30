@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 
-import type { ParsedDeck } from '@/lib/deck-slides'
+import type { ParsedDeck } from '@/lib/deck/deck-slides'
 
 type AlignableDeck = Pick<ParsedDeck, 'slides'>
 

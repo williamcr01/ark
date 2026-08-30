@@ -1,8 +1,8 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 
-import type { EditorNormalizedRect, EditorSurface } from '@ark/deck-core/deck-editor-bridge.ts'
-import { normalizedRectToStagePixels } from '@/lib/editor-overlay-geometry'
-import { cn } from '@/lib/utils'
+import type { EditorNormalizedRect, EditorSurface } from '@ark/editor-runtime'
+import { normalizedRectToStagePixels } from '@/lib/editor/editor-overlay-geometry'
+import { cn } from '@/lib/ui/utils'
 
 export type EditorSelectionOverlayProps = {
   geometry: EditorNormalizedRect | null

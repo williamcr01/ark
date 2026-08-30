@@ -4,7 +4,7 @@ import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 
 import { configureVitestRuntimeStylesheets } from '@ark/runtime-registry/runtime-stylesheet-disk.ts'
-import { resetDesktopSettingsForTests } from '@/lib/desktop-settings'
+import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
 import { getTestLocalStorage, installTestLocalStorage } from './storage'
 
 const isJsdomEnvironment = typeof HTMLElement !== 'undefined'

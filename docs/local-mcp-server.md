@@ -395,7 +395,7 @@ fallback.
 Add an `apps/mcp` workspace package for the stdio bridge. It may depend on:
 
 - `@ark/contracts` for shared result and error shapes;
-- `@ark/deck-core` for portable MCP wrapper schemas if needed;
+- `@ark/mcp` for portable MCP wrapper schemas if needed;
 - the official `@modelcontextprotocol/server` v2 package;
 - Zod 4 already used by Ark.
 

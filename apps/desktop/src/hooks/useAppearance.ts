@@ -4,7 +4,7 @@ import {
   getDesktopSettings,
   updateDesktopSettings,
   type AppearancePreference,
-} from '@/lib/desktop-settings'
+} from '@/lib/ui/desktop-settings'
 
 export type { AppearancePreference }
 export type ResolvedAppearance = 'light' | 'dark'

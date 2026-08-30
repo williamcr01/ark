@@ -6,8 +6,8 @@ import type {
   McpSetupCommands,
   McpStatus,
 } from '@ark/contracts'
-import type { McpServiceState } from '@ark/api/mcp-service.ts'
-import type { McpInteractionStore } from '@ark/api/mcp-interactions.ts'
+import type { McpServiceState } from '@ark/mcp/service.ts'
+import type { McpInteractionStore } from '@ark/mcp/interactions.ts'
 import { mcpDiscoveryPath, removeMcpDiscovery, writeMcpDiscovery } from '@ark/mcp/discovery.ts'
 
 const quoteExecutable = (value: string) => `"${value.replaceAll('"', '\\"')}"`

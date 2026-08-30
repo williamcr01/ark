@@ -4,15 +4,15 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { GenerationJob } from '@ark/deck-core/generation-job.ts'
-import { createAssetStore } from './asset-store.ts'
-import { createChatStore } from './chat-store.ts'
-import { createDeckStore } from './deck-store.ts'
-import type { RunDeckAgentResult } from './deck-agent.ts'
-import { createGenerationJobRunner } from './generation-job-runner.ts'
-import { createGenerationJobStore } from './generation-job-store.ts'
+import type { GenerationJob } from '@ark/chat/generation-job.ts'
+import { createAssetStore } from '@ark/storage/stores/asset-store.ts'
+import { createChatStore } from '@ark/storage/stores/chat-store.ts'
+import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import type { RunDeckAgentResult } from '@ark/agent/agent.ts'
+import { createGenerationJobRunner } from '@ark/agent/job-runner.ts'
+import { createGenerationJobStore } from '@ark/storage/stores/generation-job-store.ts'
 import { stubValidDeckValidation } from './test-utils.ts'
-import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
+import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const html = `<!DOCTYPE html><html><head><title>Generated Deck</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 

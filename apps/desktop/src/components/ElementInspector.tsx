@@ -14,14 +14,14 @@ import {
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { buttonVariants } from '@/components/ui/button-variants'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type {
   EditorNormalizedRect,
   EditorSelectionInfo,
   EditorSelectionTextStyle,
-} from '@ark/deck-core/deck-editor-bridge.ts'
-import type { DeckElementPatchOperation } from '@ark/deck-core/deck-patch.ts'
-import type { ImageFitMode } from '@ark/deck-core/deck-image.ts'
+} from '@ark/editor-runtime'
+import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
+import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import {
   buildAttrsOperation,
   buildGeometryFieldOperation,
@@ -42,7 +42,7 @@ import {
   type InspectorElementKind,
   type InspectorGeometryField,
   type InspectorTextAlign,
-} from '@/lib/element-inspector'
+} from '@/lib/editor/element-inspector'
 
 const COLOR_COMMIT_DEBOUNCE_MS = 400
 

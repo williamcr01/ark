@@ -1,10 +1,10 @@
 import { Router, type Request, type Response } from 'express'
 
 import { parseRequestBody, startGenerationJobRequestSchema } from '@ark/contracts'
-import { hasAnyConfiguredProvider, missingApiKeyError } from '../credentials.ts'
-import { isValidDeckId } from '../deck-record.ts'
-import { isValidGenerationJobId } from '../generation-job-record.ts'
-import { toGenerationJobResponse, type GenerationJobRunner } from '../generation-job-runner.ts'
+import { hasAnyConfiguredProvider, missingApiKeyError } from '@ark/ai/credentials.ts'
+import { isValidDeckId } from '@ark/storage/records/deck-record.ts'
+import { isValidGenerationJobId } from '@ark/storage/records/generation-job-record.ts'
+import { toGenerationJobResponse, type GenerationJobRunner } from '@ark/agent/job-runner.ts'
 import { getRequestId, getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 

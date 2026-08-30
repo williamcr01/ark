@@ -257,7 +257,7 @@ Each phase is independently shippable and lands as its own PR (or small PR serie
 
 ## Phase 1 — SQLite workspace store
 
-New `apps/api/workspace-store.ts` (or `workspace/` dir): schema DDL, pragmas, `application_id`/`user_version`, open/create/close, strict format validation, and a main-process **workspace registry** (`workspaceId → path + handle`, exclusive open per path). Bump `engines.node` to `>=24`. Pure addition; nothing wired yet. Unit tests against temp files.
+New `packages/storage/stores/workspace-store.ts` (or `workspace/` dir): schema DDL, pragmas, `application_id`/`user_version`, open/create/close, strict format validation, and a main-process **workspace registry** (`workspaceId → path + handle`, exclusive open per path). Bump `engines.node` to `>=24`. Pure addition; nothing wired yet. Unit tests against temp files.
 
 ## Phase 2 — Decks and chat on `.ark`
 

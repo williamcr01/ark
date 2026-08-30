@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from 'express'
 
 import { resolveAppOrigin, resolveSandboxOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
-import { getProviderStatus, hasAnyConfiguredProvider } from '../credentials.ts'
-import { ensureModelInList, getModelCatalog } from '../models.ts'
+import { getProviderStatus, hasAnyConfiguredProvider } from '@ark/ai/credentials.ts'
+import { ensureModelInList, getModelCatalog } from '@ark/ai/models.ts'
 import {
   getRequestId,
   getRequestLogger,

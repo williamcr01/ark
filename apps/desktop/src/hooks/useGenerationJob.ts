@@ -8,7 +8,7 @@ import {
   type ChatMessage,
   type EditorSelectionContext,
   type SlideContext,
-} from '@ark/deck-core/chat.ts'
+} from '@ark/chat/chat.ts'
 import type { GenerationJobApi, GenerationJobStatus, ReasoningEffort } from '@ark/contracts'
 import {
   cancelGenerationJob,
@@ -16,7 +16,7 @@ import {
   isActiveGenerationJobStatus,
   retryGenerationJob,
   startGenerationJob,
-} from '@/lib/generation-job-api'
+} from '@/lib/api/generation-job-api'
 
 const GENERATION_JOB_STORAGE_PREFIX = 'ark:generation-job:'
 

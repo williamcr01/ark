@@ -27,7 +27,7 @@ test('runs affected tests and smoke for runtime workspace code', () => {
     'apps/sandbox/sandbox-host.ts',
     'apps/desktop/src/App.tsx',
     'packages/contracts/index.ts',
-    'packages/deck-core/deck-bridge.ts',
+    'packages/deck-preview/deck-bridge.ts',
     'packages/runtime-registry/deck-runtime-registry.ts',
   ]) {
     assert.deepEqual(decisions([filePath]), {
@@ -44,7 +44,7 @@ test('does not run desktop smoke for workspace-test-only changes', () => {
     decisions([
       'apps/api/models.test.ts',
       'apps/desktop/src/lib/deck-preview.spec.ts',
-      'packages/deck-core/test/bridge-helper.ts',
+      'packages/deck-preview/test/bridge-helper.ts',
       'docs/testing.md',
     ]),
     {

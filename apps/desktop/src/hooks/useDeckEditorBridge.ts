@@ -40,7 +40,7 @@ import {
   type EditorDeleteRequestMessage,
   type EditorRuntimeMessage,
   type EditorShellMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 import { isAllowedBridgeMessageOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
 export type DeckEditorBridgeState = {

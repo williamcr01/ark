@@ -8,8 +8,9 @@
   },
   "dependencies": {
     "@ark/api": "workspace:*",
-    "@ark/deck-core": "workspace:*",
+    "@ark/deck-preview": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
+    "@ark/storage": "workspace:*",
     "express": "^5.2.1",
     "jsdom": "^29.1.1"
   },

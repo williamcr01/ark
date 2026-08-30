@@ -11,7 +11,7 @@ import {
   createDeckRuntimeErrorMessage,
   createDeckSlideChangeMessage,
   createDeckMetadata,
-} from '@ark/deck-core/deck-bridge.ts'
+} from '@ark/deck-preview/deck-bridge.ts'
 import {
   DECK_BRIDGE_POST_MESSAGE_TARGET,
   OPAQUE_SANDBOX_ORIGIN,

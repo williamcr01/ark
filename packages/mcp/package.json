@@ -1,0 +1,25 @@
+{
+  "name": "@ark/mcp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "exports": {
+    "./*": "./*"
+  },
+  "dependencies": {
+    "@ark/agent": "workspace:*",
+    "@ark/chat": "workspace:*",
+    "@ark/contracts": "workspace:*",
+    "@ark/runtime-registry": "workspace:*",
+    "@ark/storage": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vitest": "^4.1.9"
+  }
+}

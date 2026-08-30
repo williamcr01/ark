@@ -52,13 +52,13 @@ import {
   getPreviewSandbox,
   getPreviewStageStyle,
   PREVIEW_IFRAME_SECURITY_PROPS,
-} from '@/lib/deck-preview'
-import type { DeckBrowserAnalysis } from '@/lib/deck-analysis'
-import { clientPointToNormalizedSlidePoint } from '@/lib/deck-image-insert'
-import { reportRuntimeError } from '@/lib/runtime-error-api'
-import { cn } from '@/lib/utils'
-import type { EditorSelectionInfo, EditorTool } from '@ark/deck-core/deck-editor-bridge.ts'
-import type { DeckSlidePatch } from '@ark/deck-core/deck-slide-patch.ts'
+} from '@/lib/deck/deck-preview'
+import type { DeckBrowserAnalysis } from '@/lib/deck/deck-analysis'
+import { clientPointToNormalizedSlidePoint } from '@/lib/editor/deck-image-insert'
+import { reportRuntimeError } from '@/lib/api/runtime-error-api'
+import { cn } from '@/lib/ui/utils'
+import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'
+import type { DeckSlidePatch } from '@ark/deck-preview/slide-patch.ts'
 
 export type { DeckTextEditCommit } from '@/hooks/useDeckEditorPatchCoordinator'
 
@@ -118,7 +118,7 @@ export type DeckPreviewProps = {
     activeSlideIndex: number,
   ) => Promise<DeckPreviewPatchResult | undefined>
   onPatchEditorOperations?: (
-    operations: import('@ark/deck-core/deck-patch.ts').DeckElementPatchOperation[],
+    operations: import('@ark/deck/patch/patch-request.ts').DeckElementPatchOperation[],
     activeSlideIndex: number,
     summary: string,
   ) => Promise<DeckPreviewPatchResult | undefined>

@@ -25,7 +25,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppearance } from '@/hooks/useAppearance'
 import { clearStoredGenerationJob } from '@/hooks/useGenerationJob'
-import { clearChatSession } from '@/lib/chat-session'
+import { clearChatSession } from '@/lib/chat/chat-session'
 import {
   createDeck,
   deleteDeck,
@@ -35,8 +35,8 @@ import {
   removeRecentWorkspace,
   renameDeck,
   type DeckSummary,
-} from '@/lib/deck-api'
-import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck-io'
+} from '@/lib/api/deck-api'
+import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck/deck-io'
 
 function DeckCardSkeleton() {
   return (

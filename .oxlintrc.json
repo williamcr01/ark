@@ -123,7 +123,7 @@
       }
     },
     {
-      "files": ["apps/web/src/**/*.{ts,tsx}"],
+      "files": ["apps/desktop/src/**/*.{ts,tsx}"],
       "rules": {
         "react/only-export-components": [
           "error",
@@ -146,8 +146,8 @@
     },
     {
       "files": [
-        "apps/web/src/components/ui/**/*.{ts,tsx}",
-        "apps/web/src/components/ai-elements/**/*.{ts,tsx}"
+        "apps/desktop/src/components/ui/**/*.{ts,tsx}",
+        "apps/desktop/src/components/ai-elements/**/*.{ts,tsx}"
       ],
       "rules": {
         "react/only-export-components": "off"
@@ -155,7 +155,7 @@
       "plugins": ["react"]
     },
     {
-      "files": ["apps/web/src/**/*.{ts,tsx}"],
+      "files": ["apps/desktop/src/**/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -168,6 +168,17 @@
               {
                 "group": ["@ark/contracts/*", "**/packages/contracts/!(index)*"],
                 "message": "Import API contracts from @ark/contracts only."
+              },
+              {
+                "group": [
+                  "@ark/agent",
+                  "@ark/agent/*",
+                  "@ark/mcp",
+                  "@ark/mcp/*",
+                  "@ark/storage",
+                  "@ark/storage/*"
+                ],
+                "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
               }
             ]
           }
@@ -182,8 +193,8 @@
           {
             "patterns": [
               {
-                "group": ["**/apps/web/**", "@ark/web", "@ark/web/*"],
-                "message": "API code must not import from apps/web. Use workspace packages instead."
+                "group": ["**/apps/desktop/**", "@ark/desktop", "@ark/desktop/*"],
+                "message": "API code must not import from apps/desktop. Use workspace packages instead."
               },
               {
                 "group": ["@ark/contracts/*", "**/packages/contracts/!(index)*"],
@@ -202,8 +213,8 @@
           {
             "patterns": [
               {
-                "group": ["**/apps/web/**", "@ark/web", "@ark/web/*"],
-                "message": "Sandbox code must not import from apps/web. Use workspace packages instead."
+                "group": ["**/apps/desktop/**", "@ark/desktop", "@ark/desktop/*"],
+                "message": "Sandbox code must not import from apps/desktop. Use workspace packages instead."
               }
             ]
           }
@@ -218,22 +229,22 @@
           {
             "patterns": [
               {
-                "group": ["**/apps/web/**", "**/apps/api/**", "**/apps/sandbox/**"],
+                "group": ["**/apps/desktop/**", "**/apps/api/**", "**/apps/sandbox/**"],
                 "message": "Packages must not import from apps/."
               },
               {
                 "group": ["node:*"],
-                "message": "Packages must not use Node built-ins unless the file name makes the environment explicit (e.g. *-disk.ts)."
+                "message": "Browser-safe packages must not use Node built-ins. Move the module to a server-only package, or make the environment explicit in the file name (*-disk.ts)."
               }
             ],
             "paths": [
               {
                 "name": "react",
-                "message": "Packages must not depend on React. Keep UI in apps/web."
+                "message": "Packages must not depend on React. Keep UI in apps/desktop."
               },
               {
                 "name": "react-dom",
-                "message": "Packages must not depend on React. Keep UI in apps/web."
+                "message": "Packages must not depend on React. Keep UI in apps/desktop."
               },
               {
                 "name": "express",
@@ -246,6 +257,10 @@
     },
     {
       "files": [
+        "packages/agent/**/*.ts",
+        "packages/mcp/**/*.ts",
+        "packages/storage/**/*.ts",
+        "packages/telemetry/request-id.ts",
         "packages/**/*-disk.ts",
         "packages/contracts/**/*.ts",
         "packages/**/*.test.ts",
@@ -257,18 +272,18 @@
           {
             "patterns": [
               {
-                "group": ["**/apps/web/**", "**/apps/api/**", "**/apps/sandbox/**"],
+                "group": ["**/apps/desktop/**", "**/apps/api/**", "**/apps/sandbox/**"],
                 "message": "Packages must not import from apps/."
               }
             ],
             "paths": [
               {
                 "name": "react",
-                "message": "Packages must not depend on React. Keep UI in apps/web."
+                "message": "Packages must not depend on React. Keep UI in apps/desktop."
               },
               {
                 "name": "react-dom",
-                "message": "Packages must not depend on React. Keep UI in apps/web."
+                "message": "Packages must not depend on React. Keep UI in apps/desktop."
               },
               {
                 "name": "express",

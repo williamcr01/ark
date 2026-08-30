@@ -21,9 +21,9 @@ import {
   PREVIEW_FRAME_ASPECT_RATIO,
   PREVIEW_FRAME_HEIGHT,
   PREVIEW_FRAME_WIDTH,
-} from '@/lib/deck-preview'
-import type { ParsedDeck } from '@/lib/deck-slides'
-import { cn } from '@/lib/utils'
+} from '@/lib/deck/deck-preview'
+import type { ParsedDeck } from '@/lib/deck/deck-slides'
+import { cn } from '@/lib/ui/utils'
 
 const THUMBNAIL_STRIP_WIDTH_PX = 168
 const THUMBNAIL_MOUNT_BUFFER = 5

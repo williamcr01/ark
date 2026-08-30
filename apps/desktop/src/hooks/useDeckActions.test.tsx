@@ -20,8 +20,8 @@ const { exportDeckHtmlMock, downloadHtmlMock } = vi.hoisted(() => ({
   downloadHtmlMock: vi.fn(),
 }))
 
-vi.mock('@/lib/deck-api', () => ({ exportDeckHtml: exportDeckHtmlMock }))
-vi.mock('@/lib/deck-io', () => ({ downloadHtml: downloadHtmlMock }))
+vi.mock('@/lib/api/deck-api', () => ({ exportDeckHtml: exportDeckHtmlMock }))
+vi.mock('@/lib/deck/deck-io', () => ({ downloadHtml: downloadHtmlMock }))
 
 function createDeckActionsOptions(
   overrides: {

@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent } from 'react'
 import { toast } from 'sonner'
 
-import { isEditableClipboardTarget } from '@/lib/deck-image-insert'
-import { isRemoteImageUrl } from '@ark/deck-core/deck-image.ts'
+import { isEditableClipboardTarget } from '@/lib/editor/deck-image-insert'
+import { isRemoteImageUrl } from '@ark/deck/document/image.ts'
 
 type DeckEditorShellShortcutsOptions = {
   active: boolean

@@ -6,8 +6,8 @@ import {
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_TOOL_VALUE_BYTES,
   parseChatAttachments,
-} from '@ark/deck-core/chat.ts'
-import type { JsonValue } from '@ark/deck-core/chat.ts'
+} from '@ark/chat/chat.ts'
+import type { JsonValue } from '@ark/chat/chat.ts'
 
 export const chatThreadStatusSchema = z.enum(['active', 'archived'])
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CheckIcon, PaletteIcon } from 'lucide-react'
 
-import type { ThemeProposalRequest } from '@ark/deck-core/agent-themes.ts'
+import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
 import { MiniHtmlPreview } from '@/components/MiniHtmlPreview'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 type ThemePickerProps = {
   request: ThemeProposalRequest

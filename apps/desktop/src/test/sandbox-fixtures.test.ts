@@ -8,7 +8,7 @@ import {
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   isDeckBridgeMessageFromRuntime,
   parseDeckBridgeMessage,
-} from '@ark/deck-core/deck-bridge.ts'
+} from '@ark/deck-preview/deck-bridge.ts'
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileBrokenRevealDeck from '@fixtures/hostile-broken-reveal-deck.html?raw'
 import hostileEditorPostmessageDeck from '@fixtures/hostile-editor-postmessage-deck.html?raw'
@@ -36,10 +36,10 @@ import {
   getThumbnailSandbox,
   injectRuntimeCsp,
   runtimeModeAllowsDeckScripts,
-} from '@/lib/deck-runtime'
-import { getPreviewHtml, PREVIEW_IFRAME_SECURITY_PROPS } from '@/lib/deck-preview'
-import { parseDeckSlides, stripDeckScriptsForPreview } from '@/lib/deck-slides'
-import { validateDeckHtmlInBrowser } from '../lib/deck-validate.ts'
+} from '@/lib/deck/deck-runtime'
+import { getPreviewHtml, PREVIEW_IFRAME_SECURITY_PROPS } from '@/lib/deck/deck-preview'
+import { parseDeckSlides, stripDeckScriptsForPreview } from '@/lib/deck/deck-slides'
+import { validateDeckHtmlInBrowser } from '../lib/deck/deck-validate.ts'
 
 type SecurityFixture = {
   name: string

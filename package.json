@@ -10,7 +10,7 @@
     "build": "pnpm --filter @ark/desktop run build",
     "package": "pnpm --filter @ark/desktop run pack",
     "package:installers": "pnpm --filter @ark/desktop run dist",
-    "lint": "oxlint . && eslint . --cache --cache-location .eslintcache",
+    "lint": "oxlint . && eslint . --cache --cache-location .eslintcache && node scripts/check-package-boundaries.mjs",
     "lint:eslint": "eslint . --cache --cache-location .eslintcache",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -25,7 +25,8 @@
     "profile:editor-drag": "node scripts/profile-editor-drag.mjs",
     "sync-runtimes": "tsx scripts/sync-runtime-manifest.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
-    "openapi:check": "tsx scripts/generate-openapi.ts --check"
+    "openapi:check": "tsx scripts/generate-openapi.ts --check",
+    "check:boundaries": "node scripts/check-package-boundaries.mjs"
   },
   "engines": {
     "node": ">=24"

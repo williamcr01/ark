@@ -16,7 +16,7 @@ import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 export type AttachmentData = (FileUIPart & { id: string }) | (SourceDocumentUIPart & { id: string })
 
@@ -28,7 +28,7 @@ export type AttachmentVariant = 'grid' | 'inline' | 'list'
 const CHIP_SPRING = { type: 'spring', stiffness: 700, damping: 46, mass: 0.5 } as const
 const CHIP_EXIT = { duration: 0.18, ease: [0.4, 0, 1, 1] } as const
 const INSTANT = { duration: 0 } as const
-const loadMotionFeatures = () => import('@/lib/motion-features').then((module) => module.default)
+const loadMotionFeatures = () => import('@/lib/ui/motion-features').then((module) => module.default)
 
 const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   audio: Music2Icon,

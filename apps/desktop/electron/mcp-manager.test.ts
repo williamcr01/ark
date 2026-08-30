@@ -4,8 +4,8 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createMcpServiceState } from '@ark/api/mcp-service.ts'
-import { createMcpInteractionStore } from '@ark/api/mcp-interactions.ts'
+import { createMcpServiceState } from '@ark/mcp/service.ts'
+import { createMcpInteractionStore } from '@ark/mcp/interactions.ts'
 import { mcpDiscoveryPath, readMcpDiscovery } from '@ark/mcp/discovery.ts'
 import { McpManager, resolveMcpExecutableArgs } from './mcp-manager.ts'
 

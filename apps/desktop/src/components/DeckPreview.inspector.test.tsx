@@ -9,12 +9,12 @@ import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
-import { analyzeDeckInBrowser } from '@/lib/deck-analysis'
+import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'
 import {
   type EditorNormalizedRect,
   type EditorTransformCommitMessage,
   type EditorTransformPreviewMessage,
-} from '@ark/deck-core/deck-editor-bridge.ts'
+} from '@ark/editor-runtime'
 
 import { DeckPreview, type DeckPreviewHandle } from './DeckPreview'
 
@@ -139,7 +139,7 @@ vi.mock('@/hooks/useDeckThumbnails', () => ({
   useDeckThumbnails: useDeckThumbnailsMock,
 }))
 
-vi.mock('@/lib/runtime-error-api', () => ({
+vi.mock('@/lib/api/runtime-error-api', () => ({
   reportRuntimeError: reportRuntimeErrorMock,
 }))
 

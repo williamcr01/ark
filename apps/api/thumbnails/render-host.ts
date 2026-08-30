@@ -3,18 +3,15 @@ import { JSDOM } from 'jsdom'
 import type { NextFunction, Request, Response, Router } from 'express'
 import { Router as createRouter } from 'express'
 
-import {
-  buildPreviewDocument,
-  type PreviewDocumentResult,
-} from '@ark/deck-core/deck-preview-html.ts'
+import { buildPreviewDocument, type PreviewDocumentResult } from '@ark/deck-preview/preview-html.ts'
 import {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_READY_MESSAGE_TYPE,
   DECK_RUNTIME_ERROR_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-} from '@ark/deck-core/deck-bridge.ts'
+} from '@ark/deck-preview/deck-bridge.ts'
 import { buildSandboxResponseCsp } from '@ark/runtime-registry/sandbox-origin.ts'
-import { type PreviewSessionStore } from '../preview-sessions.ts'
+import { type PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 
 /** Header the hidden Electron renderer must send on every render-host request. */
 export const THUMBNAIL_RENDER_SECRET_HEADER = 'x-ark-thumbnail-render-secret'

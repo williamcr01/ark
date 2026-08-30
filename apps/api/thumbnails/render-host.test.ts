@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 
-import { createPreviewSessionStore } from '../preview-sessions.ts'
+import { createPreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 import {
   createThumbnailRenderAccessGuard,
   createThumbnailRenderRouter,

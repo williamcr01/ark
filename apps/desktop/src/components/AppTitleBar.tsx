@@ -42,10 +42,10 @@ import {
   MorphMenuFooter,
   morphMenuTriggerMotionClassName,
 } from '@/components/ui/morph-menu'
-import type { DeckDownloadVariant } from '@/lib/deck-export'
+import type { DeckDownloadVariant } from '@/lib/deck/deck-export'
 import { DesktopSettingsDialog, type SettingsTab } from '@/components/DesktopSettingsDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 import type { AppearancePreference } from '@/hooks/useAppearance'
 
 type TitleBarButtonProps = {

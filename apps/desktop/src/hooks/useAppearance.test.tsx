@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { resetDesktopSettingsForTests } from '@/lib/desktop-settings'
+import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
 import { useAppearance } from './useAppearance'
 
 function installMatchMedia(initial = false) {

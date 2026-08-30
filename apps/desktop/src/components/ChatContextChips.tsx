@@ -1,6 +1,6 @@
 import { BoxSelectIcon, PresentationIcon } from 'lucide-react'
 
-import type { EditorSelectionInfo } from '@ark/deck-core/deck-editor-bridge.ts'
+import type { EditorSelectionInfo } from '@ark/editor-runtime'
 import {
   Attachment,
   AttachmentInfo,
@@ -9,7 +9,7 @@ import {
   AttachmentRemove,
   Attachments,
 } from '@/components/ai-elements/attachments'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/ui/utils'
 
 export type ContextChipElement = {
   slideIndex: number

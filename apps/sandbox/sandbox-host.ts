@@ -8,7 +8,7 @@ import {
 } from '@ark/runtime-registry/sandbox-origin.ts'
 import { renderCachedPreviewDocument } from './render-preview-html.ts'
 import { defaultPreviewHtmlCache, type PreviewHtmlCache } from './preview-html-cache.ts'
-import { type PreviewSessionStore } from '@ark/api/preview-sessions.ts'
+import { type PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
 
 type CreateSandboxHostOptions = {
   previewSessionStore: PreviewSessionStore

@@ -5,7 +5,7 @@ import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const workspacePath =
-  /^(apps\/(api|sandbox|desktop)|packages\/(contracts|deck-core|runtime-registry))\//
+  /^(apps\/(api|mcp|sandbox|desktop)|packages\/(agent|ai|chat|contracts|deck|deck-preview|editor-runtime|mcp|runtime-registry|storage|telemetry))\//
 const documentationPath =
   /(^|\/)(README|AGENTS|CLAUDE|CONTRIBUTING|CHANGELOG|LICENSE|NOTICE)(\.[^/]*)?$|\.md$/i
 const testOnlyPath = /(^|\/)(test|tests|__tests__)\/|[./](test|spec)\.[cm]?[jt]sx?$/

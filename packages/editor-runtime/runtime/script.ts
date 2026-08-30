@@ -1,0 +1,142 @@
+/**
+ * Builds the editor runtime script injected into the deck iframe.
+ *
+ * The script is one IIFE whose parts close over shared state, so it cannot be split into
+ * real modules. It is split into ordered source chunks instead — see the sibling files —
+ * and concatenated here in the order they must appear.
+ */
+
+import {
+  EDITOR_ASSIGN_ID_MESSAGE_TYPE,
+  EDITOR_BRIDGE_PROTOCOL_VERSION,
+  EDITOR_CANCEL_TEXT_EDIT_MESSAGE_TYPE,
+  EDITOR_CLEAR_SELECTION_MESSAGE_TYPE,
+  EDITOR_CONFIGURE_MESSAGE_TYPE,
+  EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+  EDITOR_CONNECT_MESSAGE_TYPE,
+  EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
+  EDITOR_DISABLE_MESSAGE_TYPE,
+  EDITOR_ENABLE_MESSAGE_TYPE,
+  EDITOR_ERROR_MESSAGE_TYPE,
+  EDITOR_GEOMETRY_MESSAGE_TYPE,
+  EDITOR_HOVER_MESSAGE_TYPE,
+  EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
+  EDITOR_READY_MESSAGE_TYPE,
+  EDITOR_REQUEST_GEOMETRY_MESSAGE_TYPE,
+  EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+  EDITOR_SELECT_MESSAGE_TYPE,
+  EDITOR_SESSION_HANDOFF_KEY,
+  EDITOR_SET_TOOL_MESSAGE_TYPE,
+  EDITOR_SHORTCUT_MESSAGE_TYPE,
+  EDITOR_START_TEXT_EDIT_MESSAGE_TYPE,
+  EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+  EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
+  EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE,
+  EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
+  EDITOR_TRANSFORM_END_MESSAGE_TYPE,
+  EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
+} from '../protocol/message-types.ts'
+import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
+import {
+  ARK_ELEMENT_ID_ATTR,
+  ARK_LOCKED_ATTR,
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+  ARK_SPACER_ATTR,
+  ARK_SPACER_FOR_ATTR,
+  TRANSIENT_ELEMENT_ID_PREFIX,
+} from '@ark/deck/document/metadata.ts'
+import {
+  ARK_TEXT_BOX_CLASS,
+  ARK_TEXT_BOX_EDITABLE_VALUE,
+  DEFAULT_TEXT_BOX_NORMALIZED_SIZE,
+  MIN_TEXT_BOX_NORMALIZED_SIZE,
+} from '@ark/deck/patch/text-box.ts'
+import { preambleChunk } from './preamble.ts'
+import { portChunk } from './port.ts'
+import { selectionChunk } from './selection.ts'
+import { surfaceChunk } from './surface.ts'
+import { geometryChunk } from './geometry.ts'
+import { chromeChunk } from './chrome.ts'
+import { textEditChunk } from './text-edit.ts'
+import { transformChunk } from './transform.ts'
+import { adoptChunk } from './adopt.ts'
+import { snapChunk } from './snap.ts'
+import { pointerChunk } from './pointer.ts'
+import { keyboardChunk } from './keyboard.ts'
+import { lifecycleChunk } from './lifecycle.ts'
+
+export type DeckEditorBridgeRuntimeScriptOptions = {
+  slideSelectors: readonly string[]
+  parentOrigin?: string
+}
+
+export function buildDeckEditorBridgeRuntimeScript(
+  options: DeckEditorBridgeRuntimeScriptOptions,
+): string {
+  const constants = {
+    PROTOCOL_VERSION: EDITOR_BRIDGE_PROTOCOL_VERSION,
+    CONNECT: EDITOR_CONNECT_MESSAGE_TYPE,
+    CONNECT_ACK: EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+    SESSION_HANDOFF_KEY: EDITOR_SESSION_HANDOFF_KEY,
+    ENABLE: EDITOR_ENABLE_MESSAGE_TYPE,
+    CONFIGURE: EDITOR_CONFIGURE_MESSAGE_TYPE,
+    DISABLE: EDITOR_DISABLE_MESSAGE_TYPE,
+    SELECT: EDITOR_SELECT_MESSAGE_TYPE,
+    CLEAR_SELECTION: EDITOR_CLEAR_SELECTION_MESSAGE_TYPE,
+    START_TEXT_EDIT: EDITOR_START_TEXT_EDIT_MESSAGE_TYPE,
+    CANCEL_TEXT_EDIT: EDITOR_CANCEL_TEXT_EDIT_MESSAGE_TYPE,
+    REQUEST_GEOMETRY: EDITOR_REQUEST_GEOMETRY_MESSAGE_TYPE,
+    SET_TOOL: EDITOR_SET_TOOL_MESSAGE_TYPE,
+    READY: EDITOR_READY_MESSAGE_TYPE,
+    SHORTCUT: EDITOR_SHORTCUT_MESSAGE_TYPE,
+    HOVER: EDITOR_HOVER_MESSAGE_TYPE,
+    SELECTION_CHANGE: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+    GEOMETRY: EDITOR_GEOMETRY_MESSAGE_TYPE,
+    TEXT_COMMIT: EDITOR_TEXT_COMMIT_MESSAGE_TYPE,
+    TEXT_EDIT_STATE: EDITOR_TEXT_EDIT_STATE_MESSAGE_TYPE,
+    TRANSFORM_PREVIEW: EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
+    TRANSFORM_COMMIT: EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
+    TRANSFORM_CANCEL: EDITOR_TRANSFORM_CANCEL_MESSAGE_TYPE,
+    TRANSFORM_END: EDITOR_TRANSFORM_END_MESSAGE_TYPE,
+    ASSIGN_ID: EDITOR_ASSIGN_ID_MESSAGE_TYPE,
+    DELETE_REQUEST: EDITOR_DELETE_REQUEST_MESSAGE_TYPE,
+    INSERT_REQUEST: EDITOR_INSERT_REQUEST_MESSAGE_TYPE,
+    ERROR: EDITOR_ERROR_MESSAGE_TYPE,
+    SELECTORS: [...options.slideSelectors],
+    PARENT_ORIGIN: options.parentOrigin?.trim() || '',
+    ELEMENT_ID_ATTR: ARK_ELEMENT_ID_ATTR,
+    LOCKED_ATTR: ARK_LOCKED_ATTR,
+    MANAGED_ATTR: 'data-ark-managed',
+    SPACER_ATTR: ARK_SPACER_ATTR,
+    SPACER_FOR_ATTR: ARK_SPACER_FOR_ATTR,
+    EDITABLE_ATTR: 'data-ark-editable',
+    ROLE_ATTR: 'data-ark-role',
+    TRANSIENT_PREFIX: TRANSIENT_ELEMENT_ID_PREFIX,
+    INLINE_TEXT_TAGS: [...INLINE_TEXT_EDITABLE_TAGS],
+    TEXT_BOX_EDITABLE: ARK_TEXT_BOX_EDITABLE_VALUE,
+    TEXT_BOX_CLASS: ARK_TEXT_BOX_CLASS,
+    MIN_BOX_SIZE: MIN_TEXT_BOX_NORMALIZED_SIZE,
+    DEFAULT_BOX_WIDTH: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.width,
+    DEFAULT_BOX_HEIGHT: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.height,
+    SLIDE_REFERENCE_WIDTH: ARK_SLIDE_REFERENCE_WIDTH,
+    SLIDE_REFERENCE_HEIGHT: ARK_SLIDE_REFERENCE_HEIGHT,
+  }
+
+  return [
+    '',
+    preambleChunk(JSON.stringify(constants)),
+    portChunk,
+    selectionChunk,
+    surfaceChunk,
+    geometryChunk,
+    chromeChunk,
+    textEditChunk,
+    transformChunk,
+    adoptChunk,
+    snapChunk,
+    pointerChunk,
+    keyboardChunk,
+    lifecycleChunk,
+  ].join('\n')
+}

@@ -7,15 +7,15 @@ import {
   renameDeckRequestSchema,
   updateDeckRequestSchema,
 } from '@ark/contracts'
-import { type DeckStore, isValidDeckId } from '../deck-record.ts'
-import type { AssetStore } from '../asset-record.ts'
-import { resolveArkAssetUrls } from '../asset-resolve.ts'
-import { stripDeckScriptsForPreview } from '@ark/deck-core/deck-preview-slides.ts'
-import { buildDeckRuntimeManifestFromValidation } from '../deck-manifest.ts'
-import { validateDeckHtmlOnServer } from '../deck-validate.ts'
+import { type DeckStore, isValidDeckId } from '@ark/storage/records/deck-record.ts'
+import type { AssetStore } from '@ark/storage/records/asset-record.ts'
+import { resolveArkAssetUrls } from '@ark/storage/records/asset-resolve.ts'
+import { stripDeckScriptsForPreview } from '@ark/deck-preview/preview-slides.ts'
+import { buildDeckRuntimeManifestFromValidation } from '@ark/storage/fs/deck-manifest.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
-import { WorkspaceDocumentConflictError } from '../workspace-store.ts'
+import { WorkspaceDocumentConflictError } from '@ark/storage/stores/workspace-store.ts'
 
 export function createDecksRouter(deps: {
   deckStore: DeckStore
@@ -224,7 +224,7 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const { applyDeckPatches } = await import('../deck-patch.ts')
+        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
         const logger = getRequestLogger(request)
         const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
           activeSlideIndex: parsedBody.data.activeSlideIndex,

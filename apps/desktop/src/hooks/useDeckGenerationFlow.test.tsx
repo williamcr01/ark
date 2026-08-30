@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GenerationJobApi } from '@ark/contracts'
-import type { ChatMessage } from '@ark/deck-core/chat.ts'
+import type { ChatMessage } from '@ark/chat/chat.ts'
 
 import { useDeckGenerationFlow, type UseDeckGenerationFlowOptions } from './useDeckGenerationFlow'
 
@@ -15,8 +15,8 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('@/lib/generation-job-api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/generation-job-api')>()
+vi.mock('@/lib/api/generation-job-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/generation-job-api')>()
   return {
     ...actual,
     startGenerationJob: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('@/lib/generation-job-api', async (importOriginal) => {
 })
 
 const { startGenerationJob, fetchGenerationJob, cancelGenerationJob, retryGenerationJob } =
-  await import('@/lib/generation-job-api')
+  await import('@/lib/api/generation-job-api')
 
 const startGenerationJobMock = vi.mocked(startGenerationJob)
 const fetchGenerationJobMock = vi.mocked(fetchGenerationJob)

@@ -1,9 +1,9 @@
 import { CableIcon, SparklesIcon } from 'lucide-react'
 
-import type { AgentQuestionRequest } from '@ark/deck-core/agent-questions.ts'
-import { formatAgentQuestionAnswers } from '@ark/deck-core/agent-questions.ts'
-import type { ThemeProposalRequest } from '@ark/deck-core/agent-themes.ts'
-import { formatThemeChoice } from '@ark/deck-core/agent-themes.ts'
+import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
+import { formatAgentQuestionAnswers } from '@ark/chat/agent-questions.ts'
+import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
+import { formatThemeChoice } from '@ark/chat/agent-themes.ts'
 import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import { AgentQuestions } from '@/components/AgentQuestions'
 import { ThemePicker } from '@/components/ThemePicker'

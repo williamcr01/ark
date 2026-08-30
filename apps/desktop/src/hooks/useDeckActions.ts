@@ -8,16 +8,16 @@ import {
 
 import { toast } from 'sonner'
 
-import type { ChatMessage } from '@ark/deck-core/chat.ts'
+import type { ChatMessage } from '@ark/chat/chat.ts'
 import {
   describeDeckValidation,
   downloadHtml,
   isHtmlDeckFile,
   validateUploadedDeck,
-} from '@/lib/deck-io'
-import type { DeckDownloadVariant } from '@/lib/deck-export'
-import { newId } from '@/lib/id'
-import { exportDeckHtml } from '@/lib/deck-api'
+} from '@/lib/deck/deck-io'
+import type { DeckDownloadVariant } from '@/lib/deck/deck-export'
+import { newId } from '@/lib/ui/id'
+import { exportDeckHtml } from '@/lib/api/deck-api'
 
 import type { useChatSession } from './useChatSession'
 import type { useDeckPersistence } from './useDeckPersistence'

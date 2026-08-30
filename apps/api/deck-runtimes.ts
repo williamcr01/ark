@@ -10,7 +10,7 @@ import {
   type RuntimeAssetRef,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
 
-import { REPO_ROOT } from './repo-root.ts'
+import { REPO_ROOT } from '@ark/storage/fs/repo-root.ts'
 
 const configuredRuntimesDir = process.env.ARK_RUNTIMES_DIR?.trim()
 const RUNTIMES_DIR = configuredRuntimesDir
