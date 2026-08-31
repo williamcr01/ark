@@ -1,3 +1,9 @@
+/**
+ * Electron main-process code: no DOM, and jsdom's realm would break
+ * `instanceof` checks in libraries that run against Node's globals.
+ *
+ * @vitest-environment node
+ */
 import { describe, expect, it, vi } from 'vitest'
 import { BrowserWindow, session, type Session } from 'electron'
 import type { PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
@@ -7,7 +13,8 @@ vi.mock('electron', () => ({
   session: { fromPartition: vi.fn() },
 }))
 
-import { createElectronThumbnailRenderer, gotoThumbnailSlide } from './thumbnail-renderer.ts'
+import { gotoDeckSlide } from './deck-render-window.ts'
+import { createElectronThumbnailRenderer } from './thumbnail-renderer.ts'
 
 function fakeWindow(executeJavaScript: (source: string) => unknown) {
   return {
@@ -33,7 +40,7 @@ describe('Electron thumbnail navigation', () => {
       throw new Error(`Unexpected script: ${source}`)
     })
 
-    await gotoThumbnailSlide(window, 1)
+    await gotoDeckSlide(window, 1, { label: 'Thumbnail renderer' })
 
     const gotoIndex = calls.findIndex((source) => source.includes('__arkThumbGoto(1)'))
     const settleIndex = calls.findIndex((source) => source.includes('__arkThumbRequestSettle(1)'))
@@ -53,7 +60,7 @@ describe('Electron thumbnail navigation', () => {
       throw new Error(`Unexpected script: ${source}`)
     })
 
-    await gotoThumbnailSlide(window, 0)
+    await gotoDeckSlide(window, 0)
 
     expect(settlePolls).toBeGreaterThanOrEqual(2)
     expect(window.webContents.executeJavaScript).toHaveBeenCalledWith(
@@ -72,7 +79,7 @@ describe('Electron thumbnail navigation', () => {
       throw new Error(`Unexpected script: ${source}`)
     })
 
-    await expect(gotoThumbnailSlide(window, 0)).rejects.toThrow('Deck settle failed.')
+    await expect(gotoDeckSlide(window, 0)).rejects.toThrow('Deck settle failed.')
   })
 
   it('fails the capture when the deck reports a different slide after settling', async () => {
@@ -92,7 +99,7 @@ describe('Electron thumbnail navigation', () => {
       throw new Error(`Unexpected script: ${source}`)
     })
 
-    await expect(gotoThumbnailSlide(window, 1)).rejects.toThrow(
+    await expect(gotoDeckSlide(window, 1, { label: 'Thumbnail renderer' })).rejects.toThrow(
       'Thumbnail renderer reached slide 0, expected 1.',
     )
   })

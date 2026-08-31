@@ -9,7 +9,9 @@ import {
 import { Link } from 'react-router'
 import {
   Maximize2Icon,
+  CodeIcon,
   DownloadIcon,
+  FileTextIcon,
   FilePlus2Icon,
   FolderOpenIcon,
   FolderInputIcon,
@@ -98,29 +100,20 @@ function TitleBarButton({
   )
 }
 
-function DownloadTitleBarButton({
+function ExportTitleBarButton({
   disabled,
+  exporting,
   onDownload,
+  onExport,
   showSanitizedDownload,
 }: {
   disabled?: boolean
+  exporting: boolean
   onDownload: (variant: DeckDownloadVariant) => void
+  onExport: (format: 'pdf') => void
   showSanitizedDownload: boolean
 }) {
   const [open, setOpen] = useState(false)
-
-  if (!showSanitizedDownload) {
-    return (
-      <TitleBarButton
-        disabled={disabled}
-        label="Download HTML"
-        onClick={() => onDownload('original')}
-        primary
-      >
-        <DownloadIcon />
-      </TitleBarButton>
-    )
-  }
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
@@ -128,7 +121,7 @@ function DownloadTitleBarButton({
         <DropdownMenuTrigger asChild>
           <TooltipTrigger asChild>
             <button
-              aria-label="Download HTML"
+              aria-label="Export deck"
               className={cn(
                 buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
                 morphMenuTriggerMotionClassName,
@@ -146,7 +139,7 @@ function DownloadTitleBarButton({
             </button>
           </TooltipTrigger>
         </DropdownMenuTrigger>
-        <TooltipContent side="bottom">Download HTML</TooltipContent>
+        <TooltipContent side="bottom">Export deck</TooltipContent>
       </Tooltip>
       <MorphMenuContent
         align="end"
@@ -157,7 +150,7 @@ function DownloadTitleBarButton({
       >
         <MorphMenuFooter
           className="h-[26px] justify-end px-1.5 text-[var(--ark-accent)]"
-          label="Collapse download menu"
+          label="Collapse export menu"
           onCollapse={() => setOpen(false)}
         >
           <DownloadIcon aria-hidden className="size-4" />
@@ -166,18 +159,32 @@ function DownloadTitleBarButton({
           <DropdownMenuLabel>Export deck</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
+            <DropdownMenuItem disabled={exporting} onSelect={() => onExport('pdf')}>
+              <FileTextIcon aria-hidden />
+              <div className="flex flex-col gap-0.5">
+                <span>{exporting ? 'Exporting PDF...' : 'PDF'}</span>
+                <span className="text-xs text-muted-foreground">One page per slide</span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => onDownload('original')}>
+              <CodeIcon aria-hidden />
               <div className="flex flex-col gap-0.5">
                 <span>Original HTML</span>
                 <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
               </div>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
-              <div className="flex flex-col gap-0.5">
-                <span>Sanitized HTML</span>
-                <span className="text-xs text-muted-foreground">Matches static preview</span>
-              </div>
-            </DropdownMenuItem>
+            {showSanitizedDownload ? (
+              <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
+                <CodeIcon aria-hidden />
+                <div className="flex flex-col gap-0.5">
+                  <span>Sanitized HTML</span>
+                  <span className="text-xs text-muted-foreground">Matches static preview</span>
+                </div>
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuGroup>
         </div>
       </MorphMenuContent>
@@ -325,6 +332,8 @@ export type AppTitleBarProps = {
   onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
+  onExport: (format: 'pdf') => void
+  exportingDeck?: boolean
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onCredentialsChanged?: () => void | Promise<void>
   onNewDeck: () => void
@@ -348,6 +357,8 @@ export function AppTitleBar({
   uiState,
   onAppearanceChange = () => undefined,
   onDownload,
+  onExport,
+  exportingDeck = false,
   onHtmlUpload,
   onCredentialsChanged = () => undefined,
   onNewDeck,
@@ -502,9 +513,11 @@ export function AppTitleBar({
         >
           <Share2Icon />
         </TitleBarButton>
-        <DownloadTitleBarButton
+        <ExportTitleBarButton
           disabled={!hasDeck}
+          exporting={exportingDeck}
           onDownload={onDownload}
+          onExport={onExport}
           showSanitizedDownload={showSanitizedDownload}
         />
         <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>

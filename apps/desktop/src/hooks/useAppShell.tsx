@@ -587,6 +587,39 @@ export function useAppShell() {
     navigate('/decks/new')
   }, [navigate, newDeckAction])
 
+  const [exportingDeck, setExportingDeck] = useState(false)
+  const handleExport = useCallback(
+    async (format: 'pdf') => {
+      // Rendering a deck opens a hidden window per run, so one export at a
+      // time: a second click would otherwise stack save dialogs and renders.
+      if (exportingDeck || !deckId || !generatedHtml) return
+
+      setExportingDeck(true)
+      const pending = toast.loading('Exporting PDF...')
+      try {
+        const result = await window.arkDesktop.export.create({
+          format,
+          html: generatedHtml,
+          title: deckTitle,
+        })
+        if (result.ok) {
+          toast.success('PDF exported', { id: pending })
+        } else if (result.canceled) {
+          toast.dismiss(pending)
+        } else {
+          toast.error(result.error ?? 'Could not export deck.', { id: pending })
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not export deck.', {
+          id: pending,
+        })
+      } finally {
+        setExportingDeck(false)
+      }
+    },
+    [deckId, deckTitle, exportingDeck, generatedHtml],
+  )
+
   const workspaceFileName = useMemo(
     () => `${deckTitle.replace(/[<>:"/\\|?*]/g, ' ').trim() || 'Untitled Presentation'}.ark`,
     [deckTitle],
@@ -1039,6 +1072,8 @@ export function useAppShell() {
     handleChatOpenChange,
     handleDownload,
     handleDuplicate,
+    handleExport,
+    exportingDeck,
     handleHtmlUpload,
     handleMove,
     handleNewDeck,

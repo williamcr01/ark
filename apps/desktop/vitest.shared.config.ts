@@ -16,6 +16,7 @@ export const isolatedTests = [
   'src/hooks/useDeckPreviewFrame.test.tsx',
   'src/pages/DecksDashboard.test.tsx',
   'electron/thumbnail-renderer.test.ts',
+  'electron/deck-export.test.ts',
 ]
 
 export default defineConfig((configEnv) => {

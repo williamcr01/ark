@@ -18,6 +18,7 @@ import { SecureCredentialStore } from './credential-store.ts'
 import { getRendererContentSecurityPolicy } from './renderer-security.ts'
 import { DesktopSettingsStore } from './settings-store.ts'
 import { createElectronThumbnailRenderer } from './thumbnail-renderer.ts'
+import { createDeckExportGenerator, inspectExportedPdf } from './deck-export.ts'
 import { McpManager, resolveMcpExecutableArgs } from './mcp-manager.ts'
 import { registerIpcHandlers } from './bootstrap/ipc.ts'
 import { configureApplicationMenu } from './bootstrap/menu.ts'
@@ -92,11 +93,13 @@ async function startDesktop() {
   const previewSessionStore = createPreviewSessionStore()
   const mcpServiceState = createMcpServiceState()
   const thumbnailRenderSecret = createThumbnailRenderSecret()
-  const thumbnailRenderer = createElectronThumbnailRenderer({
+  const deckRenderConfig = {
     apiOrigin: apiServer.origin,
     previewSessionStore,
     renderSecret: thumbnailRenderSecret,
-  })
+  }
+  const thumbnailRenderer = createElectronThumbnailRenderer(deckRenderConfig)
+  const generateDeckExport = createDeckExportGenerator(deckRenderConfig)
   let window: BrowserWindow | null = null
   let mcpManager: McpManager | null = null
   const sendToRenderer = (
@@ -173,6 +176,7 @@ async function startDesktop() {
     clearModelCatalogCache,
     warmModelCatalog,
     testProviderApiKey,
+    generateDeckExport,
   })
 
   configureSessionSecurity(new Set([appOrigin, apiServer.origin, sandboxServer.origin]))
@@ -235,18 +239,25 @@ async function startDesktop() {
         fetch(`${apiServer.origin}/api/health`),
         fetch(`${sandboxServer.origin}/health`),
       ])
-      const thumbnail = await thumbnailRenderer.render({
-        html: '<!doctype html><html><head><style>html,body{margin:0}section{width:100vw;height:100vh;background:#123;color:white}</style></head><body><section class="slide"><h1>Ark desktop smoke</h1></section></body></html>',
+      const smokeDeckHtml =
+        '<!doctype html><html><head><style>html,body{margin:0}section{width:100vw;height:100vh;background:#123;color:white}</style></head><body><section class="slide"><h1>Ark desktop smoke</h1></section><section class="slide"><h1>Second slide</h1></section></body></html>'
+      const thumbnail = await thumbnailRenderer.render({ html: smokeDeckHtml })
+      const exported = await generateDeckExport({
+        format: 'pdf',
+        html: smokeDeckHtml,
+        title: 'Ark desktop smoke',
       })
+      const exportReport = await inspectExportedPdf(exported)
 
       if (
         !rendererReady ||
         !healthResponse.ok ||
         !sandboxHealthResponse.ok ||
         !thumbnail.ok ||
-        thumbnail.slides[0]?.subarray(1, 4).toString('ascii') !== 'PNG'
+        thumbnail.slides[0]?.subarray(1, 4).toString('ascii') !== 'PNG' ||
+        !exportReport.ok
       ) {
-        throw new Error('Desktop smoke validation failed.')
+        throw new Error(`Desktop smoke validation failed. ${exportReport.detail}`)
       }
 
       console.log('ARK_DESKTOP_SMOKE_OK')

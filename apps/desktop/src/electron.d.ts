@@ -14,6 +14,8 @@ type CredentialStatus = Record<
   { configured: boolean; storage: 'persistent' | 'session' | null }
 >
 type DesktopResult = { ok: true; modelCount?: number } | { ok: false; error: string }
+type DeckExportResult =
+  { ok: true; path: string } | { ok: false; canceled?: boolean; error?: string }
 type DesktopSettings = {
   appearance: 'system' | 'light' | 'dark'
   migratedLegacyRendererPreferences: boolean
@@ -59,6 +61,13 @@ declare global {
       }
       updates: {
         check: () => Promise<DesktopResult>
+      }
+      export: {
+        create: (request: {
+          format: 'pdf'
+          html: string
+          title: string
+        }) => Promise<DeckExportResult>
       }
       files: {
         openWorkspace: () => Promise<string | null>
