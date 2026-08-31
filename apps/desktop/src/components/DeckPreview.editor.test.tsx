@@ -311,6 +311,27 @@ describe('DeckPreview script divergence UI', () => {
     expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('clears editor selection when Escape is pressed with the select tool', async () => {
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      managed: false,
+      editableKind: null,
+      textPreview: 'Quarterly planning',
+    }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(editorBridgeMock.clearSelection).toHaveBeenCalled()
+  })
+
   it('commits text edits through the patch callback', async () => {
     const onCommitTextEdit = vi.fn().mockResolvedValue(undefined)
 

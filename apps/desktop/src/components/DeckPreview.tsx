@@ -636,6 +636,7 @@ function useDeckPreviewShell({
     onSelectTool: () => handleToolChange('select'),
     onBeginTextEdit: beginTextEdit,
     onInsertImage: (file) => void handleInsertImageFile(file),
+    onClearSelection: clearSelection,
   })
 
   useEffect(() => {
