@@ -36,7 +36,7 @@ import type {
 import type { EditorSelectionInfo } from '@ark/editor-runtime'
 import { buildManualEditProvenance } from '@ark/deck/document/edit-provenance.ts'
 import { ApiResponseError, MAX_SLIDE_CONTEXTS, type ExternalDeckUpdate } from '@ark/contracts'
-import { toEditorSelectionContext } from '@/lib/editor/editor-selection-context'
+import { toEditorSelectionJobFields } from '@/lib/editor/editor-selection-context'
 import {
   buildSlideContexts,
   extractSlideTitleFromOuterHtml,
@@ -772,14 +772,14 @@ export function useAppShell() {
     const assetIds = [
       ...new Set(attachments.flatMap((item) => (item.assetId ? [item.assetId] : []))),
     ]
-    const editorSelectionContext = toEditorSelectionContext(editorSelection)
+    const selectionFields = toEditorSelectionJobFields(editorSelection, editorSelections)
     const slideContexts =
       resolvedContextSlides.length > 0
         ? buildSlideContexts(resolvedContextSlides, deckAnalysis.slides)
         : undefined
     await generateDeck(message.text, attachments, {
       assetIds,
-      ...(editorSelectionContext ? { editorSelection: editorSelectionContext } : {}),
+      ...selectionFields,
       ...(slideContexts?.length ? { slideContexts } : {}),
     })
   }

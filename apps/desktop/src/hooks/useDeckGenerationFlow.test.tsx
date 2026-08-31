@@ -313,13 +313,52 @@ describe('useDeckGenerationFlow', () => {
     expect(startGenerationJobMock).toHaveBeenCalledTimes(1)
     expect(startGenerationJobMock.mock.calls[0]?.[0]).toMatchObject({
       editorSelection,
+      editorSelections: [editorSelection],
       slideContexts,
     })
     expect(harness.appendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         role: 'user',
         content: 'make this punchier',
-        context: { editorSelection, slideContexts },
+        context: { editorSelection, editorSelections: [editorSelection], slideContexts },
+      }),
+    )
+  })
+
+  it('forwards the full editorSelections set with the primary as singular', async () => {
+    const harness = makeHarness({ deckId: 'deck-1' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({ id: 'job-1', status: 'succeeded', result: succeededResult }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    const editorSelection = {
+      slideIndex: 1,
+      elementId: 'ark-el-primary',
+      elementKind: 'text',
+    }
+    const editorSelections = [
+      { slideIndex: 1, elementId: 'ark-el-a', elementKind: 'text' },
+      editorSelection,
+      { slideIndex: 1, elementId: 'ark-el-c' },
+    ]
+
+    await act(async () => {
+      await result.current.generateDeck('align these', [], {
+        editorSelection,
+        editorSelections,
+      })
+    })
+
+    expect(startGenerationJobMock.mock.calls[0]?.[0]).toMatchObject({
+      editorSelection,
+      editorSelections,
+    })
+    expect(harness.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: { editorSelection, editorSelections },
       }),
     )
   })
@@ -339,6 +378,7 @@ describe('useDeckGenerationFlow', () => {
 
     expect(startGenerationJobMock).toHaveBeenCalledTimes(1)
     expect(startGenerationJobMock.mock.calls[0]?.[0]).not.toHaveProperty('editorSelection')
+    expect(startGenerationJobMock.mock.calls[0]?.[0]).not.toHaveProperty('editorSelections')
   })
 
   it('surfaces a failure without corrupting deck state', async () => {

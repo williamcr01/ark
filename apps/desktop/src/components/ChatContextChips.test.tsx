@@ -132,4 +132,23 @@ describe('ChatContextChips', () => {
     expect(screen.getByText('2 slides')).toBeInTheDocument()
     expect(screen.queryByText('Slide 1 — Title')).toBeNull()
   })
+
+  it('groups persisted multi-element context into one chip', () => {
+    const chips = contextToChipProps({
+      editorSelection: {
+        slideIndex: 0,
+        elementId: 'ark-el-primary',
+        elementKind: 'text',
+      },
+      editorSelections: [
+        { slideIndex: 0, elementId: 'ark-el-a', elementKind: 'text' },
+        { slideIndex: 0, elementId: 'ark-el-primary', elementKind: 'text' },
+      ],
+    })
+
+    render(<ContextChipList className="mt-2" label="Attached context" {...chips} />)
+
+    expect(screen.getByText('2 elements')).toBeInTheDocument()
+    expect(screen.queryByText(/Slide 1 · text/)).toBeNull()
+  })
 })
