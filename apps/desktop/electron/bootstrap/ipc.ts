@@ -3,6 +3,7 @@
  * credentials, settings, MCP control, file dialogs, and update checks - nothing else.
  */
 
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { app, clipboard, dialog, ipcMain, shell } from 'electron'
@@ -16,6 +17,7 @@ import type { McpInteractionStore } from '@ark/mcp/interactions.ts'
 import type { SecureCredentialStore } from '../credential-store.ts'
 import type { DesktopSettingsStore } from '../settings-store.ts'
 import type { McpManager } from '../mcp-manager.ts'
+import type { DeckExportFormat, DeckExportRequest } from '../deck-export.ts'
 
 const { autoUpdater } = electronUpdater
 const providers = new Set<ProviderId>(['openai', 'anthropic', 'google'])
@@ -36,6 +38,37 @@ export type IpcDependencies = {
   clearModelCatalogCache: () => void
   warmModelCatalog: () => Promise<unknown>
   testProviderApiKey: (provider: ProviderId, apiKey: string) => Promise<{ modelCount: number }>
+  generateDeckExport: (request: DeckExportRequest) => Promise<Buffer>
+}
+
+const exportFormats = new Set<DeckExportFormat>(['pdf', 'pptx'])
+
+function parseDeckExportRequest(value: unknown): DeckExportRequest {
+  if (!value || typeof value !== 'object') throw new Error('Invalid export request.')
+  const request = value as Record<string, unknown>
+  if (
+    typeof request.format !== 'string' ||
+    !exportFormats.has(request.format as DeckExportFormat)
+  ) {
+    throw new Error('Unsupported export format.')
+  }
+  if (typeof request.html !== 'string' || !request.html || request.html.length > 20_000_000) {
+    throw new Error('Invalid deck HTML.')
+  }
+  if (typeof request.title !== 'string' || request.title.length > 1_000) {
+    throw new Error('Invalid deck title.')
+  }
+  return request as DeckExportRequest
+}
+
+function exportFileName(title: string, format: DeckExportFormat) {
+  const stem =
+    Array.from(title, (character) => (character.charCodeAt(0) < 32 ? ' ' : character))
+      .join('')
+      .replace(/[<>:"/\\|?*]/g, ' ')
+      .trim()
+      .slice(0, 180) || 'Untitled Presentation'
+  return `${stem}.${format}`
 }
 
 export function registerIpcHandlers(deps: IpcDependencies) {
@@ -48,6 +81,7 @@ export function registerIpcHandlers(deps: IpcDependencies) {
     clearModelCatalogCache,
     warmModelCatalog,
     testProviderApiKey,
+    generateDeckExport,
   } = deps
 
   ipcMain.handle('credentials:list', () => credentialStore.getStatus())
@@ -191,6 +225,32 @@ export function registerIpcHandlers(deps: IpcDependencies) {
   })
   ipcMain.handle('files:reveal', (_event, filePath) => {
     if (typeof filePath === 'string') shell.showItemInFolder(filePath)
+  })
+  ipcMain.handle('export:create', async (_event, rawRequest) => {
+    try {
+      const request = parseDeckExportRequest(rawRequest)
+      const result = await dialog.showSaveDialog({
+        defaultPath: path.join(
+          app.getPath('documents'),
+          exportFileName(request.title, request.format),
+        ),
+        filters: [
+          request.format === 'pdf'
+            ? { name: 'PDF Document', extensions: ['pdf'] }
+            : { name: 'PowerPoint Presentation', extensions: ['pptx'] },
+        ],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+
+      const output = await generateDeckExport(request)
+      await writeFile(result.filePath, output)
+      return { ok: true, path: result.filePath }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Could not export deck.',
+      }
+    }
   })
   ipcMain.handle('updates:check', async () => {
     if (!app.isPackaged)

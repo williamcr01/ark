@@ -587,6 +587,22 @@ export function useAppShell() {
     navigate('/decks/new')
   }, [navigate, newDeckAction])
 
+  const handleExport = useCallback(
+    async (format: 'pdf' | 'pptx') => {
+      const result = await window.arkDesktop.export.create({
+        format,
+        html: generatedHtml,
+        title: deckTitle,
+      })
+      if (result.ok) {
+        toast.success(`${format === 'pdf' ? 'PDF' : 'PowerPoint'} exported`)
+      } else if (!result.canceled) {
+        toast.error(result.error ?? 'Could not export deck.')
+      }
+    },
+    [deckTitle, generatedHtml],
+  )
+
   const workspaceFileName = useMemo(
     () => `${deckTitle.replace(/[<>:"/\\|?*]/g, ' ').trim() || 'Untitled Presentation'}.ark`,
     [deckTitle],
@@ -1039,6 +1055,7 @@ export function useAppShell() {
     handleChatOpenChange,
     handleDownload,
     handleDuplicate,
+    handleExport,
     handleHtmlUpload,
     handleMove,
     handleNewDeck,

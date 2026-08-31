@@ -10,6 +10,7 @@ import { Link } from 'react-router'
 import {
   Maximize2Icon,
   DownloadIcon,
+  FileTextIcon,
   FilePlus2Icon,
   FolderOpenIcon,
   FolderInputIcon,
@@ -98,29 +99,18 @@ function TitleBarButton({
   )
 }
 
-function DownloadTitleBarButton({
+function ExportTitleBarButton({
   disabled,
   onDownload,
+  onExport,
   showSanitizedDownload,
 }: {
   disabled?: boolean
   onDownload: (variant: DeckDownloadVariant) => void
+  onExport: (format: 'pdf' | 'pptx') => void
   showSanitizedDownload: boolean
 }) {
   const [open, setOpen] = useState(false)
-
-  if (!showSanitizedDownload) {
-    return (
-      <TitleBarButton
-        disabled={disabled}
-        label="Download HTML"
-        onClick={() => onDownload('original')}
-        primary
-      >
-        <DownloadIcon />
-      </TitleBarButton>
-    )
-  }
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
@@ -128,7 +118,7 @@ function DownloadTitleBarButton({
         <DropdownMenuTrigger asChild>
           <TooltipTrigger asChild>
             <button
-              aria-label="Download HTML"
+              aria-label="Export deck"
               className={cn(
                 buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
                 morphMenuTriggerMotionClassName,
@@ -146,7 +136,7 @@ function DownloadTitleBarButton({
             </button>
           </TooltipTrigger>
         </DropdownMenuTrigger>
-        <TooltipContent side="bottom">Download HTML</TooltipContent>
+        <TooltipContent side="bottom">Export deck</TooltipContent>
       </Tooltip>
       <MorphMenuContent
         align="end"
@@ -172,10 +162,29 @@ function DownloadTitleBarButton({
                 <span className="text-xs text-muted-foreground">Keeps scripts and handlers</span>
               </div>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
+            {showSanitizedDownload ? (
+              <DropdownMenuItem onSelect={() => onDownload('sanitized')}>
+                <div className="flex flex-col gap-0.5">
+                  <span>Sanitized HTML</span>
+                  <span className="text-xs text-muted-foreground">Matches static preview</span>
+                </div>
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onSelect={() => onExport('pdf')}>
+              <FileTextIcon aria-hidden />
               <div className="flex flex-col gap-0.5">
-                <span>Sanitized HTML</span>
-                <span className="text-xs text-muted-foreground">Matches static preview</span>
+                <span>PDF</span>
+                <span className="text-xs text-muted-foreground">One page per slide</span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport('pptx')}>
+              <PresentationIcon aria-hidden />
+              <div className="flex flex-col gap-0.5">
+                <span>PowerPoint</span>
+                <span className="text-xs text-muted-foreground">Visual 16:9 slides</span>
               </div>
             </DropdownMenuItem>
           </DropdownMenuGroup>
@@ -325,6 +334,7 @@ export type AppTitleBarProps = {
   onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
+  onExport: (format: 'pdf' | 'pptx') => void
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onCredentialsChanged?: () => void | Promise<void>
   onNewDeck: () => void
@@ -348,6 +358,7 @@ export function AppTitleBar({
   uiState,
   onAppearanceChange = () => undefined,
   onDownload,
+  onExport,
   onHtmlUpload,
   onCredentialsChanged = () => undefined,
   onNewDeck,
@@ -502,9 +513,10 @@ export function AppTitleBar({
         >
           <Share2Icon />
         </TitleBarButton>
-        <DownloadTitleBarButton
+        <ExportTitleBarButton
           disabled={!hasDeck}
           onDownload={onDownload}
+          onExport={onExport}
           showSanitizedDownload={showSanitizedDownload}
         />
         <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>

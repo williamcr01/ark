@@ -147,7 +147,18 @@ export function createElectronThumbnailRenderer(options: {
   apiOrigin: string
   previewSessionStore: PreviewSessionStore
   renderSecret: string
+  output?: {
+    width: number
+    height: number
+    maxPngBytes: number
+  }
 }): ThumbnailRenderer {
+  const output = options.output ?? {
+    width: THUMBNAIL_OUTPUT_WIDTH,
+    height: THUMBNAIL_OUTPUT_HEIGHT,
+    maxPngBytes: THUMBNAIL_MAX_PNG_BYTES,
+  }
+
   return {
     isAvailable: () => true,
     close: async () => undefined,
@@ -262,10 +273,10 @@ export function createElectronThumbnailRenderer(options: {
             // react-doctor-disable-next-line react-doctor/async-await-in-loop -- sequential by design: each slide must be navigated to and settled before its capture can run (ordered side effects + per-slide abort checks)
             await gotoThumbnailSlide(window, index, signal)
             const png = (await window.webContents.capturePage())
-              .resize({ width: THUMBNAIL_OUTPUT_WIDTH, height: THUMBNAIL_OUTPUT_HEIGHT })
+              .resize({ width: output.width, height: output.height })
               .toPNG()
-            if (png.byteLength > THUMBNAIL_MAX_PNG_BYTES) {
-              throw new Error(`Slide ${index} thumbnail exceeds the PNG size limit.`)
+            if (png.byteLength > output.maxPngBytes) {
+              throw new Error(`Slide ${index} capture exceeds the PNG size limit.`)
             }
             slides.push(png)
           }
@@ -274,8 +285,8 @@ export function createElectronThumbnailRenderer(options: {
             ok: true,
             slides,
             slideCount,
-            width: THUMBNAIL_OUTPUT_WIDTH,
-            height: THUMBNAIL_OUTPUT_HEIGHT,
+            width: output.width,
+            height: output.height,
             durationMs: Date.now() - startedAt,
           }
         } finally {

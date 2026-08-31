@@ -37,6 +37,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           uiState={DEFAULT_UI_STATE}
           onDownload={vi.fn()}
           onDuplicate={vi.fn()}
+          onExport={vi.fn()}
           onHtmlUpload={vi.fn()}
           onMove={vi.fn()}
           onNewDeck={vi.fn()}
@@ -78,6 +79,7 @@ describe('AppTitleBar accessibility', () => {
         update: vi.fn(),
       },
       updates: { check: vi.fn() },
+      export: { create: vi.fn() },
       files: {
         openWorkspace: vi.fn(),
         chooseWorkspacePath: vi.fn(),
@@ -112,9 +114,7 @@ describe('AppTitleBar accessibility', () => {
 
     expect(screen.getByRole('button', { name: 'Test Deck' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'New deck' })).not.toHaveAttribute('aria-pressed')
-    expect(screen.getByRole('button', { name: 'Download HTML' })).not.toHaveAttribute(
-      'aria-pressed',
-    )
+    expect(screen.getByRole('button', { name: 'Export deck' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Upload HTML' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Present fullscreen' })).not.toHaveAttribute(
       'aria-pressed',
@@ -200,13 +200,27 @@ describe('AppTitleBar accessibility', () => {
     const onDownload = vi.fn()
     renderTitleBar({ onDownload, uiState: { ...DEFAULT_UI_STATE, showSanitizedDownload: true } })
 
-    await user.click(screen.getByRole('button', { name: 'Download HTML' }))
+    await user.click(screen.getByRole('button', { name: 'Export deck' }))
     await user.click(screen.getByText('Original HTML'))
-    await user.click(screen.getByRole('button', { name: 'Download HTML' }))
+    await user.click(screen.getByRole('button', { name: 'Export deck' }))
     await user.click(screen.getByText('Sanitized HTML'))
 
     expect(onDownload).toHaveBeenNthCalledWith(1, 'original')
     expect(onDownload).toHaveBeenNthCalledWith(2, 'sanitized')
+  })
+
+  it('offers PDF and PowerPoint exports for the open deck', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn()
+    renderTitleBar({ onExport })
+
+    await user.click(screen.getByRole('button', { name: 'Export deck' }))
+    await user.click(screen.getByText('PDF'))
+    await user.click(screen.getByRole('button', { name: 'Export deck' }))
+    await user.click(screen.getByText('PowerPoint'))
+
+    expect(onExport).toHaveBeenNthCalledWith(1, 'pdf')
+    expect(onExport).toHaveBeenNthCalledWith(2, 'pptx')
   })
 
   it('renames the active deck inline from the title', async () => {

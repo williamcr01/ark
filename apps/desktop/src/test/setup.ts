@@ -128,6 +128,7 @@ if (isJsdomEnvironment) {
         onInteractionChanged: vi.fn().mockReturnValue(() => undefined),
       },
       updates: { check: vi.fn() },
+      export: { create: vi.fn() },
       files: {
         openWorkspace: vi.fn(),
         chooseWorkspacePath: vi.fn(),

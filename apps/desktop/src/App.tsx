@@ -29,6 +29,7 @@ export default function App() {
     handleChatOpenChange,
     handleDownload,
     handleDuplicate,
+    handleExport,
     handleHtmlUpload,
     handleMove,
     handleNewDeck,
@@ -74,6 +75,7 @@ export default function App() {
           }}
           appearancePreference={preference}
           onDownload={handleDownload}
+          onExport={handleExport}
           onAgentInteractionsInModalChange={setAgentInteractionsInModal}
           onHtmlUpload={handleHtmlUpload}
           onCredentialsChanged={loadModels}

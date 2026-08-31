@@ -18,6 +18,12 @@ import { SecureCredentialStore } from './credential-store.ts'
 import { getRendererContentSecurityPolicy } from './renderer-security.ts'
 import { DesktopSettingsStore } from './settings-store.ts'
 import { createElectronThumbnailRenderer } from './thumbnail-renderer.ts'
+import {
+  createDeckExportGenerator,
+  DECK_EXPORT_HEIGHT,
+  DECK_EXPORT_MAX_PNG_BYTES,
+  DECK_EXPORT_WIDTH,
+} from './deck-export.ts'
 import { McpManager, resolveMcpExecutableArgs } from './mcp-manager.ts'
 import { registerIpcHandlers } from './bootstrap/ipc.ts'
 import { configureApplicationMenu } from './bootstrap/menu.ts'
@@ -97,6 +103,17 @@ async function startDesktop() {
     previewSessionStore,
     renderSecret: thumbnailRenderSecret,
   })
+  const exportSlideRenderer = createElectronThumbnailRenderer({
+    apiOrigin: apiServer.origin,
+    previewSessionStore,
+    renderSecret: thumbnailRenderSecret,
+    output: {
+      width: DECK_EXPORT_WIDTH,
+      height: DECK_EXPORT_HEIGHT,
+      maxPngBytes: DECK_EXPORT_MAX_PNG_BYTES,
+    },
+  })
+  const generateDeckExport = createDeckExportGenerator(exportSlideRenderer)
   let window: BrowserWindow | null = null
   let mcpManager: McpManager | null = null
   const sendToRenderer = (
@@ -173,6 +190,7 @@ async function startDesktop() {
     clearModelCatalogCache,
     warmModelCatalog,
     testProviderApiKey,
+    generateDeckExport,
   })
 
   configureSessionSecurity(new Set([appOrigin, apiServer.origin, sandboxServer.origin]))

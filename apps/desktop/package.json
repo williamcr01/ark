@@ -51,6 +51,8 @@
     "lucide-react": "^1.17.0",
     "motion": "^12.43.0",
     "nanoid": "^5.1.16",
+    "pdf-lib": "^1.17.1",
+    "pptxgenjs": "github:oanaOM/PptxGenJS#56c5244780ba6f1773a33817edb8929f4ca6ecfc",
     "radix-ui": "^1.5.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
