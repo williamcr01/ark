@@ -15,41 +15,44 @@ import {
   collectScenePixelRequests,
   DECK_SCENE_EXTRACTOR_GLOBAL,
   finalizeSceneSlide,
+  SCENE_FILL_CAPTURE_ATTR,
   SCENE_FRAME_HEIGHT,
   SCENE_FRAME_WIDTH,
   type DeckScene,
+  type ScenePixelRequest,
   type SceneSlide,
 } from '@ark/deck-export'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, NativeImage } from 'electron'
 
 import { withDeckRenderWindow, type DeckRenderWindowConfig } from './deck-render-window.ts'
 import { DECK_EXPORT_MAX_SLIDES, DECK_EXPORT_TIMEOUT_MS } from './deck-export.ts'
 
 const DECK_SCENE_LABEL = 'Deck exporter'
 
-/**
- * Fill the regions the walk could not express with real pixels.
- *
- * One capture per slide serves every crop: the page is photographed once, scaled
- * to the reference frame so crop coordinates are the scene's own pixels, and each
- * region is cut from it. A gradient hero keeps the text drawn on top of it,
- * because the picture replaces only the fill.
- */
-async function attachScenePixels(window: BrowserWindow, slide: SceneSlide) {
-  const requests = collectScenePixelRequests(slide)
-  if (requests.length === 0) return slide
+/** Hide descendants of a gradient fill so the crop is the fill, not the children. */
+const SCENE_FILL_CAPTURE_CSS = `[${SCENE_FILL_CAPTURE_ATTR}]{color:transparent!important}[${SCENE_FILL_CAPTURE_ATTR}] *{visibility:hidden!important}`
 
-  const capture = (await window.webContents.capturePage()).resize({
+async function waitForPaint(window: BrowserWindow) {
+  await window.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    true,
+  )
+}
+
+async function captureSlide(window: BrowserWindow) {
+  return (await window.webContents.capturePage()).resize({
     width: SCENE_FRAME_WIDTH,
     height: SCENE_FRAME_HEIGHT,
   })
+}
 
-  const pixels = new Map<number, string>()
+function cropRequests(
+  capture: NativeImage,
+  requests: ScenePixelRequest[],
+  pixels: Map<number, string>,
+) {
   for (const request of requests) {
-    const x = Math.max(0, Math.round(request.rect.x))
-    const y = Math.max(0, Math.round(request.rect.y))
-    const width = Math.min(Math.round(request.rect.width), SCENE_FRAME_WIDTH - x)
-    const height = Math.min(Math.round(request.rect.height), SCENE_FRAME_HEIGHT - y)
+    const { x, y, width, height } = request.rect
     if (width <= 0 || height <= 0) continue
 
     try {
@@ -58,6 +61,37 @@ async function attachScenePixels(window: BrowserWindow, slide: SceneSlide) {
       // A crop that fails leaves the node without pixels; the emitter falls back
       // rather than placing an empty picture.
     }
+  }
+}
+
+/**
+ * Fill the regions the walk could not express with real pixels.
+ *
+ * Raster regions flatten the whole subtree, so they crop from a full capture.
+ * Gradient fills keep their children as editable nodes, so those descendants
+ * are hidden while the fill is cropped.
+ */
+async function attachScenePixels(window: BrowserWindow, slide: SceneSlide) {
+  const requests = collectScenePixelRequests(slide)
+  if (requests.length === 0) return slide
+
+  const gradient = requests.filter((request) => request.reason === 'gradient')
+  const raster = requests.filter((request) => request.reason !== 'gradient')
+  const pixels = new Map<number, string>()
+
+  if (gradient.length > 0) {
+    const cssKey = await window.webContents.insertCSS(SCENE_FILL_CAPTURE_CSS)
+    try {
+      await waitForPaint(window)
+      cropRequests(await captureSlide(window), gradient, pixels)
+    } finally {
+      await window.webContents.removeInsertedCSS(cssKey)
+      if (raster.length > 0) await waitForPaint(window)
+    }
+  }
+
+  if (raster.length > 0) {
+    cropRequests(await captureSlide(window), raster, pixels)
   }
 
   return applyScenePixels(slide, pixels)
@@ -82,7 +116,7 @@ export async function extractDeckScene(
       label: DECK_SCENE_LABEL,
       maxSlides: DECK_EXPORT_MAX_SLIDES,
       timeoutMs: DECK_EXPORT_TIMEOUT_MS,
-      offscreen: false,
+      offscreen: true,
     },
     async ({ window, slideIndexes, gotoSlide }) => {
       // Install once; a long deck should not re-parse the walk per slide.

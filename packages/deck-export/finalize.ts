@@ -8,36 +8,24 @@
  * deck parser already extracted.
  */
 
-import { resolvePptxTypeface } from '@ark/runtime-registry/deck-font-registry.ts'
+import {
+  isExportSafeFontWeight,
+  resolvePptxTypeface,
+} from '@ark/runtime-registry/deck-font-registry.ts'
 
 import {
-  SCENE_FRAME_HEIGHT,
-  SCENE_FRAME_WIDTH,
+  clampRect,
   type SceneNode,
   type SceneParagraph,
-  type SceneRect,
   type SceneSlide,
   type SceneWarning,
 } from './scene.ts'
-
-function clampRect(rect: SceneRect): SceneRect {
-  const width = Math.max(0, Math.min(rect.width, SCENE_FRAME_WIDTH))
-  const height = Math.max(0, Math.min(rect.height, SCENE_FRAME_HEIGHT))
-
-  return {
-    ...rect,
-    x: Math.max(0, Math.min(rect.x, SCENE_FRAME_WIDTH - width)),
-    y: Math.max(0, Math.min(rect.y, SCENE_FRAME_HEIGHT - height)),
-    width,
-    height,
-  }
-}
 
 function finalizeParagraphs(paragraphs: SceneParagraph[], collapsed: Set<number>) {
   return paragraphs.map((paragraph) => ({
     ...paragraph,
     runs: paragraph.runs.map((run) => {
-      if (run.sourceWeight !== 400 && run.sourceWeight !== 700) collapsed.add(run.sourceWeight)
+      if (!isExportSafeFontWeight(run.sourceWeight)) collapsed.add(run.sourceWeight)
       return { ...run, fontFace: resolvePptxTypeface(run.fontFace) }
     }),
   }))

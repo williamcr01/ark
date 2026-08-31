@@ -8,8 +8,7 @@ import { extractDeckTitle } from './title.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 import {
-  DECK_FONT_MARKER_ATTRS,
-  DECK_FONT_ROLES,
+  readDeckFontSelection,
   type DeckFontSelection,
 } from '@ark/runtime-registry/deck-font-registry.ts'
 
@@ -105,19 +104,6 @@ function readRuntimeMarkers(doc: Document): DeckRuntime {
     arkRuntimeLib,
     arkRuntimeVersion,
   }
-}
-
-function readFontMarkers(doc: Document): DeckFontSelection {
-  const html = doc.documentElement
-  const body = doc.body
-
-  return Object.fromEntries(
-    DECK_FONT_ROLES.map((role) => {
-      const attribute = DECK_FONT_MARKER_ATTRS[role]
-      const value = html?.getAttribute(attribute) ?? body?.getAttribute(attribute) ?? null
-      return [role, value?.trim().toLowerCase() || null]
-    }),
-  ) as DeckFontSelection
 }
 
 function detectSlideSelector(doc: Document) {
@@ -358,7 +344,7 @@ function parseDeckHtmlCore(html: string): DeckParseResult {
     title: extractDeckTitle(html),
     structure: detectDeckStructure(doc, slideSelector),
     runtime: readRuntimeMarkers(doc),
-    fonts: readFontMarkers(doc),
+    fonts: readDeckFontSelection(doc),
     slideSelector,
     slideCount: slides.length,
     slides,

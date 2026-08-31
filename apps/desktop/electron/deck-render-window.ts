@@ -39,6 +39,13 @@ export function throwIfAborted(signal?: AbortSignal) {
 
 class DeckRenderWaitTimeoutError extends Error {}
 
+export class DeckRenderTimeoutError extends Error {
+  constructor(label: string) {
+    super(`${label} timed out.`)
+    this.name = 'DeckRenderTimeoutError'
+  }
+}
+
 async function waitFor<T>(
   read: () => Promise<T>,
   ready: (value: T) => boolean,
@@ -269,43 +276,73 @@ export async function withDeckRenderWindow<T>(
       },
     })
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    const renderWindow = window
+    if (!previewSession) throw new Error('Deck renderer session was not created.')
+    const renderPreview = previewSession
 
-    const abort = () => window?.destroy()
+    let timedOut = false
+    let settled = false
+    let failWait: ((error: Error) => void) | null = null
+
+    const abort = () => {
+      renderWindow.destroy()
+      if (!settled) failWait?.(new Error('Deck render aborted.'))
+    }
     signal?.addEventListener('abort', abort, { once: true })
-    timeout = setTimeout(() => window?.destroy(), limits.timeoutMs)
+    timeout = setTimeout(() => {
+      timedOut = true
+      renderWindow.destroy()
+      if (!settled) failWait?.(new DeckRenderTimeoutError(limits.label))
+    }, limits.timeoutMs)
 
     try {
-      await window.loadURL(buildThumbnailRenderUrl(config.apiOrigin, previewSession.token))
-      await waitFor(
-        () => readState(window!),
-        (state) => {
-          if (state.errors.length > 0) throw new Error(state.errors[0])
-          return state.ready
-        },
-        THUMBNAIL_READY_TIMEOUT_MS,
-        signal,
-      )
+      return await new Promise<T>((resolve, reject) => {
+        failWait = reject
+        void (async () => {
+          await renderWindow.loadURL(buildThumbnailRenderUrl(config.apiOrigin, renderPreview.token))
+          await waitFor(
+            () => readState(renderWindow),
+            (state) => {
+              if (state.errors.length > 0) throw new Error(state.errors[0])
+              return state.ready
+            },
+            THUMBNAIL_READY_TIMEOUT_MS,
+            signal,
+          )
 
-      // Slide indexes come from a static parse of the source HTML; if the deck
-      // reports a different slide count at runtime (dynamic full-JS decks that
-      // mount or reorder slides), output would be misaligned with the source.
-      // Fail instead.
-      const readyState = await readState(window!)
-      if (readyState.slideCount > 0 && readyState.slideCount !== slideCount) {
-        throw new Error(
-          `Deck reports ${readyState.slideCount} slides at runtime; expected ${slideCount}.`,
+          // Slide indexes come from a static parse of the source HTML; if the deck
+          // reports a different slide count at runtime (dynamic full-JS decks that
+          // mount or reorder slides), output would be misaligned with the source.
+          // Fail instead.
+          const readyState = await readState(renderWindow)
+          if (readyState.slideCount > 0 && readyState.slideCount !== slideCount) {
+            throw new Error(
+              `Deck reports ${readyState.slideCount} slides at runtime; expected ${slideCount}.`,
+            )
+          }
+
+          return await run({
+            window: renderWindow,
+            slideCount,
+            slideIndexes,
+            gotoSlide: (index: number) =>
+              gotoDeckSlide(renderWindow, index, { label: limits.label, signal }),
+          })
+        })().then(
+          (value) => {
+            settled = true
+            resolve(value)
+          },
+          (error) => {
+            settled = true
+            if (signal?.aborted) reject(new Error('Deck render aborted.'))
+            else if (timedOut) reject(new DeckRenderTimeoutError(limits.label))
+            else reject(error)
+          },
         )
-      }
-
-      const renderWindow = window
-      return await run({
-        window: renderWindow,
-        slideCount,
-        slideIndexes,
-        gotoSlide: (index: number) =>
-          gotoDeckSlide(renderWindow, index, { label: limits.label, signal }),
       })
     } finally {
+      settled = true
       signal?.removeEventListener('abort', abort)
     }
   } finally {

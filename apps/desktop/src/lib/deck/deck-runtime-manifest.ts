@@ -27,11 +27,7 @@ import {
   type DeckRuntimeManifest,
 } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { hasApprovedRevealRuntimeInDocument } from '@ark/runtime-registry/deck-runtime-registry.ts'
-import {
-  DECK_FONT_MARKER_ATTRS,
-  DECK_FONT_ROLES,
-  type DeckFontSelection,
-} from '@ark/runtime-registry/deck-font-registry.ts'
+import { readDeckFontSelection } from '@ark/runtime-registry/deck-font-registry.ts'
 import { findSlideElements, SLIDE_SELECTOR_CHAIN } from '@ark/deck-preview/preview-slides.ts'
 import { hasRevealSlideStructure } from '@ark/deck/document/reveal-slide-index.ts'
 import {
@@ -67,18 +63,6 @@ function detectStructure(
   }
 
   return 'unknown'
-}
-
-/** Reads the deck's `data-ark-font-*` markers straight off a parsed document. */
-function readDeckFontSelection(doc: Document): DeckFontSelection {
-  return Object.fromEntries(
-    DECK_FONT_ROLES.map((role) => {
-      const attribute = DECK_FONT_MARKER_ATTRS[role]
-      const value =
-        doc.documentElement?.getAttribute(attribute) ?? doc.body?.getAttribute(attribute) ?? null
-      return [role, value?.trim().toLowerCase() || null]
-    }),
-  ) as DeckFontSelection
 }
 
 export function buildDeckRuntimeManifestFromBrowserDocument(

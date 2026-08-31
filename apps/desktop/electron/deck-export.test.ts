@@ -20,6 +20,7 @@ import {
   DECK_EXPORT_PAGE_HEIGHT_INCHES,
   DECK_EXPORT_PAGE_WIDTH_INCHES,
 } from './deck-export.ts'
+import { DeckRenderTimeoutError, withDeckRenderWindow } from './deck-render-window.ts'
 
 /** A one-page PDF standing in for what Chromium's print pass returns. */
 async function onePagePdf(pageCount = 1) {
@@ -167,5 +168,39 @@ describe('deck PDF export', () => {
     await expect(
       createDeckExportGenerator(config)({ format: 'pdf', html: twoSlideDeck, title: 'Mismatch' }),
     ).rejects.toThrow('Deck reports 5 slides at runtime; expected 2.')
+  })
+
+  it('aborts a hung export when the caller signal fires', async () => {
+    mockRenderWindow({ slideCount: 1, printToPDF: () => new Promise(() => {}) })
+    const controller = new AbortController()
+    const pending = createDeckExportGenerator(config)({
+      format: 'pdf',
+      html: '<!DOCTYPE html><html><body><section class="slide">One</section></body></html>',
+      title: 'Stuck',
+      signal: controller.signal,
+    })
+
+    controller.abort()
+    await expect(pending).rejects.toThrow('Deck render aborted.')
+  })
+
+  it('rejects a hung render with a typed timeout rather than a destroyed-window crash', async () => {
+    mockRenderWindow({ slideCount: 1, printToPDF: () => new Promise(() => {}) })
+
+    await expect(
+      withDeckRenderWindow(
+        config,
+        {
+          html: '<!DOCTYPE html><html><body><section class="slide">One</section></body></html>',
+        },
+        {
+          label: 'Deck exporter',
+          maxSlides: 300,
+          timeoutMs: 40,
+          offscreen: false,
+        },
+        async () => new Promise(() => {}),
+      ),
+    ).rejects.toThrow(DeckRenderTimeoutError)
   })
 })

@@ -231,6 +231,38 @@ describe('PowerPoint emitter', () => {
     expect(xml).not.toContain('<p:pic>')
   })
 
+  it('does not re-rotate a captured raster; the pixels are already screen-rotated', async () => {
+    const xml = await firstSlideXml(
+      scene([
+        {
+          kind: 'raster',
+          rect: { x: 10, y: 10, width: 100, height: 100, rotation: 45 },
+          reason: 'filter',
+          data: PNG,
+        },
+      ]),
+    )
+
+    expect(xml).toContain('<p:pic>')
+    expect(xml).not.toMatch(/rot="[1-9]/)
+  })
+
+  it('rotates a native image whose source pixels are unrotated', async () => {
+    const xml = await firstSlideXml(
+      scene([
+        {
+          kind: 'image',
+          rect: { x: 10, y: 10, width: 100, height: 100, rotation: 45 },
+          data: PNG,
+          sizing: 'contain',
+          alt: '',
+        },
+      ]),
+    )
+
+    expect(xml).toMatch(/rot="2700000"/)
+  })
+
   it('emits a table with real cell text', async () => {
     const xml = await firstSlideXml(
       scene([

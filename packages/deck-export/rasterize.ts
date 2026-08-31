@@ -10,11 +10,15 @@
  * stays editable.
  */
 
-import type { SceneNode, SceneRect, SceneSlide } from './scene.ts'
+import { sceneCaptureRect, type SceneNode, type SceneRect, type SceneSlide } from './scene.ts'
+
+/** Marks a gradient fill whose descendants must be hidden for a fill-only crop. */
+export const SCENE_FILL_CAPTURE_ATTR = 'data-ark-scene-fill-capture'
 
 export type ScenePixelRequest = {
   /** Index of the node in the slide's node list. */
   nodeIndex: number
+  /** On-slide crop box, already AABB-clamped and integer. */
   rect: SceneRect
   reason: string
 }
@@ -29,13 +33,17 @@ export function collectScenePixelRequests(slide: SceneSlide): ScenePixelRequest[
   const requests: ScenePixelRequest[] = []
 
   slide.nodes.forEach((node, nodeIndex) => {
-    if (node.kind === 'raster' && !node.data) {
-      requests.push({ nodeIndex, rect: node.rect, reason: node.reason })
-      return
-    }
-    if (needsGradientPixels(node)) {
-      requests.push({ nodeIndex, rect: node.rect, reason: 'gradient' })
-    }
+    const reason =
+      node.kind === 'raster' && !node.data
+        ? node.reason
+        : needsGradientPixels(node)
+          ? 'gradient'
+          : null
+    if (!reason) return
+
+    const rect = sceneCaptureRect(node.rect)
+    if (rect.width <= 0 || rect.height <= 0) return
+    requests.push({ nodeIndex, rect, reason })
   })
 
   return requests
@@ -57,19 +65,21 @@ export function applyScenePixels(slide: SceneSlide, pixels: Map<number, string>)
       return
     }
 
+    const rect = sceneCaptureRect(node.rect)
+
     if (node.kind === 'raster') {
-      nodes.push({ ...node, data })
+      nodes.push({ ...node, rect, data })
       return
     }
 
     if (node.kind === 'shape') {
-      nodes.push({ kind: 'raster', rect: node.rect, reason: 'gradient', data })
+      nodes.push({ kind: 'raster', rect, reason: 'gradient', data })
       return
     }
 
     if (node.kind === 'text') {
       // Backdrop first, then the untouched text on top of it.
-      nodes.push({ kind: 'raster', rect: node.rect, reason: 'gradient', data })
+      nodes.push({ kind: 'raster', rect, reason: 'gradient', data })
       nodes.push({ ...node, fill: undefined })
       return
     }

@@ -8,6 +8,7 @@
 
 import { SLIDE_SELECTOR_CHAIN } from '@ark/deck/document/slides.ts'
 
+import { SCENE_FILL_CAPTURE_ATTR } from '../rasterize.ts'
 import { SCENE_FRAME_HEIGHT, SCENE_FRAME_WIDTH } from '../scene.ts'
 import { geometryChunk } from './geometry.ts'
 import { textChunk } from './text.ts'
@@ -31,6 +32,7 @@ export function buildDeckSceneExtractorScript(
   var SLIDE_SELECTORS = ${JSON.stringify(slideSelectors)};
   var FRAME_WIDTH = ${SCENE_FRAME_WIDTH};
   var FRAME_HEIGHT = ${SCENE_FRAME_HEIGHT};
+  var FILL_CAPTURE_ATTR = ${JSON.stringify(SCENE_FILL_CAPTURE_ATTR)};
 ${valuesChunk}
 ${geometryChunk}
 ${textChunk}

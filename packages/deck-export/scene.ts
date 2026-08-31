@@ -51,6 +51,58 @@ export type SceneRect = {
   rotation?: number
 }
 
+/**
+ * Axis-aligned bounds of a (possibly rotated) scene rect.
+ *
+ * `readRect` stores the unrotated box plus an angle, which is what PowerPoint
+ * wants for native shapes. A page capture is already rotated, so a crop has to
+ * use this larger box or it clips the corners.
+ */
+export function axisAlignedBounds(rect: SceneRect): SceneRect {
+  const rotation = rect.rotation
+  if (!rotation) return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+
+  const radians = (rotation * Math.PI) / 180
+  const cos = Math.abs(Math.cos(radians))
+  const sin = Math.abs(Math.sin(radians))
+  const width = rect.width * cos + rect.height * sin
+  const height = rect.width * sin + rect.height * cos
+  const centerX = rect.x + rect.width / 2
+  const centerY = rect.y + rect.height / 2
+
+  return { x: centerX - width / 2, y: centerY - height / 2, width, height }
+}
+
+/** Visible intersection with the slide frame. Overflow is clipped, not shifted. */
+export function clampRect(rect: SceneRect): SceneRect {
+  const x = Math.max(0, rect.x)
+  const y = Math.max(0, rect.y)
+  const right = Math.min(SCENE_FRAME_WIDTH, rect.x + rect.width)
+  const bottom = Math.min(SCENE_FRAME_HEIGHT, rect.y + rect.height)
+
+  return {
+    ...rect,
+    x,
+    y,
+    width: Math.max(0, right - x),
+    height: Math.max(0, bottom - y),
+  }
+}
+
+/**
+ * Integer crop box for `NativeImage.crop`: the on-slide AABB, rounded, with
+ * rotation stripped so the picture is placed where the pixels already are.
+ */
+export function sceneCaptureRect(rect: SceneRect): SceneRect {
+  const clamped = clampRect(axisAlignedBounds(rect))
+  const x = Math.round(clamped.x)
+  const y = Math.round(clamped.y)
+  const width = Math.max(0, Math.min(Math.round(clamped.width), SCENE_FRAME_WIDTH - x))
+  const height = Math.max(0, Math.min(Math.round(clamped.height), SCENE_FRAME_HEIGHT - y))
+
+  return { x, y, width, height }
+}
+
 /** Six uppercase hex digits, no leading `#`, matching OOXML's `srgbClr`. */
 export type SceneColor = string
 

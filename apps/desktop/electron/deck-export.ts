@@ -63,6 +63,7 @@ export type DeckExportRequest = {
   format: DeckExportFormat
   html: string
   title: string
+  signal?: AbortSignal
 }
 
 export type DeckExportResult = {
@@ -101,9 +102,9 @@ async function mergeSlidePdfs(slidePdfs: Uint8Array[], title: string) {
 }
 
 export function createDeckExportGenerator(config: DeckRenderWindowConfig) {
-  return async ({ format, html, title }: DeckExportRequest): Promise<DeckExportResult> => {
+  return async ({ format, html, title, signal }: DeckExportRequest): Promise<DeckExportResult> => {
     if (format === 'pptx') {
-      const scene = await extractDeckScene(config, { html })
+      const scene = await extractDeckScene(config, { html, signal })
       return {
         output: await generateDeckPptx(scene, title),
         warning: describeDeckExportLint(buildDeckExportLint(scene)),
@@ -112,7 +113,7 @@ export function createDeckExportGenerator(config: DeckRenderWindowConfig) {
 
     const slidePdfs = await withDeckRenderWindow(
       config,
-      { html },
+      { html, signal },
       {
         label: DECK_EXPORT_LABEL,
         maxSlides: DECK_EXPORT_MAX_SLIDES,

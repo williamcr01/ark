@@ -13,6 +13,7 @@ import {
   getDeckFontsByCategory,
   isApprovedDeckFontId,
   isExportSafeFontWeight,
+  readDeckFontSelection,
   resolveDeckFont,
   resolvePptxTypeface,
 } from './deck-font-registry.ts'
@@ -127,6 +128,25 @@ describe('export-safe weights', () => {
     expect(isExportSafeFontWeight(400)).toBe(true)
     expect(isExportSafeFontWeight(700)).toBe(true)
     expect(isExportSafeFontWeight(600)).toBe(false)
+  })
+})
+
+describe('readDeckFontSelection', () => {
+  it('reads font markers off html, falling back to body', () => {
+    const doc = {
+      documentElement: {
+        getAttribute: (name: string) => (name === 'data-ark-font-display' ? ' Cambria ' : null),
+      },
+      body: {
+        getAttribute: (name: string) => (name === 'data-ark-font-body' ? 'CALIBRI' : null),
+      },
+    } as unknown as Document
+
+    expect(readDeckFontSelection(doc)).toEqual({
+      display: 'cambria',
+      body: 'calibri',
+      mono: null,
+    })
   })
 })
 

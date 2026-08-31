@@ -235,7 +235,7 @@ function addNode(pptx: PptxGenJS, slide: PptxGenJS.Slide, node: SceneNode) {
             }
           : undefined,
       altText: node.kind === 'image' ? node.alt || undefined : undefined,
-      rotate: node.rect.rotation || undefined,
+      rotate: node.kind === 'image' ? node.rect.rotation || undefined : undefined,
     } as never)
     return
   }

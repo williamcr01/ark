@@ -99,7 +99,7 @@ describe('finalizeSceneSlide', () => {
       slideWith([textNode([run()], { x: 1200, y: 700, width: 400, height: 200 })]),
     )
 
-    expect(slide.nodes[0].rect).toMatchObject({ x: 880, y: 520, width: 400, height: 200 })
+    expect(slide.nodes[0].rect).toMatchObject({ x: 1200, y: 700, width: 80, height: 20 })
   })
 
   it('does not resize a node that already fits', () => {
@@ -108,6 +108,14 @@ describe('finalizeSceneSlide', () => {
     )
 
     expect(slide.nodes[0].rect).toMatchObject({ x: 10, y: 20, width: 300, height: 100 })
+  })
+
+  it('clips an overflowing origin rather than shifting the box onto the slide', () => {
+    const slide = finalizeSceneSlide(
+      slideWith([textNode([run()], { x: -40, y: -10, width: 100, height: 50 })]),
+    )
+
+    expect(slide.nodes[0].rect).toMatchObject({ x: 0, y: 0, width: 60, height: 40 })
   })
 
   it('resolves typefaces inside table cells too', () => {

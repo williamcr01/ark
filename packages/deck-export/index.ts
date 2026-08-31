@@ -1,6 +1,11 @@
 export * from './scene.ts'
 export { finalizeSceneSlide, type FinalizeSceneSlideOptions } from './finalize.ts'
-export { applyScenePixels, collectScenePixelRequests, type ScenePixelRequest } from './rasterize.ts'
+export {
+  applyScenePixels,
+  collectScenePixelRequests,
+  SCENE_FILL_CAPTURE_ATTR,
+  type ScenePixelRequest,
+} from './rasterize.ts'
 export {
   buildDeckExportLint,
   describeDeckExportLint,

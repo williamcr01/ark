@@ -66,7 +66,7 @@ export const walkChunk = String.raw`
   }
 
   function readTable(element, slide, rect) {
-    var rowElements = element.querySelectorAll ? element.querySelectorAll('tr') : [];
+    var rowElements = element.rows || [];
     if (!rowElements.length) return null;
 
     var rows = [];
@@ -87,16 +87,20 @@ export const walkChunk = String.raw`
         var cellStyle = window.getComputedStyle(cell);
         var cellFill = readFill(cellStyle);
         var cellRect = readRect(cell, slide, cellStyle);
+        var colSpan = cell.colSpan || 1;
 
         row.push({
           paragraphs: collectParagraphs(cell, null),
-          colSpan: cell.colSpan || 1,
+          colSpan: colSpan,
           rowSpan: cell.rowSpan || 1,
           fill: cellFill && cellFill.type !== 'none' ? cellFill : undefined,
           header: cell.tagName.toLowerCase() === 'th',
         });
 
-        if (rows.length === 0) columnWidths.push(cellRect.width);
+        if (rows.length === 0) {
+          var columnWidth = cellRect.width / colSpan;
+          for (var s = 0; s < colSpan; s++) columnWidths.push(columnWidth);
+        }
       }
 
       rowHeights.push(readRect(rowElement, slide, rowStyle).height);
@@ -212,6 +216,9 @@ export const walkChunk = String.raw`
     if (fill === null) {
       emitRaster(context, rect, 'background-image', z);
       return;
+    }
+    if (fill.type === 'gradient' && element.setAttribute) {
+      element.setAttribute(FILL_CAPTURE_ATTR, '');
     }
 
     var lineInfo = readLine(style);

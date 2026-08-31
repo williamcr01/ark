@@ -123,6 +123,20 @@ export const DEFAULT_DECK_FONT_IDS: Record<DeckFontRole, string> = {
 /** Per-role font ids read off a deck, or null where the deck declared none. */
 export type DeckFontSelection = Record<DeckFontRole, string | null>
 
+/** Reads `data-ark-font-*` markers off `<html>` or `<body>`. */
+export function readDeckFontSelection(doc: Document): DeckFontSelection {
+  const html = doc.documentElement
+  const body = doc.body
+
+  return Object.fromEntries(
+    DECK_FONT_ROLES.map((role) => {
+      const attribute = DECK_FONT_MARKER_ATTRS[role]
+      const value = html?.getAttribute(attribute) ?? body?.getAttribute(attribute) ?? null
+      return [role, value?.trim().toLowerCase() || null]
+    }),
+  ) as DeckFontSelection
+}
+
 const FONTS_BY_ID = new Map(APPROVED_DECK_FONTS.map((font) => [font.id, font]))
 
 export function getApprovedDeckFonts() {

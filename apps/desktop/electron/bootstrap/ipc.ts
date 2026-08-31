@@ -201,7 +201,7 @@ export function registerIpcHandlers(deps: IpcDependencies) {
   ipcMain.handle('files:reveal', (_event, filePath) => {
     if (typeof filePath === 'string') shell.showItemInFolder(filePath)
   })
-  ipcMain.handle('export:create', async (_event, rawRequest) => {
+  ipcMain.handle('export:create', async (event, rawRequest) => {
     try {
       const request = parseDeckExportRequest(rawRequest)
       const result = await dialog.showSaveDialog({
@@ -215,9 +215,19 @@ export function registerIpcHandlers(deps: IpcDependencies) {
 
       // Render before touching disk: a failed export must not leave a truncated
       // or empty file where the user asked for their deck.
-      const { output, warning } = await generateDeckExport(request)
-      await writeFile(result.filePath, output)
-      return { ok: true, path: result.filePath, warning }
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      event.sender.once('destroyed', abort)
+      try {
+        const { output, warning } = await generateDeckExport({
+          ...request,
+          signal: controller.signal,
+        })
+        await writeFile(result.filePath, output)
+        return { ok: true, path: result.filePath, warning }
+      } finally {
+        event.sender.removeListener('destroyed', abort)
+      }
     } catch (error) {
       return {
         ok: false,

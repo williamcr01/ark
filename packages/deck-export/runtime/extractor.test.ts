@@ -256,6 +256,50 @@ describe('scene extractor: media', () => {
   })
 })
 
+describe('scene extractor: tables', () => {
+  it('splits a colSpan cell across that many column widths', () => {
+    const slide = extract(
+      `<table data-rect="0,0,400,80">
+         <tr data-rect="0,0,400,80">
+           <td colspan="2" data-rect="0,0,300,80">Span</td>
+           <td data-rect="300,0,100,80">B</td>
+         </tr>
+       </table>`,
+    )
+
+    const table = slide.nodes[0]
+    expect(table.kind).toBe('table')
+    expect(table.kind === 'table' && table.columnWidths).toEqual([150, 150, 100])
+    expect(table.kind === 'table' && table.rows).toHaveLength(1)
+  })
+
+  it('does not treat nested tables as extra rows of the outer table', () => {
+    const slide = extract(
+      `<table data-rect="0,0,400,160">
+         <tr data-rect="0,0,400,80">
+           <td data-rect="0,0,400,80">Outer</td>
+         </tr>
+         <tr data-rect="0,80,400,80">
+           <td data-rect="0,80,400,80">
+             <table data-rect="0,80,200,40">
+               <tr data-rect="0,80,200,40"><td data-rect="0,80,200,40">Nested</td></tr>
+             </table>
+           </td>
+         </tr>
+       </table>`,
+    )
+
+    const table = slide.nodes[0]
+    expect(table.kind === 'table' && table.rows).toHaveLength(2)
+    expect(
+      table.kind === 'table' &&
+        table.rows[1][0].paragraphs.some((paragraph) =>
+          paragraph.runs.some((run) => run.text.includes('Nested')),
+        ),
+    ).toBe(true)
+  })
+})
+
 describe('scene extractor: degradation', () => {
   it.each([
     ['backdrop-filter:blur(4px)', 'backdrop-filter'],

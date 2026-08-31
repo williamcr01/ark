@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyScenePixels, collectScenePixelRequests } from './rasterize.ts'
-import type { SceneFill, SceneNode, SceneSlide } from './scene.ts'
+import {
+  SCENE_FRAME_HEIGHT,
+  SCENE_FRAME_WIDTH,
+  type SceneFill,
+  type SceneNode,
+  type SceneSlide,
+} from './scene.ts'
 
 const GRADIENT: SceneFill = {
   type: 'gradient',
@@ -56,6 +62,22 @@ describe('collectScenePixelRequests', () => {
 
     expect(collectScenePixelRequests(slide)).toEqual([])
   })
+
+  it('crops overflowing and rotated rects to the on-slide AABB', () => {
+    const slide = slideWith([
+      { kind: 'raster', rect: { x: 1200, y: 700, width: 400, height: 200 }, reason: 'filter' },
+      {
+        kind: 'raster',
+        rect: { x: 100, y: 100, width: 100, height: 50, rotation: 90 },
+        reason: 'svg',
+      },
+    ])
+
+    expect(collectScenePixelRequests(slide).map((request) => request.rect)).toEqual([
+      { x: 1200, y: 700, width: SCENE_FRAME_WIDTH - 1200, height: SCENE_FRAME_HEIGHT - 700 },
+      { x: 125, y: 75, width: 50, height: 100 },
+    ])
+  })
 })
 
 describe('applyScenePixels', () => {
@@ -90,5 +112,40 @@ describe('applyScenePixels', () => {
     const slide = applyScenePixels(slideWith([shape(GRADIENT)]), new Map())
 
     expect(slide.nodes[0]).toMatchObject({ kind: 'shape' })
+  })
+
+  it('places captured pixels on the visible crop, not the overflowing source rect', () => {
+    const slide = applyScenePixels(
+      slideWith([
+        {
+          kind: 'raster',
+          rect: { x: 1200, y: 700, width: 400, height: 200 },
+          reason: 'filter',
+        },
+      ]),
+      new Map([[0, 'data:,pixels']]),
+    )
+
+    expect(slide.nodes[0].rect).toEqual({
+      x: 1200,
+      y: 700,
+      width: SCENE_FRAME_WIDTH - 1200,
+      height: SCENE_FRAME_HEIGHT - 700,
+    })
+  })
+
+  it('drops rotation from a captured raster because the pixels are already rotated', () => {
+    const slide = applyScenePixels(
+      slideWith([
+        {
+          kind: 'raster',
+          rect: { x: 100, y: 100, width: 100, height: 50, rotation: 90 },
+          reason: 'svg',
+        },
+      ]),
+      new Map([[0, 'data:,pixels']]),
+    )
+
+    expect(slide.nodes[0].rect).toEqual({ x: 125, y: 75, width: 50, height: 100 })
   })
 })
