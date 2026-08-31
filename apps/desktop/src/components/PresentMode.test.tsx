@@ -18,6 +18,7 @@ type PresentHarnessProps = {
   initialSlideIndex?: number
   onExit?: (finalSlideIndex: number) => void
   onGoToSlide?: (index: number) => void
+  onViewportSizeChange?: (size: { width: number; height: number }) => void
   previewCompromised?: boolean
   slideCount?: number
 }
@@ -26,6 +27,7 @@ function PresentHarness({
   initialSlideIndex = 0,
   onExit = vi.fn(),
   onGoToSlide,
+  onViewportSizeChange,
   previewCompromised = false,
   slideCount = 3,
 }: PresentHarnessProps) {
@@ -39,6 +41,7 @@ function PresentHarness({
         setActiveSlideIndex(index)
         onGoToSlide?.(index)
       }}
+      onViewportSizeChange={onViewportSizeChange}
       previewCompromised={previewCompromised}
       slideCount={slideCount}
     />
@@ -174,15 +177,7 @@ describe('PresentMode', () => {
   it('does not report an empty present viewport size', () => {
     const onViewportSizeChange = vi.fn()
 
-    render(
-      <PresentMode
-        activeSlideIndex={0}
-        onExit={vi.fn()}
-        onGoToSlide={vi.fn()}
-        onViewportSizeChange={onViewportSizeChange}
-        slideCount={3}
-      />,
-    )
+    render(<PresentHarness onViewportSizeChange={onViewportSizeChange} />)
 
     expect(onViewportSizeChange).not.toHaveBeenCalled()
   })
