@@ -26,8 +26,11 @@ import revealVerticalDeck from '@fixtures/reveal-vertical-deck.html?raw'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 import {
   detectRuntimeMode,
+  getPreviewFrameScale,
+  getPreviewFrameStyle,
   getPreviewHtml,
   getPreviewSandbox,
+  getPreviewStageStyle,
   PREVIEW_FRAME_HEIGHT,
   PREVIEW_FRAME_WIDTH,
   PREVIEW_IFRAME_SECURITY_PROPS,
@@ -39,6 +42,27 @@ describe('preview geometry', () => {
       ARK_SLIDE_REFERENCE_WIDTH,
       ARK_SLIDE_REFERENCE_HEIGHT,
     ])
+  })
+
+  it('letterbox-fits the reference slide into the viewport', () => {
+    expect(getPreviewFrameScale({ width: 1920, height: 1080 })).toBe(1.5)
+    expect(getPreviewFrameScale({ width: 1280, height: 800 })).toBe(1)
+    expect(getPreviewFrameScale({ width: 2000, height: 720 })).toBe(1)
+    expect(getPreviewFrameScale({ width: 640, height: 360 })).toBe(0.5)
+    expect(getPreviewFrameScale({ width: 0, height: 720 })).toBe(0)
+  })
+
+  it('sizes the stage to the letterboxed slide and scales the frame from the origin', () => {
+    expect(getPreviewStageStyle(1.5)).toEqual({
+      width: PREVIEW_FRAME_WIDTH * 1.5,
+      height: PREVIEW_FRAME_HEIGHT * 1.5,
+    })
+    expect(getPreviewFrameStyle(1.5)).toMatchObject({
+      width: PREVIEW_FRAME_WIDTH,
+      height: PREVIEW_FRAME_HEIGHT,
+      transform: 'scale(1.5)',
+      transformOrigin: 'top left',
+    })
   })
 })
 

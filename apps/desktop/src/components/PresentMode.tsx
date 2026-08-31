@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
-import { toast } from 'sonner'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -132,6 +131,12 @@ function useElementSize<T extends HTMLElement>(onSizeChange?: (size: ElementSize
 
     const updateSize = () => {
       const next = readElementSize(element)
+
+      // Skip 0×0 first layout so overlay present keeps the window-seeded size.
+      if (next.width <= 0 || next.height <= 0) {
+        return
+      }
+
       onSizeChangeRef.current?.(next)
 
       setSize((current) => {
@@ -182,6 +187,13 @@ export function PresentMode({
     [onViewportSizeChange],
   )
   const [viewportRef] = useElementSize<HTMLDivElement>(handleViewportSizeChange)
+  const setPresenterRoot = useCallback(
+    (node: HTMLDivElement | null) => {
+      rootRef.current = node
+      viewportRef.current = node
+    },
+    [viewportRef],
+  )
   const [controlsVisible, setControlsVisible] = useState(true)
 
   const clearIdleTimer = useCallback(() => {
@@ -265,7 +277,6 @@ export function PresentMode({
 
     const requestFullscreen = async () => {
       if (!fullscreenTarget.requestFullscreen) {
-        toast.info('Fullscreen unavailable — using window overlay')
         return
       }
 
@@ -273,9 +284,7 @@ export function PresentMode({
         await fullscreenTarget.requestFullscreen()
         hadFullscreenRef.current = document.fullscreenElement === fullscreenTarget
       } catch {
-        if (!hasExitedRef.current) {
-          toast.info('Fullscreen unavailable — using window overlay')
-        }
+        // Overlay present is the intentional desktop fallback; do not toast.
       }
     }
 
@@ -391,19 +400,13 @@ export function PresentMode({
       onKeyDown={showControls}
       onMouseMove={showControls}
       onTouchStart={showControls}
-      ref={rootRef}
+      ref={setPresenterRoot}
       role="dialog"
       tabIndex={-1}
     >
       <h2 className="sr-only" id="ark-present-mode-title">
         Presentation mode
       </h2>
-
-      <div
-        aria-hidden
-        className="absolute inset-0 flex items-center justify-center overflow-hidden"
-        ref={viewportRef}
-      />
 
       {previewCompromised ? (
         <Alert

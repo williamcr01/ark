@@ -1,14 +1,24 @@
 import { useState } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
 
 import { PresentMode } from './PresentMode'
+
+vi.mock('sonner', () => ({
+  toast: {
+    info: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
 
 type PresentHarnessProps = {
   initialSlideIndex?: number
   onExit?: (finalSlideIndex: number) => void
   onGoToSlide?: (index: number) => void
+  onViewportSizeChange?: (size: { width: number; height: number }) => void
   previewCompromised?: boolean
   slideCount?: number
 }
@@ -17,6 +27,7 @@ function PresentHarness({
   initialSlideIndex = 0,
   onExit = vi.fn(),
   onGoToSlide,
+  onViewportSizeChange,
   previewCompromised = false,
   slideCount = 3,
 }: PresentHarnessProps) {
@@ -30,6 +41,7 @@ function PresentHarness({
         setActiveSlideIndex(index)
         onGoToSlide?.(index)
       }}
+      onViewportSizeChange={onViewportSizeChange}
       previewCompromised={previewCompromised}
       slideCount={slideCount}
     />
@@ -37,6 +49,10 @@ function PresentHarness({
 }
 
 describe('PresentMode', () => {
+  beforeEach(() => {
+    vi.mocked(toast.info).mockClear()
+  })
+
   it('renders overlay controls without owning a presentation iframe', () => {
     render(<PresentHarness />)
 
@@ -120,6 +136,50 @@ describe('PresentMode', () => {
     expect(portaledBackdrop).toBeInstanceOf(HTMLElement)
     expect(portaledBackdrop?.className).toContain('fixed')
     expect(portaledBackdrop?.className).toContain('inset-0')
+  })
+
+  it('does not toast when fullscreen is unavailable', async () => {
+    const requestFullscreen = vi
+      .spyOn(HTMLElement.prototype, 'requestFullscreen')
+      .mockRejectedValueOnce(new Error('denied'))
+
+    try {
+      render(<PresentHarness />)
+
+      await waitFor(() => {
+        expect(requestFullscreen).toHaveBeenCalled()
+      })
+      expect(toast.info).not.toHaveBeenCalled()
+    } finally {
+      requestFullscreen.mockRestore()
+    }
+  })
+
+  it('does not toast when the fullscreen API is missing', () => {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'requestFullscreen')
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: undefined,
+    })
+
+    try {
+      render(<PresentHarness />)
+
+      expect(screen.getByRole('dialog', { name: 'Presentation mode' })).toBeInTheDocument()
+      expect(toast.info).not.toHaveBeenCalled()
+    } finally {
+      if (original) {
+        Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', original)
+      }
+    }
+  })
+
+  it('does not report an empty present viewport size', () => {
+    const onViewportSizeChange = vi.fn()
+
+    render(<PresentHarness onViewportSizeChange={onViewportSizeChange} />)
+
+    expect(onViewportSizeChange).not.toHaveBeenCalled()
   })
 
   it('keeps keyboard focus inside present controls', async () => {

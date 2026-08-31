@@ -695,6 +695,10 @@ function useDeckPreviewShell({
   }, [goToSlide, isPresentOpen])
 
   const handlePresentViewportSizeChange = useCallback((size: { width: number; height: number }) => {
+    if (size.width <= 0 || size.height <= 0) {
+      return
+    }
+
     setPresentViewportSize((current) => {
       if (
         Math.abs(current.width - size.width) < 0.5 &&
@@ -1046,9 +1050,10 @@ export function DeckPreview(props: DeckPreviewProps) {
             ) : html ? (
               <div
                 className={cn(
-                  'relative max-h-full max-w-full overflow-hidden bg-white shadow-[0_8px_28px_var(--ark-stage-shadow)]',
-                  isPresentOpen &&
-                    'fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2',
+                  'overflow-hidden bg-white shadow-[0_8px_28px_var(--ark-stage-shadow)]',
+                  isPresentOpen
+                    ? 'fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2'
+                    : 'relative max-h-full max-w-full',
                 )}
                 ref={previewStageRef}
                 style={previewStageStyle}
