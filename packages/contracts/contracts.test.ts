@@ -8,7 +8,11 @@ import {
   renameDeckRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
-import { generationJobResponseSchema, startGenerationJobRequestSchema } from './generation-jobs.ts'
+import {
+  generationJobResponseSchema,
+  MAX_EDITOR_SELECTIONS,
+  startGenerationJobRequestSchema,
+} from './generation-jobs.ts'
 import { createPreviewSessionRequestSchema, previewSessionResponseSchema } from './preview.ts'
 import { appendChatMessageRequestSchema, deckChatResponseSchema } from './chat.ts'
 import {
@@ -310,6 +314,22 @@ describe('shared API contracts', () => {
         })),
       }).success,
     ).toBe(false)
+
+    const atCap = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const parsedCap = startGenerationJobRequestSchema.parse({
+      messages: [{ role: 'user', content: 'align these' }],
+      deckId,
+      editorSelection: atCap[MAX_EDITOR_SELECTIONS - 1],
+      editorSelections: atCap,
+    })
+    expect(parsedCap.editorSelection?.elementId).toBe(`ark-el-${MAX_EDITOR_SELECTIONS - 1}`)
+    expect(parsedCap.editorSelections).toHaveLength(MAX_EDITOR_SELECTIONS)
+    expect(parsedCap.editorSelections?.map((item) => item.elementId)).toEqual(
+      atCap.map((item) => item.elementId),
+    )
   })
 
   it('parses preview session contracts', () => {

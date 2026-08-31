@@ -6,6 +6,7 @@ import {
   projectAssistantTurnForPersistence,
 } from './chat-context.ts'
 import {
+  MAX_EDITOR_SELECTIONS,
   MAX_MODEL_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
   type ApiChatMessage,
@@ -132,6 +133,36 @@ describe('agent context assembly', () => {
     )
     expect(earlier).toBeTruthy()
     expect(earlier?.content).not.toContain('ark-el-a')
+  })
+
+  it('keeps every selected id when older assistant steps are summarized', () => {
+    const parts = [
+      { type: 'text', content: 'x'.repeat(98_000), stepIndex: 0 },
+      ...toolStep(1, 'call-new', 'slide 1'),
+    ] satisfies ChatMessagePart[]
+    const selections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const context = assembleDeckAgentContext({
+      messages: [
+        { role: 'assistant', content: 'Working', parts },
+        { role: 'user', content: 'Align these' },
+      ],
+      currentHtml: '<html></html>',
+      editorSelection: selections[MAX_EDITOR_SELECTIONS - 1],
+      editorSelections: selections,
+    })
+    expect(context.metadata.omittedStepCount).toBeGreaterThan(0)
+    const last = context.modelMessages.at(-1)
+    expect(typeof last?.content).toBe('string')
+    expect(last?.content).toContain('Align these')
+    expect(last?.content).toContain(`${MAX_EDITOR_SELECTIONS} elements selected`)
+    expect(last?.content).toContain('them')
+    for (const selection of selections) {
+      expect(last?.content).toContain(`id "${selection.elementId}"`)
+    }
+    expect(String(last?.content)).not.toMatch(/and \d+ more/)
   })
 
   it('keeps durable input intact while enforcing the default model ceiling', () => {

@@ -362,6 +362,31 @@ describe('parseGenerateMessages', () => {
       error: `messages[0].context.editorSelections exceeds the ${MAX_EDITOR_SELECTIONS} element limit.`,
     })
   })
+
+  it('accepts editorSelections at the 32-element cap with the last item as primary', () => {
+    const selections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'align these',
+        context: {
+          editorSelection: selections[MAX_EDITOR_SELECTIONS - 1],
+          editorSelections: selections,
+        },
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.messages[0]?.context?.editorSelection?.elementId).toBe(
+      `ark-el-${MAX_EDITOR_SELECTIONS - 1}`,
+    )
+    expect(result.messages[0]?.context?.editorSelections?.map((item) => item.elementId)).toEqual(
+      selections.map((item) => item.elementId),
+    )
+  })
 })
 
 describe('buildModelMessages', () => {
@@ -888,6 +913,24 @@ describe('describeEditorSelections', () => {
     expect(note).toContain('ark-el-b')
     expect(note).toContain('ark-el-c')
     expect(note).toContain('primary / last-interacted element is id "ark-el-b"')
+    expect(note).not.toMatch(/and \d+ more/)
+  })
+
+  it('lists every id at the 32-element cap without summarizing any away', () => {
+    const selections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const note = describeEditorSelections(selections, selections[MAX_EDITOR_SELECTIONS - 1])
+    expect(note).toContain(`${MAX_EDITOR_SELECTIONS} elements selected`)
+    expect(note).toContain('these')
+    expect(note).toContain('them')
+    expect(note).toContain(
+      `primary / last-interacted element is id "ark-el-${MAX_EDITOR_SELECTIONS - 1}"`,
+    )
+    for (const selection of selections) {
+      expect(note).toContain(`id "${selection.elementId}"`)
+    }
     expect(note).not.toMatch(/and \d+ more/)
   })
 })
