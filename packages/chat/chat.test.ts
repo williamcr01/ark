@@ -9,8 +9,11 @@ import {
   collectAssetIds,
   collectAssetIdsFromMessages,
   describeSlideContexts,
+  describeEditorSelections,
   isReadableTextMediaType,
   MAX_INLINE_TEXT_ATTACHMENT_CHARS,
+  MAX_EDITOR_SELECTIONS,
+  normalizeEditorSelectionFields,
   parseGenerateMessages,
   MAX_PERSISTED_TOOL_VALUE_BYTES,
   wrapUserPromptForAgent,
@@ -249,6 +252,116 @@ describe('parseGenerateMessages', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
   })
+
+  it('round-trips singular editorSelection as both singular and array', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'make this bigger',
+        context: {
+          editorSelection: {
+            slideIndex: 2,
+            elementId: 'ark-el-9',
+            elementKind: 'text',
+            textPreview: 'Headline',
+          },
+        },
+      },
+    ])
+    expect(result).toEqual({
+      ok: true,
+      messages: [
+        {
+          role: 'user',
+          content: 'make this bigger',
+          context: {
+            editorSelection: {
+              slideIndex: 2,
+              elementId: 'ark-el-9',
+              elementKind: 'text',
+              textPreview: 'Headline',
+            },
+            editorSelections: [
+              {
+                slideIndex: 2,
+                elementId: 'ark-el-9',
+                elementKind: 'text',
+                textPreview: 'Headline',
+              },
+            ],
+          },
+        },
+      ],
+    })
+  })
+
+  it('persists the full editorSelections set with the primary as singular', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'align these',
+        context: {
+          editorSelection: { slideIndex: 1, elementId: 'ark-el-primary' },
+          editorSelections: [
+            { slideIndex: 1, elementId: 'ark-el-a', elementKind: 'text' },
+            { slideIndex: 1, elementId: 'ark-el-primary' },
+            { slideIndex: 1, elementId: 'ark-el-c' },
+          ],
+        },
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.messages[0]?.context?.editorSelection?.elementId).toBe('ark-el-primary')
+    expect(result.messages[0]?.context?.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-primary',
+      'ark-el-c',
+    ])
+  })
+
+  it('drops mixed-slide extras from editorSelections without failing the job', () => {
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'align these',
+        context: {
+          editorSelection: { slideIndex: 0, elementId: 'ark-el-a' },
+          editorSelections: [
+            { slideIndex: 0, elementId: 'ark-el-a' },
+            { slideIndex: 2, elementId: 'ark-el-other-slide' },
+            { slideIndex: 0, elementId: 'ark-el-b' },
+          ],
+        },
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.messages[0]?.context?.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-b',
+    ])
+  })
+
+  it('rejects editorSelections above the 32-element cap', () => {
+    expect(
+      parseGenerateMessages([
+        {
+          role: 'user',
+          content: 'align these',
+          context: {
+            editorSelections: Array.from({ length: MAX_EDITOR_SELECTIONS + 1 }, (_, index) => ({
+              slideIndex: 0,
+              elementId: `ark-el-${index}`,
+            })),
+          },
+        },
+      ]),
+    ).toEqual({
+      ok: false,
+      error: `messages[0].context.editorSelections exceeds the ${MAX_EDITOR_SELECTIONS} element limit.`,
+    })
+  })
 })
 
 describe('buildModelMessages', () => {
@@ -476,6 +589,51 @@ describe('buildAgentModelMessages', () => {
     const content = messages[0]?.content as string
     expect(content).not.toContain('selected in the editor')
   })
+
+  it('lists every selected element id for multi-select prompts', () => {
+    const messages = buildAgentModelMessages(
+      [{ role: 'user', content: 'make these the same size' }],
+      '<html><body><section class="slide">cats</section></body></html>',
+      { slideIndex: 1, elementId: 'ark-el-primary', elementKind: 'text' },
+      undefined,
+      undefined,
+      [
+        { slideIndex: 1, elementId: 'ark-el-a', elementKind: 'text', textPreview: 'Alpha' },
+        { slideIndex: 1, elementId: 'ark-el-primary', elementKind: 'text' },
+        { slideIndex: 1, elementId: 'ark-el-c', locked: true },
+      ],
+    )
+
+    const content = messages[0]?.content as string
+    expect(content).toContain('make these the same size')
+    expect(content).toContain('3 elements selected')
+    expect(content).toContain('these')
+    expect(content).toContain('ark-el-a')
+    expect(content).toContain('ark-el-primary')
+    expect(content).toContain('ark-el-c')
+    expect(content).toContain('Alpha')
+    expect(content).toContain('primary / last-interacted element is id "ark-el-primary"')
+    expect(content).not.toMatch(/and \d+ more/)
+  })
+
+  it('keeps stale selected ids in the prompt without throwing', () => {
+    expect(() =>
+      wrapUserPromptForAgent(
+        'change this',
+        '<html><body><section class="slide">no ids here</section></body></html>',
+        0,
+        { slideIndex: 0, elementId: 'ark-el-gone' },
+      ),
+    ).not.toThrow()
+    const wrapped = wrapUserPromptForAgent(
+      'change this',
+      '<html><body><section class="slide">no ids here</section></body></html>',
+      0,
+      { slideIndex: 0, elementId: 'ark-el-gone' },
+    )
+    expect(wrapped).toContain('ark-el-gone')
+    expect(wrapped).toContain('stale selection')
+  })
 })
 
 describe('isReadableTextMediaType', () => {
@@ -698,6 +856,69 @@ describe('wrapUserPromptForGeneration', () => {
   })
 })
 
+describe('describeEditorSelections', () => {
+  it('uses singular wording for one element', () => {
+    const note = describeEditorSelections([
+      {
+        slideIndex: 1,
+        elementId: 'ark-el-42',
+        elementKind: 'text',
+        textPreview: 'Our Mission',
+      },
+    ])
+    expect(note).toContain('an element selected')
+    expect(note).toContain('ark-el-42')
+    expect(note).toContain('Our Mission')
+    expect(note).not.toContain('these')
+  })
+
+  it('lists every selected id for a multi-element set', () => {
+    const note = describeEditorSelections(
+      [
+        { slideIndex: 0, elementId: 'ark-el-a', elementKind: 'text' },
+        { slideIndex: 0, elementId: 'ark-el-b', elementKind: 'image' },
+        { slideIndex: 0, elementId: 'ark-el-c', locked: true },
+      ],
+      { slideIndex: 0, elementId: 'ark-el-b' },
+    )
+    expect(note).toContain('3 elements selected')
+    expect(note).toContain('these')
+    expect(note).toContain('them')
+    expect(note).toContain('ark-el-a')
+    expect(note).toContain('ark-el-b')
+    expect(note).toContain('ark-el-c')
+    expect(note).toContain('primary / last-interacted element is id "ark-el-b"')
+    expect(note).not.toMatch(/and \d+ more/)
+  })
+})
+
+describe('normalizeEditorSelectionFields', () => {
+  it('populates both fields when only the singular selection is provided', () => {
+    expect(
+      normalizeEditorSelectionFields({
+        editorSelection: { slideIndex: 2, elementId: 'ark-el-9' },
+      }),
+    ).toEqual({
+      editorSelection: { slideIndex: 2, elementId: 'ark-el-9' },
+      editorSelections: [{ slideIndex: 2, elementId: 'ark-el-9' }],
+    })
+  })
+
+  it('uses the last remaining same-slide item as primary when singular is omitted', () => {
+    const normalized = normalizeEditorSelectionFields({
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a' },
+        { slideIndex: 1, elementId: 'ark-el-b' },
+      ],
+    })
+    expect(normalized.editorSelection?.elementId).toBe('ark-el-b')
+    expect(normalized.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-b',
+    ])
+  })
+})
+
 describe('describeSlideContexts', () => {
   it('returns empty string for no slides', () => {
     expect(describeSlideContexts([])).toBe('')
@@ -758,5 +979,26 @@ describe('wrapUserPromptForAgent', () => {
     ).toContain('wants to revise')
     // An unknown or absent origin must not turn a real deck into a rewrite.
     expect(wrapUserPromptForAgent('Tighten the copy', html)).toContain('wants to revise')
+  })
+
+  it('lists every selected id when wrapping a multi-select revision', () => {
+    const wrapped = wrapUserPromptForAgent(
+      'make these the same size',
+      '<html></html>',
+      0,
+      { slideIndex: 0, elementId: 'ark-el-primary' },
+      undefined,
+      undefined,
+      [
+        { slideIndex: 0, elementId: 'ark-el-a' },
+        { slideIndex: 0, elementId: 'ark-el-primary' },
+        { slideIndex: 0, elementId: 'ark-el-z' },
+      ],
+    )
+    expect(wrapped).toContain('make these the same size')
+    expect(wrapped).toContain('ark-el-a')
+    expect(wrapped).toContain('ark-el-primary')
+    expect(wrapped).toContain('ark-el-z')
+    expect(wrapped).toContain('3 elements selected')
   })
 })

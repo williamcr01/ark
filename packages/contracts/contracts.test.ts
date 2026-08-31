@@ -246,6 +246,70 @@ describe('shared API contracts', () => {
         editorSelection: { slideIndex: -1, elementId: 'ark-el-9' },
       }).success,
     ).toBe(false)
+
+    const oneElement = {
+      slideIndex: 2,
+      slideId: 'ark-slide-1',
+      elementId: 'ark-el-9',
+      elementKind: 'text',
+      textPreview: 'Headline',
+    }
+    const parsedOne = startGenerationJobRequestSchema.parse({
+      messages: [{ role: 'user', content: 'make this bigger' }],
+      deckId,
+      editorSelection: oneElement,
+      editorSelections: [oneElement],
+    })
+    expect(parsedOne.editorSelection?.elementId).toBe('ark-el-9')
+    expect(parsedOne.editorSelections).toEqual([oneElement])
+
+    const parsedMany = startGenerationJobRequestSchema.parse({
+      messages: [{ role: 'user', content: 'align these' }],
+      deckId,
+      editorSelection: { slideIndex: 1, elementId: 'ark-el-primary' },
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a', elementKind: 'text' },
+        { slideIndex: 1, elementId: 'ark-el-primary', elementKind: 'image' },
+        { slideIndex: 1, elementId: 'ark-el-c' },
+      ],
+    })
+    expect(parsedMany.editorSelection?.elementId).toBe('ark-el-primary')
+    expect(parsedMany.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-primary',
+      'ark-el-c',
+    ])
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelections: [
+          { slideIndex: 0, elementId: 'ark-el-a' },
+          { slideIndex: 1, elementId: 'ark-el-b' },
+        ],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelection: { slideIndex: 0, elementId: 'ark-el-a' },
+        editorSelections: [{ slideIndex: 1, elementId: 'ark-el-b' }],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelections: Array.from({ length: 33 }, (_, index) => ({
+          slideIndex: 0,
+          elementId: `ark-el-${index}`,
+        })),
+      }).success,
+    ).toBe(false)
   })
 
   it('parses preview session contracts', () => {
@@ -336,6 +400,39 @@ describe('shared API contracts', () => {
         },
       }).success,
     ).toBe(true)
+
+    expect(
+      appendChatMessageRequestSchema.parse({
+        role: 'user',
+        content: 'Align these',
+        context: {
+          editorSelection: { slideIndex: 2, elementId: 'ark-el-primary' },
+          editorSelections: [
+            { slideIndex: 2, elementId: 'ark-el-a' },
+            { slideIndex: 2, elementId: 'ark-el-primary' },
+          ],
+        },
+      }).context,
+    ).toEqual({
+      editorSelection: { slideIndex: 2, elementId: 'ark-el-primary' },
+      editorSelections: [
+        { slideIndex: 2, elementId: 'ark-el-a' },
+        { slideIndex: 2, elementId: 'ark-el-primary' },
+      ],
+    })
+
+    expect(
+      appendChatMessageRequestSchema.safeParse({
+        role: 'user',
+        content: 'Align these',
+        context: {
+          editorSelections: [
+            { slideIndex: 0, elementId: 'ark-el-a' },
+            { slideIndex: 2, elementId: 'ark-el-b' },
+          ],
+        },
+      }).success,
+    ).toBe(false)
 
     expect(
       appendChatMessageRequestSchema.safeParse({
