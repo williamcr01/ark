@@ -1,0 +1,146 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  APPROVED_DECK_FONTS,
+  buildDeckFontPromptSection,
+  buildDeckFontRootCss,
+  DECK_FONT_CSS_VARS,
+  DECK_FONT_MARKER_ATTRS,
+  DECK_FONT_ROLES,
+  DECK_FONT_SAFE_WEIGHTS,
+  DEFAULT_DECK_FONT_IDS,
+  getDeckFont,
+  getDeckFontsByCategory,
+  isApprovedDeckFontId,
+  isExportSafeFontWeight,
+  resolveDeckFont,
+  resolvePptxTypeface,
+} from './deck-font-registry.ts'
+
+describe('approved deck fonts', () => {
+  it('gives every font a unique id', () => {
+    const ids = APPROVED_DECK_FONTS.map((font) => font.id)
+
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('names a single OOXML typeface per font, with no fallback list', () => {
+    for (const font of APPROVED_DECK_FONTS) {
+      expect(font.pptxTypeface).not.toContain(',')
+      expect(font.pptxTypeface.trim()).toBe(font.pptxTypeface)
+    }
+  })
+
+  it('puts the real family first and its metric clone next in every stack', () => {
+    for (const font of APPROVED_DECK_FONTS) {
+      const families = font.cssStack.split(',').map((part) => part.trim().replace(/"/g, ''))
+
+      expect(families[0]).toBe(font.pptxTypeface)
+      expect(families.slice(1, 1 + font.metricClones.length)).toEqual(font.metricClones)
+      expect(families.at(-1)).toMatch(/^(sans-serif|serif|monospace)$/)
+    }
+  })
+
+  it('covers every role default and every category', () => {
+    for (const role of DECK_FONT_ROLES) {
+      expect(isApprovedDeckFontId(DEFAULT_DECK_FONT_IDS[role])).toBe(true)
+    }
+    expect(getDeckFontsByCategory('sans').length).toBeGreaterThan(0)
+    expect(getDeckFontsByCategory('serif').length).toBeGreaterThan(0)
+    expect(getDeckFontsByCategory('mono').length).toBeGreaterThan(0)
+  })
+
+  it('looks fonts up case-insensitively and rejects unknown ids', () => {
+    expect(getDeckFont('CALIBRI')?.pptxTypeface).toBe('Calibri')
+    expect(getDeckFont(' calibri ')?.pptxTypeface).toBe('Calibri')
+    expect(getDeckFont('helvetica')).toBeNull()
+    expect(isApprovedDeckFontId(null)).toBe(false)
+  })
+})
+
+describe('resolveDeckFont', () => {
+  it('falls back to the role default when a deck declared nothing', () => {
+    const selection = { display: null, body: null, mono: null }
+
+    expect(resolveDeckFont(selection, 'body').id).toBe(DEFAULT_DECK_FONT_IDS.body)
+    expect(resolveDeckFont(selection, 'mono').id).toBe(DEFAULT_DECK_FONT_IDS.mono)
+  })
+
+  it('falls back when a deck declared a font the registry does not know', () => {
+    expect(resolveDeckFont({ display: 'comic-sans', body: null, mono: null }, 'display').id).toBe(
+      DEFAULT_DECK_FONT_IDS.display,
+    )
+  })
+
+  it('uses the declared font when it is approved', () => {
+    expect(resolveDeckFont({ display: 'cambria', body: null, mono: null }, 'display').id).toBe(
+      'cambria',
+    )
+  })
+})
+
+describe('buildDeckFontRootCss', () => {
+  it('declares every role variable from the registry stacks', () => {
+    const css = buildDeckFontRootCss({ display: 'cambria', body: 'calibri', mono: 'courier-new' })
+
+    expect(css).toContain(`${DECK_FONT_CSS_VARS.display}: ${getDeckFont('cambria')!.cssStack}`)
+    expect(css).toContain(`${DECK_FONT_CSS_VARS.body}: ${getDeckFont('calibri')!.cssStack}`)
+    expect(css).toContain(`${DECK_FONT_CSS_VARS.mono}: ${getDeckFont('courier-new')!.cssStack}`)
+  })
+
+  it('fills unspecified roles with the defaults', () => {
+    expect(buildDeckFontRootCss()).toBe(buildDeckFontRootCss(DEFAULT_DECK_FONT_IDS))
+  })
+})
+
+describe('resolvePptxTypeface', () => {
+  it.each([
+    ['"Calibri", "Carlito", sans-serif', 'Calibri'],
+    ['Carlito, sans-serif', 'Calibri'],
+    ['"Liberation Serif", serif', 'Times New Roman'],
+    ['-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 'Calibri'],
+    ['"Helvetica Neue", Helvetica, Arial, sans-serif', 'Arial'],
+    ['Consolas, Menlo, monospace', 'Courier New'],
+    ['Georgia, serif', 'Georgia'],
+    ['serif', 'Cambria'],
+    ['monospace', 'Courier New'],
+    ['', 'Calibri'],
+  ])('maps %j to %j', (stack, expected) => {
+    expect(resolvePptxTypeface(stack)).toBe(expected)
+  })
+
+  it("walks the deck's own fallback chain to the first family Office can resolve", () => {
+    expect(resolvePptxTypeface('"Brand Grotesk", Georgia, serif')).toBe('Georgia')
+    expect(resolvePptxTypeface('Georgia, "Brand Grotesk"')).toBe('Georgia')
+    // A generic tail is still a resolvable choice the author asked for.
+    expect(resolvePptxTypeface('"Brand Grotesk", sans-serif')).toBe('Calibri')
+  })
+
+  it('passes the family through when nothing in the chain is resolvable', () => {
+    expect(resolvePptxTypeface('"Brand Grotesk"')).toBe('Brand Grotesk')
+  })
+})
+
+describe('export-safe weights', () => {
+  it('accepts only the weights the OOXML bold flag can carry', () => {
+    expect(DECK_FONT_SAFE_WEIGHTS).toEqual([400, 700])
+    expect(isExportSafeFontWeight(400)).toBe(true)
+    expect(isExportSafeFontWeight(700)).toBe(true)
+    expect(isExportSafeFontWeight(600)).toBe(false)
+  })
+})
+
+describe('buildDeckFontPromptSection', () => {
+  it('lists every font with its marker and variable vocabulary', () => {
+    const prompt = buildDeckFontPromptSection()
+
+    for (const font of APPROVED_DECK_FONTS) {
+      expect(prompt).toContain(font.id)
+      expect(prompt).toContain(font.cssStack)
+    }
+    for (const role of DECK_FONT_ROLES) {
+      expect(prompt).toContain(DECK_FONT_MARKER_ATTRS[role])
+      expect(prompt).toContain(DECK_FONT_CSS_VARS[role])
+    }
+  })
+})

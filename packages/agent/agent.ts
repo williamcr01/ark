@@ -12,6 +12,7 @@ import { assembleDeckAgentContext } from '@ark/chat/chat-context.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/chat/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
+import { buildDeckFontPromptSection } from '@ark/runtime-registry/deck-font-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './guides.ts'
 import { createDeckWorkspace } from './workspace.ts'
 import { type DeckAttachmentInspector } from './tools.ts'
@@ -71,6 +72,8 @@ Use ask_user when critical context is missing: ask concise questions, then stop.
 
 Approved runtime libraries (Ark-served only; use exact pinned URLs, never CDNs):
 ${buildRuntimeRegistryPromptSection()}
+
+${buildDeckFontPromptSection()}
 
 When you finish, reply briefly in plain language summarizing what changed. Do not paste the full HTML in your final message; the tools already updated the deck.`
   const guides = buildAgentGuidesPromptSection()

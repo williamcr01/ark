@@ -14,6 +14,7 @@ export const stubStaticRuntimeManifest = {
   network: { externalUrls: [], connectAllowed: false },
   validation: { valid: true, warnings: 0, errors: 0 },
   usesRevealAdapter: false,
+  fonts: { selection: { display: null, body: null, mono: null }, unknown: [] },
   warnings: [],
 } satisfies DeckRuntimeManifest
 
