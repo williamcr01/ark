@@ -1,0 +1,4 @@
+{
+  "name": "Ark",
+  "install": ". \"$HOME/.nvm/nvm.sh\" && nvm install 22 && corepack enable && corepack prepare pnpm@11.5.3 --activate && pnpm install --frozen-lockfile"
+}
