@@ -65,6 +65,7 @@ export function buildDeckRuntimeManifestFromHtml(
       slideSelector: parsed.slideSelector,
       slideCount: parsed.slideCount,
       assets,
+      fonts: parsed.fonts,
     },
     resolveUsesRevealAdapter(validation, assets),
   )

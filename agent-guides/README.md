@@ -17,6 +17,8 @@ Server-side validators still enforce hard constraints (self-contained HTML, no e
 
 Do **not** duplicate the live approved-runtime URL list here; that is generated dynamically from `runtimes/manifest.json` via `buildRuntimeRegistryPromptSection()`.
 
+The same applies to the approved font list, generated from `packages/runtime-registry/deck-font-registry.ts` via `buildDeckFontPromptSection()`. Guides may show a font stack in an example, but the registry is authoritative.
+
 ## Editing
 
 In development (`NODE_ENV !== 'production'`), the API re-reads files when mtimes change, so you can edit guides without restarting `pnpm dev`.

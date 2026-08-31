@@ -5,8 +5,9 @@ Hard requirements and defaults for every deck.
 - Include `<!DOCTYPE html>`, `<html>`, `<head>`, and `<body>`.
 - Use inline CSS inside a `<style>` tag. No Tailwind, npm packages, or build tooling.
 - Decks must be fully self-contained: no http(s) URLs for scripts, stylesheets, fonts, or images.
-- Use inline CSS, system fonts, inline SVG, or `ark-asset:<id>` for known workspace assets. `data:` URIs are accepted and extracted into workspace assets when saved.
+- Use inline CSS, registry fonts, inline SVG, or `ark-asset:<id>` for known workspace assets. `data:` URIs are accepted and extracted into workspace assets when saved.
 - Design for 16:9: `html`/`body` width 100%, height 100%, margin 0, overflow hidden; active slide fills 100vw × 100vh.
+- Declare fonts once on `<html>` with `data-ark-font-display`, `data-ark-font-body`, and `data-ark-font-mono`, using ids from the approved font list in the system prompt. Define the matching `--ark-font-*` variables in `:root` and reference only those variables. See [30-export-safety.md](30-export-safety.md).
 - Keep copy concise and presentation-grade. Avoid lorem ipsum and generic filler.
 
 External JavaScript libraries are only acceptable if inlined in the HTML or served via approved runtime URLs from the system prompt registry section; never CDN script URLs.

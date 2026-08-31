@@ -167,6 +167,41 @@ describe('parseDeckHtml', () => {
   })
 })
 
+describe('parseDeckHtml font markers', () => {
+  it('reads the per-role font markers off <html>', () => {
+    const parsed = parseDeckHtml(
+      '<!DOCTYPE html><html data-ark-font-display="cambria" data-ark-font-body="calibri" data-ark-font-mono="courier-new"><body><section class="slide">One</section></body></html>',
+    )
+
+    expect(parsed.fonts).toEqual({ display: 'cambria', body: 'calibri', mono: 'courier-new' })
+  })
+
+  it('falls back to <body> and normalises casing and padding', () => {
+    const parsed = parseDeckHtml(
+      '<!DOCTYPE html><html><body data-ark-font-body="  CALIBRI  "><section class="slide">One</section></body></html>',
+    )
+
+    expect(parsed.fonts.body).toBe('calibri')
+    expect(parsed.fonts.display).toBeNull()
+  })
+
+  it('reports no selection for a deck that declares none', () => {
+    const parsed = parseDeckHtml(
+      '<!DOCTYPE html><html><body><section class="slide">One</section></body></html>',
+    )
+
+    expect(parsed.fonts).toEqual({ display: null, body: null, mono: null })
+  })
+
+  it('keeps an unapproved id verbatim so the manifest can flag it', () => {
+    const parsed = parseDeckHtml(
+      '<!DOCTYPE html><html data-ark-font-body="comic-sans"><body><section class="slide">One</section></body></html>',
+    )
+
+    expect(parsed.fonts.body).toBe('comic-sans')
+  })
+})
+
 describe('summarizeParsedDeck', () => {
   it('includes structure, slide outline, and runtime in the summary', () => {
     const summary = summarizeParsedDeck(parseDeckHtml(plainCssDeck))

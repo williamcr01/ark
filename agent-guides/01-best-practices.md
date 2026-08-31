@@ -32,8 +32,10 @@ Quick rules for readable, presentation-grade decks. Follow these on every write 
 
 - Enforce a clear size/weight ladder: title ≫ subtitle ≫ body ≫ caption.
 - Minimum sizes on a 16:9 full-bleed slide: body >=20px, captions/labels >=14px, titles much larger.
-- Use at most two system font stacks, or one family with two to three weights. Do not invent a new font per slide. Personality comes from scale, weight, and palette (external webfonts are not allowed).
-- Prefer screen-readable system stacks. Avoid script or decorative faces for body copy.
+- Pick fonts only from the approved registry listed in the system prompt, and declare them once with `data-ark-font-*` markers on `<html>`. Never write a raw `font-family` on an element; always use `var(--ark-font-display)`, `var(--ark-font-body)`, or `var(--ark-font-mono)`.
+- Use at most two families across a deck (typically one display, one body; a third only for code). Do not invent a new font per slide. Personality comes from scale, weight, and palette.
+- Prefer weights 400 and 700. Other weights render fine in the deck but collapse to the nearer of the two when the deck is exported to PowerPoint, so do not let a design depend on 300 or 600 to carry a distinction.
+- Avoid script or decorative faces for body copy.
 - Left-align multi-line body text. Center only short headlines. Do not center large body blocks or long lists.
 - Do not justify body text.
 - Use line-height about 1.2-1.5 for body; avoid cramped 1.0 or overly airy 2.0+.

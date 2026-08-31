@@ -1,5 +1,10 @@
 import { isApprovedRuntimeAssetUrl } from './deck-runtime-registry.ts'
 import {
+  DECK_FONT_ROLES,
+  isApprovedDeckFontId,
+  type DeckFontSelection,
+} from './deck-font-registry.ts'
+import {
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
   type DeckRuntimeMode,
@@ -35,6 +40,13 @@ export type DeckRuntimeManifestValidation = {
   errors: number
 }
 
+export type DeckManifestFonts = {
+  /** Per-role registry ids declared by the deck, or null where it declared none. */
+  selection: DeckFontSelection
+  /** Declared ids the registry does not know; these will not survive PPTX export. */
+  unknown: string[]
+}
+
 export type DeckRuntimeManifestApprovedRuntime = {
   id: string
   version: string
@@ -54,6 +66,7 @@ export type DeckRuntimeManifest = {
   network: DeckRuntimeManifestNetwork
   validation: DeckRuntimeManifestValidation
   usesRevealAdapter: boolean
+  fonts: DeckManifestFonts
   warnings: string[]
 }
 
@@ -79,6 +92,17 @@ export type DeckManifestParseInput = {
   slideSelector: string | null
   slideCount: number
   assets: Array<{ kind: string; url: string; slideIndex?: number }>
+  fonts?: DeckFontSelection
+}
+
+const EMPTY_FONT_SELECTION: DeckFontSelection = { display: null, body: null, mono: null }
+
+function summarizeManifestFonts(selection: DeckFontSelection = EMPTY_FONT_SELECTION) {
+  const unknown = DECK_FONT_ROLES.map((role) => selection[role]).filter(
+    (id): id is string => Boolean(id) && !isApprovedDeckFontId(id),
+  )
+
+  return { selection, unknown: [...new Set(unknown)] }
 }
 
 const EXTERNAL_URL_PATTERN = /^https?:\/\//i
@@ -188,6 +212,7 @@ export function composeDeckRuntimeManifest(input: {
     runtimeMode,
     approvedRuntime,
     previewMode,
+    fonts: summarizeManifestFonts(parsed.fonts),
     structure: parsed.structure,
     slideSelector: parsed.slideSelector,
     slideCount: parsed.slideCount,

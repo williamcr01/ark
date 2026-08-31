@@ -66,6 +66,7 @@ describe('DecksDashboard', () => {
         update: vi.fn(),
       },
       updates: { check: vi.fn() },
+      export: { create: vi.fn() },
       files: {
         openWorkspace: vi.fn(),
         chooseWorkspacePath: vi.fn(),

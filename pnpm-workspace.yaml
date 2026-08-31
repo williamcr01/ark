@@ -5,6 +5,16 @@ packages:
 # concurrently@10 pins shell-quote@1.8.4 exactly; override until upstream bumps.
 # Patched transitive versions pinned until upstreams bump.
 overrides:
+  # pptxgenjs 4.0.1 declares @types/node, https, and image-size as runtime
+  # dependencies its shipped bundles never reference - the only require('sizeof')
+  # sits inside a commented-out function. Dropping them from resolution removes a
+  # vulnerable transitive (GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq) and two dead
+  # installs. A patch would not do: pnpm resolves dependencies from registry
+  # metadata before a patch is applied, so the lockfile - and `pnpm audit` with
+  # it - would still carry them.
+  pptxgenjs>@types/node: '-'
+  pptxgenjs>https: '-'
+  pptxgenjs>image-size: '-'
   shell-quote: 1.9.0
   postcss: 8.5.18
   brace-expansion: 5.0.9

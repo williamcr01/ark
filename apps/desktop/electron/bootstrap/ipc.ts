@@ -3,6 +3,7 @@
  * credentials, settings, MCP control, file dialogs, and update checks - nothing else.
  */
 
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { app, clipboard, dialog, ipcMain, shell } from 'electron'
@@ -16,6 +17,12 @@ import type { McpInteractionStore } from '@ark/mcp/interactions.ts'
 import type { SecureCredentialStore } from '../credential-store.ts'
 import type { DesktopSettingsStore } from '../settings-store.ts'
 import type { McpManager } from '../mcp-manager.ts'
+import type { DeckExportRequest, DeckExportResult } from '../deck-export.ts'
+import {
+  exportDialogFilter,
+  exportFileName,
+  parseDeckExportRequest,
+} from '../deck-export-request.ts'
 
 const { autoUpdater } = electronUpdater
 const providers = new Set<ProviderId>(['openai', 'anthropic', 'google'])
@@ -36,6 +43,7 @@ export type IpcDependencies = {
   clearModelCatalogCache: () => void
   warmModelCatalog: () => Promise<unknown>
   testProviderApiKey: (provider: ProviderId, apiKey: string) => Promise<{ modelCount: number }>
+  generateDeckExport: (request: DeckExportRequest) => Promise<DeckExportResult>
 }
 
 export function registerIpcHandlers(deps: IpcDependencies) {
@@ -48,6 +56,7 @@ export function registerIpcHandlers(deps: IpcDependencies) {
     clearModelCatalogCache,
     warmModelCatalog,
     testProviderApiKey,
+    generateDeckExport,
   } = deps
 
   ipcMain.handle('credentials:list', () => credentialStore.getStatus())
@@ -191,6 +200,40 @@ export function registerIpcHandlers(deps: IpcDependencies) {
   })
   ipcMain.handle('files:reveal', (_event, filePath) => {
     if (typeof filePath === 'string') shell.showItemInFolder(filePath)
+  })
+  ipcMain.handle('export:create', async (event, rawRequest) => {
+    try {
+      const request = parseDeckExportRequest(rawRequest)
+      const result = await dialog.showSaveDialog({
+        defaultPath: path.join(
+          settingsStore.get().defaultWorkspaceDirectory || app.getPath('documents'),
+          exportFileName(request.title, request.format),
+        ),
+        filters: [exportDialogFilter(request.format)],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+
+      // Render before touching disk: a failed export must not leave a truncated
+      // or empty file where the user asked for their deck.
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      event.sender.once('destroyed', abort)
+      try {
+        const { output, warning } = await generateDeckExport({
+          ...request,
+          signal: controller.signal,
+        })
+        await writeFile(result.filePath, output)
+        return { ok: true, path: result.filePath, warning }
+      } finally {
+        event.sender.removeListener('destroyed', abort)
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Could not export deck.',
+      }
+    }
   })
   ipcMain.handle('updates:check', async () => {
     if (!app.isPackaged)

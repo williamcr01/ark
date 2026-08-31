@@ -11,6 +11,9 @@ const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 
 export type DeckDownloadVariant = 'original' | 'sanitized'
 
+/** Formats the desktop export IPC accepts. */
+export type DeckExportFormat = 'pdf' | 'pptx'
+
 function parentHasInlineHandlers(root: ParentNode | null) {
   if (!root) {
     return false

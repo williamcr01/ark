@@ -7,6 +7,10 @@ import { utf8ByteLength } from './utf8.ts'
 import { extractDeckTitle } from './title.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
+import {
+  readDeckFontSelection,
+  type DeckFontSelection,
+} from '@ark/runtime-registry/deck-font-registry.ts'
 
 export type DeckStructure = 'plain' | 'reveal' | 'unknown'
 
@@ -59,6 +63,7 @@ export type DeckParseResult = {
   title: string
   structure: DeckStructure
   runtime: DeckRuntime
+  fonts: DeckFontSelection
   slideSelector: string | null
   slideCount: number
   slides: ParsedDeckSlide[]
@@ -280,6 +285,7 @@ const emptyParseResult: DeckParseResult = {
     arkRuntimeLib: null,
     arkRuntimeVersion: null,
   },
+  fonts: { display: null, body: null, mono: null },
   slideSelector: null,
   slideCount: 0,
   slides: [],
@@ -338,6 +344,7 @@ function parseDeckHtmlCore(html: string): DeckParseResult {
     title: extractDeckTitle(html),
     structure: detectDeckStructure(doc, slideSelector),
     runtime: readRuntimeMarkers(doc),
+    fonts: readDeckFontSelection(doc),
     slideSelector,
     slideCount: slides.length,
     slides,

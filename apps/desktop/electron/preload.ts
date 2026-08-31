@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld('arkDesktop', {
   updates: {
     check: () => ipcRenderer.invoke('updates:check'),
   },
+  export: {
+    create: (request: { format: 'pdf' | 'pptx'; html: string; title: string }) =>
+      ipcRenderer.invoke('export:create', request),
+  },
   files: {
     openWorkspace: () => ipcRenderer.invoke('files:open-workspace'),
     chooseWorkspacePath: (suggestedName: string, defaultPath?: string) =>
