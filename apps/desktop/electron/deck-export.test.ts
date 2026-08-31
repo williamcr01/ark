@@ -10,6 +10,38 @@ const png = Buffer.from(
   'base64',
 )
 
+function readZipEntryNames(archive: Buffer): string[] {
+  const endSignature = 0x06054b50
+  const centralSignature = 0x02014b50
+  const localSignature = 0x04034b50
+  const minimumEndOffset = Math.max(0, archive.length - 65_557)
+  let endOffset = archive.length - 22
+
+  while (endOffset >= minimumEndOffset && archive.readUInt32LE(endOffset) !== endSignature) {
+    endOffset -= 1
+  }
+  expect(endOffset).toBeGreaterThanOrEqual(minimumEndOffset)
+
+  const entryCount = archive.readUInt16LE(endOffset + 10)
+  let offset = archive.readUInt32LE(endOffset + 16)
+  const names: string[] = []
+
+  for (let index = 0; index < entryCount; index += 1) {
+    expect(archive.readUInt32LE(offset)).toBe(centralSignature)
+    const nameLength = archive.readUInt16LE(offset + 28)
+    const extraLength = archive.readUInt16LE(offset + 30)
+    const commentLength = archive.readUInt16LE(offset + 32)
+    const localOffset = archive.readUInt32LE(offset + 42)
+
+    expect(archive.readUInt32LE(localOffset)).toBe(localSignature)
+    names.push(archive.subarray(offset + 46, offset + 46 + nameLength).toString('utf8'))
+    offset += 46 + nameLength + extraLength + commentLength
+  }
+
+  expect(offset).toBe(endOffset)
+  return names
+}
+
 function rendererWith(slides: Buffer[]): ThumbnailRenderer {
   return {
     isAvailable: () => true,
@@ -43,8 +75,10 @@ describe('deck export generator', () => {
     const generate = createDeckExportGenerator(rendererWith([png, png]))
     const output = await generate({ format: 'pptx', html: '<html></html>', title: 'Quarterly' })
 
-    expect(output.subarray(0, 2).toString('ascii')).toBe('PK')
-    expect(output.byteLength).toBeGreaterThan(png.byteLength * 2)
+    const entries = readZipEntryNames(output)
+
+    expect(entries).toContain('[Content_Types].xml')
+    expect(entries.filter((entry) => /^ppt\/slides\/slide\d+\.xml$/.test(entry))).toHaveLength(2)
   })
 
   it('rejects captures that are not export-sized', async () => {
