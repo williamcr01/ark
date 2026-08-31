@@ -19,6 +19,7 @@ import { getRendererContentSecurityPolicy } from './renderer-security.ts'
 import { DesktopSettingsStore } from './settings-store.ts'
 import { createElectronThumbnailRenderer } from './thumbnail-renderer.ts'
 import { createDeckExportGenerator, inspectExportedPdf } from './deck-export.ts'
+import { extractDeckScene, inspectExtractedScene } from './deck-scene.ts'
 import { McpManager, resolveMcpExecutableArgs } from './mcp-manager.ts'
 import { registerIpcHandlers } from './bootstrap/ipc.ts'
 import { configureApplicationMenu } from './bootstrap/menu.ts'
@@ -239,8 +240,19 @@ async function startDesktop() {
         fetch(`${apiServer.origin}/api/health`),
         fetch(`${sandboxServer.origin}/health`),
       ])
-      const smokeDeckHtml =
-        '<!doctype html><html><head><style>html,body{margin:0}section{width:100vw;height:100vh;background:#123;color:white}</style></head><body><section class="slide"><h1>Ark desktop smoke</h1></section><section class="slide"><h1>Second slide</h1></section></body></html>'
+      // Exercises the export paths that matter: prose, a bulleted list, and a
+      // painted container, so the scene walk has text, bullets, and a shape.
+      const smokeDeckHtml = [
+        '<!doctype html><html lang="en" data-ark-font-body="calibri"><head><style>',
+        'html,body{margin:0}',
+        ':root{--ark-font-body:"Calibri","Carlito",sans-serif}',
+        'section{width:100vw;height:100vh;background:#123;color:#fff;font-family:var(--ark-font-body)}',
+        '.card{background:#2a3f55;border-radius:16px;padding:24px}',
+        '</style></head><body>',
+        '<section class="slide"><h1>Ark desktop smoke</h1><p>Exported from the render window.</p></section>',
+        '<section class="slide"><div class="card"><h2>Second slide</h2><ul><li>First point</li><li>Second point</li></ul></div></section>',
+        '</body></html>',
+      ].join('')
       const thumbnail = await thumbnailRenderer.render({ html: smokeDeckHtml })
       const exported = await generateDeckExport({
         format: 'pdf',
@@ -248,6 +260,8 @@ async function startDesktop() {
         title: 'Ark desktop smoke',
       })
       const exportReport = await inspectExportedPdf(exported)
+      const scene = await extractDeckScene(deckRenderConfig, { html: smokeDeckHtml })
+      const sceneReport = inspectExtractedScene(scene)
 
       if (
         !rendererReady ||
@@ -255,9 +269,12 @@ async function startDesktop() {
         !sandboxHealthResponse.ok ||
         !thumbnail.ok ||
         thumbnail.slides[0]?.subarray(1, 4).toString('ascii') !== 'PNG' ||
-        !exportReport.ok
+        !exportReport.ok ||
+        !sceneReport.ok
       ) {
-        throw new Error(`Desktop smoke validation failed. ${exportReport.detail}`)
+        throw new Error(
+          `Desktop smoke validation failed. ${exportReport.detail} ${sceneReport.detail}`.trim(),
+        )
       }
 
       console.log('ARK_DESKTOP_SMOKE_OK')

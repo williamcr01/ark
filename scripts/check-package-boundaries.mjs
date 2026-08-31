@@ -23,6 +23,7 @@ export const LAYERS = {
   '@ark/ai': 1,
   '@ark/editor-runtime': 2,
   '@ark/chat': 2,
+  '@ark/deck-export': 2,
   '@ark/deck-preview': 3,
   '@ark/storage': 4,
   '@ark/contracts': 5,

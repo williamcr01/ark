@@ -29,6 +29,7 @@
     "@ark/chat": "workspace:*",
     "@ark/contracts": "workspace:*",
     "@ark/deck": "workspace:*",
+    "@ark/deck-export": "workspace:*",
     "@ark/deck-preview": "workspace:*",
     "@ark/editor-runtime": "workspace:*",
     "@ark/mcp": "workspace:*",

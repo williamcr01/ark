@@ -53,6 +53,7 @@ ark/
 │   ├── deck/               #  1  the deck document model: read, patch, validate
 │   ├── ai/                 #  1  providers, models, credentials, provider options
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
+│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
 │   ├── deck-preview/       #  3  deck → preview document, parent ↔ frame protocol
 │   ├── storage/            #  4  records, stores, the `.ark` workspace file
@@ -66,6 +67,7 @@ ark/
 │   ├── ai/                 #  1  providers, models, credentials, provider options
 │   ├── deck-preview/       #  2  deck → preview document, parent ↔ frame protocol
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
+│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
 │   ├── storage/            #  3  records, stores, the `.ark` workspace file
 │   ├── contracts/          #  4  HTTP API Zod schemas + OpenAPI registry
@@ -93,7 +95,7 @@ strictly lower layer, every workspace dependency must be both declared and used,
   re-exports the provider and reasoning enums from `@ark/ai`, deck ids and titles from `@ark/deck`,
   and job ids from `@ark/chat`.
 - **Browser-safe packages** (no `node:*`, no Express, no React): `runtime-registry`, `telemetry`,
-  `deck`, `ai`, `editor-runtime`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
+  `deck`, `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
   `runtime-stylesheet-disk.ts` and `telemetry/request-id.ts`.
 - **Server-only packages**: `storage`, `agent`, `mcp`. `apps/desktop/src` must not import them.
 - `apps/desktop/src` (the renderer) may import browser-safe packages only — never `apps/api`.

@@ -2,16 +2,16 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/desktop"
-    },
-    {
       "path": "./apps/api"
     },
     {
-      "path": "./apps/sandbox"
+      "path": "./apps/desktop"
     },
     {
       "path": "./apps/mcp"
+    },
+    {
+      "path": "./apps/sandbox"
     },
     {
       "path": "./packages/agent"
@@ -27,6 +27,9 @@
     },
     {
       "path": "./packages/deck"
+    },
+    {
+      "path": "./packages/deck-export"
     },
     {
       "path": "./packages/deck-preview"
