@@ -44,6 +44,8 @@ function selectionBoxClassName(locked: boolean, surface: EditorSurface, isEditin
   )
 }
 
+const EMPTY_COMPANIONS: EditorOverlayCompanion[] = []
+
 export const EditorSelectionOverlay = forwardRef<
   EditorSelectionOverlayHandle,
   EditorSelectionOverlayProps
@@ -58,7 +60,7 @@ export const EditorSelectionOverlay = forwardRef<
     hoverSurface = 'light',
     locked = false,
     isEditing = false,
-    companionGeometries = [],
+    companionGeometries = EMPTY_COMPANIONS,
   },
   ref,
 ) {

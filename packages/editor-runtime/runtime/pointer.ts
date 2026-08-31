@@ -338,6 +338,7 @@ export const pointerChunk = `  function cancelTransformRaf() {
 
     event.preventDefault();
     event.stopPropagation();
+    var alreadySelected = isSelectionMember(target);
     var additive = Boolean(event.shiftKey || event.metaKey || event.ctrlKey);
 
     if (additive) {
@@ -346,7 +347,7 @@ export const pointerChunk = `  function cancelTransformRaf() {
       return;
     }
 
-    if (!isSelectionMember(target)) {
+    if (!alreadySelected) {
       setSelectedElement(target, slide, currentSlideIndex);
       postSelection(target, slide, currentSlideIndex);
     } else if (target !== selectedElement) {
@@ -354,7 +355,10 @@ export const pointerChunk = `  function cancelTransformRaf() {
       postSelection(target, slide, currentSlideIndex);
     }
 
-    var editOnClick = target === selectedElement && selectedElements.length === 1 && isTextEditableElement(target);
+    // Re-click of an already-selected text element (N === 1) enters edit on
+    // pointerup if the pointer never dragged. Must be computed before this
+    // click's select, or the first press would start editing immediately.
+    var editOnClick = alreadySelected && selectedElements.length === 1 && isTextEditableElement(target);
 
     if (isSelectionUnsafe()) {
       if (selectedElements.length > 1) {

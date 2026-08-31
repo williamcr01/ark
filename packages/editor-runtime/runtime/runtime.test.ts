@@ -576,7 +576,7 @@ describe('deck editor runtime script', () => {
     expect(script).toContain('event.shiftKey')
     expect(script).toContain('window.setTimeout(finishNudge, 400)')
     expect(script).toContain('postToParent({ type: C.SHORTCUT, action: action })')
-    expect(script).toContain('restoreInlineStyle(transformState.element, transformState.snapshot)')
+    expect(script).toContain('restoreInlineStyle(state.element, state.snapshot)')
     expect(script).toContain('data.type === C.TRANSFORM_CANCEL')
 
     const enableIndex = script.indexOf('function enableEditor')

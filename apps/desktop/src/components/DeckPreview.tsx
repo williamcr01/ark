@@ -15,6 +15,7 @@ import { WandSparklesIcon } from 'lucide-react'
 import { EditModeToolbar } from '@/components/EditModeToolbar'
 import {
   EditorSelectionOverlay,
+  type EditorOverlayCompanion,
   type EditorSelectionOverlayHandle,
 } from '@/components/EditorSelectionOverlay'
 import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlays'
@@ -752,23 +753,23 @@ function useDeckPreviewShell({
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
   const selectionSet = selections.length > 0 ? selections : selection ? [selection] : []
   const selectionBlockReason = getSelectionSetBlockReason(selectionSet)
-  const companionGeometries = selectionSet
-    .filter((item) => item.elementId !== selection?.elementId)
-    .flatMap((item) => {
-      const box = selectionGeometries[item.elementId]
-      if (!box) {
-        return []
-      }
-      return [
-        {
-          elementId: item.elementId,
-          geometry: box.geometry,
-          slideBounds: box.slideBounds,
-          locked: item.locked,
-          surface: item.surface,
-        },
-      ]
+  const companionGeometries: EditorOverlayCompanion[] = []
+  for (const item of selectionSet) {
+    if (item.elementId === selection?.elementId) {
+      continue
+    }
+    const box = selectionGeometries[item.elementId]
+    if (!box) {
+      continue
+    }
+    companionGeometries.push({
+      elementId: item.elementId,
+      geometry: box.geometry,
+      slideBounds: box.slideBounds,
+      locked: item.locked,
+      surface: item.surface,
     })
+  }
   const hasStrip = isDeckLoading || hasSlides
   const stripOrientation: 'vertical' | 'horizontal' =
     layout === 'desktop' ? 'vertical' : 'horizontal'
