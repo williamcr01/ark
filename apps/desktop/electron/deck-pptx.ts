@@ -173,12 +173,17 @@ function addText(slide: PptxGenJS.Slide, node: SceneTextNode) {
       // Ark measured the rendered box, so PowerPoint must not re-flow or re-fit it.
       valign: 'top',
       isTextBox: true,
-      wrap: true,
+      // Text the browser fitted on one line must stay on one line. PowerPoint's
+      // glyph advances differ just enough that a tightly-measured label - a lone
+      // "02", a short stat - breaks onto a second row. Overflowing by a hair is
+      // far less visible than an unexpected wrap.
+      wrap: node.lineCount > 1,
+      // pptxgenjs reads this array as [left, right, bottom, top], not CSS order.
       margin: [
-        pxToPoints(node.inset.top),
+        pxToPoints(node.inset.left),
         pxToPoints(node.inset.right),
         pxToPoints(node.inset.bottom),
-        pxToPoints(node.inset.left),
+        pxToPoints(node.inset.top),
       ],
       fill: shapeFill(node.fill),
       line: shapeLine(node.line),

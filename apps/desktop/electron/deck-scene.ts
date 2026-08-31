@@ -136,6 +136,12 @@ export function inspectExtractedScene(scene: DeckScene, expectedSlides = 2) {
 
     if (text.length === 0) return fail(`Scene slide ${slide.index} recovered no text runs.`)
 
+    // A line count of zero would let a single-line label wrap in PowerPoint.
+    const miscounted = slide.nodes.find(
+      (node) => node.kind === 'text' && !(Number.isInteger(node.lineCount) && node.lineCount >= 1),
+    )
+    if (miscounted) return fail(`Scene slide ${slide.index} has a text node with no line count.`)
+
     const unresolved = text.find((run) => run.fontFace.includes(','))
     if (unresolved) {
       return fail(`Scene run kept an unresolved font stack: ${unresolved.fontFace}.`)

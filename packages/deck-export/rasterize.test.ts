@@ -31,6 +31,7 @@ const text = (fill?: SceneFill): SceneNode => ({
   rect: RECT,
   inset: { top: 0, right: 0, bottom: 0, left: 0 },
   paragraphs: [],
+  lineCount: 1,
   fill,
 })
 

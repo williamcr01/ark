@@ -44,6 +44,44 @@ export const textChunk = String.raw`
     return text.replace(/\s+/g, '').length > 0;
   }
 
+  /**
+   * How many line boxes the text actually occupies.
+   *
+   * Client rects come one per line fragment, so an inline span splits a line
+   * into several. Group them by vertical overlap to recover the real line count.
+   */
+  function countRenderedLines(element) {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(element);
+      var rects = range.getClientRects();
+      if (!rects || !rects.length) return 1;
+
+      var lines = [];
+      for (var i = 0; i < rects.length; i++) {
+        var rect = rects[i];
+        if (rect.height <= 0) continue;
+
+        var merged = false;
+        for (var j = 0; j < lines.length; j++) {
+          var overlap = Math.min(lines[j].bottom, rect.bottom) - Math.max(lines[j].top, rect.top);
+          var shorter = Math.min(lines[j].bottom - lines[j].top, rect.height);
+          if (overlap > shorter / 2) {
+            lines[j].top = Math.min(lines[j].top, rect.top);
+            lines[j].bottom = Math.max(lines[j].bottom, rect.bottom);
+            merged = true;
+            break;
+          }
+        }
+        if (!merged) lines.push({ top: rect.top, bottom: rect.bottom });
+      }
+
+      return lines.length || 1;
+    } catch (error) {
+      return 1;
+    }
+  }
+
   function readAlign(style) {
     var align = (style.textAlign || '').toLowerCase();
     if (align === 'center') return 'center';

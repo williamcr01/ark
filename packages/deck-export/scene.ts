@@ -129,6 +129,12 @@ export type SceneTextNode = {
   rect: SceneRect
   paragraphs: SceneParagraph[]
   inset: SceneInset
+  /**
+   * Line boxes the browser actually produced. Text that fitted on one line must
+   * not be allowed to wrap in PowerPoint, whose glyph advances differ just
+   * enough to break a tightly-measured label onto a second row.
+   */
+  lineCount: number
   /** Present when the same element also paints a box behind its text. */
   fill?: SceneFill
   line?: SceneLine

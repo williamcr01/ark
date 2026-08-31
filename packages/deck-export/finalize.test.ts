@@ -39,6 +39,7 @@ function textNode(runs: ReturnType<typeof run>[], rect = { x: 0, y: 0, width: 10
     kind: 'text' as const,
     rect,
     inset: { top: 0, right: 0, bottom: 0, left: 0 },
+    lineCount: 1,
     paragraphs: [{ runs, align: 'left' as const }],
   }
 }

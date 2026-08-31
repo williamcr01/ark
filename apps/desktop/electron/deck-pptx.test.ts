@@ -58,11 +58,12 @@ async function firstSlideXml(deckScene: DeckScene) {
   return xml
 }
 
-const textNode = (paragraphs: SceneParagraph[]): SceneNode => ({
+const textNode = (paragraphs: SceneParagraph[], lineCount = paragraphs.length): SceneNode => ({
   kind: 'text',
   rect: { x: 64, y: 48, width: 640, height: 96 },
   inset: { top: 0, right: 0, bottom: 0, left: 0 },
   paragraphs,
+  lineCount,
 })
 
 describe('PowerPoint emitter', () => {
@@ -128,6 +129,40 @@ describe('PowerPoint emitter', () => {
     )
 
     expect(xml).toContain('buAutoNum')
+  })
+
+  it('forbids wrapping for text the browser fitted on one line', async () => {
+    const xml = await firstSlideXml(scene([textNode([paragraph('02')], 1)]))
+
+    expect(xml).toContain('wrap="none"')
+  })
+
+  it('allows wrapping once the text already spans more than one line', async () => {
+    const xml = await firstSlideXml(scene([textNode([paragraph('A longer sentence.')], 2)]))
+
+    expect(xml).toContain('wrap="square"')
+  })
+
+  it('maps padding onto the insets pptxgenjs expects, which is not CSS order', async () => {
+    const xml = await firstSlideXml(
+      scene([
+        {
+          kind: 'text',
+          rect: { x: 0, y: 0, width: 400, height: 200 },
+          // Deliberately asymmetric: a transposed array would show up as swapped
+          // horizontal and vertical insets, narrowing the text and forcing a wrap.
+          inset: { top: 8, right: 16, bottom: 24, left: 32 },
+          paragraphs: [paragraph('Inset')],
+          lineCount: 1,
+        },
+      ]),
+    )
+
+    // Points to EMU: 32px = 24pt = 304800 EMU, 8px = 6pt = 76200 EMU.
+    expect(xml).toContain(`lIns="${24 * 12700}"`)
+    expect(xml).toContain(`rIns="${12 * 12700}"`)
+    expect(xml).toContain(`bIns="${18 * 12700}"`)
+    expect(xml).toContain(`tIns="${6 * 12700}"`)
   })
 
   it('emits a shape with its fill, outline, and corner radius', async () => {
