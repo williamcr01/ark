@@ -80,6 +80,19 @@ export const createDeckRequestSchema = z
 
 export type CreateDeckRequest = z.infer<typeof createDeckRequestSchema>
 
+export const importPptxRequestSchema = z
+  .object({
+    path: z.string().min(1).optional(),
+    filename: z.string().min(1).max(500).optional(),
+    bytes: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine((value) => Boolean(value.path?.trim() || value.bytes?.trim()), {
+    message: 'Provide a file path or the PPTX bytes.',
+  })
+
+export type ImportPptxRequest = z.infer<typeof importPptxRequestSchema>
+
 // Updates never carry an origin: writing content is what retires `blank`.
 export const updateDeckRequestSchema = createDeckRequestSchema.omit({ origin: true }).extend({
   expectedDocumentRevision: z.number().int().min(1),

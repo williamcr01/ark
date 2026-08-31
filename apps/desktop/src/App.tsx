@@ -24,6 +24,7 @@ export default function App() {
     deckPreviewRef,
     deckTitle,
     fileInputRef,
+    pptxFileInputRef,
     filePath,
     generateDeck,
     handleChatOpenChange,
@@ -32,6 +33,7 @@ export default function App() {
     handleExport,
     exportingDeck,
     handleHtmlUpload,
+    handlePptxUpload,
     handleMove,
     handleNewDeck,
     handleOpenWorkspace,
@@ -40,6 +42,7 @@ export default function App() {
     handleShareProject,
     handleToggleChat,
     handleUploadClick,
+    handlePptxImportClick,
     hasDeck,
     hasSlides,
     isChatOpen,
@@ -66,6 +69,7 @@ export default function App() {
           activeDeckId={deckId}
           deckTitle={deckTitle}
           fileInputRef={fileInputRef}
+          pptxFileInputRef={pptxFileInputRef}
           uiState={{
             hasDeck,
             hasSlides,
@@ -80,6 +84,7 @@ export default function App() {
           exportingDeck={exportingDeck}
           onAgentInteractionsInModalChange={setAgentInteractionsInModal}
           onHtmlUpload={handleHtmlUpload}
+          onPptxUpload={handlePptxUpload}
           onCredentialsChanged={loadModels}
           onNewDeck={handleNewDeck}
           onOpenWorkspace={handleOpenWorkspace}
@@ -94,6 +99,7 @@ export default function App() {
           onToggleStrip={() => setIsStripOpen((current) => !current)}
           onAppearanceChange={setPreference}
           onUploadClick={handleUploadClick}
+          onPptxImportClick={handlePptxImportClick}
         />
 
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden" ref={mainRef}>

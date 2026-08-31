@@ -5,6 +5,7 @@ import {
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  importPptxRequestSchema,
   renameDeckRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
@@ -69,6 +70,18 @@ describe('shared API contracts', () => {
         warnings: [],
       }),
     ).toMatchObject({ defaultModel: 'openai:gpt-5.6-luna' })
+  })
+
+  it('requires a path or bytes for PowerPoint import', () => {
+    expect(parseRequestBody(importPptxRequestSchema, { filename: 'deck.pptx' })).toMatchObject({
+      ok: false,
+    })
+    expect(
+      parseRequestBody(importPptxRequestSchema, { filename: 'deck.pptx', bytes: 'AAAA' }),
+    ).toMatchObject({ ok: true })
+    expect(parseRequestBody(importPptxRequestSchema, { path: '/tmp/deck.pptx' })).toMatchObject({
+      ok: true,
+    })
   })
 
   it('rejects invalid deck create requests', () => {
@@ -469,6 +482,13 @@ describe('shared API contracts', () => {
       error: 'Missing key',
       code: 'missing_api_key',
     })
+
+    expect(
+      apiErrorPayloadSchema.parse({
+        error: 'Legacy .ppt files are not supported.',
+        code: 'pptx_legacy',
+      }),
+    ).toMatchObject({ code: 'pptx_legacy' })
 
     expect(simpleErrorResponseSchema.parse({ error: 'Bad request' })).toEqual({
       error: 'Bad request',

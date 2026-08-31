@@ -13,6 +13,7 @@ import {
   DownloadIcon,
   FileTextIcon,
   FilePlus2Icon,
+  FileUpIcon,
   FolderOpenIcon,
   FolderInputIcon,
   CopyIcon,
@@ -325,6 +326,7 @@ export type AppTitleBarProps = {
   appearancePreference?: AppearancePreference
   activeDeckId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
+  pptxFileInputRef: React.RefObject<HTMLInputElement | null>
   deckTitle: string
   /** Orthogonal shell/UI state flags (grouped to keep the props surface small). */
   uiState: {
@@ -342,6 +344,7 @@ export type AppTitleBarProps = {
   onExport: (format: DeckExportFormat) => void
   exportingDeck?: DeckExportFormat | false
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
+  onPptxUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onCredentialsChanged?: () => void | Promise<void>
   onNewDeck: () => void
   onOpenWorkspace: () => void
@@ -354,12 +357,14 @@ export type AppTitleBarProps = {
   onToggleChat: () => void
   onToggleStrip: () => void
   onUploadClick: () => void
+  onPptxImportClick: () => void
 }
 
 export function AppTitleBar({
   appearancePreference = 'system',
   activeDeckId,
   fileInputRef,
+  pptxFileInputRef,
   deckTitle,
   uiState,
   onAppearanceChange = () => undefined,
@@ -367,6 +372,7 @@ export function AppTitleBar({
   onExport,
   exportingDeck = false,
   onHtmlUpload,
+  onPptxUpload,
   onCredentialsChanged = () => undefined,
   onNewDeck,
   onOpenWorkspace,
@@ -381,6 +387,7 @@ export function AppTitleBar({
   onToggleChat,
   onToggleStrip,
   onUploadClick,
+  onPptxImportClick,
 }: AppTitleBarProps) {
   const { hasDeck, hasSlides, isChatOpen, isGenerating, isStripOpen, showSanitizedDownload } =
     uiState
@@ -409,6 +416,13 @@ export function AppTitleBar({
         className="hidden"
         onChange={onHtmlUpload}
         ref={fileInputRef}
+        type="file"
+      />
+      <input
+        accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        className="hidden"
+        onChange={onPptxUpload}
+        ref={pptxFileInputRef}
         type="file"
       />
       {hasSlides ? (
@@ -529,6 +543,13 @@ export function AppTitleBar({
         />
         <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
           <UploadIcon />
+        </TitleBarButton>
+        <TitleBarButton
+          disabled={isGenerating}
+          label="Import PowerPoint"
+          onClick={onPptxImportClick}
+        >
+          <FileUpIcon />
         </TitleBarButton>
         <TitleBarButton
           disabled={!hasSlides || isGenerating}

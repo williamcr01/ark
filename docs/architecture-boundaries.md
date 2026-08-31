@@ -16,6 +16,8 @@ only. Boundary violations fail `pnpm lint`.
 | 1     | `@ark/ai`               | Providers, models, credentials, provider options               |
 | 2     | `@ark/editor-runtime`   | The manual editor protocol and its injected script             |
 | 2     | `@ark/chat`             | The conversation model: messages, steps, jobs, agent protocols |
+| 2     | `@ark/deck-export`      | Slide → scene model for PowerPoint export                      |
+| 2     | `@ark/deck-import`      | PowerPoint (`.pptx`) → Ark HTML deck (server-only)             |
 | 3     | `@ark/deck-preview`     | Deck → preview document, and the parent ↔ frame protocol       |
 | 4     | `@ark/storage`          | Persistence: records, stores, the `.ark` workspace file        |
 | 5     | `@ark/contracts`        | The local HTTP API's Zod schemas and OpenAPI registry          |
@@ -25,7 +27,7 @@ only. Boundary violations fail `pnpm lint`.
 ```text
 runtime-registry, telemetry
   └► deck, ai
-       └► editor-runtime, chat
+       └► editor-runtime, chat, deck-export, deck-import
             └► deck-preview
                  └► storage
                       └► contracts
@@ -66,11 +68,11 @@ model all live in packages.
 Packages are one or the other, and it is enforced:
 
 - **Browser-safe** — no `node:*`, no Express, no React. `runtime-registry`, `telemetry`, `deck`,
-  `ai`, `editor-runtime`, `chat`, `deck-preview`, `contracts`. The renderer bundles these.
+  `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. The renderer bundles these.
   Two files opt out by name: `runtime-registry/runtime-stylesheet-disk.ts` and
   `telemetry/request-id.ts`, which needs `node:crypto`.
-- **Server-only** — `node:*` allowed, still no Express or React. `storage`, `agent`, `mcp`.
-  **The renderer must not import these**, which is a lint rule, not a convention.
+- **Server-only** — `node:*` allowed, still no Express or React. `storage`, `agent`, `mcp`,
+  `deck-import`. **The renderer must not import these**, which is a lint rule, not a convention.
 
 Shared vocabulary a lower layer needs is defined in that lower layer and re-exported upward, so a
 consumer's import path does not change. `@ark/contracts` re-exports the provider and reasoning

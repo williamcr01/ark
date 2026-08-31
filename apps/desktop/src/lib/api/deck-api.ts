@@ -56,6 +56,15 @@ export async function createDeck(html: string, origin?: DeckOrigin) {
   return readDeckResponse(response)
 }
 
+export async function importPptx(input: { path?: string; filename?: string; bytes?: string }) {
+  const response = await fetch('/api/decks/import-pptx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return readDeckResponse(response)
+}
+
 export async function updateDeck(id: string, html: string, expectedDocumentRevision: number) {
   const response = await fetch(`/api/decks/${encodeURIComponent(id)}`, {
     method: 'PUT',

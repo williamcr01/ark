@@ -109,6 +109,9 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../../packages/deck
+      '@ark/deck-import':
+        specifier: workspace:*
+        version: link:../../packages/deck-import
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
@@ -575,6 +578,34 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@2.2.0)
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/deck-import:
+    dependencies:
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
+      '@ark/runtime-registry':
+        specifier: workspace:*
+        version: link:../runtime-registry
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
+      jszip:
+        specifier: 3.10.1
+        version: 3.10.1
+    devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'

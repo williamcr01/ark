@@ -53,6 +53,8 @@ ark/
 │   ├── deck/               #  1  the deck document model: read, patch, validate
 │   ├── ai/                 #  1  providers, models, credentials, provider options
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
+│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
+│   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
 │   ├── deck-preview/       #  3  deck → preview document, parent ↔ frame protocol
 │   ├── storage/            #  4  records, stores, the `.ark` workspace file
@@ -66,6 +68,8 @@ ark/
 │   ├── ai/                 #  1  providers, models, credentials, provider options
 │   ├── deck-preview/       #  2  deck → preview document, parent ↔ frame protocol
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
+│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
+│   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
 │   ├── storage/            #  3  records, stores, the `.ark` workspace file
 │   ├── contracts/          #  4  HTTP API Zod schemas + OpenAPI registry
@@ -93,9 +97,9 @@ strictly lower layer, every workspace dependency must be both declared and used,
   re-exports the provider and reasoning enums from `@ark/ai`, deck ids and titles from `@ark/deck`,
   and job ids from `@ark/chat`.
 - **Browser-safe packages** (no `node:*`, no Express, no React): `runtime-registry`, `telemetry`,
-  `deck`, `ai`, `editor-runtime`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
+  `deck`, `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
   `runtime-stylesheet-disk.ts` and `telemetry/request-id.ts`.
-- **Server-only packages**: `storage`, `agent`, `mcp`. `apps/desktop/src` must not import them.
+- **Server-only packages**: `storage`, `agent`, `mcp`, `deck-import`. `apps/desktop/src` must not import them.
 - `apps/desktop/src` (the renderer) may import browser-safe packages only — never `apps/api`.
 - `apps/desktop/electron` (the trusted main process) owns and may import `@ark/api` and
   `@ark/sandbox`.
@@ -243,6 +247,7 @@ Fully working editor, not a scaffold. Implemented today:
 - **BYOK settings** backed by Electron `safeStorage`, with add/remove/test controls for each provider.
 - **Desktop packaging** for Linux, macOS, and Windows with GitHub Releases and `electron-updater`.
 - **Approved runtime registry** with vendored reveal.js 5.1.0 and chart.js 4.5.1 served from `/api/runtimes/...`.
+- **PowerPoint import** from Import PowerPoint (and the Open dialog) into a **new** `.ark` workspace. Local OOXML conversion only; speaker notes and `ark-asset:` images come along. See [packages/deck-import/README.md](packages/deck-import/README.md).
 - **Manual editing**: CSS-only, approved Reveal, Reveal+Chart.js, and custom-JS decks support PowerPoint-style selection and movement through the sandbox-safe editor bridge ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `packages/editor-runtime/`) and structured element patch API (`POST /api/decks/:id/patch`). The editor uses a private per-preview `MessagePort` established before deck-authored scripts run, so scripted decks cannot forge editor commits through public `postMessage`. Users can select deck-authored text, images, SVG, and containers; move or resize unlocked elements with snapping and keyboard nudge; insert text boxes/images; edit text and properties; duplicate, delete, reorder; and undo/redo. Moving unmanaged content adopts it into Ark's absolute layout while preserving its containing block and measured width. Selection chrome adapts to light/dark surfaces and preview scale.
 
 Typed contracts shared by the renderer and local API live in `packages/contracts/` (`@ark/contracts`).

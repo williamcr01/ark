@@ -18,6 +18,7 @@
     "@ark/chat": "workspace:*",
     "@ark/contracts": "workspace:*",
     "@ark/deck": "workspace:*",
+    "@ark/deck-import": "workspace:*",
     "@ark/deck-preview": "workspace:*",
     "@ark/mcp": "workspace:*",
     "@ark/runtime-registry": "workspace:*",

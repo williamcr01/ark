@@ -1,4 +1,12 @@
-import { useMemo, useRef, useState, useEffect, useCallback, useEffectEvent } from 'react'
+import {
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+  useCallback,
+  useEffectEvent,
+  type ChangeEvent,
+} from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { type ChatAttachment } from '@ark/chat/chat.ts'
@@ -26,6 +34,13 @@ import {
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat/chat-panel-layout'
 import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'
+import {
+  basenameFromPath,
+  fileToBase64,
+  isLegacyPptFile,
+  isPptxFile,
+  PPTX_LEGACY_UPLOAD_MESSAGE,
+} from '@/lib/deck/deck-io'
 import { findPendingAgentQuestions } from '@/lib/chat/agent-questions'
 import { findPendingThemeProposal } from '@/lib/chat/agent-themes'
 import { getDesktopSettings } from '@/lib/ui/desktop-settings'
@@ -46,6 +61,7 @@ import {
   type ContextSlideEntry,
 } from '@/lib/deck/slide-context'
 import type { PatchDeckResponse } from '@/lib/api/deck-api'
+import { importPptx } from '@/lib/api/deck-api'
 import { uploadDeckAsset } from '@/lib/api/asset-api'
 import {
   startRevealThumbnailStylesPreload,
@@ -225,6 +241,7 @@ export function useAppShell() {
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pptxFileInputRef = useRef<HTMLInputElement>(null)
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
   const [mainRef, mainSize] = useElementSize<HTMLElement>()
   const [deckChromeHost, setDeckChromeHost] = useState<HTMLDivElement | null>(null)
@@ -634,9 +651,56 @@ export function useAppShell() {
   const handleOpenWorkspace = useCallback(async () => {
     const path = await window.arkDesktop.files.openWorkspace()
     if (!path) return
+    if (isPptxFile(path) || isLegacyPptFile(path)) {
+      const filename = basenameFromPath(path)
+      const pending = toast.loading('Importing PowerPoint...')
+      try {
+        const deck = await importPptx({ path, filename })
+        toast.success(`Imported ${filename}`, { id: pending })
+        navigate(`/decks/${deck.id}`)
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : 'Could not import that PowerPoint file',
+          { id: pending },
+        )
+      }
+      return
+    }
     const deck = await openWorkspaceFile(path)
     navigate(`/decks/${deck.id}`)
   }, [navigate, openWorkspaceFile])
+
+  const handlePptxImportClick = useCallback(() => {
+    pptxFileInputRef.current?.click()
+  }, [])
+
+  const handlePptxUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0]
+      event.currentTarget.value = ''
+      if (!file) return
+      if (isLegacyPptFile(file)) {
+        toast.error(PPTX_LEGACY_UPLOAD_MESSAGE)
+        return
+      }
+      if (!isPptxFile(file)) {
+        toast.error('Import a .pptx file')
+        return
+      }
+      const pending = toast.loading('Importing PowerPoint...')
+      try {
+        const deck = await importPptx({ filename: file.name, bytes: await fileToBase64(file) })
+        toast.success(`Imported ${file.name}`, { id: pending })
+        navigate(`/decks/${deck.id}`)
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : 'Could not import that PowerPoint file',
+          { id: pending },
+        )
+      }
+    },
+    [navigate],
+  )
   /**
    * Pick a workspace path and run a save-style action, resolving conflicts with
    * the user instead of failing silently: an existing file offers overwrite or
@@ -1074,6 +1138,7 @@ export function useAppShell() {
     deckPreviewRef,
     deckTitle,
     fileInputRef,
+    pptxFileInputRef,
     filePath,
     generateDeck,
     handleChatOpenChange,
@@ -1082,6 +1147,7 @@ export function useAppShell() {
     handleExport,
     exportingDeck,
     handleHtmlUpload,
+    handlePptxUpload,
     handleMove,
     handleNewDeck,
     handleOpenWorkspace,
@@ -1090,6 +1156,7 @@ export function useAppShell() {
     handleShareProject,
     handleToggleChat,
     handleUploadClick,
+    handlePptxImportClick,
     hasDeck,
     hasSlides,
     isChatOpen,

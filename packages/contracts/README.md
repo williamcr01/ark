@@ -12,20 +12,20 @@ The contracts layer depends on **Zod** and portable shared helpers only. It must
 
 ## Covered endpoints
 
-| Area           | Routes                                                                                                      | Contract modules         |
-| -------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Health         | `GET /api/health`, `GET /api/models`                                                                        | `health.ts`, `common.ts` |
-| Decks          | `GET/POST /api/decks`, `GET/PUT/PATCH/DELETE /api/decks/:id`, `POST /api/decks/:id/patch`                   | `decks.ts`               |
-| Chat           | `GET/POST/DELETE /api/decks/:id/chat`, `POST .../chat/messages`                                             | `chat.ts`                |
-| Threads        | `GET/POST /api/decks/:id/threads`, `PATCH/DELETE .../threads/:threadId`                                     | `chat.ts`                |
-| Assets         | `POST/GET /api/decks/:id/assets`, `GET/DELETE /api/decks/:deckId/assets/:assetId`                           | `assets.ts`              |
-| Generation     | `POST/GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry` (includes `assetIds` on job start) | `generation-jobs.ts`     |
-| Preview        | `POST /api/preview-sessions`, `GET /api/preview-sessions/:token`                                            | `preview.ts`             |
-| Thumbnails     | `GET /api/decks/:id/thumbnails`, `GET /api/decks/:id/thumbnails/:documentRevision/:slideIndex.png`          | `thumbnails.ts`          |
-| Workspaces     | `POST /api/workspaces/open`, locate/recent removal, Save As, Move, and Duplicate routes                     | `decks.ts`               |
-| Runtime errors | `POST /api/runtime-errors`                                                                                  | `runtime-errors.ts`      |
-| Runtimes       | `GET /api/runtimes`, `GET /api/runtimes/:runtimeId/:version/:assetPath`                                     | `runtimes.ts`            |
-| Asset proxy    | `GET /api/deck-assets?url=...`                                                                              | `deck-asset-proxy.ts`    |
+| Area           | Routes                                                                                                                   | Contract modules         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| Health         | `GET /api/health`, `GET /api/models`                                                                                     | `health.ts`, `common.ts` |
+| Decks          | `GET/POST /api/decks`, `POST /api/decks/import-pptx`, `GET/PUT/PATCH/DELETE /api/decks/:id`, `POST /api/decks/:id/patch` | `decks.ts`               |
+| Chat           | `GET/POST/DELETE /api/decks/:id/chat`, `POST .../chat/messages`                                                          | `chat.ts`                |
+| Threads        | `GET/POST /api/decks/:id/threads`, `PATCH/DELETE .../threads/:threadId`                                                  | `chat.ts`                |
+| Assets         | `POST/GET /api/decks/:id/assets`, `GET/DELETE /api/decks/:deckId/assets/:assetId`                                        | `assets.ts`              |
+| Generation     | `POST/GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry` (includes `assetIds` on job start)              | `generation-jobs.ts`     |
+| Preview        | `POST /api/preview-sessions`, `GET /api/preview-sessions/:token`                                                         | `preview.ts`             |
+| Thumbnails     | `GET /api/decks/:id/thumbnails`, `GET /api/decks/:id/thumbnails/:documentRevision/:slideIndex.png`                       | `thumbnails.ts`          |
+| Workspaces     | `POST /api/workspaces/open`, locate/recent removal, Save As, Move, and Duplicate routes                                  | `decks.ts`               |
+| Runtime errors | `POST /api/runtime-errors`                                                                                               | `runtime-errors.ts`      |
+| Runtimes       | `GET /api/runtimes`, `GET /api/runtimes/:runtimeId/:version/:assetPath`                                                  | `runtimes.ts`            |
+| Asset proxy    | `GET /api/deck-assets?url=...`                                                                                           | `deck-asset-proxy.ts`    |
 
 Shared client helpers (`fetchApiJsonOrThrow`, `parseRequestBody`, `assertApiContract`) live in `fetch.ts` and `common.ts` and are re-exported from `index.ts`.
 

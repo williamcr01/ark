@@ -3,7 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 
-import { downloadHtml } from './deck-io'
+import { basenameFromPath, downloadHtml, isLegacyPptFile, isPptxFile } from './deck-io'
+
+describe('PowerPoint file detection', () => {
+  it('treats .pptx as importable and .ppt as legacy', () => {
+    expect(isPptxFile('board.pptx')).toBe(true)
+    expect(isPptxFile('board.PPTX')).toBe(true)
+    expect(isLegacyPptFile('board.pptx')).toBe(false)
+    expect(isLegacyPptFile('board.ppt')).toBe(true)
+    expect(isLegacyPptFile('/tmp/secret.PPT')).toBe(true)
+    expect(basenameFromPath('/Users/ada/Q3 Board.pptx')).toBe('Q3 Board.pptx')
+  })
+})
 
 describe('downloadHtml', () => {
   let createdLinks: HTMLAnchorElement[]
