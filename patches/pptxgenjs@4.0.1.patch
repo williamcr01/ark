@@ -1,0 +1,14 @@
+diff --git a/package.json b/package.json
+index e6728e1fb738b43528069796f2b2bd74ec380313..abd864cbfe9db94827f4c543fe05e04cf1d805da 100644
+--- a/package.json
++++ b/package.json
+@@ -38,9 +38,6 @@
+ 		"path": false
+ 	},
+ 	"dependencies": {
+-		"@types/node": "^22.8.1",
+-		"https": "^1.0.0",
+-		"image-size": "^1.2.1",
+ 		"jszip": "^3.10.1"
+ 	},
+ 	"devDependencies": {

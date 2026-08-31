@@ -89,7 +89,7 @@ describe('deck PDF export', () => {
       printToPDF: () => onePagePdf(),
     })
 
-    const output = await createDeckExportGenerator(config)({
+    const { output } = await createDeckExportGenerator(config)({
       format: 'pdf',
       html: twoSlideDeck,
       title: 'Quarterly',
@@ -132,7 +132,7 @@ describe('deck PDF export', () => {
   it('keeps only the first page when a slide overflows onto a second', async () => {
     mockRenderWindow({ slideCount: 2, printToPDF: () => onePagePdf(3) })
 
-    const output = await createDeckExportGenerator(config)({
+    const { output } = await createDeckExportGenerator(config)({
       format: 'pdf',
       html: twoSlideDeck,
       title: 'Overflowing',

@@ -15,7 +15,7 @@ type CredentialStatus = Record<
 >
 type DesktopResult = { ok: true; modelCount?: number } | { ok: false; error: string }
 type DeckExportResult =
-  { ok: true; path: string } | { ok: false; canceled?: boolean; error?: string }
+  { ok: true; path: string; warning?: string } | { ok: false; canceled?: boolean; error?: string }
 type DesktopSettings = {
   appearance: 'system' | 'light' | 'dark'
   migratedLegacyRendererPreferences: boolean
@@ -64,7 +64,7 @@ declare global {
       }
       export: {
         create: (request: {
-          format: 'pdf'
+          format: 'pdf' | 'pptx'
           html: string
           title: string
         }) => Promise<DeckExportResult>

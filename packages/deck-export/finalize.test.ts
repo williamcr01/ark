@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { finalizeSceneSlide } from './finalize.ts'
+import { buildDeckExportLint, describeDeckExportLint } from './lint.ts'
 import {
   pxToEmu,
   pxToInches,
@@ -160,5 +161,56 @@ describe('summarizeSceneWarnings', () => {
       { code: 'raster:filter', message: 'blur', count: 5 },
       { code: 'canvas', message: 'chart', count: 1 },
     ])
+  })
+})
+
+describe('buildDeckExportLint', () => {
+  it('counts what stayed native against what flattened', () => {
+    const lint = buildDeckExportLint({
+      width: SCENE_FRAME_WIDTH,
+      height: SCENE_FRAME_HEIGHT,
+      slides: [
+        {
+          ...slideWith([
+            textNode([run()]),
+            { kind: 'raster', rect: { x: 0, y: 0, width: 10, height: 10 }, reason: 'filter' },
+          ]),
+          warnings: [{ code: 'raster:filter', message: 'blur', count: 1 }],
+        },
+        slideWith([textNode([run()])]),
+      ],
+    })
+
+    expect(lint).toMatchObject({ nativeNodes: 2, rasterNodes: 1, affectedSlides: 1 })
+    expect(describeDeckExportLint(lint)).toBe('1 region on 1 slide exported as pictures')
+  })
+
+  it('says nothing when the whole deck exported natively', () => {
+    const lint = buildDeckExportLint({
+      width: SCENE_FRAME_WIDTH,
+      height: SCENE_FRAME_HEIGHT,
+      slides: [slideWith([textNode([run()])])],
+    })
+
+    expect(describeDeckExportLint(lint)).toBeUndefined()
+  })
+
+  it('mentions collapsed weights alongside flattened regions', () => {
+    const lint = buildDeckExportLint({
+      width: SCENE_FRAME_WIDTH,
+      height: SCENE_FRAME_HEIGHT,
+      slides: [
+        {
+          ...slideWith([
+            { kind: 'raster', rect: { x: 0, y: 0, width: 10, height: 10 }, reason: 'filter' },
+          ]),
+          warnings: [{ code: 'font-weight-collapsed', message: '600', count: 1 }],
+        },
+      ],
+    })
+
+    expect(describeDeckExportLint(lint)).toBe(
+      '1 region on 1 slide exported as pictures; some font weights collapsed to regular or bold',
+    )
   })
 })

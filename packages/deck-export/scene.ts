@@ -185,6 +185,8 @@ export type SceneRasterNode = {
   kind: 'raster'
   rect: SceneRect
   reason: string
+  /** A `data:` URI cropped from the slide capture; absent if capture failed. */
+  data?: string
 }
 
 export type SceneNode =

@@ -31,3 +31,10 @@ minimumReleaseAgeExclude:
   - undici@7.29.0
   - nanoid@3.3.18
   - nanoid@5.1.16
+
+# pptxgenjs 4.0.1 lists @types/node, https, and image-size as runtime
+# dependencies, but its shipped bundles reference none of them - the only
+# require('sizeof') is inside a commented-out function. Dropping them removes a
+# vulnerable transitive and two dead installs without changing emitted output.
+patchedDependencies:
+  pptxgenjs@4.0.1: patches/pptxgenjs@4.0.1.patch

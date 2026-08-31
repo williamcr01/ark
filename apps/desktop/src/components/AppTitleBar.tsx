@@ -44,7 +44,7 @@ import {
   MorphMenuFooter,
   morphMenuTriggerMotionClassName,
 } from '@/components/ui/morph-menu'
-import type { DeckDownloadVariant } from '@/lib/deck/deck-export'
+import type { DeckDownloadVariant, DeckExportFormat } from '@/lib/deck/deck-export'
 import { DesktopSettingsDialog, type SettingsTab } from '@/components/DesktopSettingsDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/ui/utils'
@@ -108,9 +108,9 @@ function ExportTitleBarButton({
   showSanitizedDownload,
 }: {
   disabled?: boolean
-  exporting: boolean
+  exporting: DeckExportFormat | false
   onDownload: (variant: DeckDownloadVariant) => void
-  onExport: (format: 'pdf') => void
+  onExport: (format: DeckExportFormat) => void
   showSanitizedDownload: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -159,11 +159,18 @@ function ExportTitleBarButton({
           <DropdownMenuLabel>Export deck</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
-            <DropdownMenuItem disabled={exporting} onSelect={() => onExport('pdf')}>
+            <DropdownMenuItem disabled={exporting !== false} onSelect={() => onExport('pdf')}>
               <FileTextIcon aria-hidden />
               <div className="flex flex-col gap-0.5">
-                <span>{exporting ? 'Exporting PDF...' : 'PDF'}</span>
-                <span className="text-xs text-muted-foreground">One page per slide</span>
+                <span>{exporting === 'pdf' ? 'Exporting PDF...' : 'PDF'}</span>
+                <span className="text-xs text-muted-foreground">Vector pages, selectable text</span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={exporting !== false} onSelect={() => onExport('pptx')}>
+              <PresentationIcon aria-hidden />
+              <div className="flex flex-col gap-0.5">
+                <span>{exporting === 'pptx' ? 'Exporting PowerPoint...' : 'PowerPoint'}</span>
+                <span className="text-xs text-muted-foreground">Editable shapes and text</span>
               </div>
             </DropdownMenuItem>
           </DropdownMenuGroup>
@@ -332,8 +339,8 @@ export type AppTitleBarProps = {
   onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange?: (preference: AppearancePreference) => void
   onDownload: (variant: DeckDownloadVariant) => void
-  onExport: (format: 'pdf') => void
-  exportingDeck?: boolean
+  onExport: (format: DeckExportFormat) => void
+  exportingDeck?: DeckExportFormat | false
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onCredentialsChanged?: () => void | Promise<void>
   onNewDeck: () => void

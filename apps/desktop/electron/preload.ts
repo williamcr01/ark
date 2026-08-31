@@ -54,7 +54,7 @@ contextBridge.exposeInMainWorld('arkDesktop', {
     check: () => ipcRenderer.invoke('updates:check'),
   },
   export: {
-    create: (request: { format: 'pdf'; html: string; title: string }) =>
+    create: (request: { format: 'pdf' | 'pptx'; html: string; title: string }) =>
       ipcRenderer.invoke('export:create', request),
   },
   files: {

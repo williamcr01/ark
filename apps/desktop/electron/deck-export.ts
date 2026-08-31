@@ -11,12 +11,16 @@
 
 import { PDFDict, PDFDocument, PDFName } from 'pdf-lib'
 
+import { buildDeckExportLint, describeDeckExportLint } from '@ark/deck-export'
+
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck/document/metadata.ts'
 
 import { withDeckRenderWindow, type DeckRenderWindowConfig } from './deck-render-window.ts'
+import { generateDeckPptx } from './deck-pptx.ts'
+import { extractDeckScene } from './deck-scene.ts'
 
 /** CSS reference pixels per inch. Fixed by the CSS spec, not by the display. */
 const CSS_PIXELS_PER_INCH = 96
@@ -53,12 +57,18 @@ const DECK_EXPORT_PRINT_CSS = `
 }
 `
 
-export type DeckExportFormat = 'pdf'
+export type DeckExportFormat = 'pdf' | 'pptx'
 
 export type DeckExportRequest = {
   format: DeckExportFormat
   html: string
   title: string
+}
+
+export type DeckExportResult = {
+  output: Buffer
+  /** One-line summary of what degraded, when anything did. */
+  warning?: string
 }
 
 /**
@@ -91,7 +101,15 @@ async function mergeSlidePdfs(slidePdfs: Uint8Array[], title: string) {
 }
 
 export function createDeckExportGenerator(config: DeckRenderWindowConfig) {
-  return async ({ html, title }: DeckExportRequest): Promise<Buffer> => {
+  return async ({ format, html, title }: DeckExportRequest): Promise<DeckExportResult> => {
+    if (format === 'pptx') {
+      const scene = await extractDeckScene(config, { html })
+      return {
+        output: await generateDeckPptx(scene, title),
+        warning: describeDeckExportLint(buildDeckExportLint(scene)),
+      }
+    }
+
     const slidePdfs = await withDeckRenderWindow(
       config,
       { html },
@@ -127,7 +145,7 @@ export function createDeckExportGenerator(config: DeckRenderWindowConfig) {
       },
     )
 
-    return mergeSlidePdfs(slidePdfs, title)
+    return { output: await mergeSlidePdfs(slidePdfs, title) }
   }
 }
 

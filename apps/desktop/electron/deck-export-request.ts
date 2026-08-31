@@ -6,7 +6,7 @@
 
 import type { DeckExportFormat, DeckExportRequest } from './deck-export.ts'
 
-const EXPORT_FORMATS = new Set<DeckExportFormat>(['pdf'])
+const EXPORT_FORMATS = new Set<DeckExportFormat>(['pdf', 'pptx'])
 
 /** Generous, but bounded: a deck this large is a bug, not a presentation. */
 const MAX_DECK_HTML_LENGTH = 20_000_000
@@ -73,5 +73,7 @@ export function exportFileName(title: string, format: DeckExportFormat) {
 }
 
 export function exportDialogFilter(format: DeckExportFormat) {
-  return { name: 'PDF Document', extensions: [format] }
+  return format === 'pptx'
+    ? { name: 'PowerPoint Presentation', extensions: ['pptx'] }
+    : { name: 'PDF Document', extensions: ['pdf'] }
 }

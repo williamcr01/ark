@@ -5,8 +5,11 @@ import { exportFileName, parseDeckExportRequest, toExportFileStem } from './deck
 const validRequest = { format: 'pdf', html: '<html></html>', title: 'Quarterly Review' }
 
 describe('parseDeckExportRequest', () => {
-  it('accepts a well-formed PDF request', () => {
-    expect(parseDeckExportRequest(validRequest)).toEqual(validRequest)
+  it.each(['pdf', 'pptx'])('accepts a well-formed %s request', (format) => {
+    expect(parseDeckExportRequest({ ...validRequest, format })).toEqual({
+      ...validRequest,
+      format,
+    })
   })
 
   it('drops unknown properties rather than forwarding them', () => {
@@ -17,7 +20,7 @@ describe('parseDeckExportRequest', () => {
 
   it.each([
     ['a non-object', null, 'Invalid export request.'],
-    ['an unknown format', { ...validRequest, format: 'pptx' }, 'Unsupported export format.'],
+    ['an unknown format', { ...validRequest, format: 'keynote' }, 'Unsupported export format.'],
     ['a missing format', { html: '<html></html>', title: '' }, 'Unsupported export format.'],
     ['blank html', { ...validRequest, html: '   ' }, 'This deck has no content to export.'],
     ['a non-string title', { ...validRequest, title: 7 }, 'Invalid deck title.'],
@@ -61,7 +64,10 @@ describe('toExportFileStem', () => {
 })
 
 describe('exportFileName', () => {
-  it('appends the format as the extension', () => {
-    expect(exportFileName('Quarterly Review', 'pdf')).toBe('Quarterly Review.pdf')
+  it.each([
+    ['pdf', 'Quarterly Review.pdf'],
+    ['pptx', 'Quarterly Review.pptx'],
+  ] as const)('appends %s as the extension', (format, expected) => {
+    expect(exportFileName('Quarterly Review', format)).toBe(expected)
   })
 })

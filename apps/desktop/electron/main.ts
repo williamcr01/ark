@@ -20,6 +20,7 @@ import { DesktopSettingsStore } from './settings-store.ts'
 import { createElectronThumbnailRenderer } from './thumbnail-renderer.ts'
 import { createDeckExportGenerator, inspectExportedPdf } from './deck-export.ts'
 import { extractDeckScene, inspectExtractedScene } from './deck-scene.ts'
+import { inspectExportedPptx } from './deck-pptx.ts'
 import { McpManager, resolveMcpExecutableArgs } from './mcp-manager.ts'
 import { registerIpcHandlers } from './bootstrap/ipc.ts'
 import { configureApplicationMenu } from './bootstrap/menu.ts'
@@ -254,12 +255,18 @@ async function startDesktop() {
         '</body></html>',
       ].join('')
       const thumbnail = await thumbnailRenderer.render({ html: smokeDeckHtml })
-      const exported = await generateDeckExport({
+      const exportedPdf = await generateDeckExport({
         format: 'pdf',
         html: smokeDeckHtml,
         title: 'Ark desktop smoke',
       })
-      const exportReport = await inspectExportedPdf(exported)
+      const exportReport = await inspectExportedPdf(exportedPdf.output)
+      const exportedPptx = await generateDeckExport({
+        format: 'pptx',
+        html: smokeDeckHtml,
+        title: 'Ark desktop smoke',
+      })
+      const pptxReport = await inspectExportedPptx(exportedPptx.output)
       const scene = await extractDeckScene(deckRenderConfig, { html: smokeDeckHtml })
       const sceneReport = inspectExtractedScene(scene)
 
@@ -270,10 +277,11 @@ async function startDesktop() {
         !thumbnail.ok ||
         thumbnail.slides[0]?.subarray(1, 4).toString('ascii') !== 'PNG' ||
         !exportReport.ok ||
-        !sceneReport.ok
+        !sceneReport.ok ||
+        !pptxReport.ok
       ) {
         throw new Error(
-          `Desktop smoke validation failed. ${exportReport.detail} ${sceneReport.detail}`.trim(),
+          `Desktop smoke validation failed. ${exportReport.detail} ${sceneReport.detail} ${pptxReport.detail}`.trim(),
         )
       }
 

@@ -17,7 +17,7 @@ import type { McpInteractionStore } from '@ark/mcp/interactions.ts'
 import type { SecureCredentialStore } from '../credential-store.ts'
 import type { DesktopSettingsStore } from '../settings-store.ts'
 import type { McpManager } from '../mcp-manager.ts'
-import type { DeckExportRequest } from '../deck-export.ts'
+import type { DeckExportRequest, DeckExportResult } from '../deck-export.ts'
 import {
   exportDialogFilter,
   exportFileName,
@@ -43,7 +43,7 @@ export type IpcDependencies = {
   clearModelCatalogCache: () => void
   warmModelCatalog: () => Promise<unknown>
   testProviderApiKey: (provider: ProviderId, apiKey: string) => Promise<{ modelCount: number }>
-  generateDeckExport: (request: DeckExportRequest) => Promise<Buffer>
+  generateDeckExport: (request: DeckExportRequest) => Promise<DeckExportResult>
 }
 
 export function registerIpcHandlers(deps: IpcDependencies) {
@@ -215,9 +215,9 @@ export function registerIpcHandlers(deps: IpcDependencies) {
 
       // Render before touching disk: a failed export must not leave a truncated
       // or empty file where the user asked for their deck.
-      const output = await generateDeckExport(request)
+      const { output, warning } = await generateDeckExport(request)
       await writeFile(result.filePath, output)
-      return { ok: true, path: result.filePath }
+      return { ok: true, path: result.filePath, warning }
     } catch (error) {
       return {
         ok: false,

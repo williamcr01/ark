@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback, useEffectEvent } fro
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { type ChatAttachment } from '@ark/chat/chat.ts'
+import type { DeckExportFormat } from '@/lib/deck/deck-export'
 import { toast } from 'sonner'
 
 import { ChatContextChips } from '@/components/ChatContextChips'
@@ -587,15 +588,16 @@ export function useAppShell() {
     navigate('/decks/new')
   }, [navigate, newDeckAction])
 
-  const [exportingDeck, setExportingDeck] = useState(false)
+  const [exportingDeck, setExportingDeck] = useState<DeckExportFormat | false>(false)
   const handleExport = useCallback(
-    async (format: 'pdf') => {
+    async (format: DeckExportFormat) => {
       // Rendering a deck opens a hidden window per run, so one export at a
       // time: a second click would otherwise stack save dialogs and renders.
       if (exportingDeck || !deckId || !generatedHtml) return
 
-      setExportingDeck(true)
-      const pending = toast.loading('Exporting PDF...')
+      const label = format === 'pdf' ? 'PDF' : 'PowerPoint'
+      setExportingDeck(format)
+      const pending = toast.loading(`Exporting ${label}...`)
       try {
         const result = await window.arkDesktop.export.create({
           format,
@@ -603,7 +605,12 @@ export function useAppShell() {
           title: deckTitle,
         })
         if (result.ok) {
-          toast.success('PDF exported', { id: pending })
+          toast.success(
+            result.warning ? `${label} exported - ${result.warning}` : `${label} exported`,
+            {
+              id: pending,
+            },
+          )
         } else if (result.canceled) {
           toast.dismiss(pending)
         } else {

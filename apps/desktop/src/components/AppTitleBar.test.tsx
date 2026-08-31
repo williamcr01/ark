@@ -223,7 +223,7 @@ describe('AppTitleBar accessibility', () => {
   it('disables the PDF item while an export is already running', async () => {
     const user = userEvent.setup()
     const onExport = vi.fn()
-    renderTitleBar({ onExport, exportingDeck: true })
+    renderTitleBar({ onExport, exportingDeck: 'pdf' })
 
     await user.click(screen.getByRole('button', { name: 'Export deck' }))
     await user.click(screen.getByText('Exporting PDF...'))
