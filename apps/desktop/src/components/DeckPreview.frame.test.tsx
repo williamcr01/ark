@@ -293,32 +293,47 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('letterbox-fits the shared preview stage to the present viewport', () => {
+    const originalInnerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth')
+    const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight')
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1920 })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 })
 
-    const previewRef = createRef<DeckPreviewHandle>()
-    renderDeckPreview({ ...plainDeckProps, presentHandleRef: previewRef })
+    try {
+      const previewRef = createRef<DeckPreviewHandle>()
+      renderDeckPreview({ ...plainDeckProps, presentHandleRef: previewRef })
 
-    const iframe = screen.getByTitle('Generated Ark presentation preview')
-    expect(iframe).toHaveStyle({ transform: 'scale(1)' })
-    expect(iframe.parentElement?.className).toContain('max-h-full')
+      const iframe = screen.getByTitle('Generated Ark presentation preview')
+      expect(iframe).toHaveStyle({ transform: 'scale(1)' })
+      expect(iframe.parentElement?.className).toContain('max-h-full')
 
-    act(() => previewRef.current?.openPresent())
+      act(() => previewRef.current?.openPresent())
 
-    const presentScale = getPreviewFrameScale({ width: 1920, height: 1080 })
-    const presentIframe = screen.getByTitle('Generated Ark presentation preview')
-    const presentStage = presentIframe.parentElement
+      const presentScale = getPreviewFrameScale({ width: 1920, height: 1080 })
+      const presentIframe = screen.getByTitle('Generated Ark presentation preview')
+      const presentStage = presentIframe.parentElement
 
-    expect(presentScale).toBe(1.5)
-    expect(presentIframe).toHaveStyle({ transform: `scale(${presentScale})` })
-    expect(presentStage).toHaveStyle({
-      width: `${PREVIEW_FRAME_WIDTH * presentScale}px`,
-      height: `${PREVIEW_FRAME_HEIGHT * presentScale}px`,
-    })
-    expect(presentStage?.className).toContain('fixed')
-    expect(presentStage?.className).toContain('z-[60]')
-    expect(presentStage?.className).not.toContain('max-h-full')
-    expect(presentStage?.className).not.toContain('max-w-full')
+      expect(presentScale).toBe(1.5)
+      expect(presentIframe).toHaveStyle({ transform: `scale(${presentScale})` })
+      expect(presentStage).toHaveStyle({
+        width: `${PREVIEW_FRAME_WIDTH * presentScale}px`,
+        height: `${PREVIEW_FRAME_HEIGHT * presentScale}px`,
+      })
+      expect(presentStage?.className).toContain('fixed')
+      expect(presentStage?.className).toContain('z-[60]')
+      expect(presentStage?.className).not.toContain('max-h-full')
+      expect(presentStage?.className).not.toContain('max-w-full')
+    } finally {
+      if (originalInnerWidth) {
+        Object.defineProperty(window, 'innerWidth', originalInnerWidth)
+      } else {
+        Reflect.deleteProperty(window, 'innerWidth')
+      }
+      if (originalInnerHeight) {
+        Object.defineProperty(window, 'innerHeight', originalInnerHeight)
+      } else {
+        Reflect.deleteProperty(window, 'innerHeight')
+      }
+    }
   })
 
   it('hides preview chrome overlays while present mode is open', () => {
