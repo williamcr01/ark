@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useDeckEditorPatchCoordinator } from './useDeckEditorPatchCoordinator'
-import type { EditorSelectionInfo } from '@ark/editor-runtime'
+import { createEditorDeleteRequestMessage, type EditorSelectionInfo } from '@ark/editor-runtime'
 
 const selection: EditorSelectionInfo = {
   elementId: 'element-a',
@@ -297,5 +297,33 @@ describe('useDeckEditorPatchCoordinator', () => {
 
     expect(callbacks.finishLivePatch).not.toHaveBeenCalled()
     expect(callbacks.rollbackLivePatch).not.toHaveBeenCalled()
+  })
+
+  it('deletes every unlocked selected element from one delete request', async () => {
+    const callbacks = options()
+    const companion = { ...selection, elementId: 'element-b', textPreview: 'Other' }
+    renderHook(() =>
+      useDeckEditorPatchCoordinator({
+        ...callbacks,
+        lastDeleteRequest: createEditorDeleteRequestMessage('element-a', 0),
+        selections: [selection, companion],
+      }),
+    )
+
+    await waitFor(() => expect(callbacks.onPatchEditorOperations).toHaveBeenCalledOnce())
+    expect(callbacks.onPatchEditorOperations.mock.calls[0]?.[0]).toEqual([
+      {
+        op: 'delete_element',
+        elementId: 'element-a',
+        slideIndex: 0,
+        slideId: 'slide-a',
+      },
+      {
+        op: 'delete_element',
+        elementId: 'element-b',
+        slideIndex: 0,
+        slideId: 'slide-a',
+      },
+    ])
   })
 })

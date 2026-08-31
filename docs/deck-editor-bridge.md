@@ -106,12 +106,20 @@ type EditorTool = 'select' | 'text' | 'insert'
 
 #### Selection
 
-| Type                          | Payload fields                                                     | When fired                                                       | Parent behavior                                              |
-| ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------ |
-| `ark:editor-hover`            | `elementId`, `slideIndex`, `geometry?`, `slideBounds?`, `surface?` | Pointer move over the active slide (suppressed during text edit) | Draw hover chrome from the inline geometry                   |
-| `ark:editor-selection-change` | `selection: EditorSelectionInfo \| null`                           | Click select/deselect, disable, or programmatic select           | Update selection; drive overlay and **Edit text** affordance |
+| Type                          | Payload fields                                                                          | When fired                                                                    | Parent behavior                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `ark:editor-hover`            | `elementId`, `slideIndex`, `geometry?`, `slideBounds?`, `surface?`                      | Pointer move over the active slide (suppressed during text edit)              | Draw hover chrome from the inline geometry                                      |
+| `ark:editor-selection-change` | `selection: EditorSelectionInfo \| null`, optional `selections?: EditorSelectionInfo[]` | Click select/deselect, Shift/Cmd/Ctrl toggle, disable, or programmatic select | Update the selection set; drive overlay, inspector (primary), and **Edit text** |
 
 ```ts
+type EditorSelectionChangeMessage = {
+  type: 'ark:editor-selection-change'
+  /** Primary / last-interacted selection for inspector and text edit; null if empty. */
+  selection: EditorSelectionInfo | null
+  /** Full same-slide set (max 32). Omit or empty when none. */
+  selections?: EditorSelectionInfo[]
+}
+
 type EditorSelectionInfo = {
   elementId: string
   slideIndex: number
@@ -136,7 +144,7 @@ type EditorSelectionInfo = {
 }
 ```
 
-Selection candidates include text, images/SVG, links, and layout containers (`div`, non-slide `section`, lists, tables, blockquotes, `pre`, `figure`, and `hr`) with non-zero geometry. Hit-testing keeps the innermost candidate unless it belongs to a managed wrapper. Escape selects the next editable parent, then clears selection at the slide root.
+Selection candidates include text, images/SVG, links, and layout containers (`div`, non-slide `section`, lists, tables, blockquotes, `pre`, `figure`, and `hr`) with non-zero geometry. Hit-testing keeps the innermost candidate unless it belongs to a managed wrapper. Click without a modifier replaces the set with one element. Shift+click and Cmd/Ctrl+click toggle membership in the current slide's set (capped at 32); a cross-slide add is ignored. Escape cancels an in-progress transform or nudge first; if more than one element is selected it then clears the full set; otherwise it selects the next editable parent, then clears at the slide root. Resize handles stay on the primary only when exactly one element is selected. Move, nudge, and delete apply to every unlocked selected element on that slide, or are disabled with a mixed-selection error when the set includes locked or nested members. Inline text editing remains primary-only.
 
 #### Geometry
 
@@ -174,15 +182,15 @@ Clicking selected text again without moving the pointer enters inline editing. A
 
 #### Transforms
 
-| Type                           | Payload fields                                                                                                        | When fired                | Semantics                                                                           |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
-| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?`                                                      | During drag/resize/nudge  | **Uncommitted** visual update; parent may mirror in chrome but must not persist     |
-| `ark:editor-transform-commit`  | Preview fields plus `adopted?`, `cssX?`, `cssY?`, `cssWidth?`, `cssHeight?`, `slideWidth?`, `slideHeight?`, `spacer?` | Gesture or nudge complete | **Persistence trigger**; parent maps to `move_element` / `resize_element` patch ops |
-| `ark:editor-transform-cancel`  | _(none)_                                                                                                              | Gesture canceled          | Clear uncommitted preview state                                                     |
+| Type                           | Payload fields                                                                                                                                | When fired                | Semantics                                                                                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ark:editor-transform-preview` | `elementId`, `slideIndex`, `geometry`, `zIndex?`, `slideBounds?`                                                                              | During drag/resize/nudge  | **Uncommitted** visual update; parent may mirror in chrome but must not persist                                                                                         |
+| `ark:editor-transform-commit`  | Preview fields plus `adopted?`, `cssX?`, `cssY?`, `cssWidth?`, `cssHeight?`, `slideWidth?`, `slideHeight?`, `spacer?`, optional `companions?` | Gesture or nudge complete | **Persistence trigger**; parent maps to `move_element` / `resize_element` patch ops. `companions` carries the other unlocked selected elements from a group move/nudge. |
+| `ark:editor-transform-cancel`  | _(none)_                                                                                                                                      | Gesture canceled          | Clear uncommitted preview state                                                                                                                                         |
 
 Dragging or resizing any unlocked selection adopts non-absolute content by preserving its parent, freezing its measured width, and switching it to absolute positioning in the same containing-block coordinate system. On first adoption the runtime inserts an inert `data-ark-spacer` sibling that reproduces the element's flow footprint (border-box size, margins, and display) so siblings and Reveal's scrollHeight-based centering do not shift; cancel paths remove that spacer, and adopted commits carry the footprint as `spacer` for the server to persist the same placeholder. Move gestures preview with a compositor `transform` and defer adoption until commit so siblings do not reflow mid-drag; resize still adopts once the drag threshold is crossed. Existing absolute descendants use that same coordinate conversion. Commits include logical slide dimensions so Reveal's native canvas size is preserved. Spacers are excluded from selection, hover, snapping, and patch targets.
 
-Move gestures snap to slide and nearby element edges/centers; Alt disables snapping. Shift constrains move axes and preserves aspect ratio on corner resize. Escape restores the pre-gesture inline styles. Arrow keys nudge by one logical pixel (Shift: ten) and debounce into one commit. Pointer capture plus parent-window `ark:editor-transform-end` commits a gesture released outside the iframe; `lostpointercapture` after a started gesture also commits (sandbox frame edges can drop capture); only `pointercancel` and Escape cancel. After a successful live patch that stamps a new stable id, the shell posts `ark:editor-assign-id` so the live DOM matches server HTML without an iframe reload.
+Move gestures snap to slide and nearby element edges/centers; Alt disables snapping. Shift constrains move axes and preserves aspect ratio on corner resize — additive Shift/Cmd/Ctrl click is ignored while a transform is already in progress and never starts a drag. Escape restores the pre-gesture inline styles. Arrow keys nudge by one logical pixel (Shift: ten) and debounce into one commit (the full unlocked set when multi-selected). Pointer capture plus parent-window `ark:editor-transform-end` commits a gesture released outside the iframe; `lostpointercapture` after a started gesture also commits (sandbox frame edges can drop capture); only `pointercancel` and Escape cancel. After a successful live patch that stamps a new stable id, the shell posts `ark:editor-assign-id` so the live DOM matches server HTML without an iframe reload.
 
 `useDeckEditorBridge` stores preview and commit messages separately; a preview clears any pending commit and vice versa. The shell serializes manual mutations, records undo/redo snapshots, and restores the stable element ID returned by the patch response after the iframe reloads.
 
@@ -198,11 +206,11 @@ Undo during an uncommitted nudge cancels the local nudge and sends neither a tra
 
 #### Deletion and errors
 
-| Type                        | Payload fields                               | When fired                                                       | Semantics                                                               |
-| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes an unlocked selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch op after server validation  |
-| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                                         | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)` |
-| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)                  | Surface in preview chrome; optional `onEditorError` callback            |
+| Type                        | Payload fields                               | When fired                                                       | Semantics                                                                                         |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `ark:editor-delete-request` | `elementId`, `slideIndex`                    | User deletes an unlocked selection (Delete/Backspace or toolbar) | Parent should map to `delete_element` patch ops for the full unlocked set after server validation |
+| `ark:editor-insert-request` | `kind: 'text-box'`, `slideIndex`, `geometry` | Text tool draw completes                                         | Parent should map to `insert_element` with `buildTextBoxHtml(geometry)`                           |
+| `ark:editor-error`          | `message: string`, `code?: string`           | Runtime failure (missing element, locked, etc.)                  | Surface in preview chrome; optional `onEditorError` callback                                      |
 
 Known error codes from the injected runtime: `locked-element`, `non-text-element`, `missing-element`, `missing-slide`, `editor-runtime`.
 

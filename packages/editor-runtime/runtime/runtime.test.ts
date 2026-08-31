@@ -152,8 +152,22 @@ async function loadEditorRuntime(
   return { dom, messages, flushNudgeTimer, shellPort: shellPort! }
 }
 
-function pointerEvent(dom: JSDOM, type: string, pointerId: number, clientX = 0, clientY = 0) {
-  const event = new dom.window.MouseEvent(type, { bubbles: true, clientX, clientY })
+function pointerEvent(
+  dom: JSDOM,
+  type: string,
+  pointerId: number,
+  clientX = 0,
+  clientY = 0,
+  keys: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {},
+) {
+  const event = new dom.window.MouseEvent(type, {
+    bubbles: true,
+    clientX,
+    clientY,
+    shiftKey: Boolean(keys.shiftKey),
+    metaKey: Boolean(keys.metaKey),
+    ctrlKey: Boolean(keys.ctrlKey),
+  })
   Object.defineProperty(event, 'pointerId', { value: pointerId })
   return event
 }
@@ -281,6 +295,72 @@ describe('deck editor runtime script', () => {
     expect(messages.some((message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE)).toBe(
       false,
     )
+    dom.window.close()
+  })
+
+  it('toggles a same-slide selection set with Shift or Cmd/Ctrl click and posts selections', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title">Opening</h1><p data-ark-id="copy">Body</p></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    title.getBoundingClientRect = () => rect(100, 80, 400, 60)
+    copy.getBoundingClientRect = () => rect(100, 180, 400, 40)
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 190, { shiftKey: true }))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 190, { shiftKey: true }))
+
+    const last = [...messages]
+      .reverse()
+      .find((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE) as {
+      selection: { elementId: string }
+      selections: { elementId: string }[]
+    }
+    expect(last.selection.elementId).toBe('copy')
+    expect(last.selections.map((item) => item.elementId)).toEqual(['title', 'copy'])
+    expect(title.getAttribute('data-ark-editor-selected')).toBe('')
+    expect(copy.getAttribute('data-ark-editor-selected')).toBe('primary')
+
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 3, 120, 190, { metaKey: true }))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 3, 120, 190, { metaKey: true }))
+    const afterToggle = [...messages]
+      .reverse()
+      .find((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE) as {
+      selection: { elementId: string }
+      selections: { elementId: string }[]
+    }
+    expect(afterToggle.selection.elementId).toBe('title')
+    expect(afterToggle.selections.map((item) => item.elementId)).toEqual(['title'])
+    dom.window.close()
+  })
+
+  it('clears a multi-element selection set on Escape', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title">Opening</h1><p data-ark-id="copy">Body</p></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    title.getBoundingClientRect = () => rect(100, 80, 400, 60)
+    copy.getBoundingClientRect = () => rect(100, 180, 400, 40)
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 190, { ctrlKey: true }))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 190, { ctrlKey: true }))
+    messages.length = 0
+
+    slide.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(messages).toContainEqual({ type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE, selection: null })
+    expect(title.hasAttribute('data-ark-editor-selected')).toBe(false)
+    expect(copy.hasAttribute('data-ark-editor-selected')).toBe(false)
     dom.window.close()
   })
 

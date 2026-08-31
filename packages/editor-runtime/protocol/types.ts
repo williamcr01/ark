@@ -36,6 +36,9 @@ import type { NormalizedRect as EditorNormalizedRect } from '@ark/deck/document/
 
 export type { EditorNormalizedRect }
 
+/** Cap for canvas multi-select (issue #248). Enforced in the runtime and protocol guard. */
+export const MAX_EDITOR_SELECTIONS = 32
+
 export type EditorTool = 'select' | 'text' | 'insert'
 export type EditorSurface = 'light' | 'dark'
 export type EditorShortcutAction = 'undo' | 'redo' | 'duplicate'
@@ -168,7 +171,10 @@ export type EditorHoverMessage = {
 
 export type EditorSelectionChangeMessage = {
   type: typeof EDITOR_SELECTION_CHANGE_MESSAGE_TYPE
+  /** Primary / last-interacted selection for inspector and text edit; null if empty. */
   selection: EditorSelectionInfo | null
+  /** Full same-slide selection set. Omit or empty when none. Capped at MAX_EDITOR_SELECTIONS. */
+  selections?: EditorSelectionInfo[]
 }
 
 export type EditorGeometryMessage = {
@@ -207,6 +213,23 @@ export type EditorTransformPreviewMessage = {
   slideBounds?: EditorNormalizedRect
 }
 
+/** Geometry persist payload for one companion in a multi-element transform commit. */
+export type EditorTransformCompanion = {
+  elementId: string
+  slideIndex: number
+  geometry: EditorNormalizedRect
+  zIndex?: number | null
+  slideBounds?: EditorNormalizedRect
+  adopted?: true
+  cssX?: number
+  cssY?: number
+  cssWidth?: number
+  cssHeight?: number
+  slideWidth?: number
+  slideHeight?: number
+  spacer?: EditorAdoptSpacer
+}
+
 export type EditorTransformCommitMessage = {
   type: typeof EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE
   elementId: string
@@ -229,6 +252,8 @@ export type EditorTransformCommitMessage = {
   slideHeight?: number
   /** Flow footprint to persist as an inert spacer when this commit adopted the element. */
   spacer?: EditorAdoptSpacer
+  /** Other unlocked selected elements moved in the same gesture (issue #248). */
+  companions?: EditorTransformCompanion[]
 }
 
 export type EditorTransformCancelMessage = {

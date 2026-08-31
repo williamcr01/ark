@@ -8,16 +8,32 @@ export const keyboardChunk = `  function finishNudge() {
     var slide = getActiveSlide();
 
     if (slide && nudgeState.element) {
-      applyTransform(
-        nudgeState.element,
-        slide,
-        nudgeState.geometry || normalizeRect(nudgeState.element, slide),
-        false,
-        'move',
-        nudgeState.adopted,
-        nudgeState.positionContext,
-        nudgeState.cache,
-      );
+      if (nudgeState.members && nudgeState.members.length > 1) {
+        var pending = transformState;
+        transformState = {
+          kind: 'move',
+          element: nudgeState.element,
+          members: nudgeState.members,
+          startGeometry: nudgeState.startGeometry || nudgeState.geometry,
+          adopted: nudgeState.adopted,
+          positionContext: nudgeState.positionContext,
+          cache: nudgeState.cache,
+          lastGeometry: nudgeState.geometry,
+        };
+        commitGroupMove(transformState, slide);
+        transformState = pending;
+      } else {
+        applyTransform(
+          nudgeState.element,
+          slide,
+          nudgeState.geometry || normalizeRect(nudgeState.element, slide),
+          false,
+          'move',
+          nudgeState.adopted,
+          nudgeState.positionContext,
+          nudgeState.cache,
+        );
+      }
     }
 
     nudgeState = null;
@@ -31,9 +47,7 @@ export const keyboardChunk = `  function finishNudge() {
     var state = nudgeState;
     nudgeState = null;
     window.clearTimeout(state.timer);
-    clearLiveTransform(state.element, state.cache);
-    restoreInlineStyle(state.element, state.snapshot);
-    cleanupAdoptSideEffects(state.element, state.cache);
+    restoreTransformMembers(state);
     clearGuides();
     postToParent({ type: C.TRANSFORM_CANCEL });
 
@@ -49,18 +63,48 @@ export const keyboardChunk = `  function finishNudge() {
       return false;
     }
 
+    if (isSelectionUnsafe()) {
+      postError(
+        'Move, nudge, and delete need every selected element to be unlocked and not nested.',
+        'mixed-selection',
+      );
+      return false;
+    }
+
     if (!nudgeState || nudgeState.element !== selectedElement) {
       finishNudge();
       // Keyboard nudges adopt immediately (one discrete reflow). Pointer drags
       // defer adoption and use transform previews instead.
       var prepared = prepareMove(selectedElement, slide, true);
+      var members = [];
+
+      if (selectedElements.length > 1) {
+        for (var ni = 0; ni < selectedElements.length; ni++) {
+          var memberPrepared = selectedElements[ni] === selectedElement
+            ? prepared
+            : prepareMove(selectedElements[ni], slide, true);
+          members.push({
+            element: selectedElements[ni],
+            startGeometry: memberPrepared.geometry,
+            snapshot: memberPrepared.snapshot,
+            adopted: memberPrepared.adopted,
+            logicalWidth: memberPrepared.logicalWidth,
+            positionContext: memberPrepared.positionContext,
+            cache: memberPrepared.cache,
+            lastGeometry: memberPrepared.geometry,
+          });
+        }
+      }
+
       nudgeState = {
         element: selectedElement,
         adopted: prepared.adopted,
         geometry: prepared.geometry,
+        startGeometry: prepared.geometry,
         snapshot: prepared.snapshot,
         positionContext: prepared.positionContext,
         cache: prepared.cache,
+        members: members,
         timer: null,
       };
     }
@@ -80,16 +124,32 @@ export const keyboardChunk = `  function finishNudge() {
     if (event.key === 'ArrowUp') geometry.y -= amount / slideHeight;
     if (event.key === 'ArrowDown') geometry.y += amount / slideHeight;
 
-    nudgeState.geometry = applyTransform(
-      selectedElement,
-      slide,
-      geometry,
-      true,
-      'move',
-      nudgeState.adopted,
-      nudgeState.positionContext,
-      nudgeState.cache,
-    );
+    if (nudgeState.members && nudgeState.members.length > 1) {
+      nudgeState.geometry = applyGroupMove(
+        {
+          element: nudgeState.element,
+          members: nudgeState.members,
+          startGeometry: nudgeState.startGeometry,
+          adopted: nudgeState.adopted,
+          positionContext: nudgeState.positionContext,
+          cache: nudgeState.cache,
+        },
+        slide,
+        geometry,
+        true,
+      );
+    } else {
+      nudgeState.geometry = applyTransform(
+        selectedElement,
+        slide,
+        geometry,
+        true,
+        'move',
+        nudgeState.adopted,
+        nudgeState.positionContext,
+        nudgeState.cache,
+      );
+    }
     if (nudgeState.adopted && !nudgeState.layoutCorrectionScheduled) {
       nudgeState.layoutCorrectionScheduled = true;
       var pendingNudgeState = nudgeState;
@@ -120,13 +180,7 @@ export const keyboardChunk = `  function finishNudge() {
     }
 
     cancelTransformRaf();
-
-    if (transformState.element) {
-      clearLiveTransform(transformState.element, transformState.cache);
-      restoreInlineStyle(transformState.element, transformState.snapshot);
-      cleanupAdoptSideEffects(transformState.element, transformState.cache);
-    }
-
+    restoreTransformMembers(transformState);
     transformState = null;
     clearMarquee();
     clearGuides();
@@ -206,7 +260,12 @@ export const keyboardChunk = `  function finishNudge() {
       }
 
       if (!cancelTransform(slide)) {
-        selectParent(slide);
+        if (selectedElements.length > 1) {
+          setSelectedElement(null, slide, currentSlideIndex);
+          postSelection(null, slide, currentSlideIndex);
+        } else {
+          selectParent(slide);
+        }
       }
 
       return;
@@ -226,7 +285,16 @@ export const keyboardChunk = `  function finishNudge() {
     }
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && selectedElement) {
-      if (selectedElement.getAttribute(C.LOCKED_ATTR) === 'true') {
+      if (isSelectionUnsafe() || selectedElement.getAttribute(C.LOCKED_ATTR) === 'true') {
+        if (selectedElements.length > 1) {
+          event.preventDefault();
+          event.stopPropagation();
+          postError(
+            'Move, nudge, and delete need every selected element to be unlocked and not nested.',
+            'mixed-selection',
+          );
+        }
+
         return;
       }
 

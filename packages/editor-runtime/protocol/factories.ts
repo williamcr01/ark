@@ -150,8 +150,13 @@ export function createEditorShortcutMessage(action: EditorShortcutAction): Edito
 
 export function createEditorSelectionChangeMessage(
   selection: EditorSelectionInfo | null,
+  selections?: EditorSelectionInfo[],
 ): EditorSelectionChangeMessage {
-  return { type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE, selection }
+  if (!selection || !selections || selections.length === 0) {
+    return { type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE, selection }
+  }
+
+  return { type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE, selection, selections }
 }
 
 export function createEditorGeometryMessage(

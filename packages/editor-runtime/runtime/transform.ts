@@ -15,7 +15,7 @@ export const transformChunk = `  function isNonComposableTransform(value) {
     element.removeAttribute('data-ark-editor-live-transform');
   }
 
-  function applyLiveMovePreview(element, slide, geometry, startGeometry, positionContext, cache) {
+  function applyLiveMovePreview(element, slide, geometry, startGeometry, positionContext, cache, silent) {
     var rect = clampRect(geometry);
     var slideRect = cache.slideRect;
     var dx = (rect.x - startGeometry.x) * slideRect.width / positionContext.scaleX;
@@ -27,19 +27,21 @@ export const transformChunk = `  function isNonComposableTransform(value) {
     element.setAttribute('data-ark-editor-live-transform', '');
     element.style.willChange = 'transform';
     element.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)' + base;
-    postToParent({
-      type: C.TRANSFORM_PREVIEW,
-      elementId: resolveElementId(element, slide, currentSlideIndex),
-      slideIndex: currentSlideIndex,
-      geometry: rect,
-      zIndex: cache.zIndex,
-      slideBounds: cache.slideBounds,
-    });
-    updateResizeHandles(element, slide, rect, cache);
+    if (!silent) {
+      postToParent({
+        type: C.TRANSFORM_PREVIEW,
+        elementId: resolveElementId(element, slide, currentSlideIndex),
+        slideIndex: currentSlideIndex,
+        geometry: rect,
+        zIndex: cache.zIndex,
+        slideBounds: cache.slideBounds,
+      });
+      updateResizeHandles(element, slide, rect, cache);
+    }
     return rect;
   }
 
-  function applyTransform(element, slide, geometry, preview, mode, adopted, positionContext, cache) {
+  function applyTransform(element, slide, geometry, preview, mode, adopted, positionContext, cache, silent) {
     var slideRect = (cache && cache.slideRect) || getSlideCoordinateRect(slide);
     var rect = clampRect(geometry);
 
@@ -55,6 +57,7 @@ export const transformChunk = `  function isNonComposableTransform(value) {
         cache.startGeometry,
         positionContext,
         cache,
+        silent,
       );
     }
 
@@ -95,20 +98,21 @@ export const transformChunk = `  function isNonComposableTransform(value) {
     }
 
     if (preview) {
-      postToParent({
-        type: C.TRANSFORM_PREVIEW,
-        elementId: resolveElementId(element, slide, currentSlideIndex),
-        slideIndex: currentSlideIndex,
-        geometry: rect,
-        zIndex: cache && cache.zIndex != null ? cache.zIndex : readZIndex(element),
-        slideBounds: (cache && cache.slideBounds) || normalizeSlideBounds(slide),
-      });
-      updateResizeHandles(element, slide, rect, cache);
+      if (!silent) {
+        postToParent({
+          type: C.TRANSFORM_PREVIEW,
+          elementId: resolveElementId(element, slide, currentSlideIndex),
+          slideIndex: currentSlideIndex,
+          geometry: rect,
+          zIndex: cache && cache.zIndex != null ? cache.zIndex : readZIndex(element),
+          slideBounds: (cache && cache.slideBounds) || normalizeSlideBounds(slide),
+        });
+        updateResizeHandles(element, slide, rect, cache);
+      }
     } else {
       var logicalSlideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide);
       var logicalSlideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide);
-      postToParent({
-        type: C.TRANSFORM_COMMIT,
+      var commitPayload = {
         elementId: resolveElementId(element, slide, currentSlideIndex),
         slideIndex: currentSlideIndex,
         geometry: rect,
@@ -126,8 +130,45 @@ export const transformChunk = `  function isNonComposableTransform(value) {
         slideWidth: logicalSlideWidth,
         slideHeight: logicalSlideHeight,
         spacer: adopted && spacerFootprint ? spacerFootprint : undefined,
-      });
-      refreshSelectionChrome(element, slide, currentSlideIndex);
+      };
+
+      if (cache) {
+        cache.commitPayload = commitPayload;
+      }
+
+      if (!silent) {
+        var postedCommit = { type: C.TRANSFORM_COMMIT };
+        for (var commitKey in commitPayload) {
+          if (Object.prototype.hasOwnProperty.call(commitPayload, commitKey)) {
+            postedCommit[commitKey] = commitPayload[commitKey];
+          }
+        }
+
+        if (
+          transformState &&
+          transformState.members &&
+          transformState.members.length > 1 &&
+          element === transformState.element
+        ) {
+          var companions = [];
+
+          for (var m = 0; m < transformState.members.length; m++) {
+            var memberPayload =
+              transformState.members[m].cache && transformState.members[m].cache.commitPayload;
+
+            if (memberPayload && transformState.members[m].element !== element) {
+              companions.push(memberPayload);
+            }
+          }
+
+          if (companions.length) {
+            postedCommit.companions = companions;
+          }
+        }
+
+        postToParent(postedCommit);
+        refreshSelectionChrome(element, slide, currentSlideIndex);
+      }
     }
 
     return rect;
@@ -291,5 +332,121 @@ export const transformChunk = `  function isNonComposableTransform(value) {
   function readContainingBlockScale(element, slide) {
     var context = readPositionContext(element, slide);
     return { x: context.scaleX, y: context.scaleY };
+  }
+
+  function restoreTransformMembers(state) {
+    if (!state) {
+      return;
+    }
+
+    var members = state.members && state.members.length ? state.members : null;
+
+    if (members) {
+      for (var i = 0; i < members.length; i++) {
+        clearLiveTransform(members[i].element, members[i].cache);
+        restoreInlineStyle(members[i].element, members[i].snapshot);
+        cleanupAdoptSideEffects(members[i].element, members[i].cache);
+      }
+
+      return;
+    }
+
+    if (state.element) {
+      clearLiveTransform(state.element, state.cache);
+      restoreInlineStyle(state.element, state.snapshot);
+      cleanupAdoptSideEffects(state.element, state.cache);
+    }
+  }
+
+  function applyGroupMove(state, slide, snappedRect, preview) {
+    var deltaX = snappedRect.x - state.startGeometry.x;
+    var deltaY = snappedRect.y - state.startGeometry.y;
+    var members = state.members && state.members.length ? state.members : null;
+    var primaryRect = applyTransform(
+      state.element,
+      slide,
+      snappedRect,
+      preview,
+      'move',
+      state.adopted,
+      state.positionContext,
+      state.cache,
+      false,
+    );
+
+    if (!members) {
+      return primaryRect;
+    }
+
+    for (var i = 0; i < members.length; i++) {
+      if (members[i].element === state.element) {
+        members[i].lastGeometry = primaryRect;
+        continue;
+      }
+
+      members[i].lastGeometry = applyTransform(
+        members[i].element,
+        slide,
+        {
+          x: members[i].startGeometry.x + deltaX,
+          y: members[i].startGeometry.y + deltaY,
+          width: members[i].startGeometry.width,
+          height: members[i].startGeometry.height,
+        },
+        preview,
+        'move',
+        members[i].adopted,
+        members[i].positionContext,
+        members[i].cache,
+        true,
+      );
+    }
+
+    return primaryRect;
+  }
+
+  function commitGroupMove(state, slide) {
+    var members = state.members && state.members.length ? state.members : null;
+    var finalGeometry = state.lastGeometry || normalizeRect(state.element, slide);
+
+    if (members) {
+      var deltaX = finalGeometry.x - state.startGeometry.x;
+      var deltaY = finalGeometry.y - state.startGeometry.y;
+
+      for (var i = 0; i < members.length; i++) {
+        if (members[i].element === state.element) {
+          continue;
+        }
+
+        applyTransform(
+          members[i].element,
+          slide,
+          members[i].lastGeometry || {
+            x: members[i].startGeometry.x + deltaX,
+            y: members[i].startGeometry.y + deltaY,
+            width: members[i].startGeometry.width,
+            height: members[i].startGeometry.height,
+          },
+          false,
+          'move',
+          members[i].adopted,
+          members[i].positionContext,
+          members[i].cache,
+          true,
+        );
+      }
+    }
+
+    applyTransform(
+      state.element,
+      slide,
+      finalGeometry,
+      false,
+      state.kind,
+      state.adopted,
+      state.positionContext,
+      state.cache,
+      false,
+    );
   }
 `

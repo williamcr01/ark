@@ -44,15 +44,22 @@ export const pointerChunk = `  function cancelTransformRaf() {
 
         // Authored-transform moves use the left/top preview path, so adopt at
         // the drag threshold to freeze width before absolute positioning.
-        if (transformState.adopted && !cache.liveTransform) {
-          adoptMove(
-            transformState.element,
-            slide,
-            transformState.startGeometry,
-            transformState.logicalWidth,
-            transformState.positionContext,
-            cache,
-          );
+        var moveMembers =
+          transformState.members && transformState.members.length
+            ? transformState.members
+            : [{ element: transformState.element, adopted: transformState.adopted, cache: cache, startGeometry: transformState.startGeometry, logicalWidth: transformState.logicalWidth, positionContext: transformState.positionContext }];
+
+        for (var mi = 0; mi < moveMembers.length; mi++) {
+          if (moveMembers[mi].adopted && !(moveMembers[mi].cache && moveMembers[mi].cache.liveTransform)) {
+            adoptMove(
+              moveMembers[mi].element,
+              slide,
+              moveMembers[mi].startGeometry,
+              moveMembers[mi].logicalWidth,
+              moveMembers[mi].positionContext,
+              moveMembers[mi].cache,
+            );
+          }
         }
 
         transformState.started = true;
@@ -74,16 +81,21 @@ export const pointerChunk = `  function cancelTransformRaf() {
         width: transformState.startGeometry.width,
         height: transformState.startGeometry.height,
       }, transformState.snapRects, slide, pointer.altKey, constrainedAxis, cache);
-      transformState.lastGeometry = applyTransform(
-        transformState.element,
-        slide,
-        snapped.rect,
-        true,
-        'move',
-        transformState.adopted,
-        transformState.positionContext,
-        cache,
-      );
+
+      if (transformState.members && transformState.members.length > 1) {
+        transformState.lastGeometry = applyGroupMove(transformState, slide, snapped.rect, true);
+      } else {
+        transformState.lastGeometry = applyTransform(
+          transformState.element,
+          slide,
+          snapped.rect,
+          true,
+          'move',
+          transformState.adopted,
+          transformState.positionContext,
+          cache,
+        );
+      }
       applySnapGuides(slide, snapped.guides, cache);
       return;
     }
@@ -269,7 +281,12 @@ export const pointerChunk = `  function cancelTransformRaf() {
 
     var handle = findResizeHandle(event.target);
 
-    if (handle && selectedElement && selectedElement.getAttribute(C.LOCKED_ATTR) !== 'true') {
+    if (
+      handle &&
+      selectedElement &&
+      selectedElements.length === 1 &&
+      selectedElement.getAttribute(C.LOCKED_ATTR) !== 'true'
+    ) {
       event.preventDefault();
       event.stopPropagation();
       // Defer adoption until the pointer moves past the click threshold so a
@@ -302,10 +319,15 @@ export const pointerChunk = `  function cancelTransformRaf() {
 
     if (!target) {
       // Empty slide / non-editable chrome: deselect like PowerPoint.
+      // Modifier+empty keeps the current set (additive select is a no-op).
       event.preventDefault();
       event.stopPropagation();
-      setSelectedElement(null, slide, currentSlideIndex);
-      postSelection(null, slide, currentSlideIndex);
+
+      if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        setSelectedElement(null, slide, currentSlideIndex);
+        postSelection(null, slide, currentSlideIndex);
+      }
+
       postToParent({
         type: C.HOVER,
         slideIndex: currentSlideIndex,
@@ -316,16 +338,70 @@ export const pointerChunk = `  function cancelTransformRaf() {
 
     event.preventDefault();
     event.stopPropagation();
-    var editOnClick = target === selectedElement && isTextEditableElement(target);
-    setSelectedElement(target, slide, currentSlideIndex);
-    postSelection(target, slide, currentSlideIndex);
+    var additive = Boolean(event.shiftKey || event.metaKey || event.ctrlKey);
+
+    if (additive) {
+      toggleSelectedElement(target, slide, currentSlideIndex);
+      postSelection(selectedElement, slide, currentSlideIndex);
+      return;
+    }
+
+    if (!isSelectionMember(target)) {
+      setSelectedElement(target, slide, currentSlideIndex);
+      postSelection(target, slide, currentSlideIndex);
+    } else if (target !== selectedElement) {
+      setSelectedElements(selectedElements, target, slide, currentSlideIndex);
+      postSelection(target, slide, currentSlideIndex);
+    }
+
+    var editOnClick = target === selectedElement && selectedElements.length === 1 && isTextEditableElement(target);
+
+    if (isSelectionUnsafe()) {
+      if (selectedElements.length > 1) {
+        postError(
+          'Move, nudge, and delete need every selected element to be unlocked and not nested.',
+          'mixed-selection',
+        );
+      }
+
+      return;
+    }
 
     if (target.getAttribute(C.LOCKED_ATTR) !== 'true') {
       var prepared = prepareMove(target, slide, false);
+      var members = [];
+
+      if (selectedElements.length > 1) {
+        for (var si = 0; si < selectedElements.length; si++) {
+          var memberPrepared = selectedElements[si] === target
+            ? { geometry: prepared.geometry, snapshot: prepared.snapshot, adopted: prepared.adopted, logicalWidth: prepared.logicalWidth, positionContext: prepared.positionContext, cache: prepared.cache }
+            : prepareMove(selectedElements[si], slide, false);
+          members.push({
+            element: selectedElements[si],
+            startGeometry: memberPrepared.geometry,
+            snapshot: memberPrepared.snapshot,
+            adopted: memberPrepared.adopted,
+            logicalWidth: memberPrepared.logicalWidth,
+            positionContext: memberPrepared.positionContext,
+            cache: Object.assign({}, memberPrepared.cache, {
+              liveTransform:
+                !memberPrepared.cache.authoredTransform ||
+                Boolean(
+                  memberPrepared.cache.liveTransformBase &&
+                    !isNonComposableTransform(memberPrepared.cache.liveTransformBase),
+                ),
+              startGeometry: memberPrepared.geometry,
+            }),
+            lastGeometry: memberPrepared.geometry,
+          });
+        }
+      }
+
       transformState = {
         kind: 'move',
         pointerId: event.pointerId,
         element: target,
+        members: members,
         startPoint: pointerFromCache(event.clientX, event.clientY, prepared.cache, slide),
         startGeometry: prepared.geometry,
         snapshot: prepared.snapshot,
@@ -344,7 +420,7 @@ export const pointerChunk = `  function cancelTransformRaf() {
             ),
         }),
         started: false,
-        snapRects: collectSnapRects(slide, target),
+        snapRects: collectSnapRects(slide, selectedElements.length ? selectedElements : target),
         editOnClick: editOnClick,
         pendingPointer: null,
         rafId: 0,
@@ -364,12 +440,7 @@ export const pointerChunk = `  function cancelTransformRaf() {
     // Flush needs a live slide (showGuide → getSlideCoordinateElement). Restore
     // the snapshot when the slide is gone instead of flushing into null.
     if (!slide) {
-      if (transformState.element) {
-        clearLiveTransform(transformState.element, transformState.cache);
-        restoreInlineStyle(transformState.element, transformState.snapshot);
-        cleanupAdoptSideEffects(transformState.element, transformState.cache);
-      }
-
+      restoreTransformMembers(transformState);
       transformState = null;
       clearEditorOverlays();
       postToParent({ type: C.TRANSFORM_CANCEL });
@@ -421,19 +492,24 @@ export const pointerChunk = `  function cancelTransformRaf() {
       }
 
       var finalGeometry = transformState.lastGeometry || normalizeRect(transformState.element, slide);
+      transformState.lastGeometry = finalGeometry;
 
       // Always emit a commit (even for a no-op drag) so the shell clears
       // transformPreview / isTransformingRef; empty patch ops are a no-op.
-      applyTransform(
-        transformState.element,
-        slide,
-        finalGeometry,
-        false,
-        transformState.kind,
-        transformState.adopted,
-        transformState.positionContext,
-        transformState.cache,
-      );
+      if (transformState.kind === 'move' && transformState.members && transformState.members.length > 1) {
+        commitGroupMove(transformState, slide);
+      } else {
+        applyTransform(
+          transformState.element,
+          slide,
+          finalGeometry,
+          false,
+          transformState.kind,
+          transformState.adopted,
+          transformState.positionContext,
+          transformState.cache,
+        );
+      }
       clearGuides();
       transformState = null;
       return true;
@@ -469,13 +545,7 @@ export const pointerChunk = `  function cancelTransformRaf() {
     }
 
     cancelTransformRaf();
-
-    if (transformState.element) {
-      clearLiveTransform(transformState.element, transformState.cache);
-      restoreInlineStyle(transformState.element, transformState.snapshot);
-      cleanupAdoptSideEffects(transformState.element, transformState.cache);
-    }
-
+    restoreTransformMembers(transformState);
     transformState = null;
     clearEditorOverlays();
     postToParent({ type: C.TRANSFORM_CANCEL });

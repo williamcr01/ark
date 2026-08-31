@@ -1,17 +1,29 @@
 /** Snapping a moving rect to its neighbours, and drawing the guides for it. */
-export const snapChunk = `  function collectSnapRects(slide, element) {
+export const snapChunk = `  function collectSnapRects(slide, excluded) {
+    var excludedList = excluded && excluded.length !== undefined ? excluded : excluded ? [excluded] : [];
     var descendants = slide.querySelectorAll('*');
     var candidates = [];
+
+    function isExcluded(candidate) {
+      for (var i = 0; i < excludedList.length; i++) {
+        var element = excludedList[i];
+
+        if (
+          candidate === element ||
+          (element && element.contains && element.contains(candidate)) ||
+          (element && candidate.contains && candidate.contains(element))
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    }
 
     for (var i = 0; i < descendants.length && candidates.length < 60; i++) {
       var candidate = descendants[i];
 
-      if (
-        candidate !== element &&
-        !element.contains(candidate) &&
-        !candidate.contains(element) &&
-        isEditableCandidate(candidate, slide)
-      ) {
+      if (!isExcluded(candidate) && isEditableCandidate(candidate, slide)) {
         candidates.push(candidate);
       }
     }
