@@ -9,13 +9,13 @@ const SOURCE_LABELS: Record<DocumentHistorySource, string> = {
   restore: 'Restore',
 }
 
-export function formatHistoryByteSize(byteSize: number) {
+function formatHistoryByteSize(byteSize: number) {
   if (byteSize < 1024) return `${byteSize} B`
   if (byteSize < 1024 * 1024) return `${(byteSize / 1024).toFixed(1)} KB`
   return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function formatHistoryTimestamp(createdAt: string) {
+function formatHistoryTimestamp(createdAt: string) {
   const parsed = Date.parse(createdAt)
   if (Number.isNaN(parsed)) return createdAt
   return new Date(parsed).toLocaleString(undefined, {
@@ -24,7 +24,7 @@ export function formatHistoryTimestamp(createdAt: string) {
   })
 }
 
-export function historySourceLabel(source: DocumentHistorySource) {
+function historySourceLabel(source: DocumentHistorySource) {
   return SOURCE_LABELS[source]
 }
 
