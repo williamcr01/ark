@@ -15,6 +15,7 @@ dist-ssr
 .eslintcache
 *.local
 .worktrees/
+.claude/worktrees/
 .env
 .env.*
 
