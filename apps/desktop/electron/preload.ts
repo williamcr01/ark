@@ -64,4 +64,10 @@ contextBridge.exposeInMainWorld('arkDesktop', {
     chooseDirectory: () => ipcRenderer.invoke('files:choose-directory'),
     reveal: (path: string) => ipcRenderer.invoke('files:reveal', path),
   },
+  edit: {
+    setHistoryState: (state: { canUndo: boolean; canRedo: boolean }) =>
+      ipcRenderer.send('edit:history-state', state),
+    onHistoryAction: (listener: (action: 'undo' | 'redo') => void) =>
+      subscribe('edit:history-action', listener),
+  },
 })

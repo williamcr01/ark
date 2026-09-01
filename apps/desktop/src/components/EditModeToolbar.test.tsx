@@ -150,6 +150,11 @@ describe('EditModeToolbar', () => {
 
     expect(onUndo).toHaveBeenCalledTimes(1)
     expect(onRedo).toHaveBeenCalledTimes(1)
+    expect(undoButton).toHaveAttribute('aria-keyshortcuts', 'Control+Z Meta+Z')
+    expect(redoButton).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+Shift+Z Meta+Shift+Z Control+Y',
+    )
   })
 
   it('disables history actions while saving or editing text', () => {

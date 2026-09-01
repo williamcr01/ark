@@ -78,6 +78,7 @@ type RuntimeErrorNotice = {
 
 export type DeckPreviewHandle = {
   openPresent: () => void
+  getActiveSlideIndex: () => number
 }
 
 export type DeckPreviewProps = {
@@ -745,7 +746,10 @@ function useDeckPreviewShell({
       return
     }
 
-    presentHandleRef.current = { openPresent: openPresentMode }
+    presentHandleRef.current = {
+      openPresent: openPresentMode,
+      getActiveSlideIndex: () => activeSlideIndexRef.current,
+    }
     return () => {
       presentHandleRef.current = null
     }

@@ -28,6 +28,7 @@ vi.mock('@/lib/api/generation-job-api', async (importOriginal) => {
 
 const { startGenerationJob, fetchGenerationJob, cancelGenerationJob, retryGenerationJob } =
   await import('@/lib/api/generation-job-api')
+const { toast } = await import('sonner')
 
 const startGenerationJobMock = vi.mocked(startGenerationJob)
 const fetchGenerationJobMock = vi.mocked(fetchGenerationJob)
@@ -95,6 +96,7 @@ type Harness = {
   loadModels: ReturnType<typeof vi.fn>
   onError: ReturnType<typeof vi.fn>
   onGenerationStart: ReturnType<typeof vi.fn>
+  onGenerationSucceeded: ReturnType<typeof vi.fn>
 }
 
 function makeHarness(
@@ -112,6 +114,7 @@ function makeHarness(
   const loadModels = vi.fn(async () => undefined)
   const onError = vi.fn()
   const onGenerationStart = vi.fn()
+  const onGenerationSucceeded = vi.fn()
 
   const options: UseDeckGenerationFlowOptions = {
     deck: {
@@ -132,6 +135,7 @@ function makeHarness(
     loadModels,
     onError,
     onGenerationStart,
+    onGenerationSucceeded,
   }
 
   return {
@@ -143,6 +147,7 @@ function makeHarness(
     loadModels,
     onError,
     onGenerationStart,
+    onGenerationSucceeded,
   }
 }
 
@@ -186,6 +191,183 @@ describe('useDeckGenerationFlow', () => {
     })
     expect(result.current.generationError).toBe('')
     expect(result.current.recentGenerationJobId).toBe('job-1')
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html></html>',
+      deckChanged: false,
+    })
+  })
+
+  it('reports one agent-turn history change when generation writes new HTML', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.refreshActiveDeck.mockResolvedValue({ html: '<html>generated</html>' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html>generated</html>',
+      deckChanged: true,
+    })
+  })
+
+  it('reports a refresh failure and records no undo step when refresh throws', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.refreshActiveDeck.mockRejectedValue(new Error('stale request'))
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    // No after-snapshot exists, so there is nothing reversible to push onto the
+    // stack: an entry with beforeHtml === afterHtml would be dropped anyway.
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html></html>',
+      deckChanged: false,
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      'Deck generated but could not be refreshed in the editor',
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('records no undo step for a job recovered after a reload with no send-time snapshot', async () => {
+    // The job finished while the app was closed, so the deck already holds the
+    // agent's write when it is recovered. beforeHtml must come from the loaded
+    // deck, never from an empty send-time snapshot that Undo would apply.
+    const harness = makeHarness({ deckId: 'deck-1' })
+    harness.options.deck.generatedHtml = '<html>recovered</html>'
+    harness.refreshActiveDeck.mockResolvedValue({ html: '<html>recovered</html>' })
+    localStorage.setItem(`${STORAGE_PREFIX}deck-1`, 'job-stored')
+    fetchGenerationJobMock
+      .mockResolvedValueOnce(makeJob({ id: 'job-stored', status: 'running' }))
+      .mockResolvedValue(
+        makeJob({
+          id: 'job-stored',
+          status: 'succeeded',
+          result: { ...succeededResult, documentRevision: 2 },
+        }),
+      )
+
+    renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await waitFor(() => {
+      expect(harness.onGenerationSucceeded).toHaveBeenCalled()
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html>recovered</html>',
+      afterHtml: '<html>recovered</html>',
+      deckChanged: false,
+    })
+  })
+
+  it('treats a superseded refresh as a successful run with no undo step', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.refreshActiveDeck.mockResolvedValue(null)
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    // refreshActiveDeck resolves to null when a newer save or a deck switch
+    // supersedes the refresh. Nothing failed, so the run reports success.
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html></html>',
+      deckChanged: false,
+    })
+    expect(toast.error).not.toHaveBeenCalledWith(
+      'Deck generated but could not be refreshed in the editor',
+    )
+    expect(toast.success).toHaveBeenCalled()
+  })
+
+  it('snapshots the undo beforeHtml at job completion, not at send time', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.options.deck.generatedHtml = '<html>at-start</html>'
+    harness.refreshActiveDeck.mockResolvedValue({ html: '<html>generated</html>' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    let resolveFetch: (job: GenerationJobApi) => void = () => {}
+    fetchGenerationJobMock.mockImplementation(
+      () =>
+        new Promise<GenerationJobApi>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+
+    const { result, rerender } = renderHook(
+      (options: UseDeckGenerationFlowOptions) => useDeckGenerationFlow(options),
+      { initialProps: harness.options },
+    )
+
+    act(() => {
+      void result.current.generateDeck('make slides')
+    })
+
+    await waitFor(() => {
+      expect(startGenerationJobMock).toHaveBeenCalled()
+    })
+
+    rerender({
+      ...harness.options,
+      deck: {
+        ...harness.options.deck,
+        generatedHtml: '<html>changed-during-job</html>',
+      },
+    })
+
+    await act(async () => {
+      resolveFetch(
+        makeJob({
+          id: 'job-1',
+          status: 'succeeded',
+          result: { ...succeededResult, documentRevision: 2 },
+        }),
+      )
+      await Promise.resolve()
+    })
+
+    // An edit that landed during the job belongs to its own stack entry, so it
+    // must not be folded into the agent turn's beforeHtml.
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html>changed-during-job</html>',
+      afterHtml: '<html>generated</html>',
+      deckChanged: true,
+    })
   })
 
   it('correlates recentGenerationJobId only to a succeeded job for the active revision', async () => {

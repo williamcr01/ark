@@ -57,6 +57,7 @@ type ToolbarButtonProps = {
   children: ReactNode
   disabled?: boolean
   label: string
+  shortcuts?: string
   onClick?: () => void
   toggle?: boolean
 }
@@ -66,6 +67,7 @@ function ToolbarButton({
   children,
   disabled = false,
   label,
+  shortcuts,
   onClick,
   toggle = false,
 }: ToolbarButtonProps) {
@@ -73,6 +75,7 @@ function ToolbarButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          aria-keyshortcuts={shortcuts}
           aria-label={label}
           aria-pressed={toggle ? active : undefined}
           className={cn(
@@ -306,10 +309,20 @@ export function EditModeToolbar({
       />
 
       <ButtonGroup aria-label="History" className="shrink-0">
-        <ToolbarButton disabled={undoDisabled} label="Undo" onClick={onUndo}>
+        <ToolbarButton
+          disabled={undoDisabled}
+          label="Undo"
+          onClick={onUndo}
+          shortcuts="Control+Z Meta+Z"
+        >
           <Undo2Icon className="size-3.5" />
         </ToolbarButton>
-        <ToolbarButton disabled={redoDisabled} label="Redo" onClick={onRedo}>
+        <ToolbarButton
+          disabled={redoDisabled}
+          label="Redo"
+          onClick={onRedo}
+          shortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+        >
           <Redo2Icon className="size-3.5" />
         </ToolbarButton>
       </ButtonGroup>

@@ -177,9 +177,11 @@ Schema notes:
 ## Removed features (accepted regressions)
 
 - **Named checkpoints and infinite version history stay out of scope.** The old version
-  list/rollback UI is gone. Session undo/redo is still the in-memory `useDeckEditHistory` stack
-  (frontend, issue #299 / PR #305). Durable restore lives in bounded `document_history` inside
-  the `.ark` file.
+  list/rollback UI is gone. Session undo/redo is the in-memory `useDeckEditHistory` stack
+  (frontend, issue #299 / PR #305): one step per committed editor gesture, one step per
+  in-app agent turn, consecutive MCP writes in a turn coalesce to one step. Autosave ticks
+  and byte-identical HTML are not steps. Close or crash drops the stack. Durable restore
+  lives in bounded `document_history` inside the `.ark` file.
 - **Generation-job persistence is removed.** The wire API already strips request/result HTML (`toGenerationJobApi`); jobs are in-memory, terminal deck payloads are trimmed, and old terminal metadata is evicted.
 - **No recovery directory.** Every deck is a real `.ark` from creation (default directory, collision-safe name), so there is no "unsaved work without a location" state. SQLite's journal protects committed state; the debounce window (~300 ms) is accepted loss.
 - **No named checkpoints in v1.**

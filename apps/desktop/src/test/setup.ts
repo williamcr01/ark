@@ -135,6 +135,10 @@ if (isJsdomEnvironment) {
         chooseDirectory: vi.fn(),
         reveal: vi.fn(),
       },
+      edit: {
+        setHistoryState: vi.fn(),
+        onHistoryAction: vi.fn().mockReturnValue(() => undefined),
+      },
     }
   })
 

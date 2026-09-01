@@ -25,6 +25,20 @@ type DeckPersistenceSlice = {
   refreshActiveDeck: (targetDeckId?: string) => Promise<unknown>
 }
 
+export type GenerationHistoryChange = {
+  beforeHtml: string
+  afterHtml: string
+  deckChanged: boolean
+}
+
+function readRefreshedDeckHtml(value: unknown): string | null {
+  if (value && typeof value === 'object' && 'html' in value) {
+    const html = (value as { html?: unknown }).html
+    return typeof html === 'string' ? html : null
+  }
+  return null
+}
+
 type ChatSessionSlice = {
   messages: ChatMessage[]
   appendMessage: (message: ChatMessage, targetDeckId?: string | null) => Promise<void>
@@ -57,8 +71,12 @@ export type UseDeckGenerationFlowOptions = {
   onError: (message: string) => void
   /** Clears any pending attachment error when a new generation starts. */
   onGenerationStart?: () => void
-  /** Called when generation succeeds and the deck is about to be refreshed. */
-  onGenerationSucceeded?: () => void
+  /**
+   * Called after a successful generation that is not waiting on the user.
+   * `deckChanged` stays true when the job wrote the deck even if refresh
+   * fails, so the session undo stack can still record the agent-turn step.
+   */
+  onGenerationSucceeded?: (change: GenerationHistoryChange) => void
 }
 
 /**
@@ -141,7 +159,12 @@ export function useDeckGenerationFlow({
 
   const [isPreviewUpdating, setIsPreviewUpdating] = useState(false)
   const recoveredJobIdsRef = useRef(new Set<string>())
+  const generatedHtmlRef = useRef(generatedHtml)
   const [modelFailure, setModelFailure] = useState(false)
+
+  useEffect(() => {
+    generatedHtmlRef.current = generatedHtml
+  }, [generatedHtml])
 
   const appendFailureChatMessage = useCallback(
     async (status: 'failed' | 'canceled', message: string, isModelFailure: boolean) => {
@@ -191,8 +214,6 @@ export function useDeckGenerationFlow({
         return
       }
 
-      onGenerationSucceeded?.()
-
       // Land the assistant turn before deck refresh so the live bubble does not
       // disappear into an empty gap while the preview/deck id updates.
       const assistantMessage = buildSucceededAssistantMessage(outcome)
@@ -204,16 +225,42 @@ export function useDeckGenerationFlow({
         return [...current, assistantMessage]
       })
 
+      // Snapshot the deck as the shell last saw it, immediately before the
+      // agent write lands in the refresh below. Taking it at send time instead
+      // would fold any edit made during the job into the agent's undo step, and
+      // would leave a recovered job (resumed after a reload, with no send in
+      // this session) recording an empty `beforeHtml` that Undo would apply.
+      const beforeHtml = generatedHtmlRef.current
       if (outcome.deckChanged) {
         setIsPreviewUpdating(true)
       }
 
+      let refreshedHtml: string | null = null
+      let refreshFailed = false
       try {
-        await refreshActiveDeck(outcome.job.result?.deckId)
+        const refreshed = await refreshActiveDeck(outcome.job.result?.deckId)
+        refreshedHtml = readRefreshedDeckHtml(refreshed)
       } catch {
-        toast.error('Deck generated but could not be refreshed in the editor')
+        refreshFailed = true
       } finally {
         setIsPreviewUpdating((current) => (outcome.deckChanged ? false : current))
+      }
+
+      // `refreshActiveDeck` resolves to null when the refresh was superseded by
+      // a newer save or by a deck switch. The run still succeeded; there is
+      // just no snapshot to record. Only a thrown refresh is a real failure.
+      const afterHtml = refreshedHtml ?? beforeHtml
+      const deckChanged = Boolean(outcome.deckChanged && afterHtml !== beforeHtml)
+
+      onGenerationSucceeded?.({
+        beforeHtml,
+        afterHtml,
+        deckChanged,
+      })
+
+      if (refreshFailed) {
+        toast.error('Deck generated but could not be refreshed in the editor')
+        return
       }
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
