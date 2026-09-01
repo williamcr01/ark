@@ -82,7 +82,7 @@ export function registerRoutes(app: Express, services: ApiServices, options: Rou
   app.use(createThumbnailsRouter({ deckStore, thumbnailService }))
   app.use(createDeckChatRouter({ deckStore, chatStore }))
   app.use(createDeckThreadsRouter(chatStore))
-  app.use(createWorkspacesRouter(workspaceStore))
+  app.use(createWorkspacesRouter(workspaceStore, { onDocumentPersisted: notifyDocumentPersisted }))
   app.use(
     createGenerationJobsRouter({
       generationJobs,

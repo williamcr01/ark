@@ -20,8 +20,11 @@ import {
   assetListResponseSchema,
   createDeckResponseSchema,
   deckChatResponseSchema,
+  deckConflictErrorResponseSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  documentHistoryListResponseSchema,
+  restoreDocumentHistoryResponseSchema,
   deckThumbnailsResponseSchema,
   deckValidationErrorResponseSchema,
   generationJobResponseSchema,
@@ -252,6 +255,42 @@ describe('HTTP API contract drift prevention', () => {
 
     expect(missingResponse.status).toBe(404)
     assertApiContract(simpleErrorResponseSchema, missingBody)
+  })
+
+  it('matches document history list and restore contracts', async () => {
+    const { baseUrl } = await startContractApi()
+    const deck = await createDeck(baseUrl)
+
+    const updatedHtml = sampleHtml.replace('Hello', 'Edited')
+    const updateResponse = await fetch(`${baseUrl}/api/decks/${deck.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: updatedHtml, expectedDocumentRevision: 1 }),
+    })
+    expect(updateResponse.status).toBe(200)
+
+    const listResponse = await fetch(`${baseUrl}/api/decks/${deck.id}/history`)
+    const listBody = await listResponse.json()
+    expect(listResponse.status).toBe(200)
+    assertApiContract(documentHistoryListResponseSchema, listBody)
+
+    const conflictResponse = await fetch(`${baseUrl}/api/decks/${deck.id}/history/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 1, expectedDocumentRevision: 1 }),
+    })
+    const conflictBody = await conflictResponse.json()
+    expect(conflictResponse.status).toBe(409)
+    assertApiContract(deckConflictErrorResponseSchema, conflictBody)
+
+    const restoreResponse = await fetch(`${baseUrl}/api/decks/${deck.id}/history/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 1, expectedDocumentRevision: 2 }),
+    })
+    const restoreBody = await restoreResponse.json()
+    expect(restoreResponse.status).toBe(200)
+    assertApiContract(restoreDocumentHistoryResponseSchema, restoreBody)
   })
 
   it('returns 404 when a recent workspace file was deleted outside Ark', async () => {

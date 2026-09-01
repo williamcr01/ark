@@ -169,7 +169,10 @@ export function createDecksRouter(deps: {
       }
 
       const runtimeManifest = buildDeckRuntimeManifestFromValidation(html, validation)
-      const deck = await deckStore.updateDeck(id, html, { expectedDocumentRevision })
+      const deck = await deckStore.updateDeck(id, html, {
+        expectedDocumentRevision,
+        historySource: 'editor',
+      })
 
       if (!deck) {
         response.status(404).json({ error: 'Deck not found.' })
@@ -254,6 +257,7 @@ export function createDecksRouter(deps: {
 
         const deck = await deckStore.updateDeck(id, patched.html, {
           expectedDocumentRevision: parsedBody.data.expectedDocumentRevision,
+          historySource: 'editor',
         })
 
         if (!deck) {

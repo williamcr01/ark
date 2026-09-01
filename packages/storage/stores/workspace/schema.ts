@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 
 import { DEFAULT_DECK_ORIGIN } from '@ark/deck/document/origin.ts'
+import { DOCUMENT_HISTORY_TABLE, migrateDocumentHistory } from './history.ts'
 
 export const ARK_WORKSPACE_FORMAT_VERSION = 1
 export const ARK_APPLICATION_ID = 0x41524b31
@@ -80,6 +81,7 @@ export const SCHEMA = `
     updated_at TEXT NOT NULL,
     PRIMARY KEY (slide_hash, renderer_version, manifest_hash)
   );
+  ${DOCUMENT_HISTORY_TABLE}
 `
 
 export function contentHash(html: string) {
@@ -96,8 +98,8 @@ export function configure(database: DatabaseSync) {
 }
 
 /**
- * Bring an existing `.ark` file up to the current schema. Additive columns with
- * defaults keep the format version stable: older Ark builds select named columns
+ * Bring an existing `.ark` file up to the current schema. Additive columns and
+ * tables keep the format version stable: older Ark builds select named columns
  * and simply ignore what they do not know about.
  */
 export function migrate(database: DatabaseSync) {
@@ -108,4 +110,6 @@ export function migrate(database: DatabaseSync) {
       `ALTER TABLE workspace ADD COLUMN origin TEXT NOT NULL DEFAULT '${DEFAULT_DECK_ORIGIN}'`,
     )
   }
+
+  migrateDocumentHistory(database)
 }
