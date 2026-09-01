@@ -32,6 +32,7 @@ export default function App() {
     handleDuplicate,
     handleExport,
     exportingDeck,
+    exportLint,
     handleHtmlUpload,
     handlePptxUpload,
     handleMove,
@@ -82,6 +83,7 @@ export default function App() {
           onDownload={handleDownload}
           onExport={handleExport}
           exportingDeck={exportingDeck}
+          exportLint={exportLint}
           onAgentInteractionsInModalChange={setAgentInteractionsInModal}
           onHtmlUpload={handleHtmlUpload}
           onPptxUpload={handlePptxUpload}
