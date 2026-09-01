@@ -1201,6 +1201,30 @@ describe('applyDeckPatches element operations', () => {
     })
   })
 
+  it('moves one managed element on a 500-element slide without rewriting siblings', () => {
+    const elements = Array.from({ length: 500 }, (_, index) => {
+      const left = 10 + (index % 20) * 40
+      const top = 10 + Math.floor(index / 20) * 30
+      return `<div data-ark-id="ark-el-${index}" data-ark-managed="true" style="position:absolute;left:${left}px;top:${top}px;width:80px;height:40px">Item ${index}</div>`
+    }).join('\n')
+    const html = `<!DOCTYPE html><html><head><title>Dense</title></head><body><section class="slide">${elements}</section></body></html>`
+
+    const result = applyDeckPatches(html, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
+    ])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    expect(result.html).toContain(`left: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(result.html).toContain(`top: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(result.html).toContain('data-ark-id="ark-el-499"')
+    expect(result.html.match(/data-ark-id="ark-el-\d+"/g)).toHaveLength(500)
+    expect(result.changedElementIds).toEqual(['ark-el-0'])
+  })
+
   it('can mix slide and element operations in one request', () => {
     const result = applyDeckPatches(arkManagedDeck, [
       { op: 'update_slide_title', slideIndex: 1, title: 'Renamed second slide' },

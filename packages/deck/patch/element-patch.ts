@@ -16,7 +16,7 @@ import { isExternalUrl } from '@ark/deck/document/network.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import {
   createElementId,
-  parseEditableElementsForSlide,
+  parseEditableElement,
   stampEditableElementIds,
 } from './editable-elements.ts'
 
@@ -261,9 +261,8 @@ function resolveElementTarget(
   return matches[0]!
 }
 
-function getEditableElementMeta(slide: Element, slideIndex: number, elementId: string) {
-  const group = parseEditableElementsForSlide(slide, slideIndex)
-  return group.elements.find((element) => element.id === elementId) ?? null
+function getEditableElementMeta(resolved: ResolvedElement) {
+  return parseEditableElement(resolved.element, resolved.slide, resolved.slideIndex)
 }
 
 function isUnsafeElement(element: Element) {
@@ -415,7 +414,7 @@ function assertElementPatchable(
     return null
   }
 
-  const meta = getEditableElementMeta(resolved.slide, resolved.slideIndex, elementId)
+  const meta = getEditableElementMeta(resolved)
 
   if (!meta) {
     return {

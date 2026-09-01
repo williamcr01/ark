@@ -646,6 +646,20 @@ function classifyElement(
   }
 }
 
+/**
+ * Classify a single resolved DOM node. Element patches only need lock/eligibility
+ * for the target they already resolved; walking every descendant on a large slide
+ * is the editor-commit hotspot (issue #291).
+ */
+export function parseEditableElement(
+  element: Element,
+  slide: Element,
+  slideIndex: number,
+): ParsedEditableElement | null {
+  const { slideId } = resolveSlideId(slide, slideIndex)
+  return classifyElement(element, slide, slideIndex, slideId)
+}
+
 export function parseEditableElementsForSlide(
   slide: Element,
   slideIndex: number,
@@ -653,12 +667,12 @@ export function parseEditableElementsForSlide(
   const { slideId, slideIdTransient } = resolveSlideId(slide, slideIndex)
   const elements: ParsedEditableElement[] = []
 
-  for (const element of slide.querySelectorAll('*')) {
-    if (!slide.contains(element)) {
+  for (const candidate of slide.querySelectorAll('*')) {
+    if (!slide.contains(candidate)) {
       continue
     }
 
-    const parsed = classifyElement(element, slide, slideIndex, slideId)
+    const parsed = classifyElement(candidate, slide, slideIndex, slideId)
 
     if (parsed) {
       elements.push(parsed)
