@@ -275,7 +275,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
     })
   }
 
-  const externalUrls = collectExternalUrls(doc)
+  const externalUrls = collectExternalUrls(doc, rawHtml)
   const runtimeAssetReferences = collectRuntimeAssetReferences(doc)
   const libraryMarkers = readDeckRuntimeLibraryMarkers(doc)
   const addonMarkers = readDeckRuntimeAddonMarkers(doc)

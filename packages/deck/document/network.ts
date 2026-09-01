@@ -59,7 +59,28 @@ export function collectUrlsFromCss(cssText: string | null | undefined) {
   return urls
 }
 
-export function collectExternalUrls(doc: Document) {
+const SOURCE_HTTP_URL_PATTERN = /https?:\/\//i
+const SOURCE_CSS_URL_FUNCTION_PATTERN = /url\s*\(/i
+
+/**
+ * Cheap source-text gate for `collectExternalUrls`. A miss means the DOM walk
+ * cannot find http(s) src/href or CSS url() values, so the editor patch path
+ * can skip querySelectorAll over hundreds of styled elements (issue #291).
+ * Callers that omit `rawHtml` keep the full walk.
+ */
+export function sourceMayContainExternalUrls(html: string | undefined) {
+  if (html === undefined) {
+    return true
+  }
+
+  return SOURCE_HTTP_URL_PATTERN.test(html) || SOURCE_CSS_URL_FUNCTION_PATTERN.test(html)
+}
+
+export function collectExternalUrls(doc: Document, rawHtml?: string) {
+  if (!sourceMayContainExternalUrls(rawHtml)) {
+    return []
+  }
+
   const urls = new Set<string>()
 
   for (const element of doc.querySelectorAll('[src], [href]')) {
