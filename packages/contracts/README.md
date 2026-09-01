@@ -22,7 +22,7 @@ The contracts layer depends on **Zod** and portable shared helpers only. It must
 | Generation     | `POST/GET /api/generation-jobs/:id`, `POST .../cancel`, `POST .../retry` (includes `assetIds` on job start)              | `generation-jobs.ts`     |
 | Preview        | `POST /api/preview-sessions`, `GET /api/preview-sessions/:token`                                                         | `preview.ts`             |
 | Thumbnails     | `GET /api/decks/:id/thumbnails`, `GET /api/decks/:id/thumbnails/:documentRevision/:slideIndex.png`                       | `thumbnails.ts`          |
-| Workspaces     | `POST /api/workspaces/open`, locate/recent removal, Save As, Move, Duplicate, document history list/restore             | `decks.ts`               |
+| Workspaces     | `POST /api/workspaces/open`, locate/recent removal, Save As, Move, Duplicate, document history list/restore              | `decks.ts`               |
 | Runtime errors | `POST /api/runtime-errors`                                                                                               | `runtime-errors.ts`      |
 | Runtimes       | `GET /api/runtimes`, `GET /api/runtimes/:runtimeId/:version/:assetPath`                                                  | `runtimes.ts`            |
 | Asset proxy    | `GET /api/deck-assets?url=...`                                                                                           | `deck-asset-proxy.ts`    |
