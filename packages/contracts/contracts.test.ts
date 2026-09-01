@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { apiErrorPayloadSchema, parseRequestBody, simpleErrorResponseSchema } from './common.ts'
 import {
+  DOCUMENT_HISTORY_SOURCES,
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
@@ -487,29 +488,38 @@ describe('shared API contracts', () => {
   })
 
   it('parses document history list and restore requests', () => {
+    expect(DOCUMENT_HISTORY_SOURCES).toEqual([
+      'editor',
+      'agent',
+      'mcp',
+      'import',
+      'create',
+      'restore',
+    ])
     expect(
       documentHistoryListResponseSchema.parse({
+        history: DOCUMENT_HISTORY_SOURCES.map((source, index) => ({
+          revision: index + 1,
+          source,
+          createdAt: '2026-09-01T00:00:00.000Z',
+          byteSize: 120,
+        })),
+      }),
+    ).toMatchObject({
+      history: DOCUMENT_HISTORY_SOURCES.map((source) => expect.objectContaining({ source })),
+    })
+    expect(
+      documentHistoryListResponseSchema.safeParse({
         history: [
           {
             revision: 1,
-            source: 'create',
+            source: 'generation_job',
             createdAt: '2026-09-01T00:00:00.000Z',
             byteSize: 120,
           },
-          {
-            revision: 2,
-            source: 'agent',
-            createdAt: '2026-09-01T00:01:00.000Z',
-            byteSize: 140,
-          },
         ],
-      }),
-    ).toMatchObject({
-      history: [
-        expect.objectContaining({ source: 'create' }),
-        expect.objectContaining({ source: 'agent' }),
-      ],
-    })
+      }).success,
+    ).toBe(false)
 
     expect(
       restoreDocumentHistoryRequestSchema.parse({

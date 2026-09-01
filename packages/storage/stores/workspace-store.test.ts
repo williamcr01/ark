@@ -9,7 +9,10 @@ import { createAssetStore } from './asset-store.ts'
 import { createChatStore } from './chat-store.ts'
 import { createGenerationJobStore } from './generation-job-store.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
-import { DOCUMENT_HISTORY_MAX_ENTRIES } from '../records/document-history.ts'
+import {
+  DOCUMENT_HISTORY_MAX_BYTES,
+  DOCUMENT_HISTORY_MAX_ENTRIES,
+} from '../records/document-history.ts'
 
 const html = `<!DOCTYPE html><html><head><title>Workspace</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 
@@ -87,9 +90,13 @@ describe('WorkspaceStore file operations', () => {
 
     expect(created.origin).toBe('blank')
 
-    // Autosaving identical HTML is not authoring.
+    // Autosaving identical HTML is not authoring, and is not a history row.
     const resaved = await workspaces.updateDocument(created.id, blank, 1)
     expect(resaved?.origin).toBe('blank')
+    expect(resaved?.documentRevision).toBe(2)
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+    ])
 
     const written = await workspaces.updateDocument(created.id, html, 2)
     expect(written?.origin).toBe('authored')
@@ -749,6 +756,8 @@ describe('WorkspaceStore document history', () => {
     await workspaces.updateDocument(created.id, edited, 1, [], 'editor')
     await workspaces.updateDocument(created.id, generated, 2, [], 'agent')
     await workspaces.updateDocument(created.id, generated, 3, [], 'editor')
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'MCP'), 4, [], 'mcp')
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'Import'), 5, [], 'import')
 
     workspaces.close()
     const onDisk = readHistoryFromFile(created.path)
@@ -756,6 +765,8 @@ describe('WorkspaceStore document history', () => {
       { revision: 1, source: 'create' },
       { revision: 2, source: 'editor' },
       { revision: 3, source: 'agent' },
+      { revision: 5, source: 'mcp' },
+      { revision: 6, source: 'import' },
     ])
     expect(onDisk.some((row) => row.html.includes('Generated'))).toBe(true)
     expect(onDisk[2]?.html).not.toContain('sk-test')
@@ -765,6 +776,8 @@ describe('WorkspaceStore document history', () => {
       expect.objectContaining({ revision: 1, source: 'create' }),
       expect.objectContaining({ revision: 2, source: 'editor' }),
       expect.objectContaining({ revision: 3, source: 'agent' }),
+      expect.objectContaining({ revision: 5, source: 'mcp' }),
+      expect.objectContaining({ revision: 6, source: 'import' }),
     ])
   })
 
@@ -783,6 +796,16 @@ describe('WorkspaceStore document history', () => {
       expect.objectContaining({ revision: 1, source: 'create' }),
     ])
     expect(readHistoryFromFile(created.path)[0]?.html).toContain('Hello')
+
+    const migrated = new DatabaseSync(created.path, { readOnly: true })
+    try {
+      expect(migrated.prepare('SELECT format_version FROM workspace').get()).toEqual({
+        format_version: 1,
+      })
+      expect(migrated.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 })
+    } finally {
+      migrated.close()
+    }
   })
 
   it('evicts the oldest snapshots once the entry cap is exceeded', async () => {
@@ -800,6 +823,27 @@ describe('WorkspaceStore document history', () => {
     expect(readHistoryFromFile(created.path)).toHaveLength(DOCUMENT_HISTORY_MAX_ENTRIES)
     expect(readHistoryFromFile(created.path).some((row) => row.html.includes('Hello</h1>'))).toBe(
       false,
+    )
+  })
+
+  it('evicts the oldest snapshots once stored HTML exceeds 8 MiB', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const payload = (label: string) =>
+      `<!DOCTYPE html><html><head><title>${label}</title></head><body><section class="slide"><h1>${'x'.repeat(5 * 1024 * 1024)}</h1></section></body></html>`
+
+    await workspaces.updateDocument(created.id, payload('A'), 1, [], 'editor')
+    await workspaces.updateDocument(created.id, payload('B'), 2, [], 'editor')
+
+    const history = await workspaces.listDocumentHistory(created.id)
+    expect(history).toEqual([expect.objectContaining({ revision: 3, source: 'editor' })])
+    const onDisk = readHistoryFromFile(created.path)
+    expect(onDisk).toHaveLength(1)
+    expect(onDisk[0]).toEqual(
+      expect.objectContaining({ revision: 3, html: expect.stringContaining('<title>B</title>') }),
+    )
+    expect(onDisk.reduce((sum, row) => sum + row.byte_size, 0)).toBeLessThanOrEqual(
+      DOCUMENT_HISTORY_MAX_BYTES,
     )
   })
 
@@ -825,9 +869,27 @@ describe('WorkspaceStore document history', () => {
       expect.objectContaining({ revision: 3, source: 'restore' }),
     ])
 
+    const sameHtml = await workspaces.restoreDocument(created.id, 1, 3)
+    expect(sameHtml).toMatchObject({
+      documentRevision: 4,
+      html: expect.stringContaining('Hello'),
+    })
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+      expect.objectContaining({ revision: 3, source: 'restore' }),
+    ])
+
     await expect(
       workspaces.updateDocument(created.id, html.replace('Hello', 'Stale'), 2),
-    ).rejects.toMatchObject({ code: 'document_conflict', currentDocumentRevision: 3 })
+    ).rejects.toMatchObject({ code: 'document_conflict', currentDocumentRevision: 4 })
+
+    workspaces.close()
+    store = createWorkspaceStore(root)
+    await expect(store.open(created.path)).resolves.toMatchObject({
+      documentRevision: 4,
+      html: expect.stringContaining('Hello'),
+    })
   })
 
   it('copies history with the .ark file and starts Duplicate from the current document only', async () => {
@@ -837,6 +899,7 @@ describe('WorkspaceStore document history', () => {
     const sourcePath = created.path
 
     const copy = await workspaces.duplicate(created.id, 'presentation')
+    expect(copy!.id).not.toBe(created.id)
     const copyHistory = readHistoryFromFile(copy!.path)
     expect(copyHistory).toEqual([
       expect.objectContaining({
@@ -864,6 +927,7 @@ describe('WorkspaceStore document history', () => {
     if (typeof sqlite.backup === 'function') {
       const viaBackup = path.join(root, 'BackedUp.ark')
       const saved = await store.saveAs(reopened.id, viaBackup)
+      expect(saved!.id).toBe(reopened.id)
       expect(readHistoryFromFile(saved!.path).map((row) => row.source)).toEqual([
         'create',
         'editor',
