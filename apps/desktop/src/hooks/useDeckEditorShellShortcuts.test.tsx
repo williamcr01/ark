@@ -67,6 +67,25 @@ describe('useDeckEditorShellShortcuts', () => {
       ),
     )
     expect(callbacks.onRedo).toHaveBeenCalledTimes(2)
+
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'z', metaKey: true, cancelable: true }),
+      ),
+    )
+    expect(callbacks.onUndo).toHaveBeenCalledTimes(2)
+
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'z',
+          metaKey: true,
+          shiftKey: true,
+          cancelable: true,
+        }),
+      ),
+    )
+    expect(callbacks.onRedo).toHaveBeenCalledTimes(3)
   })
 
   it('does not treat Shift without Cmd/Ctrl as undo or redo', () => {

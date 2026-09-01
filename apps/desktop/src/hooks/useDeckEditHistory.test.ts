@@ -68,12 +68,16 @@ describe('recordDeckEdit coalescing', () => {
   it('keeps one stack entry per committed editor gesture', () => {
     const afterMove = recordDeckEdit(EMPTY_HISTORY_STATE, makeManualEntry('move'))
     const afterResize = recordDeckEdit(afterMove, makeManualEntry('resize'))
+    const afterNudge = recordDeckEdit(afterResize, makeManualEntry('nudge'))
+    const afterText = recordDeckEdit(afterNudge, makeManualEntry('text'))
 
-    expect(afterResize.stack).toHaveLength(2)
-    expect(afterResize.pointer).toBe(1)
-    expect(afterResize.stack.map((entry) => entry.afterHtml)).toEqual([
+    expect(afterText.stack).toHaveLength(4)
+    expect(afterText.pointer).toBe(3)
+    expect(afterText.stack.map((entry) => entry.afterHtml)).toEqual([
       '<after-move>',
       '<after-resize>',
+      '<after-nudge>',
+      '<after-text>',
     ])
   })
 
