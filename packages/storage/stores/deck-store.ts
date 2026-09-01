@@ -77,6 +77,7 @@ export function createDeckStore(
         extracted.html,
         options.expectedDocumentRevision,
         [...(options.embeddedAssets ?? []), ...extracted.assets],
+        options.historySource,
       )
       return workspace ? toStoredDeck(workspace) : null
     },

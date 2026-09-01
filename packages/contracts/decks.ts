@@ -24,6 +24,7 @@ import {
   deckSummarySchema,
   storedDeckSchema,
 } from '@ark/storage/records/stored-deck.ts'
+import { documentHistorySummarySchema } from '@ark/storage/records/document-history.ts'
 
 const deckRuntimeManifestSchema: z.ZodType<DeckRuntimeManifest> = z
   .object({
@@ -172,3 +173,35 @@ export { deckPatchRequestSchema } from '@ark/deck/patch/patch-request.ts'
 export type { DeckPatchRequest } from '@ark/deck/patch/patch-request.ts'
 
 export { extractDeckTitle, normalizeDeckTitle } from '@ark/deck/document/title.ts'
+
+export {
+  DOCUMENT_HISTORY_SOURCES,
+  documentHistorySourceSchema,
+  documentHistorySummarySchema,
+} from '@ark/storage/records/document-history.ts'
+export type {
+  DocumentHistorySource,
+  DocumentHistorySummary,
+} from '@ark/storage/records/document-history.ts'
+
+export const documentHistoryListResponseSchema = withRequestId({
+  history: z.array(documentHistorySummarySchema),
+})
+
+export type DocumentHistoryListResponse = z.infer<typeof documentHistoryListResponseSchema>
+
+export const restoreDocumentHistoryRequestSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    expectedDocumentRevision: z.number().int().min(1),
+  })
+  .strict()
+
+export type RestoreDocumentHistoryRequest = z.infer<typeof restoreDocumentHistoryRequestSchema>
+
+export const restoreDocumentHistoryResponseSchema = withRequestId({
+  deck: storedDeckSchema,
+  validation: deckValidationReportSchema,
+})
+
+export type RestoreDocumentHistoryResponse = z.infer<typeof restoreDocumentHistoryResponseSchema>

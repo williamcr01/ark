@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import { apiErrorPayloadSchema, parseRequestBody, simpleErrorResponseSchema } from './common.ts'
 import {
+  DOCUMENT_HISTORY_SOURCES,
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  documentHistoryListResponseSchema,
   renameDeckRequestSchema,
+  restoreDocumentHistoryRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
 import { MAX_EDITOR_SELECTIONS as chatEditorSelectionCap } from '@ark/chat/chat.ts'
@@ -651,5 +654,55 @@ describe('shared API contracts', () => {
     })
 
     expect(parsed.ok).toBe(false)
+  })
+
+  it('parses document history list and restore requests', () => {
+    expect(DOCUMENT_HISTORY_SOURCES).toEqual([
+      'editor',
+      'agent',
+      'mcp',
+      'import',
+      'create',
+      'restore',
+    ])
+    expect(
+      documentHistoryListResponseSchema.parse({
+        history: DOCUMENT_HISTORY_SOURCES.map((source, index) => ({
+          revision: index + 1,
+          source,
+          createdAt: '2026-09-01T00:00:00.000Z',
+          byteSize: 120,
+        })),
+      }),
+    ).toMatchObject({
+      history: DOCUMENT_HISTORY_SOURCES.map((source) => expect.objectContaining({ source })),
+    })
+    expect(
+      documentHistoryListResponseSchema.safeParse({
+        history: [
+          {
+            revision: 1,
+            source: 'generation_job',
+            createdAt: '2026-09-01T00:00:00.000Z',
+            byteSize: 120,
+          },
+        ],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      restoreDocumentHistoryRequestSchema.parse({
+        revision: 1,
+        expectedDocumentRevision: 3,
+      }),
+    ).toEqual({ revision: 1, expectedDocumentRevision: 3 })
+
+    expect(
+      parseRequestBody(restoreDocumentHistoryRequestSchema, {
+        revision: 1,
+        expectedDocumentRevision: 3,
+        html: '<script>nope</script>',
+      }).ok,
+    ).toBe(false)
   })
 })

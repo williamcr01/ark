@@ -7,6 +7,7 @@ export { isValidDeckId } from '@ark/deck/document/id.ts'
 export { extractDeckTitle, normalizeDeckTitle } from '@ark/deck/document/title.ts'
 
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
+import type { DocumentHistorySource } from './document-history.ts'
 import type { DeckSummary, StoredDeck } from './stored-deck.ts'
 
 export type DeckSaveOptions = {
@@ -17,6 +18,8 @@ export type DeckSaveOptions = {
 
 export type DeckUpdateOptions = DeckSaveOptions & {
   expectedDocumentRevision: number
+  /** Who committed this write. Omitted writes are tagged `editor`. */
+  historySource?: DocumentHistorySource
 }
 
 export type DeckStore = {
