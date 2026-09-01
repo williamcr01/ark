@@ -44,19 +44,34 @@ function isExternalProvenance(
   return provenance.source === 'external'
 }
 
+/** Idle gap after the last MCP write in a turn; a later turn starts a new step. */
+export const EXTERNAL_COALESCE_IDLE_MS = 2_000
+
 /**
- * Consecutive MCP writes in one turn collapse to a single stack entry.
- * Manual gestures and in-app agent jobs stay one entry each.
+ * Consecutive MCP writes from the same client within a short idle window
+ * collapse to a single stack entry (one turn = one undo). Manual gestures
+ * and in-app agent jobs stay one entry each. HTML adjacency is not a
+ * merge key: that would glue hour-apart turns and merge across undo.
  */
 function canCoalesceExternalWrites(
   previous: DeckEditHistoryEntry,
   next: DeckEditHistoryEntry,
 ): boolean {
-  return (
-    isExternalProvenance(previous.provenance) &&
-    isExternalProvenance(next.provenance) &&
-    previous.afterHtml === next.beforeHtml
-  )
+  if (!isExternalProvenance(previous.provenance) || !isExternalProvenance(next.provenance)) {
+    return false
+  }
+
+  if (previous.provenance.clientName !== next.provenance.clientName) {
+    return false
+  }
+
+  const previousAt = Date.parse(previous.provenance.createdAt)
+  const nextAt = Date.parse(next.provenance.createdAt)
+  if (!Number.isFinite(previousAt) || !Number.isFinite(nextAt)) {
+    return false
+  }
+
+  return nextAt - previousAt <= EXTERNAL_COALESCE_IDLE_MS
 }
 
 /**
@@ -71,7 +86,8 @@ export function recordDeckEdit(state: HistoryState, entry: DeckEditHistoryEntry)
 
   const retained = state.stack.slice(0, state.pointer + 1)
   const previous = retained.at(-1)
-  if (previous && canCoalesceExternalWrites(previous, entry)) {
+  const atLiveTip = state.pointer === state.stack.length - 1
+  if (atLiveTip && previous && canCoalesceExternalWrites(previous, entry)) {
     const merged: DeckEditHistoryEntry = {
       ...previous,
       afterHtml: entry.afterHtml,

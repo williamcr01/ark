@@ -222,6 +222,15 @@ export function useAppShell() {
     return () => window.removeEventListener('keydown', handleChatShortcut)
   }, [])
   const deckPreviewRef = useRef<DeckPreviewHandle>(null)
+  const editorSelectionRef = useRef(editorSelection)
+  const initialSlideIndexRef = useRef(initialSlideIndex)
+  const readHistorySlideIndex = useCallback(
+    () =>
+      editorSelectionRef.current?.slideIndex ??
+      deckPreviewRef.current?.getActiveSlideIndex() ??
+      initialSlideIndexRef.current,
+    [],
+  )
   const [error, setError] = useState('')
   const [attachmentError, setAttachmentError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -312,7 +321,7 @@ export function useAppShell() {
         recordEditHistory({
           beforeHtml: change.beforeHtml,
           afterHtml: change.afterHtml,
-          slideIndex: 0,
+          slideIndex: readHistorySlideIndex(),
           provenance: {
             source: 'agent',
             summary: 'Applied agent write',
@@ -320,7 +329,7 @@ export function useAppShell() {
           },
         })
       },
-      [recordEditHistory],
+      [readHistorySlideIndex, recordEditHistory],
     ),
   })
 
@@ -354,6 +363,14 @@ export function useAppShell() {
   useEffect(() => {
     generatedHtmlRef.current = generatedHtml
   }, [generatedHtml])
+
+  useEffect(() => {
+    editorSelectionRef.current = editorSelection
+  }, [editorSelection])
+
+  useEffect(() => {
+    initialSlideIndexRef.current = initialSlideIndex
+  }, [initialSlideIndex])
 
   useEffect(() => {
     documentRevisionRef.current = documentRevision
@@ -417,7 +434,7 @@ export function useAppShell() {
         recordEditHistory({
           beforeHtml,
           afterHtml: deck.html,
-          slideIndex: 0,
+          slideIndex: readHistorySlideIndex(),
           provenance: {
             source: 'external',
             clientName: update.clientName,
@@ -439,7 +456,7 @@ export function useAppShell() {
         applyingExternalUpdateRef.current = false
         setExternalUpdateTick((value) => value + 1)
       })
-  }, [externalUpdateTick, recordEditHistory, refreshActiveDeck])
+  }, [externalUpdateTick, readHistorySlideIndex, recordEditHistory, refreshActiveDeck])
 
   // Clear undo/redo history whenever the active deck changes (switch, new deck,
   // delete). Upload still resets; an applied agent turn records one stack entry.

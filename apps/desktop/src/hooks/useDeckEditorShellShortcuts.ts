@@ -82,7 +82,7 @@ export function useDeckEditorShellShortcuts({
     const historyModifier = event.metaKey || event.ctrlKey
 
     if (historyModifier && !event.altKey && (event.key === 'z' || event.key === 'Z')) {
-      if (textEditActive || isTextEditSaving) {
+      if (textEditActive || isTextEditSaving || isEditableClipboardTarget(event.target)) {
         return
       }
 
@@ -100,7 +100,13 @@ export function useDeckEditorShellShortcuts({
       !event.shiftKey &&
       (event.key === 'y' || event.key === 'Y')
     ) {
-      if (!textEditActive && !isTextEditSaving && canRedo && onRedo) {
+      if (
+        !textEditActive &&
+        !isTextEditSaving &&
+        !isEditableClipboardTarget(event.target) &&
+        canRedo &&
+        onRedo
+      ) {
         event.preventDefault()
         onRedo()
       }
@@ -145,7 +151,12 @@ export function useDeckEditorShellShortcuts({
   }, [active])
 
   const handleHistoryAction = useEffectEvent((action: 'undo' | 'redo') => {
-    if (!active || textEditActive || isTextEditSaving) {
+    if (
+      !active ||
+      textEditActive ||
+      isTextEditSaving ||
+      isEditableClipboardTarget(document.activeElement)
+    ) {
       return
     }
     if (action === 'undo' && canUndo && onUndo) onUndo()
@@ -162,5 +173,8 @@ export function useDeckEditorShellShortcuts({
       canUndo: historyEnabled && canUndo,
       canRedo: historyEnabled && canRedo,
     })
+    return () => {
+      window.arkDesktop?.edit?.setHistoryState({ canUndo: false, canRedo: false })
+    }
   }, [active, canRedo, canUndo, isTextEditSaving, textEditActive])
 }

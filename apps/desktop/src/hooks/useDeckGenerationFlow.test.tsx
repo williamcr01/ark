@@ -28,6 +28,7 @@ vi.mock('@/lib/api/generation-job-api', async (importOriginal) => {
 
 const { startGenerationJob, fetchGenerationJob, cancelGenerationJob, retryGenerationJob } =
   await import('@/lib/api/generation-job-api')
+const { toast } = await import('sonner')
 
 const startGenerationJobMock = vi.mocked(startGenerationJob)
 const fetchGenerationJobMock = vi.mocked(fetchGenerationJob)
@@ -217,6 +218,169 @@ describe('useDeckGenerationFlow', () => {
 
     expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
       beforeHtml: '<html></html>',
+      afterHtml: '<html>generated</html>',
+      deckChanged: true,
+    })
+  })
+
+  it('keeps deckChanged and skips the success toast when refresh throws', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.refreshActiveDeck.mockRejectedValue(new Error('stale request'))
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html></html>',
+      deckChanged: true,
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      'Deck generated but could not be refreshed in the editor',
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('keeps the undo after-snapshot from live HTML when refresh throws', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.options.deck.generatedHtml = '<html>at-start</html>'
+    harness.refreshActiveDeck.mockRejectedValue(new Error('stale request'))
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    let resolveFetch: (job: GenerationJobApi) => void = () => {}
+    fetchGenerationJobMock.mockImplementation(
+      () =>
+        new Promise<GenerationJobApi>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+
+    const { result, rerender } = renderHook(
+      (options: UseDeckGenerationFlowOptions) => useDeckGenerationFlow(options),
+      { initialProps: harness.options },
+    )
+
+    act(() => {
+      void result.current.generateDeck('make slides')
+    })
+
+    await waitFor(() => {
+      expect(startGenerationJobMock).toHaveBeenCalled()
+    })
+
+    rerender({
+      ...harness.options,
+      deck: {
+        ...harness.options.deck,
+        generatedHtml: '<html>live-after</html>',
+      },
+    })
+
+    await act(async () => {
+      resolveFetch(
+        makeJob({
+          id: 'job-1',
+          status: 'succeeded',
+          result: { ...succeededResult, documentRevision: 2 },
+        }),
+      )
+      await Promise.resolve()
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html>at-start</html>',
+      afterHtml: '<html>live-after</html>',
+      deckChanged: true,
+    })
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('keeps deckChanged and skips the success toast when refresh returns null', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.refreshActiveDeck.mockResolvedValue(null)
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html></html>',
+      deckChanged: true,
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      'Deck generated but could not be refreshed in the editor',
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('uses HTML snapshotted at job start as the undo beforeHtml', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.options.deck.generatedHtml = '<html>at-start</html>'
+    harness.refreshActiveDeck.mockResolvedValue({ html: '<html>generated</html>' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    let resolveFetch: (job: GenerationJobApi) => void = () => {}
+    fetchGenerationJobMock.mockImplementation(
+      () =>
+        new Promise<GenerationJobApi>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+
+    const { result, rerender } = renderHook(
+      (options: UseDeckGenerationFlowOptions) => useDeckGenerationFlow(options),
+      { initialProps: harness.options },
+    )
+
+    act(() => {
+      void result.current.generateDeck('make slides')
+    })
+
+    await waitFor(() => {
+      expect(startGenerationJobMock).toHaveBeenCalled()
+    })
+
+    rerender({
+      ...harness.options,
+      deck: {
+        ...harness.options.deck,
+        generatedHtml: '<html>changed-during-job</html>',
+      },
+    })
+
+    await act(async () => {
+      resolveFetch(
+        makeJob({
+          id: 'job-1',
+          status: 'succeeded',
+          result: { ...succeededResult, documentRevision: 2 },
+        }),
+      )
+      await Promise.resolve()
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html>at-start</html>',
       afterHtml: '<html>generated</html>',
       deckChanged: true,
     })

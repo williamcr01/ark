@@ -493,7 +493,7 @@ The v1 feature is complete when:
 - Read tools operate only on the visible deck.
 - Every write uses Ark's existing validation and structured edit behavior.
 - A successful external edit updates the live preview and thumbnails without reload.
-- One MCP turn creates one Ark session undo boundary (consecutive `patch_element` writes coalesce).
+- One MCP turn creates one Ark session undo boundary (same client plus a short idle window; consecutive `patch_element` writes coalesce).
 - Concurrent UI or MCP edits produce a recoverable revision conflict, never silent overwrite.
 - Invalid HTML does not change the document or revision.
 - Stopping MCP immediately prevents subsequent external writes.

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   EMPTY_HISTORY_STATE,
+  EXTERNAL_COALESCE_IDLE_MS,
   recordDeckEdit,
   useDeckEditHistory,
   type DeckEditHistoryEntry,
@@ -42,6 +43,7 @@ function makeExternalEntry(
   beforeHtml: string,
   afterHtml: string,
   toolName: string,
+  options: { clientName?: string | null; createdAt?: string } = {},
 ): DeckEditHistoryEntry {
   return {
     beforeHtml,
@@ -49,10 +51,10 @@ function makeExternalEntry(
     slideIndex: 0,
     provenance: {
       source: 'external',
-      clientName: 'Codex',
+      clientName: options.clientName === undefined ? 'Codex' : options.clientName,
       toolName,
       summary: `Applied ${toolName}`,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      createdAt: options.createdAt ?? '2026-01-01T00:00:00.000Z',
     },
   }
 }
@@ -99,11 +101,15 @@ describe('recordDeckEdit coalescing', () => {
   it('coalesces consecutive MCP writes in one turn into a single entry', () => {
     const firstPatch = recordDeckEdit(
       EMPTY_HISTORY_STATE,
-      makeExternalEntry('<html>start</html>', '<html>patch-1</html>', 'patch_element'),
+      makeExternalEntry('<html>start</html>', '<html>patch-1</html>', 'patch_element', {
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
     )
     const secondPatch = recordDeckEdit(
       firstPatch,
-      makeExternalEntry('<html>patch-1</html>', '<html>patch-2</html>', 'patch_element'),
+      makeExternalEntry('<html>patch-1</html>', '<html>patch-2</html>', 'patch_element', {
+        createdAt: '2026-01-01T00:00:01.000Z',
+      }),
     )
 
     expect(secondPatch.stack).toHaveLength(1)
@@ -113,6 +119,102 @@ describe('recordDeckEdit coalescing', () => {
       afterHtml: '<html>patch-2</html>',
       provenance: { source: 'external', toolName: 'patch_element' },
     })
+  })
+
+  it('does not coalesce MCP writes from the same client an hour apart', () => {
+    const first = recordDeckEdit(
+      EMPTY_HISTORY_STATE,
+      makeExternalEntry('<html>start</html>', '<html>turn-1</html>', 'edit_deck', {
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    )
+    const hourLater = new Date(
+      Date.parse('2026-01-01T00:00:00.000Z') + 60 * 60 * 1000,
+    ).toISOString()
+    const second = recordDeckEdit(
+      first,
+      makeExternalEntry('<html>turn-1</html>', '<html>turn-2</html>', 'edit_deck', {
+        createdAt: hourLater,
+      }),
+    )
+
+    expect(second.stack).toHaveLength(2)
+    expect(second.stack[1]?.afterHtml).toBe('<html>turn-2</html>')
+  })
+
+  it('does not coalesce MCP writes from different clients', () => {
+    const first = recordDeckEdit(
+      EMPTY_HISTORY_STATE,
+      makeExternalEntry('<html>start</html>', '<html>codex</html>', 'edit_deck', {
+        clientName: 'Codex',
+      }),
+    )
+    const second = recordDeckEdit(
+      first,
+      makeExternalEntry('<html>codex</html>', '<html>claude</html>', 'edit_deck', {
+        clientName: 'Claude Code',
+        createdAt: '2026-01-01T00:00:01.000Z',
+      }),
+    )
+
+    expect(second.stack).toHaveLength(2)
+    expect(
+      second.stack.map((entry) =>
+        entry.provenance.source === 'external' ? entry.provenance.clientName : null,
+      ),
+    ).toEqual(['Codex', 'Claude Code'])
+  })
+
+  it('does not coalesce an MCP write across an intervening undo', () => {
+    const first = recordDeckEdit(
+      EMPTY_HISTORY_STATE,
+      makeExternalEntry('<html>blank</html>', '<html>A</html>', 'edit_deck', {
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    )
+    const laterTurn = recordDeckEdit(
+      first,
+      makeExternalEntry('<html>A</html>', '<html>C</html>', 'edit_deck', {
+        createdAt: '2026-01-01T01:00:00.000Z',
+      }),
+    )
+    const afterUndo = { ...laterTurn, pointer: 0 }
+    const resumed = recordDeckEdit(
+      afterUndo,
+      makeExternalEntry('<html>A</html>', '<html>D</html>', 'edit_deck', {
+        createdAt: '2026-01-01T00:00:01.000Z',
+      }),
+    )
+
+    expect(resumed.stack).toHaveLength(2)
+    expect(resumed.stack[0]).toMatchObject({
+      beforeHtml: '<html>blank</html>',
+      afterHtml: '<html>A</html>',
+    })
+    expect(resumed.stack[1]).toMatchObject({
+      beforeHtml: '<html>A</html>',
+      afterHtml: '<html>D</html>',
+    })
+  })
+
+  it(`coalesces only within a ${EXTERNAL_COALESCE_IDLE_MS}ms idle window`, () => {
+    const first = recordDeckEdit(
+      EMPTY_HISTORY_STATE,
+      makeExternalEntry('<html>start</html>', '<html>a</html>', 'patch_element', {
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    )
+    const justOutside = new Date(
+      Date.parse('2026-01-01T00:00:00.000Z') + EXTERNAL_COALESCE_IDLE_MS + 1,
+    ).toISOString()
+    const second = recordDeckEdit(
+      first,
+      makeExternalEntry('<html>a</html>', '<html>b</html>', 'patch_element', {
+        createdAt: justOutside,
+      }),
+    )
+
+    expect(second.stack).toHaveLength(2)
   })
 
   it('does not coalesce an MCP write with a following editor gesture', () => {

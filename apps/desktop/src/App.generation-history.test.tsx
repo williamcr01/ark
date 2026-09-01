@@ -13,6 +13,9 @@ const persistenceState = vi.hoisted(() => ({
   isPatching: false,
   refreshActiveDeck: vi.fn(),
 }))
+const previewState = vi.hoisted(() => ({
+  activeSlideIndex: 0,
+}))
 let externalUpdateListener:
   | ((update: {
       deckId: string
@@ -153,12 +156,29 @@ vi.mock('@/components/ChatPanel', () => ({
 }))
 
 vi.mock('@/components/DeckPreview', () => ({
-  DeckPreview: (props: { state: { canUndo: boolean; canRedo: boolean } }) => (
-    <div data-testid="deck-preview">
-      <output aria-label="Undo availability">{props.state.canUndo ? 'enabled' : 'disabled'}</output>
-      <output aria-label="Redo availability">{props.state.canRedo ? 'enabled' : 'disabled'}</output>
-    </div>
-  ),
+  DeckPreview: (props: {
+    state: { canUndo: boolean; canRedo: boolean }
+    presentHandleRef?: {
+      current: { openPresent: () => void; getActiveSlideIndex: () => number } | null
+    }
+  }) => {
+    if (props.presentHandleRef) {
+      props.presentHandleRef.current = {
+        openPresent: () => undefined,
+        getActiveSlideIndex: () => previewState.activeSlideIndex,
+      }
+    }
+    return (
+      <div data-testid="deck-preview">
+        <output aria-label="Undo availability">
+          {props.state.canUndo ? 'enabled' : 'disabled'}
+        </output>
+        <output aria-label="Redo availability">
+          {props.state.canRedo ? 'enabled' : 'disabled'}
+        </output>
+      </div>
+    )
+  },
 }))
 
 const { default: App } = await import('./App')
@@ -189,6 +209,7 @@ describe('App generation / deck-switch edit history boundaries', () => {
     persistenceState.isSaving = false
     persistenceState.isPatching = false
     persistenceState.refreshActiveDeck.mockReset()
+    previewState.activeSlideIndex = 0
     externalUpdateListener = null
     window.arkDesktop.mcp.onDeckUpdated = vi.fn((listener) => {
       externalUpdateListener = listener
@@ -242,6 +263,7 @@ describe('App generation / deck-switch edit history boundaries', () => {
     expect(historyCapture.current?.undoEntry).toMatchObject({
       beforeHtml: '<html>after</html>',
       afterHtml: '<html>generated</html>',
+      slideIndex: 0,
       provenance: { source: 'agent' },
     })
 
@@ -449,6 +471,52 @@ describe('App generation / deck-switch edit history boundaries', () => {
     })
     expect(historyCapture.current?.undoEntry).toMatchObject({
       provenance: { source: 'agent' },
+    })
+  })
+
+  it('records agent and MCP undo on the active preview slide, not slide 1', async () => {
+    previewState.activeSlideIndex = 5
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>mcp</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
+    renderWithRouter(<App />)
+    await waitFor(() => {
+      expect(generationFlowCapture.onGenerationSucceeded).toEqual(expect.any(Function))
+      expect(externalUpdateListener).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>agent</html>',
+        deckChanged: true,
+      })
+    })
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        slideIndex: 5,
+        provenance: { source: 'agent' },
+      })
+    })
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-1',
+        previousDocumentRevision: 1,
+        documentRevision: 2,
+        clientName: 'Codex',
+        toolName: 'edit_deck',
+        summary: 'Updated after the agent.',
+      }),
+    )
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        slideIndex: 5,
+        provenance: { source: 'external' },
+      })
     })
   })
 
