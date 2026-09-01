@@ -3,15 +3,19 @@ import {
   deckListResponseSchema,
   deckPatchResponseSchema,
   deckResponseSchema,
+  documentHistoryListResponseSchema,
   fetchApiJsonOrThrow,
+  restoreDocumentHistoryResponseSchema,
   type DeckOrigin,
   type DeckPatchRequest,
   type DeckPatchResponse,
   type DeckSummary,
+  type DocumentHistorySummary,
+  type RestoreDocumentHistoryRequest,
   type StoredDeck,
 } from '@ark/contracts'
 
-export type { DeckOrigin, DeckPatchResponse, DeckSummary, StoredDeck }
+export type { DeckOrigin, DeckPatchResponse, DeckSummary, DocumentHistorySummary, StoredDeck }
 
 export type PatchDeckResponse = Pick<DeckPatchResponse, 'deck' | 'patch'>
 
@@ -154,3 +158,29 @@ export const duplicateWorkspace = (
   path?: string,
   overwrite = false,
 ) => postWorkspace(`/api/decks/${encodeURIComponent(id)}/duplicate`, { mode, path, overwrite })
+
+export async function listDocumentHistory(id: string): Promise<DocumentHistorySummary[]> {
+  const response = await fetch(`/api/decks/${encodeURIComponent(id)}/history`)
+  const data = await fetchApiJsonOrThrow(response, documentHistoryListResponseSchema, {
+    fallbackMessage: 'Could not load document history.',
+  })
+  return data.history
+}
+
+export async function restoreDocumentHistory(
+  id: string,
+  body: RestoreDocumentHistoryRequest,
+): Promise<StoredDeck> {
+  const response = await fetch(`/api/decks/${encodeURIComponent(id)}/history/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      revision: body.revision,
+      expectedDocumentRevision: body.expectedDocumentRevision,
+    }),
+  })
+  const data = await fetchApiJsonOrThrow(response, restoreDocumentHistoryResponseSchema, {
+    fallbackMessage: 'Could not restore that version.',
+  })
+  return data.deck
+}

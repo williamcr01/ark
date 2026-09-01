@@ -1,6 +1,8 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiResponseError } from '@ark/contracts'
+
 import type { DeckEditHistoryEntry } from '@/hooks/useDeckEditHistory'
 import { renderWithRouter } from '@/test/render-with-router'
 
@@ -12,6 +14,8 @@ const persistenceState = vi.hoisted(() => ({
   isSaving: false,
   isPatching: false,
   refreshActiveDeck: vi.fn(),
+  restoreFromHistory: vi.fn(),
+  restoreHtmlSnapshot: vi.fn(),
 }))
 const previewState = vi.hoisted(() => ({
   activeSlideIndex: 0,
@@ -42,6 +46,9 @@ const historyCapture = vi.hoisted(() => ({
     reset: () => void
   } | null,
 }))
+const restoreCapture = vi.hoisted(() => ({
+  onRestoreDocumentHistory: null as ((revision: number) => Promise<void>) | null,
+}))
 
 vi.mock('@/hooks/useMediaQuery', () => ({
   useMediaQuery: () => mediaState.isDesktop,
@@ -68,7 +75,8 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     persistHtml: vi.fn(),
     refreshActiveDeck: persistenceState.refreshActiveDeck,
     renameActiveDeck: vi.fn(),
-    restoreHtmlSnapshot: vi.fn(),
+    restoreFromHistory: persistenceState.restoreFromHistory,
+    restoreHtmlSnapshot: persistenceState.restoreHtmlSnapshot,
     saveError: '',
     selectDeck: vi.fn(),
     startNewDeck: vi.fn(),
@@ -161,7 +169,9 @@ vi.mock('@/components/DeckPreview', () => ({
     presentHandleRef?: {
       current: { openPresent: () => void; getActiveSlideIndex: () => number } | null
     }
+    onRestoreDocumentHistory?: (revision: number) => Promise<void>
   }) => {
+    restoreCapture.onRestoreDocumentHistory = props.onRestoreDocumentHistory ?? null
     if (props.presentHandleRef) {
       props.presentHandleRef.current = {
         openPresent: () => undefined,
@@ -209,6 +219,10 @@ describe('App generation / deck-switch edit history boundaries', () => {
     persistenceState.isSaving = false
     persistenceState.isPatching = false
     persistenceState.refreshActiveDeck.mockReset()
+    persistenceState.restoreFromHistory.mockReset()
+    persistenceState.restoreFromHistory.mockResolvedValue(undefined)
+    persistenceState.restoreHtmlSnapshot.mockReset()
+    restoreCapture.onRestoreDocumentHistory = null
     previewState.activeSlideIndex = 0
     externalUpdateListener = null
     window.arkDesktop.mcp.onDeckUpdated = vi.fn((listener) => {
@@ -564,5 +578,79 @@ describe('App generation / deck-switch edit history boundaries', () => {
     )
 
     expect(persistenceState.refreshActiveDeck).not.toHaveBeenCalled()
+  })
+
+  it('does not hydrate Cmd+Z from durable history when a deck is already open', async () => {
+    renderWithRouter(<App />)
+
+    await waitFor(() => {
+      expect(historyCapture.current).not.toBeNull()
+      expect(restoreCapture.onRestoreDocumentHistory).toEqual(expect.any(Function))
+    })
+
+    expect(historyCapture.current?.canUndo).toBe(false)
+    expect(historyCapture.current?.canRedo).toBe(false)
+    expect(screen.getByLabelText('Undo availability')).toHaveTextContent('disabled')
+    expect(persistenceState.restoreHtmlSnapshot).not.toHaveBeenCalled()
+    expect(persistenceState.restoreFromHistory).not.toHaveBeenCalled()
+  })
+
+  it('resets the session undo stack after a successful history restore', async () => {
+    renderWithRouter(<App />)
+
+    await waitFor(() => {
+      expect(historyCapture.current).not.toBeNull()
+      expect(restoreCapture.onRestoreDocumentHistory).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      historyCapture.current!.record(makeHistoryEntry('manual-restore'))
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
+    })
+
+    await act(async () => {
+      await restoreCapture.onRestoreDocumentHistory?.(1)
+    })
+
+    expect(persistenceState.restoreFromHistory).toHaveBeenCalledWith(1)
+    expect(persistenceState.restoreHtmlSnapshot).not.toHaveBeenCalled()
+    expect(historyCapture.current?.canUndo).toBe(false)
+    expect(historyCapture.current?.canRedo).toBe(false)
+    expect(screen.getByLabelText('Undo availability')).toHaveTextContent('disabled')
+    expect(screen.getByLabelText('Redo availability')).toHaveTextContent('disabled')
+  })
+
+  it('keeps the session undo stack when restore reports a document conflict', async () => {
+    persistenceState.restoreFromHistory.mockRejectedValue(
+      new ApiResponseError('The document changed.', { code: 'document_conflict' }),
+    )
+    renderWithRouter(<App />)
+
+    await waitFor(() => {
+      expect(historyCapture.current).not.toBeNull()
+      expect(restoreCapture.onRestoreDocumentHistory).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      historyCapture.current!.record(makeHistoryEntry('manual-conflict'))
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
+    })
+
+    await act(async () => {
+      await expect(restoreCapture.onRestoreDocumentHistory?.(1)).rejects.toBeInstanceOf(
+        ApiResponseError,
+      )
+    })
+
+    expect(persistenceState.restoreFromHistory).toHaveBeenCalledWith(1)
+    expect(historyCapture.current?.canUndo).toBe(true)
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      provenance: { source: 'manual', elementIds: ['manual-conflict'] },
+    })
+    expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
   })
 })
