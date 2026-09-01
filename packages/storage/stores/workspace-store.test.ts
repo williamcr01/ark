@@ -837,6 +837,7 @@ describe('WorkspaceStore document history', () => {
 
     const history = await workspaces.listDocumentHistory(created.id)
     expect(history).toEqual([expect.objectContaining({ revision: 3, source: 'editor' })])
+    workspaces.close()
     const onDisk = readHistoryFromFile(created.path)
     expect(onDisk).toHaveLength(1)
     expect(onDisk[0]).toEqual(
