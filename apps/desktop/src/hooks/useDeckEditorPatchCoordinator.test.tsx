@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useDeckEditorPatchCoordinator } from './useDeckEditorPatchCoordinator'
-import type { EditorSelectionInfo } from '@ark/editor-runtime'
+import { createEditorDeleteRequestMessage, type EditorSelectionInfo } from '@ark/editor-runtime'
 
 const selection: EditorSelectionInfo = {
   elementId: 'element-a',
@@ -297,5 +297,111 @@ describe('useDeckEditorPatchCoordinator', () => {
 
     expect(callbacks.finishLivePatch).not.toHaveBeenCalled()
     expect(callbacks.rollbackLivePatch).not.toHaveBeenCalled()
+  })
+
+  it('patches every companion on a group transform commit', async () => {
+    const callbacks = options()
+    const companion = { ...selection, elementId: 'element-b', textPreview: 'Other' }
+    renderHook(() =>
+      useDeckEditorPatchCoordinator({
+        ...callbacks,
+        selections: [selection, companion],
+        transformCommit: {
+          type: 'ark:editor-transform-commit',
+          elementId: 'element-a',
+          slideIndex: 0,
+          geometry: { x: 0.2, y: 0.3, width: 0.3, height: 0.1 },
+          companions: [
+            {
+              elementId: 'element-b',
+              slideIndex: 0,
+              geometry: { x: 0.5, y: 0.3, width: 0.2, height: 0.1 },
+            },
+          ],
+        },
+      }),
+    )
+
+    await waitFor(() => expect(callbacks.onPatchEditorOperations).toHaveBeenCalledOnce())
+    expect(callbacks.onPatchEditorOperations.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: 'move_element', elementId: 'element-a' }),
+        expect.objectContaining({ op: 'move_element', elementId: 'element-b' }),
+      ]),
+    )
+  })
+
+  it('deletes every unlocked selected element from one delete request', async () => {
+    const callbacks = options()
+    const companion = { ...selection, elementId: 'element-b', textPreview: 'Other' }
+    renderHook(() =>
+      useDeckEditorPatchCoordinator({
+        ...callbacks,
+        lastDeleteRequest: createEditorDeleteRequestMessage('element-a', 0),
+        selections: [selection, companion],
+      }),
+    )
+
+    await waitFor(() => expect(callbacks.onPatchEditorOperations).toHaveBeenCalledOnce())
+    expect(callbacks.onPatchEditorOperations.mock.calls[0]?.[0]).toEqual([
+      {
+        op: 'delete_element',
+        elementId: 'element-a',
+        slideIndex: 0,
+        slideId: 'slide-a',
+      },
+      {
+        op: 'delete_element',
+        elementId: 'element-b',
+        slideIndex: 0,
+        slideId: 'slide-a',
+      },
+    ])
+  })
+
+  it('retries a delete after a blocked mixed set becomes safe', async () => {
+    const callbacks = options()
+    const lockedCompanion = { ...selection, elementId: 'element-b', locked: true }
+    const unlockedCompanion = { ...selection, elementId: 'element-b', textPreview: 'Other' }
+    const view = renderHook(
+      ({ selections }) =>
+        useDeckEditorPatchCoordinator({
+          ...callbacks,
+          lastDeleteRequest: createEditorDeleteRequestMessage('element-a', 0),
+          selections,
+        }),
+      { initialProps: { selections: [selection, lockedCompanion] } },
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(callbacks.onPatchEditorOperations).not.toHaveBeenCalled()
+
+    view.rerender({ selections: [selection, unlockedCompanion] })
+
+    await waitFor(() => expect(callbacks.onPatchEditorOperations).toHaveBeenCalledOnce())
+    expect(callbacks.onPatchEditorOperations.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({ op: 'delete_element', elementId: 'element-a' }),
+      expect.objectContaining({ op: 'delete_element', elementId: 'element-b' }),
+    ])
+  })
+
+  it('does not emit delete ops for a nested parent+child selection', async () => {
+    const callbacks = options()
+    const parent = { ...selection, elementId: 'group', nestedInSelection: true }
+    const child = { ...selection, elementId: 'copy', nestedInSelection: true, textPreview: 'Copy' }
+    renderHook(() =>
+      useDeckEditorPatchCoordinator({
+        ...callbacks,
+        lastDeleteRequest: createEditorDeleteRequestMessage('group', 0),
+        selections: [parent, child],
+      }),
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(callbacks.onPatchEditorOperations).not.toHaveBeenCalled()
   })
 })

@@ -113,6 +113,9 @@ function EditorHarness({
       />
       <output aria-label="Editor ready">{bridge.editorReady ? 'ready' : 'pending'}</output>
       <output aria-label="Selection">{bridge.selection?.elementId ?? 'none'}</output>
+      <output aria-label="Selections">
+        {bridge.selections.map((item) => item.elementId).join(',') || 'none'}
+      </output>
       <output aria-label="Selection identity">{selectionIdentityVersion}</output>
       <output aria-label="Geometry">{bridge.geometry ? 'geometry' : 'none'}</output>
       <output aria-label="Selection surface">{bridge.selection?.surface ?? 'light'}</output>
@@ -400,6 +403,42 @@ describe('useDeckEditorBridge', () => {
 
     expect(screen.getByLabelText('Selection')).toHaveTextContent('none')
     expect(screen.getByLabelText('Geometry')).toHaveTextContent('none')
+  })
+
+  it('stores the full selection set from ark:editor-selection-change', async () => {
+    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    const iframeWindow = getIframeWindow()
+    const primary = {
+      elementId: 'ark-el-title',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      managed: false,
+      editableKind: null,
+      textPreview: 'Title',
+    }
+    const companion = { ...primary, elementId: 'ark-el-body', tagName: 'p', textPreview: 'Body' }
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorReadyMessage(0),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: createEditorSelectionChangeMessage(companion, [primary, companion]),
+          origin: sandboxOrigin,
+          source: iframeWindow,
+        }),
+      )
+    })
+
+    expect(screen.getByLabelText('Selection')).toHaveTextContent('ark-el-body')
+    expect(screen.getByLabelText('Selections')).toHaveTextContent('ark-el-title,ark-el-body')
   })
 
   it('clears overlay geometry when selection identity changes', async () => {

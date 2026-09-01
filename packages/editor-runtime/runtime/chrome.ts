@@ -181,49 +181,147 @@ export const chromeChunk = `  function clearMarquee() {
   }
 
   function refreshSelectionChrome(element, slide, slideIndex) {
-    updateResizeHandles(element, slide);
+    if (
+      selectedElements.length !== 1 ||
+      !element ||
+      element.getAttribute(C.LOCKED_ATTR) === 'true'
+    ) {
+      clearResizeHandles();
+    } else {
+      updateResizeHandles(element, slide);
+    }
 
-    if (element) {
+    for (var i = 0; i < selectedElements.length; i++) {
+      postGeometryForElement(selectedElements[i], slide, slideIndex);
+    }
+
+    if (!selectedElements.length && element) {
       postGeometryForElement(element, slide, slideIndex);
     }
   }
 
   function clearSelectionStyles() {
-    if (selectedElement) {
-      selectedElement.removeAttribute('data-ark-editor-selected');
+    for (var i = 0; i < selectedElements.length; i++) {
+      selectedElements[i].removeAttribute('data-ark-editor-selected');
     }
 
+    selectedElements = [];
     selectedElement = null;
   }
 
-  function setSelectedElement(element, slide, slideIndex) {
-    if (nudgeState && nudgeState.element !== element) {
+  function isSelectionMember(element) {
+    return selectedElements.indexOf(element) !== -1;
+  }
+
+  function isNestedInSelection(element) {
+    for (var i = 0; i < selectedElements.length; i++) {
+      if (
+        selectedElements[i] !== element &&
+        (selectedElements[i].contains(element) || element.contains(selectedElements[i]))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function isSelectionUnsafe() {
+    if (!selectedElements.length) {
+      return false;
+    }
+
+    for (var i = 0; i < selectedElements.length; i++) {
+      if (selectedElements[i].getAttribute(C.LOCKED_ATTR) === 'true') {
+        return true;
+      }
+
+      if (isNestedInSelection(selectedElements[i])) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function setSelectedElements(elements, primary, slide, slideIndex) {
+    if (nudgeState && (!primary || nudgeState.element !== primary)) {
       finishNudge();
     }
 
     clearSelectionStyles();
-    selectedElement = element;
+    selectedElements = elements ? elements.slice() : [];
+    selectedElement = primary || null;
 
-    if (selectedElement) {
-      selectedElement.setAttribute('data-ark-editor-selected', '');
+    for (var i = 0; i < selectedElements.length; i++) {
+      selectedElements[i].setAttribute(
+        'data-ark-editor-selected',
+        selectedElements[i] === selectedElement ? 'primary' : '',
+      );
+    }
 
-      if (slide) {
-        refreshSelectionChrome(selectedElement, slide, slideIndex);
-      }
+    if (selectedElement && slide) {
+      refreshSelectionChrome(selectedElement, slide, slideIndex);
     } else {
       clearEditorOverlays();
     }
   }
 
+  function setSelectedElement(element, slide, slideIndex) {
+    setSelectedElements(element ? [element] : [], element, slide, slideIndex);
+  }
+
+  function toggleSelectedElement(element, slide, slideIndex) {
+    if (!element || !slide) {
+      return;
+    }
+
+    for (var i = 0; i < selectedElements.length; i++) {
+      if (!slide.contains(selectedElements[i])) {
+        // Stale members from another slide: reject the add and keep the current set.
+        return;
+      }
+    }
+
+    if (isSelectionMember(element)) {
+      var remaining = [];
+
+      for (var j = 0; j < selectedElements.length; j++) {
+        if (selectedElements[j] !== element) {
+          remaining.push(selectedElements[j]);
+        }
+      }
+
+      var nextPrimary =
+        element === selectedElement ? remaining[remaining.length - 1] || null : selectedElement;
+      setSelectedElements(remaining, nextPrimary, slide, slideIndex);
+      return;
+    }
+
+    if (selectedElements.length >= C.MAX_SELECTIONS) {
+      postError('You can select up to 32 elements.', 'selection-cap');
+      return;
+    }
+
+    setSelectedElements(selectedElements.concat([element]), element, slide, slideIndex);
+  }
+
   function postSelection(element, slide, slideIndex) {
-    if (!element) {
+    if (!element || !selectedElement) {
       postToParent({ type: C.SELECTION_CHANGE, selection: null });
       return;
     }
 
+    var infos = [];
+
+    for (var i = 0; i < selectedElements.length; i++) {
+      infos.push(buildSelection(selectedElements[i], slide, slideIndex));
+    }
+
     postToParent({
       type: C.SELECTION_CHANGE,
-      selection: buildSelection(element, slide, slideIndex),
+      selection: buildSelection(selectedElement, slide, slideIndex),
+      selections: infos,
     });
   }
 

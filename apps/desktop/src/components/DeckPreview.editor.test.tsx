@@ -37,8 +37,22 @@ const editorBridgeMock = vi.hoisted(() => ({
     editableKind: string | null
     textPreview: string | null
   } | null,
+  selections: [] as Array<{
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    tagName: string
+    locked: boolean
+    managed: boolean
+    editableKind: string | null
+    textPreview: string | null
+  }>,
   geometry: null as EditorNormalizedRect | null,
   slideBounds: null as EditorNormalizedRect | null,
+  selectionGeometries: {} as Record<
+    string,
+    { geometry: EditorNormalizedRect; slideBounds: EditorNormalizedRect | null }
+  >,
   selectionZIndex: null,
   hover: null as {
     elementId: string | null
@@ -160,8 +174,10 @@ describe('DeckPreview script divergence UI', () => {
   beforeEach(() => {
     editorBridgeMock.editorReady = false
     editorBridgeMock.selection = null
+    editorBridgeMock.selections = []
     editorBridgeMock.geometry = null
     editorBridgeMock.slideBounds = null
+    editorBridgeMock.selectionGeometries = {}
     editorBridgeMock.selectionZIndex = null
     editorBridgeMock.hover = null
     editorBridgeMock.hoverGeometry = null
@@ -293,6 +309,27 @@ describe('DeckPreview script divergence UI', () => {
 
     expect(editorBridgeMock.setTool).toHaveBeenCalledWith('select')
     expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('clears editor selection when Escape is pressed with the select tool', async () => {
+    editorBridgeMock.selection = {
+      elementId: 'transient-el-0-0',
+      slideIndex: 0,
+      slideId: null,
+      tagName: 'h1',
+      locked: false,
+      managed: false,
+      editableKind: null,
+      textPreview: 'Quarterly planning',
+    }
+
+    renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(editorBridgeMock.clearSelection).toHaveBeenCalled()
   })
 
   it('commits text edits through the patch callback', async () => {
@@ -563,6 +600,60 @@ describe('DeckPreview script divergence UI', () => {
         '.pointer-events-none.absolute.left-0.top-0.rounded-sm.border:not(.border-2)',
       ),
     ).not.toBeInTheDocument()
+  })
+
+  it('draws overlay chrome for every selected element', () => {
+    editorBridgeMock.selection = {
+      elementId: 'ark-el-box',
+      slideIndex: 0,
+      slideId: 'slide-1',
+      tagName: 'div',
+      locked: false,
+      managed: true,
+      editableKind: 'text-box',
+      textPreview: 'Primary',
+    }
+    editorBridgeMock.selections = [
+      {
+        elementId: 'ark-el-box',
+        slideIndex: 0,
+        slideId: 'slide-1',
+        tagName: 'div',
+        locked: false,
+        managed: true,
+        editableKind: 'text-box',
+        textPreview: 'Primary',
+      },
+      {
+        elementId: 'ark-el-copy',
+        slideIndex: 0,
+        slideId: 'slide-1',
+        tagName: 'p',
+        locked: false,
+        managed: true,
+        editableKind: null,
+        textPreview: 'Copy',
+      },
+    ]
+    editorBridgeMock.geometry = { x: 0.4, y: 0.35, width: 0.3, height: 0.1 }
+    editorBridgeMock.selectionGeometries = {
+      'ark-el-box': {
+        geometry: { x: 0.4, y: 0.35, width: 0.3, height: 0.1 },
+        slideBounds: null,
+      },
+      'ark-el-copy': {
+        geometry: { x: 0.1, y: 0.6, width: 0.2, height: 0.08 },
+        slideBounds: null,
+      },
+    }
+
+    const { container } = renderDeckPreview({
+      ...plainDeckProps,
+      state: { ...plainDeckProps.state, editorBridgeEnabled: true },
+    })
+
+    expect(container.querySelector('[data-editor-primary-selection]')).toBeInTheDocument()
+    expect(container.querySelector('[data-editor-companion="ark-el-copy"]')).toBeInTheDocument()
   })
 
   it('drops the drag baseline after a runtime transform cancellation', () => {
