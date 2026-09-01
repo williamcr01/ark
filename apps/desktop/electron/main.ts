@@ -54,7 +54,11 @@ async function startDesktop() {
   process.env.PORT = new URL(apiServer.origin).port
   process.env.SANDBOX_PORT = new URL(sandboxServer.origin).port
   process.env.ARK_DATA_DIR = app.getPath('userData')
-  process.env.ARK_WORKSPACES_DIR = path.join(app.getPath('documents'), 'Ark')
+  // Honor an explicit workspace-dir override (editor-drag profiler, real-disk
+  // userData) before falling back to Documents/Ark. Settings still win below.
+  if (!process.env.ARK_WORKSPACES_DIR?.trim()) {
+    process.env.ARK_WORKSPACES_DIR = path.join(app.getPath('documents'), 'Ark')
+  }
 
   const resourceRoot = app.isPackaged
     ? process.resourcesPath

@@ -69,6 +69,8 @@ pnpm lint:eslint  # run ESLint alone
 pnpm format       # format the repository
 pnpm test         # run Vitest
 pnpm build        # build renderer, main, and preload bundles
+pnpm profile:editor-drag   # Electron/CDP editor-drag profile (see docs/editor-drag-profiling.md)
+pnpm bench:editor-patch    # Node-only applyDeckPatches bench
 pnpm package                # create an unpacked app for the current platform
 pnpm package:installers     # create installers for the current platform
 ```

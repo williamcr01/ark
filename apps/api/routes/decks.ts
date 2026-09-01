@@ -220,7 +220,11 @@ export function createDecksRouter(deps: {
       }
 
       try {
+        const logger = getRequestLogger(request)
+        const startedAt = performance.now()
+        const loadStartedAt = performance.now()
         const existing = await deckStore.getDeck(id)
+        const loadMs = performance.now() - loadStartedAt
 
         if (!existing) {
           response.status(404).json({ error: 'Deck not found.' })
@@ -228,11 +232,12 @@ export function createDecksRouter(deps: {
         }
 
         const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
-        const logger = getRequestLogger(request)
+        const applyStartedAt = performance.now()
         const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
           activeSlideIndex: parsedBody.data.activeSlideIndex,
           logger,
         })
+        const applyMs = performance.now() - applyStartedAt
 
         if (!patched.ok) {
           response.status(400).json({
@@ -244,34 +249,41 @@ export function createDecksRouter(deps: {
 
         // Prefer the live-DOM validation attached by applyDeckPatches so we do
         // not pay a second full JSDOM parse on the editor commit path.
+        const reusedValidation = Boolean(patched.validation)
+        const validateStartedAt = performance.now()
         const validation =
           patched.validation ??
           validateDeckHtmlOnServer(patched.html, {
             logger,
           })
+        const validateMs = performance.now() - validateStartedAt
 
         if (!validation.valid) {
           sendDeckValidationError(response, validation, request)
           return
         }
 
+        const persistStartedAt = performance.now()
         const deck = await deckStore.updateDeck(id, patched.html, {
           expectedDocumentRevision: parsedBody.data.expectedDocumentRevision,
           historySource: 'editor',
         })
+        const persistMs = performance.now() - persistStartedAt
 
         if (!deck) {
           response.status(404).json({ error: 'Deck not found.' })
           return
         }
 
+        const notifyStartedAt = performance.now()
         if (onEditorPatchPersisted) {
           onEditorPatchPersisted(deck.id, deck.documentRevision)
         } else {
           notifyDocumentPersisted(deck.id, deck.documentRevision)
         }
+        const notifyMs = performance.now() - notifyStartedAt
 
-        response.json({
+        const payload = {
           deck,
           validation,
           patch: {
@@ -281,6 +293,25 @@ export function createDecksRouter(deps: {
             summary: patched.summary,
             suggestedActiveSlideIndex: patched.suggestedActiveSlideIndex,
           },
+        }
+        const serializeStartedAt = performance.now()
+        response.json(payload)
+        const serializeMs = performance.now() - serializeStartedAt
+
+        logger.info('deck.patch.completed', {
+          deckId: deck.id,
+          durationMs: Number((performance.now() - startedAt).toFixed(3)),
+          loadMs: Number(loadMs.toFixed(3)),
+          applyMs: Number(applyMs.toFixed(3)),
+          validateMs: Number(validateMs.toFixed(3)),
+          persistMs: Number(persistMs.toFixed(3)),
+          notifyMs: Number(notifyMs.toFixed(3)),
+          serializeMs: Number(serializeMs.toFixed(3)),
+          htmlBytes: Buffer.byteLength(patched.html, 'utf8'),
+          operationCount: parsedBody.data.operations.length,
+          appliedCount: patched.appliedCount,
+          reusedValidation,
+          documentRevision: deck.documentRevision,
         })
       } catch (error) {
         sendWriteError(response, error)
