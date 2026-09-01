@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createAssetStore } from './asset-store.ts'
 import { createChatStore } from './chat-store.ts'
@@ -23,6 +23,7 @@ describe('WorkspaceStore file operations', () => {
   let store: WorkspaceStore | null = null
 
   afterEach(async () => {
+    vi.useRealTimers()
     store?.close()
     store = null
     if (root) await rm(root, { recursive: true, force: true })
@@ -249,6 +250,99 @@ describe('WorkspaceStore file operations', () => {
     expect(await readFile(recentsPath, 'utf8')).not.toBe(before)
     await expect(workspaces.listRecent()).resolves.toEqual([
       expect.objectContaining({ id: created.id, title: 'Board plan', path: updated?.path }),
+    ])
+  })
+
+  it('still persists recents on create, open, rename, and delete', async () => {
+    const workspaces = await setup()
+    const recentsPath = path.join(root, 'recent-workspaces.json')
+
+    const created = await workspaces.create(html)
+    expect(JSON.parse(await readFile(recentsPath, 'utf8'))).toEqual([
+      expect.objectContaining({ id: created.id, title: 'Workspace', path: created.path }),
+    ])
+
+    await writeFile(recentsPath, '[]', 'utf8')
+    await workspaces.open(created.path)
+    expect(JSON.parse(await readFile(recentsPath, 'utf8'))).toEqual([
+      expect.objectContaining({ id: created.id, path: created.path }),
+    ])
+
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+    expect(JSON.parse(await readFile(recentsPath, 'utf8'))).toEqual([
+      expect.objectContaining({ id: created.id, title: 'Board plan', path: renamed?.path }),
+    ])
+
+    await expect(workspaces.delete(created.id)).resolves.toBe(true)
+    expect(JSON.parse(await readFile(recentsPath, 'utf8'))).toEqual([])
+  })
+
+  it('refreshes recents from the .ark file so a later process sorts by document mtime', async () => {
+    vi.useFakeTimers()
+    const workspaces = await setup()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+    const older = await workspaces.create(
+      html.replace('<title>Workspace</title>', '<title>Older</title>'),
+    )
+    vi.setSystemTime(new Date('2026-01-02T00:00:00.000Z'))
+    const newer = await workspaces.create(
+      html.replace('<title>Workspace</title>', '<title>Newer</title>'),
+    )
+    const recentsPath = path.join(root, 'recent-workspaces.json')
+    const before = await readFile(recentsPath, 'utf8')
+
+    vi.setSystemTime(new Date('2026-01-03T00:00:00.000Z'))
+    const updated = await workspaces.updateDocument(
+      older.id,
+      html.replace('<title>Workspace</title>', '<title>Older</title>').replace('Hello', 'Moved'),
+      1,
+    )
+
+    expect(await readFile(recentsPath, 'utf8')).toBe(before)
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: older.id, updatedAt: updated?.updatedAt }),
+      expect.objectContaining({ id: newer.id, updatedAt: newer.updatedAt }),
+    ])
+
+    workspaces.close()
+    await writeFile(
+      recentsPath,
+      JSON.stringify(
+        [
+          {
+            id: newer.id,
+            path: path.join(root, 'stale-newer.ark'),
+            title: 'Stale newer',
+            updatedAt: '2099-01-01T00:00:00.000Z',
+            lastOpened: '2099-01-01T00:00:00.000Z',
+          },
+          {
+            id: older.id,
+            path: path.join(root, 'stale-older.ark'),
+            title: 'Stale older',
+            updatedAt: '2000-01-01T00:00:00.000Z',
+            lastOpened: '2000-01-01T00:00:00.000Z',
+          },
+        ],
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    store = createWorkspaceStore(root)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({
+        id: older.id,
+        title: 'Older',
+        path: older.path,
+        updatedAt: updated?.updatedAt,
+      }),
+      expect.objectContaining({
+        id: newer.id,
+        title: 'Newer',
+        path: newer.path,
+        updatedAt: newer.updatedAt,
+      }),
     ])
   })
 
