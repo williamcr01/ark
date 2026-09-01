@@ -27,6 +27,15 @@ describe('getSelectionSetBlockReason', () => {
   it('blocks a mixed locked set with UI copy', () => {
     expect(
       getSelectionSetBlockReason([unlocked, { ...unlocked, elementId: 'ark-el-2', locked: true }]),
-    ).toBe('Move, nudge, and delete need every selected element to be unlocked.')
+    ).toBe('Move, nudge, and delete need every selected element to be unlocked and not nested.')
+  })
+
+  it('blocks a nested parent+child set with mixed-selection copy', () => {
+    expect(
+      getSelectionSetBlockReason([
+        unlocked,
+        { ...unlocked, elementId: 'ark-el-2', nestedInSelection: true },
+      ]),
+    ).toBe('Move, nudge, and delete need every selected element to be unlocked and not nested.')
   })
 })

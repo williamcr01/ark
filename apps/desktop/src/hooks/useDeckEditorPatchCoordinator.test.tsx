@@ -358,4 +358,50 @@ describe('useDeckEditorPatchCoordinator', () => {
       },
     ])
   })
+
+  it('retries a delete after a blocked mixed set becomes safe', async () => {
+    const callbacks = options()
+    const lockedCompanion = { ...selection, elementId: 'element-b', locked: true }
+    const unlockedCompanion = { ...selection, elementId: 'element-b', textPreview: 'Other' }
+    const view = renderHook(
+      ({ selections }) =>
+        useDeckEditorPatchCoordinator({
+          ...callbacks,
+          lastDeleteRequest: createEditorDeleteRequestMessage('element-a', 0),
+          selections,
+        }),
+      { initialProps: { selections: [selection, lockedCompanion] } },
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(callbacks.onPatchEditorOperations).not.toHaveBeenCalled()
+
+    view.rerender({ selections: [selection, unlockedCompanion] })
+
+    await waitFor(() => expect(callbacks.onPatchEditorOperations).toHaveBeenCalledOnce())
+    expect(callbacks.onPatchEditorOperations.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({ op: 'delete_element', elementId: 'element-a' }),
+      expect.objectContaining({ op: 'delete_element', elementId: 'element-b' }),
+    ])
+  })
+
+  it('does not emit delete ops for a nested parent+child selection', async () => {
+    const callbacks = options()
+    const parent = { ...selection, elementId: 'group', nestedInSelection: true }
+    const child = { ...selection, elementId: 'copy', nestedInSelection: true, textPreview: 'Copy' }
+    renderHook(() =>
+      useDeckEditorPatchCoordinator({
+        ...callbacks,
+        lastDeleteRequest: createEditorDeleteRequestMessage('group', 0),
+        selections: [parent, child],
+      }),
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(callbacks.onPatchEditorOperations).not.toHaveBeenCalled()
+  })
 })

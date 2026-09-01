@@ -64,6 +64,9 @@ export const transformChunk = `  function isNonComposableTransform(value) {
     clearLiveTransform(element, cache);
 
     var spacerFootprint = cache && cache.spacerFootprint ? cache.spacerFootprint : null;
+    // Keep the member cache so adopted companions can still store commitPayload
+    // after we null the local layout cache used for post-adopt remeasure.
+    var commitCache = cache;
 
     if (adopted && !preview) {
       adoptMove(element, slide, rect, cache && cache.logicalWidth, positionContext, cache);
@@ -132,8 +135,8 @@ export const transformChunk = `  function isNonComposableTransform(value) {
         spacer: adopted && spacerFootprint ? spacerFootprint : undefined,
       };
 
-      if (cache) {
-        cache.commitPayload = commitPayload;
+      if (commitCache) {
+        commitCache.commitPayload = commitPayload;
       }
 
       if (!silent) {

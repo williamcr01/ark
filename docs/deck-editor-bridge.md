@@ -141,6 +141,7 @@ type EditorSelectionInfo = {
     lineHeight: number | null // computed px, null when "normal"
   } | null
   imageNaturalSize?: { width: number; height: number } | null // img intrinsic size
+  nestedInSelection?: boolean // omit when false; parent+child sets are mixed/unsafe
 }
 ```
 

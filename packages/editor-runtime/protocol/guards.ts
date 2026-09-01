@@ -185,7 +185,8 @@ export function isEditorSelectionInfo(value: unknown): value is EditorSelectionI
       isEditorSelectionTextStyle(value.textStyle)) &&
     (value.imageNaturalSize === undefined ||
       value.imageNaturalSize === null ||
-      isEditorSelectionImageSize(value.imageNaturalSize))
+      isEditorSelectionImageSize(value.imageNaturalSize)) &&
+    (value.nestedInSelection === undefined || typeof value.nestedInSelection === 'boolean')
   )
 }
 

@@ -8,8 +8,8 @@ export function getSelectionSetBlockReason(selections: EditorSelectionInfo[]): s
       : null
   }
 
-  if (selections.some((item) => item.locked)) {
-    return 'Move, nudge, and delete need every selected element to be unlocked.'
+  if (selections.some((item) => item.locked) || selections.some((item) => item.nestedInSelection)) {
+    return 'Move, nudge, and delete need every selected element to be unlocked and not nested.'
   }
 
   return null

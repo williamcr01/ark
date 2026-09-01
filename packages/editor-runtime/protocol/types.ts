@@ -105,6 +105,11 @@ export type EditorSelectionInfo = {
   textStyle?: EditorSelectionTextStyle | null
   /** Intrinsic image dimensions for img selections (issue #84). */
   imageNaturalSize?: EditorSelectionImageSize | null
+  /**
+   * True when this element contains or is contained by another selected element.
+   * Omit when false. Nested sets are mixed/unsafe for move, nudge, and delete.
+   */
+  nestedInSelection?: boolean
 }
 
 export type EditorEnableMessage = {

@@ -213,6 +213,19 @@ export const chromeChunk = `  function clearMarquee() {
     return selectedElements.indexOf(element) !== -1;
   }
 
+  function isNestedInSelection(element) {
+    for (var i = 0; i < selectedElements.length; i++) {
+      if (
+        selectedElements[i] !== element &&
+        (selectedElements[i].contains(element) || element.contains(selectedElements[i]))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function isSelectionUnsafe() {
     if (!selectedElements.length) {
       return false;
@@ -223,10 +236,8 @@ export const chromeChunk = `  function clearMarquee() {
         return true;
       }
 
-      for (var j = 0; j < selectedElements.length; j++) {
-        if (i !== j && selectedElements[i].contains(selectedElements[j])) {
-          return true;
-        }
+      if (isNestedInSelection(selectedElements[i])) {
+        return true;
       }
     }
 

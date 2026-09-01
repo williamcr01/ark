@@ -242,6 +242,9 @@ describe('deck editor bridge protocol', () => {
       }),
     ).toBe(true)
 
+    expect(isEditorSelectionInfo({ ...selection, nestedInSelection: true })).toBe(true)
+    expect(isEditorSelectionInfo({ ...selection, nestedInSelection: false })).toBe(true)
+
     // lineHeight "normal" is reported as null.
     expect(
       isEditorSelectionInfo({
@@ -279,6 +282,7 @@ describe('deck editor bridge protocol', () => {
         imageNaturalSize: { width: Number.NaN, height: 10 },
       }),
     ).toBe(false)
+    expect(isEditorSelectionInfo({ ...selection, nestedInSelection: 'yes' })).toBe(false)
   })
 
   it('rejects hostile editor payloads with invalid geometry and incomplete fields', () => {

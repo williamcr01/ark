@@ -510,8 +510,6 @@ export function useDeckEditorPatchCoordinator({
     if (!lastDeleteRequest || !onPatchEditorOperations) return
     const key = `${lastDeleteRequest.elementId}:${lastDeleteRequest.slideIndex}`
     if (processedDeleteRequestRef.current === key) return
-    processedDeleteRequestRef.current = key
-    preserveSlideIndexRef.current = activeSlideIndex
     const generation = scopeGenerationRef.current
     const targets =
       selectionSet.length > 0
@@ -525,6 +523,8 @@ export function useDeckEditorPatchCoordinator({
     if (getSelectionSetBlockReason(selectionSet)) {
       return
     }
+    processedDeleteRequestRef.current = key
+    preserveSlideIndexRef.current = activeSlideIndex
     void onPatchEditorOperations(
       targets.map((item) => ({
         op: 'delete_element' as const,
