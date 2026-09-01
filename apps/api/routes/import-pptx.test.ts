@@ -10,19 +10,24 @@ import { apiErrorPayloadSchema, assertApiContract, createDeckResponseSchema } fr
 import { PPTX_ENCRYPTED_MESSAGE, PPTX_LEGACY_MESSAGE } from '@ark/deck-import'
 import { buildEncryptedPptx, buildLegacyPpt, buildPptx } from '@ark/deck-import/pptx-fixtures.ts'
 import { createApp } from '../app.ts'
-import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createDeckStore, type DeckStore } from '@ark/storage/stores/deck-store.ts'
 import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
+
+const OPEN_DECK_HTML =
+  '<!DOCTYPE html><html><head><title>Already Open</title></head><body><section class="slide"><h1>Do not overwrite</h1></section></body></html>'
 
 describe('POST /api/decks/import-pptx', () => {
   let root = ''
   let server: Server
   let baseUrl = ''
   let workspaces: WorkspaceStore
+  let deckStore: DeckStore
 
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'ark-api-import-pptx-'))
     workspaces = createWorkspaceStore(root)
-    const app = createApp({ deckStore: createDeckStore(workspaces), workspaceStore: workspaces })
+    deckStore = createDeckStore(workspaces)
+    const app = createApp({ deckStore, workspaceStore: workspaces })
     server = app.listen(0)
     await new Promise<void>((resolve) => server.once('listening', resolve))
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -73,6 +78,8 @@ describe('POST /api/decks/import-pptx', () => {
   })
 
   it('imports from a filesystem path without touching an already-open deck', async () => {
+    const openDeck = await deckStore.createDeck(OPEN_DECK_HTML)
+    const openHtml = (await deckStore.getDeck(openDeck.id))!.html
     const pptx = await buildPptx({
       title: 'From Disk',
       slides: [{ shapes: [{ text: 'Disk import' }] }],
@@ -95,6 +102,10 @@ describe('POST /api/decks/import-pptx', () => {
     expect(first.status).toBe(201)
     expect(second.status).toBe(201)
     expect(firstDeck.id).not.toBe(secondDeck.id)
+    expect(firstDeck.id).not.toBe(openDeck.id)
+    expect(secondDeck.id).not.toBe(openDeck.id)
+    expect((await deckStore.getDeck(openDeck.id))!.html).toBe(openHtml)
+    expect((await deckStore.getDeck(openDeck.id))!.html).toContain('Do not overwrite')
   })
 
   it('rejects legacy .ppt files', async () => {

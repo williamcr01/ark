@@ -1,35 +1,59 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import {
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+} from '@ark/deck/document/metadata.ts'
 import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import {
+  DEFAULT_DECK_FONT_IDS,
+  getDeckFont,
+  getDeckFontByPptxTypeface,
+} from '@ark/runtime-registry/deck-font-registry.ts'
 
 import { PPTX_ENCRYPTED_MESSAGE, PPTX_LEGACY_MESSAGE, PptxImportError } from './errors.ts'
 import { importPptxToHtml } from './import-pptx.ts'
 import { buildEncryptedPptx, buildLegacyPpt, buildPptx } from './pptx-fixtures.ts'
 
+const SLIDE_CX_EMU = 12_192_000
+const SLIDE_CY_EMU = 6_858_000
+
+function emuBoxStyle(x: number, y: number, cx: number, cy: number) {
+  return [
+    'position:absolute',
+    `left:${Math.round((x / SLIDE_CX_EMU) * ARK_SLIDE_REFERENCE_WIDTH)}px`,
+    `top:${Math.round((y / SLIDE_CY_EMU) * ARK_SLIDE_REFERENCE_HEIGHT)}px`,
+    `width:${Math.round((cx / SLIDE_CX_EMU) * ARK_SLIDE_REFERENCE_WIDTH)}px`,
+    `height:${Math.round((cy / SLIDE_CY_EMU) * ARK_SLIDE_REFERENCE_HEIGHT)}px`,
+  ].join(';')
+}
+
 describe('importPptxToHtml', () => {
   it('maps a real PPTX into a new HTML deck with notes, managed elements, and images', async () => {
+    const titleBox = { x: 457200, y: 365760, cx: 8229600, cy: 1371600 }
+    const accentBox = { x: 457200, y: 2286000, cx: 2743200, cy: 1371600 }
+    const pictureBox = { x: 6_096_000, y: 914_400, cx: 4_572_000, cy: 2_743_200 }
     const pptx = await buildPptx({
       title: 'Board Update',
       slides: [
         {
           notes: 'Pause on the headline.',
           shapes: [
-            { name: 'Title', text: 'Q3 results', x: 457200, y: 365760, cx: 8229600, cy: 1371600 },
+            { name: 'Title', text: 'Q3 results', ...titleBox },
             {
               name: 'Accent',
               geom: 'roundRect',
               fill: '4472C4',
               txBox: false,
-              x: 457200,
-              y: 2286000,
-              cx: 2743200,
-              cy: 1371600,
+              ...accentBox,
             },
           ],
           picture: true,
         },
       ],
     })
+
+    expect([...pptx.slice(0, 2)]).toEqual([0x50, 0x4b])
 
     const imported = await importPptxToHtml(pptx, { filename: 'board-update.pptx' })
     const parsed = parseDeckHtml(imported.html)
@@ -41,8 +65,15 @@ describe('importPptxToHtml', () => {
     expect(imported.html).toContain('data-ark-managed="true"')
     expect(imported.html).toContain('class="ark-text-box"')
     expect(imported.html).toContain('Q3 results')
+    expect(imported.html).toContain(emuBoxStyle(titleBox.x, titleBox.y, titleBox.cx, titleBox.cy))
     expect(imported.html).toContain('data-ark-shape="roundRect"')
+    expect(imported.html).toContain(
+      emuBoxStyle(accentBox.x, accentBox.y, accentBox.cx, accentBox.cy),
+    )
     expect(imported.html).toMatch(/src="data:image\/png;base64,/)
+    expect(imported.html).toContain(
+      emuBoxStyle(pictureBox.x, pictureBox.y, pictureBox.cx, pictureBox.cy),
+    )
     expect(imported.html).not.toMatch(/https?:\/\//)
   })
 
@@ -128,8 +159,13 @@ describe('importPptxToHtml', () => {
     const imported = await importPptxToHtml(pptx, { filename: 'plate.pptx' })
     const parsed = parseDeckHtml(imported.html)
 
+    expect(imported.slideCount).toBe(1)
+    expect(parsed.slideCount).toBe(1)
     expect(parsed.slides[0]?.notes).toBe('Walk the diagram.')
     expect(imported.html).toContain('ark-import-plate')
+    expect(imported.html).toContain(
+      'position:absolute;inset:0;width:100%;height:100%;object-fit:cover',
+    )
     expect(imported.html).not.toContain('data-ark-managed="true"')
   })
 
@@ -140,10 +176,46 @@ describe('importPptxToHtml', () => {
     })
 
     const imported = await importPptxToHtml(pptx, { filename: 'fonts.pptx' })
+    const bodyFont = getDeckFont(DEFAULT_DECK_FONT_IDS.body)!
 
+    expect(getDeckFontByPptxTypeface('Comic Sans MS')).toBeNull()
     expect(imported.html).toContain('Headline')
     expect(imported.html).not.toContain('Comic Sans')
-    expect(imported.html).toContain('data-ark-font-body="calibri"')
+    expect(imported.html).toContain(bodyFont.cssStack.replaceAll('"', '\\22 '))
+    expect(imported.html).toContain(`data-ark-font-body="${bodyFont.id}"`)
     expect(imported.html).toContain('--ark-font-body')
+  })
+
+  it('maps a registered PPTX typeface through getDeckFontByPptxTypeface', async () => {
+    const typeface = 'Liberation Sans'
+    const font = getDeckFontByPptxTypeface(typeface)
+    const pptx = await buildPptx({
+      title: 'Clones',
+      slides: [{ shapes: [{ text: 'Metric clone', font: typeface }] }],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'clones.pptx' })
+
+    expect(font?.id).toBe('arial')
+    expect(imported.html).toContain('Metric clone')
+    expect(imported.html).toContain(font!.cssStack.replaceAll('"', '\\22 '))
+    expect(imported.html).not.toMatch(/font-family:\s*Liberation Sans(?:;|"|$)/)
+  })
+
+  it('converts locally without calling a remote converter', async () => {
+    const pptx = await buildPptx({
+      title: 'Local',
+      slides: [{ shapes: [{ text: 'Stay on disk' }] }],
+    })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const imported = await importPptxToHtml(pptx, { filename: 'local.pptx' })
+      expect(imported.html).toContain('Stay on disk')
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
