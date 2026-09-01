@@ -186,4 +186,53 @@ describe('workspace API routes', () => {
     expect(payload.deck.filePath).toBe(targetPath)
     await expect(workspaces.get(payload.deck.id)).resolves.toMatchObject({ path: targetPath })
   })
+
+  it('lists document history and restores a snapshot with conflict detection', async () => {
+    const deck = await createDeck()
+    const edited = sampleHtml.replace('Hello', 'Edited')
+    const update = await fetch(`${baseUrl}/api/decks/${deck.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: edited, expectedDocumentRevision: 1 }),
+    })
+    expect(update.status).toBe(200)
+
+    const list = await fetch(`${baseUrl}/api/decks/${deck.id}/history`)
+    expect(list.status).toBe(200)
+    const listed = await list.json()
+    expect(listed.history).toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+
+    const stale = await fetch(`${baseUrl}/api/decks/${deck.id}/history/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 1, expectedDocumentRevision: 1 }),
+    })
+    expect(stale.status).toBe(409)
+    await expect(stale.json()).resolves.toMatchObject({
+      code: 'document_conflict',
+      currentDocumentRevision: 2,
+    })
+
+    const missing = await fetch(`${baseUrl}/api/decks/${deck.id}/history/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 99, expectedDocumentRevision: 2 }),
+    })
+    expect(missing.status).toBe(404)
+
+    const restored = await fetch(`${baseUrl}/api/decks/${deck.id}/history/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 1, expectedDocumentRevision: 2 }),
+    })
+    expect(restored.status).toBe(200)
+    const payload = await restored.json()
+    expect(payload.deck).toMatchObject({
+      documentRevision: 3,
+      html: expect.stringContaining('Hello'),
+    })
+  })
 })

@@ -262,6 +262,7 @@ export function createMcpRunner(options: {
     try {
       const updated = await deckStore.updateDeck(deck.id, workspace.html, {
         expectedDocumentRevision: deck.documentRevision,
+        historySource: 'mcp',
       })
       if (!updated) throw new McpRunnerError('NO_ACTIVE_DECK', 'The active deck was closed.', 409)
       const summary = summarize(name, output)

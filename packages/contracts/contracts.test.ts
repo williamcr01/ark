@@ -5,7 +5,9 @@ import {
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  documentHistoryListResponseSchema,
   renameDeckRequestSchema,
+  restoreDocumentHistoryRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
 import { generationJobResponseSchema, startGenerationJobRequestSchema } from './generation-jobs.ts'
@@ -482,5 +484,46 @@ describe('shared API contracts', () => {
     })
 
     expect(parsed.ok).toBe(false)
+  })
+
+  it('parses document history list and restore requests', () => {
+    expect(
+      documentHistoryListResponseSchema.parse({
+        history: [
+          {
+            revision: 1,
+            source: 'create',
+            createdAt: '2026-09-01T00:00:00.000Z',
+            byteSize: 120,
+          },
+          {
+            revision: 2,
+            source: 'agent',
+            createdAt: '2026-09-01T00:01:00.000Z',
+            byteSize: 140,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      history: [
+        expect.objectContaining({ source: 'create' }),
+        expect.objectContaining({ source: 'agent' }),
+      ],
+    })
+
+    expect(
+      restoreDocumentHistoryRequestSchema.parse({
+        revision: 1,
+        expectedDocumentRevision: 3,
+      }),
+    ).toEqual({ revision: 1, expectedDocumentRevision: 3 })
+
+    expect(
+      parseRequestBody(restoreDocumentHistoryRequestSchema, {
+        revision: 1,
+        expectedDocumentRevision: 3,
+        html: '<script>nope</script>',
+      }).ok,
+    ).toBe(false)
   })
 })

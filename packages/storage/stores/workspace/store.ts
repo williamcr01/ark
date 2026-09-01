@@ -33,8 +33,10 @@ import {
   migrate,
   SCHEMA,
 } from './schema.ts'
-import { WorkspaceDocumentConflictError } from './types.ts'
+import { appendDocumentHistory, listDocumentHistory, readDocumentHistoryHtml } from './history.ts'
+import { WorkspaceDocumentConflictError, WorkspaceDocumentHistoryNotFoundError } from './types.ts'
 import type { OpenWorkspace, RecentWorkspace, WorkspaceRow } from './types.ts'
+import type { DocumentHistorySource } from '../../records/document-history.ts'
 
 export class WorkspaceStore {
   private defaultDir: string
@@ -328,6 +330,12 @@ export class WorkspaceStore {
           .prepare('INSERT INTO document (id, html, content_hash, updated_at) VALUES (1, ?, ?, ?)')
           .run(html, contentHash(html), now)
         syncDocumentAssetReferences(database, html)
+        appendDocumentHistory(database, {
+          revision: 1,
+          html,
+          source: 'create',
+          createdAt: now,
+        })
         database.exec('COMMIT')
       } catch (error) {
         database.exec('ROLLBACK')
@@ -424,11 +432,28 @@ export class WorkspaceStore {
     return workspace
   }
 
+  async listDocumentHistory(id: string) {
+    await this.index()
+    const open = this.openById(id)
+    if (!open) return null
+    return listDocumentHistory(open.database)
+  }
+
+  async restoreDocument(id: string, historyRevision: number, expectedDocumentRevision: number) {
+    await this.index()
+    const open = this.openById(id)
+    if (!open) return null
+    const html = readDocumentHistoryHtml(open.database, historyRevision)
+    if (html === null) throw new WorkspaceDocumentHistoryNotFoundError(historyRevision)
+    return this.updateDocument(id, html, expectedDocumentRevision, [], 'restore')
+  }
+
   async updateDocument(
     id: string,
     html: string,
     expectedDocumentRevision: number,
     embeddedAssets: readonly EmbeddedAsset[] = [],
+    historySource: DocumentHistorySource = 'editor',
   ) {
     await this.index()
     const open = this.openById(id)
@@ -463,6 +488,15 @@ export class WorkspaceStore {
       open.database
         .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
         .run(html, contentHash(html), now)
+      // Identical HTML is an autosave tick, not a committed history step.
+      if (html !== current.html) {
+        appendDocumentHistory(open.database, {
+          revision: expectedDocumentRevision + 1,
+          html,
+          source: historySource,
+          createdAt: now,
+        })
+      }
       open.database.exec('COMMIT')
     } catch (error) {
       open.database.exec('ROLLBACK')

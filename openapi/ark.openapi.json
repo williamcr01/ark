@@ -2938,6 +2938,234 @@
         }
       }
     },
+    "/api/decks/{id}/history": {
+      "get": {
+        "summary": "List bounded document history in the workspace file",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document history summaries, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "revision": { "type": "integer", "minimum": 1 },
+                          "source": {
+                            "type": "string",
+                            "enum": ["editor", "agent", "mcp", "import", "create", "restore"]
+                          },
+                          "createdAt": { "type": "string" },
+                          "byteSize": { "type": "integer", "minimum": 0 }
+                        },
+                        "required": ["revision", "source", "createdAt", "byteSize"]
+                      }
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["history"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/history/restore": {
+      "post": {
+        "summary": "Restore the current document from a history snapshot",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": { "type": "integer", "minimum": 1 },
+                  "expectedDocumentRevision": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["revision", "expectedDocumentRevision"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restored deck",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deck": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i"
+                        },
+                        "html": { "type": "string" },
+                        "title": { "type": "string" },
+                        "createdAt": { "type": "string" },
+                        "updatedAt": { "type": "string" },
+                        "documentRevision": { "type": "integer", "minimum": 1 },
+                        "origin": { "type": "string", "enum": ["blank", "authored"] },
+                        "filePath": { "type": "string", "minLength": 1 }
+                      },
+                      "required": [
+                        "id",
+                        "html",
+                        "title",
+                        "createdAt",
+                        "updatedAt",
+                        "documentRevision",
+                        "origin",
+                        "filePath"
+                      ]
+                    },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["deck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The document changed since the client last read it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "code": { "type": "string", "enum": ["document_conflict"] },
+                    "currentDocumentRevision": { "type": "integer", "minimum": 1 },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error", "code", "currentDocumentRevision"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/decks/{id}/threads": {
       "get": {
         "summary": "List workspace chat threads",

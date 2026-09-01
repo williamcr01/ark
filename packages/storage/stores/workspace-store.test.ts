@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { createAssetStore } from './asset-store.ts'
 import { createChatStore } from './chat-store.ts'
+import { createGenerationJobStore } from './generation-job-store.ts'
 import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
+import { DOCUMENT_HISTORY_MAX_ENTRIES } from '../records/document-history.ts'
 
 const html = `<!DOCTYPE html><html><head><title>Workspace</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 
@@ -706,5 +708,188 @@ describe('WorkspaceStore file operations', () => {
     await expect(chat.listThreads(copy!.id)).resolves.toEqual([
       expect.objectContaining({ title: 'Selected' }),
     ])
+  })
+})
+
+function readHistoryFromFile(filePath: string) {
+  const database = new DatabaseSync(filePath, { readOnly: true })
+  try {
+    return database
+      .prepare(
+        'SELECT revision, source, html, byte_size FROM document_history ORDER BY revision ASC',
+      )
+      .all() as Array<{ revision: number; source: string; html: string; byte_size: number }>
+  } finally {
+    database.close()
+  }
+}
+
+describe('WorkspaceStore document history', () => {
+  let root = ''
+  let store: WorkspaceStore | null = null
+
+  afterEach(async () => {
+    store?.close()
+    store = null
+    if (root) await rm(root, { recursive: true, force: true })
+    root = ''
+  })
+
+  async function setup() {
+    root = await mkdtemp(path.join(os.tmpdir(), 'ark-history-'))
+    store = createWorkspaceStore(root)
+    return store
+  }
+
+  it('persists committed snapshots in the .ark file and reloads them', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const edited = html.replace('Hello', 'Edited')
+    const generated = html.replace('Hello', 'Generated')
+    await workspaces.updateDocument(created.id, edited, 1, [], 'editor')
+    await workspaces.updateDocument(created.id, generated, 2, [], 'agent')
+    await workspaces.updateDocument(created.id, generated, 3, [], 'editor')
+
+    workspaces.close()
+    const onDisk = readHistoryFromFile(created.path)
+    expect(onDisk.map((row) => ({ revision: row.revision, source: row.source }))).toEqual([
+      { revision: 1, source: 'create' },
+      { revision: 2, source: 'editor' },
+      { revision: 3, source: 'agent' },
+    ])
+    expect(onDisk.some((row) => row.html.includes('Generated'))).toBe(true)
+    expect(onDisk[2]?.html).not.toContain('sk-test')
+
+    store = createWorkspaceStore(root)
+    await expect(store.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+      expect.objectContaining({ revision: 3, source: 'agent' }),
+    ])
+  })
+
+  it('adds document_history on open for files written before the table', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    workspaces.close()
+
+    const database = new DatabaseSync(created.path)
+    database.exec('DROP TABLE document_history')
+    database.close()
+
+    store = createWorkspaceStore(root)
+    await store.open(created.path)
+    await expect(store.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+    ])
+    expect(readHistoryFromFile(created.path)[0]?.html).toContain('Hello')
+  })
+
+  it('evicts the oldest snapshots once the entry cap is exceeded', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+
+    for (let index = 0; index < DOCUMENT_HISTORY_MAX_ENTRIES; index += 1) {
+      const next = html.replace('Hello', `V${index}`)
+      await workspaces.updateDocument(created.id, next, index + 1, [], 'editor')
+    }
+
+    const history = await workspaces.listDocumentHistory(created.id)
+    expect(history).toHaveLength(DOCUMENT_HISTORY_MAX_ENTRIES)
+    expect(history?.[0]?.revision).toBe(2)
+    expect(readHistoryFromFile(created.path)).toHaveLength(DOCUMENT_HISTORY_MAX_ENTRIES)
+    expect(readHistoryFromFile(created.path).some((row) => row.html.includes('Hello</h1>'))).toBe(
+      false,
+    )
+  })
+
+  it('restores a history row and still conflict-detects via document_revision', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const edited = html.replace('Hello', 'Edited')
+    await workspaces.updateDocument(created.id, edited, 1, [], 'editor')
+
+    await expect(workspaces.restoreDocument(created.id, 1, 1)).rejects.toMatchObject({
+      code: 'document_conflict',
+      currentDocumentRevision: 2,
+    })
+
+    const restored = await workspaces.restoreDocument(created.id, 1, 2)
+    expect(restored).toMatchObject({
+      documentRevision: 3,
+      html: expect.stringContaining('Hello'),
+    })
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+      expect.objectContaining({ revision: 3, source: 'restore' }),
+    ])
+
+    await expect(
+      workspaces.updateDocument(created.id, html.replace('Hello', 'Stale'), 2),
+    ).rejects.toMatchObject({ code: 'document_conflict', currentDocumentRevision: 3 })
+  })
+
+  it('copies history on Save As and starts Duplicate from the current document only', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'Edited'), 1, [], 'editor')
+
+    const savedPath = path.join(root, 'Saved.ark')
+    const saved = await workspaces.saveAs(created.id, savedPath)
+    expect(saved?.path).toBe(savedPath)
+    expect(readHistoryFromFile(savedPath).map((row) => row.source)).toEqual(['create', 'editor'])
+
+    const copy = await workspaces.duplicate(saved!.id, 'presentation')
+    const copyHistory = readHistoryFromFile(copy!.path)
+    expect(copyHistory).toEqual([
+      expect.objectContaining({
+        revision: 1,
+        source: 'create',
+        html: expect.stringContaining('Edited'),
+      }),
+    ])
+  })
+
+  it('never writes generation-job payloads or extra secret tables into history', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const jobs = createGenerationJobStore()
+    await jobs.createJob({
+      deckId: created.id,
+      model: 'openai:gpt-5.6-luna',
+      request: {
+        messages: [{ role: 'user', content: 'sk-live-not-for-history' }],
+        currentHtml: html.replace('Hello', 'JOB_PAYLOAD'),
+        editingExistingDeck: true,
+        reasoningEffort: 'high',
+      },
+    })
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'Agent'), 1, [], 'agent')
+
+    const database = new DatabaseSync(created.path, { readOnly: true })
+    try {
+      const tables = database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .all() as Array<{ name: string }>
+      expect(tables.map((row) => row.name)).not.toContain('generation_jobs')
+      const historyHtml = database.prepare('SELECT html FROM document_history').all() as Array<{
+        html: string
+      }>
+      expect(historyHtml.some((row) => row.html.includes('JOB_PAYLOAD'))).toBe(false)
+      expect(historyHtml.some((row) => row.html.includes('sk-live-not-for-history'))).toBe(false)
+      const columns = database.prepare('PRAGMA table_info(document_history)').all() as Array<{
+        name: string
+      }>
+      expect(columns.map((column) => column.name).sort()).toEqual([
+        'byte_size',
+        'created_at',
+        'html',
+        'revision',
+        'source',
+      ])
+    } finally {
+      database.close()
+    }
   })
 })

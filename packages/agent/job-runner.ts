@@ -519,6 +519,7 @@ export function createGenerationJobRunner({
 
         const updatedDeck = await deckStore.updateDeck(targetDeckId, agentResult.html, {
           expectedDocumentRevision: currentDocumentRevision,
+          historySource: 'agent',
         })
 
         if (!updatedDeck) {
