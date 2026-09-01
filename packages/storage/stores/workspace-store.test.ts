@@ -233,6 +233,40 @@ describe('WorkspaceStore file operations', () => {
     ])
   })
 
+  it('flushes recents on close for a workspace saved outside the managed directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const outsideRoot = await mkdtemp(path.join(os.tmpdir(), 'ark-outside-'))
+    const outsidePath = path.join(outsideRoot, 'External.ark')
+
+    try {
+      const saved = await workspaces.move(created.id, outsidePath)
+      const recentsPath = path.join(root, 'recent-workspaces.json')
+      const before = await readFile(recentsPath, 'utf8')
+
+      const updated = await workspaces.updateDocument(
+        saved.id,
+        html.replace('Hello', 'Outside'),
+        saved.documentRevision,
+      )
+
+      expect(updated?.path).toBe(outsidePath)
+      expect(await readFile(recentsPath, 'utf8')).toBe(before)
+
+      workspaces.close()
+      store = createWorkspaceStore(root)
+      await expect(store.listRecent()).resolves.toEqual([
+        expect.objectContaining({
+          id: saved.id,
+          path: outsidePath,
+          updatedAt: updated?.updatedAt,
+        }),
+      ])
+    } finally {
+      await rm(outsideRoot, { recursive: true, force: true })
+    }
+  })
+
   it('still persists recents when a document update changes the title', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
