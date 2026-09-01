@@ -190,9 +190,9 @@ export class WorkspaceStore {
   }
 
   private async moveUnregisteredWorkspaceFile(open: OpenWorkspace, targetPath: string) {
-    this.closeDatabase(open.database, open.path)
     this.byId.delete(open.id)
     this.byPath.delete(open.path)
+    this.closeDatabase(open.database, open.path)
     try {
       await rename(open.path, targetPath)
       return readWorkspace(this.openFile(targetPath))
@@ -674,9 +674,9 @@ export class WorkspaceStore {
     await this.index()
     const open = this.openById(id)
     if (!open) return false
-    this.closeDatabase(open.database, open.path)
     this.byId.delete(id)
     this.byPath.delete(open.path)
+    this.closeDatabase(open.database, open.path)
     try {
       await unlink(open.path)
       this.recent.delete(id)
@@ -817,9 +817,9 @@ export class WorkspaceStore {
       removeRollbackJournal(staged)
       throw error
     }
-    this.closeDatabase(open.database, open.path)
     this.byId.delete(id)
     this.byPath.delete(open.path)
+    this.closeDatabase(open.database, open.path)
     const reopened = this.openFile(resolved)
     const workspace = readWorkspace(reopened)
     await this.touchRecent(workspace)
@@ -969,10 +969,18 @@ export class WorkspaceStore {
   }
 
   close() {
-    for (const open of this.byId.values()) this.closeDatabase(open.database, open.path)
+    const openWorkspaces = [...this.byId.values()]
     this.byId.clear()
     this.byPath.clear()
     this.indexed = false
+
+    for (const open of openWorkspaces) {
+      try {
+        this.closeDatabase(open.database, open.path)
+      } catch (error) {
+        console.warn(`Could not close workspace at ${open.path}.`, error)
+      }
+    }
   }
 }
 

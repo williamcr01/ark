@@ -102,7 +102,14 @@ export function removeRollbackJournal(workspacePath: string) {
   try {
     unlinkSync(rollbackJournalPath(workspacePath))
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return
+    }
+
+    console.warn(
+      `Could not remove rollback journal at ${rollbackJournalPath(workspacePath)}.`,
+      error,
+    )
   }
 }
 

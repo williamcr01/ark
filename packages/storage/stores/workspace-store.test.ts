@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -555,6 +555,30 @@ describe('WorkspaceStore file operations', () => {
 
     workspaces.close()
     await expect(access(journalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('still closes every workspace if the rollback journal cannot be unlinked', async () => {
+    const workspaces = await setup()
+    const first = await workspaces.create(html)
+    const second = await workspaces.create(html.replace('Hello', 'Second'))
+    await workspaces.updateDocument(first.id, html.replace('Hello', 'Edited'), 1)
+
+    const journalPath = `${first.path}-journal`
+    await rm(journalPath)
+    await mkdir(journalPath)
+    await writeFile(path.join(journalPath, 'blocker'), 'blocked')
+
+    expect(() => workspaces.close()).not.toThrow()
+
+    store = createWorkspaceStore(root)
+    await expect(store.get(second.id)).resolves.toMatchObject({
+      html: expect.stringContaining('Second'),
+    })
+
+    await rm(journalPath, { recursive: true, force: true })
+    await expect(store.get(first.id)).resolves.toMatchObject({
+      html: expect.stringContaining('Edited'),
+    })
   })
 
   it('garbage-collects document-orphaned assets and blobs on save', async () => {

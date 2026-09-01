@@ -244,7 +244,7 @@ Concurrency: the main process keeps a registry `workspaceId → { path, open han
 
 ## Default location and recent index
 
-- Default: `Documents/Ark/`, configurable via native directory picker.
+- Default: `Documents/Ark/`, configurable via native directory picker. While a workspace is open, SQLite may keep a `*.ark-journal` sibling beside the `.ark` file (PERSIST rollback journal). It is safe to ignore; Ark removes it when the connection closes.
 - Collision-safe names: `Untitled Presentation.ark`, `Untitled Presentation 2.ark`.
 - The on-disk filename follows the deck title whenever the title changes (user rename in the title bar/dashboard, or an agent-established `<title>` that the UI adopts), **in whatever directory the file lives**. Renames are collision-safe (`Board plan.ark`, `Board plan 2.ark`) and never overwrite.
 - Opening a file (Open dialog or Locate) adopts its file name as the deck title when the two diverge — a rename in the file explorer/terminal is treated as the user's latest statement of the deck's name. Collision-safe suffixes (`Board plan 2.ark` vs title `Board plan`) are recognized and leave the title alone.
