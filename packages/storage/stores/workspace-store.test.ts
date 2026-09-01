@@ -830,7 +830,7 @@ describe('WorkspaceStore document history', () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
     const payload = (label: string) =>
-      `<!DOCTYPE html><html><head><title>${label}</title></head><body><section class="slide"><h1>${'x'.repeat(5 * 1024 * 1024)}</h1></section></body></html>`
+      `<!DOCTYPE html><html><head><title>Workspace</title></head><body><section class="slide"><h1>${label}${'x'.repeat(5 * 1024 * 1024)}</h1></section></body></html>`
 
     await workspaces.updateDocument(created.id, payload('A'), 1, [], 'editor')
     await workspaces.updateDocument(created.id, payload('B'), 2, [], 'editor')
@@ -841,7 +841,7 @@ describe('WorkspaceStore document history', () => {
     const onDisk = readHistoryFromFile(created.path)
     expect(onDisk).toHaveLength(1)
     expect(onDisk[0]).toEqual(
-      expect.objectContaining({ revision: 3, html: expect.stringContaining('<title>B</title>') }),
+      expect.objectContaining({ revision: 3, html: expect.stringContaining('<h1>B') }),
     )
     expect(onDisk.reduce((sum, row) => sum + row.byte_size, 0)).toBeLessThanOrEqual(
       DOCUMENT_HISTORY_MAX_BYTES,
