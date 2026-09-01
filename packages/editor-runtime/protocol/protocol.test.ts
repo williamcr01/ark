@@ -323,6 +323,22 @@ describe('deck editor bridge protocol', () => {
     expect(isEditorRuntimeMessage(createEditorSelectionChangeMessage(null))).toBe(true)
   })
 
+  it('accepts a same-slide selection set of exactly 32', () => {
+    const selections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      ...selection,
+      elementId: `ark-el-${index}`,
+    }))
+    const primary = selections[selections.length - 1]!
+
+    expect(
+      isEditorRuntimeMessage({
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection: primary,
+        selections,
+      }),
+    ).toBe(true)
+  })
+
   it('accepts companion payloads on a group transform commit', () => {
     const geometry = { x: 0.2, y: 0.3, width: 0.4, height: 0.2 }
     const commit = {

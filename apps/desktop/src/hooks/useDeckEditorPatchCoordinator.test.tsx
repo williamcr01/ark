@@ -299,6 +299,38 @@ describe('useDeckEditorPatchCoordinator', () => {
     expect(callbacks.rollbackLivePatch).not.toHaveBeenCalled()
   })
 
+  it('patches every companion on a group transform commit', async () => {
+    const callbacks = options()
+    const companion = { ...selection, elementId: 'element-b', textPreview: 'Other' }
+    renderHook(() =>
+      useDeckEditorPatchCoordinator({
+        ...callbacks,
+        selections: [selection, companion],
+        transformCommit: {
+          type: 'ark:editor-transform-commit',
+          elementId: 'element-a',
+          slideIndex: 0,
+          geometry: { x: 0.2, y: 0.3, width: 0.3, height: 0.1 },
+          companions: [
+            {
+              elementId: 'element-b',
+              slideIndex: 0,
+              geometry: { x: 0.5, y: 0.3, width: 0.2, height: 0.1 },
+            },
+          ],
+        },
+      }),
+    )
+
+    await waitFor(() => expect(callbacks.onPatchEditorOperations).toHaveBeenCalledOnce())
+    expect(callbacks.onPatchEditorOperations.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: 'move_element', elementId: 'element-a' }),
+        expect.objectContaining({ op: 'move_element', elementId: 'element-b' }),
+      ]),
+    )
+  })
+
   it('deletes every unlocked selected element from one delete request', async () => {
     const callbacks = options()
     const companion = { ...selection, elementId: 'element-b', textPreview: 'Other' }

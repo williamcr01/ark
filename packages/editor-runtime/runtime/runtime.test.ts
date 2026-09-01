@@ -16,7 +16,9 @@ import {
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
   EDITOR_BRIDGE_PROTOCOL_VERSION,
   EDITOR_CONNECT_MESSAGE_TYPE,
+  EDITOR_ERROR_MESSAGE_TYPE,
   EDITOR_SESSION_HANDOFF_KEY,
+  MAX_EDITOR_SELECTIONS,
 } from '../index.ts'
 import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
 
@@ -336,6 +338,187 @@ describe('deck editor runtime script', () => {
     }
     expect(afterToggle.selection.elementId).toBe('title')
     expect(afterToggle.selections.map((item) => item.elementId)).toEqual(['title'])
+    dom.window.close()
+  })
+
+  it('rejects a Shift+click add from another slide and keeps the current set', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title">Opening</h1></section><section class="slide"><p data-ark-id="other">Other</p></section>',
+    )
+    const slides = [...dom.window.document.querySelectorAll<HTMLElement>('section.slide')]
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+    const other = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slides[0]!.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    slides[1]!.getBoundingClientRect = () => rect(0, 800, 1280, 720)
+    title.getBoundingClientRect = () => rect(100, 80, 400, 60)
+    other.getBoundingClientRect = () => rect(100, 880, 400, 40)
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    other.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 900, { shiftKey: true }))
+    other.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 900, { shiftKey: true }))
+
+    const last = [...messages]
+      .reverse()
+      .find((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE) as {
+      selection: { elementId: string }
+      selections?: { elementId: string }[]
+    }
+    expect(last.selection.elementId).toBe('title')
+    expect(last.selections?.map((item) => item.elementId) ?? ['title']).toEqual(['title'])
+    expect(title.getAttribute('data-ark-editor-selected')).toBe('primary')
+    expect(other.hasAttribute('data-ark-editor-selected')).toBe(false)
+    dom.window.close()
+  })
+
+  it('caps additive selection at 32 and posts a selection-cap error', async () => {
+    const markup = `<section class="slide">${Array.from(
+      { length: MAX_EDITOR_SELECTIONS + 1 },
+      (_, index) => `<p data-ark-id="el-${index}">Item ${index}</p>`,
+    ).join('')}</section>`
+    const { dom, messages } = await loadEditorRuntime(markup)
+    const slide = dom.window.document.querySelector<HTMLElement>('section')!
+    const nodes = [...dom.window.document.querySelectorAll<HTMLElement>('p')]
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    for (const [index, node] of nodes.entries()) {
+      node.getBoundingClientRect = () => rect(100, 40 + index, 400, 20)
+    }
+
+    nodes[0]!.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 50))
+    nodes[0]!.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 50))
+    for (const [index, node] of nodes.entries()) {
+      if (index === 0) continue
+      node.dispatchEvent(pointerEvent(dom, 'pointerdown', index + 2, 120, 50, { shiftKey: true }))
+      node.dispatchEvent(pointerEvent(dom, 'pointerup', index + 2, 120, 50, { shiftKey: true }))
+    }
+
+    const last = [...messages]
+      .reverse()
+      .find((message) => message.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE) as {
+      selections: { elementId: string }[]
+    }
+    expect(last.selections).toHaveLength(MAX_EDITOR_SELECTIONS)
+    expect(messages).toContainEqual({
+      type: EDITOR_ERROR_MESSAGE_TYPE,
+      message: 'You can select up to 32 elements.',
+      code: 'selection-cap',
+    })
+    expect(nodes[MAX_EDITOR_SELECTIONS]!.hasAttribute('data-ark-editor-selected')).toBe(false)
+    dom.window.close()
+  })
+
+  it('moves every selected element and posts companions on commit', async () => {
+    const { dom, messages } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title" style="position:absolute;left:100px;top:80px;width:400px;margin:0">Opening</h1><p data-ark-id="copy" style="position:absolute;left:100px;top:180px;width:400px;margin:0">Body</p></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    title.getBoundingClientRect = () =>
+      rect(
+        Number.parseFloat(title.style.left),
+        Number.parseFloat(title.style.top),
+        Number.parseFloat(title.style.width),
+        60,
+      )
+    copy.getBoundingClientRect = () =>
+      rect(
+        Number.parseFloat(copy.style.left),
+        Number.parseFloat(copy.style.top),
+        Number.parseFloat(copy.style.width),
+        40,
+      )
+    Object.defineProperty(title, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(copy, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(title, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperty(copy, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 190, { shiftKey: true }))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 190, { shiftKey: true }))
+    messages.length = 0
+
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 3, 120, 190))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointermove', 3, 220, 190))
+    dom.window.document.dispatchEvent(pointerEvent(dom, 'pointerup', 3, 220, 190))
+
+    const commit = messages.find(
+      (message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
+    ) as {
+      elementId: string
+      companions?: { elementId: string; geometry: { x: number; y: number } }[]
+    }
+    expect(commit.elementId).toBe('copy')
+    expect(commit.companions?.map((item) => item.elementId)).toEqual(['title'])
+    expect(title.style.left).toBe('200px')
+    expect(copy.style.left).toBe('200px')
+    expect(title.style.top).toBe('80px')
+    expect(copy.style.top).toBe('180px')
+    dom.window.close()
+  })
+
+  it('nudges every selected element and posts companions on commit', async () => {
+    const { dom, messages, flushNudgeTimer } = await loadEditorRuntime(
+      '<section class="slide"><h1 data-ark-id="title" style="position:absolute;left:100px;top:80px;width:400px;margin:0">Opening</h1><p data-ark-id="copy" style="position:absolute;left:100px;top:180px;width:400px;margin:0">Body</p></section>',
+    )
+    const slide = dom.window.document.querySelector<HTMLElement>('section.slide')!
+    const title = dom.window.document.querySelector<HTMLElement>('h1')!
+    const copy = dom.window.document.querySelector<HTMLElement>('p')!
+
+    slide.getBoundingClientRect = () => rect(0, 0, 1280, 720)
+    title.getBoundingClientRect = () =>
+      rect(
+        Number.parseFloat(title.style.left),
+        Number.parseFloat(title.style.top),
+        Number.parseFloat(title.style.width),
+        60,
+      )
+    copy.getBoundingClientRect = () =>
+      rect(
+        Number.parseFloat(copy.style.left),
+        Number.parseFloat(copy.style.top),
+        Number.parseFloat(copy.style.width),
+        40,
+      )
+    Object.defineProperty(title, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(copy, 'offsetParent', { configurable: true, get: () => slide })
+    Object.defineProperty(title, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperty(copy, 'offsetWidth', { configurable: true, value: 400 })
+    Object.defineProperties(slide, {
+      offsetWidth: { configurable: true, value: 1280 },
+      offsetHeight: { configurable: true, value: 720 },
+    })
+
+    title.dispatchEvent(pointerEvent(dom, 'pointerdown', 1, 120, 100))
+    title.dispatchEvent(pointerEvent(dom, 'pointerup', 1, 120, 100))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerdown', 2, 120, 190, { shiftKey: true }))
+    copy.dispatchEvent(pointerEvent(dom, 'pointerup', 2, 120, 190, { shiftKey: true }))
+    messages.length = 0
+
+    dom.window.document.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    )
+    await flushNudgeTimer()
+
+    const commit = messages.find(
+      (message) => message.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE,
+    ) as {
+      elementId: string
+      companions?: { elementId: string }[]
+    }
+    expect(commit.elementId).toBe('copy')
+    expect(commit.companions?.map((item) => item.elementId)).toEqual(['title'])
+    expect(title.style.left).toBe('101px')
+    expect(copy.style.left).toBe('101px')
     dom.window.close()
   })
 
