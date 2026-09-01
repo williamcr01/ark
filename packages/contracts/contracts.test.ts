@@ -8,6 +8,7 @@ import {
   renameDeckRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
+import { MAX_EDITOR_SELECTIONS as chatEditorSelectionCap } from '@ark/chat/chat.ts'
 import {
   generationJobResponseSchema,
   MAX_EDITOR_SELECTIONS,
@@ -15,6 +16,7 @@ import {
 } from './generation-jobs.ts'
 import { createPreviewSessionRequestSchema, previewSessionResponseSchema } from './preview.ts'
 import { appendChatMessageRequestSchema, deckChatResponseSchema } from './chat.ts'
+import { chatMessageContextSchema } from './agent-context.ts'
 import {
   assetListResponseSchema,
   uploadAssetRequestSchema,
@@ -35,6 +37,11 @@ const jobId = 'a0000000-0000-4000-8000-000000000001'
 const assetId = '00000000-0000-4000-8000-000000000701'
 
 describe('shared API contracts', () => {
+  it('keeps the editorSelections cap aligned across chat and contracts', () => {
+    expect(MAX_EDITOR_SELECTIONS).toBe(32)
+    expect(chatEditorSelectionCap).toBe(MAX_EDITOR_SELECTIONS)
+  })
+
   it('parses health and models responses', () => {
     expect(
       healthResponseSchema.parse({
@@ -330,6 +337,34 @@ describe('shared API contracts', () => {
     expect(parsedCap.editorSelections?.map((item) => item.elementId)).toEqual(
       atCap.map((item) => item.elementId),
     )
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelection: { slideIndex: 0, elementId: 'ark-el-extra' },
+        editorSelections: atCap,
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [
+          {
+            role: 'user',
+            content: 'align these',
+            context: {
+              editorSelection: { slideIndex: 5, elementId: 'ark-el-stale' },
+              editorSelections: [
+                { slideIndex: 1, elementId: 'ark-el-a' },
+                { slideIndex: 1, elementId: 'ark-el-b' },
+              ],
+            },
+          },
+        ],
+        deckId,
+      }).success,
+    ).toBe(true)
   })
 
   it('parses preview session contracts', () => {
@@ -442,7 +477,7 @@ describe('shared API contracts', () => {
     })
 
     expect(
-      appendChatMessageRequestSchema.safeParse({
+      appendChatMessageRequestSchema.parse({
         role: 'user',
         content: 'Align these',
         context: {
@@ -451,8 +486,25 @@ describe('shared API contracts', () => {
             { slideIndex: 2, elementId: 'ark-el-b' },
           ],
         },
-      }).success,
-    ).toBe(false)
+      }).context,
+    ).toEqual({
+      editorSelections: [{ slideIndex: 0, elementId: 'ark-el-a' }],
+    })
+
+    expect(
+      chatMessageContextSchema.parse({
+        editorSelection: { slideIndex: 5, elementId: 'ark-el-stale' },
+        editorSelections: [
+          { slideIndex: 1, elementId: 'ark-el-a' },
+          { slideIndex: 1, elementId: 'ark-el-b' },
+        ],
+      }),
+    ).toEqual({
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a' },
+        { slideIndex: 1, elementId: 'ark-el-b' },
+      ],
+    })
 
     expect(
       appendChatMessageRequestSchema.safeParse({

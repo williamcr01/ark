@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { editorSelectionFieldsSlideIndex } from '@ark/chat/chat.ts'
+
 /**
  * Manual-editor selection context (issue #83). Sent when the user has an element
  * selected so the agent can target "this" element by id and prefer id-based
@@ -45,7 +47,35 @@ type EditorSelectionFields = {
   editorSelections?: EditorSelectionContext[]
 }
 
-/** Same-slide v1: reject mixed slideIndex values rather than inventing cross-slide multi-select. */
+/**
+ * Drop extras that are not on the authoritative slide. Used for persisted /
+ * replayed per-message context so a mixed stored turn cannot 400 the whole chat.
+ */
+export function stripCrossSlideEditorSelectionFields<T extends EditorSelectionFields>(value: T): T {
+  const slideIndex = editorSelectionFieldsSlideIndex(value)
+  if (slideIndex === undefined) return value
+
+  const next: EditorSelectionFields = {}
+  if (value.editorSelection && value.editorSelection.slideIndex === slideIndex) {
+    next.editorSelection = value.editorSelection
+  }
+  if (value.editorSelections?.length) {
+    const editorSelections = value.editorSelections.filter((item) => item.slideIndex === slideIndex)
+    if (editorSelections.length > 0) next.editorSelections = editorSelections
+  }
+
+  const rest = { ...value }
+  delete rest.editorSelection
+  delete rest.editorSelections
+  return { ...rest, ...next }
+}
+
+/**
+ * Same-slide v1 for *top-level* generation-job fields: reject mixed slideIndex
+ * rather than inventing cross-slide multi-select. Also reject a distinct 33rd
+ * primary when the array is already at the cap, so a user-selected id is never
+ * dropped with no signal.
+ */
 export function refineSameSlideEditorSelectionFields(
   value: EditorSelectionFields,
   ctx: z.RefinementCtx,
@@ -55,7 +85,9 @@ export function refineSameSlideEditorSelectionFields(
     return
   }
 
-  const slideIndex = selections[0]!.slideIndex
+  const slideIndex = editorSelectionFieldsSlideIndex(value)
+  if (slideIndex === undefined) return
+
   if (selections.some((item) => item.slideIndex !== slideIndex)) {
     ctx.addIssue({
       code: 'custom',
@@ -72,6 +104,19 @@ export function refineSameSlideEditorSelectionFields(
         'editorSelection.slideIndex must match editorSelections (same-slide multi-select only).',
     })
   }
+
+  if (
+    value.editorSelection &&
+    value.editorSelection.slideIndex === slideIndex &&
+    selections.length >= MAX_EDITOR_SELECTIONS &&
+    !selections.some((item) => item.elementId === value.editorSelection!.elementId)
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['editorSelection'],
+      message: `editorSelection would exceed the ${MAX_EDITOR_SELECTIONS} element cap.`,
+    })
+  }
 }
 
 /** Optional context attached to a user chat turn (composer + persisted history). */
@@ -81,6 +126,6 @@ export const chatMessageContextSchema = z
     editorSelections: editorSelectionsSchema.optional(),
     slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
   })
-  .superRefine(refineSameSlideEditorSelectionFields)
+  .transform((value) => stripCrossSlideEditorSelectionFields(value))
 
 export type ChatMessageContext = z.infer<typeof chatMessageContextSchema>

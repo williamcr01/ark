@@ -27,6 +27,17 @@ export const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 50 * 1024 * 1024
 /** Max elements in one same-slide editor multi-select (issue #248). */
 export const MAX_EDITOR_SELECTIONS = 32
 
+/** Same-slide v1: the array's first item wins; singular is only used when the array is empty. */
+export function editorSelectionFieldsSlideIndex(input: {
+  editorSelection?: { slideIndex: number }
+  editorSelections?: Array<{ slideIndex: number }>
+}): number | undefined {
+  if (input.editorSelections && input.editorSelections.length > 0) {
+    return input.editorSelections[0]!.slideIndex
+  }
+  return input.editorSelection?.slideIndex
+}
+
 const CHAT_MESSAGE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -471,7 +482,9 @@ export function normalizeEditorSelectionFields(input: {
   const raw = input.editorSelections?.length ? input.editorSelections : primary ? [primary] : []
   if (raw.length === 0) return {}
 
-  const slideIndex = primary?.slideIndex ?? raw[0]!.slideIndex
+  const slideIndex = editorSelectionFieldsSlideIndex(input)
+  if (slideIndex === undefined) return {}
+
   const seen = new Set<string>()
   const sameSlide: EditorSelectionContext[] = []
   for (const item of raw) {
@@ -482,8 +495,12 @@ export function normalizeEditorSelectionFields(input: {
     if (sameSlide.length >= MAX_EDITOR_SELECTIONS) break
   }
 
-  if (primary && primary.slideIndex === slideIndex && !seen.has(primary.elementId)) {
-    if (sameSlide.length >= MAX_EDITOR_SELECTIONS) sameSlide.pop()
+  if (
+    primary &&
+    primary.slideIndex === slideIndex &&
+    !seen.has(primary.elementId) &&
+    sameSlide.length < MAX_EDITOR_SELECTIONS
+  ) {
     sameSlide.unshift(primary)
   }
 

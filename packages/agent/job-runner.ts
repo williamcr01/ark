@@ -848,6 +848,13 @@ export function createGenerationJobRunner({
       editorSelections: body.editorSelections,
     })
 
+    const rawLastUser = [...(body.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === 'user')
+    const rawMessageSelections = rawLastUser?.context?.editorSelections
+    const messageSentPluralSelections =
+      Array.isArray(rawMessageSelections) && rawMessageSelections.length > 1
+
     if (selectionFields.editorSelections?.length) {
       const lastUser = [...messages].reverse().find((message) => message.role === 'user')
       if (lastUser) {
@@ -855,7 +862,10 @@ export function createGenerationJobRunner({
           editorSelection: lastUser.context?.editorSelection,
           editorSelections: lastUser.context?.editorSelections,
         })
-        const resolved = fromMessage.editorSelections?.length ? fromMessage : selectionFields
+        const resolved =
+          messageSentPluralSelections && fromMessage.editorSelections?.length
+            ? fromMessage
+            : selectionFields
         lastUser.context = {
           ...lastUser.context,
           ...resolved,

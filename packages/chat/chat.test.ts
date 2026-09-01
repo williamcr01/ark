@@ -387,6 +387,33 @@ describe('parseGenerateMessages', () => {
       selections.map((item) => item.elementId),
     )
   })
+
+  it('keeps a capped same-slide set instead of swapping in a 33rd primary', () => {
+    const editorSelections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content: 'align these',
+        context: {
+          editorSelection: { slideIndex: 0, elementId: 'ark-el-extra' },
+          editorSelections,
+        },
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.messages[0]?.context?.editorSelections?.map((item) => item.elementId)).toEqual(
+      editorSelections.map((item) => item.elementId),
+    )
+    expect(
+      result.messages[0]?.context?.editorSelections?.some(
+        (item) => item.elementId === 'ark-el-extra',
+      ),
+    ).toBe(false)
+  })
 })
 
 describe('buildModelMessages', () => {
@@ -959,6 +986,38 @@ describe('normalizeEditorSelectionFields', () => {
       'ark-el-a',
       'ark-el-b',
     ])
+  })
+
+  it('keeps the array when the primary is on a different slide', () => {
+    const normalized = normalizeEditorSelectionFields({
+      editorSelection: { slideIndex: 5, elementId: 'ark-el-stale' },
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a' },
+        { slideIndex: 1, elementId: 'ark-el-b' },
+      ],
+    })
+    expect(normalized.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-b',
+    ])
+    expect(normalized.editorSelection?.elementId).toBe('ark-el-b')
+  })
+
+  it('does not pop a capped set to make room for a distinct 33rd primary', () => {
+    const editorSelections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const normalized = normalizeEditorSelectionFields({
+      editorSelection: { slideIndex: 0, elementId: 'ark-el-extra' },
+      editorSelections,
+    })
+    expect(normalized.editorSelections?.map((item) => item.elementId)).toEqual(
+      editorSelections.map((item) => item.elementId),
+    )
+    expect(normalized.editorSelections?.some((item) => item.elementId === 'ark-el-extra')).toBe(
+      false,
+    )
   })
 })
 

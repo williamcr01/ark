@@ -249,6 +249,48 @@ describe('generation job runner', () => {
     await expect(deckStore.listDecks()).resolves.toEqual([])
   })
 
+  it('persists body editorSelections when the message only sent singular context', async () => {
+    const { chatStore, deckStore, jobStore, runner } = await setup(async () => success(html, false))
+    const deck = await deckStore.createDeck(html)
+    const editorSelections = [
+      { slideIndex: 0, elementId: 'ark-el-a' },
+      { slideIndex: 0, elementId: 'ark-el-b' },
+      { slideIndex: 0, elementId: 'ark-el-c' },
+    ]
+    const started = await runner.startJob({
+      body: {
+        deckId: deck.id,
+        baseDocumentRevision: 1,
+        currentHtml: deck.html,
+        editorSelection: editorSelections[0],
+        editorSelections,
+        messages: [
+          {
+            role: 'user',
+            content: 'align these',
+            context: { editorSelection: editorSelections[0] },
+          },
+        ],
+      },
+      defaultModel: 'openai:gpt-test',
+    })
+    await terminal(jobStore.getJob, started.id)
+    const user = (await chatStore.listMessages(deck.id)).messages.find(
+      (message) => message.role === 'user',
+    )
+    expect(user?.context?.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-b',
+      'ark-el-c',
+    ])
+    expect(user?.context?.editorSelection?.elementId).toBe('ark-el-a')
+    expect(started.request.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-b',
+      'ark-el-c',
+    ])
+  })
+
   it('cancels queued jobs in memory', async () => {
     const { jobStore, runner } = await setup(async () => new Promise(() => undefined))
     const job = await jobStore.createJob({
