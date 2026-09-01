@@ -28,6 +28,7 @@ test('runs affected tests and smoke for runtime workspace code', () => {
     'apps/desktop/src/App.tsx',
     'packages/contracts/index.ts',
     'packages/deck-preview/deck-bridge.ts',
+    'packages/deck-export/index.ts',
     'packages/runtime-registry/deck-runtime-registry.ts',
   ]) {
     assert.deepEqual(decisions([filePath]), {
