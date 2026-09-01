@@ -1068,4 +1068,42 @@ describe('WorkspaceStore document history', () => {
     )
     expect(afterRename?.html).toContain('<title>Board plan</title>')
   })
+
+  it('keeps the deck name and the .ark file name when restoring older HTML', async () => {
+    // A content rollback is not a rename: the snapshot's older <title> must not
+    // move the file on disk out from under the user.
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+    expect(path.basename(renamed!.path)).toBe('Board plan.ark')
+
+    const restored = await workspaces.restoreDocument(created.id, 1, renamed!.documentRevision)
+
+    expect(restored?.html).toContain('<title>Workspace</title>')
+    expect(restored?.title).toBe('Board plan')
+    expect(restored?.path).toBe(renamed!.path)
+    await expect(access(renamed!.path)).resolves.toBeUndefined()
+  })
+
+  it('keeps the renamed file when appending its history row fails', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const database = await workspaces.database(created.id)
+    // Occupy the revision the rename will append at, so the history INSERT
+    // fails on the primary key after the file has already moved.
+    database!
+      .prepare(
+        `INSERT INTO document_history (revision, html, source, created_at, byte_size)
+         VALUES (2, 'squatter', 'editor', '2026-09-01T00:00:00.000Z', 9)`,
+      )
+      .run()
+
+    await expect(workspaces.rename(created.id, 'Board plan')).rejects.toThrow()
+
+    // The rename-rollback must not run past the file move: reopening the old
+    // path would leave a stray empty database there and mask this error.
+    const renamedPath = path.join(path.dirname(created.path), 'Board plan.ark')
+    await expect(access(renamedPath)).resolves.toBeUndefined()
+    await expect(access(created.path)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
 })

@@ -156,10 +156,16 @@ Schema notes:
 - **Cap:** last 50 rows or 8 MiB of stored HTML (`SUM(byte_size)`), whichever is hit first.
   Oldest rows are deleted first. The newest row is always kept, so one oversized snapshot cannot
   empty the table. History rows pin `ark-asset:` ids (`owner_type = 'history'`,
-  `owner_id = revision`); eviction drops those pins so unused images can still GC.
-- **Restore** copies a history row into `document`, bumps `document_revision` (so in-flight
-  patches still conflict-detect), and appends a `restore` snapshot when the HTML actually
-  changed.
+  `owner_id = revision`); eviction drops those pins so unused images can still GC. Rows are
+  pinned as they are inserted, so `migrate()` only backfills pins for rows that lack them and
+  stays a pure read on a normal open.
+- **Restore** validates the snapshot first (the same server-side deck validation as
+  `PUT /api/decks/:id`, so a snapshot seeded from a legacy `.ark` cannot reinstate
+  `external_url` HTML the write paths reject), copies the history row into `document`, bumps
+  `document_revision` (so in-flight patches still conflict-detect), and appends a `restore`
+  snapshot when the HTML actually changed. A restore keeps the current deck title and `.ark`
+  file name: rolling content back is not a rename, even when the snapshot carries an older
+  `<title>`.
 - **Save As** uses `backup()`, so history is copied. **Duplicate** creates a new workspace
   identity from the current HTML only (one `create` row); it does not copy the source's undo
   lineage.

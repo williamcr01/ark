@@ -228,4 +228,58 @@ describe('document_history helpers', () => {
         .get(assetId),
     ).toEqual({ owner_type: 'history', owner_id: '1' })
   })
+
+  it('writes nothing on a second migrate of an already-pinned file', () => {
+    // migrate() runs on every openFile. Re-pinning unconditionally rewrote the
+    // whole table each time: dozens of fsync'd write transactions per deck
+    // open, a file dirtied with no user edit, and a hard failure on a
+    // read-only `.ark`.
+    database = memoryWorkspace()
+    const assetId = '33333333-3333-4333-8333-333333333333'
+    const checksum = createHash('sha256').update('pinned').digest('hex')
+    database
+      .prepare(
+        `INSERT INTO blobs (checksum, media_type, byte_size, bytes, created_at)
+         VALUES (?, 'image/png', 6, ?, '2020-01-01T00:00:00.000Z')`,
+      )
+      .run(checksum, Buffer.from('pinned'))
+    database
+      .prepare(
+        `INSERT INTO assets
+         (id, blob_checksum, filename, media_type, category, source, created_at)
+         VALUES (?, ?, 'pinned.png', 'image/png', 'image', 'upload', '2020-01-01T00:00:00.000Z')`,
+      )
+      .run(assetId, checksum)
+    appendDocumentHistory(database, {
+      revision: 1,
+      html: `<img src="ark-asset:${assetId}">`,
+      source: 'create',
+      createdAt: '2026-09-01T00:00:00.000Z',
+    })
+    appendDocumentHistory(database, {
+      revision: 2,
+      html: html('No assets here'),
+      source: 'editor',
+      createdAt: '2026-09-01T00:00:01.000Z',
+    })
+
+    const statements: string[] = []
+    const prepare = database.prepare.bind(database)
+    database.prepare = ((sql: string) => {
+      statements.push(sql)
+      return prepare(sql)
+    }) as typeof database.prepare
+    try {
+      migrateDocumentHistory(database)
+    } finally {
+      database.prepare = prepare
+    }
+
+    expect(statements.some((sql) => /\b(INSERT|UPDATE|DELETE)\b/i.test(sql))).toBe(false)
+    expect(
+      database
+        .prepare('SELECT owner_type, owner_id FROM asset_references WHERE asset_id = ?')
+        .get(assetId),
+    ).toEqual({ owner_type: 'history', owner_id: '1' })
+  })
 })

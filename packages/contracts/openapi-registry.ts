@@ -431,7 +431,10 @@ export function createArkOpenApiRegistry() {
         description: 'Restored deck',
         content: { 'application/json': { schema: restoreDocumentHistoryResponseSchema } },
       },
-      400: jsonError,
+      400: {
+        description: 'The snapshot is not a valid Ark deck',
+        content: { 'application/json': { schema: deckValidationErrorResponseSchema } },
+      },
       404: jsonError,
       409: {
         description: 'The document changed since the client last read it',

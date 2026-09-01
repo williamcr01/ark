@@ -27,7 +27,7 @@ const CREATE_DOCUMENT_HISTORY_IF_NEEDED = DOCUMENT_HISTORY_TABLE.replace(
 export function migrateDocumentHistory(database: DatabaseSync) {
   database.exec(CREATE_DOCUMENT_HISTORY_IF_NEEDED)
   seedDocumentHistoryIfEmpty(database)
-  pinExistingDocumentHistoryAssets(database)
+  backfillDocumentHistoryAssetPins(database)
 }
 
 export function seedDocumentHistoryIfEmpty(database: DatabaseSync) {
@@ -53,14 +53,27 @@ export function seedDocumentHistoryIfEmpty(database: DatabaseSync) {
 }
 
 /**
- * Re-pin every history snapshot. Files written before history pins, and rows
- * seeded on open, need this so restore still finds `ark-asset:` blobs.
+ * Pin `ark-asset:` blobs for history rows that carry asset references but no
+ * pins — snapshots written by a build that predates history pinning.
+ *
+ * Rows are pinned as they are inserted (`insertDocumentHistoryRow`, which the
+ * seed path also goes through), so on a normal open this selects nothing and
+ * `migrate()` stays a pure read. That matters: `migrate()` runs on every
+ * `openFile`, and re-pinning unconditionally rewrote the whole table — dozens
+ * of fsync'd write transactions per deck open under `journal_mode = DELETE`,
+ * a dirtied file with no user edit, and a hard failure on a read-only `.ark`.
  */
-function pinExistingDocumentHistoryAssets(database: DatabaseSync) {
-  const rows = database.prepare('SELECT revision, html FROM document_history').all() as Array<{
-    revision: number
-    html: string
-  }>
+function backfillDocumentHistoryAssetPins(database: DatabaseSync) {
+  const rows = database
+    .prepare(
+      `SELECT revision, html FROM document_history AS dh
+       WHERE dh.html LIKE '%ark-asset:%'
+         AND NOT EXISTS (
+           SELECT 1 FROM asset_references AS ar
+           WHERE ar.owner_type = 'history' AND ar.owner_id = CAST(dh.revision AS TEXT)
+         )`,
+    )
+    .all() as Array<{ revision: number; html: string }>
   for (const row of rows) pinHistoryAssetReferences(database, row.revision, row.html)
 }
 

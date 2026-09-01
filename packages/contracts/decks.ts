@@ -201,6 +201,7 @@ export type RestoreDocumentHistoryRequest = z.infer<typeof restoreDocumentHistor
 
 export const restoreDocumentHistoryResponseSchema = withRequestId({
   deck: storedDeckSchema,
+  validation: deckValidationReportSchema,
 })
 
 export type RestoreDocumentHistoryResponse = z.infer<typeof restoreDocumentHistoryResponseSchema>

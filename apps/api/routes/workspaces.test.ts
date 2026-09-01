@@ -234,5 +234,41 @@ describe('workspace API routes', () => {
       documentRevision: 3,
       html: expect.stringContaining('Hello'),
     })
+    expect(payload.validation).toMatchObject({ valid: true })
+  })
+
+  it('rejects restoring a snapshot that the write paths would not accept', async () => {
+    // A snapshot seeded by migrate() from a legacy or hand-authored `.ark` can
+    // carry HTML that PUT /api/decks/:id rejects. Restore is not a way around
+    // that: it would reinstate an external_url deck the preview blocks.
+    const deck = await createDeck()
+    const database = await workspaces.database(deck.id)
+    const external = sampleHtml.replace(
+      '<h1>Hello</h1>',
+      '<img src="https://example.com/logo.png">',
+    )
+    database!
+      .prepare(
+        `INSERT INTO document_history (revision, html, source, created_at, byte_size)
+         VALUES (?, ?, 'create', '2026-09-01T00:00:00.000Z', ?)`,
+      )
+      .run(50, external, Buffer.byteLength(external, 'utf8'))
+
+    const response = await fetch(`${baseUrl}/api/decks/${deck.id}/history/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 50, expectedDocumentRevision: 1 }),
+    })
+
+    expect(response.status).toBe(400)
+    const payload = await response.json()
+    expect(payload.validation.issues).toContainEqual(
+      expect.objectContaining({ code: 'external_url', severity: 'error' }),
+    )
+    // The live document is untouched.
+    const current = await fetch(`${baseUrl}/api/decks/${deck.id}`)
+    await expect(current.json()).resolves.toMatchObject({
+      deck: { documentRevision: 1, html: expect.stringContaining('Hello') },
+    })
   })
 })
