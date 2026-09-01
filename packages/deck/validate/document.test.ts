@@ -70,4 +70,21 @@ describe('validateDeckHtml with JSDOM', () => {
     expect(sourceMayContainNestedSlides(html)).toBe(true)
     expect(report.malformedSlides.some((slide) => slide.reason === 'nested_slide')).toBe(false)
   })
+
+  it('rejects entity-encoded http(s) URLs the parser would decode', () => {
+    const cases = [
+      `<img src="https&#58;//evil.example/x.png" alt="x">`,
+      `<div style="background:url&#40;https&#58;//evil.example/bg.png)">hi</div>`,
+      `<img src="https&colon;&sol;&sol;evil.example/x.png" alt="x">`,
+    ]
+
+    for (const fragment of cases) {
+      const html = `<!DOCTYPE html><html><body><section class="slide">${fragment}</section></body></html>`
+      const report = validateDeckHtml(html, parseDocument)
+
+      expect(report.valid).toBe(false)
+      expect(report.externalUrls.length).toBeGreaterThan(0)
+      expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
+    }
+  })
 })

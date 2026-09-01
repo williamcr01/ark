@@ -93,6 +93,31 @@ describe('deck-network', () => {
     expect(collectExternalUrls(doc, html)).toEqual([])
   })
 
+  it('still scans entity-encoded http(s) URLs the parser would decode', () => {
+    const cases = [
+      `<img src="https&#58;//evil.example/x.png" alt="x">`,
+      `<div style="background:url&#40;https&#58;//evil.example/bg.png)">hi</div>`,
+      `<script src="https&colon;&sol;&sol;evil.example/x.js"></script>`,
+    ]
+
+    for (const fragment of cases) {
+      const html = `<!DOCTYPE html><html><body><section class="slide">${fragment}</section></body></html>`
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+
+      expect(sourceMayContainExternalUrls(html)).toBe(true)
+      expect(collectExternalUrls(doc, html).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('skips the DOM walk when the only entities are harmless named ones', () => {
+    const html =
+      '<!DOCTYPE html><html><body><section class="slide"><p>A &amp; B&nbsp;C</p></section></body></html>'
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+
+    expect(sourceMayContainExternalUrls(html)).toBe(false)
+    expect(collectExternalUrls(doc, html)).toEqual([])
+  })
+
   it('extracts external URLs from raw CSS text', () => {
     expect(
       collectUrlsFromCss(`
