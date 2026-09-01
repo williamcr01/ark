@@ -14,6 +14,8 @@ vi.mock('@/components/MiniHtmlPreview', () => ({
   ),
 }))
 
+const themeFonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
+
 const baseProps: ComponentProps<typeof ChatPanel> = {
   messages: [],
   input: '',
@@ -134,6 +136,7 @@ describe('ChatPanel submit control', () => {
                 id: `theme-${index}`,
                 name: `Theme ${index}`,
                 description: `Direction ${index}`,
+                fonts: themeFonts,
                 sampleHtml,
               })),
             },
@@ -262,24 +265,28 @@ describe('ChatPanel submit control', () => {
         id: 'midnight',
         name: 'Midnight Editorial',
         description: 'Dark and sharp',
+        fonts: themeFonts,
         sampleHtml,
       },
       {
         id: 'sunlit',
         name: 'Sunlit Studio',
         description: 'Warm and airy',
+        fonts: themeFonts,
         sampleHtml,
       },
       {
         id: 'signal',
         name: 'Signal Grid',
         description: 'Bold sans',
+        fonts: themeFonts,
         sampleHtml,
       },
       {
         id: 'folio',
         name: 'Quiet Folio',
         description: 'Soft paper',
+        fonts: themeFonts,
         sampleHtml,
       },
     ]
@@ -348,24 +355,28 @@ describe('ChatPanel submit control', () => {
                         id: 'midnight',
                         name: 'Midnight Editorial',
                         description: 'Dark and sharp',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                       {
                         id: 'sunlit',
                         name: 'Sunlit Studio',
                         description: 'Warm and airy',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                       {
                         id: 'signal',
                         name: 'Signal Grid',
                         description: 'Bold sans',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                       {
                         id: 'folio',
                         name: 'Quiet Folio',
                         description: 'Soft paper',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                     ],
@@ -407,24 +418,28 @@ describe('ChatPanel submit control', () => {
                         id: 'midnight',
                         name: 'Midnight Editorial',
                         description: 'Dark',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                       {
                         id: 'sunlit',
                         name: 'Sunlit Studio',
                         description: 'Warm',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                       {
                         id: 'signal',
                         name: 'Signal Grid',
                         description: 'Bold',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                       {
                         id: 'folio',
                         name: 'Quiet Folio',
                         description: 'Soft',
+                        fonts: themeFonts,
                         sampleHtml,
                       },
                     ],

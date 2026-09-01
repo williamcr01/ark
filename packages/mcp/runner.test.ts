@@ -151,6 +151,7 @@ describe('MCP runner', () => {
 
     const sampleHtml =
       '<!doctype html><html><head><title>Sample</title></head><body><section class="slide"><h1>Sample</h1></section></body></html>'
+    const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
     const themeResult = await run(
       'propose_themes',
       {
@@ -161,6 +162,7 @@ describe('MCP runner', () => {
           id: `theme-${index}`,
           name: `Theme ${index}`,
           description: `Direction ${index}`,
+          fonts,
           sampleHtml,
         })),
       },

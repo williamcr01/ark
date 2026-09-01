@@ -367,7 +367,7 @@ export function createDeckTools(
     }),
     propose_themes: tool({
       description:
-        'Propose exactly four visually distinct theme directions as single-slide sample HTML documents. Use before creating a new deck, or when the user explicitly asks to retheme the whole existing deck, then stop and wait for the user to pick one.',
+        'Propose exactly four visually distinct theme directions as single-slide sample HTML documents, each with a fonts pairing (display, body, mono) from the approved deck font ids. Use before creating a new deck, or when the user explicitly asks to retheme the whole existing deck, then stop and wait for the user to pick one.',
       inputSchema: themeProposalRequestSchema,
       execute: async ({ themes }) => {
         for (const theme of themes) {

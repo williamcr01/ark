@@ -4,6 +4,7 @@ import type { ChatMessage } from '@ark/chat/chat.ts'
 import { findThemeChoiceAfter, isThemeChoiceMessage } from '@/lib/chat/agent-themes'
 
 const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
+const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
 
 const proposal: ChatMessage = {
   id: 'a1',
@@ -17,10 +18,10 @@ const proposal: ChatMessage = {
       input: {
         title: 'Pick a visual direction',
         themes: [
-          { id: 'midnight', name: 'Midnight Editorial', description: 'Dark', sampleHtml },
-          { id: 'sunlit', name: 'Sunlit Studio', description: 'Warm', sampleHtml },
-          { id: 'signal', name: 'Signal Grid', description: 'Bold', sampleHtml },
-          { id: 'folio', name: 'Quiet Folio', description: 'Soft', sampleHtml },
+          { id: 'midnight', name: 'Midnight Editorial', description: 'Dark', fonts, sampleHtml },
+          { id: 'sunlit', name: 'Sunlit Studio', description: 'Warm', fonts, sampleHtml },
+          { id: 'signal', name: 'Signal Grid', description: 'Bold', fonts, sampleHtml },
+          { id: 'folio', name: 'Quiet Folio', description: 'Soft', fonts, sampleHtml },
         ],
       },
     },

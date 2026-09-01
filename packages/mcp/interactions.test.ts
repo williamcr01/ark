@@ -56,6 +56,7 @@ describe('MCP interactions', () => {
             description: `Direction ${index}`,
             sampleHtml:
               '<!doctype html><html><body><section class="slide"></section></body></html>',
+            fonts: { display: 'georgia', body: 'calibri', mono: 'courier-new' },
           })),
         },
       },

@@ -44,4 +44,39 @@ describe('OpenAPI registry', () => {
 
     expect(generated).toBe(committed)
   })
+
+  it('documents theme proposal fonts as registry ids', () => {
+    const document = generateArkOpenApiDocument()
+    const schema = document.components?.schemas?.ThemeProposalRequest as
+      | {
+          properties?: {
+            themes?: {
+              items?: {
+                properties?: {
+                  fonts?: {
+                    properties?: Record<string, { enum?: string[] }>
+                    required?: string[]
+                  }
+                }
+                required?: string[]
+              }
+            }
+          }
+        }
+      | undefined
+
+    const fonts = schema?.properties?.themes?.items?.properties?.fonts
+    expect(schema?.properties?.themes?.items?.required).toContain('fonts')
+    expect(fonts?.required).toEqual(expect.arrayContaining(['display', 'body', 'mono']))
+    expect(fonts?.properties?.display?.enum).toEqual([
+      'calibri',
+      'arial',
+      'cambria',
+      'georgia',
+      'times-new-roman',
+      'courier-new',
+    ])
+    expect(fonts?.properties?.body?.enum).toEqual(fonts?.properties?.display?.enum)
+    expect(fonts?.properties?.mono?.enum).toEqual(fonts?.properties?.display?.enum)
+  })
 })

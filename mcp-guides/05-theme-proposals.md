@@ -4,7 +4,7 @@ For a brand-new or blank deck (`get_active_deck` returns `isBlank: true`), gathe
 
 1. If the request does not already make the audience, approximate slide count, content priorities, or concise/story-led/data-heavy/visual balance clear, call `ask_user` with only the missing questions.
 2. After `ask_user`, call `wait_for_interaction` with the returned interaction id until Ark returns the answers.
-3. Call `propose_themes` with exactly **4** visually distinct directions. Each theme needs a lean, self-contained single-slide `sampleHtml` using the real deck title and content.
+3. Call `propose_themes` with exactly **4** visually distinct directions. Each theme needs `fonts: { display, body, mono }` using approved deck font ids (not CSS stacks), plus a lean, self-contained single-slide `sampleHtml` using the real deck title and content.
 4. Every `sampleHtml` must already obey the best-practice rules (contrast, type scale, anti-slop). No purple/indigo default kits, pill clusters, or low-contrast demos.
 5. Call `wait_for_interaction` until Ark returns the chosen theme id.
 6. Build the full deck with `write_deck` in that direction. Do not re-propose themes unless the user explicitly asks for new options.

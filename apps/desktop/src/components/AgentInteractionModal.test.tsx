@@ -21,11 +21,13 @@ const mcpBase = {
 } as const
 
 const sampleHtml = '<!doctype html><html><body><section class="slide"></section></body></html>'
+const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
 
 const themes = Array.from({ length: 4 }, (_, index) => ({
   id: `theme-${index}`,
   name: `Theme ${index}`,
   description: `Direction ${index}`,
+  fonts,
   sampleHtml,
 }))
 

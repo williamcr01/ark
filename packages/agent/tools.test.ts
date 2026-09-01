@@ -184,11 +184,12 @@ describe('propose_themes tool', () => {
 <style>html,body{margin:0;height:100%} .slide{width:100vw;height:100vh}</style>
 </head><body><section class="slide"><h1>Title</h1></section></body></html>`
 
+  const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
   const themes = [
-    { id: 'a', name: 'Alpha', description: 'Dark', sampleHtml },
-    { id: 'b', name: 'Beta', description: 'Light', sampleHtml },
-    { id: 'c', name: 'Gamma', description: 'Bold', sampleHtml },
-    { id: 'd', name: 'Delta', description: 'Soft', sampleHtml },
+    { id: 'a', name: 'Alpha', description: 'Dark', fonts, sampleHtml },
+    { id: 'b', name: 'Beta', description: 'Light', fonts, sampleHtml },
+    { id: 'c', name: 'Gamma', description: 'Bold', fonts, sampleHtml },
+    { id: 'd', name: 'Delta', description: 'Soft', fonts, sampleHtml },
   ]
 
   it.each([
