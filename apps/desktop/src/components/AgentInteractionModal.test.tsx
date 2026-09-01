@@ -81,6 +81,9 @@ describe('AgentInteractionModal', () => {
     await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 2' }))
 
     expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('Theme 2 (id: theme-2)'))
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('- Fonts: display georgia, body calibri, mono courier-new'),
+    )
   })
 
   it('submits MCP questions without a normal agent model', async () => {

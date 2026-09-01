@@ -79,10 +79,21 @@ export function parseStoredThemeProposalRequest(input: unknown): ThemeProposalRe
   return parsed.success ? parsed.data : null
 }
 
-export function formatThemeChoice(request: ThemeProposalRequest, themeId: string) {
+export function formatThemeFontPairingLine(fonts: ThemeFontPairing) {
+  return `- Fonts: display ${fonts.display}, body ${fonts.body}, mono ${fonts.mono}`
+}
+
+export function formatThemeChoice(
+  request: ThemeProposalRequest,
+  themeId: string,
+  fonts?: ThemeFontPairing,
+) {
   const theme = request.themes.find((entry) => entry.id === themeId)
   const name = theme?.name ?? themeId
-  return `${request.title}: theme choice:\n- Theme: ${name} (id: ${themeId})`
+  const pairing = fonts ?? theme?.fonts
+  const lines = [`${request.title}: theme choice:`, `- Theme: ${name} (id: ${themeId})`]
+  if (pairing) lines.push(formatThemeFontPairingLine(pairing))
+  return lines.join('\n')
 }
 
 /** Recover the chosen theme id from a formatted choice message. */

@@ -64,8 +64,45 @@ describe('agent themes', () => {
     const formatted = formatThemeChoice(request, 'midnight')
     expect(formatted).toContain('Pick a visual direction: theme choice:')
     expect(formatted).toContain('Midnight Editorial (id: midnight)')
+    expect(formatted).toContain('- Fonts: display georgia, body calibri, mono courier-new')
     expect(parseThemeChoiceId(formatted)).toBe('midnight')
     expect(parseThemeChoiceName(request, formatted)).toBe('Midnight Editorial')
+  })
+
+  it('formats an overridden font pairing on the theme choice', () => {
+    const request = themeProposalRequestSchema.parse({
+      title: 'Pick a visual direction',
+      themes: [
+        theme({
+          id: 'midnight',
+          name: 'Midnight Editorial',
+          description: 'Dark, serif-led, high contrast',
+        }),
+        theme({
+          id: 'sunlit',
+          name: 'Sunlit Studio',
+          description: 'Warm neutrals, airy type',
+        }),
+        theme({
+          id: 'signal',
+          name: 'Signal Grid',
+          description: 'Bold sans, sharp accent',
+        }),
+        theme({
+          id: 'folio',
+          name: 'Quiet Folio',
+          description: 'Soft paper, restrained palette',
+        }),
+      ],
+    })
+
+    const formatted = formatThemeChoice(request, 'midnight', {
+      display: 'cambria',
+      body: 'arial',
+      mono: 'courier-new',
+    })
+    expect(formatted).toContain('- Fonts: display cambria, body arial, mono courier-new')
+    expect(parseThemeChoiceId(formatted)).toBe('midnight')
   })
 
   it('rejects proposals that are not exactly four themes', () => {

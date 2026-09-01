@@ -327,6 +327,9 @@ describe('ChatPanel submit control', () => {
     expect(onQuestionSubmit).toHaveBeenCalledWith(
       expect.stringContaining('Midnight Editorial (id: midnight)'),
     )
+    expect(onQuestionSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('- Fonts: display georgia, body calibri, mono courier-new'),
+    )
   })
 
   it('keeps the composer active ring while the theme picker is pending', () => {

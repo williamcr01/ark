@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { CheckIcon, PaletteIcon } from 'lucide-react'
 
-import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
+import type {
+  ThemeCandidate,
+  ThemeFontPairing,
+  ThemeProposalRequest,
+} from '@ark/chat/agent-themes.ts'
+import { DECK_FONT_ROLES, type DeckFontRole } from '@ark/runtime-registry/deck-font-registry.ts'
 import { MiniHtmlPreview } from '@/components/MiniHtmlPreview'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,13 +16,59 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  formatThemeFontPairingLabel,
+  resolveThemeFontPairing,
+  THEME_FONT_ROLE_LABELS,
+  themeFontRoleOptions,
+} from '@/lib/chat/theme-fonts'
 import { cn } from '@/lib/ui/utils'
 
 type ThemePickerProps = {
   request: ThemeProposalRequest
   disabled?: boolean
-  onSubmit: (themeId: string) => void
+  onSubmit: (themeId: string, fonts: ThemeFontPairing) => void
   submitLabel?: string
+}
+
+const FONT_OPTIONS = themeFontRoleOptions()
+
+function ThemeFontRoleSelects({
+  disabled,
+  fonts,
+  themeName,
+  onChange,
+}: {
+  disabled?: boolean
+  fonts: ThemeFontPairing
+  themeName: string
+  onChange: (role: DeckFontRole, id: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      {DECK_FONT_ROLES.map((role) => {
+        const label = THEME_FONT_ROLE_LABELS[role]
+        return (
+          <label className="flex min-w-0 flex-col gap-0.5" key={role}>
+            <span className="text-muted-foreground text-[10px] leading-none">{label}</span>
+            <select
+              aria-label={`${label} font for ${themeName}`}
+              className="h-6 w-full min-w-0 rounded-sm border border-border/80 bg-background px-1 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              disabled={disabled}
+              onChange={(event) => onChange(role, event.target.value)}
+              value={fonts[role]}
+            >
+              {FONT_OPTIONS.map((font) => (
+                <option key={font.id} value={font.id}>
+                  {font.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )
+      })}
+    </div>
+  )
 }
 
 export function ThemePicker({
@@ -28,9 +79,22 @@ export function ThemePicker({
 }: ThemePickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [fontOverrides, setFontOverrides] = useState<Record<string, ThemeFontPairing>>({})
+
+  const fontsFor = (theme: ThemeCandidate) => fontOverrides[theme.id] ?? theme.fonts
+
+  const updateFonts = (theme: ThemeCandidate, role: DeckFontRole, id: string) => {
+    setSelectedId(theme.id)
+    setFontOverrides((current) => ({
+      ...current,
+      [theme.id]: resolveThemeFontPairing(fontsFor(theme), role, id),
+    }))
+  }
 
   const selected = request.themes.find((theme) => theme.id === selectedId) ?? null
   const enlarged = request.themes.find((theme) => theme.id === previewId) ?? null
+  const selectedFonts = selected ? fontsFor(selected) : null
+  const enlargedFonts = enlarged ? fontsFor(enlarged) : null
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-background/60 p-3">
@@ -47,6 +111,7 @@ export function ThemePicker({
       <div className="grid grid-cols-2 gap-2">
         {request.themes.map((theme) => {
           const isSelected = theme.id === selectedId
+          const fonts = fontsFor(theme)
           return (
             <div
               className={cn(
@@ -75,30 +140,41 @@ export function ThemePicker({
                     </span>
                   ) : null}
                 </span>
-                <span className="flex flex-col gap-1 p-2 pb-7">
+                <span className="flex flex-col gap-1 p-2 pb-1">
                   <span className="text-sm font-medium text-foreground">{theme.name}</span>
                   <span className="text-muted-foreground line-clamp-2 text-[11px] leading-snug">
                     {theme.description}
                   </span>
+                  <span className="text-muted-foreground line-clamp-1 text-[11px] leading-snug">
+                    {formatThemeFontPairingLabel(fonts)}
+                  </span>
                 </span>
               </button>
-              <button
-                className="text-muted-foreground absolute bottom-2 left-2 z-10 w-fit text-[11px] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                disabled={disabled}
-                onClick={() => setPreviewId(theme.id)}
-                type="button"
-              >
-                Enlarge
-              </button>
+              <div className="flex flex-col gap-1.5 px-2 pb-2">
+                <ThemeFontRoleSelects
+                  disabled={disabled}
+                  fonts={fonts}
+                  onChange={(role, id) => updateFonts(theme, role, id)}
+                  themeName={theme.name}
+                />
+                <button
+                  className="text-muted-foreground w-fit text-[11px] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  disabled={disabled}
+                  onClick={() => setPreviewId(theme.id)}
+                  type="button"
+                >
+                  Enlarge
+                </button>
+              </div>
             </div>
           )
         })}
       </div>
 
       <Button
-        disabled={disabled || !selected}
+        disabled={disabled || !selected || !selectedFonts}
         onClick={() => {
-          if (selected) onSubmit(selected.id)
+          if (selected && selectedFonts) onSubmit(selected.id, selectedFonts)
         }}
         size="sm"
         type="button"
@@ -113,7 +189,7 @@ export function ThemePicker({
         open={Boolean(enlarged)}
       >
         <DialogContent className="max-w-3xl">
-          {enlarged ? (
+          {enlarged && enlargedFonts ? (
             <>
               <DialogHeader>
                 <DialogTitle>{enlarged.name}</DialogTitle>
@@ -123,6 +199,12 @@ export function ThemePicker({
                 className="rounded-md border"
                 html={enlarged.sampleHtml}
                 title={`${enlarged.name} enlarged preview`}
+              />
+              <ThemeFontRoleSelects
+                disabled={disabled}
+                fonts={enlargedFonts}
+                onChange={(role, id) => updateFonts(enlarged, role, id)}
+                themeName={enlarged.name}
               />
               <div className="flex justify-end gap-2">
                 <Button
@@ -140,7 +222,7 @@ export function ThemePicker({
                   onClick={() => {
                     setSelectedId(enlarged.id)
                     setPreviewId(null)
-                    onSubmit(enlarged.id)
+                    onSubmit(enlarged.id, enlargedFonts)
                   }}
                   size="sm"
                   type="button"

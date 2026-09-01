@@ -944,12 +944,12 @@ export function ChatPanel({
           (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
             <ThemePicker
               disabled={isGenerating || (!mcpInteraction && !canGenerate)}
-              onSubmit={(themeId) => {
+              onSubmit={(themeId, fonts) => {
                 if (mcpInteraction?.kind === 'themes' && onMcpInteractionSubmit) {
                   onMcpInteractionSubmit({ kind: 'themes', themeId })
                   return
                 }
-                onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId))
+                onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId, fonts))
               }}
               request={activeThemes}
               submitLabel="Use this theme"
