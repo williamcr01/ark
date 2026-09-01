@@ -24,6 +24,20 @@ type DeckPersistenceSlice = {
   refreshActiveDeck: (targetDeckId?: string) => Promise<unknown>
 }
 
+export type GenerationHistoryChange = {
+  beforeHtml: string
+  afterHtml: string
+  deckChanged: boolean
+}
+
+function readRefreshedDeckHtml(value: unknown): string | null {
+  if (value && typeof value === 'object' && 'html' in value) {
+    const html = (value as { html?: unknown }).html
+    return typeof html === 'string' ? html : null
+  }
+  return null
+}
+
 type ChatSessionSlice = {
   messages: ChatMessage[]
   appendMessage: (message: ChatMessage, targetDeckId?: string | null) => Promise<void>
@@ -56,8 +70,12 @@ export type UseDeckGenerationFlowOptions = {
   onError: (message: string) => void
   /** Clears any pending attachment error when a new generation starts. */
   onGenerationStart?: () => void
-  /** Called when generation succeeds and the deck is about to be refreshed. */
-  onGenerationSucceeded?: () => void
+  /**
+   * Called after a successful generation that is not waiting on the user.
+   * `deckChanged` is true only when the refreshed HTML actually differs, so
+   * the session undo stack can record one agent-turn step instead of resetting.
+   */
+  onGenerationSucceeded?: (change: GenerationHistoryChange) => void
 }
 
 /**
@@ -140,7 +158,12 @@ export function useDeckGenerationFlow({
 
   const [isPreviewUpdating, setIsPreviewUpdating] = useState(false)
   const recoveredJobIdsRef = useRef(new Set<string>())
+  const generatedHtmlRef = useRef(generatedHtml)
   const [modelFailure, setModelFailure] = useState(false)
+
+  useEffect(() => {
+    generatedHtmlRef.current = generatedHtml
+  }, [generatedHtml])
 
   const appendFailureChatMessage = useCallback(
     async (status: 'failed' | 'canceled', message: string, isModelFailure: boolean) => {
@@ -190,8 +213,6 @@ export function useDeckGenerationFlow({
         return
       }
 
-      onGenerationSucceeded?.()
-
       // Land the assistant turn before deck refresh so the live bubble does not
       // disappear into an empty gap while the preview/deck id updates.
       const assistantMessage = buildSucceededAssistantMessage(outcome)
@@ -203,17 +224,26 @@ export function useDeckGenerationFlow({
         return [...current, assistantMessage]
       })
 
+      const beforeHtml = generatedHtmlRef.current
       if (outcome.deckChanged) {
         setIsPreviewUpdating(true)
       }
 
+      let afterHtml = beforeHtml
       try {
-        await refreshActiveDeck(outcome.job.result?.deckId)
+        const refreshed = await refreshActiveDeck(outcome.job.result?.deckId)
+        afterHtml = readRefreshedDeckHtml(refreshed) ?? beforeHtml
       } catch {
         toast.error('Deck generated but could not be refreshed in the editor')
       } finally {
         setIsPreviewUpdating((current) => (outcome.deckChanged ? false : current))
       }
+
+      onGenerationSucceeded?.({
+        beforeHtml,
+        afterHtml,
+        deckChanged: Boolean(outcome.deckChanged && afterHtml !== beforeHtml),
+      })
 
       toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
     },

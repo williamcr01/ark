@@ -10,26 +10,81 @@ export type ExternalEditProvenance = {
   createdAt: string
 }
 
+export type AgentEditProvenance = {
+  source: 'agent'
+  summary: string
+  createdAt: string
+}
+
 /**
- * A single reversible manual edit boundary (issue #82).
+ * A single reversible edit boundary (issue #299 session undo).
  *
- * Each entry stores the deck HTML before and after one committed manual
- * operation (drag/resize previews are already coalesced into a single commit
- * upstream), plus the slide the change happened on and structured provenance.
+ * Each entry stores the deck HTML before and after one committed step:
+ * one editor gesture, one in-app agent turn, or one coalesced MCP turn.
+ * Pointer-move previews are already coalesced into a single commit upstream.
+ * Session-only: close/crash drops this stack; durable `.ark` history is backend.
  */
 export type DeckEditHistoryEntry = {
   beforeHtml: string
   afterHtml: string
   slideIndex: number
-  provenance: ManualEditProvenance | ExternalEditProvenance
+  provenance: ManualEditProvenance | ExternalEditProvenance | AgentEditProvenance
 }
 
-type HistoryState = {
+export type HistoryState = {
   stack: DeckEditHistoryEntry[]
   pointer: number
 }
 
-const EMPTY_STATE: HistoryState = { stack: [], pointer: -1 }
+export const EMPTY_HISTORY_STATE: HistoryState = { stack: [], pointer: -1 }
+
+function isExternalProvenance(
+  provenance: DeckEditHistoryEntry['provenance'],
+): provenance is ExternalEditProvenance {
+  return provenance.source === 'external'
+}
+
+/**
+ * Consecutive MCP writes in one turn collapse to a single stack entry.
+ * Manual gestures and in-app agent jobs stay one entry each.
+ */
+function canCoalesceExternalWrites(
+  previous: DeckEditHistoryEntry,
+  next: DeckEditHistoryEntry,
+): boolean {
+  return (
+    isExternalProvenance(previous.provenance) &&
+    isExternalProvenance(next.provenance) &&
+    previous.afterHtml === next.beforeHtml
+  )
+}
+
+/**
+ * Pure stack reducer for session undo. Exported so coalescing rules can be
+ * unit-tested without mounting the hook.
+ */
+export function recordDeckEdit(state: HistoryState, entry: DeckEditHistoryEntry): HistoryState {
+  // Debounced identical HTML and no-op autosave ticks are not steps.
+  if (entry.beforeHtml === entry.afterHtml) {
+    return state
+  }
+
+  const retained = state.stack.slice(0, state.pointer + 1)
+  const previous = retained.at(-1)
+  if (previous && canCoalesceExternalWrites(previous, entry)) {
+    const merged: DeckEditHistoryEntry = {
+      ...previous,
+      afterHtml: entry.afterHtml,
+      slideIndex: entry.slideIndex,
+      provenance: entry.provenance,
+    }
+    const stack = [...retained.slice(0, -1), merged]
+    return { stack, pointer: stack.length - 1 }
+  }
+
+  const stack = [...retained, entry]
+  return { stack, pointer: stack.length - 1 }
+}
 
 export type DeckEditHistory = {
   canUndo: boolean
@@ -44,26 +99,22 @@ export type DeckEditHistory = {
   commitUndo: () => void
   /** Move the pointer forward after a redo snapshot has been applied. */
   commitRedo: () => void
-  /** Clear all history (e.g. deck switch or AI generation boundary). */
+  /** Clear all history (e.g. deck switch). */
   reset: () => void
 }
 
 /**
- * Client-side undo/redo stack for manual editor operations.
+ * Client-side undo/redo stack for the current editing session.
  *
- * The hook is intentionally storage-agnostic: it only tracks HTML snapshots and
- * provenance. Applying a snapshot to the server is the caller's responsibility,
- * which keeps history scoped to the current in-memory editing session.
+ * Storage-agnostic: HTML snapshots and provenance only. Applying a snapshot is
+ * the caller's job. Close or crash drops the stack; that persistence is the
+ * backend half of issue #299 and is intentionally not implemented here.
  */
 export function useDeckEditHistory(): DeckEditHistory {
-  const [state, setState] = useState<HistoryState>(EMPTY_STATE)
+  const [state, setState] = useState<HistoryState>(EMPTY_HISTORY_STATE)
 
   const record = useCallback((entry: DeckEditHistoryEntry) => {
-    setState((current) => {
-      const retained = current.stack.slice(0, current.pointer + 1)
-      const stack = [...retained, entry]
-      return { stack, pointer: stack.length - 1 }
-    })
+    setState((current) => recordDeckEdit(current, entry))
   }, [])
 
   const commitUndo = useCallback(() => {
@@ -81,7 +132,7 @@ export function useDeckEditHistory(): DeckEditHistory {
   }, [])
 
   const reset = useCallback(() => {
-    setState(EMPTY_STATE)
+    setState(EMPTY_HISTORY_STATE)
   }, [])
 
   return useMemo(() => {

@@ -303,10 +303,25 @@ export function useAppShell() {
     loadModels,
     onError: setError,
     onGenerationStart: useCallback(() => setAttachmentError(''), []),
-    onGenerationSucceeded: useCallback(() => {
-      setContextSlideEntries([])
-      resetEditHistory()
-    }, [resetEditHistory]),
+    onGenerationSucceeded: useCallback(
+      (change) => {
+        setContextSlideEntries([])
+        if (!change.deckChanged) {
+          return
+        }
+        recordEditHistory({
+          beforeHtml: change.beforeHtml,
+          afterHtml: change.afterHtml,
+          slideIndex: 0,
+          provenance: {
+            source: 'agent',
+            summary: 'Applied agent write',
+            createdAt: new Date().toISOString(),
+          },
+        })
+      },
+      [recordEditHistory],
+    ),
   })
 
   const normalAgentQuestions = agentInteractionsInModal ? findPendingAgentQuestions(messages) : null
@@ -427,7 +442,7 @@ export function useAppShell() {
   }, [externalUpdateTick, recordEditHistory, refreshActiveDeck])
 
   // Clear undo/redo history whenever the active deck changes (switch, new deck,
-  // delete). AI generation, upload, and snapshot restores reset explicitly via callbacks.
+  // delete). Upload still resets; an applied agent turn records one stack entry.
   useEffect(() => {
     resetEditHistory()
   }, [deckId, resetEditHistory])

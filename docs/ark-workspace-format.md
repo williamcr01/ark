@@ -139,7 +139,7 @@ Schema notes:
 
 ## Removed features (accepted regressions)
 
-- **Version history and rollback are removed.** The version list/rollback endpoints and UI go away. Undo/redo stays in-memory per editing session (existing `useDeckEditHistory` stack, no longer persisting server versions).
+- **Durable `.ark` version history is deferred** (issue #299 backend). The old version-list/rollback endpoints stay gone. **Session undo/redo is in-memory** (`useDeckEditHistory`): one step per committed editor gesture, one step per in-app agent turn, consecutive MCP writes in a turn coalesce to one step. Autosave ticks and byte-identical HTML are not steps. Close or crash drops the stack. Named checkpoints stay later.
 - **Generation-job persistence is removed.** The wire API already strips request/result HTML (`toGenerationJobApi`); jobs are in-memory, terminal deck payloads are trimmed, and old terminal metadata is evicted.
 - **No recovery directory.** Every deck is a real `.ark` from creation (default directory, collision-safe name), so there is no "unsaved work without a location" state. SQLite's journal protects committed state; the debounce window (~300 ms) is accepted loss.
 - **No named checkpoints in v1.**
@@ -241,7 +241,7 @@ Plus all device state: window/panel layout, selected slide, open thread, unsent 
 
 ## Settled decisions log
 
-1. Rollback/version history removed; undo/redo in-memory only.
+1. Durable `.ark` history is deferred (#299 backend). Session undo/redo is in-memory only (`useDeckEditHistory`).
 2. `ark-asset:` scheme ships in v1, not deferred.
 3. Cloud-synced-folder hazards deferred; Linux/macOS focus.
 4. API stays keyed by deckId (= workspace ID); message shape reuses `persistedChatMessageSchema`.

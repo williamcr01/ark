@@ -24,7 +24,10 @@ let externalUpdateListener:
     }) => void)
   | null = null
 const generationFlowCapture = vi.hoisted(() => ({
-  onGenerationSucceeded: null as (() => void) | null | undefined,
+  onGenerationSucceeded: null as
+    | ((change: { beforeHtml: string; afterHtml: string; deckChanged: boolean }) => void)
+    | null
+    | undefined,
 }))
 const historyCapture = vi.hoisted(() => ({
   current: null as {
@@ -107,7 +110,13 @@ vi.mock('@/hooks/useAvailableModels', () => ({
 }))
 
 vi.mock('@/hooks/useDeckGenerationFlow', () => ({
-  useDeckGenerationFlow: (options: { onGenerationSucceeded?: () => void }) => {
+  useDeckGenerationFlow: (options: {
+    onGenerationSucceeded?: (change: {
+      beforeHtml: string
+      afterHtml: string
+      deckChanged: boolean
+    }) => void
+  }) => {
     generationFlowCapture.onGenerationSucceeded = options.onGenerationSucceeded
     return {
       activeSteps: [],
@@ -194,7 +203,13 @@ describe('App generation / deck-switch edit history boundaries', () => {
     vi.clearAllMocks()
   })
 
-  it('resets manual undo history when AI generation succeeds', async () => {
+  it('records one undo boundary when AI generation changes the deck', async () => {
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>generated</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
     renderWithRouter(<App />)
 
     await waitFor(() => {
@@ -211,15 +226,58 @@ describe('App generation / deck-switch edit history boundaries', () => {
     })
 
     act(() => {
-      generationFlowCapture.onGenerationSucceeded?.()
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>generated</html>',
+        deckChanged: true,
+      })
     })
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('disabled')
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
       expect(screen.getByLabelText('Redo availability')).toHaveTextContent('disabled')
     })
-    expect(historyCapture.current?.canUndo).toBe(false)
-    expect(historyCapture.current?.undoEntry).toBeNull()
+    expect(historyCapture.current?.canUndo).toBe(true)
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      beforeHtml: '<html>after</html>',
+      afterHtml: '<html>generated</html>',
+      provenance: { source: 'agent' },
+    })
+  })
+
+  it('does not reset manual undo history when generation does not change the deck', async () => {
+    renderWithRouter(<App />)
+
+    await waitFor(() => {
+      expect(historyCapture.current).not.toBeNull()
+      expect(generationFlowCapture.onGenerationSucceeded).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      historyCapture.current!.record(makeHistoryEntry('manual-keep'))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
+    })
+
+    act(() => {
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>after</html>',
+        deckChanged: false,
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
+    })
+    expect(historyCapture.current?.canUndo).toBe(true)
+    expect(
+      historyCapture.current?.undoEntry?.provenance.source === 'manual'
+        ? historyCapture.current.undoEntry.provenance.elementIds
+        : [],
+    ).toEqual(['manual-keep'])
   })
 
   it('resets manual undo history when the active deck changes', async () => {

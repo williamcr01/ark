@@ -143,4 +143,24 @@ export function useDeckEditorShellShortcuts({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [active])
+
+  const handleHistoryAction = useEffectEvent((action: 'undo' | 'redo') => {
+    if (!active || textEditActive || isTextEditSaving) {
+      return
+    }
+    if (action === 'undo' && canUndo && onUndo) onUndo()
+    if (action === 'redo' && canRedo && onRedo) onRedo()
+  })
+
+  useEffect(() => {
+    return window.arkDesktop?.edit?.onHistoryAction(handleHistoryAction)
+  }, [])
+
+  useEffect(() => {
+    const historyEnabled = active && !textEditActive && !isTextEditSaving
+    window.arkDesktop?.edit?.setHistoryState({
+      canUndo: historyEnabled && canUndo,
+      canRedo: historyEnabled && canRedo,
+    })
+  }, [active, canRedo, canUndo, isTextEditSaving, textEditActive])
 }

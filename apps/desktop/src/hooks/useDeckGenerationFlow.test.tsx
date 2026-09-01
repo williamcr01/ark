@@ -95,6 +95,7 @@ type Harness = {
   loadModels: ReturnType<typeof vi.fn>
   onError: ReturnType<typeof vi.fn>
   onGenerationStart: ReturnType<typeof vi.fn>
+  onGenerationSucceeded: ReturnType<typeof vi.fn>
 }
 
 function makeHarness(
@@ -112,6 +113,7 @@ function makeHarness(
   const loadModels = vi.fn(async () => undefined)
   const onError = vi.fn()
   const onGenerationStart = vi.fn()
+  const onGenerationSucceeded = vi.fn()
 
   const options: UseDeckGenerationFlowOptions = {
     deck: {
@@ -132,6 +134,7 @@ function makeHarness(
     loadModels,
     onError,
     onGenerationStart,
+    onGenerationSucceeded,
   }
 
   return {
@@ -143,6 +146,7 @@ function makeHarness(
     loadModels,
     onError,
     onGenerationStart,
+    onGenerationSucceeded,
   }
 }
 
@@ -186,6 +190,36 @@ describe('useDeckGenerationFlow', () => {
     })
     expect(result.current.generationError).toBe('')
     expect(result.current.recentGenerationJobId).toBe('job-1')
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html></html>',
+      deckChanged: false,
+    })
+  })
+
+  it('reports one agent-turn history change when generation writes new HTML', async () => {
+    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
+    harness.refreshActiveDeck.mockResolvedValue({ html: '<html>generated</html>' })
+    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
+    fetchGenerationJobMock.mockResolvedValue(
+      makeJob({
+        id: 'job-1',
+        status: 'succeeded',
+        result: { ...succeededResult, documentRevision: 2 },
+      }),
+    )
+
+    const { result } = renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await act(async () => {
+      await result.current.generateDeck('make slides')
+    })
+
+    expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
+      beforeHtml: '<html></html>',
+      afterHtml: '<html>generated</html>',
+      deckChanged: true,
+    })
   })
 
   it('correlates recentGenerationJobId only to a succeeded job for the active revision', async () => {

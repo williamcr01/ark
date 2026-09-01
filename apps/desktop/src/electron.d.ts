@@ -75,6 +75,10 @@ declare global {
         chooseDirectory: () => Promise<string | null>
         reveal: (path: string) => Promise<void>
       }
+      edit?: {
+        setHistoryState: (state: { canUndo: boolean; canRedo: boolean }) => void
+        onHistoryAction: (listener: (action: 'undo' | 'redo') => void) => () => void
+      }
     }
   }
 }
