@@ -170,12 +170,15 @@ test('launchElectron waits for /api/health before runCase createDeck', async () 
   const launchBody = source.slice(launchStart, launchEnd)
   assert.match(launchBody, /fetch\('\/api\/health'\)/)
   assert.match(launchBody, /isShellApiReady/)
+  assert.match(launchBody, /ARK_PROFILE_WORKSPACES_DIR: workspacesDirectory/)
   assert.match(launchBody, /ARK_WORKSPACES_DIR: workspacesDirectory/)
   assert.equal(launchBody.includes('createDeck('), false)
   assert.match(source, /this script itself is measurement-only/)
 })
 
-test('Electron main honors ARK_WORKSPACES_DIR before the Documents fallback', async () => {
+test('Electron main gates workspace-dir env overrides to unpackaged builds', async () => {
   const source = await readFile(electronMainPath, 'utf8')
-  assert.match(source, /if \(!process\.env\.ARK_WORKSPACES_DIR\?\.trim\(\)\)/)
+  assert.match(source, /resolveDesktopWorkspacesDir\(/)
+  assert.match(source, /isPackaged: app\.isPackaged/)
+  assert.match(source, /if \(!workspacesDir\.usedEnvOverride\)/)
 })

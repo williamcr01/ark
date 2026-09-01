@@ -222,9 +222,8 @@ export function createDecksRouter(deps: {
       try {
         const logger = getRequestLogger(request)
         const startedAt = performance.now()
-        const loadStartedAt = performance.now()
         const existing = await deckStore.getDeck(id)
-        const loadMs = performance.now() - loadStartedAt
+        const loadMs = performance.now() - startedAt
 
         if (!existing) {
           response.status(404).json({ error: 'Deck not found.' })

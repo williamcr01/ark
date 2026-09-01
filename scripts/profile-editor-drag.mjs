@@ -854,6 +854,7 @@ async function launchElectron(options) {
     env: {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      ARK_PROFILE_WORKSPACES_DIR: workspacesDirectory,
       ARK_WORKSPACES_DIR: workspacesDirectory,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

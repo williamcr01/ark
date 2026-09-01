@@ -66,10 +66,10 @@ Open `.cpuprofile` / `.heapsnapshot` in Chromium DevTools (Performance / Memory)
 
 ## Real disk vs overlay
 
-Electron `--user-data-dir` used to control only Chromium userData. Workspace `.ark` files default to `Documents/Ark` unless `ARK_WORKSPACES_DIR` is set. The profiler now:
+Electron `--user-data-dir` used to control only Chromium userData. Workspace `.ark` files default to `Documents/Ark`. The profiler now:
 
-1. Sets `ARK_WORKSPACES_DIR` to `--workspaces-dir` or `<user-data-dir>/workspaces`
-2. Relies on Electron main **honoring** that env when Settings has no custom directory
+1. Sets `ARK_PROFILE_WORKSPACES_DIR` and `ARK_WORKSPACES_DIR` to `--workspaces-dir` or `<user-data-dir>/workspaces`
+2. Relies on **unpackaged** Electron main honoring those env vars (packaged builds ignore them so a launcher cannot redirect an installed app's workspace folder). An unpackaged env override also wins over Settings.
 
 On Cloud VMs the whole root is often `overlay`. Persist will look fast (~2 ms) and PATCH will not match a laptop SSD/HDD. To force a disk-like path (example, needs loop-mount privileges):
 
