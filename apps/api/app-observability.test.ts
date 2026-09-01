@@ -226,4 +226,77 @@ describe('API observability', () => {
     expect(stored.runtimeMode).toBe('reveal')
     expect(body.requestId).toBeTruthy()
   })
+
+  it('logs deck.patch.completed phase timings without changing the patch response', async () => {
+    const entries: Array<Record<string, unknown>> = []
+    const originalLog = console.log
+    console.log = (...args: unknown[]) => {
+      for (const arg of args) {
+        if (typeof arg === 'string' && arg.startsWith('{')) {
+          try {
+            entries.push(JSON.parse(arg) as Record<string, unknown>)
+          } catch {
+            // ignore non-JSON stdout
+          }
+        }
+      }
+      originalLog.apply(console, args as unknown as Parameters<typeof console.log>)
+    }
+
+    try {
+      const { baseUrl } = await startServer()
+      const created = await fetch(`${baseUrl}/api/decks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: sampleHtml }),
+      })
+      const createdBody = (await created.json()) as { deck: { id: string } }
+      const patchResponse = await fetch(`${baseUrl}/api/decks/${createdBody.deck.id}/patch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedDocumentRevision: 1,
+          operations: [{ op: 'update_slide_title', slideIndex: 0, title: 'Timed' }],
+        }),
+      })
+      const patched = (await patchResponse.json()) as {
+        deck: { html: string; documentRevision: number }
+        patch: { appliedCount: number }
+      }
+
+      expect(patchResponse.status).toBe(200)
+      expect(patched.deck.documentRevision).toBe(2)
+      expect(patched.deck.html).toContain('Timed')
+      expect(patched.patch.appliedCount).toBe(1)
+      expect(patched).not.toHaveProperty('timings')
+
+      const patchLog = entries.find((entry) => entry.event === 'deck.patch.completed') as
+        | {
+            durationMs: number
+            fields: {
+              loadMs: number
+              applyMs: number
+              validateMs: number
+              persistMs: number
+              notifyMs: number
+              serializeMs: number
+              htmlBytes: number
+              reusedValidation: boolean
+              appliedCount: number
+            }
+          }
+        | undefined
+
+      expect(patchLog).toBeDefined()
+      expect(patchLog?.fields.reusedValidation).toBe(true)
+      expect(patchLog?.fields.appliedCount).toBe(1)
+      expect(patchLog?.fields.htmlBytes).toBeGreaterThan(0)
+      expect(patchLog?.fields.applyMs).toBeGreaterThanOrEqual(0)
+      expect(patchLog?.fields.persistMs).toBeGreaterThanOrEqual(0)
+      expect(patchLog?.fields.serializeMs).toBeGreaterThanOrEqual(0)
+      expect(patchLog?.durationMs).toBeGreaterThanOrEqual(patchLog?.fields.applyMs ?? 0)
+    } finally {
+      console.log = originalLog
+    }
+  })
 })
