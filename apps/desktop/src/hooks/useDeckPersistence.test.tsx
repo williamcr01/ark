@@ -53,6 +53,7 @@ describe('useDeckPersistence', () => {
     expect(result.current.filePath).toBe(deck.filePath)
     expect(result.current.documentRevision).toBe(1)
     expect(result.current.html).toBe(html)
+    expect(fetchMock.mock.calls.every(([input]) => !String(input).includes('/history'))).toBe(true)
   })
 
   it('creates a real workspace immediately on the new route', async () => {

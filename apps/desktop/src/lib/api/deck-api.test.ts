@@ -181,6 +181,7 @@ describe('deck-api', () => {
         history: historySummaries.map((row) => ({
           ...row,
           html: '<section class="slide">secret</section>',
+          name: 'Q3 checkpoint',
         })),
       }),
     )
@@ -191,7 +192,9 @@ describe('deck-api', () => {
     expect(fetchMock).toHaveBeenCalledWith(`/api/decks/${deck.id}/history`)
     expect(history).toEqual(historySummaries)
     for (const row of history) {
+      expect(Object.keys(row).sort()).toEqual(['byteSize', 'createdAt', 'revision', 'source'])
       expect(row).not.toHaveProperty('html')
+      expect(row).not.toHaveProperty('name')
     }
   })
 
