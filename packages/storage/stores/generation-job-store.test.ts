@@ -37,6 +37,28 @@ describe('file generation job store', () => {
     expect(created.progress.steps).toEqual([])
     expect(created.request.reasoningEffort).toBe('high')
 
+    const withSelections = await store.createJob({
+      deckId: null,
+      model: 'openai:gpt-5.6-luna',
+      request: {
+        messages: [{ role: 'user', content: 'Align these' }],
+        currentHtml: '<html></html>',
+        editorSelection: { slideIndex: 0, elementId: 'ark-el-primary' },
+        editorSelections: [
+          { slideIndex: 0, elementId: 'ark-el-a' },
+          { slideIndex: 0, elementId: 'ark-el-primary' },
+        ],
+      },
+    })
+    const reloadedSelections = await store.getJob(withSelections.id)
+    expect(reloadedSelections?.request.editorSelection?.elementId).toBe('ark-el-primary')
+    expect(reloadedSelections?.request.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-primary',
+    ])
+    reloadedSelections!.request.editorSelections![0]!.elementId = 'mutated'
+    expect(withSelections.request.editorSelections?.[0]?.elementId).toBe('ark-el-a')
+
     const reloaded = await store.getJob(created.id)
     expect(reloaded?.request.reasoningEffort).toBe('high')
 

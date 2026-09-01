@@ -11,12 +11,16 @@ import {
 import { deckValidationReportSchema } from './decks.ts'
 import {
   editorSelectionContextSchema,
+  editorSelectionsSchema,
   MAX_SLIDE_CONTEXTS,
+  refineSameSlideEditorSelectionFields,
   slideContextSchema,
 } from './agent-context.ts'
 
 export {
   editorSelectionContextSchema,
+  editorSelectionsSchema,
+  MAX_EDITOR_SELECTIONS,
   MAX_SLIDE_CONTEXTS,
   slideContextSchema,
   type EditorSelectionContext,
@@ -137,25 +141,35 @@ export const generationJobResponseSchema = withRequestId({
 
 export type GenerationJobResponse = z.infer<typeof generationJobResponseSchema>
 
-export const startGenerationJobRequestSchema = z.object({
-  /** Full visible chat history replayed for this generation run. */
-  messages: z.array(apiChatMessageSchema).optional(),
-  currentHtml: z.string().nullable().optional(),
-  model: z.string().optional(),
-  /** Reasoning effort for models that support thinking (Cursor-style levels). */
-  reasoningEffort: reasoningEffortSchema.optional(),
-  deckId: deckIdSchema.nullable().optional(),
-  baseDocumentRevision: z.number().int().min(1).nullable().optional(),
-  /** Current manual-editor selection so the agent can target the selected element. */
-  editorSelection: editorSelectionContextSchema.optional(),
-  /** Slides the user attached as context for this generation turn. */
-  slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
-  /**
-   * Uploaded asset ids to resolve into file inputs for the latest user turn.
-   * Assets must belong to `deckId`.
-   * Omitted from job poll responses.
-   */
-  assetIds: z.array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.')).optional(),
-})
+export const startGenerationJobRequestSchema = z
+  .object({
+    /** Full visible chat history replayed for this generation run. */
+    messages: z.array(apiChatMessageSchema).optional(),
+    currentHtml: z.string().nullable().optional(),
+    model: z.string().optional(),
+    /** Reasoning effort for models that support thinking (Cursor-style levels). */
+    reasoningEffort: reasoningEffortSchema.optional(),
+    deckId: deckIdSchema.nullable().optional(),
+    baseDocumentRevision: z.number().int().min(1).nullable().optional(),
+    /**
+     * Primary / last-interacted manual-editor selection. When one element is
+     * selected, clients populate both this and `editorSelections`.
+     */
+    editorSelection: editorSelectionContextSchema.optional(),
+    /**
+     * Full same-slide editor selection set (issue #248). Cap 32. Singular
+     * `editorSelection` remains the primary when length > 1.
+     */
+    editorSelections: editorSelectionsSchema.optional(),
+    /** Slides the user attached as context for this generation turn. */
+    slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
+    /**
+     * Uploaded asset ids to resolve into file inputs for the latest user turn.
+     * Assets must belong to `deckId`.
+     * Omitted from job poll responses.
+     */
+    assetIds: z.array(z.string().regex(UUID_V4_PATTERN, 'Invalid asset id.')).optional(),
+  })
+  .superRefine(refineSameSlideEditorSelectionFields)
 
 export type StartGenerationJobRequest = z.infer<typeof startGenerationJobRequestSchema>
