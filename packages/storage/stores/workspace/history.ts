@@ -60,7 +60,7 @@ export function seedDocumentHistoryIfEmpty(database: DatabaseSync) {
  * seed path also goes through), so on a normal open this selects nothing and
  * `migrate()` stays a pure read. That matters: `migrate()` runs on every
  * `openFile`, and re-pinning unconditionally rewrote the whole table — dozens
- * of fsync'd write transactions per deck open under `journal_mode = DELETE`,
+ * of fsync'd write transactions per deck open under a rollback journal,
  * a dirtied file with no user edit, and a hard failure on a read-only `.ark`.
  */
 function backfillDocumentHistoryAssetPins(database: DatabaseSync) {

@@ -231,8 +231,8 @@ Pragmas:
 
 ```
 foreign_keys = ON
-journal_mode = DELETE      -- no WAL sidecar files; one local writer
-synchronous  = FULL        -- relax to NORMAL only after measurement
+journal_mode = PERSIST     -- rollback journal kept (zeroed header) so sequential commits skip create/delete; not WAL, so copyFile of the `.ark` is still a complete committed database
+synchronous  = FULL        -- NORMAL did not beat PERSIST on a disk-like path
 busy_timeout = a few seconds
 application_id = Ark magic number
 user_version  = 1          -- plus workspace.format_version

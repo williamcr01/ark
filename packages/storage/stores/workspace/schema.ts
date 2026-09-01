@@ -1,6 +1,7 @@
 /** The SQLite schema an `.ark` workspace file carries, and how a connection is configured. */
 
 import { createHash } from 'node:crypto'
+import { unlinkSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 import { DEFAULT_DECK_ORIGIN } from '@ark/deck/document/origin.ts'
@@ -88,10 +89,30 @@ export function contentHash(html: string) {
   return createHash('sha256').update(html).digest('hex')
 }
 
+export function rollbackJournalPath(workspacePath: string) {
+  return `${workspacePath}-journal`
+}
+
+/**
+ * PERSIST leaves an invalidated rollback journal beside the `.ark` file so
+ * sequential commits skip create/delete of that sidecar. Remove it once the
+ * connection is closed — the committed database file is complete on its own.
+ */
+export function removeRollbackJournal(workspacePath: string) {
+  try {
+    unlinkSync(rollbackJournalPath(workspacePath))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+}
+
 export function configure(database: DatabaseSync) {
+  // PERSIST keeps an invalidated rollback journal beside the file so sequential
+  // editor commits skip create/delete of that sidecar. synchronous=FULL is
+  // unchanged; this is not WAL, so copyFile of a closed `.ark` is complete.
   database.exec(`
     PRAGMA foreign_keys = ON;
-    PRAGMA journal_mode = DELETE;
+    PRAGMA journal_mode = PERSIST;
     PRAGMA synchronous = FULL;
     PRAGMA busy_timeout = 4000;
   `)
