@@ -369,4 +369,29 @@ describe('applyDeckPatches live JSDOM reuse', () => {
     expect(retry.html).not.toContain('left: 960px')
     expect(retry.html).not.toContain('left: 640px')
   })
+
+  it('content-addresses the cache across decks whose HTML matches the last serialize', () => {
+    const first = applyDeckPatches(sequentialDeck, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
+    ])
+
+    expect(first.ok).toBe(true)
+    if (!first.ok) {
+      return
+    }
+
+    const otherDeckSameHtml = `${first.html}`
+    const second = applyDeckPatches(otherDeckSameHtml, [
+      { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 },
+    ])
+
+    expect(second.ok).toBe(true)
+    if (!second.ok) {
+      return
+    }
+
+    expect(deckJsdomParses.count).toBe(1)
+    expect(second.html).toContain('left: 640px')
+    expect(second.html).toContain('left: 320px')
+  })
 })

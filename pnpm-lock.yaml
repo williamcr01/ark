@@ -541,7 +541,7 @@ importers:
         specifier: workspace:*
         version: link:../telemetry
       jsdom:
-        specifier: ^29.1.1
+        specifier: 29.1.1
         version: 29.1.1(@noble/hashes@2.2.0)
       nanoid:
         specifier: 5.1.16
