@@ -35,7 +35,7 @@ pnpm profile:editor-drag -- --case absolute-500 --runs 5 \
 
 Equivalent env vars: `ARK_PROFILE_USER_DATA_DIR`, `ARK_PROFILE_WORKSPACES_DIR`, `ARK_PROFILE_CDP_PORT`, `ARK_PROFILE_INSPECT_PORT`. Some containers also need `ELECTRON_DISABLE_SANDBOX=1`.
 
-On Linux without `DISPLAY`, the script wraps Electron in `xvfb-run` (or `--headless=new` if Xvfb is missing).
+On a slow/sync disk, Chromium’s first launch of a fresh `userData` can take tens of seconds. The harness waits until `fetch('/api/health')` works from the shell before creating the profile deck.
 
 `--keep-profile` leaves the user-data directory in place. `--no-trace` skips the Tracing domain.
 
