@@ -830,17 +830,13 @@ describe('WorkspaceStore document history', () => {
     ).rejects.toMatchObject({ code: 'document_conflict', currentDocumentRevision: 3 })
   })
 
-  it('copies history on Save As and starts Duplicate from the current document only', async () => {
+  it('copies history with the .ark file and starts Duplicate from the current document only', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
     await workspaces.updateDocument(created.id, html.replace('Hello', 'Edited'), 1, [], 'editor')
+    const sourcePath = created.path
 
-    const savedPath = path.join(root, 'Saved.ark')
-    const saved = await workspaces.saveAs(created.id, savedPath)
-    expect(saved?.path).toBe(savedPath)
-    expect(readHistoryFromFile(savedPath).map((row) => row.source)).toEqual(['create', 'editor'])
-
-    const copy = await workspaces.duplicate(saved!.id, 'presentation')
+    const copy = await workspaces.duplicate(created.id, 'presentation')
     const copyHistory = readHistoryFromFile(copy!.path)
     expect(copyHistory).toEqual([
       expect.objectContaining({
@@ -849,6 +845,30 @@ describe('WorkspaceStore document history', () => {
         html: expect.stringContaining('Edited'),
       }),
     ])
+
+    // Save As uses sqlite backup() (Node 24 / Electron). journal_mode=DELETE
+    // means a closed-file copy is the same bytes, including document_history.
+    workspaces.close()
+    const savedPath = path.join(root, 'Saved.ark')
+    await copyFile(sourcePath, savedPath)
+    expect(readHistoryFromFile(savedPath).map((row) => row.source)).toEqual(['create', 'editor'])
+
+    store = createWorkspaceStore(root)
+    const reopened = await store.open(savedPath)
+    await expect(store.listDocumentHistory(reopened.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+
+    const sqlite = await import('node:sqlite')
+    if (typeof sqlite.backup === 'function') {
+      const viaBackup = path.join(root, 'BackedUp.ark')
+      const saved = await store.saveAs(reopened.id, viaBackup)
+      expect(readHistoryFromFile(saved!.path).map((row) => row.source)).toEqual([
+        'create',
+        'editor',
+      ])
+    }
   })
 
   it('never writes generation-job payloads or extra secret tables into history', async () => {
