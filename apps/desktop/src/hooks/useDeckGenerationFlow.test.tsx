@@ -223,7 +223,7 @@ describe('useDeckGenerationFlow', () => {
     })
   })
 
-  it('keeps deckChanged and skips the success toast when refresh throws', async () => {
+  it('reports a refresh failure and records no undo step when refresh throws', async () => {
     const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
     harness.refreshActiveDeck.mockRejectedValue(new Error('stale request'))
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
@@ -241,10 +241,12 @@ describe('useDeckGenerationFlow', () => {
       await result.current.generateDeck('make slides')
     })
 
+    // No after-snapshot exists, so there is nothing reversible to push onto the
+    // stack: an entry with beforeHtml === afterHtml would be dropped anyway.
     expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
       beforeHtml: '<html></html>',
       afterHtml: '<html></html>',
-      deckChanged: true,
+      deckChanged: false,
     })
     expect(toast.error).toHaveBeenCalledWith(
       'Deck generated but could not be refreshed in the editor',
@@ -252,60 +254,38 @@ describe('useDeckGenerationFlow', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
-  it('keeps the undo after-snapshot from live HTML when refresh throws', async () => {
-    const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
-    harness.options.deck.generatedHtml = '<html>at-start</html>'
-    harness.refreshActiveDeck.mockRejectedValue(new Error('stale request'))
-    startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
-    let resolveFetch: (job: GenerationJobApi) => void = () => {}
-    fetchGenerationJobMock.mockImplementation(
-      () =>
-        new Promise<GenerationJobApi>((resolve) => {
-          resolveFetch = resolve
-        }),
-    )
-
-    const { result, rerender } = renderHook(
-      (options: UseDeckGenerationFlowOptions) => useDeckGenerationFlow(options),
-      { initialProps: harness.options },
-    )
-
-    act(() => {
-      void result.current.generateDeck('make slides')
-    })
-
-    await waitFor(() => {
-      expect(startGenerationJobMock).toHaveBeenCalled()
-    })
-
-    rerender({
-      ...harness.options,
-      deck: {
-        ...harness.options.deck,
-        generatedHtml: '<html>live-after</html>',
-      },
-    })
-
-    await act(async () => {
-      resolveFetch(
+  it('records no undo step for a job recovered after a reload with no send-time snapshot', async () => {
+    // The job finished while the app was closed, so the deck already holds the
+    // agent's write when it is recovered. beforeHtml must come from the loaded
+    // deck, never from an empty send-time snapshot that Undo would apply.
+    const harness = makeHarness({ deckId: 'deck-1' })
+    harness.options.deck.generatedHtml = '<html>recovered</html>'
+    harness.refreshActiveDeck.mockResolvedValue({ html: '<html>recovered</html>' })
+    localStorage.setItem(`${STORAGE_PREFIX}deck-1`, 'job-stored')
+    fetchGenerationJobMock
+      .mockResolvedValueOnce(makeJob({ id: 'job-stored', status: 'running' }))
+      .mockResolvedValue(
         makeJob({
-          id: 'job-1',
+          id: 'job-stored',
           status: 'succeeded',
           result: { ...succeededResult, documentRevision: 2 },
         }),
       )
-      await Promise.resolve()
+
+    renderHook(() => useDeckGenerationFlow(harness.options))
+
+    await waitFor(() => {
+      expect(harness.onGenerationSucceeded).toHaveBeenCalled()
     })
 
     expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
-      beforeHtml: '<html>at-start</html>',
-      afterHtml: '<html>live-after</html>',
-      deckChanged: true,
+      beforeHtml: '<html>recovered</html>',
+      afterHtml: '<html>recovered</html>',
+      deckChanged: false,
     })
-    expect(toast.success).not.toHaveBeenCalled()
   })
 
-  it('keeps deckChanged and skips the success toast when refresh returns null', async () => {
+  it('treats a superseded refresh as a successful run with no undo step', async () => {
     const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
     harness.refreshActiveDeck.mockResolvedValue(null)
     startGenerationJobMock.mockResolvedValue(makeJob({ id: 'job-1', status: 'queued' }))
@@ -323,18 +303,20 @@ describe('useDeckGenerationFlow', () => {
       await result.current.generateDeck('make slides')
     })
 
+    // refreshActiveDeck resolves to null when a newer save or a deck switch
+    // supersedes the refresh. Nothing failed, so the run reports success.
     expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
       beforeHtml: '<html></html>',
       afterHtml: '<html></html>',
-      deckChanged: true,
+      deckChanged: false,
     })
-    expect(toast.error).toHaveBeenCalledWith(
+    expect(toast.error).not.toHaveBeenCalledWith(
       'Deck generated but could not be refreshed in the editor',
     )
-    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalled()
   })
 
-  it('uses HTML snapshotted at job start as the undo beforeHtml', async () => {
+  it('snapshots the undo beforeHtml at job completion, not at send time', async () => {
     const harness = makeHarness({ deckId: 'deck-1', documentRevision: 1 })
     harness.options.deck.generatedHtml = '<html>at-start</html>'
     harness.refreshActiveDeck.mockResolvedValue({ html: '<html>generated</html>' })
@@ -379,8 +361,10 @@ describe('useDeckGenerationFlow', () => {
       await Promise.resolve()
     })
 
+    // An edit that landed during the job belongs to its own stack entry, so it
+    // must not be folded into the agent turn's beforeHtml.
     expect(harness.onGenerationSucceeded).toHaveBeenCalledWith({
-      beforeHtml: '<html>at-start</html>',
+      beforeHtml: '<html>changed-during-job</html>',
       afterHtml: '<html>generated</html>',
       deckChanged: true,
     })

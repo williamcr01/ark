@@ -61,6 +61,11 @@ function canCoalesceExternalWrites(
     return false
   }
 
+  // Unnamed clients share the `null` identity on purpose: `packages/mcp/runner.ts`
+  // already collapses them into a single `'anonymous'` session, and splitting an
+  // anonymous client's burst into one undo step per write is the far more common
+  // case than two distinct unnamed clients writing the same deck inside the idle
+  // window. Give the update payload a per-connection id to tell them apart.
   if (previous.provenance.clientName !== next.provenance.clientName) {
     return false
   }

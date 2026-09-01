@@ -159,7 +159,6 @@ export function useDeckGenerationFlow({
   const [isPreviewUpdating, setIsPreviewUpdating] = useState(false)
   const recoveredJobIdsRef = useRef(new Set<string>())
   const generatedHtmlRef = useRef(generatedHtml)
-  const htmlAtJobStartRef = useRef(generatedHtml)
   const [modelFailure, setModelFailure] = useState(false)
 
   useEffect(() => {
@@ -225,31 +224,32 @@ export function useDeckGenerationFlow({
         return [...current, assistantMessage]
       })
 
-      const beforeHtml = htmlAtJobStartRef.current
+      // Snapshot the deck as the shell last saw it, immediately before the
+      // agent write lands in the refresh below. Taking it at send time instead
+      // would fold any edit made during the job into the agent's undo step, and
+      // would leave a recovered job (resumed after a reload, with no send in
+      // this session) recording an empty `beforeHtml` that Undo would apply.
+      const beforeHtml = generatedHtmlRef.current
       if (outcome.deckChanged) {
         setIsPreviewUpdating(true)
       }
 
       let refreshedHtml: string | null = null
-      let refreshThrew = false
+      let refreshFailed = false
       try {
         const refreshed = await refreshActiveDeck(outcome.job.result?.deckId)
         refreshedHtml = readRefreshedDeckHtml(refreshed)
       } catch {
-        refreshThrew = true
-        toast.error('Deck generated but could not be refreshed in the editor')
+        refreshFailed = true
       } finally {
         setIsPreviewUpdating((current) => (outcome.deckChanged ? false : current))
       }
 
-      const liveHtml = generatedHtmlRef.current
-      const afterHtml = refreshedHtml ?? (liveHtml !== beforeHtml ? liveHtml : beforeHtml)
-      const hasAfterSnapshot = afterHtml !== beforeHtml
-      const refreshFailed =
-        refreshThrew || (outcome.deckChanged && !hasAfterSnapshot && refreshedHtml == null)
-      // Keep outcome.deckChanged when refresh fails so the shell can still
-      // record the agent-turn undo step if a live HTML snapshot exists.
-      const deckChanged = Boolean(outcome.deckChanged && (hasAfterSnapshot || refreshFailed))
+      // `refreshActiveDeck` resolves to null when the refresh was superseded by
+      // a newer save or by a deck switch. The run still succeeded; there is
+      // just no snapshot to record. Only a thrown refresh is a real failure.
+      const afterHtml = refreshedHtml ?? beforeHtml
+      const deckChanged = Boolean(outcome.deckChanged && afterHtml !== beforeHtml)
 
       onGenerationSucceeded?.({
         beforeHtml,
@@ -258,9 +258,7 @@ export function useDeckGenerationFlow({
       })
 
       if (refreshFailed) {
-        if (!refreshThrew) {
-          toast.error('Deck generated but could not be refreshed in the editor')
-        }
+        toast.error('Deck generated but could not be refreshed in the editor')
         return
       }
 
@@ -345,7 +343,6 @@ export function useDeckGenerationFlow({
       setModelFailure(false)
       setGenerationError('')
       onGenerationStart?.()
-      htmlAtJobStartRef.current = generatedHtml
       const messageContext =
         options.editorSelection || options.slideContexts?.length
           ? {
@@ -453,7 +450,6 @@ export function useDeckGenerationFlow({
 
   const handleRetryGeneration = useCallback(async () => {
     try {
-      htmlAtJobStartRef.current = generatedHtml
       const outcome = await retryGeneration()
 
       if (!outcome) {
@@ -500,7 +496,6 @@ export function useDeckGenerationFlow({
     appendFailureChatMessage,
     applySucceededOutcome,
     deckId,
-    generatedHtml,
     onError,
     reloadChat,
     retryGeneration,

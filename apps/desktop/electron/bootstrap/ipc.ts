@@ -237,7 +237,7 @@ export function registerIpcHandlers(deps: IpcDependencies) {
       }
     }
   })
-  ipcMain.on('edit:history-state', (_event, state) => {
+  ipcMain.on('edit:history-state', (event, state) => {
     if (
       !state ||
       typeof state !== 'object' ||
@@ -246,7 +246,7 @@ export function registerIpcHandlers(deps: IpcDependencies) {
     ) {
       return
     }
-    setEditHistoryMenuState({ canUndo: state.canUndo, canRedo: state.canRedo })
+    setEditHistoryMenuState({ canUndo: state.canUndo, canRedo: state.canRedo }, event.sender)
   })
   ipcMain.handle('updates:check', async () => {
     if (!app.isPackaged)

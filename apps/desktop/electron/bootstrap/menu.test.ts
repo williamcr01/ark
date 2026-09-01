@@ -86,11 +86,42 @@ describe('application edit menu', () => {
     expect(redo.enabled).toBe(true)
   })
 
-  it('forwards menu Undo/Redo clicks to the focused window', () => {
+  it('forwards menu Undo/Redo clicks to the focused window when no renderer reported state', () => {
+    setEditHistoryMenuState({ canUndo: true, canRedo: true })
     getFocusedWindow.mockReturnValue({ isDestroyed: () => false, webContents: { send } })
     sendEditHistoryAction('undo')
     expect(send).toHaveBeenCalledWith('edit:history-action', 'undo')
     sendEditHistoryAction('redo')
+    expect(send).toHaveBeenCalledWith('edit:history-action', 'redo')
+  })
+
+  it('forwards menu Undo/Redo clicks to the renderer that reported the state', () => {
+    // Enabled state is global, so a click must reach the window whose stack the
+    // menu reflects — not whichever window (Present mode) happens to be focused.
+    const ownerSend = vi.fn()
+    getFocusedWindow.mockReturnValue({ isDestroyed: () => false, webContents: { send } })
+    setEditHistoryMenuState({ canUndo: true, canRedo: true }, {
+      isDestroyed: () => false,
+      send: ownerSend,
+    } as unknown as Electron.WebContents)
+
+    sendEditHistoryAction('undo')
+
+    expect(ownerSend).toHaveBeenCalledWith('edit:history-action', 'undo')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the focused window when the reporting renderer is gone', () => {
+    const ownerSend = vi.fn()
+    getFocusedWindow.mockReturnValue({ isDestroyed: () => false, webContents: { send } })
+    setEditHistoryMenuState({ canUndo: true, canRedo: true }, {
+      isDestroyed: () => true,
+      send: ownerSend,
+    } as unknown as Electron.WebContents)
+
+    sendEditHistoryAction('redo')
+
+    expect(ownerSend).not.toHaveBeenCalled()
     expect(send).toHaveBeenCalledWith('edit:history-action', 'redo')
   })
 })
