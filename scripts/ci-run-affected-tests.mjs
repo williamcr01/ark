@@ -15,6 +15,7 @@ const workspaceProjects = new Map([
   ['packages/chat', '@ark/chat'],
   ['packages/deck', '@ark/deck'],
   ['packages/deck-export', '@ark/deck-export'],
+  ['packages/deck-import', '@ark/deck-import'],
   ['packages/deck-preview', '@ark/deck-preview'],
   ['packages/editor-runtime', '@ark/editor-runtime'],
   ['packages/mcp', '@ark/mcp'],

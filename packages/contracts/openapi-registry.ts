@@ -43,6 +43,8 @@ import {
   deckResponseSchema,
   deckValidationErrorResponseSchema,
   duplicateWorkspaceRequestSchema,
+  importPptxRequestSchema,
+  importPptxResponseSchema,
   renameDeckRequestSchema,
   restoreDocumentHistoryRequestSchema,
   restoreDocumentHistoryResponseSchema,
@@ -153,6 +155,23 @@ export function createArkOpenApiRegistry() {
         description: 'Validation error',
         content: { 'application/json': { schema: deckValidationErrorResponseSchema } },
       },
+      500: jsonError,
+    },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/decks/import-pptx',
+    summary: 'Import a PowerPoint file into a new workspace',
+    request: {
+      body: { content: { 'application/json': { schema: importPptxRequestSchema } } },
+    },
+    responses: {
+      201: {
+        description: 'Created deck',
+        content: { 'application/json': { schema: importPptxResponseSchema } },
+      },
+      400: jsonError,
       500: jsonError,
     },
   })

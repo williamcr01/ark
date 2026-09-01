@@ -148,6 +148,24 @@ export function getDeckFont(id: string | null | undefined) {
   return FONTS_BY_ID.get(id.trim().toLowerCase()) ?? null
 }
 
+/**
+ * Resolve an OOXML `typeface` to a registry font. Unknown names fall through so
+ * callers can substitute a role default rather than inventing a CSS stack the
+ * exporter cannot name.
+ */
+export function getDeckFontByPptxTypeface(typeface: string | null | undefined) {
+  if (!typeface) return null
+  const key = typeface.trim().toLowerCase()
+  if (!key || key.startsWith('+')) return null
+  return (
+    APPROVED_DECK_FONTS.find(
+      (font) =>
+        font.pptxTypeface.toLowerCase() === key ||
+        font.metricClones.some((clone) => clone.toLowerCase() === key),
+    ) ?? null
+  )
+}
+
 export function isApprovedDeckFontId(id: string | null | undefined) {
   return getDeckFont(id) !== null
 }

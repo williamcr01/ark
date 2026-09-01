@@ -35,18 +35,19 @@ Requires bumping root `engines.node` from `>=22` to `>=24` (Vitest for `apps/api
 
 ## Product behavior
 
-| User action    | Result                                                                                                                 |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Create deck    | Creates an `.ark` workspace in the default deck directory immediately                                                  |
-| Open `.ark`    | Opens presentation, assets, thumbnails, and threads (in-app Open dialog; OS file associations are out of scope for v1) |
-| Save           | Updates the current HTML transactionally                                                                               |
-| Save As        | `backup()` to a consistent copy at another location                                                                    |
-| Import HTML    | Creates a new `.ark` workspace from the HTML                                                                           |
-| Export HTML    | Self-contained presentation, no threads                                                                                |
-| Share Project  | Clean new `.ark` containing only selected content                                                                      |
-| Delete deck    | Deletes the `.ark` file                                                                                                |
-| Move deck      | Moves the single `.ark` file                                                                                           |
-| Duplicate deck | Presentation-only or complete-workspace copy                                                                           |
+| User action       | Result                                                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Create deck       | Creates an `.ark` workspace in the default deck directory immediately                                                  |
+| Open `.ark`       | Opens presentation, assets, thumbnails, and threads (in-app Open dialog; OS file associations are out of scope for v1) |
+| Save              | Updates the current HTML transactionally                                                                               |
+| Save As           | `backup()` to a consistent copy at another location                                                                    |
+| Import HTML       | Creates a new `.ark` workspace from the HTML                                                                           |
+| Import PowerPoint | Creates a new `.ark` workspace from a local `.pptx` (never overwrites the open deck)                                   |
+| Export HTML       | Self-contained presentation, no threads                                                                                |
+| Share Project     | Clean new `.ark` containing only selected content                                                                      |
+| Delete deck       | Deletes the `.ark` file                                                                                                |
+| Move deck         | Moves the single `.ark` file                                                                                           |
+| Duplicate deck    | Presentation-only or complete-workspace copy                                                                           |
 
 ## Schema
 

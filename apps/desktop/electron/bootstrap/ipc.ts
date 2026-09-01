@@ -171,7 +171,11 @@ export function registerIpcHandlers(deps: IpcDependencies) {
   ipcMain.handle('files:open-workspace', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'Ark Workspace', extensions: ['ark'] }],
+      filters: [
+        { name: 'Ark and PowerPoint', extensions: ['ark', 'pptx', 'ppt'] },
+        { name: 'Ark Workspace', extensions: ['ark'] },
+        { name: 'PowerPoint', extensions: ['pptx', 'ppt'] },
+      ],
     })
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })

@@ -32,6 +32,9 @@
       "path": "./packages/deck-export"
     },
     {
+      "path": "./packages/deck-import"
+    },
+    {
       "path": "./packages/deck-preview"
     },
     {

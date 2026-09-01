@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -6,10 +6,12 @@ import { writeChatSession } from '@/lib/chat/chat-session'
 import { getTestLocalStorage } from '@/test/storage'
 
 import { DecksDashboard } from './DecksDashboard'
+import { toast } from 'sonner'
 
 const deckApiMocks = vi.hoisted(() => ({
   createDeck: vi.fn(),
   deleteDeck: vi.fn(),
+  importPptx: vi.fn(),
   listDecks: vi.fn(),
   renameDeck: vi.fn(),
 }))
@@ -42,12 +44,15 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    loading: vi.fn(),
   },
 }))
 
 describe('DecksDashboard', () => {
   beforeEach(() => {
     deckApiMocks.listDecks.mockResolvedValue([])
+    deckApiMocks.importPptx.mockReset()
+    deckApiMocks.createDeck.mockReset()
     window.arkDesktop = {
       mcp: window.arkDesktop.mcp,
       credentials: {
@@ -151,5 +156,66 @@ describe('DecksDashboard', () => {
     fireEvent.click(await screen.findByRole('link', { name: 'Open Roadmap' }))
 
     expect(await screen.findByText('Opened deck')).toBeInTheDocument()
+  })
+
+  it('imports a PowerPoint file into a new workspace', async () => {
+    deckApiMocks.importPptx.mockResolvedValue({
+      id: 'imported-1',
+      title: 'Imported Board',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-02T00:00:00.000Z',
+      documentRevision: 1,
+      origin: 'authored',
+      filePath: '/tmp/Imported Board.ark',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/decks']}>
+        <Routes>
+          <Route element={<DecksDashboard />} path="/decks" />
+          <Route element={<div>Imported deck</div>} path="/decks/:deckId" />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('No decks yet')
+    const input = document.querySelector(
+      'input[accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"]',
+    )
+    expect(input).toBeTruthy()
+    const file = new File(['pk'], 'board.pptx', {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    })
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } })
+
+    expect(await screen.findByText('Imported deck')).toBeInTheDocument()
+    expect(deckApiMocks.importPptx).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: 'board.pptx', bytes: expect.any(String) }),
+    )
+    expect(deckApiMocks.createDeck).not.toHaveBeenCalled()
+  })
+
+  it('rejects legacy .ppt files before calling the API', async () => {
+    render(
+      <MemoryRouter initialEntries={['/decks']}>
+        <Routes>
+          <Route element={<DecksDashboard />} path="/decks" />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('No decks yet')
+    const input = document.querySelector(
+      'input[accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"]',
+    )
+    const file = new File(['ole'], 'old.ppt', { type: 'application/vnd.ms-powerpoint' })
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'Legacy .ppt files are not supported. Save the deck as .pptx and import it again.',
+      )
+    })
+    expect(deckApiMocks.importPptx).not.toHaveBeenCalled()
   })
 })

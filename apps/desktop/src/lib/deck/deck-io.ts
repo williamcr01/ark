@@ -47,6 +47,35 @@ export function isHtmlDeckFile(file: File) {
   )
 }
 
+export const PPTX_LEGACY_UPLOAD_MESSAGE =
+  'Legacy .ppt files are not supported. Save the deck as .pptx and import it again.'
+
+export function isPptxFile(file: File | string) {
+  const name = typeof file === 'string' ? file : file.name
+  return name.toLowerCase().endsWith('.pptx')
+}
+
+export function isLegacyPptFile(file: File | string) {
+  const name = typeof file === 'string' ? file : file.name
+  const lower = name.toLowerCase()
+  return lower.endsWith('.ppt') && !lower.endsWith('.pptx')
+}
+
+export function basenameFromPath(filePath: string) {
+  const parts = filePath.split(/[/\\]/)
+  return parts.at(-1) || filePath
+}
+
+export async function fileToBase64(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const chunks: string[] = []
+  const size = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += size) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + size)))
+  }
+  return btoa(chunks.join(''))
+}
+
 export function validateUploadedDeck(html: string): DeckValidationReport {
   return validateDeckHtmlInBrowser(html)
 }

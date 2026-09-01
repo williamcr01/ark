@@ -34,11 +34,13 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           activeDeckId={deck.id}
           deckTitle={deck.title}
           fileInputRef={fileInputRef}
+          pptxFileInputRef={createRef<HTMLInputElement>()}
           uiState={DEFAULT_UI_STATE}
           onDownload={vi.fn()}
           onExport={vi.fn()}
           onDuplicate={vi.fn()}
           onHtmlUpload={vi.fn()}
+          onPptxUpload={vi.fn()}
           onMove={vi.fn()}
           onNewDeck={vi.fn()}
           onOpenWorkspace={vi.fn()}
@@ -50,6 +52,7 @@ function renderTitleBar(overrides: Partial<ComponentProps<typeof AppTitleBar>> =
           onToggleChat={vi.fn()}
           onToggleStrip={vi.fn()}
           onUploadClick={vi.fn()}
+          onPptxImportClick={vi.fn()}
           {...overrides}
         />
       </TooltipProvider>
@@ -116,6 +119,9 @@ describe('AppTitleBar accessibility', () => {
     expect(screen.getByRole('button', { name: 'New deck' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Export deck' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Upload HTML' })).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: 'Import PowerPoint' })).not.toHaveAttribute(
+      'aria-pressed',
+    )
     expect(screen.getByRole('button', { name: 'Present fullscreen' })).not.toHaveAttribute(
       'aria-pressed',
     )

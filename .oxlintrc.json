@@ -176,7 +176,9 @@
                   "@ark/mcp",
                   "@ark/mcp/*",
                   "@ark/storage",
-                  "@ark/storage/*"
+                  "@ark/storage/*",
+                  "@ark/deck-import",
+                  "@ark/deck-import/*"
                 ],
                 "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
               }
@@ -260,6 +262,7 @@
         "packages/agent/**/*.ts",
         "packages/mcp/**/*.ts",
         "packages/storage/**/*.ts",
+        "packages/deck-import/**/*.ts",
         "packages/telemetry/request-id.ts",
         "packages/**/*-disk.ts",
         "packages/contracts/**/*.ts",

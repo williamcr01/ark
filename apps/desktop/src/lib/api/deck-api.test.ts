@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createDeck,
   fetchDeck,
+  importPptx,
   listDecks,
   moveWorkspace,
   renameDeck,
@@ -69,6 +70,20 @@ describe('deck-api', () => {
       '/api/decks',
       expect.objectContaining({
         body: JSON.stringify({ html: deck.html }),
+        method: 'POST',
+      }),
+    )
+  })
+
+  it('imports a PowerPoint file into a new deck', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ deck }, { status: 201 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(importPptx({ filename: 'board.pptx', bytes: 'AAAA' })).resolves.toEqual(deck)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/decks/import-pptx',
+      expect.objectContaining({
+        body: JSON.stringify({ filename: 'board.pptx', bytes: 'AAAA' }),
         method: 'POST',
       }),
     )

@@ -37,6 +37,9 @@ export const apiErrorCodeSchema = z.enum([
   'document_conflict',
   'workspace_file_exists',
   'workspace_already_open',
+  'pptx_legacy',
+  'pptx_encrypted',
+  'pptx_invalid',
 ])
 
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>

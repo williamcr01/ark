@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'reac
 import { Link, useNavigate } from 'react-router'
 import {
   FilePlus2Icon,
+  FileUpIcon,
   FolderOpenIcon,
   PresentationIcon,
   SettingsIcon,
@@ -29,6 +30,7 @@ import { clearChatSession } from '@/lib/chat/chat-session'
 import {
   createDeck,
   deleteDeck,
+  importPptx,
   listDecks,
   locateWorkspace,
   openWorkspace,
@@ -36,7 +38,16 @@ import {
   renameDeck,
   type DeckSummary,
 } from '@/lib/api/deck-api'
-import { describeDeckValidation, isHtmlDeckFile, validateUploadedDeck } from '@/lib/deck/deck-io'
+import {
+  basenameFromPath,
+  describeDeckValidation,
+  fileToBase64,
+  isHtmlDeckFile,
+  isLegacyPptFile,
+  isPptxFile,
+  PPTX_LEGACY_UPLOAD_MESSAGE,
+  validateUploadedDeck,
+} from '@/lib/deck/deck-io'
 
 function DeckCardSkeleton() {
   return (
@@ -53,6 +64,7 @@ function DeckCardSkeleton() {
 export function DecksDashboard() {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pptxFileInputRef = useRef<HTMLInputElement>(null)
   const [decks, setDecks] = useState<DeckSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -94,6 +106,10 @@ export function DecksDashboard() {
     fileInputRef.current?.click()
   }, [])
 
+  const handlePptxImportClick = useCallback(() => {
+    pptxFileInputRef.current?.click()
+  }, [])
+
   const handleNewDeck = useCallback(() => {
     clearChatSession(null)
     clearStoredGenerationJob(null)
@@ -103,6 +119,21 @@ export function DecksDashboard() {
   const handleOpenWorkspace = useCallback(async () => {
     const path = await window.arkDesktop.files.openWorkspace()
     if (!path) return
+    if (isPptxFile(path) || isLegacyPptFile(path)) {
+      const filename = basenameFromPath(path)
+      const pending = toast.loading('Importing PowerPoint...')
+      try {
+        const deck = await importPptx({ path, filename })
+        toast.success(`Imported ${filename}`, { id: pending })
+        navigate(`/decks/${deck.id}`)
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : 'Could not import that PowerPoint file',
+          { id: pending },
+        )
+      }
+      return
+    }
     const deck = await openWorkspace(path)
     navigate(`/decks/${deck.id}`)
   }, [navigate])
@@ -182,6 +213,42 @@ export function DecksDashboard() {
     [navigate],
   )
 
+  const handlePptxUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0]
+      event.currentTarget.value = ''
+
+      if (!file) {
+        return
+      }
+
+      if (isLegacyPptFile(file)) {
+        toast.error(PPTX_LEGACY_UPLOAD_MESSAGE)
+        return
+      }
+
+      if (!isPptxFile(file)) {
+        toast.error('Import a .pptx file')
+        return
+      }
+
+      setIsUploading(true)
+
+      try {
+        const deck = await importPptx({ filename: file.name, bytes: await fileToBase64(file) })
+        toast.success(`Imported ${file.name}`)
+        navigate(`/decks/${deck.id}`)
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : 'Could not import that PowerPoint file',
+        )
+      } finally {
+        setIsUploading(false)
+      }
+    },
+    [navigate],
+  )
+
   return (
     <TooltipProvider>
       <div className="flex h-svh flex-col overflow-y-auto bg-[var(--ark-canvas)] text-foreground">
@@ -191,6 +258,13 @@ export function DecksDashboard() {
             className="hidden"
             onChange={handleHtmlUpload}
             ref={fileInputRef}
+            type="file"
+          />
+          <input
+            accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            className="hidden"
+            onChange={handlePptxUpload}
+            ref={pptxFileInputRef}
             type="file"
           />
           <Link
@@ -211,6 +285,15 @@ export function DecksDashboard() {
           <Button disabled={isUploading} onClick={handleUploadClick} size="sm" variant="outline">
             <UploadIcon data-icon="inline-start" />
             Upload HTML
+          </Button>
+          <Button
+            disabled={isUploading}
+            onClick={handlePptxImportClick}
+            size="sm"
+            variant="outline"
+          >
+            <FileUpIcon data-icon="inline-start" />
+            Import PowerPoint
           </Button>
           <Button onClick={() => void handleOpenWorkspace()} size="sm" variant="outline">
             <FolderOpenIcon data-icon="inline-start" />
@@ -250,7 +333,8 @@ export function DecksDashboard() {
                 </EmptyMedia>
                 <EmptyTitle>No decks yet</EmptyTitle>
                 <EmptyDescription>
-                  Create a deck with the agent, or upload an HTML file to get started.
+                  Create a deck with the agent, upload HTML, or import a PowerPoint file to get
+                  started.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -261,6 +345,10 @@ export function DecksDashboard() {
                 <Button disabled={isUploading} onClick={handleUploadClick} variant="outline">
                   <UploadIcon data-icon="inline-start" />
                   Upload HTML
+                </Button>
+                <Button disabled={isUploading} onClick={handlePptxImportClick} variant="outline">
+                  <FileUpIcon data-icon="inline-start" />
+                  Import PowerPoint
                 </Button>
               </EmptyContent>
             </Empty>

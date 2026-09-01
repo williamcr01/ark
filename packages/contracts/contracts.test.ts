@@ -6,6 +6,8 @@ import {
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  importPptxRequestSchema,
+  importPptxResponseSchema,
   documentHistoryListResponseSchema,
   renameDeckRequestSchema,
   restoreDocumentHistoryRequestSchema,
@@ -83,6 +85,50 @@ describe('shared API contracts', () => {
         warnings: [],
       }),
     ).toMatchObject({ defaultModel: 'openai:gpt-5.6-luna' })
+  })
+
+  it('requires a path or bytes for PowerPoint import', () => {
+    expect(parseRequestBody(importPptxRequestSchema, { filename: 'deck.pptx' })).toMatchObject({
+      ok: false,
+    })
+    expect(
+      parseRequestBody(importPptxRequestSchema, { filename: 'deck.pptx', bytes: 'AAAA' }),
+    ).toMatchObject({ ok: true })
+    expect(parseRequestBody(importPptxRequestSchema, { path: '/tmp/deck.pptx' })).toMatchObject({
+      ok: true,
+    })
+  })
+
+  it('requires warnings on PowerPoint import responses', () => {
+    const deck = {
+      id: deckId,
+      html: '<html></html>',
+      title: 'Deck',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      documentRevision: 1,
+      origin: 'authored' as const,
+      filePath: '/tmp/Deck.ark',
+    }
+    const validation = {
+      valid: true,
+      slideCount: 1,
+      scripts: [],
+      forms: 0,
+      iframes: 0,
+      externalUrls: [],
+      malformedSlides: [],
+      runtimeMarkers: {},
+      issues: [],
+    }
+    const base = { deck, validation, runtimeManifest: null }
+    expect(importPptxResponseSchema.safeParse(base).success).toBe(false)
+    expect(
+      importPptxResponseSchema.safeParse({
+        ...base,
+        warnings: ['Slide 1 has decoration that was flattened to a picture.'],
+      }).success,
+    ).toBe(true)
   })
 
   it('rejects invalid deck create requests', () => {
@@ -641,6 +687,13 @@ describe('shared API contracts', () => {
       error: 'Missing key',
       code: 'missing_api_key',
     })
+
+    expect(
+      apiErrorPayloadSchema.parse({
+        error: 'Legacy .ppt files are not supported.',
+        code: 'pptx_legacy',
+      }),
+    ).toMatchObject({ code: 'pptx_legacy' })
 
     expect(simpleErrorResponseSchema.parse({ error: 'Bad request' })).toEqual({
       error: 'Bad request',

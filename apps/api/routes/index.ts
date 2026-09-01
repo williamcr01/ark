@@ -14,6 +14,7 @@ import { createDeckThreadsRouter } from './deck-threads.ts'
 import { createDecksRouter } from './decks.ts'
 import { createGenerationJobsRouter } from './generation-jobs.ts'
 import { createMcpRouter } from './mcp.ts'
+import { createImportPptxRouter } from './import-pptx.ts'
 import { createMiscRouter } from './misc.ts'
 import { createPreviewSessionsRouter } from './preview-sessions.ts'
 import { createRuntimesAndAssetsRouter } from './runtimes-and-assets.ts'
@@ -77,6 +78,7 @@ export function registerRoutes(app: Express, services: ApiServices, options: Rou
       onEditorPatchPersisted: notifyEditorPatchPersisted,
     }),
   )
+  app.use(createImportPptxRouter({ deckStore, onDocumentPersisted: notifyDocumentPersisted }))
   app.use(createThumbnailsRouter({ deckStore, thumbnailService }))
   app.use(createDeckChatRouter({ deckStore, chatStore }))
   app.use(createDeckThreadsRouter(chatStore))

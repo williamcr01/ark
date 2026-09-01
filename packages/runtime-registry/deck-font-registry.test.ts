@@ -10,6 +10,7 @@ import {
   DECK_FONT_SAFE_WEIGHTS,
   DEFAULT_DECK_FONT_IDS,
   getDeckFont,
+  getDeckFontByPptxTypeface,
   getDeckFontsByCategory,
   isApprovedDeckFontId,
   isExportSafeFontWeight,
@@ -56,6 +57,9 @@ describe('approved deck fonts', () => {
     expect(getDeckFont(' calibri ')?.pptxTypeface).toBe('Calibri')
     expect(getDeckFont('helvetica')).toBeNull()
     expect(isApprovedDeckFontId(null)).toBe(false)
+    expect(getDeckFontByPptxTypeface('Calibri')?.id).toBe('calibri')
+    expect(getDeckFontByPptxTypeface('Liberation Sans')?.id).toBe('arial')
+    expect(getDeckFontByPptxTypeface('Comic Sans MS')).toBeNull()
   })
 })
 

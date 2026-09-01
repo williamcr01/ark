@@ -34,6 +34,7 @@ const PROJECTS = [
   'packages/chat/tsconfig.json',
   'packages/contracts/tsconfig.json',
   'packages/deck/tsconfig.json',
+  'packages/deck-import/tsconfig.json',
   'packages/deck-preview/tsconfig.json',
   'packages/editor-runtime/tsconfig.json',
   'packages/mcp/tsconfig.json',
