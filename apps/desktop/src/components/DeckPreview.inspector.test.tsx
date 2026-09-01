@@ -115,8 +115,15 @@ vi.mock('@/hooks/useDeckEditorBridge', () => ({
     // Simulate the real bridge's event-driven selection reporting so the
     // shell-facing onEditorSelectionChange prop receives the same events the
     // real editor MessagePort listener emits.
-    const options = args[1] as { onSelectionChange?: (selection: unknown) => void } | undefined
-    options?.onSelectionChange?.(editorBridgeMock.selection)
+    const options = args[1] as
+      | {
+          onSelectionChange?: (selection: unknown, selections?: unknown[]) => void
+        }
+      | undefined
+    options?.onSelectionChange?.(
+      editorBridgeMock.selection,
+      editorBridgeMock.selection ? [editorBridgeMock.selection] : [],
+    )
     return editorBridgeMock
   },
 }))
@@ -577,6 +584,7 @@ describe('DeckPreview script divergence UI', () => {
 
     expect(onEditorSelectionChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ elementId: 'ark-el-1' }),
+      [expect.objectContaining({ elementId: 'ark-el-1' })],
     )
 
     rerender(
@@ -588,7 +596,7 @@ describe('DeckPreview script divergence UI', () => {
         />
       </TooltipProvider>,
     )
-    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null)
+    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null, [])
   })
 
   it('enables the editor bridge when the edit-mode iframe loads', async () => {

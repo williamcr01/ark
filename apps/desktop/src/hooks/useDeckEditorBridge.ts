@@ -29,6 +29,7 @@ import {
   isEditorTransformPreviewMessage,
   isEditorDeleteRequestMessage,
   isEditorConnectMessage,
+  resolveEditorSelectionSet,
   type EditorHoverMessage,
   type EditorInsertRequestMessage,
   type EditorNormalizedRect,
@@ -46,10 +47,20 @@ import { isAllowedBridgeMessageOrigin } from '@ark/runtime-registry/sandbox-orig
 export type DeckEditorBridgeState = {
   editorReady: boolean
   selection: EditorSelectionInfo | null
+  /** Full same-slide selection set; empty when nothing is selected. */
+  selections: EditorSelectionInfo[]
   hover: Pick<EditorHoverMessage, 'elementId' | 'slideIndex' | 'surface'> | null
   geometry: EditorNormalizedRect | null
   /** Viewport-normalized slide box for composing overlay geometry. */
   slideBounds: EditorNormalizedRect | null
+  /** Per-element overlay geometry for the full selection set (issue #248). */
+  selectionGeometries: Record<
+    string,
+    {
+      geometry: EditorNormalizedRect
+      slideBounds: EditorNormalizedRect | null
+    }
+  >
   selectionZIndex: number | null
   editorError: string | null
   /** First preview frame as a gesture-in-progress marker; latest geometry is delivered through the ref/listener. */
@@ -82,16 +93,21 @@ export type UseDeckEditorBridgeOptions = {
   canPostToFrame?: () => boolean
   /** When false, ignore inbound editor messages (session not armed). */
   shouldAcceptInbound?: () => boolean
-  onSelectionChange?: (selection: EditorSelectionInfo | null) => void
+  onSelectionChange?: (
+    selection: EditorSelectionInfo | null,
+    selections?: EditorSelectionInfo[],
+  ) => void
   onEditorError?: (message: string, code?: string) => void
 }
 
 const initialState: DeckEditorBridgeState = {
   editorReady: false,
   selection: null,
+  selections: [],
   hover: null,
   geometry: null,
   slideBounds: null,
+  selectionGeometries: {},
   selectionZIndex: null,
   editorError: null,
   transformPreview: null,
@@ -251,7 +267,7 @@ export function useDeckEditorBridge(
         transformCancelSequence: current.transformCancelSequence,
         lastTextCommit: current.lastTextCommit,
       }))
-      onSelectionChange?.(null)
+      onSelectionChange?.(null, [])
       return postToFrame(createEditorEnableMessage(slideIndex, tool, scale))
     },
     [activeSlideIndex, onSelectionChange, postToFrame, publishTransformPreview],
@@ -269,7 +285,7 @@ export function useDeckEditorBridge(
       publishTransformPreview(null)
       selectionIdentityRef.current = null
       setState(initialState)
-      onSelectionChange?.(null)
+      onSelectionChange?.(null, [])
     }
 
     return posted
@@ -348,6 +364,7 @@ export function useDeckEditorBridge(
       }
 
       if (isEditorSelectionChangeMessage(data)) {
+        const nextSelections = resolveEditorSelectionSet(data.selection, data.selections)
         const sameSelection =
           data.selection !== null &&
           selectionIdentityRef.current?.elementId === data.selection.elementId &&
@@ -361,22 +378,44 @@ export function useDeckEditorBridge(
           publishTransformPreview(null)
         }
 
-        setState((current) => ({
-          ...current,
-          selection: data.selection,
-          // Drop overlay geometry whenever selection identity changes so a
-          // previous element's box never flashes on the new selection.
-          geometry: sameSelection ? current.geometry : null,
-          slideBounds: sameSelection ? current.slideBounds : null,
-          selectionZIndex: sameSelection ? current.selectionZIndex : null,
-          transformPreview: sameSelection ? current.transformPreview : null,
-        }))
-        onSelectionChange?.(data.selection)
+        setState((current) => {
+          const keepIds = new Set(nextSelections.map((item) => item.elementId))
+          const selectionGeometries = Object.fromEntries(
+            Object.entries(current.selectionGeometries).filter(([elementId]) =>
+              keepIds.has(elementId),
+            ),
+          )
+
+          return {
+            ...current,
+            selection: data.selection,
+            selections: nextSelections,
+            // Drop overlay geometry whenever selection identity changes so a
+            // previous element's box never flashes on the new selection.
+            geometry: sameSelection ? current.geometry : null,
+            slideBounds: sameSelection ? current.slideBounds : null,
+            selectionGeometries: sameSelection ? selectionGeometries : {},
+            selectionZIndex: sameSelection ? current.selectionZIndex : null,
+            transformPreview: sameSelection ? current.transformPreview : null,
+          }
+        })
+        onSelectionChange?.(data.selection, nextSelections)
         return
       }
 
       if (isEditorGeometryMessage(data)) {
         setState((current) => {
+          const inSet = current.selections.some((item) => item.elementId === data.elementId)
+          const nextGeometries = inSet
+            ? {
+                ...current.selectionGeometries,
+                [data.elementId]: {
+                  geometry: data.geometry,
+                  slideBounds: data.slideBounds ?? null,
+                },
+              }
+            : current.selectionGeometries
+
           if (current.selection?.elementId === data.elementId) {
             // Keep the selection object identity stable when surface is unchanged.
             // Recreating it on every geometry reply re-fires requestGeometry effects
@@ -392,6 +431,14 @@ export function useDeckEditorBridge(
               geometry: data.geometry,
               slideBounds: data.slideBounds ?? null,
               selectionZIndex: data.zIndex,
+              selectionGeometries: nextGeometries,
+            }
+          }
+
+          if (inSet) {
+            return {
+              ...current,
+              selectionGeometries: nextGeometries,
             }
           }
 

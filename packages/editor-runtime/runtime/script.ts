@@ -36,6 +36,7 @@ import {
   EDITOR_TRANSFORM_END_MESSAGE_TYPE,
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
 } from '../protocol/message-types.ts'
+import { MAX_EDITOR_SELECTIONS } from '../protocol/types.ts'
 import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
 import {
   ARK_ELEMENT_ID_ATTR,
@@ -121,6 +122,7 @@ export function buildDeckEditorBridgeRuntimeScript(
     DEFAULT_BOX_HEIGHT: DEFAULT_TEXT_BOX_NORMALIZED_SIZE.height,
     SLIDE_REFERENCE_WIDTH: ARK_SLIDE_REFERENCE_WIDTH,
     SLIDE_REFERENCE_HEIGHT: ARK_SLIDE_REFERENCE_HEIGHT,
+    MAX_SELECTIONS: MAX_EDITOR_SELECTIONS,
   }
 
   return [

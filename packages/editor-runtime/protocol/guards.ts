@@ -34,43 +34,45 @@ import {
   EDITOR_TRANSFORM_PREVIEW_MESSAGE_TYPE,
 } from './message-types.ts'
 import type { EditorMessageType } from './message-types.ts'
-import type {
-  EditorAdoptSpacer,
-  EditorAssignIdMessage,
-  EditorCancelTextEditMessage,
-  EditorClearSelectionMessage,
-  EditorConfigureMessage,
-  EditorConnectAckMessage,
-  EditorConnectMessage,
-  EditorDeleteRequestMessage,
-  EditorDisableMessage,
-  EditorEnableMessage,
-  EditorErrorMessage,
-  EditorGeometryMessage,
-  EditorHoverMessage,
-  EditorInsertRequestMessage,
-  EditorMessage,
-  EditorReadyMessage,
-  EditorRequestGeometryMessage,
-  EditorRuntimeMessage,
-  EditorSelectMessage,
-  EditorSelectionChangeMessage,
-  EditorSelectionImageSize,
-  EditorSelectionInfo,
-  EditorSelectionTextStyle,
-  EditorSetToolMessage,
-  EditorShellMessage,
-  EditorShortcutAction,
-  EditorShortcutMessage,
-  EditorStartTextEditMessage,
-  EditorSurface,
-  EditorTextCommitMessage,
-  EditorTextEditStateMessage,
-  EditorTool,
-  EditorTransformCancelMessage,
-  EditorTransformCommitMessage,
-  EditorTransformEndMessage,
-  EditorTransformPreviewMessage,
+import {
+  MAX_EDITOR_SELECTIONS,
+  type EditorAdoptSpacer,
+  type EditorAssignIdMessage,
+  type EditorCancelTextEditMessage,
+  type EditorClearSelectionMessage,
+  type EditorConfigureMessage,
+  type EditorConnectAckMessage,
+  type EditorConnectMessage,
+  type EditorDeleteRequestMessage,
+  type EditorDisableMessage,
+  type EditorEnableMessage,
+  type EditorErrorMessage,
+  type EditorGeometryMessage,
+  type EditorHoverMessage,
+  type EditorInsertRequestMessage,
+  type EditorMessage,
+  type EditorReadyMessage,
+  type EditorRequestGeometryMessage,
+  type EditorRuntimeMessage,
+  type EditorSelectMessage,
+  type EditorSelectionChangeMessage,
+  type EditorSelectionImageSize,
+  type EditorSelectionInfo,
+  type EditorSelectionTextStyle,
+  type EditorSetToolMessage,
+  type EditorShellMessage,
+  type EditorShortcutAction,
+  type EditorShortcutMessage,
+  type EditorStartTextEditMessage,
+  type EditorSurface,
+  type EditorTextCommitMessage,
+  type EditorTextEditStateMessage,
+  type EditorTool,
+  type EditorTransformCancelMessage,
+  type EditorTransformCommitMessage,
+  type EditorTransformCompanion,
+  type EditorTransformEndMessage,
+  type EditorTransformPreviewMessage,
 } from './types.ts'
 import type { NormalizedRect as EditorNormalizedRect } from '@ark/deck/document/geometry.ts'
 
@@ -183,7 +185,8 @@ export function isEditorSelectionInfo(value: unknown): value is EditorSelectionI
       isEditorSelectionTextStyle(value.textStyle)) &&
     (value.imageNaturalSize === undefined ||
       value.imageNaturalSize === null ||
-      isEditorSelectionImageSize(value.imageNaturalSize))
+      isEditorSelectionImageSize(value.imageNaturalSize)) &&
+    (value.nestedInSelection === undefined || typeof value.nestedInSelection === 'boolean')
   )
 }
 
@@ -284,13 +287,70 @@ export function isEditorShortcutMessage(value: unknown): value is EditorShortcut
   )
 }
 
+export function isEditorSelectionInfoList(value: unknown): value is EditorSelectionInfo[] {
+  if (!Array.isArray(value) || value.length > MAX_EDITOR_SELECTIONS) {
+    return false
+  }
+
+  const ids = new Set<string>()
+  let slideIndex: number | undefined
+
+  for (const item of value) {
+    if (!isEditorSelectionInfo(item) || ids.has(item.elementId)) {
+      return false
+    }
+
+    ids.add(item.elementId)
+
+    if (slideIndex === undefined) {
+      slideIndex = item.slideIndex
+    } else if (item.slideIndex !== slideIndex) {
+      return false
+    }
+  }
+
+  return true
+}
+
+export function resolveEditorSelectionSet(
+  selection: EditorSelectionInfo | null,
+  selections?: EditorSelectionInfo[],
+): EditorSelectionInfo[] {
+  if (selections && selections.length > 0) {
+    return selections
+  }
+
+  return selection ? [selection] : []
+}
+
 export function isEditorSelectionChangeMessage(
   value: unknown,
 ): value is EditorSelectionChangeMessage {
+  if (
+    !isRecord(value) ||
+    value.type !== EDITOR_SELECTION_CHANGE_MESSAGE_TYPE ||
+    !(value.selection === null || isEditorSelectionInfo(value.selection))
+  ) {
+    return false
+  }
+
+  if (value.selections === undefined) {
+    return true
+  }
+
+  if (!isEditorSelectionInfoList(value.selections)) {
+    return false
+  }
+
+  const selection = value.selection
+
+  if (selection === null) {
+    return value.selections.length === 0
+  }
+
   return (
-    isRecord(value) &&
-    value.type === EDITOR_SELECTION_CHANGE_MESSAGE_TYPE &&
-    (value.selection === null || isEditorSelectionInfo(value.selection))
+    isEditorSelectionInfo(selection) &&
+    value.selections.some((item) => item.elementId === selection.elementId)
   )
 }
 
@@ -367,12 +427,8 @@ function isEditorAdoptSpacer(value: unknown): value is EditorAdoptSpacer {
   )
 }
 
-export function isEditorTransformCommitMessage(
-  value: unknown,
-): value is EditorTransformCommitMessage {
+function isEditorTransformCommitFields(value: Record<string, unknown>): boolean {
   return (
-    isRecord(value) &&
-    value.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE &&
     hasElementTarget(value) &&
     isEditorNormalizedRect(value.geometry) &&
     (value.zIndex === undefined || value.zIndex === null || isFiniteNumber(value.zIndex)) &&
@@ -387,6 +443,24 @@ export function isEditorTransformCommitMessage(
     (value.slideHeight === undefined ||
       (isFiniteNumber(value.slideHeight) && value.slideHeight > 0)) &&
     (value.spacer === undefined || isEditorAdoptSpacer(value.spacer))
+  )
+}
+
+export function isEditorTransformCompanion(value: unknown): value is EditorTransformCompanion {
+  return isRecord(value) && value.type === undefined && isEditorTransformCommitFields(value)
+}
+
+export function isEditorTransformCommitMessage(
+  value: unknown,
+): value is EditorTransformCommitMessage {
+  return (
+    isRecord(value) &&
+    value.type === EDITOR_TRANSFORM_COMMIT_MESSAGE_TYPE &&
+    isEditorTransformCommitFields(value) &&
+    (value.companions === undefined ||
+      (Array.isArray(value.companions) &&
+        value.companions.length <= MAX_EDITOR_SELECTIONS - 1 &&
+        value.companions.every(isEditorTransformCompanion)))
   )
 }
 

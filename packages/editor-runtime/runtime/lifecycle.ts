@@ -37,17 +37,16 @@ export const lifecycleChunk = `  function bindListeners() {
       if (previousSlide) {
         cancelTransform(previousSlide);
       } else {
-        if (transformState.element) {
-          restoreInlineStyle(transformState.element, transformState.snapshot);
-          cleanupAdoptSideEffects(transformState.element, transformState.cache);
-        }
-
+        restoreTransformMembers(transformState);
         transformState = null;
         clearEditorOverlays();
       }
     }
 
     enabled = true;
+    if (currentSlideIndex !== slideIndex) {
+      clearSelectionStyles();
+    }
     currentSlideIndex = slideIndex;
     currentTool = tool || 'select';
     editorScale = Number.isFinite(scale) && scale > 0 ? scale : editorScale;
@@ -64,16 +63,14 @@ export const lifecycleChunk = `  function bindListeners() {
     enabled = false;
 
     if (transformState && transformState.element) {
-      restoreInlineStyle(transformState.element, transformState.snapshot);
-      cleanupAdoptSideEffects(transformState.element, transformState.cache);
+      restoreTransformMembers(transformState);
     }
 
     transformState = null;
     window.clearTimeout(nudgeState && nudgeState.timer);
 
     if (nudgeState && nudgeState.element) {
-      restoreInlineStyle(nudgeState.element, nudgeState.snapshot);
-      cleanupAdoptSideEffects(nudgeState.element, nudgeState.cache);
+      restoreTransformMembers(nudgeState);
     }
 
     nudgeState = null;
@@ -157,9 +154,9 @@ export const lifecycleChunk = `  function bindListeners() {
           assignTarget.setAttribute(C.MANAGED_ATTR, 'true');
         }
 
-        if (selectedElement === assignTarget) {
+        if (selectedElement === assignTarget || isSelectionMember(assignTarget)) {
           postSelection(assignTarget, assignSlide, data.slideIndex);
-          refreshSelectionChrome(assignTarget, assignSlide, data.slideIndex);
+          refreshSelectionChrome(selectedElement || assignTarget, assignSlide, data.slideIndex);
         }
 
         return;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -10,6 +10,7 @@ import {
   prepareImageInsertFromFile,
 } from '@/lib/editor/deck-image-insert'
 import { isTextEditableSelection } from '@/lib/editor/deck-text-edit'
+import { getSelectionSetBlockReason } from '@/lib/editor/editor-selection-set'
 import type { DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
 import type { DeckEditorBridgeState } from '@/hooks/useDeckEditorBridge'
 import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'
@@ -55,6 +56,7 @@ type UseDeckEditorPatchCoordinatorOptions = {
   /** Bumps whenever the preview content changed, by reload or by slide patch. */
   previewContentRevision: number
   selection: EditorSelectionInfo | null
+  selections?: EditorSelectionInfo[]
   scopeKey: string | null
   textEditActive: boolean
   transformCancelSequence: number
@@ -96,6 +98,7 @@ export function useDeckEditorPatchCoordinator({
   preserveUndoSlideIndex,
   previewContentRevision,
   selection,
+  selections = [],
   scopeKey,
   textEditActive,
   transformCancelSequence,
@@ -144,9 +147,15 @@ export function useDeckEditorPatchCoordinator({
     isTransformingRef.current = false
   }, [scopeKey])
 
-  const canEditSelectedText = editChromeActive && isTextEditableSelection(selection)
+  const selectionSet = useMemo(
+    () => (selections.length > 0 ? selections : selection ? [selection] : []),
+    [selection, selections],
+  )
+  const selectionBlockReason = getSelectionSetBlockReason(selectionSet)
+  const canEditSelectedText =
+    editChromeActive && selectionSet.length === 1 && isTextEditableSelection(selection)
   const canModifySelection =
-    selection !== null && !selection.locked && editChromeActive && !textEditActive
+    selection !== null && !selectionBlockReason && editChromeActive && !textEditActive
   const selectedImage = Boolean(
     selection &&
     !selection.locked &&
@@ -245,19 +254,22 @@ export function useDeckEditorPatchCoordinator({
       return
     }
 
+    const targets = selectionSet.filter((item) => !item.locked)
+    if (targets.length === 0) {
+      return
+    }
+
     void onPatchEditorOperations(
-      [
-        {
-          op: 'delete_element',
-          elementId: selection.elementId,
-          slideIndex: selection.slideIndex,
-          ...(selection.slideId ? { slideId: selection.slideId } : {}),
-        },
-      ],
+      targets.map((item) => ({
+        op: 'delete_element' as const,
+        elementId: item.elementId,
+        slideIndex: item.slideIndex,
+        ...(item.slideId ? { slideId: item.slideId } : {}),
+      })),
       selection.slideIndex,
-      'Deleted element in preview',
+      targets.length === 1 ? 'Deleted element in preview' : 'Deleted selected elements in preview',
     )
-  }, [canModifySelection, onPatchEditorOperations, selection])
+  }, [canModifySelection, onPatchEditorOperations, selection, selectionSet])
 
   const duplicateElement = useCallback(
     (elementId: string, slideIndex: number, slideId: string | null) =>
@@ -498,36 +510,56 @@ export function useDeckEditorPatchCoordinator({
     if (!lastDeleteRequest || !onPatchEditorOperations) return
     const key = `${lastDeleteRequest.elementId}:${lastDeleteRequest.slideIndex}`
     if (processedDeleteRequestRef.current === key) return
+    const generation = scopeGenerationRef.current
+    const targets =
+      selectionSet.length > 0
+        ? selectionSet
+        : [
+            {
+              elementId: lastDeleteRequest.elementId,
+              slideIndex: lastDeleteRequest.slideIndex,
+            },
+          ]
+    if (getSelectionSetBlockReason(selectionSet)) {
+      return
+    }
     processedDeleteRequestRef.current = key
     preserveSlideIndexRef.current = activeSlideIndex
-    const generation = scopeGenerationRef.current
     void onPatchEditorOperations(
-      [
-        {
-          op: 'delete_element',
-          elementId: lastDeleteRequest.elementId,
-          slideIndex: lastDeleteRequest.slideIndex,
-        },
-      ],
+      targets.map((item) => ({
+        op: 'delete_element' as const,
+        elementId: item.elementId,
+        slideIndex: item.slideIndex,
+        ...('slideId' in item && item.slideId ? { slideId: item.slideId } : {}),
+      })),
       lastDeleteRequest.slideIndex,
-      'Deleted element in preview',
+      targets.length === 1 ? 'Deleted element in preview' : 'Deleted selected elements in preview',
     ).catch(() => {
       if (scopeGenerationRef.current !== generation) return
       processedDeleteRequestRef.current = null
       preserveSlideIndexRef.current = null
     })
-  }, [activeSlideIndex, lastDeleteRequest, onPatchEditorOperations])
+  }, [activeSlideIndex, lastDeleteRequest, onPatchEditorOperations, selectionSet])
 
   useEffect(() => {
     if (!transformCommit || !onPatchEditorOperations) return
     const key = `${transformCommit.elementId}:${transformCommit.slideIndex}:${transformCommit.geometry.x}:${transformCommit.geometry.y}:${transformCommit.geometry.width}:${transformCommit.geometry.height}:${transformCommit.adopted ? 'adopted' : 'managed'}`
     if (processedTransformCommitRef.current === key) return
 
-    const operations = buildTransformPatchOperations(
-      transformCommit,
-      isTransformingRef.current ? transformStartGeometryRef.current : null,
-      selection?.slideId ?? null,
-    )
+    const operations = [
+      ...buildTransformPatchOperations(
+        transformCommit,
+        isTransformingRef.current ? transformStartGeometryRef.current : null,
+        selection?.slideId ?? null,
+      ),
+      ...(transformCommit.companions ?? []).flatMap((companion) =>
+        buildTransformPatchOperations(
+          { type: 'ark:editor-transform-commit', ...companion },
+          null,
+          selection?.slideId ?? null,
+        ),
+      ),
+    ]
     isTransformingRef.current = false
     transformStartGeometryRef.current = null
     if (operations.length === 0) return
@@ -535,12 +567,16 @@ export function useDeckEditorPatchCoordinator({
     processedTransformCommitRef.current = key
     preserveSlideIndexRef.current = activeSlideIndex
     scheduleReselect()
-    const keepLivePreview = beginLivePatch(transformCommit.elementId)
+    const keepLivePreview =
+      !(transformCommit.companions && transformCommit.companions.length > 0) &&
+      beginLivePatch(transformCommit.elementId)
     // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent -- exactly-once imperative geometry-patch command for a transformCommit arriving over the private editor MessagePort the parent cannot subscribe to (external-subscription predicate); deduped by processedTransformCommitRef
     const patchPromise = onPatchEditorOperations(
       operations,
       transformCommit.slideIndex,
-      'Updated element layout in preview',
+      transformCommit.companions?.length
+        ? 'Updated selected element layout in preview'
+        : 'Updated element layout in preview',
     )
     const generation = scopeGenerationRef.current
     pendingTransformPatchRef.current = patchPromise

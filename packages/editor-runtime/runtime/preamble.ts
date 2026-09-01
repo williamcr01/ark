@@ -28,6 +28,7 @@ export function preambleChunk(constantsJson: string) {
   var currentTool = 'select';
   var currentSlideIndex = 0;
   var selectedElement = null;
+  var selectedElements = [];
   var textEditElement = null;
   var originalTextBeforeEdit = null;
   var listenersBound = false;

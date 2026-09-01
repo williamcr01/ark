@@ -51,7 +51,7 @@ import type {
 import type { EditorSelectionInfo } from '@ark/editor-runtime'
 import { buildManualEditProvenance } from '@ark/deck/document/edit-provenance.ts'
 import { ApiResponseError, MAX_SLIDE_CONTEXTS, type ExternalDeckUpdate } from '@ark/contracts'
-import { toEditorSelectionContext } from '@/lib/editor/editor-selection-context'
+import { toEditorSelectionJobFields } from '@/lib/editor/editor-selection-context'
 import {
   buildSlideContexts,
   extractSlideTitleFromOuterHtml,
@@ -173,6 +173,7 @@ export function useAppShell() {
     () => getDesktopSettings().agentInteractionsInModal === true,
   )
   const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
+  const [editorSelections, setEditorSelections] = useState<EditorSelectionInfo[]>([])
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
   const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
   // The agent panel preference persists across sessions; layout defaults apply when unset
@@ -454,36 +455,41 @@ export function useAppShell() {
     setPrevDeckIdForContext(deckId)
     setContextSlideEntries([])
     setEditorSelection(null)
+    setEditorSelections([])
   }
 
-  const handleEditorSelectionChange = useCallback((selection: EditorSelectionInfo | null) => {
-    setEditorSelection((current) => {
-      if (current === selection) {
-        return current
-      }
+  const handleEditorSelectionChange = useCallback(
+    (selection: EditorSelectionInfo | null, selections: EditorSelectionInfo[] = []) => {
+      setEditorSelection((current) => {
+        if (current === selection) {
+          return current
+        }
 
-      if (
-        current &&
-        selection &&
-        current.elementId === selection.elementId &&
-        current.slideIndex === selection.slideIndex &&
-        current.slideId === selection.slideId &&
-        current.tagName === selection.tagName &&
-        current.locked === selection.locked &&
-        current.managed === selection.managed &&
-        current.editableKind === selection.editableKind &&
-        current.textPreview === selection.textPreview &&
-        current.surface === selection.surface &&
-        current.geometryEditable === selection.geometryEditable &&
-        current.role === selection.role &&
-        current.imageFit === selection.imageFit
-      ) {
-        return current
-      }
+        if (
+          current &&
+          selection &&
+          current.elementId === selection.elementId &&
+          current.slideIndex === selection.slideIndex &&
+          current.slideId === selection.slideId &&
+          current.tagName === selection.tagName &&
+          current.locked === selection.locked &&
+          current.managed === selection.managed &&
+          current.editableKind === selection.editableKind &&
+          current.textPreview === selection.textPreview &&
+          current.surface === selection.surface &&
+          current.geometryEditable === selection.geometryEditable &&
+          current.role === selection.role &&
+          current.imageFit === selection.imageFit
+        ) {
+          return current
+        }
 
-      return selection
-    })
-  }, [])
+        return selection
+      })
+      setEditorSelections(selections)
+    },
+    [],
+  )
 
   const handleClearEditorSelection = useCallback(() => {
     const clear = clearEditorSelectionRef.current
@@ -492,6 +498,7 @@ export function useAppShell() {
       return
     }
     setEditorSelection(null)
+    setEditorSelections([])
   }, [])
 
   const deckAnalysis = useMemo(() => {
@@ -527,6 +534,10 @@ export function useAppShell() {
     [deckAnalysis.slides],
   )
 
+  const handleClearContextSlides = useCallback(() => {
+    setContextSlideEntries([])
+  }, [])
+
   // Keep attached-slide state aligned with the live deck (reorder/delete/snapshot restore).
   const resolvedContextSlides = useMemo(
     () => resolveContextSlides(contextSlideEntries, deckAnalysis.slides),
@@ -561,11 +572,13 @@ export function useAppShell() {
     [deckAnalysis.slides, resolvedContextSlides],
   )
   const chatContextSlot =
-    editorSelection || contextSlidesForChips.length > 0 ? (
+    editorSelection || editorSelections.length > 0 || contextSlidesForChips.length > 0 ? (
       <ChatContextChips
         editorSelection={editorSelection}
+        editorSelections={editorSelections}
         nested
         onClearEditorSelection={handleClearEditorSelection}
+        onClearSlides={handleClearContextSlides}
         onRemoveSlide={handleRemoveContextSlide}
         slides={contextSlidesForChips}
       />
@@ -823,14 +836,14 @@ export function useAppShell() {
     const assetIds = [
       ...new Set(attachments.flatMap((item) => (item.assetId ? [item.assetId] : []))),
     ]
-    const editorSelectionContext = toEditorSelectionContext(editorSelection)
+    const selectionFields = toEditorSelectionJobFields(editorSelection, editorSelections)
     const slideContexts =
       resolvedContextSlides.length > 0
         ? buildSlideContexts(resolvedContextSlides, deckAnalysis.slides)
         : undefined
     await generateDeck(message.text, attachments, {
       assetIds,
-      ...(editorSelectionContext ? { editorSelection: editorSelectionContext } : {}),
+      ...selectionFields,
       ...(slideContexts?.length ? { slideContexts } : {}),
     })
   }

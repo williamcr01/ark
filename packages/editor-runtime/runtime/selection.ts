@@ -274,7 +274,7 @@ export const selectionChunk = `  function findSlides() {
   }
 
   function buildSelection(element, slide, slideIndex) {
-    return {
+    var info = {
       elementId: resolveElementId(element, slide, slideIndex),
       slideIndex: slideIndex,
       slideId: slide.getAttribute('data-ark-slide-id') || null,
@@ -290,5 +290,11 @@ export const selectionChunk = `  function findSlides() {
       textStyle: readTextStyle(element),
       imageNaturalSize: readImageNaturalSize(element),
     };
+
+    if (isNestedInSelection(element)) {
+      info.nestedInSelection = true;
+    }
+
+    return info;
   }
 `

@@ -535,6 +535,8 @@ describe('applyDeckPatches element operations', () => {
     expect(moved.html).toContain(`width: ${Math.round(0.5 * 1280)}px`)
     expect(moved.html).toContain(`height: ${Math.round(0.2 * 720)}px`)
 
+    // Same-batch follow-up still uses the original transient id; stamping rewrites
+    // both ops to the durable id before either runs so the resize still applies.
     const split = applyDeckPatches(transientDeck, [
       {
         op: 'move_element',
@@ -553,12 +555,108 @@ describe('applyDeckPatches element operations', () => {
       },
     ])
 
-    expect(split.ok).toBe(false)
-    if (split.ok) {
+    expect(split.ok).toBe(true)
+    if (!split.ok) {
       return
     }
 
-    expect(split.error).toContain('not a recognized editable target')
+    expect(split.changedElementIds.some((id) => id.startsWith('ark-el-'))).toBe(true)
+    expect(split.html).toContain(`height: ${Math.round(0.2 * 720)}px`)
+  })
+
+  it('deletes two transient sibling flow elements in one batch', () => {
+    const siblingDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Siblings</title></head>
+<body>
+  <section class="slide">
+    <h1>Opening</h1>
+    <p>Body copy</p>
+  </section>
+</body>
+</html>`
+    const elements = parseDeckHtml(siblingDeck).editableElements[0]?.elements ?? []
+    const headingId = elements.find((element) => element.tagName === 'h1')?.id
+    const bodyId = elements.find((element) => element.tagName === 'p')?.id
+
+    expect(headingId).toMatch(/^transient-el-/)
+    expect(bodyId).toMatch(/^transient-el-/)
+    expect(headingId).not.toBe(bodyId)
+
+    const deleted = applyDeckPatches(siblingDeck, [
+      { op: 'delete_element', slideIndex: 0, elementId: headingId! },
+      { op: 'delete_element', slideIndex: 0, elementId: bodyId! },
+    ])
+
+    expect(deleted.ok).toBe(true)
+    if (!deleted.ok) {
+      return
+    }
+
+    expect(deleted.html).not.toContain('Opening')
+    expect(deleted.html).not.toContain('Body copy')
+    expect(deleted.appliedCount).toBe(2)
+  })
+
+  it('adopts two transient sibling flow elements in one batched move', () => {
+    const siblingDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Siblings</title></head>
+<body>
+  <section class="slide">
+    <h1>Opening</h1>
+    <p>Body copy</p>
+  </section>
+</body>
+</html>`
+    const elements = parseDeckHtml(siblingDeck).editableElements[0]?.elements ?? []
+    const headingId = elements.find((element) => element.tagName === 'h1')?.id
+    const bodyId = elements.find((element) => element.tagName === 'p')?.id
+
+    expect(headingId).toMatch(/^transient-el-/)
+    expect(bodyId).toMatch(/^transient-el-/)
+
+    const spacer = {
+      width: 400,
+      height: 80,
+      marginTop: 0,
+      marginRight: 0,
+      marginBottom: 0,
+      marginLeft: 0,
+      display: 'block',
+    }
+    const moved = applyDeckPatches(siblingDeck, [
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: headingId!,
+        x: 0.1,
+        y: 0.1,
+        width: 0.4,
+        spacer,
+      },
+      {
+        op: 'move_element',
+        slideIndex: 0,
+        elementId: bodyId!,
+        x: 0.1,
+        y: 0.3,
+        width: 0.4,
+        spacer,
+      },
+    ])
+
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) {
+      return
+    }
+
+    expect(moved.appliedCount).toBe(2)
+    expect(moved.html.match(/data-ark-managed="true"/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(moved.html.match(/data-ark-spacer="true"/g)?.length).toBe(2)
+    expect(moved.changedElementIds.filter((id) => id.startsWith('ark-el-'))).toHaveLength(2)
+    expect(moved.html).toContain('Opening')
+    expect(moved.html).toContain('Body copy')
   })
 
   it('rejects reordering a static inline SVG without changing its positioning', () => {

@@ -11,6 +11,7 @@ import type {
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
 import type { ReasoningEffort } from '@ark/contracts'
+import { withEditorSelectionJobFields } from '@/lib/editor/editor-selection-context'
 import { describeDeckValidation } from '@/lib/deck/deck-io'
 import { newId } from '@/lib/ui/id'
 
@@ -281,6 +282,7 @@ export function useDeckGenerationFlow({
       options: {
         assetIds?: string[]
         editorSelection?: EditorSelectionContext
+        editorSelections?: EditorSelectionContext[]
         slideContexts?: SlideContext[]
       } = {},
     ) => {
@@ -296,10 +298,20 @@ export function useDeckGenerationFlow({
       setModelFailure(false)
       setGenerationError('')
       onGenerationStart?.()
+      const selectionFields = withEditorSelectionJobFields({
+        editorSelection: options.editorSelection,
+        editorSelections: options.editorSelections,
+      })
+      const jobOptions = {
+        ...options,
+        ...selectionFields,
+      }
       const messageContext =
-        options.editorSelection || options.slideContexts?.length
+        selectionFields.editorSelection ||
+        selectionFields.editorSelections?.length ||
+        options.slideContexts?.length
           ? {
-              ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
+              ...selectionFields,
               ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
             }
           : undefined
@@ -308,7 +320,7 @@ export function useDeckGenerationFlow({
         role: 'user',
         content: rawPrompt.trim(),
         ...(attachments.length > 0 ? { attachments } : {}),
-        ...(messageContext ? { context: messageContext } : {}),
+        ...(messageContext ? { context: messageContext as ChatMessage['context'] } : {}),
       }
       const nextMessages: ChatMessage[] = [...messages, userMessage]
 
@@ -319,7 +331,7 @@ export function useDeckGenerationFlow({
       }
 
       try {
-        const outcome = await startGeneration(nextMessages, generatedHtml, options)
+        const outcome = await startGeneration(nextMessages, generatedHtml, jobOptions)
 
         if (!outcome) {
           return

@@ -265,6 +265,7 @@ export function useGenerationJob({
       options: {
         assetIds?: string[]
         editorSelection?: EditorSelectionContext
+        editorSelections?: EditorSelectionContext[]
         slideContexts?: SlideContext[]
       } = {},
     ) => {
@@ -286,6 +287,9 @@ export function useGenerationJob({
           baseDocumentRevision,
           ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
           ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
+          ...(options.editorSelections?.length
+            ? { editorSelections: options.editorSelections }
+            : {}),
           ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
         })
 

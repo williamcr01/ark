@@ -13,7 +13,7 @@ import {
 } from '@ark/deck/patch/patch-request.ts'
 import type { DeckValidationReport } from '@ark/deck/validate/timed.ts'
 import { applyDeckEdits } from './text-edit.ts'
-import { applyElementPatch } from './element-patch.ts'
+import { applyElementPatch, stabilizeElementPatchOperations } from './element-patch.ts'
 import { stampEditableElementIds } from './editable-elements.ts'
 import { validateDeckDocumentOnServer } from '../validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
@@ -489,7 +489,21 @@ export function applyDeckPatches(
     }
   }
 
-  for (const [operationIndex, operation] of operations.entries()) {
+  const elementOperations = operations.filter(isElementPatchOperation)
+  const rewrittenElementOperations =
+    elementOperations.length > 0
+      ? stabilizeElementPatchOperations(getDomContext(), elementOperations)
+      : []
+  let rewrittenElementIndex = 0
+  const preparedOperations = operations.map((operation) => {
+    if (!isElementPatchOperation(operation)) {
+      return operation
+    }
+
+    return rewrittenElementOperations[rewrittenElementIndex++] ?? operation
+  })
+
+  for (const [operationIndex, operation] of preparedOperations.entries()) {
     if (isElementPatchOperation(operation)) {
       const context = getDomContext()
       const result = applyElementPatch(context, operation)

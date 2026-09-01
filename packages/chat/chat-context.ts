@@ -379,6 +379,7 @@ export function assembleDeckAgentContext({
   messages,
   currentHtml,
   editorSelection,
+  editorSelections,
   slideContexts,
   deckOrigin,
   projectionLimits,
@@ -386,6 +387,7 @@ export function assembleDeckAgentContext({
   messages: ApiChatMessage[]
   currentHtml: string
   editorSelection?: EditorSelectionContext
+  editorSelections?: EditorSelectionContext[]
   slideContexts?: SlideContext[]
   deckOrigin?: DeckOrigin | null
   projectionLimits?: { maxAssistantTurnBytes?: number }
@@ -413,6 +415,7 @@ export function assembleDeckAgentContext({
         wrapForAgent: true,
         currentHtml,
         editorSelection,
+        editorSelections,
         slideContexts,
         deckOrigin,
       }),
@@ -429,11 +432,13 @@ export function buildAgentModelMessages(
   editorSelection?: EditorSelectionContext,
   slideContexts?: SlideContext[],
   deckOrigin?: DeckOrigin | null,
+  editorSelections?: EditorSelectionContext[],
 ) {
   return assembleDeckAgentContext({
     messages,
     currentHtml,
     editorSelection,
+    editorSelections,
     slideContexts,
     deckOrigin,
   }).modelMessages
