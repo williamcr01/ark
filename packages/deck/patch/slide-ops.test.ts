@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { ARK_SLIDE_ID_ATTR } from '@ark/deck/document/metadata.ts'
-import { applyDeckPatches } from './slide-ops.ts'
+import { applyDeckPatches, resetApplyDeckDomCacheForTests } from './slide-ops.ts'
 import { parseDeckHtml } from '../document/parser.ts'
 import { validateDeckHtmlOnServer } from '../validate/timed.ts'
 
@@ -207,5 +207,100 @@ describe('applyDeckPatches', () => {
     }
 
     expect(parseDeckHtml(result.html).slides[0]?.slideId).toBe('ark-slide-opening')
+  })
+})
+
+const sequentialDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Sequential</title></head>
+<body>
+  <section class="slide">
+    <div data-ark-id="ark-el-0" data-ark-managed="true" style="position:absolute;left:10px;top:10px;width:80px;height:40px">A</div>
+    <div data-ark-id="ark-el-1" data-ark-managed="true" style="position:absolute;left:50px;top:10px;width:80px;height:40px">B</div>
+  </section>
+</body>
+</html>`
+
+describe('applyDeckPatches live JSDOM reuse', () => {
+  beforeEach(() => {
+    resetApplyDeckDomCacheForTests()
+  })
+
+  it('applies a follow-up patch to the previous serialize without losing earlier edits', () => {
+    const first = applyDeckPatches(sequentialDeck, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
+    ])
+
+    expect(first.ok).toBe(true)
+    if (!first.ok) {
+      return
+    }
+
+    expect(first.html).toContain('left: 640px')
+    expect(first.html).toMatch(/data-ark-id="ark-el-1"[^>]*left:50px/)
+
+    const second = applyDeckPatches(first.html, [
+      { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 },
+    ])
+
+    expect(second.ok).toBe(true)
+    if (!second.ok) {
+      return
+    }
+
+    expect(second.html).toContain('left: 640px')
+    expect(second.html).toContain('left: 320px')
+    expect(second.changedElementIds).toEqual(['ark-el-1'])
+    expect(second.validation?.valid).toBe(true)
+  })
+
+  it('does not leak mutations into a later patch of the original source', () => {
+    const first = applyDeckPatches(sequentialDeck, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
+    ])
+
+    expect(first.ok).toBe(true)
+
+    const independent = applyDeckPatches(sequentialDeck, [
+      { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 },
+    ])
+
+    expect(independent.ok).toBe(true)
+    if (!independent.ok) {
+      return
+    }
+
+    expect(independent.html).toContain('left: 320px')
+    expect(independent.html).toMatch(/data-ark-id="ark-el-0"[^>]*left:10px/)
+    expect(independent.html).not.toContain('left: 640px')
+  })
+
+  it('reparses after a failed follow-up so the next source patch is clean', () => {
+    const first = applyDeckPatches(sequentialDeck, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
+    ])
+
+    expect(first.ok).toBe(true)
+    if (!first.ok) {
+      return
+    }
+
+    const failed = applyDeckPatches(first.html, [
+      { op: 'move_element', elementId: 'ark-el-missing', slideIndex: 0, x: 0.1, y: 0.1 },
+    ])
+
+    expect(failed.ok).toBe(false)
+
+    const retry = applyDeckPatches(first.html, [
+      { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 },
+    ])
+
+    expect(retry.ok).toBe(true)
+    if (!retry.ok) {
+      return
+    }
+
+    expect(retry.html).toContain('left: 640px')
+    expect(retry.html).toContain('left: 320px')
   })
 })

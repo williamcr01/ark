@@ -46,6 +46,57 @@ function serializeDeckHtml(dom: JSDOM) {
   return dom.serialize()
 }
 
+type CachedDeckDom = {
+  html: string
+  dom: JSDOM
+}
+
+let cachedDeckDom: CachedDeckDom | null = null
+
+function closeJsdomWindow(dom: JSDOM) {
+  const maybeClose = (dom.window as unknown as { close?: () => void }).close
+  maybeClose?.()
+}
+
+function discardCachedDeckDom() {
+  if (!cachedDeckDom) {
+    return
+  }
+
+  closeJsdomWindow(cachedDeckDom.dom)
+  cachedDeckDom = null
+}
+
+/**
+ * Sequential editor commits send back the HTML we just serialized. Reusing that
+ * live JSDOM skips parse5 / symbol-tree on the next apply (issue #291). A miss
+ * discards the previous window so a different deck or revision never mutates
+ * leftover nodes.
+ */
+function takeCachedDeckDom(html: string): JSDOM | null {
+  if (!cachedDeckDom || cachedDeckDom.html !== html) {
+    return null
+  }
+
+  const { dom } = cachedDeckDom
+  cachedDeckDom = null
+  return dom
+}
+
+function rememberCachedDeckDom(html: string, dom: JSDOM) {
+  if (cachedDeckDom?.dom === dom) {
+    cachedDeckDom = { html, dom }
+    return
+  }
+
+  discardCachedDeckDom()
+  cachedDeckDom = { html, dom }
+}
+
+export function resetApplyDeckDomCacheForTests() {
+  discardCachedDeckDom()
+}
+
 function findSlideContainer(doc: Document, slides: Element[]) {
   if (slides[0]?.parentElement) {
     return slides[0].parentElement
@@ -456,9 +507,11 @@ export function applyDeckPatches(
       return
     }
 
-    // Release the jsdom window when available; ignore environments without close().
-    const maybeClose = (dom.window as unknown as { close?: () => void }).close
-    maybeClose?.()
+    if (cachedDeckDom?.dom === dom) {
+      cachedDeckDom = null
+    }
+
+    closeJsdomWindow(dom)
     dom = null
   }
 
@@ -475,7 +528,12 @@ export function applyDeckPatches(
 
   const getDomContext = (): PatchContext => {
     if (!dom) {
-      dom = new JSDOM(workingHtml)
+      dom = takeCachedDeckDom(workingHtml)
+
+      if (!dom) {
+        discardCachedDeckDom()
+        dom = new JSDOM(workingHtml)
+      }
     }
 
     return {
@@ -565,7 +623,7 @@ export function applyDeckPatches(
       workingHtml,
       options.logger ? { logger: options.logger } : undefined,
     )
-    closeDom()
+    rememberCachedDeckDom(workingHtml, liveDom)
   } else {
     flushDom()
   }
