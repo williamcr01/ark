@@ -33,8 +33,10 @@ import {
   migrate,
   SCHEMA,
 } from './schema.ts'
-import { WorkspaceDocumentConflictError } from './types.ts'
+import { appendDocumentHistory, listDocumentHistory, readDocumentHistoryHtml } from './history.ts'
+import { WorkspaceDocumentConflictError, WorkspaceDocumentHistoryNotFoundError } from './types.ts'
 import type { OpenWorkspace, RecentWorkspace, WorkspaceRow } from './types.ts'
+import type { DocumentHistorySource } from '../../records/document-history.ts'
 
 export class WorkspaceStore {
   private defaultDir: string
@@ -238,6 +240,12 @@ export class WorkspaceStore {
         open.database
           .prepare('UPDATE workspace SET document_revision = document_revision + 1')
           .run()
+        appendDocumentHistory(open.database, {
+          revision: current.documentRevision + 1,
+          html: syncedHtml,
+          source: 'editor',
+          createdAt: now,
+        })
       }
       open.database.exec('COMMIT')
     } catch (error) {
@@ -328,6 +336,12 @@ export class WorkspaceStore {
           .prepare('INSERT INTO document (id, html, content_hash, updated_at) VALUES (1, ?, ?, ?)')
           .run(html, contentHash(html), now)
         syncDocumentAssetReferences(database, html)
+        appendDocumentHistory(database, {
+          revision: 1,
+          html,
+          source: 'create',
+          createdAt: now,
+        })
         database.exec('COMMIT')
       } catch (error) {
         database.exec('ROLLBACK')
@@ -424,19 +438,59 @@ export class WorkspaceStore {
     return workspace
   }
 
+  async listDocumentHistory(id: string) {
+    await this.index()
+    const open = this.openById(id)
+    if (!open) return null
+    return listDocumentHistory(open.database)
+  }
+
+  /**
+   * The HTML of one history snapshot, so callers can validate before restoring.
+   * Null means the deck is unknown; a missing snapshot throws, matching
+   * `restoreDocument`.
+   */
+  async readDocumentHistoryHtml(id: string, historyRevision: number) {
+    await this.index()
+    const open = this.openById(id)
+    if (!open) return null
+    const html = readDocumentHistoryHtml(open.database, historyRevision)
+    if (html === null) throw new WorkspaceDocumentHistoryNotFoundError(historyRevision)
+    return html
+  }
+
+  async restoreDocument(id: string, historyRevision: number, expectedDocumentRevision: number) {
+    await this.index()
+    const open = this.openById(id)
+    if (!open) return null
+    const html = readDocumentHistoryHtml(open.database, historyRevision)
+    if (html === null) throw new WorkspaceDocumentHistoryNotFoundError(historyRevision)
+    // Keep the current title: a content rollback must not silently rename the
+    // deck (and, through the filename sync below, the `.ark` file on disk)
+    // just because the snapshot carries an older `<title>`.
+    return this.updateDocument(id, html, expectedDocumentRevision, [], 'restore', {
+      preserveTitle: true,
+    })
+  }
+
   async updateDocument(
     id: string,
     html: string,
     expectedDocumentRevision: number,
     embeddedAssets: readonly EmbeddedAsset[] = [],
+    historySource: DocumentHistorySource = 'editor',
+    options: { preserveTitle?: boolean } = {},
   ) {
     await this.index()
     const open = this.openById(id)
     if (!open) return null
     const current = readWorkspace(open)
     const nextExtractedTitle = extractDeckTitle(html)
-    const title =
-      current.title === extractDeckTitle(current.html) ? nextExtractedTitle : current.title
+    const title = options.preserveTitle
+      ? current.title
+      : current.title === extractDeckTitle(current.html)
+        ? nextExtractedTitle
+        : current.title
     const now = new Date().toISOString()
     // Re-saving byte-identical HTML (autosave on an untouched starter deck) is
     // not authoring, so it must not retire the blank origin.
@@ -459,10 +513,21 @@ export class WorkspaceStore {
       }
       insertEmbeddedAssets(open.database, embeddedAssets)
       syncDocumentAssetReferences(open.database, html)
-      garbageCollectUnreferencedAssets(open.database)
       open.database
         .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
         .run(html, contentHash(html), now)
+      // Identical HTML is an autosave tick, not a committed history step.
+      if (html !== current.html) {
+        appendDocumentHistory(open.database, {
+          revision: expectedDocumentRevision + 1,
+          html,
+          source: historySource,
+          createdAt: now,
+        })
+      }
+      // GC after history pins so a snapshot still referenced by
+      // document_history cannot lose its ark-asset: blobs.
+      garbageCollectUnreferencedAssets(open.database)
       open.database.exec('COMMIT')
     } catch (error) {
       open.database.exec('ROLLBACK')
@@ -542,10 +607,9 @@ export class WorkspaceStore {
     const targetPath = await this.uniquePath(title, path.dirname(open.path), open.path)
     writeMetadata(open, title, syncedHtml, htmlChanged, now)
     if (targetPath !== open.path) {
+      let workspace: WorkspaceRow
       try {
-        const workspace = await this.renameOpenWorkspaceFile(open, targetPath)
-        await this.touchRecent(workspace)
-        return workspace
+        workspace = await this.renameOpenWorkspaceFile(open, targetPath)
       } catch (error) {
         // Roll the file rename back: reopen the original path and restore the
         // previous metadata so the deck does not half-rename.
@@ -558,10 +622,46 @@ export class WorkspaceStore {
         }
         throw error
       }
+      // Past the file move, so the rollback above no longer applies: it would
+      // reopen a path that no longer exists, creating a stray empty database
+      // there and masking whatever actually failed.
+      this.appendRenameHistory(
+        workspace.id,
+        htmlChanged,
+        workspace.documentRevision,
+        workspace.html,
+        now,
+      )
+      await this.touchRecent(workspace)
+      return workspace
     }
+    this.appendRenameHistory(open.id, htmlChanged, previous.documentRevision + 1, syncedHtml, now)
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace
+  }
+
+  /**
+   * A title rewrite that changes `<title>` (and therefore HTML) is a restore
+   * point. Append after the rename succeeds so a rolled-back file move never
+   * leaves a history row for a title that did not stick.
+   */
+  private appendRenameHistory(
+    id: string,
+    htmlChanged: boolean,
+    revision: number,
+    html: string,
+    createdAt: string,
+  ) {
+    if (!htmlChanged) return
+    const open = this.byId.get(id)
+    if (!open) return
+    appendDocumentHistory(open.database, {
+      revision,
+      html,
+      source: 'editor',
+      createdAt,
+    })
   }
 
   async delete(id: string) {

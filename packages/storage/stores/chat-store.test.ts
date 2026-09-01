@@ -51,6 +51,32 @@ describe('createChatStore', () => {
     ])
   })
 
+  it('round-trips multi-element editorSelections on user messages', async () => {
+    const { deck, store } = await setup()
+    const context = {
+      editorSelection: { slideIndex: 1, elementId: 'ark-el-primary', elementKind: 'text' },
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a', elementKind: 'text' },
+        { slideIndex: 1, elementId: 'ark-el-primary', elementKind: 'text' },
+        { slideIndex: 1, elementId: 'ark-el-c' },
+      ],
+    }
+    await store.appendMessage(deck.id, {
+      id: '00000000-0000-4000-8000-000000000111',
+      role: 'user',
+      content: 'Align these',
+      context,
+    })
+
+    const listed = await store.listMessages(deck.id)
+    expect(listed.messages).toEqual([
+      expect.objectContaining({
+        content: 'Align these',
+        context,
+      }),
+    ])
+  })
+
   it('makes repeated message ids idempotent for persistence retries', async () => {
     const { deck, store } = await setup()
     const input = {

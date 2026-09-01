@@ -207,4 +207,15 @@ describe('useDeckEditorShellShortcuts', () => {
       canRedo: false,
     })
   })
+
+  it('clears the canvas selection set when Escape is pressed with the select tool', () => {
+    const callbacks = { ...options(), onClearSelection: vi.fn() }
+    renderHook(() => useDeckEditorShellShortcuts(callbacks))
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
+
+    expect(callbacks.onClearSelection).toHaveBeenCalledOnce()
+    expect(callbacks.onSelectTool).not.toHaveBeenCalled()
+    expect(callbacks.onEndTextEditing).not.toHaveBeenCalled()
+  })
 })

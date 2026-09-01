@@ -15,6 +15,7 @@ import { WandSparklesIcon } from 'lucide-react'
 import { EditModeToolbar } from '@/components/EditModeToolbar'
 import {
   EditorSelectionOverlay,
+  type EditorOverlayCompanion,
   type EditorSelectionOverlayHandle,
 } from '@/components/EditorSelectionOverlay'
 import { DeckPreviewStatusOverlays } from '@/components/DeckPreviewStatusOverlays'
@@ -55,6 +56,7 @@ import {
 } from '@/lib/deck/deck-preview'
 import type { DeckBrowserAnalysis } from '@/lib/deck/deck-analysis'
 import { clientPointToNormalizedSlidePoint } from '@/lib/editor/deck-image-insert'
+import { getSelectionSetBlockReason } from '@/lib/editor/editor-selection-set'
 import { reportRuntimeError } from '@/lib/api/runtime-error-api'
 import { cn } from '@/lib/ui/utils'
 import type { EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'
@@ -110,7 +112,10 @@ export type DeckPreviewProps = {
   onRedo?: () => void | Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<DeckPreviewPatchResult | undefined>
   /** Reports the current editor selection to the shell (issue #83); null when edit chrome is inactive. */
-  onEditorSelectionChange?: (selection: EditorSelectionInfo | null) => void
+  onEditorSelectionChange?: (
+    selection: EditorSelectionInfo | null,
+    selections?: EditorSelectionInfo[],
+  ) => void
   /** Toggle a slide as chat context without changing the active slide. */
   onToggleContextSlide?: (index: number) => void
   onReorderSlide?: (
@@ -326,8 +331,11 @@ function useDeckPreviewShell({
   // null whenever the edit chrome is inactive (edit mode off, generating, or
   // presenting) so a stale id is never sent.
   const handleBridgeSelectionChange = useCallback(
-    (next: EditorSelectionInfo | null) => {
-      onEditorSelectionChange?.(editChromeActive ? next : null)
+    (next: EditorSelectionInfo | null, nextSelections: EditorSelectionInfo[] = []) => {
+      onEditorSelectionChange?.(
+        editChromeActive ? next : null,
+        editChromeActive ? nextSelections : [],
+      )
     },
     [editChromeActive, onEditorSelectionChange],
   )
@@ -413,9 +421,11 @@ function useDeckPreviewShell({
   const {
     editorReady,
     selection,
+    selections = [],
     hover,
     geometry,
     slideBounds,
+    selectionGeometries = {},
     hoverGeometry,
     hoverSlideBounds,
     selectionZIndex,
@@ -553,6 +563,7 @@ function useDeckPreviewShell({
     preserveUndoSlideIndex: undoSlideIndex,
     previewContentRevision,
     selection,
+    selections,
     scopeKey: deckId,
     textEditActive,
     transformCancelSequence,
@@ -626,6 +637,7 @@ function useDeckPreviewShell({
     onSelectTool: () => handleToolChange('select'),
     onBeginTextEdit: beginTextEdit,
     onInsertImage: (file) => void handleInsertImageFile(file),
+    onClearSelection: clearSelection,
   })
 
   useEffect(() => {
@@ -648,13 +660,22 @@ function useDeckPreviewShell({
 
   const selectedElementId = selection?.elementId ?? null
   const selectedSlideIndex = selection?.slideIndex ?? null
+  const selectedElementIds = (selections.length > 0 ? selections : selection ? [selection] : [])
+    .map((item) => item.elementId)
+    .join('\0')
 
   useEffect(() => {
     if (!editChromeActive || selectedElementId === null || selectedSlideIndex === null) {
       return
     }
 
-    requestGeometry(selectedElementId, selectedSlideIndex)
+    const targets =
+      selections.length > 0
+        ? selections
+        : [{ elementId: selectedElementId, slideIndex: selectedSlideIndex }]
+    for (const target of targets) {
+      requestGeometry(target.elementId, target.slideIndex)
+    }
     // Re-measure when the preview viewport resizes so letterboxed slides keep
     // the parent overlay aligned after scale changes. Depend on selection
     // identity fields only — geometry replies must not retrigger this effect.
@@ -664,7 +685,9 @@ function useDeckPreviewShell({
     previewViewportSize.width,
     requestGeometry,
     selectedElementId,
+    selectedElementIds,
     selectedSlideIndex,
+    selections,
   ])
 
   useEffect(() => {
@@ -733,6 +756,25 @@ function useDeckPreviewShell({
   }, [openPresentMode, presentHandleRef])
   const previewStageStyle = getPreviewStageStyle(previewFrameScale)
   const previewFrameStyle = getPreviewFrameStyle(previewFrameScale)
+  const selectionSet = selections.length > 0 ? selections : selection ? [selection] : []
+  const selectionBlockReason = getSelectionSetBlockReason(selectionSet)
+  const companionGeometries: EditorOverlayCompanion[] = []
+  for (const item of selectionSet) {
+    if (item.elementId === selection?.elementId) {
+      continue
+    }
+    const box = selectionGeometries[item.elementId]
+    if (!box) {
+      continue
+    }
+    companionGeometries.push({
+      elementId: item.elementId,
+      geometry: box.geometry,
+      slideBounds: box.slideBounds,
+      locked: item.locked,
+      surface: item.surface,
+    })
+  }
   const hasStrip = isDeckLoading || hasSlides
   const stripOrientation: 'vertical' | 'horizontal' =
     layout === 'desktop' ? 'vertical' : 'horizontal'
@@ -763,6 +805,7 @@ function useDeckPreviewShell({
           selectedImage,
           selectionLocked: selection?.locked ?? false,
           selectionManaged: selection?.managed ?? false,
+          selectionUnsafe: Boolean(selectionBlockReason && selectionSet.length > 1),
           textEditActive,
         }}
         imageAlt={selectedImageAlt}
@@ -788,6 +831,7 @@ function useDeckPreviewShell({
     bridgeSession,
     chromeHost,
     clearSelection,
+    companionGeometries,
     contextSlideIndexes,
     deckId,
     deferredThumbnailUrls,
@@ -895,6 +939,7 @@ export function DeckPreview(props: DeckPreviewProps) {
     bridgeSession,
     chromeHost,
     clearSelection,
+    companionGeometries,
     contextSlideIndexes,
     deckId,
     deferredThumbnailUrls,
@@ -1094,6 +1139,7 @@ export function DeckPreview(props: DeckPreviewProps) {
                 )}
                 {editChromeActive ? (
                   <EditorSelectionOverlay
+                    companionGeometries={companionGeometries}
                     geometry={selection ? geometry : null}
                     hoverGeometry={hover?.elementId === selection?.elementId ? null : hoverGeometry}
                     hoverSlideBounds={hoverSlideBounds}

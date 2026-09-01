@@ -24,6 +24,19 @@ export type ChatAttachment = {
 
 export const MAX_CHAT_ATTACHMENT_BYTES = 50 * 1024 * 1024
 export const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 50 * 1024 * 1024
+/** Max elements in one same-slide editor multi-select (issue #248). */
+export const MAX_EDITOR_SELECTIONS = 32
+
+/** Same-slide v1: the array's first item wins; singular is only used when the array is empty. */
+export function editorSelectionFieldsSlideIndex(input: {
+  editorSelection?: { slideIndex: number }
+  editorSelections?: Array<{ slideIndex: number }>
+}): number | undefined {
+  if (input.editorSelections && input.editorSelections.length > 0) {
+    return input.editorSelections[0]!.slideIndex
+  }
+  return input.editorSelection?.slideIndex
+}
 
 const CHAT_MESSAGE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -136,6 +149,7 @@ export type SlideContext = {
 /** Optional context attached to a user chat turn. */
 export type ChatMessageContext = {
   editorSelection?: EditorSelectionContext
+  editorSelections?: EditorSelectionContext[]
   slideContexts?: SlideContext[]
 }
 
@@ -410,6 +424,99 @@ export const parseChatAttachments = (
   return { ok: true, attachments }
 }
 
+function parseEditorSelectionItem(
+  input: unknown,
+  path: string,
+): { ok: true; selection: EditorSelectionContext } | { ok: false; error: string } {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, error: `${path} must be an object.` }
+  }
+  const slideIndex = (input as { slideIndex?: unknown }).slideIndex
+  const elementId = (input as { elementId?: unknown }).elementId
+  if (typeof slideIndex !== 'number' || !Number.isInteger(slideIndex) || slideIndex < 0) {
+    return { ok: false, error: `${path}.slideIndex must be a non-negative integer.` }
+  }
+  if (typeof elementId !== 'string' || elementId.trim().length === 0) {
+    return { ok: false, error: `${path}.elementId must be a string.` }
+  }
+  const editorSelection: EditorSelectionContext = {
+    slideIndex,
+    elementId: elementId.trim(),
+  }
+  const slideId = (input as { slideId?: unknown }).slideId
+  if (typeof slideId === 'string' && slideId.trim()) {
+    editorSelection.slideId = slideId.trim()
+  }
+  const elementKind = (input as { elementKind?: unknown }).elementKind
+  if (typeof elementKind === 'string' && elementKind.trim()) {
+    editorSelection.elementKind = elementKind.trim()
+  }
+  const elementRole = (input as { elementRole?: unknown }).elementRole
+  if (typeof elementRole === 'string' && elementRole.trim()) {
+    editorSelection.elementRole = elementRole.trim()
+  }
+  const textPreview = (input as { textPreview?: unknown }).textPreview
+  if (typeof textPreview === 'string' && textPreview.trim()) {
+    editorSelection.textPreview = textPreview.trim().slice(0, 280)
+  }
+  if (typeof (input as { locked?: unknown }).locked === 'boolean') {
+    editorSelection.locked = (input as { locked: boolean }).locked
+  }
+  if (typeof (input as { managed?: unknown }).managed === 'boolean') {
+    editorSelection.managed = (input as { managed: boolean }).managed
+  }
+  return { ok: true, selection: editorSelection }
+}
+
+/**
+ * Canonical editor-selection fields for jobs and chat context.
+ * One element populates both singular and array. Multiple: array is the full
+ * same-slide set; singular is the primary / last-interacted element. Mixed
+ * slideIndex values are dropped (same-slide v1) rather than crashing.
+ */
+export function normalizeEditorSelectionFields(input: {
+  editorSelection?: EditorSelectionContext
+  editorSelections?: EditorSelectionContext[]
+}): { editorSelection?: EditorSelectionContext; editorSelections?: EditorSelectionContext[] } {
+  const primary = input.editorSelection
+  const raw = input.editorSelections?.length ? input.editorSelections : primary ? [primary] : []
+  if (raw.length === 0) return {}
+
+  const slideIndex = editorSelectionFieldsSlideIndex(input)
+  if (slideIndex === undefined) return {}
+
+  const seen = new Set<string>()
+  const sameSlide: EditorSelectionContext[] = []
+  for (const item of raw) {
+    if (item.slideIndex !== slideIndex) continue
+    if (seen.has(item.elementId)) continue
+    seen.add(item.elementId)
+    sameSlide.push(item)
+    if (sameSlide.length >= MAX_EDITOR_SELECTIONS) break
+  }
+
+  if (
+    primary &&
+    primary.slideIndex === slideIndex &&
+    !seen.has(primary.elementId) &&
+    sameSlide.length < MAX_EDITOR_SELECTIONS
+  ) {
+    sameSlide.unshift(primary)
+  }
+
+  if (sameSlide.length === 0) return {}
+
+  const resolvedPrimary =
+    primary && sameSlide.some((item) => item.elementId === primary.elementId)
+      ? sameSlide.find((item) => item.elementId === primary.elementId)!
+      : sameSlide[sameSlide.length - 1]!
+
+  return {
+    editorSelection: resolvedPrimary,
+    editorSelections: sameSlide,
+  }
+}
+
 function parseChatMessageContext(
   input: unknown,
   messageIndex: number,
@@ -427,59 +534,53 @@ function parseChatMessageContext(
 
   const record = input as {
     editorSelection?: unknown
+    editorSelections?: unknown
     slideContexts?: unknown
   }
   const context: ChatMessageContext = {}
 
+  let editorSelection: EditorSelectionContext | undefined
   if (record.editorSelection !== undefined) {
-    const selection = record.editorSelection
-    if (!selection || typeof selection !== 'object' || Array.isArray(selection)) {
+    const parsed = parseEditorSelectionItem(
+      record.editorSelection,
+      `messages[${messageIndex}].context.editorSelection`,
+    )
+    if (!parsed.ok) return parsed
+    editorSelection = parsed.selection
+  }
+
+  let editorSelections: EditorSelectionContext[] | undefined
+  if (record.editorSelections !== undefined) {
+    if (!Array.isArray(record.editorSelections)) {
       return {
         ok: false,
-        error: `messages[${messageIndex}].context.editorSelection must be an object.`,
+        error: `messages[${messageIndex}].context.editorSelections must be an array.`,
       }
     }
-    const slideIndex = (selection as { slideIndex?: unknown }).slideIndex
-    const elementId = (selection as { elementId?: unknown }).elementId
-    if (typeof slideIndex !== 'number' || !Number.isInteger(slideIndex) || slideIndex < 0) {
+    if (record.editorSelections.length > MAX_EDITOR_SELECTIONS) {
       return {
         ok: false,
-        error: `messages[${messageIndex}].context.editorSelection.slideIndex must be a non-negative integer.`,
+        error: `messages[${messageIndex}].context.editorSelections exceeds the ${MAX_EDITOR_SELECTIONS} element limit.`,
       }
     }
-    if (typeof elementId !== 'string' || elementId.trim().length === 0) {
-      return {
-        ok: false,
-        error: `messages[${messageIndex}].context.editorSelection.elementId must be a string.`,
-      }
+    const parsedSelections: EditorSelectionContext[] = []
+    for (const [offset, item] of record.editorSelections.entries()) {
+      const parsed = parseEditorSelectionItem(
+        item,
+        `messages[${messageIndex}].context.editorSelections[${offset}]`,
+      )
+      if (!parsed.ok) return parsed
+      parsedSelections.push(parsed.selection)
     }
-    const editorSelection: EditorSelectionContext = {
-      slideIndex,
-      elementId: elementId.trim(),
-    }
-    const slideId = (selection as { slideId?: unknown }).slideId
-    if (typeof slideId === 'string' && slideId.trim()) {
-      editorSelection.slideId = slideId.trim()
-    }
-    const elementKind = (selection as { elementKind?: unknown }).elementKind
-    if (typeof elementKind === 'string' && elementKind.trim()) {
-      editorSelection.elementKind = elementKind.trim()
-    }
-    const elementRole = (selection as { elementRole?: unknown }).elementRole
-    if (typeof elementRole === 'string' && elementRole.trim()) {
-      editorSelection.elementRole = elementRole.trim()
-    }
-    const textPreview = (selection as { textPreview?: unknown }).textPreview
-    if (typeof textPreview === 'string' && textPreview.trim()) {
-      editorSelection.textPreview = textPreview.trim().slice(0, 280)
-    }
-    if (typeof (selection as { locked?: unknown }).locked === 'boolean') {
-      editorSelection.locked = (selection as { locked: boolean }).locked
-    }
-    if (typeof (selection as { managed?: unknown }).managed === 'boolean') {
-      editorSelection.managed = (selection as { managed: boolean }).managed
-    }
-    context.editorSelection = editorSelection
+    editorSelections = parsedSelections
+  }
+
+  const normalized = normalizeEditorSelectionFields({ editorSelection, editorSelections })
+  if (normalized.editorSelection) {
+    context.editorSelection = normalized.editorSelection
+  }
+  if (normalized.editorSelections?.length) {
+    context.editorSelections = normalized.editorSelections
   }
 
   if (record.slideContexts !== undefined) {
@@ -526,7 +627,11 @@ function parseChatMessageContext(
     }
   }
 
-  if (!context.editorSelection && !context.slideContexts?.length) {
+  if (
+    !context.editorSelection &&
+    !context.editorSelections?.length &&
+    !context.slideContexts?.length
+  ) {
     return { ok: true }
   }
 
@@ -629,7 +734,7 @@ ${prompt}
 Return the complete HTML document only.`
 }
 
-function describeEditorSelection(selection: EditorSelectionContext): string {
+function describeEditorSelectionLine(selection: EditorSelectionContext): string {
   const descriptors: string[] = []
 
   if (selection.elementKind) {
@@ -655,13 +760,46 @@ function describeEditorSelection(selection: EditorSelectionContext): string {
   }
   const statusNote = statuses.length > 0 ? ` It is ${statuses.join(' and ')}.` : ''
 
+  return `id "${selection.elementId}"${descriptor} on ${slideRef}${textNote}.${statusNote}`
+}
+
+function describeEditorSelection(selection: EditorSelectionContext): string {
   const lockGuidance = selection.locked
     ? ' Because it is locked, explain what can and cannot be changed or make a safe patch instead of forcing a risky edit.'
     : ''
 
   return `The user has an element selected in the editor. When the instruction refers to "this", "it", or "the selected element", target it.
-Selected element: id "${selection.elementId}"${descriptor} on ${slideRef}${textNote}.${statusNote}
+Selected element: ${describeEditorSelectionLine(selection)}
 Verify it with parse_deck or read_deck, then prefer patch_element with this elementId. If the id is missing or no longer matches (stale selection), inspect the deck and pick the closest element or ask before guessing.${lockGuidance}`
+}
+
+/** Prompt note for one or more editor selections. Lists every id; never summarizes them away. */
+export function describeEditorSelections(
+  selections: EditorSelectionContext[],
+  primary?: EditorSelectionContext,
+): string {
+  if (selections.length === 0) {
+    return ''
+  }
+
+  if (selections.length === 1) {
+    return describeEditorSelection(selections[0]!)
+  }
+
+  const resolvedPrimary =
+    primary && selections.some((item) => item.elementId === primary.elementId)
+      ? primary
+      : selections[selections.length - 1]!
+  const listed = selections.map((item) => `- ${describeEditorSelectionLine(item)}`).join('\n')
+  const anyLocked = selections.some((item) => item.locked)
+  const lockGuidance = anyLocked
+    ? ' Because some selected elements are locked, explain what can and cannot be changed or make a safe patch instead of forcing a risky edit.'
+    : ''
+
+  return `The user has ${selections.length} elements selected in the editor. When the instruction refers to "these", "them", or "the selected elements", target this set. The primary / last-interacted element is id "${resolvedPrimary.elementId}".
+Selected elements:
+${listed}
+Verify each with parse_deck or read_deck, then prefer patch_element per elementId. Apply the requested change to every selected id unless the instruction names a subset. If an id is missing or no longer matches (stale selection), skip it and mention that in the reply instead of guessing.${lockGuidance}`
 }
 
 function describeOneSlideContext(slide: SlideContext): string {
@@ -694,6 +832,7 @@ export function wrapUserPromptForAgent(
   editorSelection?: EditorSelectionContext,
   slideContexts?: SlideContext[],
   deckOrigin?: DeckOrigin | null,
+  editorSelections?: EditorSelectionContext[],
 ) {
   const effectivePrompt =
     prompt.trim() ||
@@ -704,7 +843,10 @@ export function wrapUserPromptForAgent(
       ? `\n\nThe user attached ${attachmentCount} file(s). Use them as reference for content, layout, branding, or visuals.`
       : ''
 
-  const selectionNote = editorSelection ? `\n\n${describeEditorSelection(editorSelection)}` : ''
+  const normalized = normalizeEditorSelectionFields({ editorSelection, editorSelections })
+  const selectionNote = normalized.editorSelections?.length
+    ? `\n\n${describeEditorSelections(normalized.editorSelections, normalized.editorSelection)}`
+    : ''
   const slideNote =
     slideContexts && slideContexts.length > 0 ? `\n\n${describeSlideContexts(slideContexts)}` : ''
 
@@ -855,6 +997,7 @@ export function buildUserModelContent(
     wrapForAgent?: boolean
     currentHtml?: string
     editorSelection?: EditorSelectionContext
+    editorSelections?: EditorSelectionContext[]
     slideContexts?: SlideContext[]
     deckOrigin?: DeckOrigin | null
   },
@@ -871,6 +1014,7 @@ export function buildUserModelContent(
           options?.editorSelection,
           options?.slideContexts,
           options?.deckOrigin,
+          options?.editorSelections,
         )
       : message.content
 

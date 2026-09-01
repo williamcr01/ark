@@ -9,6 +9,7 @@ Quarterly Review.ark
 │
 ├── Workspace metadata
 ├── Current presentation HTML
+├── Bounded document history
 ├── Presentation assets
 ├── Threads and messages
 ├── Thread attachments
@@ -19,7 +20,8 @@ The file is a SQLite database with an `.ark` extension. It can live anywhere the
 
 It does not contain:
 
-- Every historical edit.
+- Unbounded historical edits. A capped `document_history` table keeps the last 50
+  committed snapshots or 8 MiB of HTML, whichever bound is hit first.
 - Completed generation-job payloads.
 - API keys or credentials.
 - UI layout and device-specific state.
@@ -67,6 +69,14 @@ CREATE TABLE document (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE document_history (
+  revision INTEGER PRIMARY KEY,   -- document_revision at which this snapshot became current
+  html TEXT NOT NULL,
+  source TEXT NOT NULL,           -- 'editor' | 'agent' | 'mcp' | 'import' | 'create' | 'restore'
+  created_at TEXT NOT NULL,
+  byte_size INTEGER NOT NULL      -- UTF-8 byte length of html; used by the cap
+);
+
 CREATE TABLE threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -111,7 +121,7 @@ CREATE TABLE assets (
 
 CREATE TABLE asset_references (
   asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  owner_type TEXT NOT NULL,           -- 'document' | 'message'
+  owner_type TEXT NOT NULL,           -- 'document' | 'message' | 'history'
   owner_id TEXT NOT NULL,
   purpose TEXT NOT NULL,
   PRIMARY KEY (asset_id, owner_type, owner_id, purpose)
@@ -132,6 +142,33 @@ CREATE TABLE thumbnails (
 
 Schema notes:
 
+- **`document_history` is additive.** Open-time `migrate()` creates the table if it is missing
+  (same pattern as the `origin` column) and seeds one `create` row from the current document when
+  the table is empty. `format_version` / `user_version` stay at 1; older Ark builds ignore the
+  unknown table.
+- **History records committed document snapshots, not autosave ticks.** Byte-identical HTML
+  still bumps `document_revision` but does not insert a history row. A rename that rewrites the
+  document `<title>` appends a row so restore cannot silently revert the name. Agent tools mutate
+  an in-memory workspace and persist once per job, so one generation turn is one row.
+  Generation-job request/result payloads stay process-local. Older Ark builds can bump
+  `document_revision` without appending history; reopen seeds only when the table is empty, so
+  those in-between revisions never appear as restore points.
+- **Cap:** last 50 rows or 8 MiB of stored HTML (`SUM(byte_size)`), whichever is hit first.
+  Oldest rows are deleted first. The newest row is always kept, so one oversized snapshot cannot
+  empty the table. History rows pin `ark-asset:` ids (`owner_type = 'history'`,
+  `owner_id = revision`); eviction drops those pins so unused images can still GC. Rows are
+  pinned as they are inserted, so `migrate()` only backfills pins for rows that lack them and
+  stays a pure read on a normal open.
+- **Restore** validates the snapshot first (the same server-side deck validation as
+  `PUT /api/decks/:id`, so a snapshot seeded from a legacy `.ark` cannot reinstate
+  `external_url` HTML the write paths reject), copies the history row into `document`, bumps
+  `document_revision` (so in-flight patches still conflict-detect), and appends a `restore`
+  snapshot when the HTML actually changed. A restore keeps the current deck title and `.ark`
+  file name: rolling content back is not a rename, even when the snapshot carries an older
+  `<title>`.
+- **Save As** uses `backup()`, so history is copied. **Duplicate** creates a new workspace
+  identity from the current HTML only (one `create` row); it does not copy the source's undo
+  lineage.
 - **`messages.content_json` is the existing `persistedChatMessageSchema` payload verbatim** (`parts`, attachments, context, generation status). No new message shape is invented; the existing 50 KB tool-value / 512 KB assistant-turn caps and the persistence projection (`projectAssistantTurnForPersistence`) carry over unchanged. `deckVersionId` is replaced by the workspace `document_revision` at write time.
 - **Thumbnails are keyed by slide content hash**, not slide index. Reorder reuse falls out for free; a separate small mapping (or query by hash from the parsed deck) resolves index → thumbnail. Keep the existing 480×270 PNG pipeline and `thumbnail-renderer-vN` versioning.
 - **No refcount columns.** Garbage-collect assets/blobs by querying for remaining references at deletion time.
@@ -139,7 +176,12 @@ Schema notes:
 
 ## Removed features (accepted regressions)
 
-- **Durable `.ark` version history is deferred** (issue #299 backend). The old version-list/rollback endpoints stay gone. **Session undo/redo is in-memory** (`useDeckEditHistory`): one step per committed editor gesture, one step per in-app agent turn, consecutive MCP writes in a turn coalesce to one step. Autosave ticks and byte-identical HTML are not steps. Close or crash drops the stack. Named checkpoints stay later.
+- **Named checkpoints and infinite version history stay out of scope.** The old version
+  list/rollback UI is gone. Session undo/redo is the in-memory `useDeckEditHistory` stack
+  (frontend, issue #299 / PR #305): one step per committed editor gesture, one step per
+  in-app agent turn, consecutive MCP writes in a turn coalesce to one step. Autosave ticks
+  and byte-identical HTML are not steps. Close or crash drops the stack. Durable restore
+  lives in bounded `document_history` inside the `.ark` file.
 - **Generation-job persistence is removed.** The wire API already strips request/result HTML (`toGenerationJobApi`); jobs are in-memory, terminal deck payloads are trimmed, and old terminal metadata is evicted.
 - **No recovery directory.** Every deck is a real `.ark` from creation (default directory, collision-safe name), so there is no "unsaved work without a location" state. SQLite's journal protects committed state; the debounce window (~300 ms) is accepted loss.
 - **No named checkpoints in v1.**
@@ -174,7 +216,9 @@ Resolution:
 ```
 user commits edit → update HTML in memory → debounce ~300 ms
   → BEGIN → replace document row, sync document asset references,
-    increment document_revision, touch workspace.updated_at → COMMIT
+    increment document_revision, append document_history when HTML changed
+    (pinning history ark-asset: ids), evict oldest history past the cap,
+    GC unreferenced assets, touch workspace.updated_at → COMMIT
   → queue changed-slide thumbnails (never blocks save)
 ```
 
@@ -241,7 +285,8 @@ Plus all device state: window/panel layout, selected slide, open thread, unsent 
 
 ## Settled decisions log
 
-1. Durable `.ark` history is deferred (#299 backend). Session undo/redo is in-memory only (`useDeckEditHistory`).
+1. Session undo/redo stays in-memory (`useDeckEditHistory`). Durable restore is a bounded
+   `document_history` table (last 50 snapshots or 8 MiB). Named checkpoints stay later.
 2. `ark-asset:` scheme ships in v1, not deferred.
 3. Cloud-synced-folder hazards deferred; Linux/macOS focus.
 4. API stays keyed by deckId (= workspace ID); message shape reuses `persistedChatMessageSchema`.

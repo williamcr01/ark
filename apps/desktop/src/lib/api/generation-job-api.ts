@@ -1,6 +1,7 @@
 import {
   generationJobResponseSchema,
   fetchApiJsonOrThrow,
+  type EditorSelectionContext,
   type GenerationJobApi,
   type StartGenerationJobRequest,
 } from '@ark/contracts'
@@ -17,6 +18,11 @@ async function readGenerationJobResponse(response: Response) {
 
 export type StartGenerationJobOptions = StartGenerationJobRequest & {
   signal?: AbortSignal
+  /**
+   * Full same-slide editor selection set (#248 / #302). Extra until that
+   * contract lands on main; JSON still forwards the field to the API.
+   */
+  editorSelections?: EditorSelectionContext[]
 }
 
 export async function startGenerationJob(body: StartGenerationJobOptions) {

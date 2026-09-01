@@ -37,6 +37,8 @@ export type GenerationJobRequest = {
   deckOrigin?: DeckOrigin | null
   /** Manual-editor selection captured when the request was submitted (issue #83). */
   editorSelection?: EditorSelectionContext
+  /** Full same-slide editor selection set captured with the request (issue #248). */
+  editorSelections?: EditorSelectionContext[]
   /** Slides the user attached as context when the request was submitted. */
   slideContexts?: SlideContext[]
   /** Reasoning effort captured when the request was submitted. */

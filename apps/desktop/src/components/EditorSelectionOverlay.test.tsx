@@ -55,4 +55,24 @@ describe('EditorSelectionOverlay', () => {
     expect(box.style.width).toBe('512px')
     expect(box.style.height).toBe('288px')
   })
+
+  it('draws a companion outline for each extra selected element', () => {
+    const { container } = render(
+      <EditorSelectionOverlay
+        companionGeometries={[
+          {
+            elementId: 'ark-el-2',
+            geometry: { x: 0.5, y: 0.5, width: 0.2, height: 0.1 },
+            locked: false,
+            surface: 'light',
+          },
+        ]}
+        geometry={geometry}
+        scale={1}
+      />,
+    )
+
+    expect(container.querySelector('[data-editor-primary-selection]')).toBeInTheDocument()
+    expect(container.querySelector('[data-editor-companion="ark-el-2"]')).toBeInTheDocument()
+  })
 })

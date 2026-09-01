@@ -4,12 +4,20 @@ import {
   duplicateWorkspaceRequestSchema,
   isValidDeckId,
   parseRequestBody,
+  restoreDocumentHistoryRequestSchema,
   workspacePathRequestSchema,
   type ApiErrorPayload,
   type StoredDeck,
 } from '@ark/contracts'
-import type { WorkspaceRow, WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
-import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
+import {
+  WorkspaceDocumentConflictError,
+  WorkspaceDocumentHistoryNotFoundError,
+  type WorkspaceRow,
+  type WorkspaceStore,
+} from '@ark/storage/stores/workspace-store.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { getRequestLogger } from '../observability/index.ts'
+import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 
 const toDeck = (workspace: WorkspaceRow): StoredDeck => ({
   id: workspace.id,
@@ -45,8 +53,15 @@ const workspaceActionError = (error: unknown): { status: number; payload: ApiErr
   return { status: 500, payload: getApiErrorFromUnknown(error) }
 }
 
-export function createWorkspacesRouter(workspaces: WorkspaceStore) {
+export function createWorkspacesRouter(
+  workspaces: WorkspaceStore,
+  options: {
+    onDocumentPersisted?: (deckId: string, documentRevision: number) => void
+  } = {},
+) {
   const router = Router()
+  const notifyDocumentPersisted = (deckId: string, documentRevision: number) =>
+    options.onDocumentPersisted?.(deckId, documentRevision)
 
   router.post('/api/workspaces/open', async (request: Request, response: Response) => {
     const parsed = parseRequestBody(workspacePathRequestSchema, request.body)
@@ -135,6 +150,81 @@ export function createWorkspacesRouter(workspaces: WorkspaceStore) {
       sendApiError(response, status, payload)
     }
   })
+
+  router.get('/api/decks/:id/history', async (request: Request<{ id: string }>, response) => {
+    if (!isValidDeckId(request.params.id)) {
+      response.status(400).json({ error: 'Invalid deck id.' })
+      return
+    }
+    try {
+      const history = await workspaces.listDocumentHistory(request.params.id)
+      if (!history) {
+        response.status(404).json({ error: 'Deck not found.' })
+        return
+      }
+      response.json({ history })
+    } catch (error) {
+      sendApiError(response, 500, getApiErrorFromUnknown(error))
+    }
+  })
+
+  router.post(
+    '/api/decks/:id/history/restore',
+    async (request: Request<{ id: string }>, response) => {
+      const parsed = parseRequestBody(restoreDocumentHistoryRequestSchema, request.body)
+      if (!isValidDeckId(request.params.id) || !parsed.ok) {
+        response.status(400).json({ error: parsed.ok ? 'Invalid deck id.' : parsed.error })
+        return
+      }
+      try {
+        // Validate the snapshot before it becomes the live document, the same
+        // way PUT /api/decks/:id does. A snapshot seeded by migrate() from a
+        // legacy or hand-authored `.ark` can carry HTML the write paths would
+        // reject — external_url above all — and restore must not be the one
+        // door that lets it back in.
+        const html = await workspaces.readDocumentHistoryHtml(
+          request.params.id,
+          parsed.data.revision,
+        )
+        if (html === null) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+        const validation = validateDeckHtmlOnServer(html, { logger: getRequestLogger(request) })
+        if (!validation.valid) {
+          sendDeckValidationError(response, validation, request)
+          return
+        }
+
+        const workspace = await workspaces.restoreDocument(
+          request.params.id,
+          parsed.data.revision,
+          parsed.data.expectedDocumentRevision,
+        )
+        if (!workspace) {
+          response.status(404).json({ error: 'Deck not found.' })
+          return
+        }
+        notifyDocumentPersisted(workspace.id, workspace.documentRevision)
+        response.json({ deck: toDeck(workspace), validation })
+      } catch (error) {
+        if (error instanceof WorkspaceDocumentConflictError) {
+          response.status(409).json({
+            error: error.message,
+            code: error.code,
+            currentDocumentRevision: error.currentDocumentRevision,
+          })
+          return
+        }
+        if (error instanceof WorkspaceDocumentHistoryNotFoundError) {
+          response.status(404).json({ error: error.message })
+          return
+        }
+        const { status, payload } = workspaceActionError(error)
+        sendApiError(response, status, payload)
+      }
+    },
+  )
 
   return router
 }

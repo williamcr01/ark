@@ -5,6 +5,7 @@ import {
   applyResolvedAssetAttachments,
   collectAssetIdsFromMessages,
   isReadableTextMediaType,
+  normalizeEditorSelectionFields,
   parseGenerateMessages,
 } from '@ark/chat/chat.ts'
 import type { ApiChatMessage, ChatAttachment } from '@ark/chat/chat.ts'
@@ -265,6 +266,7 @@ export function createGenerationJobRunner({
         currentHtml: currentJob.request.currentHtml,
         deckOrigin: currentJob.request.deckOrigin,
         editorSelection: currentJob.request.editorSelection,
+        editorSelections: currentJob.request.editorSelections,
         slideContexts: currentJob.request.slideContexts,
         reasoningEffort: currentJob.request.reasoningEffort,
         promptCacheKey: buildOpaquePromptCacheKey({
@@ -519,6 +521,7 @@ export function createGenerationJobRunner({
 
         const updatedDeck = await deckStore.updateDeck(targetDeckId, agentResult.html, {
           expectedDocumentRevision: currentDocumentRevision,
+          historySource: 'agent',
         })
 
         if (!updatedDeck) {
@@ -841,6 +844,36 @@ export function createGenerationJobRunner({
     // untouched starter, so read the origin from the stored record.
     const deckOrigin = deckId ? ((await deckStore.getDeck(deckId))?.origin ?? null) : null
 
+    const selectionFields = normalizeEditorSelectionFields({
+      editorSelection: body.editorSelection,
+      editorSelections: body.editorSelections,
+    })
+
+    const rawLastUser = [...(body.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === 'user')
+    const rawMessageSelections = rawLastUser?.context?.editorSelections
+    const messageSentPluralSelections =
+      Array.isArray(rawMessageSelections) && rawMessageSelections.length > 1
+
+    if (selectionFields.editorSelections?.length) {
+      const lastUser = [...messages].reverse().find((message) => message.role === 'user')
+      if (lastUser) {
+        const fromMessage = normalizeEditorSelectionFields({
+          editorSelection: lastUser.context?.editorSelection,
+          editorSelections: lastUser.context?.editorSelections,
+        })
+        const resolved =
+          messageSentPluralSelections && fromMessage.editorSelections?.length
+            ? fromMessage
+            : selectionFields
+        lastUser.context = {
+          ...lastUser.context,
+          ...resolved,
+        }
+      }
+    }
+
     let chatThreadId: string | null = null
 
     if (deckId && chatStore) {
@@ -867,7 +900,12 @@ export function createGenerationJobRunner({
           deckId && currentHtml.trim() && !deckOriginIsUnauthored(deckOrigin),
         ),
         ...(deckOrigin ? { deckOrigin } : {}),
-        ...(body.editorSelection ? { editorSelection: body.editorSelection } : {}),
+        ...(selectionFields.editorSelection
+          ? { editorSelection: selectionFields.editorSelection }
+          : {}),
+        ...(selectionFields.editorSelections?.length
+          ? { editorSelections: selectionFields.editorSelections }
+          : {}),
         ...(body.slideContexts && body.slideContexts.length > 0
           ? { slideContexts: body.slideContexts }
           : {}),

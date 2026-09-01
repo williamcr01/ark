@@ -35,6 +35,17 @@ export class WorkspaceDocumentConflictError extends Error {
   }
 }
 
+export class WorkspaceDocumentHistoryNotFoundError extends Error {
+  readonly code = 'document_history_not_found'
+  readonly revision: number
+
+  constructor(revision: number) {
+    super('That document history revision is not in this workspace.')
+    this.name = 'WorkspaceDocumentHistoryNotFoundError'
+    this.revision = revision
+  }
+}
+
 export type WorkspaceMetadata = Omit<WorkspaceRow, 'html'>
 
 /**

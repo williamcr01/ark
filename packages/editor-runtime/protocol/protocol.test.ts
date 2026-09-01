@@ -29,6 +29,7 @@ import {
   isEditorSelectionInfo,
   isEditorShellMessage,
   parseEditorMessage,
+  MAX_EDITOR_SELECTIONS,
 } from '../index.ts'
 
 describe('deck editor bridge protocol', () => {
@@ -241,6 +242,9 @@ describe('deck editor bridge protocol', () => {
       }),
     ).toBe(true)
 
+    expect(isEditorSelectionInfo({ ...selection, nestedInSelection: true })).toBe(true)
+    expect(isEditorSelectionInfo({ ...selection, nestedInSelection: false })).toBe(true)
+
     // lineHeight "normal" is reported as null.
     expect(
       isEditorSelectionInfo({
@@ -278,6 +282,7 @@ describe('deck editor bridge protocol', () => {
         imageNaturalSize: { width: Number.NaN, height: 10 },
       }),
     ).toBe(false)
+    expect(isEditorSelectionInfo({ ...selection, nestedInSelection: 'yes' })).toBe(false)
   })
 
   it('rejects hostile editor payloads with invalid geometry and incomplete fields', () => {
@@ -311,5 +316,91 @@ describe('deck editor bridge protocol', () => {
       expect(isEditorRuntimeMessage(payload)).toBe(false)
       expect(parseEditorMessage(payload)).toBeNull()
     }
+  })
+
+  it('accepts a same-slide selection set on ark:editor-selection-change', () => {
+    const second = { ...selection, elementId: 'ark-el-body', tagName: 'p', textPreview: 'Body' }
+    const message = createEditorSelectionChangeMessage(second, [selection, second])
+
+    expect(message.selections).toEqual([selection, second])
+    expect(isEditorRuntimeMessage(message)).toBe(true)
+    expect(isEditorRuntimeMessage(createEditorSelectionChangeMessage(null))).toBe(true)
+  })
+
+  it('accepts a same-slide selection set of exactly 32', () => {
+    const selections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      ...selection,
+      elementId: `ark-el-${index}`,
+    }))
+    const primary = selections[selections.length - 1]!
+
+    expect(
+      isEditorRuntimeMessage({
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection: primary,
+        selections,
+      }),
+    ).toBe(true)
+  })
+
+  it('accepts companion payloads on a group transform commit', () => {
+    const geometry = { x: 0.2, y: 0.3, width: 0.4, height: 0.2 }
+    const commit = {
+      ...createEditorTransformCommitMessage('ark-el-title', 0, geometry),
+      companions: [
+        {
+          elementId: 'ark-el-body',
+          slideIndex: 0,
+          geometry: { x: 0.5, y: 0.3, width: 0.3, height: 0.2 },
+        },
+      ],
+    }
+
+    expect(isEditorRuntimeMessage(commit)).toBe(true)
+    expect(
+      isEditorRuntimeMessage({
+        ...commit,
+        companions: [{ elementId: '', slideIndex: 0, geometry }],
+      }),
+    ).toBe(false)
+  })
+
+  it('rejects a selection set that is mixed-slide, over cap, or missing the primary', () => {
+    const second = { ...selection, elementId: 'ark-el-body', tagName: 'p' }
+
+    expect(
+      isEditorRuntimeMessage({
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection,
+        selections: [{ ...second, slideIndex: 1 }],
+      }),
+    ).toBe(false)
+
+    expect(
+      isEditorRuntimeMessage({
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection,
+        selections: [second],
+      }),
+    ).toBe(false)
+
+    expect(
+      isEditorRuntimeMessage({
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection: null,
+        selections: [selection],
+      }),
+    ).toBe(false)
+
+    expect(
+      isEditorRuntimeMessage({
+        type: EDITOR_SELECTION_CHANGE_MESSAGE_TYPE,
+        selection,
+        selections: Array.from({ length: MAX_EDITOR_SELECTIONS + 1 }, (_, index) => ({
+          ...selection,
+          elementId: `ark-el-${index}`,
+        })),
+      }),
+    ).toBe(false)
   })
 })

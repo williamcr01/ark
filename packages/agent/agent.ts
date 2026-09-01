@@ -90,6 +90,7 @@ export type RunDeckAgentOptions = {
   /** `blank` marks Ark's untouched starter deck so the agent opens a new-deck flow. */
   deckOrigin?: DeckOrigin | null
   editorSelection?: EditorSelectionContext
+  editorSelections?: EditorSelectionContext[]
   slideContexts?: SlideContext[]
   reasoningEffort?: ReasoningEffort
   /**
@@ -550,11 +551,12 @@ function throwIfAborted(abortSignal?: AbortSignal) {
 function canAcceptSelectionNoopReply(input: {
   currentHtml: string
   editorSelection?: EditorSelectionContext
+  editorSelections?: EditorSelectionContext[]
   assistantText: string
   extractedText: string
 }) {
   return (
-    !!input.editorSelection &&
+    !!(input.editorSelection || input.editorSelections?.length) &&
     !!input.currentHtml.trim() &&
     !!input.assistantText &&
     input.extractedText === input.assistantText &&
@@ -573,6 +575,7 @@ export async function runDeckAgent({
   currentHtml,
   deckOrigin,
   editorSelection,
+  editorSelections,
   slideContexts,
   reasoningEffort,
   promptCacheKey,
@@ -599,6 +602,7 @@ export async function runDeckAgent({
     messages,
     currentHtml,
     editorSelection,
+    editorSelections,
     slideContexts,
     deckOrigin,
   })
@@ -860,6 +864,7 @@ export async function runDeckAgent({
     canAcceptSelectionNoopReply({
       currentHtml,
       editorSelection,
+      editorSelections,
       assistantText,
       extractedText: extracted,
     })

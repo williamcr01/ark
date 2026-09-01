@@ -18,6 +18,8 @@ type DeckEditorShellShortcutsOptions = {
   onSelectTool: () => void
   onBeginTextEdit: () => void
   onInsertImage: (file: File) => void
+  /** Clear the canvas selection set (Escape while the select tool is active). */
+  onClearSelection?: () => void
 }
 
 export function useDeckEditorShellShortcuts({
@@ -34,6 +36,7 @@ export function useDeckEditorShellShortcuts({
   onSelectTool,
   onBeginTextEdit,
   onInsertImage,
+  onClearSelection,
 }: DeckEditorShellShortcutsOptions) {
   const handlePaste = useEffectEvent((event: ClipboardEvent) => {
     if (isEditableClipboardTarget(event.target)) {
@@ -120,6 +123,8 @@ export function useDeckEditorShellShortcuts({
       } else if (activeTool !== 'select') {
         event.preventDefault()
         onSelectTool()
+      } else {
+        onClearSelection?.()
       }
       return
     }

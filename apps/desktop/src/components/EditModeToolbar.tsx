@@ -34,6 +34,7 @@ export type EditModeToolbarProps = {
     selectedImage: boolean
     selectionLocked: boolean
     selectionManaged: boolean
+    selectionUnsafe?: boolean
     textEditActive: boolean
   }
   imageAlt?: string
@@ -126,10 +127,12 @@ export function EditModeToolbar({
     selectedImage,
     selectionLocked,
     selectionManaged,
+    selectionUnsafe = false,
     textEditActive,
   } = state
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
-  const canModifySelection = hasSelection && !selectionLocked && !toolbarDisabled && !textEditActive
+  const canModifySelection =
+    hasSelection && !selectionLocked && !selectionUnsafe && !toolbarDisabled && !textEditActive
   const canReorderSelection = canModifySelection && selectionManaged
   const canUseTools = hasDeck && !isGenerating && !isSaving
   const undoDisabled = !canUndo || toolbarDisabled || textEditActive
@@ -253,11 +256,13 @@ export function EditModeToolbar({
         <ToolbarButton
           disabled={!canModifySelection}
           label={
-            selectionLocked
-              ? 'Delete selected element (locked)'
-              : hasSelection
-                ? 'Delete selected element'
-                : 'Delete selected element (no selection)'
+            selectionUnsafe
+              ? 'Delete selected elements (mixed or locked)'
+              : selectionLocked
+                ? 'Delete selected element (locked)'
+                : hasSelection
+                  ? 'Delete selected element'
+                  : 'Delete selected element (no selection)'
           }
           onClick={onDelete}
         >
@@ -325,7 +330,8 @@ export function EditModeToolbar({
       <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">
         {!hasDeck ? <span>No deck loaded</span> : null}
         {hasDeck && isGenerating ? <span>Editing paused during generation</span> : null}
-        {selectionLocked ? <Badge variant="outline">Locked</Badge> : null}
+        {selectionUnsafe ? <Badge variant="outline">Mixed selection</Badge> : null}
+        {selectionLocked && !selectionUnsafe ? <Badge variant="outline">Locked</Badge> : null}
         {textEditActive ? <span>Editing text — press Escape to cancel</span> : null}
         {isSaving ? <span>Saving edit…</span> : null}
       </div>

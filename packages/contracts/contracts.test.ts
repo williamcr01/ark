@@ -2,15 +2,24 @@ import { describe, expect, it } from 'vitest'
 
 import { apiErrorPayloadSchema, parseRequestBody, simpleErrorResponseSchema } from './common.ts'
 import {
+  DOCUMENT_HISTORY_SOURCES,
   createDeckRequestSchema,
   deckListResponseSchema,
   deckResponseSchema,
+  documentHistoryListResponseSchema,
   renameDeckRequestSchema,
+  restoreDocumentHistoryRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
-import { generationJobResponseSchema, startGenerationJobRequestSchema } from './generation-jobs.ts'
+import { MAX_EDITOR_SELECTIONS as chatEditorSelectionCap } from '@ark/chat/chat.ts'
+import {
+  generationJobResponseSchema,
+  MAX_EDITOR_SELECTIONS,
+  startGenerationJobRequestSchema,
+} from './generation-jobs.ts'
 import { createPreviewSessionRequestSchema, previewSessionResponseSchema } from './preview.ts'
 import { appendChatMessageRequestSchema, deckChatResponseSchema } from './chat.ts'
+import { chatMessageContextSchema } from './agent-context.ts'
 import {
   assetListResponseSchema,
   uploadAssetRequestSchema,
@@ -31,6 +40,11 @@ const jobId = 'a0000000-0000-4000-8000-000000000001'
 const assetId = '00000000-0000-4000-8000-000000000701'
 
 describe('shared API contracts', () => {
+  it('keeps the editorSelections cap aligned across chat and contracts', () => {
+    expect(MAX_EDITOR_SELECTIONS).toBe(32)
+    expect(chatEditorSelectionCap).toBe(MAX_EDITOR_SELECTIONS)
+  })
+
   it('parses health and models responses', () => {
     expect(
       healthResponseSchema.parse({
@@ -246,6 +260,114 @@ describe('shared API contracts', () => {
         editorSelection: { slideIndex: -1, elementId: 'ark-el-9' },
       }).success,
     ).toBe(false)
+
+    const oneElement = {
+      slideIndex: 2,
+      slideId: 'ark-slide-1',
+      elementId: 'ark-el-9',
+      elementKind: 'text',
+      textPreview: 'Headline',
+    }
+    const parsedOne = startGenerationJobRequestSchema.parse({
+      messages: [{ role: 'user', content: 'make this bigger' }],
+      deckId,
+      editorSelection: oneElement,
+      editorSelections: [oneElement],
+    })
+    expect(parsedOne.editorSelection?.elementId).toBe('ark-el-9')
+    expect(parsedOne.editorSelections).toEqual([oneElement])
+
+    const parsedMany = startGenerationJobRequestSchema.parse({
+      messages: [{ role: 'user', content: 'align these' }],
+      deckId,
+      editorSelection: { slideIndex: 1, elementId: 'ark-el-primary' },
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a', elementKind: 'text' },
+        { slideIndex: 1, elementId: 'ark-el-primary', elementKind: 'image' },
+        { slideIndex: 1, elementId: 'ark-el-c' },
+      ],
+    })
+    expect(parsedMany.editorSelection?.elementId).toBe('ark-el-primary')
+    expect(parsedMany.editorSelections?.map((item) => item.elementId)).toEqual([
+      'ark-el-a',
+      'ark-el-primary',
+      'ark-el-c',
+    ])
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelections: [
+          { slideIndex: 0, elementId: 'ark-el-a' },
+          { slideIndex: 1, elementId: 'ark-el-b' },
+        ],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelection: { slideIndex: 0, elementId: 'ark-el-a' },
+        editorSelections: [{ slideIndex: 1, elementId: 'ark-el-b' }],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelections: Array.from({ length: 33 }, (_, index) => ({
+          slideIndex: 0,
+          elementId: `ark-el-${index}`,
+        })),
+      }).success,
+    ).toBe(false)
+
+    const atCap = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
+      slideIndex: 0,
+      elementId: `ark-el-${index}`,
+    }))
+    const parsedCap = startGenerationJobRequestSchema.parse({
+      messages: [{ role: 'user', content: 'align these' }],
+      deckId,
+      editorSelection: atCap[MAX_EDITOR_SELECTIONS - 1],
+      editorSelections: atCap,
+    })
+    expect(parsedCap.editorSelection?.elementId).toBe(`ark-el-${MAX_EDITOR_SELECTIONS - 1}`)
+    expect(parsedCap.editorSelections).toHaveLength(MAX_EDITOR_SELECTIONS)
+    expect(parsedCap.editorSelections?.map((item) => item.elementId)).toEqual(
+      atCap.map((item) => item.elementId),
+    )
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [{ role: 'user', content: 'align these' }],
+        deckId,
+        editorSelection: { slideIndex: 0, elementId: 'ark-el-extra' },
+        editorSelections: atCap,
+      }).success,
+    ).toBe(false)
+
+    expect(
+      startGenerationJobRequestSchema.safeParse({
+        messages: [
+          {
+            role: 'user',
+            content: 'align these',
+            context: {
+              editorSelection: { slideIndex: 5, elementId: 'ark-el-stale' },
+              editorSelections: [
+                { slideIndex: 1, elementId: 'ark-el-a' },
+                { slideIndex: 1, elementId: 'ark-el-b' },
+              ],
+            },
+          },
+        ],
+        deckId,
+      }).success,
+    ).toBe(true)
   })
 
   it('parses preview session contracts', () => {
@@ -336,6 +458,56 @@ describe('shared API contracts', () => {
         },
       }).success,
     ).toBe(true)
+
+    expect(
+      appendChatMessageRequestSchema.parse({
+        role: 'user',
+        content: 'Align these',
+        context: {
+          editorSelection: { slideIndex: 2, elementId: 'ark-el-primary' },
+          editorSelections: [
+            { slideIndex: 2, elementId: 'ark-el-a' },
+            { slideIndex: 2, elementId: 'ark-el-primary' },
+          ],
+        },
+      }).context,
+    ).toEqual({
+      editorSelection: { slideIndex: 2, elementId: 'ark-el-primary' },
+      editorSelections: [
+        { slideIndex: 2, elementId: 'ark-el-a' },
+        { slideIndex: 2, elementId: 'ark-el-primary' },
+      ],
+    })
+
+    expect(
+      appendChatMessageRequestSchema.parse({
+        role: 'user',
+        content: 'Align these',
+        context: {
+          editorSelections: [
+            { slideIndex: 0, elementId: 'ark-el-a' },
+            { slideIndex: 2, elementId: 'ark-el-b' },
+          ],
+        },
+      }).context,
+    ).toEqual({
+      editorSelections: [{ slideIndex: 0, elementId: 'ark-el-a' }],
+    })
+
+    expect(
+      chatMessageContextSchema.parse({
+        editorSelection: { slideIndex: 5, elementId: 'ark-el-stale' },
+        editorSelections: [
+          { slideIndex: 1, elementId: 'ark-el-a' },
+          { slideIndex: 1, elementId: 'ark-el-b' },
+        ],
+      }),
+    ).toEqual({
+      editorSelections: [
+        { slideIndex: 1, elementId: 'ark-el-a' },
+        { slideIndex: 1, elementId: 'ark-el-b' },
+      ],
+    })
 
     expect(
       appendChatMessageRequestSchema.safeParse({
@@ -482,5 +654,55 @@ describe('shared API contracts', () => {
     })
 
     expect(parsed.ok).toBe(false)
+  })
+
+  it('parses document history list and restore requests', () => {
+    expect(DOCUMENT_HISTORY_SOURCES).toEqual([
+      'editor',
+      'agent',
+      'mcp',
+      'import',
+      'create',
+      'restore',
+    ])
+    expect(
+      documentHistoryListResponseSchema.parse({
+        history: DOCUMENT_HISTORY_SOURCES.map((source, index) => ({
+          revision: index + 1,
+          source,
+          createdAt: '2026-09-01T00:00:00.000Z',
+          byteSize: 120,
+        })),
+      }),
+    ).toMatchObject({
+      history: DOCUMENT_HISTORY_SOURCES.map((source) => expect.objectContaining({ source })),
+    })
+    expect(
+      documentHistoryListResponseSchema.safeParse({
+        history: [
+          {
+            revision: 1,
+            source: 'generation_job',
+            createdAt: '2026-09-01T00:00:00.000Z',
+            byteSize: 120,
+          },
+        ],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      restoreDocumentHistoryRequestSchema.parse({
+        revision: 1,
+        expectedDocumentRevision: 3,
+      }),
+    ).toEqual({ revision: 1, expectedDocumentRevision: 3 })
+
+    expect(
+      parseRequestBody(restoreDocumentHistoryRequestSchema, {
+        revision: 1,
+        expectedDocumentRevision: 3,
+        html: '<script>nope</script>',
+      }).ok,
+    ).toBe(false)
   })
 })
