@@ -1,12 +1,32 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ARK_SLIDE_ID_ATTR } from '@ark/deck/document/metadata.ts'
 import { applyDeckPatches, resetApplyDeckDomCacheForTests } from './slide-ops.ts'
 import { parseDeckHtml } from '../document/parser.ts'
 import { validateDeckHtmlOnServer } from '../validate/timed.ts'
+
+const deckJsdomParses = vi.hoisted(() => ({ count: 0 }))
+
+vi.mock('jsdom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('jsdom')>()
+
+  class JSDOM extends actual.JSDOM {
+    constructor(
+      html?: ConstructorParameters<typeof actual.JSDOM>[0],
+      options?: ConstructorParameters<typeof actual.JSDOM>[1],
+    ) {
+      super(html, options)
+      if (typeof html === 'string' && /<html[\s>]/i.test(html)) {
+        deckJsdomParses.count += 1
+      }
+    }
+  }
+
+  return { ...actual, JSDOM }
+})
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -221,12 +241,23 @@ const sequentialDeck = `<!DOCTYPE html>
 </body>
 </html>`
 
+const otherDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Other</title></head>
+<body>
+  <section class="slide">
+    <div data-ark-id="ark-el-other" data-ark-managed="true" style="position:absolute;left:10px;top:10px;width:80px;height:40px">Z</div>
+  </section>
+</body>
+</html>`
+
 describe('applyDeckPatches live JSDOM reuse', () => {
   beforeEach(() => {
     resetApplyDeckDomCacheForTests()
+    deckJsdomParses.count = 0
   })
 
-  it('applies a follow-up patch to the previous serialize without losing earlier edits', () => {
+  it('reuses the live JSDOM when the next HTML is the previous serialize', () => {
     const first = applyDeckPatches(sequentialDeck, [
       { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
     ])
@@ -236,6 +267,7 @@ describe('applyDeckPatches live JSDOM reuse', () => {
       return
     }
 
+    expect(deckJsdomParses.count).toBe(1)
     expect(first.html).toContain('left: 640px')
     expect(first.html).toMatch(/data-ark-id="ark-el-1"[^>]*left:50px/)
 
@@ -248,34 +280,61 @@ describe('applyDeckPatches live JSDOM reuse', () => {
       return
     }
 
+    expect(deckJsdomParses.count).toBe(1)
     expect(second.html).toContain('left: 640px')
     expect(second.html).toContain('left: 320px')
     expect(second.changedElementIds).toEqual(['ark-el-1'])
     expect(second.validation?.valid).toBe(true)
   })
 
-  it('does not leak mutations into a later patch of the original source', () => {
+  it('parses fresh on a restored or other-revision HTML string', () => {
     const first = applyDeckPatches(sequentialDeck, [
       { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
     ])
 
     expect(first.ok).toBe(true)
+    expect(deckJsdomParses.count).toBe(1)
 
-    const independent = applyDeckPatches(sequentialDeck, [
+    const restored = applyDeckPatches(sequentialDeck, [
       { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 },
     ])
 
-    expect(independent.ok).toBe(true)
-    if (!independent.ok) {
+    expect(restored.ok).toBe(true)
+    if (!restored.ok) {
       return
     }
 
-    expect(independent.html).toContain('left: 320px')
-    expect(independent.html).toMatch(/data-ark-id="ark-el-0"[^>]*left:10px/)
-    expect(independent.html).not.toContain('left: 640px')
+    expect(deckJsdomParses.count).toBe(2)
+    expect(restored.html).toContain('left: 320px')
+    expect(restored.html).toMatch(/data-ark-id="ark-el-0"[^>]*left:10px/)
+    expect(restored.html).not.toContain('left: 640px')
   })
 
-  it('reparses after a failed follow-up so the next source patch is clean', () => {
+  it('parses a different deck instead of mutating the cached window', () => {
+    const first = applyDeckPatches(sequentialDeck, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
+    ])
+
+    expect(first.ok).toBe(true)
+    expect(deckJsdomParses.count).toBe(1)
+
+    const other = applyDeckPatches(otherDeck, [
+      { op: 'move_element', elementId: 'ark-el-other', slideIndex: 0, x: 0.25, y: 0.25 },
+    ])
+
+    expect(other.ok).toBe(true)
+    if (!other.ok) {
+      return
+    }
+
+    expect(deckJsdomParses.count).toBe(2)
+    expect(other.html).toContain('left: 320px')
+    expect(other.html).toContain('ark-el-other')
+    expect(other.html).not.toContain('ark-el-0')
+    expect(other.html).not.toContain('left: 640px')
+  })
+
+  it('discards a mutated failed follow-up so the next source patch is clean', () => {
     const first = applyDeckPatches(sequentialDeck, [
       { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 },
     ])
@@ -285,14 +344,18 @@ describe('applyDeckPatches live JSDOM reuse', () => {
       return
     }
 
+    expect(deckJsdomParses.count).toBe(1)
+
     const failed = applyDeckPatches(first.html, [
+      { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.75, y: 0.75 },
       { op: 'move_element', elementId: 'ark-el-missing', slideIndex: 0, x: 0.1, y: 0.1 },
     ])
 
     expect(failed.ok).toBe(false)
+    expect(deckJsdomParses.count).toBe(1)
 
     const retry = applyDeckPatches(first.html, [
-      { op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 },
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.1, y: 0.1 },
     ])
 
     expect(retry.ok).toBe(true)
@@ -300,7 +363,10 @@ describe('applyDeckPatches live JSDOM reuse', () => {
       return
     }
 
-    expect(retry.html).toContain('left: 640px')
-    expect(retry.html).toContain('left: 320px')
+    expect(deckJsdomParses.count).toBe(2)
+    expect(retry.html).toContain('left: 128px')
+    expect(retry.html).toMatch(/data-ark-id="ark-el-1"[^>]*left:50px/)
+    expect(retry.html).not.toContain('left: 960px')
+    expect(retry.html).not.toContain('left: 640px')
   })
 })
