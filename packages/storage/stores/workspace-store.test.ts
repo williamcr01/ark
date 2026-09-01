@@ -542,6 +542,21 @@ describe('WorkspaceStore file operations', () => {
     await expect(workspaces.open(copiedPath)).rejects.toThrow(created.path)
   })
 
+  it('keeps a persist rollback journal only while the workspace is open', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'Edited'), 1)
+
+    const journalPath = `${created.path}-journal`
+    await expect(access(journalPath)).resolves.toBeUndefined()
+
+    const database = await workspaces.database(created.id)
+    expect(database?.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'persist' })
+
+    workspaces.close()
+    await expect(access(journalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('garbage-collects document-orphaned assets and blobs on save', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)
@@ -929,8 +944,10 @@ describe('WorkspaceStore document history', () => {
       }),
     ])
 
-    // Save As uses sqlite backup() (Node 24 / Electron). journal_mode=DELETE
-    // means a closed-file copy is the same bytes, including document_history.
+    // Save As uses sqlite backup() (Node 24 / Electron). journal_mode=PERSIST
+    // still commits into the main file (not WAL), so a closed-file copy is the
+    // complete database, including document_history. The leftover rollback
+    // journal is invalidated and removed when the connection closes.
     workspaces.close()
     const savedPath = path.join(root, 'Saved.ark')
     await copyFile(sourcePath, savedPath)

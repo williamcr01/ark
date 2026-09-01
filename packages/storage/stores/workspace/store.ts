@@ -31,6 +31,7 @@ import {
   configure,
   contentHash,
   migrate,
+  removeRollbackJournal,
   SCHEMA,
 } from './schema.ts'
 import { appendDocumentHistory, listDocumentHistory, readDocumentHistoryHtml } from './history.ts'
@@ -84,6 +85,11 @@ export class WorkspaceStore {
     this.byId.set(open.id, open)
     this.byPath.set(open.path, open)
     return open
+  }
+
+  private closeDatabase(database: DatabaseSync, filePath: string) {
+    database.close()
+    removeRollbackJournal(filePath)
   }
 
   private async index() {
@@ -184,7 +190,7 @@ export class WorkspaceStore {
   }
 
   private async moveUnregisteredWorkspaceFile(open: OpenWorkspace, targetPath: string) {
-    open.database.close()
+    this.closeDatabase(open.database, open.path)
     this.byId.delete(open.id)
     this.byPath.delete(open.path)
     try {
@@ -348,12 +354,12 @@ export class WorkspaceStore {
         throw error
       }
     } catch (error) {
-      database.close()
+      this.closeDatabase(database, staged)
       await unlink(staged).catch(() => undefined)
       throw error
     }
 
-    database.close()
+    this.closeDatabase(database, staged)
     try {
       await rename(staged, filePath)
     } catch (error) {
@@ -668,7 +674,7 @@ export class WorkspaceStore {
     await this.index()
     const open = this.openById(id)
     if (!open) return false
-    open.database.close()
+    this.closeDatabase(open.database, open.path)
     this.byId.delete(id)
     this.byPath.delete(open.path)
     try {
@@ -804,12 +810,14 @@ export class WorkspaceStore {
     const staged = `${resolved}.${randomUUID()}.tmp`
     try {
       await backup(open.database, staged)
+      removeRollbackJournal(staged)
       await rename(staged, resolved)
     } catch (error) {
       await unlink(staged).catch(() => undefined)
+      removeRollbackJournal(staged)
       throw error
     }
-    open.database.close()
+    this.closeDatabase(open.database, open.path)
     this.byId.delete(id)
     this.byPath.delete(open.path)
     const reopened = this.openFile(resolved)
@@ -961,7 +969,7 @@ export class WorkspaceStore {
   }
 
   close() {
-    for (const open of this.byId.values()) open.database.close()
+    for (const open of this.byId.values()) this.closeDatabase(open.database, open.path)
     this.byId.clear()
     this.byPath.clear()
     this.indexed = false
