@@ -199,6 +199,93 @@ describe('WorkspaceStore file operations', () => {
     })
   })
 
+  it('does not rewrite the recents index on an html-only document update', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const recentsPath = path.join(root, 'recent-workspaces.json')
+    const before = await readFile(recentsPath, 'utf8')
+
+    const updated = await workspaces.updateDocument(created.id, html.replace('Hello', 'Moved'), 1)
+
+    expect(updated?.html).toContain('Moved')
+    expect(updated?.documentRevision).toBe(2)
+    expect(await readFile(recentsPath, 'utf8')).toBe(before)
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, updatedAt: updated?.updatedAt }),
+    ])
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+
+    workspaces.close()
+    store = createWorkspaceStore(root)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, updatedAt: updated?.updatedAt }),
+    ])
+    await expect(store.get(created.id)).resolves.toMatchObject({
+      html: expect.stringContaining('Moved'),
+      documentRevision: 2,
+    })
+    await expect(store.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+  })
+
+  it('flushes recents on close for a workspace saved outside the managed directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const outsideRoot = await mkdtemp(path.join(os.tmpdir(), 'ark-outside-'))
+    const outsidePath = path.join(outsideRoot, 'External.ark')
+
+    try {
+      const saved = await workspaces.move(created.id, outsidePath)
+      const recentsPath = path.join(root, 'recent-workspaces.json')
+      const before = await readFile(recentsPath, 'utf8')
+
+      const updated = await workspaces.updateDocument(
+        saved.id,
+        html.replace('Hello', 'Outside'),
+        saved.documentRevision,
+      )
+
+      expect(updated?.path).toBe(outsidePath)
+      expect(await readFile(recentsPath, 'utf8')).toBe(before)
+
+      workspaces.close()
+      store = createWorkspaceStore(root)
+      await expect(store.listRecent()).resolves.toEqual([
+        expect.objectContaining({
+          id: saved.id,
+          path: outsidePath,
+          updatedAt: updated?.updatedAt,
+        }),
+      ])
+    } finally {
+      await rm(outsideRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('still persists recents when a document update changes the title', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const recentsPath = path.join(root, 'recent-workspaces.json')
+    const before = await readFile(recentsPath, 'utf8')
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated?.title).toBe('Board plan')
+    expect(await readFile(recentsPath, 'utf8')).not.toBe(before)
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, title: 'Board plan', path: updated?.path }),
+    ])
+  })
+
   it('renames the managed file when an agent-established title changes', async () => {
     const workspaces = await setup()
     const created = await workspaces.create(html)

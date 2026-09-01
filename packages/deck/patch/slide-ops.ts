@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom'
+import type { JSDOM } from 'jsdom'
 import { nanoid } from 'nanoid'
 
 import { findSlideElements } from '../document/slides.ts'
@@ -15,6 +15,7 @@ import type { DeckValidationReport } from '@ark/deck/validate/timed.ts'
 import { applyDeckEdits } from './text-edit.ts'
 import { applyElementPatch, stabilizeElementPatchOperations } from './element-patch.ts'
 import { stampEditableElementIds } from './editable-elements.ts'
+import { createDeckJsdom } from './jsdom-inline-style.ts'
 import { validateDeckDocumentOnServer } from '../validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 
@@ -44,6 +45,63 @@ function createSlideId() {
 
 function serializeDeckHtml(dom: JSDOM) {
   return dom.serialize()
+}
+
+type CachedDeckDom = {
+  html: string
+  dom: JSDOM
+}
+
+let cachedDeckDom: CachedDeckDom | null = null
+
+function closeJsdomWindow(dom: JSDOM) {
+  const maybeClose = (dom.window as unknown as { close?: () => void }).close
+  maybeClose?.()
+}
+
+function discardCachedDeckDom() {
+  if (!cachedDeckDom) {
+    return
+  }
+
+  closeJsdomWindow(cachedDeckDom.dom)
+  cachedDeckDom = null
+}
+
+/**
+ * Sequential editor commits send back the HTML we just serialized. Reusing that
+ * live JSDOM skips parse5 / symbol-tree on the next apply (issue #291). A miss
+ * discards the previous window so a different deck or revision never mutates
+ * leftover nodes.
+ *
+ * A live document is not always identical to a re-parse of its serialization
+ * (foster-parented `<tr>`/`<td>`, `<template>` content). Cache-hit results can
+ * therefore differ from a cold parse in those corners; that is accepted so the
+ * sequential editor path stays on the already-mutated tree.
+ */
+function takeCachedDeckDom(html: string): JSDOM | null {
+  if (!cachedDeckDom || cachedDeckDom.html !== html) {
+    return null
+  }
+
+  const { dom } = cachedDeckDom
+  cachedDeckDom = null
+  return dom
+}
+
+function rememberCachedDeckDom(html: string, dom: JSDOM) {
+  if (cachedDeckDom?.dom === dom) {
+    cachedDeckDom = { html, dom }
+    return
+  }
+
+  discardCachedDeckDom()
+  cachedDeckDom = { html, dom }
+}
+
+/** @internal */
+export function resetApplyDeckDomCacheForTests() {
+  discardCachedDeckDom()
 }
 
 function findSlideContainer(doc: Document, slides: Element[]) {
@@ -107,7 +165,7 @@ function parseSlideHtml(doc: Document, html: string, fallbackClass = 'slide') {
     return { error: 'Slide HTML must not be empty.' } as const
   }
 
-  const fragmentDom = new JSDOM(`<!DOCTYPE html><body>${trimmed}</body>`)
+  const fragmentDom = createDeckJsdom(`<!DOCTYPE html><body>${trimmed}</body>`)
   const body = fragmentDom.window.document.body
 
   const section = body.querySelector('section')
@@ -456,9 +514,11 @@ export function applyDeckPatches(
       return
     }
 
-    // Release the jsdom window when available; ignore environments without close().
-    const maybeClose = (dom.window as unknown as { close?: () => void }).close
-    maybeClose?.()
+    if (cachedDeckDom?.dom === dom) {
+      cachedDeckDom = null
+    }
+
+    closeJsdomWindow(dom)
     dom = null
   }
 
@@ -475,7 +535,13 @@ export function applyDeckPatches(
 
   const getDomContext = (): PatchContext => {
     if (!dom) {
-      dom = new JSDOM(workingHtml)
+      dom = takeCachedDeckDom(workingHtml)
+
+      if (!dom) {
+        discardCachedDeckDom()
+        // Skip eager css-tree parse of every inline style; editor ops use attributes.
+        dom = createDeckJsdom(workingHtml)
+      }
     }
 
     return {
@@ -565,7 +631,7 @@ export function applyDeckPatches(
       workingHtml,
       options.logger ? { logger: options.logger } : undefined,
     )
-    closeDom()
+    rememberCachedDeckDom(workingHtml, liveDom)
   } else {
     flushDom()
   }

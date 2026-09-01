@@ -12,7 +12,7 @@
   "dependencies": {
     "@ark/runtime-registry": "workspace:*",
     "@ark/telemetry": "workspace:*",
-    "jsdom": "^29.1.1",
+    "jsdom": "29.1.1",
     "nanoid": "^5.1.16",
     "zod": "^4.4.3"
   },

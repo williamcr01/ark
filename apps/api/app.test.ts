@@ -21,8 +21,12 @@ import {
   previewSessionResponseSchema,
   simpleErrorResponseSchema,
 } from '@ark/contracts'
-import { createApp } from './app.ts'
+import {
+  ARK_SLIDE_REFERENCE_HEIGHT,
+  ARK_SLIDE_REFERENCE_WIDTH,
+} from '@ark/deck/document/metadata.ts'
 import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
+import { createApp } from './app.ts'
 
 const sampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -151,6 +155,112 @@ describe('deck API routes', () => {
       summary: expect.stringContaining('Updated title'),
     })
     expect(patched.deck?.html).toContain('Updated second slide')
+  })
+
+  it('moves one managed element on a 500-element slide through the patch route', async () => {
+    const elements = Array.from({ length: 500 }, (_, index) => {
+      const left = 10 + (index % 20) * 40
+      const top = 10 + Math.floor(index / 20) * 30
+      return `<div data-ark-id="ark-el-${index}" data-ark-managed="true" style="position:absolute;left:${left}px;top:${top}px;width:80px;height:40px">Item ${index}</div>`
+    }).join('\n')
+    const html = `<!DOCTYPE html><html><head><title>Dense</title></head><body><section class="slide">${elements}</section></body></html>`
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html }),
+    })
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
+    const deckId = created.deck.id as string
+
+    const patchResponse = await fetch(`${baseUrl}/api/decks/${deckId}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedDocumentRevision: 1,
+        operations: [{ op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 }],
+      }),
+    })
+    const patched = await patchResponse.json()
+
+    expect(patchResponse.status).toBe(200)
+    assertApiContract(deckPatchResponseSchema, patched)
+    expect(patched.patch).toMatchObject({
+      appliedCount: 1,
+      changedElementIds: ['ark-el-0'],
+      changedSlideIndexes: [0],
+    })
+    expect(patched.deck?.html).toContain(`left: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_WIDTH)}px`)
+    expect(patched.deck?.html).toContain(`top: ${Math.round(0.5 * ARK_SLIDE_REFERENCE_HEIGHT)}px`)
+    expect(patched.deck?.html).toContain('data-ark-id="ark-el-499"')
+    expect(patched.deck?.html.match(/data-ark-id="ark-el-\d+"/g)).toHaveLength(500)
+    expect(patched.deck?.html).toContain('Item 1')
+  })
+
+  it('rejects locked, unsafe, and duplicate-id editor patches on the route', async () => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Classify</title></head>
+<body>
+  <section class="slide">
+    <p data-ark-id="ark-el-locked" data-ark-locked="true">Do not edit</p>
+    <h1 data-ark-id="ark-el-title">First</h1>
+  </section>
+  <section class="slide">
+    <h2 data-ark-id="ark-el-title">Second</h2>
+  </section>
+</body>
+</html>`
+
+    const createResponse = await fetch(`${baseUrl}/api/decks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html }),
+    })
+    const created = await createResponse.json()
+    assertApiContract(createDeckResponseSchema, created)
+    const deckId = created.deck.id as string
+
+    const lockedResponse = await fetch(`${baseUrl}/api/decks/${deckId}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedDocumentRevision: 1,
+        operations: [
+          { op: 'move_element', elementId: 'ark-el-locked', slideIndex: 0, x: 0.1, y: 0.1 },
+        ],
+      }),
+    })
+    const locked = await lockedResponse.json()
+    expect(lockedResponse.status).toBe(400)
+    expect(locked).toMatchObject({ error: expect.stringContaining('locked') })
+
+    const unsafeResponse = await fetch(`${baseUrl}/api/decks/${deckId}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedDocumentRevision: 1,
+        operations: [
+          { op: 'insert_element', slideIndex: 0, html: '<div><script>alert(1)</script></div>' },
+        ],
+      }),
+    })
+    const unsafe = await unsafeResponse.json()
+    expect(unsafeResponse.status).toBe(400)
+    expect(unsafe).toMatchObject({ error: expect.stringContaining('unsafe <script>') })
+
+    const duplicateResponse = await fetch(`${baseUrl}/api/decks/${deckId}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedDocumentRevision: 1,
+        operations: [{ op: 'replace_text', elementId: 'ark-el-title', text: 'Ambiguous' }],
+      }),
+    })
+    const duplicate = await duplicateResponse.json()
+    expect(duplicateResponse.status).toBe(400)
+    expect(duplicate).toMatchObject({ error: expect.stringContaining('ambiguous') })
   })
 
   it('returns a stable conflict response for stale writes', async () => {
