@@ -1,3 +1,4 @@
+import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -37,17 +38,69 @@ describe('createDeckJsdom lazy inline styles', () => {
 
     expect(el.getAttribute('style')).toBe(compact)
     expect(dom.serialize()).toContain(`style="${compact}"`)
-    // Eager css-tree serialize adds spaces and a trailing semicolon.
-    expect(el.style.cssText).toBe(compact)
-    expect(dom.serialize()).toContain(`style="${compact}"`)
 
     expect(el.style.left).toBe('10px')
     expect(dom.window.getComputedStyle(el).position).toBe('absolute')
+    // CSSOM reads flush css-tree, but must not rewrite the attribute.
+    expect(el.getAttribute('style')).toBe(compact)
+    expect(dom.serialize()).toContain(`style="${compact}"`)
     expect(el.style.cssText).toBe('position: absolute; left: 10px; color: red;')
+    expect(el.getAttribute('style')).toBe(compact)
 
     el.style.setProperty('top', '20px')
     expect(el.style.top).toBe('20px')
     expect(el.style.cssText).toBe('position: absolute; left: 10px; color: red; top: 20px;')
+  })
+
+  it('applies named CSSOM writes on an unread lazy element', () => {
+    const compact = 'position:absolute;left:10px;top:20px'
+    const html = `<!DOCTYPE html><div id="a" style="${compact}">x</div>`
+    const dom = createDeckJsdom(html)
+    const el = dom.window.document.getElementById('a')
+
+    expect(el).not.toBeNull()
+    if (!el) {
+      return
+    }
+
+    el.style.left = '999px'
+    expect(el.style.left).toBe('999px')
+    expect(el.getAttribute('style')).toContain('left: 999px')
+    expect(el.getAttribute('style')).toContain('top: 20px')
+  })
+
+  it('exposes indexed style properties after a deferred parse', () => {
+    const html = `<!DOCTYPE html><div id="b" style="left:1px">y</div>`
+    const dom = createDeckJsdom(html)
+    const el = dom.window.document.getElementById('b')
+
+    expect(el).not.toBeNull()
+    if (!el) {
+      return
+    }
+
+    expect(el.style[0]).toBe('left')
+    expect(el.style.length).toBe(1)
+    expect(el.style.getPropertyValue('left')).toBe('1px')
+    expect(el.getAttribute('style')).toBe('left:1px')
+  })
+
+  it('does not leak lazy parsing into later eager JSDOM documents', () => {
+    createDeckJsdom('<!DOCTYPE html><div style="left:1px">warmup</div>')
+
+    const html = `<!DOCTYPE html><div id="x" style="position:absolute;left:10px;top:20px">x</div>`
+    const eager = new JSDOM(html)
+    const el = eager.window.document.getElementById('x')
+
+    expect(el).not.toBeNull()
+    if (!el) {
+      return
+    }
+
+    expect(el.style[0]).toBe('position')
+    el.style.left = '999px'
+    expect(el.style.left).toBe('999px')
+    expect(el.getAttribute('style')).toContain('left: 999px')
   })
 
   it('still reports relative/sticky computed position after a deferred parse', () => {

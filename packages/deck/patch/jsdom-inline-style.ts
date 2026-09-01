@@ -7,34 +7,53 @@ import { JSDOM } from 'jsdom'
  * almost never reads CSSOM, so that eager parse is wasted work on every
  * `move_element` of a 500-box slide.
  *
- * This helper stores the incoming cssText until a CSSOM read/write actually
- * happens (getComputedStyle, `.style.left`, setProperty, …). Unread siblings
- * keep their original attribute bytes through `serialize()`.
+ * Laziness is installed at the element boundary, scoped to documents created
+ * through this helper:
  *
- * The CSSStyleDeclaration *implementation* class is process-wide, so the lazy
- * setter is installed once. Call `createDeckJsdom` (or `installLazyInlineStyleParsing`)
- * before parsing deck HTML. Later `document.open/write/close` reuse on a pooled
- * window keeps the install. Parser / validation JSDOMs that never call this
- * helper stay on JSDOM's default eager parse.
+ * - `_attrModified` stores the style attribute until CSSOM is used.
+ * - The impl `style` getter flushes with `_settingCssText = true` so the flush
+ *   cannot rewrite the attribute (named setters, `style[0]`, `getComputedStyle`
+ *   all go through that getter).
+ * - Parser / validation `new JSDOM()` documents stay on eager parse.
+ *
+ * Internals are jsdom 29.1.1 private API. If they are missing, we warn once and
+ * fall back to eager `new JSDOM` — never throw from `beforeParse`.
  */
 
 type JsdomOptions = Exclude<ConstructorParameters<typeof JSDOM>[1], undefined>
 type JsdomWindow = JSDOM['window']
 
-type StyleImpl = {
-  cssText: string
-  length: number
-  getPropertyValue: (property: string) => string
-  getPropertyPriority: (property: string) => string
-  setProperty: (property: string, value: string, priority?: string) => void
-  removeProperty: (property: string) => string
-  item: (index: number) => string
+type StyleDeclaration = { cssText: string }
+
+type ElementImpl = {
+  _settingCssText?: boolean
+  _ownerDocument?: object
+  style?: StyleDeclaration
+  _attrModified?: (name: string, value: unknown, oldValue: unknown) => void
+  _initElementCSSInlineStyle?: () => void
 }
 
-const pendingCssText = new WeakMap<object, string>()
-const flushing = new WeakSet<object>()
+const SVG_NS = 'http://www.w3.org/2000/svg'
 
-let installed = false
+const lazyDocuments = new WeakSet<object>()
+const pendingStyle = new WeakMap<object, string>()
+const styleSlots = new WeakMap<object, StyleDeclaration>()
+
+let hooksInstalled = false
+let hooksFailed = false
+let installWarned = false
+
+function warnInstallFailure(error: unknown) {
+  if (installWarned) {
+    return
+  }
+
+  installWarned = true
+  console.warn(
+    'Ark could not install lazy JSDOM inline-style parsing; using eager css-tree parse.',
+    error,
+  )
+}
 
 function jsdomImpl(wrapper: object): object {
   for (const key of Reflect.ownKeys(wrapper)) {
@@ -49,116 +68,180 @@ function jsdomImpl(wrapper: object): object {
     }
   }
 
-  throw new Error('Ark could not reach the jsdom implementation behind a style wrapper.')
+  throw new Error('Ark could not reach the jsdom implementation behind a wrapper.')
 }
 
-function cssTextPrototype(styleImpl: object): StyleImpl {
-  let proto: object | null = Object.getPrototypeOf(styleImpl)
+function prototypeOwning(object: object, name: string): ElementImpl | null {
+  let proto: object | null = Object.getPrototypeOf(object)
 
   while (proto && proto !== Object.prototype) {
-    if (Object.getOwnPropertyNames(proto).includes('cssText')) {
-      return proto as StyleImpl
+    if (Object.prototype.hasOwnProperty.call(proto, name)) {
+      return proto as ElementImpl
     }
 
     proto = Object.getPrototypeOf(proto)
   }
 
-  throw new Error('Ark could not find jsdom CSSStyleDeclaration.cssText to defer.')
+  return null
 }
 
-function flushPendingCssText(style: object, origSet: (this: object, value: string) => void) {
-  const text = pendingCssText.get(style)
+function isLazyDocument(docImpl: object | undefined) {
+  return Boolean(docImpl && lazyDocuments.has(docImpl))
+}
 
-  if (text === undefined || flushing.has(style)) {
+function flushPendingStyle(elementImpl: ElementImpl) {
+  if (!pendingStyle.has(elementImpl)) {
     return
   }
 
-  pendingCssText.delete(style)
-  flushing.add(style)
+  const text = pendingStyle.get(elementImpl) ?? ''
+  pendingStyle.delete(elementImpl)
+  const declaration = styleSlots.get(elementImpl)
+
+  if (!declaration) {
+    return
+  }
+
+  elementImpl._settingCssText = true
 
   try {
-    origSet.call(style, text)
+    declaration.cssText = text
   } finally {
-    flushing.delete(style)
+    elementImpl._settingCssText = false
   }
 }
 
-export function installLazyInlineStyleParsing(window: JsdomWindow): void {
-  if (installed) {
+function defineStyleAccessor(proto: ElementImpl) {
+  const existing = Object.getOwnPropertyDescriptor(proto, 'style')
+
+  if (existing?.get && existing.set) {
     return
   }
 
-  const probe = window.document.createElement('div').style
-  const proto = cssTextPrototype(jsdomImpl(probe))
-  const cssTextDesc = Object.getOwnPropertyDescriptor(proto, 'cssText')
-  const origGet = cssTextDesc?.get
-  const origSet = cssTextDesc?.set
-
-  if (!origGet || !origSet) {
-    throw new Error('jsdom CSSStyleDeclaration.cssText is not a getter/setter pair.')
-  }
-
-  const readCssText = origGet as (this: object) => string
-  const writeCssText = origSet as (this: object, value: string) => void
-
-  Object.defineProperty(proto, 'cssText', {
+  Object.defineProperty(proto, 'style', {
     configurable: true,
-    enumerable: cssTextDesc.enumerable,
+    enumerable: true,
     get() {
-      if (pendingCssText.has(this)) {
-        return pendingCssText.get(this)
-      }
-
-      return readCssText.call(this)
+      flushPendingStyle(this as ElementImpl)
+      return styleSlots.get(this as object)
     },
-    set(value: string) {
-      if (flushing.has(this)) {
-        writeCssText.call(this, value)
-        return
-      }
-
-      pendingCssText.set(this, String(value ?? ''))
+    set(value: StyleDeclaration) {
+      styleSlots.set(this as object, value)
     },
   })
+}
 
-  const protoMethods = proto as unknown as Record<
-    string,
-    (this: object, ...args: unknown[]) => unknown
-  >
-  for (const name of [
-    'getPropertyValue',
-    'getPropertyPriority',
-    'setProperty',
-    'removeProperty',
-    'item',
-  ] as const) {
-    const orig = protoMethods[name]
-    if (typeof orig !== 'function') {
-      throw new Error(`jsdom CSSStyleDeclaration.${name} is missing.`)
-    }
-    protoMethods[name] = function (this: object, ...args: unknown[]) {
-      flushPendingCssText(this, writeCssText)
-      return orig.apply(this, args)
-    }
+function wrapInit(proto: ElementImpl) {
+  const orig = proto._initElementCSSInlineStyle
+
+  if (typeof orig !== 'function') {
+    throw new Error('jsdom _initElementCSSInlineStyle is missing.')
   }
 
-  const lengthDesc = Object.getOwnPropertyDescriptor(proto, 'length')
-  const origLength = lengthDesc?.get
+  proto._initElementCSSInlineStyle = function (this: ElementImpl) {
+    orig.call(this)
 
-  if (!origLength) {
-    throw new Error('jsdom CSSStyleDeclaration.length is not a getter.')
+    if (!isLazyDocument(this._ownerDocument)) {
+      return
+    }
+
+    const declaration = this.style
+
+    if (declaration) {
+      styleSlots.set(this, declaration)
+    }
+
+    Reflect.deleteProperty(this, 'style')
+  }
+}
+
+function wrapAttrModified(proto: ElementImpl) {
+  const orig = proto._attrModified
+
+  if (typeof orig !== 'function') {
+    throw new Error('jsdom _attrModified is missing.')
   }
 
-  Object.defineProperty(proto, 'length', {
-    configurable: true,
-    enumerable: lengthDesc.enumerable,
-    get() {
-      flushPendingCssText(this, writeCssText)
-      return origLength.call(this)
-    },
-  })
+  proto._attrModified = function (this: ElementImpl, name, value, oldValue) {
+    if (
+      name === 'style' &&
+      value !== oldValue &&
+      !this._settingCssText &&
+      isLazyDocument(this._ownerDocument)
+    ) {
+      pendingStyle.set(this, value == null ? '' : String(value))
+      this._settingCssText = true
 
-  installed = true
+      try {
+        orig.call(this, name, value, oldValue)
+      } finally {
+        this._settingCssText = false
+      }
+
+      return
+    }
+
+    orig.call(this, name, value, oldValue)
+  }
+}
+
+function installOnElementPrototype(probeImpl: object) {
+  const attrProto = prototypeOwning(probeImpl, '_attrModified')
+  const initProto = prototypeOwning(probeImpl, '_initElementCSSInlineStyle')
+
+  if (!attrProto || !initProto) {
+    throw new Error('jsdom HTML/SVG element prototypes are missing style hooks.')
+  }
+
+  wrapAttrModified(attrProto)
+  wrapInit(initProto)
+  defineStyleAccessor(initProto)
+}
+
+function installHooks(window: JsdomWindow) {
+  if (hooksInstalled || hooksFailed) {
+    return
+  }
+
+  try {
+    const htmlProbe = window.document.createElement('div')
+    installOnElementPrototype(jsdomImpl(htmlProbe))
+
+    const svgProbe = window.document.createElementNS(SVG_NS, 'g')
+    installOnElementPrototype(jsdomImpl(svgProbe))
+    hooksInstalled = true
+  } catch (error) {
+    hooksFailed = true
+    warnInstallFailure(error)
+  }
+}
+
+function tagLazyDocument(window: JsdomWindow) {
+  try {
+    lazyDocuments.add(jsdomImpl(window.document))
+  } catch (error) {
+    warnInstallFailure(error)
+  }
+}
+
+/**
+ * Install per-document lazy inline-style parsing on this window and tag its
+ * document. Safe to call more than once (pooled `document.write` reuse).
+ * Returns whether the document was tagged for lazy parsing.
+ */
+export function installLazyInlineStyleParsing(window: JsdomWindow): boolean {
+  if (hooksFailed) {
+    return false
+  }
+
+  installHooks(window)
+
+  if (hooksFailed || !hooksInstalled) {
+    return false
+  }
+
+  tagLazyDocument(window)
+  return true
 }
 
 export function createDeckJsdom(html: string, options: JsdomOptions = {}): JSDOM {
