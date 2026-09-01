@@ -186,6 +186,27 @@ async function inspectStoragePath(directory) {
   return { path: resolved, fsType, mount, ephemeral }
 }
 
+async function resolveProfileStorage(options) {
+  const ephemeralUserData = !options.userDataDir
+  const profileDirectory = options.userDataDir
+    ? path.resolve(options.userDataDir)
+    : await mkdtemp(path.join(os.tmpdir(), 'ark-editor-profile-'))
+  await mkdir(profileDirectory, { recursive: true })
+  const workspacesDirectory = path.resolve(
+    options.workspacesDir || path.join(profileDirectory, 'workspaces'),
+  )
+  await mkdir(workspacesDirectory, { recursive: true })
+  const storage = {
+    userData: await inspectStoragePath(profileDirectory),
+    workspaces: await inspectStoragePath(workspacesDirectory),
+  }
+  return { ephemeralUserData, profileDirectory, workspacesDirectory, storage }
+}
+
+function isShellApiReady(href, healthOk) {
+  return Boolean(href && String(href).startsWith('http') && healthOk)
+}
+
 function summarizeCpuProfile(profile, topN = 12) {
   if (!profile?.nodes?.length) return null
   const nodes = profile.nodes
@@ -793,19 +814,8 @@ async function buildCases() {
 }
 
 async function launchElectron(options) {
-  const ephemeralUserData = !options.userDataDir
-  const profileDirectory = options.userDataDir
-    ? path.resolve(options.userDataDir)
-    : await mkdtemp(path.join(os.tmpdir(), 'ark-editor-profile-'))
-  await mkdir(profileDirectory, { recursive: true })
-  const workspacesDirectory = path.resolve(
-    options.workspacesDir || path.join(profileDirectory, 'workspaces'),
-  )
-  await mkdir(workspacesDirectory, { recursive: true })
-  const storage = {
-    userData: await inspectStoragePath(profileDirectory),
-    workspaces: await inspectStoragePath(workspacesDirectory),
-  }
+  const { ephemeralUserData, profileDirectory, workspacesDirectory, storage } =
+    await resolveProfileStorage(options)
   if (storage.userData.ephemeral || storage.workspaces.ephemeral) {
     console.error(
       `Storage is ephemeral (${storage.workspaces.fsType} at ${storage.workspaces.path}). PATCH persist timings will not match a real disk. See docs/editor-drag-profiling.md.`,
@@ -944,12 +954,13 @@ async function launchElectron(options) {
       const href = await evaluate(page, 'location.href').catch(() => '')
       if (!href || !String(href).startsWith('http')) return false
       try {
-        return Boolean(
+        const healthOk = Boolean(
           await evaluate(
             page,
             `fetch('/api/health').then((response) => response.ok).catch(() => false)`,
           ),
         )
+        return isShellApiReady(href, healthOk)
       } catch {
         return false
       }
@@ -1652,6 +1663,36 @@ function assertInvariant(name, condition, details) {
   return { name, ok: Boolean(condition), details }
 }
 
+function evaluateGestureInvariants(testCaseName, runs) {
+  return runs
+    .filter((run) => run.phase === 'cancel' || run.phase === 'commit')
+    .map((run) => {
+      if (run.phase === 'cancel') {
+        return assertInvariant(
+          `${testCaseName} run ${run.run} cancellation`,
+          run.requestCount === 0 && run.afterRevision === run.beforeRevision,
+          {
+            patchRequests: run.requestCount,
+            beforeRevision: run.beforeRevision,
+            afterRevision: run.afterRevision,
+          },
+        )
+      }
+      return assertInvariant(
+        `${testCaseName} run ${run.run} commit`,
+        run.requestCount === 1 &&
+          run.afterRevision > run.beforeRevision &&
+          run.sessionRetained !== false,
+        {
+          patchRequests: run.requestCount,
+          beforeRevision: run.beforeRevision,
+          afterRevision: run.afterRevision,
+          sessionRetained: run.sessionRetained,
+        },
+      )
+    })
+}
+
 async function runCase(session, testCase, options) {
   const created = await createDeck(session.page, testCase.html)
   const deck = created.deck
@@ -1707,33 +1748,7 @@ async function runCase(session, testCase, options) {
 
   network.stop()
   await deleteDeck(session.page, deck.id)
-  const invariants = runs
-    .filter((run) => run.phase === 'cancel' || run.phase === 'commit')
-    .map((run) => {
-      if (run.phase === 'cancel') {
-        return assertInvariant(
-          `${testCase.name} run ${run.run} cancellation`,
-          run.requestCount === 0 && run.afterRevision === run.beforeRevision,
-          {
-            patchRequests: run.requestCount,
-            beforeRevision: run.beforeRevision,
-            afterRevision: run.afterRevision,
-          },
-        )
-      }
-      return assertInvariant(
-        `${testCase.name} run ${run.run} commit`,
-        run.requestCount === 1 &&
-          run.afterRevision > run.beforeRevision &&
-          run.sessionRetained !== false,
-        {
-          patchRequests: run.requestCount,
-          beforeRevision: run.beforeRevision,
-          afterRevision: run.afterRevision,
-          sessionRetained: run.sessionRetained,
-        },
-      )
-    })
+  const invariants = evaluateGestureInvariants(testCase.name, runs)
 
   if (options.undo) {
     const undo = runs.find((run) => run.phase === 'undo')
@@ -1926,7 +1941,22 @@ async function main() {
   if (failures.length) process.exitCode = 1
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack || error.message : error)
-  process.exitCode = 1
-})
+export {
+  parseArgs,
+  inspectStoragePath,
+  resolveProfileStorage,
+  isShellApiReady,
+  patchPhasesFromLogs,
+  evaluateGestureInvariants,
+  flattenInvariantFailures,
+}
+
+const invokedAsScript =
+  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+
+if (invokedAsScript) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack || error.message : error)
+    process.exitCode = 1
+  })
+}

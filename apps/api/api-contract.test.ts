@@ -22,6 +22,7 @@ import {
   deckChatResponseSchema,
   deckConflictErrorResponseSchema,
   deckListResponseSchema,
+  deckPatchResponseSchema,
   deckResponseSchema,
   documentHistoryListResponseSchema,
   restoreDocumentHistoryResponseSchema,
@@ -255,6 +256,31 @@ describe('HTTP API contract drift prevention', () => {
 
     expect(missingResponse.status).toBe(404)
     assertApiContract(simpleErrorResponseSchema, missingBody)
+  })
+
+  it('matches the editor patch response contract without measurement fields', async () => {
+    const { baseUrl } = await startContractApi()
+    const deck = await createDeck(baseUrl)
+
+    const patchResponse = await fetch(`${baseUrl}/api/decks/${deck.id}/patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedDocumentRevision: 1,
+        operations: [{ op: 'update_slide_title', slideIndex: 0, title: 'Contract' }],
+      }),
+    })
+    const patched = await patchResponse.json()
+
+    expect(patchResponse.status).toBe(200)
+    assertApiContract(deckPatchResponseSchema, patched)
+    expect(
+      Object.keys(patched)
+        .filter((key) => key !== 'requestId')
+        .sort(),
+    ).toEqual(['deck', 'patch', 'validation'])
+    expect(patched.deck.html).toContain('Contract')
+    expect(patched.patch.appliedCount).toBe(1)
   })
 
   it('matches document history list and restore contracts', async () => {

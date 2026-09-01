@@ -6,6 +6,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { assertApiContract, deckPatchResponseSchema } from '@ark/contracts'
 import { createApp } from './app.ts'
 import { createChatStore } from '@ark/storage/stores/chat-store.ts'
 import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
@@ -265,10 +266,23 @@ describe('API observability', () => {
       }
 
       expect(patchResponse.status).toBe(200)
+      assertApiContract(deckPatchResponseSchema, patched)
       expect(patched.deck.documentRevision).toBe(2)
       expect(patched.deck.html).toContain('Timed')
       expect(patched.patch.appliedCount).toBe(1)
       expect(patched).not.toHaveProperty('timings')
+      for (const extra of [
+        'loadMs',
+        'applyMs',
+        'validateMs',
+        'persistMs',
+        'notifyMs',
+        'serializeMs',
+        'htmlBytes',
+        'reusedValidation',
+      ]) {
+        expect(patched).not.toHaveProperty(extra)
+      }
 
       const patchLog = entries.find((entry) => entry.event === 'deck.patch.completed') as
         | {
@@ -291,8 +305,11 @@ describe('API observability', () => {
       expect(patchLog?.fields.reusedValidation).toBe(true)
       expect(patchLog?.fields.appliedCount).toBe(1)
       expect(patchLog?.fields.htmlBytes).toBeGreaterThan(0)
+      expect(patchLog?.fields.loadMs).toBeGreaterThanOrEqual(0)
       expect(patchLog?.fields.applyMs).toBeGreaterThanOrEqual(0)
+      expect(patchLog?.fields.validateMs).toBeGreaterThanOrEqual(0)
       expect(patchLog?.fields.persistMs).toBeGreaterThanOrEqual(0)
+      expect(patchLog?.fields.notifyMs).toBeGreaterThanOrEqual(0)
       expect(patchLog?.fields.serializeMs).toBeGreaterThanOrEqual(0)
       expect(patchLog?.durationMs).toBeGreaterThanOrEqual(patchLog?.fields.applyMs ?? 0)
     } finally {
