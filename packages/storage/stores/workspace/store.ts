@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { DatabaseSync, backup } from 'node:sqlite'
@@ -110,15 +111,19 @@ export class WorkspaceStore {
       if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.ark')) continue
       try {
         const metadata = inspectWorkspaceFile(path.join(this.rootDir, entry.name))
-        if (!this.recent.has(metadata.id)) {
-          this.recent.set(metadata.id, {
-            id: metadata.id,
-            path: metadata.path,
-            title: metadata.title,
-            updatedAt: metadata.updatedAt,
-            lastOpened: metadata.updatedAt,
-          })
-        }
+        const existing = this.recent.get(metadata.id)
+        // Recents JSON is disposable. Html-only document saves keep the
+        // in-memory row current without rewriting that file; refresh
+        // title/path/updatedAt from the `.ark` itself so a later process
+        // still sorts by the document's real mtime.
+        this.recent.set(metadata.id, {
+          id: metadata.id,
+          path: metadata.path,
+          title: metadata.title,
+          updatedAt: metadata.updatedAt,
+          lastOpened: existing?.lastOpened ?? metadata.updatedAt,
+          ...(existing?.cover ? { cover: existing.cover } : {}),
+        })
       } catch {
         // Invalid files stay untouched and do not appear in Ark.
       }
@@ -141,15 +146,27 @@ export class WorkspaceStore {
     }
   }
 
+  private recentSnapshot() {
+    return JSON.stringify([...this.recent.values()], null, 2)
+  }
+
+  private persistRecentSync() {
+    const filePath = this.recentFilePath
+    mkdirSync(path.dirname(filePath), { recursive: true })
+    const temporary = `${filePath}.${randomUUID()}.tmp`
+    writeFileSync(temporary, this.recentSnapshot(), 'utf8')
+    renameSync(temporary, filePath)
+  }
+
   private async persistRecent() {
     const filePath = this.recentFilePath
     await mkdir(path.dirname(filePath), { recursive: true })
     const temporary = `${filePath}.${randomUUID()}.tmp`
-    await writeFile(temporary, JSON.stringify([...this.recent.values()], null, 2), 'utf8')
+    await writeFile(temporary, this.recentSnapshot(), 'utf8')
     await rename(temporary, filePath)
   }
 
-  private async touchRecent(workspace: WorkspaceRow) {
+  private rememberRecent(workspace: WorkspaceRow) {
     const cover = this.recent.get(workspace.id)?.cover
     this.recent.set(workspace.id, {
       id: workspace.id,
@@ -159,6 +176,10 @@ export class WorkspaceStore {
       lastOpened: new Date().toISOString(),
       ...(cover ? { cover } : {}),
     })
+  }
+
+  private async touchRecent(workspace: WorkspaceRow) {
+    this.rememberRecent(workspace)
     await this.persistRecent()
   }
 
@@ -533,14 +554,34 @@ export class WorkspaceStore {
       open.database.exec('ROLLBACK')
       throw error
     }
-    const workspace = readWorkspace(open)
-    await this.touchRecent(workspace)
+    // The HTML we just wrote is still in memory. Re-SELECT would copy the
+    // whole document back out of SQLite on every editor PATCH.
+    const workspace: WorkspaceRow = {
+      id: current.id,
+      title,
+      createdAt: current.createdAt,
+      updatedAt: now,
+      documentRevision: expectedDocumentRevision + 1,
+      origin,
+      html,
+      path: open.path,
+    }
+    this.rememberRecent(workspace)
 
     // When the agent establishes a new title (the title row is still
     // auto-derived from HTML), keep the on-disk filename in sync wherever the
     // file lives. The target is collision-safe (Board plan.ark,
     // Board plan 2.ark) and never overwrites.
+    //
+    // Html-only editor saves (title and path unchanged) skip rewriting
+    // recent-workspaces.json: that index is disposable, and writeFile+rename
+    // on every PATCH sat on the persist path next to document_history. Create,
+    // open, rename, and delete still persist eagerly. close() flushes the
+    // in-memory rows so a workspace outside the managed directory still
+    // sorts by its real updatedAt after restart. Durability of the document
+    // and of full history snapshots is unchanged.
     if (title !== current.title) {
+      await this.persistRecent()
       const targetPath = await this.uniquePath(title, path.dirname(open.path), open.path)
       if (targetPath !== open.path) {
         try {
@@ -961,6 +1002,12 @@ export class WorkspaceStore {
   }
 
   close() {
+    try {
+      this.persistRecentSync()
+    } catch (error) {
+      console.warn('Could not persist recent workspaces.', error)
+    }
+
     for (const open of this.byId.values()) open.database.close()
     this.byId.clear()
     this.byPath.clear()
