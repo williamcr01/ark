@@ -1,5 +1,9 @@
+import { createHash } from 'node:crypto'
+
 import express from 'express'
 import { describe, expect, it } from 'vitest'
+
+import { buildSandboxResponseCsp } from '@ark/runtime-registry/sandbox-origin.ts'
 
 import { handleRuntimeRoutes } from './deck-runtimes'
 
@@ -75,9 +79,23 @@ describe('handleRuntimeRoutes', () => {
             }),
           ]),
         }),
+        expect.objectContaining({
+          id: 'deck-fonts',
+          version: '1.0.0',
+          runtimeMode: 'static',
+          previewMode: 'css-only',
+          allowsDeckScripts: false,
+          assets: expect.arrayContaining([
+            expect.objectContaining({
+              path: 'carlito/carlito-latin-400-normal.woff2',
+              kind: 'font',
+              url: '/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
+            }),
+          ]),
+        }),
       ]),
     })
-    expect((response.body as { runtimes: unknown[] }).runtimes).toHaveLength(2)
+    expect((response.body as { runtimes: unknown[] }).runtimes).toHaveLength(3)
   })
 
   it('serves approved chart.js runtime assets with checksum metadata', async () => {
@@ -119,6 +137,45 @@ describe('handleRuntimeRoutes', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('font/woff')
     expect(response.headers.get('x-checksum-sha256')).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('serves vendored metric-clone fonts allowed by sandbox font-src', async () => {
+    const pathname = '/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2'
+    const app = createTestApp()
+    const server = app.listen(0)
+    const address = server.address()
+
+    if (!address || typeof address === 'string') {
+      throw new Error('Could not bind test server.')
+    }
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}${pathname}`)
+      const bytes = Buffer.from(await response.arrayBuffer())
+      const digest = createHash('sha256').update(bytes).digest('hex')
+      const csp = buildSandboxResponseCsp('http://127.0.0.1')
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toContain('font/woff2')
+      expect(response.headers.get('access-control-allow-origin')).toBe('*')
+      expect(response.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+      expect(response.headers.get('x-checksum-sha256')).toBe(digest)
+      expect(bytes.subarray(0, 4).toString('ascii')).toBe('wOF2')
+      expect(csp).toMatch(
+        /font-src[^;]*http:\/\/127\.0\.0\.1\/api\/runtimes\/deck-fonts\/1\.0\.0\/carlito\/carlito-latin-400-normal\.woff2/,
+      )
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+
+          resolve()
+        })
+      })
+    }
   })
 
   it('rejects unapproved runtime versions and assets', async () => {

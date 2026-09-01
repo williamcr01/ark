@@ -1,23 +1,33 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
   APPROVED_DECK_FONTS,
   buildDeckFontPromptSection,
   buildDeckFontRootCss,
+  buildMetricCloneFontAssetUrl,
+  buildMetricCloneFontFaceCss,
   DECK_FONT_CSS_VARS,
   DECK_FONT_MARKER_ATTRS,
   DECK_FONT_ROLES,
   DECK_FONT_SAFE_WEIGHTS,
+  DECK_FONTS_RUNTIME_ID,
+  DECK_FONTS_RUNTIME_VERSION,
   DEFAULT_DECK_FONT_IDS,
   getDeckFont,
   getDeckFontByPptxTypeface,
   getDeckFontsByCategory,
   isApprovedDeckFontId,
   isExportSafeFontWeight,
+  METRIC_CLONE_FONT_FACES,
   readDeckFontSelection,
   resolveDeckFont,
   resolvePptxTypeface,
 } from './deck-font-registry.ts'
+import { getApprovedRuntime } from './deck-runtime-registry.ts'
 
 describe('approved deck fonts', () => {
   it('gives every font a unique id', () => {
@@ -96,6 +106,20 @@ describe('buildDeckFontRootCss', () => {
   it('fills unspecified roles with the defaults', () => {
     expect(buildDeckFontRootCss()).toBe(buildDeckFontRootCss(DEFAULT_DECK_FONT_IDS))
   })
+
+  it('emits @font-face rules that load vendored clones, not Office typeface names', () => {
+    const css = buildDeckFontRootCss()
+    const carlitoUrl = buildMetricCloneFontAssetUrl('carlito/carlito-latin-400-normal.woff2')
+    const liberationUrl = buildMetricCloneFontAssetUrl('liberation-sans/LiberationSans-Regular.ttf')
+
+    expect(css).toContain('@font-face')
+    expect(css).toContain(`url("${carlitoUrl}") format("woff2")`)
+    expect(css).toContain(`url("${liberationUrl}") format("truetype")`)
+    expect(css).toContain('font-family: "Carlito"')
+    expect(css).toContain('font-family: "Liberation Sans"')
+    expect(css).not.toContain('font-family: "Calibri"')
+    expect(buildMetricCloneFontFaceCss()).toContain(carlitoUrl)
+  })
 })
 
 describe('resolvePptxTypeface', () => {
@@ -123,6 +147,11 @@ describe('resolvePptxTypeface', () => {
 
   it('passes the family through when nothing in the chain is resolvable', () => {
     expect(resolvePptxTypeface('"Brand Grotesk"')).toBe('Brand Grotesk')
+  })
+
+  it('still names the Office typeface when the stack starts with a vendored clone', () => {
+    expect(resolvePptxTypeface('"Carlito", sans-serif')).toBe('Calibri')
+    expect(resolvePptxTypeface('"Liberation Mono", monospace')).toBe('Courier New')
   })
 })
 
@@ -165,6 +194,55 @@ describe('buildDeckFontPromptSection', () => {
     for (const role of DECK_FONT_ROLES) {
       expect(prompt).toContain(DECK_FONT_MARKER_ATTRS[role])
       expect(prompt).toContain(DECK_FONT_CSS_VARS[role])
+    }
+  })
+})
+
+describe('vendored metric clone faces', () => {
+  const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+  it('covers every clone named in the registry with 400/700 regular and italic', () => {
+    const families = new Set(METRIC_CLONE_FONT_FACES.map((face) => face.family))
+
+    for (const font of APPROVED_DECK_FONTS) {
+      expect(font.metricClones.every((clone) => families.has(clone))).toBe(true)
+    }
+
+    for (const family of families) {
+      const faces = METRIC_CLONE_FONT_FACES.filter((face) => face.family === family)
+      expect(faces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ weight: 400, style: 'normal' }),
+          expect.objectContaining({ weight: 400, style: 'italic' }),
+          expect.objectContaining({ weight: 700, style: 'normal' }),
+          expect.objectContaining({ weight: 700, style: 'italic' }),
+        ]),
+      )
+    }
+  })
+
+  it('matches the approved deck-fonts runtime assets on disk', () => {
+    const runtime = getApprovedRuntime(DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION)
+
+    expect(runtime).not.toBeNull()
+    expect(runtime?.runtimeMode).toBe('static')
+    expect(runtime?.license).toBe('OFL-1.1')
+
+    const assetPaths = new Set(runtime?.assets.map((asset) => asset.path))
+    const facePaths = new Set(METRIC_CLONE_FONT_FACES.map((face) => face.path))
+
+    expect(assetPaths).toEqual(facePaths)
+
+    for (const face of METRIC_CLONE_FONT_FACES) {
+      const asset = runtime?.assets.find((entry) => entry.path === face.path)
+
+      expect(asset?.kind).toBe('font')
+      expect(asset?.license).toBe('OFL-1.1')
+      expect(
+        existsSync(
+          path.join(ROOT, 'runtimes', DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION, face.path),
+        ),
+      ).toBe(true)
     }
   })
 })

@@ -54,6 +54,30 @@ describe('buildPreviewDocument', () => {
     expect(csp).toContain("connect-src 'none'")
   })
 
+  it('absolutizes vendored metric-clone @font-face URLs and allows them in font-src', () => {
+    const fontUrl = '/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2'
+    const { html } = buildPreviewDocument(
+      `<!DOCTYPE html><html><head><style>@font-face{font-family:"Carlito";src:url("${fontUrl}") format("woff2")}</style></head><body><section class="slide"><h1>Clone</h1></section></body></html>`,
+      { parentOrigin: 'http://localhost:5173' },
+    )
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const csp = doc
+      .querySelector('meta[http-equiv="Content-Security-Policy"]')
+      ?.getAttribute('content')
+    const styles = [...doc.querySelectorAll('style')]
+      .map((style) => style.textContent ?? '')
+      .join('\n')
+
+    expect(styles).toContain(`url("http://localhost:5173${fontUrl}")`)
+    expect(doc.querySelector('style[data-ark-metric-fonts]')?.textContent).toContain(
+      `url("http://localhost:5173${fontUrl}")`,
+    )
+    expect(csp).toMatch(
+      /font-src[^;]*http:\/\/localhost:5173\/api\/runtimes\/deck-fonts\/1\.0\.0\/carlito\/carlito-latin-400-normal\.woff2/,
+    )
+    expect(csp).toContain("connect-src 'none'")
+  })
+
   it('pre-activates slide 0 for css-only decks before nav script runs', () => {
     const { html, runtimeMode } = buildPreviewDocument(`<!DOCTYPE html>
 <html lang="en">

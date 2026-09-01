@@ -114,9 +114,18 @@ describe('runtime policies', () => {
     expect(csp).not.toContain('/api/runtimes/reveal.js/')
   })
 
-  it('keeps static CSP closed to runtime asset URLs', () => {
-    expect(getRuntimeCsp('static')).toBe(STRICT_DECK_CSP)
-    expect(getRuntimeCsp('static')).not.toContain('/api/runtimes/')
+  it('allows approved metric-clone fonts in static CSP without opening reveal/chart scripts', () => {
+    const csp = getRuntimeCsp('static')
+
+    expect(csp).toContain(
+      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
+    )
+    expect(csp).toMatch(
+      /font-src[^;]*http:\/\/localhost:5173\/api\/runtimes\/deck-fonts\/1\.0\.0\/carlito\/carlito-latin-400-normal\.woff2/,
+    )
+    expect(csp).not.toContain('/api/runtimes/reveal.js/')
+    expect(csp).not.toContain('/api/runtimes/chart.js/')
+    expect(csp).toContain("connect-src 'none'")
   })
 
   it('allows the configured Ark asset origin for deck images only', () => {
@@ -154,7 +163,10 @@ describe('injectRuntimeCsp', () => {
     const html = injectRuntimeCsp(plainCssDeck, 'static')
 
     expect(html).toContain('http-equiv="Content-Security-Policy"')
-    expect(html).toContain(STRICT_DECK_CSP)
+    expect(html).toContain("connect-src 'none'")
+    expect(html).toContain(
+      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
+    )
     expect(buildCspMetaTag(STRICT_DECK_CSP)).toContain("connect-src 'none'")
   })
 

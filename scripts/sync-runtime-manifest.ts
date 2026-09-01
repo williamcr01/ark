@@ -10,12 +10,13 @@ type ManifestAsset = {
   kind: RuntimeAssetKind
   sha256: string
   size: number
+  license?: string
 }
 
 type ManifestRuntime = {
   id: string
   version: string
-  runtimeMode: 'reveal' | 'custom-js'
+  runtimeMode: 'reveal' | 'custom-js' | 'static'
   license: string
   source: string
   previewMode: 'css-only' | 'full-js'
@@ -89,7 +90,11 @@ async function assertRevealFontLicense(fontRoot: string) {
   }
 }
 
-async function buildAssetMetadata(versionDir: string, assetPath: string): Promise<ManifestAsset> {
+async function buildAssetMetadata(
+  versionDir: string,
+  assetPath: string,
+  extras: { license?: string } = {},
+): Promise<ManifestAsset> {
   const absolutePath = path.join(versionDir, assetPath)
   const { sha256, size } = await hashFile(absolutePath)
 
@@ -98,6 +103,7 @@ async function buildAssetMetadata(versionDir: string, assetPath: string): Promis
     kind: inferAssetKind(assetPath),
     sha256,
     size,
+    ...extras,
   }
 }
 
@@ -178,6 +184,48 @@ async function syncChartJsRuntime(manifest: RuntimeManifest) {
   )
 }
 
+async function assertFontFamilyLicense(fontRoot: string) {
+  const licensePath = path.join(fontRoot, 'LICENSE')
+
+  try {
+    await fs.access(licensePath)
+  } catch {
+    throw new Error(`Missing font license at ${path.relative(ROOT, licensePath)}`)
+  }
+}
+
+async function syncDeckFontsRuntime(manifest: RuntimeManifest) {
+  const entry = manifest.runtimes.find((runtime) => runtime.id === 'deck-fonts')
+
+  if (!entry) {
+    throw new Error('deck-fonts runtime entry is missing from manifest.json')
+  }
+
+  const versionDir = path.join(RUNTIMES_DIR, entry.id, entry.version)
+  const familyEntries = await fs.readdir(versionDir, { withFileTypes: true })
+  const familyDirs = familyEntries.filter((entry) => entry.isDirectory())
+
+  if (familyDirs.length === 0) {
+    throw new Error(`No font family directories found in ${path.relative(ROOT, versionDir)}`)
+  }
+
+  for (const family of familyDirs) {
+    await assertFontFamilyLicense(path.join(versionDir, family.name))
+  }
+
+  const fontAssetPaths = await listRuntimeAssetFiles(versionDir, versionDir)
+
+  if (fontAssetPaths.length === 0) {
+    throw new Error(`No font files found in ${path.relative(ROOT, versionDir)}`)
+  }
+
+  entry.assets = await Promise.all(
+    fontAssetPaths.map((assetPath) =>
+      buildAssetMetadata(versionDir, assetPath, { license: entry.license }),
+    ),
+  )
+}
+
 async function listRuntimeAssetFiles(rootDir: string, currentDir: string): Promise<string[]> {
   const entries = await fs.readdir(currentDir, { withFileTypes: true })
   const files = await Promise.all(
@@ -204,6 +252,7 @@ async function main() {
 
   await syncRevealRuntime(manifest)
   await syncChartJsRuntime(manifest)
+  await syncDeckFontsRuntime(manifest)
 
   await fs.writeFile(`${MANIFEST_PATH}`, `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Updated ${MANIFEST_PATH}`)

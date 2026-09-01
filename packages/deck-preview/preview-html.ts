@@ -29,6 +29,7 @@ import {
   hasApprovedRevealRuntimeInDocument,
   isApprovedRuntimeAssetUrl,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
+import { buildMetricCloneFontFaceCss } from '@ark/runtime-registry/deck-font-registry.ts'
 import { absolutizeArkAssetReferences } from '@ark/deck/document/assets.ts'
 
 export type PreviewHtmlOptions = {
@@ -166,7 +167,7 @@ function appendScript(
 
 function appendPreviewFill(
   doc: Document,
-  options: { historyShim?: boolean; nonce?: string | null } = {},
+  options: { historyShim?: boolean; nonce?: string | null; assetOrigin?: string | null } = {},
 ) {
   const head = ensureHead(doc)
 
@@ -185,6 +186,11 @@ function appendPreviewFill(
   style.setAttribute('data-ark-preview-fill', '')
   style.textContent = previewFillStyleContent
   head.append(style)
+
+  const fontFace = doc.createElement('style')
+  fontFace.setAttribute('data-ark-metric-fonts', '')
+  fontFace.textContent = `\n${absolutizeApprovedRuntimeAssetText(buildMetricCloneFontFaceCss(), options.assetOrigin)}\n`
+  head.append(fontFace)
 }
 
 function injectRuntimeCspMeta(
@@ -499,7 +505,7 @@ export function buildPreviewDocument(
   if (runtimeModeAllowsDeckScripts(mode)) {
     absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
-    appendPreviewFill(doc, { historyShim: true, nonce })
+    appendPreviewFill(doc, { historyShim: true, nonce, assetOrigin })
     appendScript(
       doc,
       body,
@@ -525,7 +531,7 @@ export function buildPreviewDocument(
     }
     absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
-    appendPreviewFill(doc, { historyShim: true, nonce })
+    appendPreviewFill(doc, { historyShim: true, nonce, assetOrigin })
     appendScript(
       doc,
       body,
@@ -548,7 +554,7 @@ export function buildPreviewDocument(
   })
   absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
   injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
-  appendPreviewFill(doc, { nonce })
+  appendPreviewFill(doc, { nonce, assetOrigin })
   activateInitialCssNavSlide(doc)
   appendScript(
     doc,

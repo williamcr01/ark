@@ -7,6 +7,7 @@ export type ApprovedRuntimeAsset = {
   kind: RuntimeAssetKind
   sha256: string
   size: number
+  license?: string
 }
 
 export type ApprovedRuntimeMarkers = {
@@ -19,7 +20,7 @@ export type ApprovedRuntimeMarkers = {
 export type ApprovedRuntimeEntry = {
   id: string
   version: string
-  runtimeMode: 'reveal' | 'custom-js'
+  runtimeMode: 'reveal' | 'custom-js' | 'static'
   license: string
   source: string
   previewMode: 'css-only' | 'full-js'
@@ -629,6 +630,11 @@ export function buildRuntimeRegistryPromptSection() {
   for (const runtime of APPROVED_RUNTIMES) {
     const cssAssets = runtime.requiredAssets.css ?? []
     const jsAssets = runtime.requiredAssets.js ?? []
+
+    if (cssAssets.length === 0 && jsAssets.length === 0) {
+      continue
+    }
+
     const markerParts = [
       runtime.markers.arkRuntime?.length
         ? `data-ark-runtime="${runtime.markers.arkRuntime.join('" or "')}"`

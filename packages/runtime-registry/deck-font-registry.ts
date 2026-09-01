@@ -13,6 +13,8 @@
  * absent - still breaks its lines exactly where PowerPoint will.
  */
 
+import { buildRuntimeAssetUrl } from './deck-runtime-registry.ts'
+
 export type DeckFontCategory = 'sans' | 'serif' | 'mono'
 
 /** Deck-facing font slots. Each maps to a `data-ark-font-*` marker and a CSS var. */
@@ -120,6 +122,212 @@ export const DEFAULT_DECK_FONT_IDS: Record<DeckFontRole, string> = {
   mono: 'courier-new',
 }
 
+/** Pinned catalog of OFL metric-compatible clones served as approved runtime fonts. */
+export const DECK_FONTS_RUNTIME_ID = 'deck-fonts'
+export const DECK_FONTS_RUNTIME_VERSION = '1.0.0'
+
+export type MetricCloneFontFormat = 'woff2' | 'truetype'
+
+export type MetricCloneFontFace = {
+  family: string
+  path: string
+  weight: 400 | 700
+  style: 'normal' | 'italic'
+  format: MetricCloneFontFormat
+}
+
+export const METRIC_CLONE_FONT_FACES: readonly MetricCloneFontFace[] = [
+  {
+    family: 'Carlito',
+    path: 'carlito/carlito-latin-400-normal.woff2',
+    weight: 400,
+    style: 'normal',
+    format: 'woff2',
+  },
+  {
+    family: 'Carlito',
+    path: 'carlito/carlito-latin-400-italic.woff2',
+    weight: 400,
+    style: 'italic',
+    format: 'woff2',
+  },
+  {
+    family: 'Carlito',
+    path: 'carlito/carlito-latin-700-normal.woff2',
+    weight: 700,
+    style: 'normal',
+    format: 'woff2',
+  },
+  {
+    family: 'Carlito',
+    path: 'carlito/carlito-latin-700-italic.woff2',
+    weight: 700,
+    style: 'italic',
+    format: 'woff2',
+  },
+  {
+    family: 'Caladea',
+    path: 'caladea/caladea-latin-400-normal.woff2',
+    weight: 400,
+    style: 'normal',
+    format: 'woff2',
+  },
+  {
+    family: 'Caladea',
+    path: 'caladea/caladea-latin-400-italic.woff2',
+    weight: 400,
+    style: 'italic',
+    format: 'woff2',
+  },
+  {
+    family: 'Caladea',
+    path: 'caladea/caladea-latin-700-normal.woff2',
+    weight: 700,
+    style: 'normal',
+    format: 'woff2',
+  },
+  {
+    family: 'Caladea',
+    path: 'caladea/caladea-latin-700-italic.woff2',
+    weight: 700,
+    style: 'italic',
+    format: 'woff2',
+  },
+  {
+    family: 'Gelasio',
+    path: 'gelasio/gelasio-latin-400-normal.woff2',
+    weight: 400,
+    style: 'normal',
+    format: 'woff2',
+  },
+  {
+    family: 'Gelasio',
+    path: 'gelasio/gelasio-latin-400-italic.woff2',
+    weight: 400,
+    style: 'italic',
+    format: 'woff2',
+  },
+  {
+    family: 'Gelasio',
+    path: 'gelasio/gelasio-latin-700-normal.woff2',
+    weight: 700,
+    style: 'normal',
+    format: 'woff2',
+  },
+  {
+    family: 'Gelasio',
+    path: 'gelasio/gelasio-latin-700-italic.woff2',
+    weight: 700,
+    style: 'italic',
+    format: 'woff2',
+  },
+  {
+    family: 'Liberation Sans',
+    path: 'liberation-sans/LiberationSans-Regular.ttf',
+    weight: 400,
+    style: 'normal',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Sans',
+    path: 'liberation-sans/LiberationSans-Italic.ttf',
+    weight: 400,
+    style: 'italic',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Sans',
+    path: 'liberation-sans/LiberationSans-Bold.ttf',
+    weight: 700,
+    style: 'normal',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Sans',
+    path: 'liberation-sans/LiberationSans-BoldItalic.ttf',
+    weight: 700,
+    style: 'italic',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Serif',
+    path: 'liberation-serif/LiberationSerif-Regular.ttf',
+    weight: 400,
+    style: 'normal',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Serif',
+    path: 'liberation-serif/LiberationSerif-Italic.ttf',
+    weight: 400,
+    style: 'italic',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Serif',
+    path: 'liberation-serif/LiberationSerif-Bold.ttf',
+    weight: 700,
+    style: 'normal',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Serif',
+    path: 'liberation-serif/LiberationSerif-BoldItalic.ttf',
+    weight: 700,
+    style: 'italic',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Mono',
+    path: 'liberation-mono/LiberationMono-Regular.ttf',
+    weight: 400,
+    style: 'normal',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Mono',
+    path: 'liberation-mono/LiberationMono-Italic.ttf',
+    weight: 400,
+    style: 'italic',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Mono',
+    path: 'liberation-mono/LiberationMono-Bold.ttf',
+    weight: 700,
+    style: 'normal',
+    format: 'truetype',
+  },
+  {
+    family: 'Liberation Mono',
+    path: 'liberation-mono/LiberationMono-BoldItalic.ttf',
+    weight: 700,
+    style: 'italic',
+    format: 'truetype',
+  },
+]
+
+export function buildMetricCloneFontAssetUrl(path: string) {
+  return buildRuntimeAssetUrl(DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION, path)
+}
+
+/** `@font-face` rules that load vendored clones from `/api/runtimes/deck-fonts/...`. */
+export function buildMetricCloneFontFaceCss() {
+  return METRIC_CLONE_FONT_FACES.map((face) => {
+    const url = buildMetricCloneFontAssetUrl(face.path)
+
+    return [
+      '@font-face {',
+      `  font-family: ${JSON.stringify(face.family)};`,
+      `  src: url("${url}") format("${face.format}");`,
+      `  font-weight: ${face.weight};`,
+      `  font-style: ${face.style};`,
+      '  font-display: swap;',
+      '}',
+    ].join('\n')
+  }).join('\n\n')
+}
+
 /** Per-role font ids read off a deck, or null where the deck declared none. */
 export type DeckFontSelection = Record<DeckFontRole, string | null>
 
@@ -184,8 +392,10 @@ export function resolveDeckFont(selection: DeckFontSelection, role: DeckFontRole
 }
 
 /**
- * The `:root` block a deck declares. Generated rather than hand-written so a
- * deck's stacks always match what the exporter will look up.
+ * The `:root` block a deck declares, plus `@font-face` rules for the vendored
+ * metric clones. Generated rather than hand-written so a deck's stacks always
+ * match what the exporter will look up, and so preview/PDF can load the clones
+ * on machines that do not have the Office typefaces.
  */
 export function buildDeckFontRootCss(selection: Partial<DeckFontSelection> = {}) {
   const declarations = DECK_FONT_ROLES.map((role) => {
@@ -193,7 +403,7 @@ export function buildDeckFontRootCss(selection: Partial<DeckFontSelection> = {})
     return `  ${DECK_FONT_CSS_VARS[role]}: ${font.cssStack};`
   })
 
-  return `:root {\n${declarations.join('\n')}\n}`
+  return `${buildMetricCloneFontFaceCss()}\n\n:root {\n${declarations.join('\n')}\n}`
 }
 
 const GENERIC_FAMILY_FALLBACKS: Record<string, string> = {
