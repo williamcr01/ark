@@ -55,16 +55,23 @@ export type FixtureShape = {
   cx?: number
   cy?: number
   fill?: string
+  noFill?: boolean
+  outlineFill?: string
+  outlineNoFill?: boolean
+  textFill?: string
+  textOutline?: string
   geom?: string
   effects?: boolean
   txBox?: boolean
+  omitXfrm?: boolean
+  placeholder?: string
 }
 
 export type FixtureSlide = {
   notes?: string
   shapes?: FixtureShape[]
-  picture?: boolean
-  chart?: 'cached' | 'uncached'
+  picture?: boolean | 'emf'
+  chart?: 'cached' | 'uncached' | 'scatter' | 'blank-point'
   smartArt?: boolean
 }
 
@@ -77,6 +84,28 @@ function xfrm(x: number, y: number, cx: number, cy: number) {
   return `<a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>`
 }
 
+function runPrXml(shape: FixtureShape) {
+  const font = shape.font ?? 'Calibri'
+  const fill = shape.textFill ?? '111827'
+  const outline = shape.textOutline
+    ? `<a:ln><a:solidFill><a:srgbClr val="${shape.textOutline}"/></a:solidFill></a:ln>`
+    : ''
+  return `<a:rPr lang="en-US" sz="3200" b="1">${outline}<a:solidFill><a:srgbClr val="${fill}"/></a:solidFill><a:latin typeface="${font}"/></a:rPr>`
+}
+
+function textBodyXml(shape: FixtureShape) {
+  if (!shape.text) return '<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>'
+  const rPr = runPrXml(shape)
+  const runs = shape.text
+    .split('\n')
+    .map((line, index, lines) => {
+      const br = index < lines.length - 1 ? '<a:br/>' : ''
+      return `<a:r>${rPr}<a:t>${escapeXml(line)}</a:t></a:r>${br}`
+    })
+    .join('')
+  return `<p:txBody><a:bodyPr/><a:lstStyle/><a:p>${runs}</a:p></p:txBody>`
+}
+
 function shapeXml(shape: FixtureShape, index: number) {
   const x = shape.x ?? 914_400
   const y = shape.y ?? 914_400
@@ -84,28 +113,36 @@ function shapeXml(shape: FixtureShape, index: number) {
   const cy = shape.cy ?? 1_371_600
   const geom = shape.geom ?? 'rect'
   const fill = shape.fill ?? '4472C4'
-  const font = shape.font ?? 'Calibri'
   const effects = shape.effects
     ? '<a:effectLst><a:outerShdw blurRad="50800" dist="38100" dir="2700000"><a:srgbClr val="000000"><a:alpha val="40000"/></a:srgbClr></a:outerShdw></a:effectLst>'
     : ''
-  const text = shape.text
-    ? `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="3200" b="1"><a:solidFill><a:srgbClr val="111827"/></a:solidFill><a:latin typeface="${font}"/></a:rPr><a:t>${escapeXml(shape.text)}</a:t></a:r></a:p></p:txBody>`
-    : '<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>'
+  const fillXml = shape.noFill
+    ? '<a:noFill/>'
+    : `<a:solidFill><a:srgbClr val="${fill}"/></a:solidFill>`
+  const lnXml = shape.outlineNoFill
+    ? '<a:ln><a:noFill/></a:ln>'
+    : shape.outlineFill
+      ? `<a:ln><a:solidFill><a:srgbClr val="${shape.outlineFill}"/></a:solidFill></a:ln>`
+      : ''
+  const nvPr = shape.placeholder
+    ? `<p:nvPr><p:ph type="${escapeXml(shape.placeholder)}"/></p:nvPr>`
+    : '<p:nvPr/>'
   const txBoxAttr = shape.txBox === false ? '' : ' txBox="1"'
   const shapeName = escapeXml(shape.name ?? `Shape ${index + 1}`)
   return `<p:sp>
     <p:nvSpPr>
       <p:cNvPr id="${index + 2}" name="${shapeName}"/>
       <p:cNvSpPr${txBoxAttr}/>
-      <p:nvPr/>
+      ${nvPr}
     </p:nvSpPr>
     <p:spPr>
-      ${xfrm(x, y, cx, cy)}
+      ${shape.omitXfrm ? '' : xfrm(x, y, cx, cy)}
       <a:prstGeom prst="${geom}"><a:avLst/></a:prstGeom>
-      <a:solidFill><a:srgbClr val="${fill}"/></a:solidFill>
+      ${fillXml}
+      ${lnXml}
       ${effects}
     </p:spPr>
-    ${text}
+    ${textBodyXml(shape)}
   </p:sp>`
 }
 
@@ -156,13 +193,7 @@ function smartArtXml(index: number) {
   </p:graphicFrame>`
 }
 
-function chartXml(cached: boolean) {
-  const cache = cached
-    ? `<c:numCache><c:ptCount val="4"/><c:pt idx="0"><c:v>4.2</c:v></c:pt><c:pt idx="1"><c:v>5.1</c:v></c:pt><c:pt idx="2"><c:v>4.8</c:v></c:pt><c:pt idx="3"><c:v>6.3</c:v></c:pt></c:numCache>`
-    : ''
-  const cats = cached
-    ? `<c:strCache><c:ptCount val="4"/><c:pt idx="0"><c:v>Q1</c:v></c:pt><c:pt idx="1"><c:v>Q2</c:v></c:pt><c:pt idx="2"><c:v>Q3</c:v></c:pt><c:pt idx="3"><c:v>Q4</c:v></c:pt></c:strCache>`
-    : ''
+function barChartXml(cache: string, cats: string) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <c:chartSpace xmlns:c="${C}" xmlns:a="${A}" xmlns:r="${R}">
   <c:chart>
@@ -177,6 +208,37 @@ function chartXml(cached: boolean) {
     </c:plotArea>
   </c:chart>
 </c:chartSpace>`
+}
+
+function chartXml(kind: NonNullable<FixtureSlide['chart']>) {
+  if (kind === 'scatter') {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="${C}" xmlns:a="${A}" xmlns:r="${R}">
+  <c:chart>
+    <c:plotArea>
+      <c:scatterChart>
+        <c:ser>
+          <c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>Points</c:v></c:pt></c:strCache></c:strRef></c:tx>
+          <c:xVal><c:numRef><c:f>Sheet1!$A$2:$A$3</c:f><c:numCache><c:ptCount val="2"/><c:pt idx="0"><c:v>1.5</c:v></c:pt><c:pt idx="1"><c:v>2.5</c:v></c:pt></c:numCache></c:numRef></c:xVal>
+          <c:yVal><c:numRef><c:f>Sheet1!$B$2:$B$3</c:f><c:numCache><c:ptCount val="2"/><c:pt idx="0"><c:v>10</c:v></c:pt><c:pt idx="1"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:yVal>
+        </c:ser>
+      </c:scatterChart>
+    </c:plotArea>
+  </c:chart>
+</c:chartSpace>`
+  }
+  const cats = `<c:strCache><c:ptCount val="4"/><c:pt idx="0"><c:v>Q1</c:v></c:pt><c:pt idx="1"><c:v>Q2</c:v></c:pt><c:pt idx="2"><c:v>Q3</c:v></c:pt><c:pt idx="3"><c:v>Q4</c:v></c:pt></c:strCache>`
+  if (kind === 'blank-point') {
+    return barChartXml(
+      `<c:numCache><c:ptCount val="4"/><c:pt idx="0"><c:v>4.2</c:v></c:pt><c:pt idx="1"><c:v>#N/A</c:v></c:pt><c:pt idx="2"><c:v>4.8</c:v></c:pt><c:pt idx="3"><c:v>6.3</c:v></c:pt></c:numCache>`,
+      cats,
+    )
+  }
+  if (kind === 'uncached') return barChartXml('', '')
+  return barChartXml(
+    `<c:numCache><c:ptCount val="4"/><c:pt idx="0"><c:v>4.2</c:v></c:pt><c:pt idx="1"><c:v>5.1</c:v></c:pt><c:pt idx="2"><c:v>4.8</c:v></c:pt><c:pt idx="3"><c:v>6.3</c:v></c:pt></c:numCache>`,
+    cats,
+  )
 }
 
 function notesXml(notes: string) {
@@ -277,15 +339,16 @@ export async function buildPptx(options: BuildPptxOptions): Promise<Uint8Array> 
       body.push(shapeXml(shape, shapeIndex))
     }
     if (slide.picture) {
-      slideRels.push({ id: 'rIdImg', type: IMAGE_REL, target: '../media/image1.png' })
+      const ext = slide.picture === 'emf' ? 'emf' : 'png'
+      slideRels.push({ id: 'rIdImg', type: IMAGE_REL, target: `../media/image1.${ext}` })
       body.push(pictureXml('rIdImg', index))
-      zip.file('ppt/media/image1.png', TINY_PNG)
+      zip.file(`ppt/media/image1.${ext}`, TINY_PNG)
     }
     if (slide.chart) {
       const chartPart = `ppt/charts/chart${slideNum}.xml`
       slideRels.push({ id: 'rIdChart', type: CHART_REL, target: `../charts/chart${slideNum}.xml` })
       body.push(chartFrameXml('rIdChart', index))
-      zip.file(chartPart, chartXml(slide.chart === 'cached'))
+      zip.file(chartPart, chartXml(slide.chart))
       overrides.push(
         `<Override PartName="/ppt/charts/chart${slideNum}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`,
       )
@@ -336,5 +399,15 @@ export async function buildEncryptedPptx(): Promise<Uint8Array> {
   const zip = new JSZip()
   zip.file('EncryptionInfo', Buffer.from('agile-encryption'))
   zip.file('EncryptedPackage', Buffer.from('ciphertext'))
+  return zip.generateAsync({ type: 'uint8array' })
+}
+
+export async function buildCorruptXmlPptx(): Promise<Uint8Array> {
+  const bytes = await buildPptx({
+    title: 'Corrupt',
+    slides: [{ shapes: [{ text: 'Broken' }] }],
+  })
+  const zip = await JSZip.loadAsync(bytes)
+  zip.file('ppt/slides/slide1.xml', '<p:sld><not-closed')
   return zip.generateAsync({ type: 'uint8array' })
 }

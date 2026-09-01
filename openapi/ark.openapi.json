@@ -581,9 +581,10 @@
                       },
                       "additionalProperties": { "nullable": true }
                     },
-                    "requestId": { "type": "string", "format": "uuid" }
+                    "requestId": { "type": "string", "format": "uuid" },
+                    "warnings": { "type": "array", "items": { "type": "string" } }
                   },
-                  "required": ["deck", "validation", "runtimeManifest"]
+                  "required": ["deck", "validation", "runtimeManifest", "warnings"]
                 }
               }
             }

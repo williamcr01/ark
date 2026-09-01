@@ -85,7 +85,7 @@ function isMappable(object: ImportedObject) {
 }
 
 function renderRun(run: ImportedTextRun) {
-  let html = escapeHtml(run.text)
+  let html = escapeHtml(run.text).replaceAll('\n', '<br>')
   if (run.bold) html = `<strong>${html}</strong>`
   if (run.italic) html = `<em>${html}</em>`
   if (run.underline) html = `<u>${html}</u>`
@@ -192,11 +192,8 @@ function emitChart(
   return `<div ${ARK_MANAGED_ATTR}="true" ${ARK_ELEMENT_ID_ATTR}="${id}" class="ark-imported-chart" style="${rectStyle(object.rect, ['z-index:2'])}"><canvas id="${canvasId}" role="img" aria-label="Imported chart"></canvas></div>`
 }
 
-function emitPlate(src: string, fullBleed: boolean) {
-  const style = fullBleed
-    ? 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0'
-    : 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0'
-  return `<img class="ark-import-plate" ${ARK_LOCKED_ATTR}="true" alt="" src="${src}" style="${style}" />`
+function emitPlate(src: string) {
+  return `<img class="ark-import-plate" ${ARK_LOCKED_ATTR}="true" alt="" src="${src}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0" />`
 }
 
 function slideTitle(slide: ImportedSlide) {
@@ -223,7 +220,7 @@ function emitSlide(slide: ImportedSlide, charts: Array<{ id: string; config: Cha
   parts.push(`      <span class="ark-sr-only">${escapeHtml(slideTitle(slide))}</span>`)
 
   if (rasterWholeSlide) {
-    parts.push(`      ${emitPlate(svgDataUrl(svgForPlate(slide, slide.objects)), true)}`)
+    parts.push(`      ${emitPlate(svgDataUrl(svgForPlate(slide, slide.objects)))}`)
   } else {
     if (slide.backgroundImage || unmappable.length > 0) {
       const plateObjects: ImportedObject[] = []
@@ -237,7 +234,7 @@ function emitSlide(slide: ImportedSlide, charts: Array<{ id: string; config: Cha
       }
       plateObjects.push(...unmappable)
       parts.push(
-        `      ${emitPlate(svgDataUrl(svgForPlate({ ...slide, backgroundImage: null }, plateObjects)), false)}`,
+        `      ${emitPlate(svgDataUrl(svgForPlate({ ...slide, backgroundImage: null }, plateObjects)))}`,
       )
     }
     let objectIndex = 0
@@ -282,6 +279,20 @@ function emitChartScript(charts: Array<{ id: string; config: ChartJsConfig }>) {
         document.addEventListener('ark:deck-goto', function (event) {
           setSlide(event.detail.index);
         });
+        var NAV_KEYS = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
+        function isTypingTarget(target) {
+          return Boolean(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
+        }
+        function handleNavKey(event) {
+          if (isTypingTarget(event.target)) return;
+          var delta = NAV_KEYS[event.key];
+          if (!delta) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setSlide(index + delta);
+        }
+        document.addEventListener('keydown', handleNavKey, true);
+        window.addEventListener('keydown', handleNavKey, true);
         function boot() {
           if (typeof Chart === 'undefined') return;
           items.forEach(function (item) {
@@ -315,6 +326,7 @@ export function emitImportedHtml(presentation: ImportedPresentation) {
   ]
   if (hasCharts) {
     htmlAttrs.push(
+      'data-ark-deck="nav"',
       'data-ark-preview="full-js"',
       'data-ark-runtime="chart"',
       'data-ark-runtime-lib="chart.js"',

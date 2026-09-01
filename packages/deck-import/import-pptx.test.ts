@@ -11,9 +11,20 @@ import {
   getDeckFontByPptxTypeface,
 } from '@ark/runtime-registry/deck-font-registry.ts'
 
-import { PPTX_ENCRYPTED_MESSAGE, PPTX_LEGACY_MESSAGE, PptxImportError } from './errors.ts'
+import {
+  PPTX_ENCRYPTED_MESSAGE,
+  PPTX_INVALID_MESSAGE,
+  PPTX_LEGACY_MESSAGE,
+  PptxImportError,
+} from './errors.ts'
 import { importPptxToHtml } from './import-pptx.ts'
-import { buildEncryptedPptx, buildLegacyPpt, buildPptx } from './pptx-fixtures.ts'
+import {
+  buildCorruptXmlPptx,
+  buildEncryptedPptx,
+  buildLegacyPpt,
+  buildPptx,
+} from './pptx-fixtures.ts'
+import { parseXml } from './xml.ts'
 
 const SLIDE_CX_EMU = 12_192_000
 const SLIDE_CY_EMU = 6_858_000
@@ -125,10 +136,13 @@ describe('importPptxToHtml', () => {
     const imported = await importPptxToHtml(pptx, { filename: 'revenue.pptx' })
 
     expect(imported.html).toContain('data-ark-runtime="chart"')
+    expect(imported.html).toContain('data-ark-deck="nav"')
     expect(imported.html).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
     expect(imported.html).toContain('"type":"bar"')
     expect(imported.html).toContain('Q1')
     expect(imported.html).toContain('4.2')
+    expect(imported.html).toContain('keydown')
+    expect(imported.html).toContain('ArrowRight')
   })
 
   it('flattens SmartArt onto a background plate and keeps mappable text', async () => {
@@ -217,5 +231,161 @@ describe('importPptxToHtml', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it('ignores outline fills when reading a shape fill', async () => {
+    const pptx = await buildPptx({
+      title: 'Outline',
+      slides: [
+        {
+          shapes: [
+            {
+              name: 'Filled',
+              txBox: false,
+              fill: '4472C4',
+              outlineNoFill: true,
+              x: 457200,
+              y: 457200,
+              cx: 2743200,
+              cy: 1371600,
+            },
+            {
+              name: 'Stroke only',
+              txBox: false,
+              noFill: true,
+              outlineFill: 'FF0000',
+              x: 3657600,
+              y: 457200,
+              cx: 2743200,
+              cy: 1371600,
+            },
+          ],
+        },
+      ],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'outline.pptx' })
+
+    expect(imported.html).toMatch(/background:#4472C4/i)
+    expect(imported.html).not.toMatch(/background:#FF0000/i)
+    expect(imported.html).toContain('background:transparent')
+  })
+
+  it('marks placeholders without xfrm as unmappable instead of dropping them', async () => {
+    const pptx = await buildPptx({
+      title: 'Placeholder',
+      slides: [
+        {
+          shapes: [
+            { text: 'Keep me', x: 457200, y: 182880, cx: 5486400, cy: 914400 },
+            {
+              name: 'Title placeholder',
+              text: 'Layout title',
+              placeholder: 'title',
+              omitXfrm: true,
+            },
+          ],
+        },
+      ],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'placeholder.pptx' })
+
+    expect(imported.html).toContain('Keep me')
+    expect(imported.html).toContain('ark-import-plate')
+    expect(imported.warnings.length).toBeGreaterThan(0)
+  })
+
+  it('throws pptx_invalid when jsdom rejects malformed XML', () => {
+    expect(() => parseXml('<p:sld><not-closed')).toThrow(PptxImportError)
+    expect(() => parseXml('<p:sld><not-closed')).toThrow(PPTX_INVALID_MESSAGE)
+  })
+
+  it('rejects a PPTX whose slide XML cannot be parsed', async () => {
+    await expect(
+      importPptxToHtml(await buildCorruptXmlPptx(), { filename: 'corrupt.pptx' }),
+    ).rejects.toMatchObject({
+      name: 'PptxImportError',
+      code: 'pptx_invalid',
+      message: PPTX_INVALID_MESSAGE,
+    } satisfies Partial<PptxImportError>)
+  })
+
+  it('uses the run fill color, not the text outline color', async () => {
+    const pptx = await buildPptx({
+      title: 'Outlined text',
+      slides: [
+        {
+          shapes: [
+            {
+              text: 'White headline',
+              textFill: 'FFFFFF',
+              textOutline: '000000',
+            },
+          ],
+        },
+      ],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'outline-text.pptx' })
+
+    expect(imported.html).toContain('White headline')
+    expect(imported.html).toMatch(/color:#FFFFFF/i)
+    expect(imported.html).not.toMatch(/color:#000000/i)
+  })
+
+  it('maps EMF pictures to the unmappable path instead of image/png', async () => {
+    const pptx = await buildPptx({
+      title: 'EMF',
+      slides: [{ picture: 'emf' }],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'vector.pptx' })
+
+    expect(imported.html).toContain('ark-import-plate')
+    expect(imported.html).not.toMatch(/src="data:image\/png;base64,/)
+    expect(imported.warnings.length).toBeGreaterThan(0)
+  })
+
+  it('keeps a Chart.js series when one cached point is blank', async () => {
+    const pptx = await buildPptx({
+      title: 'Blank point',
+      slides: [{ chart: 'blank-point' }],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'blank-point.pptx' })
+
+    expect(imported.html).toContain('data-ark-runtime="chart"')
+    expect(imported.html).toContain('4.2')
+    expect(imported.html).toContain('4.8')
+    expect(imported.html).toContain('null')
+    expect(imported.html).not.toContain('alt="Chart"')
+  })
+
+  it('plots scatter charts from the xVal cache, not the array index', async () => {
+    const pptx = await buildPptx({
+      title: 'Scatter',
+      slides: [{ chart: 'scatter' }],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'scatter.pptx' })
+
+    expect(imported.html).toContain('"type":"scatter"')
+    expect(imported.html).toContain('"x":1.5')
+    expect(imported.html).toContain('"y":10')
+    expect(imported.html).not.toContain('"x":0')
+  })
+
+  it('preserves a:br line breaks inside a paragraph', async () => {
+    const pptx = await buildPptx({
+      title: 'Breaks',
+      slides: [{ shapes: [{ text: 'Line one\nLine two' }] }],
+    })
+
+    const imported = await importPptxToHtml(pptx, { filename: 'breaks.pptx' })
+
+    expect(imported.html).toContain('Line one<br>')
+    expect(imported.html).toContain('Line two')
+    expect(imported.html).not.toContain('Line oneLine two')
   })
 })

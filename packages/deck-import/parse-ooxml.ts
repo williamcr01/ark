@@ -123,7 +123,6 @@ function mediaTypeFor(path: string) {
   if (lower.endsWith('.webp')) return 'image/webp'
   if (lower.endsWith('.svg')) return 'image/svg+xml'
   if (lower.endsWith('.bmp')) return 'image/bmp'
-  if (lower.endsWith('.emf') || lower.endsWith('.wmf')) return 'image/png'
   return 'application/octet-stream'
 }
 
@@ -285,8 +284,9 @@ function hundredthsOfPointToPx(sz: string | null) {
 
 function readFill(container: Element | null, theme: Theme) {
   if (!container) return null
-  if (descendant(container, 'noFill')) return null
-  return resolveColor(descendant(container, 'solidFill') ?? container, theme)
+  if (firstChild(container, 'noFill')) return null
+  const solid = firstChild(container, 'solidFill')
+  return solid ? resolveColor(solid, theme) : null
 }
 
 function hasComplexEffects(container: Element | null) {
@@ -316,6 +316,22 @@ function readParagraphs(
     const runs: ImportedTextRun[] = []
     for (const child of paragraph.children) {
       const name = child.localName
+      if (name === 'br') {
+        const last = runs.at(-1)
+        if (last) last.text += '\n'
+        else {
+          runs.push({
+            text: '\n',
+            bold: false,
+            italic: false,
+            underline: false,
+            fontSizePx: null,
+            color: null,
+            fontStack: null,
+          })
+        }
+        continue
+      }
       if (name !== 'r' && name !== 'fld') continue
       const text = descendant(child, 't')?.textContent ?? ''
       if (!text) continue
@@ -327,7 +343,7 @@ function readParagraphs(
         italic: attr(rPr, 'i') === '1',
         underline: Boolean(attr(rPr, 'u') && attr(rPr, 'u') !== 'none'),
         fontSizePx: hundredthsOfPointToPx(attr(rPr, 'sz')),
-        color: resolveColor(rPr, theme),
+        color: readFill(rPr, theme),
         fontStack: latin ? resolveFontStack(latin, fallbackId) : null,
       })
     }
@@ -366,20 +382,48 @@ const CHART_TYPE_MAP: Record<string, ChartJsConfig['type']> = {
   scatterChart: 'scatter',
 }
 
+function parseNumericPoint(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.toUpperCase() === '#N/A') return null
+  const parsed = Number.parseFloat(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function readCachePoints(container: Element | null) {
   const cache = descendant(container, 'numCache') ?? descendant(container, 'strCache')
   const literals = descendant(container, 'numLit') ?? descendant(container, 'strLit')
   const root = cache ?? literals
   if (!root) return null
   const points = [...root.getElementsByTagName('*')].filter((el) => el.localName === 'pt')
-  if (points.length === 0) return []
-  return points
-    .sort(
-      (left, right) =>
-        Number.parseInt(attr(left, 'idx') ?? '0', 10) -
-        Number.parseInt(attr(right, 'idx') ?? '0', 10),
-    )
-    .map((point) => textContent(descendant(point, 'v') ?? point))
+  const byIdx = new Map<number, string>()
+  for (const point of points) {
+    const idx = Number.parseInt(attr(point, 'idx') ?? '0', 10)
+    byIdx.set(Number.isFinite(idx) ? idx : 0, textContent(descendant(point, 'v') ?? point))
+  }
+  const counted = Number.parseInt(attr(descendant(root, 'ptCount'), 'val') ?? '', 10)
+  const length =
+    Number.isFinite(counted) && counted >= 0
+      ? counted
+      : byIdx.size === 0
+        ? 0
+        : Math.max(...byIdx.keys()) + 1
+  const values: string[] = []
+  for (let i = 0; i < length; i++) values.push(byIdx.get(i) ?? '')
+  return values
+}
+
+function scatterPoints(xs: string[] | null, ys: string[]) {
+  const count = Math.max(xs?.length ?? 0, ys.length)
+  const data: Array<{ x: number; y: number }> = []
+  for (let i = 0; i < count; i++) {
+    const y = parseNumericPoint(ys[i] ?? '')
+    if (y === null) continue
+    const rawX = xs?.[i]
+    const x = rawX !== undefined && rawX !== '' ? parseNumericPoint(rawX) : i
+    if (x === null) continue
+    data.push({ x, y })
+  }
+  return data
 }
 
 function parseChartXml(xml: string, theme: Theme): ChartJsConfig | null {
@@ -394,8 +438,7 @@ function parseChartXml(xml: string, theme: Theme): ChartJsConfig | null {
   const series = directChildren(chartEl, 'ser')
   if (series.length === 0) return null
 
-  const firstCats = readCachePoints(descendant(series[0], 'cat') ?? descendant(series[0], 'xVal'))
-  if (!firstCats) return null
+  const firstCats = readCachePoints(descendant(series[0], 'cat'))
 
   const datasets: ChartJsConfig['data']['datasets'] = []
   const palette = ['accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6'].map(
@@ -405,15 +448,16 @@ function parseChartXml(xml: string, theme: Theme): ChartJsConfig | null {
   for (const [index, ser] of series.entries()) {
     const values = readCachePoints(descendant(ser, 'val') ?? descendant(ser, 'yVal'))
     if (!values) return null
-    const numbers = values.map((value) => Number.parseFloat(value))
-    if (numbers.some((value) => !Number.isFinite(value))) return null
+    const numbers = values.map((value) => parseNumericPoint(value))
     const label = textContent(descendant(descendant(ser, 'tx'), 'v')) || `Series ${index + 1}`
     const color = resolveColor(descendant(ser, 'spPr'), theme) ?? palette[index % palette.length]
+    const data =
+      type === 'scatter' ? scatterPoints(readCachePoints(descendant(ser, 'xVal')), values) : numbers
     datasets.push({
       label,
-      data: type === 'scatter' ? numbers.map((y, x) => ({ x, y })) : numbers,
+      data,
       backgroundColor:
-        type === 'pie' || type === 'doughnut' ? palette.slice(0, numbers.length) : color,
+        type === 'pie' || type === 'doughnut' ? palette.slice(0, data.length) : color,
       borderColor: color,
     })
   }
@@ -424,7 +468,9 @@ function parseChartXml(xml: string, theme: Theme): ChartJsConfig | null {
     type,
     data: {
       labels:
-        firstCats.length > 0 ? firstCats : datasets[0]!.data.map((_, index) => String(index + 1)),
+        firstCats && firstCats.length > 0
+          ? firstCats
+          : datasets[0]!.data.map((_, index) => String(index + 1)),
       datasets,
     },
     options: {
@@ -471,6 +517,15 @@ function toPx(rect: EmuRect | null, ctx: ZipContext): PxRect | null {
   return emuToPxRect(rect, ctx.slideCx, ctx.slideCy)
 }
 
+function fallbackSlideRect(): PxRect {
+  return {
+    x: 0,
+    y: 0,
+    width: ARK_SLIDE_REFERENCE_WIDTH,
+    height: ARK_SLIDE_REFERENCE_HEIGHT,
+  }
+}
+
 async function parseShape(
   sp: Element,
   ctx: ZipContext,
@@ -479,17 +534,25 @@ async function parseShape(
   const spPr = firstChild(sp, 'spPr') ?? descendant(sp, 'spPr')
   let rect = readXfrm(descendant(spPr, 'xfrm') ?? descendant(sp, 'xfrm'))
   if (rect && group) rect = mapGroupRect(rect, group)
+  const fill = readFill(spPr, ctx.theme)
+  const ph = placeholderType(sp)
   const px = toPx(rect, ctx)
-  if (!px) return null
+  if (!px) {
+    return {
+      kind: 'unmappable',
+      rect: fallbackSlideRect(),
+      reason: ph ? 'placeholder-geometry' : 'missing-xfrm',
+      fill,
+      media: null,
+    }
+  }
 
   const geom = attr(descendant(spPr, 'prstGeom'), 'prst') ?? 'rect'
-  const fill = readFill(spPr, ctx.theme)
   const stroke = resolveColor(descendant(spPr, 'ln'), ctx.theme)
   const effects = hasComplexEffects(spPr)
   const txBody = firstChild(sp, 'txBody') ?? descendant(sp, 'txBody')
   const paragraphs = readParagraphs(txBody, ctx.theme, DEFAULT_DECK_FONT_IDS.body)
   const hasText = paragraphsHaveText(paragraphs)
-  const ph = placeholderType(sp)
   const fontId =
     ph === 'title' || ph === 'ctrTitle' ? DEFAULT_DECK_FONT_IDS.display : DEFAULT_DECK_FONT_IDS.body
 
@@ -544,7 +607,7 @@ async function parsePicture(
   const blip = descendant(pic, 'blip')
   const media = await mediaFromRel(ctx.zip, rels, attrNS(blip, 'embed'))
   if (!media || media.mediaType === 'application/octet-stream') {
-    return { kind: 'unmappable', rect: px, reason: 'picture', fill: null, media }
+    return { kind: 'unmappable', rect: px, reason: 'picture', fill: null, media: null }
   }
   const name = attr(descendant(pic, 'cNvPr'), 'name') || 'Image'
   return { kind: 'image', rect: px, media, alt: name }

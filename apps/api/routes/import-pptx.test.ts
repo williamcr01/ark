@@ -6,9 +6,14 @@ import path from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { apiErrorPayloadSchema, assertApiContract, createDeckResponseSchema } from '@ark/contracts'
-import { PPTX_ENCRYPTED_MESSAGE, PPTX_LEGACY_MESSAGE } from '@ark/deck-import'
-import { buildEncryptedPptx, buildLegacyPpt, buildPptx } from '@ark/deck-import/pptx-fixtures.ts'
+import { apiErrorPayloadSchema, assertApiContract, importPptxResponseSchema } from '@ark/contracts'
+import { PPTX_ENCRYPTED_MESSAGE, PPTX_INVALID_MESSAGE, PPTX_LEGACY_MESSAGE } from '@ark/deck-import'
+import {
+  buildCorruptXmlPptx,
+  buildEncryptedPptx,
+  buildLegacyPpt,
+  buildPptx,
+} from '@ark/deck-import/pptx-fixtures.ts'
 import { createApp } from '../app.ts'
 import { createDeckStore, type DeckStore } from '@ark/storage/stores/deck-store.ts'
 import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
@@ -65,7 +70,8 @@ describe('POST /api/decks/import-pptx', () => {
 
     expect(response.status).toBe(201)
     const payload = await response.json()
-    assertApiContract(createDeckResponseSchema, payload)
+    assertApiContract(importPptxResponseSchema, payload)
+    expect(payload.warnings).toEqual([])
     expect(payload.deck.origin).toBe('authored')
     expect(payload.deck.title).toBe('Imported Board')
     expect(payload.deck.html).toContain('Hello from PowerPoint')
@@ -134,6 +140,44 @@ describe('POST /api/decks/import-pptx', () => {
     expect(response.status).toBe(400)
     const payload = await response.json()
     expect(payload).toMatchObject({ error: PPTX_ENCRYPTED_MESSAGE, code: 'pptx_encrypted' })
+    assertApiContract(apiErrorPayloadSchema, payload)
+  })
+
+  it('returns import warnings when objects flatten to a picture', async () => {
+    const pptx = await buildPptx({
+      title: 'Diagram',
+      slides: [{ smartArt: true, shapes: [{ text: 'Org chart' }] }],
+    })
+
+    const response = await fetch(`${baseUrl}/api/decks/import-pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: 'diagram.pptx',
+        bytes: Buffer.from(pptx).toString('base64'),
+      }),
+    })
+
+    expect(response.status).toBe(201)
+    const payload = await response.json()
+    assertApiContract(importPptxResponseSchema, payload)
+    expect(payload.warnings.length).toBeGreaterThan(0)
+    expect(payload.warnings.some((warning: string) => warning.includes('flattened'))).toBe(true)
+  })
+
+  it('returns 400 pptx_invalid when a slide part is malformed XML', async () => {
+    const response = await fetch(`${baseUrl}/api/decks/import-pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: 'corrupt.pptx',
+        bytes: Buffer.from(await buildCorruptXmlPptx()).toString('base64'),
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    const payload = await response.json()
+    expect(payload).toMatchObject({ error: PPTX_INVALID_MESSAGE, code: 'pptx_invalid' })
     assertApiContract(apiErrorPayloadSchema, payload)
   })
 })

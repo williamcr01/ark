@@ -3,12 +3,17 @@ import { JSDOM } from 'jsdom'
 import { PptxImportError, PPTX_INVALID_MESSAGE } from './errors.ts'
 
 export function parseXml(xml: string): Document {
-  const dom = new JSDOM(xml, { contentType: 'application/xml' })
-  const doc = dom.window.document
-  if (doc.getElementsByTagName('parsererror').length > 0) {
+  try {
+    const dom = new JSDOM(xml, { contentType: 'application/xml' })
+    const doc = dom.window.document
+    if (doc.getElementsByTagName('parsererror').length > 0) {
+      throw new PptxImportError(PPTX_INVALID_MESSAGE, 'pptx_invalid')
+    }
+    return doc
+  } catch (error) {
+    if (error instanceof PptxImportError) throw error
     throw new PptxImportError(PPTX_INVALID_MESSAGE, 'pptx_invalid')
   }
-  return doc
 }
 
 export function localName(node: Element) {

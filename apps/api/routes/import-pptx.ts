@@ -70,9 +70,15 @@ export function createImportPptxRouter(deps: {
       getRequestLogger(request).info('deck.imported.pptx', {
         deckId: deck.id,
         slideCount: imported.slideCount,
+        warningCount: imported.warnings.length,
         statusCode: 201,
       })
-      response.status(201).json({ deck, validation, runtimeManifest })
+      response.status(201).json({
+        deck,
+        validation,
+        runtimeManifest,
+        warnings: imported.warnings,
+      })
     } catch (error) {
       if (isPptxImportError(error)) {
         sendPptxError(response, error.message, error.code)

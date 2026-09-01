@@ -44,6 +44,7 @@ import {
   deckValidationErrorResponseSchema,
   duplicateWorkspaceRequestSchema,
   importPptxRequestSchema,
+  importPptxResponseSchema,
   renameDeckRequestSchema,
   updateDeckRequestSchema,
   workspacePathRequestSchema,
@@ -164,7 +165,7 @@ export function createArkOpenApiRegistry() {
     responses: {
       201: {
         description: 'Created deck',
-        content: { 'application/json': { schema: createDeckResponseSchema } },
+        content: { 'application/json': { schema: importPptxResponseSchema } },
       },
       400: jsonError,
       500: jsonError,

@@ -26,7 +26,7 @@ export type ChartJsConfig = {
     labels: string[]
     datasets: Array<{
       label?: string
-      data: number[] | Array<{ x: number; y: number }>
+      data: Array<number | null> | Array<{ x: number; y: number }>
       backgroundColor?: string | string[]
       borderColor?: string | string[]
     }>

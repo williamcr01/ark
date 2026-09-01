@@ -143,6 +143,12 @@ export const createDeckResponseSchema = withRequestId({
 
 export type CreateDeckResponse = z.infer<typeof createDeckResponseSchema>
 
+export const importPptxResponseSchema = createDeckResponseSchema.extend({
+  warnings: z.array(z.string()),
+})
+
+export type ImportPptxResponse = z.infer<typeof importPptxResponseSchema>
+
 export const deckPatchResultSchema = z.object({
   appliedCount: z.number().int().min(0),
   changedSlideIndexes: z.array(z.number().int().min(0)),
