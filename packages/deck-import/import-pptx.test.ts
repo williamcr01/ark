@@ -142,7 +142,10 @@ describe('importPptxToHtml', () => {
     expect(imported.html).toContain('Q1')
     expect(imported.html).toContain('4.2')
     expect(imported.html).toContain('keydown')
+    expect(imported.html).toContain('ArrowLeft')
+    expect(imported.html).toContain('ArrowUp')
     expect(imported.html).toContain('ArrowRight')
+    expect(imported.html).toContain('ArrowDown')
   })
 
   it('flattens SmartArt onto a background plate and keeps mappable text', async () => {
@@ -334,20 +337,23 @@ describe('importPptxToHtml', () => {
     expect(imported.html).not.toMatch(/color:#000000/i)
   })
 
-  it('maps EMF pictures to the unmappable path instead of image/png', async () => {
-    const pptx = await buildPptx({
-      title: 'EMF',
-      slides: [{ picture: 'emf' }],
-    })
+  it.each(['emf', 'wmf'] as const)(
+    'maps %s pictures to the unmappable path instead of image/png',
+    async (ext) => {
+      const pptx = await buildPptx({
+        title: ext.toUpperCase(),
+        slides: [{ picture: ext }],
+      })
 
-    const imported = await importPptxToHtml(pptx, { filename: 'vector.pptx' })
+      const imported = await importPptxToHtml(pptx, { filename: 'vector.pptx' })
 
-    expect(imported.html).toContain('ark-import-plate')
-    expect(imported.html).not.toMatch(/src="data:image\/png;base64,/)
-    expect(imported.warnings.length).toBeGreaterThan(0)
-  })
+      expect(imported.html).toContain('ark-import-plate')
+      expect(imported.html).not.toMatch(/src="data:image\/png;base64,/)
+      expect(imported.warnings.length).toBeGreaterThan(0)
+    },
+  )
 
-  it('keeps a Chart.js series when one cached point is blank', async () => {
+  it('keeps a Chart.js series when a cached point is blank or #N/A', async () => {
     const pptx = await buildPptx({
       title: 'Blank point',
       slides: [{ chart: 'blank-point' }],
@@ -356,9 +362,7 @@ describe('importPptxToHtml', () => {
     const imported = await importPptxToHtml(pptx, { filename: 'blank-point.pptx' })
 
     expect(imported.html).toContain('data-ark-runtime="chart"')
-    expect(imported.html).toContain('4.2')
-    expect(imported.html).toContain('4.8')
-    expect(imported.html).toContain('null')
+    expect(imported.html).toContain('[4.2,null,4.8,null]')
     expect(imported.html).not.toContain('alt="Chart"')
   })
 

@@ -70,7 +70,7 @@ export type FixtureShape = {
 export type FixtureSlide = {
   notes?: string
   shapes?: FixtureShape[]
-  picture?: boolean | 'emf'
+  picture?: boolean | 'emf' | 'wmf'
   chart?: 'cached' | 'uncached' | 'scatter' | 'blank-point'
   smartArt?: boolean
 }
@@ -230,7 +230,7 @@ function chartXml(kind: NonNullable<FixtureSlide['chart']>) {
   const cats = `<c:strCache><c:ptCount val="4"/><c:pt idx="0"><c:v>Q1</c:v></c:pt><c:pt idx="1"><c:v>Q2</c:v></c:pt><c:pt idx="2"><c:v>Q3</c:v></c:pt><c:pt idx="3"><c:v>Q4</c:v></c:pt></c:strCache>`
   if (kind === 'blank-point') {
     return barChartXml(
-      `<c:numCache><c:ptCount val="4"/><c:pt idx="0"><c:v>4.2</c:v></c:pt><c:pt idx="1"><c:v>#N/A</c:v></c:pt><c:pt idx="2"><c:v>4.8</c:v></c:pt><c:pt idx="3"><c:v>6.3</c:v></c:pt></c:numCache>`,
+      `<c:numCache><c:ptCount val="4"/><c:pt idx="0"><c:v>4.2</c:v></c:pt><c:pt idx="1"><c:v>#N/A</c:v></c:pt><c:pt idx="2"><c:v>4.8</c:v></c:pt><c:pt idx="3"><c:v></c:v></c:pt></c:numCache>`,
       cats,
     )
   }
@@ -339,7 +339,7 @@ export async function buildPptx(options: BuildPptxOptions): Promise<Uint8Array> 
       body.push(shapeXml(shape, shapeIndex))
     }
     if (slide.picture) {
-      const ext = slide.picture === 'emf' ? 'emf' : 'png'
+      const ext = slide.picture === 'emf' || slide.picture === 'wmf' ? slide.picture : 'png'
       slideRels.push({ id: 'rIdImg', type: IMAGE_REL, target: `../media/image1.${ext}` })
       body.push(pictureXml('rIdImg', index))
       zip.file(`ppt/media/image1.${ext}`, TINY_PNG)
