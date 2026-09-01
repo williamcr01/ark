@@ -786,6 +786,7 @@ describe('theme proposal contract', () => {
     expect(parsed.kind).toBe('themes')
     if (parsed.kind !== 'themes') throw new Error('expected themes interaction')
     expect(parsed.request.themes[0]?.fonts).toEqual(fonts)
+    expect(parsed.request.themes[0]?.sampleHtml).toBe(sampleHtml)
     expect(themeProposalRequestSchema.parse(parsed.request).themes[1]?.fonts.display).toBe(
       'georgia',
     )

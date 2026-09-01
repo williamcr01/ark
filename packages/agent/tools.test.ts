@@ -222,4 +222,29 @@ describe('propose_themes tool', () => {
       themeId: 'a',
     })
   })
+
+  it('preserves registry fonts with sampleHtml on the live input schema', () => {
+    const tools = createDeckTools(createDeckWorkspace(''))
+    const schema = tools.propose_themes!.inputSchema
+    const parsed = schema.parse({ title: 'Pick a visual direction', themes })
+
+    expect(parsed.themes[0]?.fonts).toEqual(fonts)
+    expect(parsed.themes[0]?.sampleHtml).toBe(sampleHtml)
+    expect(
+      schema.safeParse({
+        title: 'Pick a visual direction',
+        themes: themes.map(({ fonts: _fonts, ...theme }) => theme),
+      }).success,
+    ).toBe(false)
+    expect(
+      schema.safeParse({
+        title: 'Pick a visual direction',
+        themes: themes.map((theme, index) =>
+          index === 0
+            ? { ...theme, fonts: { display: 'inter', body: 'calibri', mono: 'courier-new' } }
+            : theme,
+        ),
+      }).success,
+    ).toBe(false)
+  })
 })

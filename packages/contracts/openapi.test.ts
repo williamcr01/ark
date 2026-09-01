@@ -66,7 +66,9 @@ describe('OpenAPI registry', () => {
       | undefined
 
     const fonts = schema?.properties?.themes?.items?.properties?.fonts
-    expect(schema?.properties?.themes?.items?.required).toContain('fonts')
+    expect(schema?.properties?.themes?.items?.required).toEqual(
+      expect.arrayContaining(['fonts', 'sampleHtml']),
+    )
     expect(fonts?.required).toEqual(expect.arrayContaining(['display', 'body', 'mono']))
     expect(fonts?.properties?.display?.enum).toEqual([
       'calibri',
@@ -76,6 +78,8 @@ describe('OpenAPI registry', () => {
       'times-new-roman',
       'courier-new',
     ])
+    expect(fonts?.properties?.display?.enum).not.toContain('inter')
+    expect(fonts?.properties?.display?.enum).not.toContain('"Georgia", "Gelasio", serif')
     expect(fonts?.properties?.body?.enum).toEqual(fonts?.properties?.display?.enum)
     expect(fonts?.properties?.mono?.enum).toEqual(fonts?.properties?.display?.enum)
   })

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ChatMessage } from '@ark/chat/chat.ts'
-import { findThemeChoiceAfter, isThemeChoiceMessage } from '@/lib/chat/agent-themes'
+import {
+  findThemeChoiceAfter,
+  getThemeProposalRequest,
+  isThemeChoiceMessage,
+} from '@/lib/chat/agent-themes'
 
 const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
 const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
@@ -29,6 +33,32 @@ const proposal: ChatMessage = {
 }
 
 describe('agent theme chat helpers', () => {
+  it('reads fonts from the proposal and does not invent a pairing', () => {
+    expect(getThemeProposalRequest(proposal)?.themes[0]?.fonts).toEqual(fonts)
+    expect(getThemeProposalRequest(proposal)?.themes[0]?.sampleHtml).toBe(sampleHtml)
+
+    const withoutFonts: ChatMessage = {
+      ...proposal,
+      parts: [
+        {
+          type: 'tool-call',
+          toolName: 'propose_themes',
+          summary: '4 theme(s)',
+          input: {
+            title: 'Pick a visual direction',
+            themes: [
+              { id: 'midnight', name: 'Midnight Editorial', description: 'Dark', sampleHtml },
+              { id: 'sunlit', name: 'Sunlit Studio', description: 'Warm', sampleHtml },
+              { id: 'signal', name: 'Signal Grid', description: 'Bold', sampleHtml },
+              { id: 'folio', name: 'Quiet Folio', description: 'Soft', sampleHtml },
+            ],
+          },
+        },
+      ],
+    }
+    expect(getThemeProposalRequest(withoutFonts)).toBeNull()
+  })
+
   it('only suppresses parseable theme choice messages', () => {
     const choice: ChatMessage = {
       id: 'u2',

@@ -63,6 +63,15 @@ describe('MCP interactions', () => {
       'session-a',
     )
 
+    expect(interaction.kind).toBe('themes')
+    if (interaction.kind !== 'themes') throw new Error('expected themes interaction')
+    expect(interaction.request.themes[0]?.fonts).toEqual({
+      display: 'georgia',
+      body: 'calibri',
+      mono: 'courier-new',
+    })
+    expect(interaction.request.themes[0]?.sampleHtml).toContain('<section class="slide">')
+
     expect(() => store.respond(interaction.id, { kind: 'themes', themeId: 'missing' })).toThrow(
       'Unknown theme choice',
     )

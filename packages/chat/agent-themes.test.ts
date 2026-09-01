@@ -140,10 +140,24 @@ describe('agent themes', () => {
         mono: 'courier-new',
       }).success,
     ).toBe(false)
+    expect(
+      themeFontPairingSchema.safeParse({
+        display: 'georgia',
+        body: 'calibri',
+      }).success,
+    ).toBe(false)
     expect(deckFontIdSchema.safeParse('Calibri').success).toBe(false)
   })
 
   it('accepts every approved deck font id in each role', () => {
+    expect([...APPROVED_DECK_FONT_IDS]).toEqual([
+      'calibri',
+      'arial',
+      'cambria',
+      'georgia',
+      'times-new-roman',
+      'courier-new',
+    ])
     for (const id of APPROVED_DECK_FONT_IDS) {
       expect(deckFontIdSchema.parse(id)).toBe(id)
       expect(
