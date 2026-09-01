@@ -938,6 +938,25 @@ async function launchElectron(options) {
     }
   }
 
+  await waitFor(
+    'shell HTTP origin and API',
+    async () => {
+      const href = await evaluate(page, 'location.href').catch(() => '')
+      if (!href || !String(href).startsWith('http')) return false
+      try {
+        return Boolean(
+          await evaluate(
+            page,
+            `fetch('/api/health').then((response) => response.ok).catch(() => false)`,
+          ),
+        )
+      } catch {
+        return false
+      }
+    },
+    90_000,
+  )
+
   return {
     child,
     logs,
