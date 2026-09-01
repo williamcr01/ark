@@ -6,6 +6,7 @@
  * 100/500 absolute elements, one Reveal, one adoption.
  *
  * Usage: pnpm exec tsx scripts/bench-editor-patch.ts
+ *        ARK_BENCH_RUNS=21 pnpm exec tsx scripts/bench-editor-patch.ts
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -49,7 +50,9 @@ function percentile(sorted: number[], p: number) {
   return sorted[idx]!
 }
 
-function bench(name: string, html: string, operations: DeckPatchOperation[], runs = 5) {
+const RUNS = Math.max(2, Number.parseInt(process.env.ARK_BENCH_RUNS ?? '5', 10) || 5)
+
+function bench(name: string, html: string, operations: DeckPatchOperation[], runs = RUNS) {
   const samples: Array<{ patchMs: number; totalMs: number; reusedValidation: boolean }> = []
 
   for (let i = 0; i < runs; i++) {
@@ -85,8 +88,10 @@ function bench(name: string, html: string, operations: DeckPatchOperation[], run
     reusedValidation: warmed.every((sample) => sample.reusedValidation),
     patchMedianMs: Number(percentile(patches, 50).toFixed(1)),
     patchP90Ms: Number(percentile(patches, 90).toFixed(1)),
+    patchP95Ms: Number(percentile(patches, 95).toFixed(1)),
     totalMedianMs: Number(percentile(totals, 50).toFixed(1)),
     totalP90Ms: Number(percentile(totals, 90).toFixed(1)),
+    totalP95Ms: Number(percentile(totals, 95).toFixed(1)),
   }
 }
 

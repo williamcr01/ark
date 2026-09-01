@@ -5,7 +5,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { createElementId, stampEditableElementIds } from './editable-elements.ts'
+import {
+  createElementId,
+  parseEditableElement,
+  parseEditableElementsForSlide,
+  stampEditableElementIds,
+} from './editable-elements.ts'
 import { applyDeckPatches } from './slide-ops.ts'
 import { parseDeckHtml } from '../document/parser.ts'
 import { validateDeckHtmlOnServer } from '../validate/timed.ts'
@@ -96,6 +101,29 @@ describe('parseEditableElementsForSlide', () => {
       locked: true,
       lockReason: 'speaker-notes',
     })
+  })
+
+  it('classifies a resolved target without walking the rest of the slide', () => {
+    const fragment = new DOMParser().parseFromString(arkManagedDeck, 'text/html')
+    const slide = fragment.querySelector('section.slide')
+    const body = fragment.querySelector('[data-ark-id="ark-el-body"]')
+    const title = fragment.querySelector('[data-ark-id="ark-el-title"]')
+    expect(slide).not.toBeNull()
+    expect(body).not.toBeNull()
+    expect(title).not.toBeNull()
+
+    const group = parseEditableElementsForSlide(slide!, 0)
+    const fromScan = group.elements.find((element) => element.id === 'ark-el-body')
+    const fromTarget = parseEditableElement(body!, slide!, 0)
+
+    expect(fromTarget).toMatchObject({
+      id: 'ark-el-body',
+      managed: true,
+      locked: false,
+      kind: 'text',
+    })
+    expect(fromTarget).toEqual(fromScan)
+    expect(parseEditableElement(title!, slide!, 0)?.id).toBe('ark-el-title')
   })
 })
 
