@@ -1,5 +1,3 @@
-import { JSDOM } from 'jsdom'
-
 import {
   ARK_EDITABLE_ATTR,
   ARK_ELEMENT_ID_ATTR,
@@ -19,6 +17,7 @@ import {
   parseEditableElement,
   stampEditableElementIds,
 } from './editable-elements.ts'
+import { createDeckJsdom } from './jsdom-inline-style.ts'
 
 export type ElementPatchContext = {
   doc: Document
@@ -521,7 +520,7 @@ function parseElementHtml(doc: Document, html: string) {
     return { error: 'Element HTML must not be empty.' } as const
   }
 
-  const fragmentDom = new JSDOM(`<!DOCTYPE html><body>${trimmed}</body>`)
+  const fragmentDom = createDeckJsdom(`<!DOCTYPE html><body>${trimmed}</body>`)
   const body = fragmentDom.window.document.body
 
   if (body.children.length !== 1) {
