@@ -21,7 +21,7 @@ An Ark workspace is one `.ark` SQLite file per deck. `stores/workspace/` holds t
 | ------------ | --------------------------------------------------------------------- |
 | `schema.ts`  | The SQLite schema, connection configuration, migration, content hash  |
 | `types.ts`   | Row shapes, open-file handles, the document-conflict error            |
-| `assets.ts`  | Asset reference tracking and grace-period garbage collection          |
+| `assets.ts`  | Asset reference tracking, history pins, and grace-period GC           |
 | `history.ts` | Bounded `document_history` snapshots, seed-on-open, cap eviction      |
 | `file.ts`    | Reading a file's rows, metadata, and identity without migrating it    |
 | `store.ts`   | `WorkspaceStore` — open files, recents, revisions, rename, move, copy |

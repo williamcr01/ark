@@ -240,6 +240,12 @@ export class WorkspaceStore {
         open.database
           .prepare('UPDATE workspace SET document_revision = document_revision + 1')
           .run()
+        appendDocumentHistory(open.database, {
+          revision: current.documentRevision + 1,
+          html: syncedHtml,
+          source: 'editor',
+          createdAt: now,
+        })
       }
       open.database.exec('COMMIT')
     } catch (error) {
@@ -484,7 +490,6 @@ export class WorkspaceStore {
       }
       insertEmbeddedAssets(open.database, embeddedAssets)
       syncDocumentAssetReferences(open.database, html)
-      garbageCollectUnreferencedAssets(open.database)
       open.database
         .prepare('UPDATE document SET html = ?, content_hash = ?, updated_at = ? WHERE id = 1')
         .run(html, contentHash(html), now)
@@ -497,6 +502,9 @@ export class WorkspaceStore {
           createdAt: now,
         })
       }
+      // GC after history pins so a snapshot still referenced by
+      // document_history cannot lose its ark-asset: blobs.
+      garbageCollectUnreferencedAssets(open.database)
       open.database.exec('COMMIT')
     } catch (error) {
       open.database.exec('ROLLBACK')
@@ -578,6 +586,13 @@ export class WorkspaceStore {
     if (targetPath !== open.path) {
       try {
         const workspace = await this.renameOpenWorkspaceFile(open, targetPath)
+        this.appendRenameHistory(
+          workspace.id,
+          htmlChanged,
+          workspace.documentRevision,
+          workspace.html,
+          now,
+        )
         await this.touchRecent(workspace)
         return workspace
       } catch (error) {
@@ -593,9 +608,33 @@ export class WorkspaceStore {
         throw error
       }
     }
+    this.appendRenameHistory(open.id, htmlChanged, previous.documentRevision + 1, syncedHtml, now)
     const workspace = readWorkspace(open)
     await this.touchRecent(workspace)
     return workspace
+  }
+
+  /**
+   * A title rewrite that changes `<title>` (and therefore HTML) is a restore
+   * point. Append after the rename succeeds so a rolled-back file move never
+   * leaves a history row for a title that did not stick.
+   */
+  private appendRenameHistory(
+    id: string,
+    htmlChanged: boolean,
+    revision: number,
+    html: string,
+    createdAt: string,
+  ) {
+    if (!htmlChanged) return
+    const open = this.byId.get(id)
+    if (!open) return
+    appendDocumentHistory(open.database, {
+      revision,
+      html,
+      source: 'editor',
+      createdAt,
+    })
   }
 
   async delete(id: string) {

@@ -9,30 +9,25 @@ import {
   type DocumentHistorySource,
   type DocumentHistorySummary,
 } from '../../records/document-history.ts'
+import { dropHistoryAssetReferences, pinHistoryAssetReferences } from './assets.ts'
 
-export const DOCUMENT_HISTORY_TABLE = `
-  CREATE TABLE document_history (
+export const DOCUMENT_HISTORY_TABLE = `CREATE TABLE document_history (
     revision INTEGER PRIMARY KEY,
     html TEXT NOT NULL,
     source TEXT NOT NULL,
     created_at TEXT NOT NULL,
     byte_size INTEGER NOT NULL
-  );
-`
+  );`
 
-const CREATE_DOCUMENT_HISTORY_IF_NEEDED = `
-  CREATE TABLE IF NOT EXISTS document_history (
-    revision INTEGER PRIMARY KEY,
-    html TEXT NOT NULL,
-    source TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    byte_size INTEGER NOT NULL
-  );
-`
+const CREATE_DOCUMENT_HISTORY_IF_NEEDED = DOCUMENT_HISTORY_TABLE.replace(
+  'CREATE TABLE document_history',
+  'CREATE TABLE IF NOT EXISTS document_history',
+)
 
 export function migrateDocumentHistory(database: DatabaseSync) {
   database.exec(CREATE_DOCUMENT_HISTORY_IF_NEEDED)
   seedDocumentHistoryIfEmpty(database)
+  pinExistingDocumentHistoryAssets(database)
 }
 
 export function seedDocumentHistoryIfEmpty(database: DatabaseSync) {
@@ -55,6 +50,18 @@ export function seedDocumentHistoryIfEmpty(database: DatabaseSync) {
     source: 'create',
     createdAt: row.created_at,
   })
+}
+
+/**
+ * Re-pin every history snapshot. Files written before history pins, and rows
+ * seeded on open, need this so restore still finds `ark-asset:` blobs.
+ */
+function pinExistingDocumentHistoryAssets(database: DatabaseSync) {
+  const rows = database.prepare('SELECT revision, html FROM document_history').all() as Array<{
+    revision: number
+    html: string
+  }>
+  for (const row of rows) pinHistoryAssetReferences(database, row.revision, row.html)
 }
 
 export function appendDocumentHistory(
@@ -93,6 +100,7 @@ function insertDocumentHistoryRow(
       input.createdAt,
       byteSize,
     )
+  pinHistoryAssetReferences(database, input.revision, input.html)
 }
 
 /**
@@ -111,13 +119,12 @@ export function evictDocumentHistory(
       .get() as { count: number; bytes: number }
     if (stats.count <= 1) return
     if (stats.count <= limits.maxEntries && Number(stats.bytes) <= limits.maxBytes) return
-    database
-      .prepare(
-        `DELETE FROM document_history WHERE revision = (
-           SELECT revision FROM document_history ORDER BY revision ASC LIMIT 1
-         )`,
-      )
-      .run()
+    const oldest = database
+      .prepare('SELECT revision FROM document_history ORDER BY revision ASC LIMIT 1')
+      .get() as { revision: number } | undefined
+    if (!oldest) return
+    dropHistoryAssetReferences(database, oldest.revision)
+    database.prepare('DELETE FROM document_history WHERE revision = ?').run(oldest.revision)
   }
 }
 

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 
 import { DEFAULT_DECK_ORIGIN } from '@ark/deck/document/origin.ts'
-import { migrateDocumentHistory } from './history.ts'
+import { DOCUMENT_HISTORY_TABLE, migrateDocumentHistory } from './history.ts'
 
 export const ARK_WORKSPACE_FORMAT_VERSION = 1
 export const ARK_APPLICATION_ID = 0x41524b31
@@ -81,13 +81,7 @@ export const SCHEMA = `
     updated_at TEXT NOT NULL,
     PRIMARY KEY (slide_hash, renderer_version, manifest_hash)
   );
-  CREATE TABLE document_history (
-    revision INTEGER PRIMARY KEY,
-    html TEXT NOT NULL,
-    source TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    byte_size INTEGER NOT NULL
-  );
+  ${DOCUMENT_HISTORY_TABLE}
 `
 
 export function contentHash(html: string) {

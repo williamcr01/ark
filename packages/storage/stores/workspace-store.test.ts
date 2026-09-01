@@ -13,6 +13,8 @@ import {
   DOCUMENT_HISTORY_MAX_BYTES,
   DOCUMENT_HISTORY_MAX_ENTRIES,
 } from '../records/document-history.ts'
+import { garbageCollectUnreferencedAssets } from './workspace/assets.ts'
+import { evictDocumentHistory } from './workspace/history.ts'
 
 const html = `<!DOCTYPE html><html><head><title>Workspace</title></head><body><section class="slide"><h1>Hello</h1></section></body></html>`
 
@@ -135,6 +137,10 @@ describe('WorkspaceStore file operations', () => {
     expect(renamed?.path).toBe(path.join(root, 'Board plan.ark'))
     expect(renamed?.html).toContain('<title>Board plan</title>')
     expect(renamed?.documentRevision).toBe(2)
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
     await expect(access(originalPath)).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(access(renamed!.path)).resolves.toBeUndefined()
     await expect(workspaces.get(created.id)).resolves.toMatchObject({
@@ -298,6 +304,9 @@ describe('WorkspaceStore file operations', () => {
     expect(renamed?.title).toBe('Board plan')
     expect(renamed?.html).toBe(noTitleHtml)
     expect(renamed?.documentRevision).toBe(1)
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+    ])
   })
 
   it('adopts an externally renamed file name as the deck title on open', async () => {
@@ -316,6 +325,10 @@ describe('WorkspaceStore file operations', () => {
     expect(opened?.path).toBe(renamedPath)
     expect(opened?.html).toContain('<title>Final</title>')
     expect(opened?.documentRevision).toBe(2)
+    await expect(store.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
     await expect(store.listRecent()).resolves.toEqual([
       expect.objectContaining({ id: created.id, title: 'Final', path: renamedPath }),
     ])
@@ -562,6 +575,12 @@ describe('WorkspaceStore file operations', () => {
     ])
 
     await workspaces.updateDocument(created.id, html, 2)
+    await expect(assets.listAssetsByDeck(created.id)).resolves.toEqual([
+      expect.objectContaining({ id: kept.id }),
+    ])
+
+    evictDocumentHistory(database!, { maxEntries: 1, maxBytes: 8 * 1024 * 1024 })
+    garbageCollectUnreferencedAssets(database!)
     await expect(assets.listAssetsByDeck(created.id)).resolves.toEqual([])
     expect(database?.prepare('SELECT COUNT(*) AS count FROM blobs').get()).toEqual({ count: 0 })
   })
@@ -922,7 +941,9 @@ describe('WorkspaceStore document history', () => {
     await expect(store.listDocumentHistory(reopened.id)).resolves.toEqual([
       expect.objectContaining({ revision: 1, source: 'create' }),
       expect.objectContaining({ revision: 2, source: 'editor' }),
+      expect.objectContaining({ revision: 3, source: 'editor' }),
     ])
+    expect(reopened.html).toContain('<title>Saved</title>')
 
     const sqlite = await import('node:sqlite')
     if (typeof sqlite.backup === 'function') {
@@ -931,6 +952,7 @@ describe('WorkspaceStore document history', () => {
       expect(saved!.id).toBe(reopened.id)
       expect(readHistoryFromFile(saved!.path).map((row) => row.source)).toEqual([
         'create',
+        'editor',
         'editor',
       ])
     }
@@ -976,5 +998,74 @@ describe('WorkspaceStore document history', () => {
     } finally {
       database.close()
     }
+  })
+
+  it('keeps history-referenced assets through GC so restore can still load them', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const assets = createAssetStore(workspaces)
+    const imageA = await assets.createAsset({
+      deckId: created.id,
+      filename: 'a.png',
+      mediaType: 'image/png',
+      category: 'image',
+      source: 'upload',
+      bytes: Buffer.from('image-a-bytes'),
+    })
+    const htmlA = html.replace('</body>', `<img src="ark-asset:${imageA.id}" alt="A"></body>`)
+    await workspaces.updateDocument(created.id, htmlA, 1)
+
+    const imageB = await assets.createAsset({
+      deckId: created.id,
+      filename: 'b.png',
+      mediaType: 'image/png',
+      category: 'image',
+      source: 'upload',
+      bytes: Buffer.from('image-b-bytes'),
+    })
+    const htmlB = html.replace('</body>', `<img src="ark-asset:${imageB.id}" alt="B"></body>`)
+    await workspaces.updateDocument(created.id, htmlB, 2)
+
+    const database = await workspaces.database(created.id)
+    database?.prepare('UPDATE assets SET created_at = ?').run('2020-01-01T00:00:00.000Z')
+    // Identical save still runs GC; A is only in history, not the live document.
+    await workspaces.updateDocument(created.id, htmlB, 3)
+
+    await expect(assets.readBytes(created.id, imageA.id)).resolves.toEqual(
+      Buffer.from('image-a-bytes'),
+    )
+
+    const restored = await workspaces.restoreDocument(created.id, 2, 4)
+    expect(restored?.html).toContain(`ark-asset:${imageA.id}`)
+    await expect(assets.readBytes(created.id, imageA.id)).resolves.toEqual(
+      Buffer.from('image-a-bytes'),
+    )
+
+    await workspaces.updateDocument(created.id, html, restored!.documentRevision)
+    evictDocumentHistory(database!, { maxEntries: 1, maxBytes: 8 * 1024 * 1024 })
+    garbageCollectUnreferencedAssets(database!)
+    await expect(assets.getAsset(created.id, imageA.id)).resolves.toBeNull()
+    await expect(assets.readBytes(created.id, imageA.id)).resolves.toBeNull()
+  })
+
+  it('restores a renamed title from history instead of silently reverting it', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const renamed = await workspaces.rename(created.id, 'Board plan')
+    expect(renamed?.html).toContain('<title>Board plan</title>')
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+
+    const beforeRename = await workspaces.restoreDocument(created.id, 1, 2)
+    expect(beforeRename?.html).toContain('<title>Workspace</title>')
+
+    const afterRename = await workspaces.restoreDocument(
+      created.id,
+      2,
+      beforeRename!.documentRevision,
+    )
+    expect(afterRename?.html).toContain('<title>Board plan</title>')
   })
 })

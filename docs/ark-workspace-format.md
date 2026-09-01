@@ -121,7 +121,7 @@ CREATE TABLE assets (
 
 CREATE TABLE asset_references (
   asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  owner_type TEXT NOT NULL,           -- 'document' | 'message'
+  owner_type TEXT NOT NULL,           -- 'document' | 'message' | 'history'
   owner_id TEXT NOT NULL,
   purpose TEXT NOT NULL,
   PRIMARY KEY (asset_id, owner_type, owner_id, purpose)
@@ -147,12 +147,16 @@ Schema notes:
   the table is empty. `format_version` / `user_version` stay at 1; older Ark builds ignore the
   unknown table.
 - **History records committed document snapshots, not autosave ticks.** Byte-identical HTML
-  still bumps `document_revision` but does not insert a history row. Title-only rename does not
-  insert a row. Agent tools mutate an in-memory workspace and persist once per job, so one
-  generation turn is one row. Generation-job request/result payloads stay process-local.
+  still bumps `document_revision` but does not insert a history row. A rename that rewrites the
+  document `<title>` appends a row so restore cannot silently revert the name. Agent tools mutate
+  an in-memory workspace and persist once per job, so one generation turn is one row.
+  Generation-job request/result payloads stay process-local. Older Ark builds can bump
+  `document_revision` without appending history; reopen seeds only when the table is empty, so
+  those in-between revisions never appear as restore points.
 - **Cap:** last 50 rows or 8 MiB of stored HTML (`SUM(byte_size)`), whichever is hit first.
   Oldest rows are deleted first. The newest row is always kept, so one oversized snapshot cannot
-  empty the table.
+  empty the table. History rows pin `ark-asset:` ids (`owner_type = 'history'`,
+  `owner_id = revision`); eviction drops those pins so unused images can still GC.
 - **Restore** copies a history row into `document`, bumps `document_revision` (so in-flight
   patches still conflict-detect), and appends a `restore` snapshot when the HTML actually
   changed.
@@ -204,8 +208,9 @@ Resolution:
 ```
 user commits edit → update HTML in memory → debounce ~300 ms
   → BEGIN → replace document row, sync document asset references,
-    increment document_revision, append document_history when HTML changed,
-    evict oldest history past the cap, touch workspace.updated_at → COMMIT
+    increment document_revision, append document_history when HTML changed
+    (pinning history ark-asset: ids), evict oldest history past the cap,
+    GC unreferenced assets, touch workspace.updated_at → COMMIT
   → queue changed-slide thumbnails (never blocks save)
 ```
 
