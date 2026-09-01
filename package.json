@@ -17,7 +17,7 @@
     "audit": "pnpm audit --audit-level=high",
     "test": "NODE_COMPILE_CACHE=node_modules/.cache/ark-test-compile vitest run --config vitest.config.ts",
     "test:affected": "node scripts/ci-run-affected-tests.mjs",
-    "test:ci-scope": "node --test scripts/ci-test-scope.test.mjs scripts/typecheck.test.mjs",
+    "test:ci-scope": "node --test scripts/ci-test-scope.test.mjs scripts/typecheck.test.mjs scripts/profile-editor-drag.test.mjs",
     "lockfile:check": "pnpm install --frozen-lockfile",
     "smoke:desktop": "pnpm build && node scripts/smoke-desktop.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
