@@ -134,6 +134,7 @@ export function useAppShell() {
     openWorkspaceFile,
     refreshActiveDeck,
     renameActiveDeck,
+    restoreFromHistory,
     restoreHtmlSnapshot,
     saveAs,
     startNewDeck,
@@ -1082,6 +1083,24 @@ export function useAppShell() {
     }
   }, [commitRedo, refreshActiveDeck, restoreHtmlSnapshot, redoEntry])
 
+  const handleRestoreDocumentHistory = useCallback(
+    async (revision: number) => {
+      try {
+        await restoreFromHistory(revision)
+        resetEditHistory()
+        toast.success('Restored that version')
+      } catch (error) {
+        if (error instanceof ApiResponseError && error.code === 'document_conflict') {
+          toast.error('The deck changed. Reloaded the current version.')
+        } else {
+          toast.error(error instanceof Error ? error.message : 'Could not restore that version')
+        }
+        throw error
+      }
+    },
+    [resetEditHistory, restoreFromHistory],
+  )
+
   const chatPanel = (
     <ChatPanel
       activeJobId={activeJobId}
@@ -1160,6 +1179,7 @@ export function useAppShell() {
       onReorderSlide={handleReorderSlide}
       presentHandleRef={deckPreviewRef}
       onRedo={handleRedoEdit}
+      onRestoreDocumentHistory={handleRestoreDocumentHistory}
       onToggleContextSlide={handleToggleContextSlide}
       onUndo={handleUndoEdit}
       deckAnalysis={deckAnalysis}

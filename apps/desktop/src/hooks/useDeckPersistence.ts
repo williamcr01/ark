@@ -9,6 +9,7 @@ import {
   openWorkspace,
   patchDeck,
   renameDeck,
+  restoreDocumentHistory,
   saveWorkspaceAs,
   duplicateWorkspace,
   updateDeck,
@@ -17,7 +18,7 @@ import {
   type StoredDeck,
 } from '@/lib/api/deck-api'
 import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
-import { extractDeckTitle } from '@ark/contracts'
+import { ApiResponseError, extractDeckTitle } from '@ark/contracts'
 
 /** A blank white slide: no starter content, so the first edit or generation owns the deck. */
 const NEW_DECK_HTML = `<!DOCTYPE html>
@@ -581,6 +582,63 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     [applyPatchedDeck, deckId, enqueueManualMutation],
   )
 
+  const restoreFromHistory = useCallback(
+    (historyRevision: number) => {
+      if (!deckId) {
+        throw new Error('Save the deck before restoring.')
+      }
+
+      const sessionId = saveRequestIdRef.current
+
+      return enqueueManualMutation(async () => {
+        if (sessionId !== saveRequestIdRef.current) {
+          return undefined
+        }
+
+        const expectedDocumentRevision = documentRevisionRef.current
+        if (!expectedDocumentRevision) {
+          throw new Error('Save the deck before restoring.')
+        }
+
+        const requestId = ++patchRequestIdRef.current
+        setIsPatching(true)
+        setSaveError('')
+
+        try {
+          const deck = await restoreDocumentHistory(deckId, {
+            revision: historyRevision,
+            expectedDocumentRevision,
+          })
+
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
+            return undefined
+          }
+
+          setActiveDeck(deck)
+          setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
+          return deck
+        } catch (error) {
+          if (sessionId !== saveRequestIdRef.current || requestId !== patchRequestIdRef.current) {
+            return undefined
+          }
+
+          if (error instanceof ApiResponseError && error.code === 'document_conflict') {
+            await refreshActiveDeck()
+          }
+
+          const message = error instanceof Error ? error.message : 'Could not restore that version.'
+          setSaveError(message)
+          throw error
+        } finally {
+          if (requestId === patchRequestIdRef.current) {
+            setIsPatching(false)
+          }
+        }
+      })
+    },
+    [deckId, enqueueManualMutation, refreshActiveDeck, setActiveDeck],
+  )
+
   const hasDeck = html.length > 0
   const isDirty = hasDeck && html !== savedHtml
 
@@ -604,6 +662,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     openWorkspaceFile,
     refreshActiveDeck,
     renameActiveDeck,
+    restoreFromHistory,
     restoreHtmlSnapshot,
     saveError,
     saveAs,

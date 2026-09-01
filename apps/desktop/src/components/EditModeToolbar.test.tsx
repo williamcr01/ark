@@ -7,6 +7,10 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 
 import { EditModeToolbar } from './EditModeToolbar'
 
+vi.mock('@/lib/api/deck-api', () => ({
+  listDocumentHistory: vi.fn().mockResolvedValue([]),
+}))
+
 const DEFAULT_STATE: NonNullable<ComponentProps<typeof EditModeToolbar>['state']> = {
   canEditText: false,
   canRedo: false,
@@ -157,10 +161,31 @@ describe('EditModeToolbar', () => {
     )
   })
 
+  it('opens restore versions next to undo and redo', async () => {
+    const user = userEvent.setup()
+    const onRestoreHistory = vi.fn().mockResolvedValue(undefined)
+
+    renderToolbar({
+      deckId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+      onRestoreHistory,
+    })
+
+    expect(screen.getByRole('button', { name: 'Restore version' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Restore version' }))
+    expect(
+      await screen.findByText('Restore version', { selector: '[data-slot="dropdown-menu-label"]' }),
+    ).toBeInTheDocument()
+  })
+
   it('disables history actions while saving or editing text', () => {
-    renderToolbar({ state: { ...DEFAULT_STATE, canUndo: true, canRedo: true, isSaving: true } })
+    renderToolbar({
+      deckId: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+      onRestoreHistory: vi.fn().mockResolvedValue(undefined),
+      state: { ...DEFAULT_STATE, canUndo: true, canRedo: true, isSaving: true },
+    })
 
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Restore version' })).toBeDisabled()
   })
 })

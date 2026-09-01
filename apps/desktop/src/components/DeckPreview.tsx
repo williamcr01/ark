@@ -110,6 +110,7 @@ export type DeckPreviewProps = {
   clearEditorSelectionRef?: MutableRefObject<(() => boolean) | null>
   onUndo?: () => void | Promise<void>
   onRedo?: () => void | Promise<void>
+  onRestoreDocumentHistory?: (revision: number) => Promise<void>
   onCommitTextEdit?: (commit: DeckTextEditCommit) => Promise<DeckPreviewPatchResult | undefined>
   /** Reports the current editor selection to the shell (issue #83); null when edit chrome is inactive. */
   onEditorSelectionChange?: (
@@ -148,6 +149,7 @@ function useDeckPreviewShell({
   clearEditorSelectionRef,
   onUndo,
   onRedo,
+  onRestoreDocumentHistory,
   onCommitTextEdit,
   onEditorSelectionChange,
   onToggleContextSlide,
@@ -818,6 +820,8 @@ function useDeckPreviewShell({
         onImageFitChange={handleImageFitChange}
         onPickImage={openImagePicker}
         onRedo={handleRedo}
+        onRestoreHistory={onRestoreDocumentHistory}
+        deckId={deckId}
         onSendBackward={() => handleReorderSelection('back')}
         onToolChange={handleToolChange}
         onUndo={handleUndo}

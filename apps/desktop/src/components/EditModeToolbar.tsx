@@ -15,6 +15,7 @@ import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group'
 import { Badge } from '@/components/ui/badge'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { DeckRestoreHistoryMenu } from '@/components/DeckRestoreHistoryMenu'
 import type { EditorTool } from '@ark/editor-runtime'
 import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import { buttonVariants } from '@/components/ui/button-variants'
@@ -50,6 +51,8 @@ export type EditModeToolbarProps = {
   onSendBackward?: () => void
   onToolChange: (tool: EditorTool) => void
   onUndo?: () => void
+  onRestoreHistory?: (revision: number) => Promise<void>
+  deckId?: string | null
 }
 
 type ToolbarButtonProps = {
@@ -115,6 +118,8 @@ export function EditModeToolbar({
   onSendBackward,
   onToolChange,
   onUndo,
+  onRestoreHistory,
+  deckId = null,
 }: EditModeToolbarProps) {
   const {
     canEditText,
@@ -325,6 +330,13 @@ export function EditModeToolbar({
         >
           <Redo2Icon className="size-3.5" />
         </ToolbarButton>
+        {onRestoreHistory ? (
+          <DeckRestoreHistoryMenu
+            deckId={deckId}
+            disabled={toolbarDisabled || textEditActive}
+            onRestore={onRestoreHistory}
+          />
+        ) : null}
       </ButtonGroup>
 
       <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[var(--ark-titlebar-muted)]">

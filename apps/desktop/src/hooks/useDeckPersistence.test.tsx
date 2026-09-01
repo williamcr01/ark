@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiResponseError } from '@ark/contracts'
+
 import { useDeckPersistence } from './useDeckPersistence'
 
 const html = '<!DOCTYPE html><html><head><title>Deck</title></head><body></body></html>'
@@ -157,5 +159,91 @@ describe('useDeckPersistence', () => {
     expect(result.current.filePath).toBe('/tmp/Board plan.ark')
     expect(result.current.html).toBe(renamedHtml)
     expect(result.current.documentRevision).toBe(2)
+  })
+
+  it('restores a history revision and adopts the returned deck', async () => {
+    const restored = {
+      ...deck,
+      html: html.replace('Deck', 'Earlier'),
+      documentRevision: 3,
+      updatedAt: '2026-01-03T00:00:00.000Z',
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/decks') return jsonResponse({ decks: [summary] })
+      if (url === `/api/decks/${deck.id}/history/restore` && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          revision: 1,
+          expectedDocumentRevision: 1,
+        })
+        return jsonResponse({
+          deck: restored,
+          validation: {
+            valid: true,
+            slideCount: 1,
+            scripts: [],
+            forms: 0,
+            iframes: 0,
+            externalUrls: [],
+            malformedSlides: [],
+            runtimeMarkers: {},
+            issues: [],
+          },
+        })
+      }
+      if (url === `/api/decks/${deck.id}`) return jsonResponse({ deck })
+      return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.restoreFromHistory(1)
+    })
+
+    expect(result.current.html).toBe(restored.html)
+    expect(result.current.documentRevision).toBe(3)
+  })
+
+  it('refreshes the open deck when restore hits a document conflict', async () => {
+    const current = {
+      ...deck,
+      html: html.replace('Deck', 'Live'),
+      documentRevision: 4,
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/decks') return jsonResponse({ decks: [summary] })
+      if (url === `/api/decks/${deck.id}/history/restore` && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          revision: 1,
+          expectedDocumentRevision: 1,
+        })
+        return jsonResponse(
+          {
+            error: 'The document changed.',
+            code: 'document_conflict',
+            currentDocumentRevision: 4,
+          },
+          { ok: false, status: 409 },
+        )
+      }
+      if (url === `/api/decks/${deck.id}`) {
+        const deckGets = fetchMock.mock.calls.filter((call) => String(call[0]) === url).length
+        return jsonResponse({ deck: deckGets > 1 ? current : deck })
+      }
+      return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await expect(result.current.restoreFromHistory(1)).rejects.toBeInstanceOf(ApiResponseError)
+    })
+
+    await waitFor(() => expect(result.current.documentRevision).toBe(4))
+    expect(result.current.html).toBe(current.html)
   })
 })
