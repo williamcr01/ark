@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom'
+import type { JSDOM } from 'jsdom'
 import { nanoid } from 'nanoid'
 
 import { findSlideElements } from '../document/slides.ts'
@@ -15,6 +15,7 @@ import type { DeckValidationReport } from '@ark/deck/validate/timed.ts'
 import { applyDeckEdits } from './text-edit.ts'
 import { applyElementPatch, stabilizeElementPatchOperations } from './element-patch.ts'
 import { stampEditableElementIds } from './editable-elements.ts'
+import { createDeckJsdom } from './jsdom-inline-style.ts'
 import { validateDeckDocumentOnServer } from '../validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 
@@ -107,7 +108,7 @@ function parseSlideHtml(doc: Document, html: string, fallbackClass = 'slide') {
     return { error: 'Slide HTML must not be empty.' } as const
   }
 
-  const fragmentDom = new JSDOM(`<!DOCTYPE html><body>${trimmed}</body>`)
+  const fragmentDom = createDeckJsdom(`<!DOCTYPE html><body>${trimmed}</body>`)
   const body = fragmentDom.window.document.body
 
   const section = body.querySelector('section')
@@ -475,7 +476,8 @@ export function applyDeckPatches(
 
   const getDomContext = (): PatchContext => {
     if (!dom) {
-      dom = new JSDOM(workingHtml)
+      // Skip eager css-tree parse of every inline style; editor ops use attributes.
+      dom = createDeckJsdom(workingHtml)
     }
 
     return {
