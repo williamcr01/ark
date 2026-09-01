@@ -273,11 +273,9 @@ describe('App generation / deck-switch edit history boundaries', () => {
       expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
     })
     expect(historyCapture.current?.canUndo).toBe(true)
-    expect(
-      historyCapture.current?.undoEntry?.provenance.source === 'manual'
-        ? historyCapture.current.undoEntry.provenance.elementIds
-        : [],
-    ).toEqual(['manual-keep'])
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      provenance: { source: 'manual', elementIds: ['manual-keep'] },
+    })
   })
 
   it('resets manual undo history when the active deck changes', async () => {

@@ -40,16 +40,10 @@ describe('application edit menu', () => {
     configureApplicationMenu()
 
     expect(buildFromTemplate).toHaveBeenCalledOnce()
-    const template = buildFromTemplate.mock.calls[0]?.[0] as Array<{
-      role?: string
-      submenu?: Array<{
-        id?: string
-        accelerator?: string
-        registerAccelerator?: boolean
-        enabled?: boolean
-      }>
-    }>
-    expect(template[0]).toEqual({ role: 'appMenu' })
+    expect(buildFromTemplate).toHaveBeenCalledWith([
+      { role: 'appMenu' },
+      expect.objectContaining({ label: 'Edit' }),
+    ])
     const edit = buildDarwinEditMenuTemplate()
     const items = Array.isArray(edit.submenu) ? edit.submenu : []
     expect(items).toEqual(
