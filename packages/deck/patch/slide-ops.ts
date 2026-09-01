@@ -46,6 +46,54 @@ function serializeDeckHtml(dom: JSDOM) {
   return dom.serialize()
 }
 
+type JsdomWindow = JSDOM['window'] & { close?: () => void }
+
+let pooledDeckDom: JSDOM | null = null
+let pooledDeckDomInUse = false
+
+/**
+ * Warmed editor commits parse the same class of document repeatedly. Creating a
+ * new JSDOM window is ~18ms on absolute-500; document.open/write/close on a
+ * pooled window is ~11ms with identical serialize output (issue #291).
+ * applyDeckPatches is synchronous, so the pool is never shared across overlapping
+ * parses. Re-entrant fragment JSDOMs still allocate normally.
+ */
+function acquireDeckDom(html: string): JSDOM {
+  if (pooledDeckDom && !pooledDeckDomInUse) {
+    pooledDeckDomInUse = true
+    try {
+      const doc = pooledDeckDom.window.document
+      doc.open()
+      doc.write(html)
+      doc.close()
+      return pooledDeckDom
+    } catch (error) {
+      pooledDeckDomInUse = false
+      const maybeClose = (pooledDeckDom.window as JsdomWindow).close
+      maybeClose?.()
+      pooledDeckDom = null
+      throw error
+    }
+  }
+
+  const created = new JSDOM(html)
+  if (!pooledDeckDomInUse) {
+    pooledDeckDom = created
+    pooledDeckDomInUse = true
+  }
+  return created
+}
+
+function releaseDeckDom(dom: JSDOM) {
+  if (dom === pooledDeckDom) {
+    pooledDeckDomInUse = false
+    return
+  }
+
+  const maybeClose = (dom.window as JsdomWindow).close
+  maybeClose?.()
+}
+
 function findSlideContainer(doc: Document, slides: Element[]) {
   if (slides[0]?.parentElement) {
     return slides[0].parentElement
@@ -456,9 +504,7 @@ export function applyDeckPatches(
       return
     }
 
-    // Release the jsdom window when available; ignore environments without close().
-    const maybeClose = (dom.window as unknown as { close?: () => void }).close
-    maybeClose?.()
+    releaseDeckDom(dom)
     dom = null
   }
 
@@ -475,7 +521,7 @@ export function applyDeckPatches(
 
   const getDomContext = (): PatchContext => {
     if (!dom) {
-      dom = new JSDOM(workingHtml)
+      dom = acquireDeckDom(workingHtml)
     }
 
     return {

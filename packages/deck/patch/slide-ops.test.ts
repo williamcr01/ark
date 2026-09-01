@@ -208,4 +208,53 @@ describe('applyDeckPatches', () => {
 
     expect(parseDeckHtml(result.html).slides[0]?.slideId).toBe('ark-slide-opening')
   })
+
+  it('does not leak a previous deck through the warmed JSDOM window', () => {
+    const first = applyDeckPatches(plainCssDeck, [
+      { op: 'update_slide_title', slideIndex: 0, title: 'First deck title' },
+    ])
+    expect(first.ok).toBe(true)
+    if (!first.ok) {
+      return
+    }
+
+    const second = applyDeckPatches(revealDeck, [
+      { op: 'update_slide_title', slideIndex: 0, title: 'Reveal retitle' },
+    ])
+    expect(second.ok).toBe(true)
+    if (!second.ok) {
+      return
+    }
+
+    expect(second.html).toContain('Reveal retitle')
+    expect(second.html).toContain('class="reveal"')
+    expect(second.html).not.toContain('First deck title')
+    expect(second.html).not.toContain('Quarterly planning')
+  })
+
+  it('does not execute deck scripts while recycling the JSDOM window', () => {
+    const marker = '__arkJsdomPoolPwned'
+    const scripted = `<!DOCTYPE html><html><head><title>Scripted</title></head><body>
+      <section class="slide"><h1>One</h1></section>
+      <section class="slide"><h1>Two</h1></section>
+      <script>globalThis.${marker} = 'yes'</script>
+    </body></html>`
+
+    const patched = applyDeckPatches(scripted, [
+      { op: 'update_slide_title', slideIndex: 0, title: 'Still one' },
+    ])
+    expect(patched.ok).toBe(true)
+    expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined()
+
+    const followUp = applyDeckPatches(plainCssDeck, [
+      { op: 'update_slide_title', slideIndex: 0, title: 'After script' },
+    ])
+    expect(followUp.ok).toBe(true)
+    if (!followUp.ok) {
+      return
+    }
+    expect(followUp.html).toContain('After script')
+    expect(followUp.html).not.toContain('Still one')
+    expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined()
+  })
 })
