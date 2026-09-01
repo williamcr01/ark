@@ -66,7 +66,7 @@ function cssTextPrototype(styleImpl: object): StyleImpl {
   throw new Error('Ark could not find jsdom CSSStyleDeclaration.cssText to defer.')
 }
 
-function flushPendingCssText(style: object, origSet: (value: string) => void) {
+function flushPendingCssText(style: object, origSet: (this: object, value: string) => void) {
   const text = pendingCssText.get(style)
 
   if (text === undefined || flushing.has(style)) {
@@ -98,6 +98,9 @@ export function installLazyInlineStyleParsing(window: JsdomWindow): void {
     throw new Error('jsdom CSSStyleDeclaration.cssText is not a getter/setter pair.')
   }
 
+  const readCssText = origGet as (this: object) => string
+  const writeCssText = origSet as (this: object, value: string) => void
+
   Object.defineProperty(proto, 'cssText', {
     configurable: true,
     enumerable: cssTextDesc.enumerable,
@@ -106,11 +109,11 @@ export function installLazyInlineStyleParsing(window: JsdomWindow): void {
         return pendingCssText.get(this)
       }
 
-      return origGet.call(this)
+      return readCssText.call(this)
     },
     set(value: string) {
       if (flushing.has(this)) {
-        origSet.call(this, value)
+        writeCssText.call(this, value)
         return
       }
 
@@ -118,25 +121,26 @@ export function installLazyInlineStyleParsing(window: JsdomWindow): void {
     },
   })
 
-  const wrap = <
-    K extends
-      'getPropertyValue' | 'getPropertyPriority' | 'setProperty' | 'removeProperty' | 'item',
-  >(
-    name: K,
-  ) => {
-    const orig = proto[name]
-
-    proto[name] = function (this: object, ...args: never[]) {
-      flushPendingCssText(this, origSet)
+  const protoMethods = proto as unknown as Record<
+    string,
+    (this: object, ...args: unknown[]) => unknown
+  >
+  for (const name of [
+    'getPropertyValue',
+    'getPropertyPriority',
+    'setProperty',
+    'removeProperty',
+    'item',
+  ] as const) {
+    const orig = protoMethods[name]
+    if (typeof orig !== 'function') {
+      throw new Error(`jsdom CSSStyleDeclaration.${name} is missing.`)
+    }
+    protoMethods[name] = function (this: object, ...args: unknown[]) {
+      flushPendingCssText(this, writeCssText)
       return orig.apply(this, args)
-    } as StyleImpl[K]
+    }
   }
-
-  wrap('getPropertyValue')
-  wrap('getPropertyPriority')
-  wrap('setProperty')
-  wrap('removeProperty')
-  wrap('item')
 
   const lengthDesc = Object.getOwnPropertyDescriptor(proto, 'length')
   const origLength = lengthDesc?.get
@@ -149,7 +153,7 @@ export function installLazyInlineStyleParsing(window: JsdomWindow): void {
     configurable: true,
     enumerable: lengthDesc.enumerable,
     get() {
-      flushPendingCssText(this, origSet)
+      flushPendingCssText(this, writeCssText)
       return origLength.call(this)
     },
   })
