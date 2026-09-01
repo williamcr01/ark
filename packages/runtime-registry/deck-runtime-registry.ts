@@ -418,7 +418,25 @@ export function resolveDeckApprovedRuntime(doc: Document): ApprovedRuntimeEntry 
   return null
 }
 
-export function collectRuntimeAssetReferences(doc: Document) {
+/**
+ * Cheap source-text gate for `collectRuntimeAssetReferences`. Approved runtime
+ * URLs always start with `/api/runtimes/`, so the editor patch path can skip
+ * `[src]`/`[href]` walks over hundreds of elements when that prefix is absent
+ * (issue #291). Callers that omit `rawHtml` keep the full walk.
+ */
+export function sourceMayContainRuntimeAssetUrls(html: string | undefined) {
+  if (html === undefined) {
+    return true
+  }
+
+  return html.includes(`${RUNTIME_ASSET_API_PREFIX}/`)
+}
+
+export function collectRuntimeAssetReferences(doc: Document, rawHtml?: string) {
+  if (!sourceMayContainRuntimeAssetUrls(rawHtml)) {
+    return []
+  }
+
   const refs = new Set<string>()
 
   for (const element of doc.querySelectorAll('[src], [href], link[rel="stylesheet"]')) {

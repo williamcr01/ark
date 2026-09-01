@@ -7,12 +7,14 @@ import { describe, expect, it } from 'vitest'
 import {
   buildRuntimeAssetUrl,
   buildRuntimeRegistryPromptSection,
+  collectRuntimeAssetReferences,
   getApprovedRuntime,
   getApprovedRuntimeAssetUrls,
   getApprovedRuntimes,
   isApprovedRuntimeAssetUrl,
   lookupRuntimeAsset,
   parseRuntimeAssetUrl,
+  sourceMayContainRuntimeAssetUrls,
   validateRuntimeAssetReferences,
 } from './deck-runtime-registry'
 
@@ -321,5 +323,44 @@ describe('approved runtime registry', () => {
     expect(prompt).toContain('chart.js@4.5.1')
     expect(prompt).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
     expect(prompt).toContain('data-ark-runtime="chart"')
+  })
+
+  it('skips the runtime-asset DOM walk when source HTML has no /api/runtimes prefix', () => {
+    const html = `<!DOCTYPE html><html><body><section class="slide">${Array.from({ length: 200 }, (_, i) => `<div data-ark-id="ark-el-${i}">Item ${i}</div>`).join('')}</section></body></html>`
+    const doc = {
+      querySelectorAll() {
+        throw new Error('collectRuntimeAssetReferences should not walk the DOM')
+      },
+    } as unknown as Document
+
+    expect(sourceMayContainRuntimeAssetUrls(html)).toBe(false)
+    expect(collectRuntimeAssetReferences(doc, html)).toEqual([])
+    expect(sourceMayContainRuntimeAssetUrls(undefined)).toBe(true)
+  })
+
+  it('still collects approved runtime asset URLs when source contains /api/runtimes/', () => {
+    const src = '/api/runtimes/reveal.js/5.1.0/reveal.js'
+    const href = '/api/runtimes/reveal.js/5.1.0/reveal.css'
+    const html = `<!DOCTYPE html><html><head><link rel="stylesheet" href="${href}" /><script src="${src}"></script></head><body><section class="slide">Hi</section></body></html>`
+    const elements = [
+      { getAttribute: (name: string) => (name === 'src' ? src : name === 'href' ? null : null) },
+      { getAttribute: (name: string) => (name === 'href' ? href : name === 'src' ? null : null) },
+    ]
+    const doc = {
+      querySelectorAll: () => elements,
+    } as unknown as Document
+
+    expect(sourceMayContainRuntimeAssetUrls(html)).toBe(true)
+    expect(collectRuntimeAssetReferences(doc, html)).toEqual([href, src])
+  })
+
+  it('still scans when source text mentions /api/runtimes/ even if attributes are local', () => {
+    const html = `<!DOCTYPE html><html><body><section class="slide"><p>Use /api/runtimes/reveal.js/5.1.0/reveal.js</p></section></body></html>`
+    const doc = {
+      querySelectorAll: () => [],
+    } as unknown as Document
+
+    expect(sourceMayContainRuntimeAssetUrls(html)).toBe(true)
+    expect(collectRuntimeAssetReferences(doc, html)).toEqual([])
   })
 })
