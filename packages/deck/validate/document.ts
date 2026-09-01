@@ -125,14 +125,36 @@ function hasTrackingSignals(doc: Document, scripts: DeckScriptInfo[]) {
   return false
 }
 
-function findMalformedSlides(slides: Element[]) {
+/**
+ * Cheap source-text gate for nested-slide descendant queries. A document with
+ * fewer than two `<section` tags cannot contain a slide inside another slide,
+ * so the editor patch path can skip querySelector over hundreds of descendants
+ * (issue #291). Callers that omit `rawHtml` keep the full walk.
+ */
+export function sourceMayContainNestedSlides(html: string | undefined) {
+  if (html === undefined) {
+    return true
+  }
+
+  const pattern = /<section\b/gi
+  if (!pattern.test(html)) {
+    return false
+  }
+
+  return pattern.test(html)
+}
+
+function findMalformedSlides(slides: Element[], rawHtml?: string) {
   const malformedSlides: DeckMalformedSlide[] = []
+  const scanNestedSlides = sourceMayContainNestedSlides(rawHtml)
 
   slides.forEach((slide, index) => {
-    const nestedSlide = slide.querySelector('section.slide, body > section, .slides > section')
+    if (scanNestedSlides) {
+      const nestedSlide = slide.querySelector('section.slide, body > section, .slides > section')
 
-    if (nestedSlide) {
-      malformedSlides.push({ index, reason: 'nested_slide' })
+      if (nestedSlide) {
+        malformedSlides.push({ index, reason: 'nested_slide' })
+      }
     }
 
     const text = slide.textContent?.replace(/\s+/g, '').trim() ?? ''
@@ -205,7 +227,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
     })
   }
 
-  const malformedSlides = findMalformedSlides(slideElements)
+  const malformedSlides = findMalformedSlides(slideElements, rawHtml)
 
   for (const malformedSlide of malformedSlides) {
     if (malformedSlide.reason === 'nested_slide') {
@@ -275,7 +297,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
     })
   }
 
-  const externalUrls = collectExternalUrls(doc)
+  const externalUrls = collectExternalUrls(doc, rawHtml)
   const runtimeAssetReferences = collectRuntimeAssetReferences(doc)
   const libraryMarkers = readDeckRuntimeLibraryMarkers(doc)
   const addonMarkers = readDeckRuntimeAddonMarkers(doc)
