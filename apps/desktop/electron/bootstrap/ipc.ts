@@ -1,6 +1,7 @@
 /**
  * Every `ipcMain` channel the renderer can call. The preload bridge is deliberately narrow:
- * credentials, settings, MCP control, file dialogs, and update checks - nothing else.
+ * credentials, settings, MCP control, file dialogs, update checks, and session undo menu
+ * state — nothing else.
  */
 
 import { writeFile } from 'node:fs/promises'
@@ -23,6 +24,7 @@ import {
   exportFileName,
   parseDeckExportRequest,
 } from '../deck-export-request.ts'
+import { setEditHistoryMenuState } from './menu.ts'
 
 const { autoUpdater } = electronUpdater
 const providers = new Set<ProviderId>(['openai', 'anthropic', 'google'])
@@ -238,6 +240,17 @@ export function registerIpcHandlers(deps: IpcDependencies) {
         error: error instanceof Error ? error.message : 'Could not export deck.',
       }
     }
+  })
+  ipcMain.on('edit:history-state', (event, state) => {
+    if (
+      !state ||
+      typeof state !== 'object' ||
+      typeof state.canUndo !== 'boolean' ||
+      typeof state.canRedo !== 'boolean'
+    ) {
+      return
+    }
+    setEditHistoryMenuState({ canUndo: state.canUndo, canRedo: state.canRedo }, event.sender)
   })
   ipcMain.handle('updates:check', async () => {
     if (!app.isPackaged)

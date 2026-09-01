@@ -13,6 +13,9 @@ const persistenceState = vi.hoisted(() => ({
   isPatching: false,
   refreshActiveDeck: vi.fn(),
 }))
+const previewState = vi.hoisted(() => ({
+  activeSlideIndex: 0,
+}))
 let externalUpdateListener:
   | ((update: {
       deckId: string
@@ -24,7 +27,10 @@ let externalUpdateListener:
     }) => void)
   | null = null
 const generationFlowCapture = vi.hoisted(() => ({
-  onGenerationSucceeded: null as (() => void) | null | undefined,
+  onGenerationSucceeded: null as
+    | ((change: { beforeHtml: string; afterHtml: string; deckChanged: boolean }) => void)
+    | null
+    | undefined,
 }))
 const historyCapture = vi.hoisted(() => ({
   current: null as {
@@ -32,6 +38,7 @@ const historyCapture = vi.hoisted(() => ({
     canRedo: boolean
     undoEntry: unknown
     record: (entry: DeckEditHistoryEntry) => void
+    commitUndo: () => void
     reset: () => void
   } | null,
 }))
@@ -107,7 +114,13 @@ vi.mock('@/hooks/useAvailableModels', () => ({
 }))
 
 vi.mock('@/hooks/useDeckGenerationFlow', () => ({
-  useDeckGenerationFlow: (options: { onGenerationSucceeded?: () => void }) => {
+  useDeckGenerationFlow: (options: {
+    onGenerationSucceeded?: (change: {
+      beforeHtml: string
+      afterHtml: string
+      deckChanged: boolean
+    }) => void
+  }) => {
     generationFlowCapture.onGenerationSucceeded = options.onGenerationSucceeded
     return {
       activeSteps: [],
@@ -143,12 +156,29 @@ vi.mock('@/components/ChatPanel', () => ({
 }))
 
 vi.mock('@/components/DeckPreview', () => ({
-  DeckPreview: (props: { state: { canUndo: boolean; canRedo: boolean } }) => (
-    <div data-testid="deck-preview">
-      <output aria-label="Undo availability">{props.state.canUndo ? 'enabled' : 'disabled'}</output>
-      <output aria-label="Redo availability">{props.state.canRedo ? 'enabled' : 'disabled'}</output>
-    </div>
-  ),
+  DeckPreview: (props: {
+    state: { canUndo: boolean; canRedo: boolean }
+    presentHandleRef?: {
+      current: { openPresent: () => void; getActiveSlideIndex: () => number } | null
+    }
+  }) => {
+    if (props.presentHandleRef) {
+      props.presentHandleRef.current = {
+        openPresent: () => undefined,
+        getActiveSlideIndex: () => previewState.activeSlideIndex,
+      }
+    }
+    return (
+      <div data-testid="deck-preview">
+        <output aria-label="Undo availability">
+          {props.state.canUndo ? 'enabled' : 'disabled'}
+        </output>
+        <output aria-label="Redo availability">
+          {props.state.canRedo ? 'enabled' : 'disabled'}
+        </output>
+      </div>
+    )
+  },
 }))
 
 const { default: App } = await import('./App')
@@ -179,6 +209,7 @@ describe('App generation / deck-switch edit history boundaries', () => {
     persistenceState.isSaving = false
     persistenceState.isPatching = false
     persistenceState.refreshActiveDeck.mockReset()
+    previewState.activeSlideIndex = 0
     externalUpdateListener = null
     window.arkDesktop.mcp.onDeckUpdated = vi.fn((listener) => {
       externalUpdateListener = listener
@@ -194,7 +225,13 @@ describe('App generation / deck-switch edit history boundaries', () => {
     vi.clearAllMocks()
   })
 
-  it('resets manual undo history when AI generation succeeds', async () => {
+  it('records one undo boundary when AI generation changes the deck', async () => {
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>generated</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
     renderWithRouter(<App />)
 
     await waitFor(() => {
@@ -211,15 +248,64 @@ describe('App generation / deck-switch edit history boundaries', () => {
     })
 
     act(() => {
-      generationFlowCapture.onGenerationSucceeded?.()
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>generated</html>',
+        deckChanged: true,
+      })
     })
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('disabled')
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
       expect(screen.getByLabelText('Redo availability')).toHaveTextContent('disabled')
     })
-    expect(historyCapture.current?.canUndo).toBe(false)
-    expect(historyCapture.current?.undoEntry).toBeNull()
+    expect(historyCapture.current?.canUndo).toBe(true)
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      beforeHtml: '<html>after</html>',
+      afterHtml: '<html>generated</html>',
+      slideIndex: 0,
+      provenance: { source: 'agent' },
+    })
+
+    act(() => {
+      historyCapture.current!.commitUndo()
+    })
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      provenance: { source: 'manual', elementIds: ['manual-1'] },
+    })
+  })
+
+  it('does not reset manual undo history when generation does not change the deck', async () => {
+    renderWithRouter(<App />)
+
+    await waitFor(() => {
+      expect(historyCapture.current).not.toBeNull()
+      expect(generationFlowCapture.onGenerationSucceeded).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      historyCapture.current!.record(makeHistoryEntry('manual-keep'))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
+    })
+
+    act(() => {
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>after</html>',
+        deckChanged: false,
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Undo availability')).toHaveTextContent('enabled')
+    })
+    expect(historyCapture.current?.canUndo).toBe(true)
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      provenance: { source: 'manual', elementIds: ['manual-keep'] },
+    })
   })
 
   it('resets manual undo history when the active deck changes', async () => {
@@ -277,6 +363,161 @@ describe('App generation / deck-switch edit history boundaries', () => {
 
     act(() => externalUpdateListener?.(update))
     await waitFor(() => expect(persistenceState.refreshActiveDeck).toHaveBeenCalledTimes(1))
+  })
+
+  it('coalesces consecutive MCP writes into one undo boundary', async () => {
+    persistenceState.refreshActiveDeck
+      .mockResolvedValueOnce({
+        id: 'deck-1',
+        html: '<html>patch-1</html>',
+        title: 'Deck',
+        documentRevision: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'deck-1',
+        html: '<html>patch-2</html>',
+        title: 'Deck',
+        documentRevision: 3,
+      })
+    renderWithRouter(<App />)
+    await waitFor(() => expect(externalUpdateListener).toEqual(expect.any(Function)))
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-1',
+        previousDocumentRevision: 1,
+        documentRevision: 2,
+        clientName: 'Codex',
+        toolName: 'patch_element',
+        summary: 'Patched one element.',
+      }),
+    )
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>patch-1</html>',
+        provenance: { source: 'external', toolName: 'patch_element' },
+      })
+    })
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-1',
+        previousDocumentRevision: 2,
+        documentRevision: 3,
+        clientName: 'Codex',
+        toolName: 'patch_element',
+        summary: 'Patched another element.',
+      }),
+    )
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>patch-2</html>',
+        provenance: { source: 'external', toolName: 'patch_element' },
+      })
+    })
+
+    act(() => {
+      historyCapture.current!.commitUndo()
+    })
+    expect(historyCapture.current?.canUndo).toBe(false)
+  })
+
+  it('keeps an agent turn and a later MCP write as separate undo steps', async () => {
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>mcp</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
+    renderWithRouter(<App />)
+    await waitFor(() => {
+      expect(generationFlowCapture.onGenerationSucceeded).toEqual(expect.any(Function))
+      expect(externalUpdateListener).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>agent</html>',
+        deckChanged: true,
+      })
+    })
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        provenance: { source: 'agent' },
+      })
+    })
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-1',
+        previousDocumentRevision: 1,
+        documentRevision: 2,
+        clientName: 'Codex',
+        toolName: 'edit_deck',
+        summary: 'Updated after the agent.',
+      }),
+    )
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        provenance: { source: 'external', toolName: 'edit_deck' },
+      })
+    })
+
+    act(() => {
+      historyCapture.current!.commitUndo()
+    })
+    expect(historyCapture.current?.undoEntry).toMatchObject({
+      provenance: { source: 'agent' },
+    })
+  })
+
+  it('records agent and MCP undo on the active preview slide, not slide 1', async () => {
+    previewState.activeSlideIndex = 5
+    persistenceState.refreshActiveDeck.mockResolvedValue({
+      id: 'deck-1',
+      html: '<html>mcp</html>',
+      title: 'Deck',
+      documentRevision: 2,
+    })
+    renderWithRouter(<App />)
+    await waitFor(() => {
+      expect(generationFlowCapture.onGenerationSucceeded).toEqual(expect.any(Function))
+      expect(externalUpdateListener).toEqual(expect.any(Function))
+    })
+
+    act(() => {
+      generationFlowCapture.onGenerationSucceeded?.({
+        beforeHtml: '<html>after</html>',
+        afterHtml: '<html>agent</html>',
+        deckChanged: true,
+      })
+    })
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        slideIndex: 5,
+        provenance: { source: 'agent' },
+      })
+    })
+
+    act(() =>
+      externalUpdateListener?.({
+        deckId: 'deck-1',
+        previousDocumentRevision: 1,
+        documentRevision: 2,
+        clientName: 'Codex',
+        toolName: 'edit_deck',
+        summary: 'Updated after the agent.',
+      }),
+    )
+    await waitFor(() => {
+      expect(historyCapture.current?.undoEntry).toMatchObject({
+        slideIndex: 5,
+        provenance: { source: 'external' },
+      })
+    })
   })
 
   it('queues an external update while a local save is in flight', async () => {
