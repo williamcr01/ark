@@ -2,13 +2,12 @@ import { memo, useState, type ReactNode } from 'react'
 
 import { DeckPreview } from '@/components/DeckPreview'
 import { WorkspaceChatContextSlot } from '@/components/shell/WorkspaceChatContextSlot'
-import { WorkspaceChatPanel } from '@/components/shell/WorkspaceChatPanel'
+import { ChatPanel } from '@/components/ChatPanel'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { useChatContextSlides } from '@/hooks/useChatContextSlides'
 import { useDeckAnalysis } from '@/hooks/useDeckAnalysis'
 import { useManualEditCommits } from '@/hooks/useManualEditCommits'
-import { usePromptSubmit } from '@/hooks/usePromptSubmit'
 import { useWorkspaceRuntimeContext } from '@/hooks/workspace-runtime-context'
 import { CHAT_PANEL_MIN_WIDTH_PX } from '@/lib/chat/chat-panel-layout'
 import { isChatPanelToggleTarget } from '@/lib/ui/app-shell-preferences'
@@ -34,7 +33,6 @@ export function EditorWorkspace({
     useWorkspaceRuntimeContext()
   const { deckId: routeParam } = useParams<{ deckId: string }>()
   const routeDeckId = routeDeckIdFromParam(routeParam)
-  const prompt = usePromptSubmit()
   const edits = useManualEditCommits()
   const context = useChatContextSlides()
   const deckAnalysis = useDeckAnalysis()
@@ -80,9 +78,7 @@ export function EditorWorkspace({
     />
   )
 
-  const chatPanel = (
-    <WorkspaceChatPanel contextSlot={contextSlot} layout="sidebar" prompt={prompt} />
-  )
+  const chatPanel = <ChatPanel contextSlot={contextSlot} layout="sidebar" />
 
   return (
     <>
