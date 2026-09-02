@@ -24,7 +24,7 @@ export type ContextChipSlide = {
 
 export type ContextChipListProps = {
   element?: ContextChipElement | null
-  /** When greater than 1, render one grouped `N elements` chip instead of the detailed element chip. */
+  /** Render one grouped `N element(s)` chip for the selected elements. */
   elementCount?: number
   slides?: ContextChipSlide[]
   onClearElement?: () => void
@@ -38,15 +38,6 @@ export type ContextChipListProps = {
    * Use inside an existing inline attachments row (e.g. prompt composer).
    */
   nested?: boolean
-}
-
-function formatElementChipLabel(element: ContextChipElement): string {
-  const kind = element.kind || 'element'
-  const preview = element.textPreview?.trim()
-  const previewNote = preview
-    ? ` · “${preview.length > 40 ? `${preview.slice(0, 40)}…` : preview}”`
-    : ''
-  return `Slide ${element.slideIndex + 1} · ${kind}${previewNote}`
 }
 
 function formatSlideChipLabel(slide: ContextChipSlide): string {
@@ -65,6 +56,7 @@ export function ContextChipList({
   nested = false,
 }: ContextChipListProps) {
   const resolvedElementCount = elementCount ?? (element ? 1 : 0)
+  const elementLabel = resolvedElementCount === 1 ? 'element' : 'elements'
 
   if (resolvedElementCount === 0 && slides.length === 0) {
     return null
@@ -83,13 +75,13 @@ export function ContextChipList({
 
   const items = (
     <AttachmentPresence>
-      {resolvedElementCount > 1 ? (
+      {resolvedElementCount > 0 ? (
         <Attachment
           data={{
             type: 'source-document',
             id: 'context-elements',
             sourceId: 'context-elements',
-            title: `${resolvedElementCount} elements`,
+            title: `${resolvedElementCount} ${elementLabel}`,
             mediaType: 'text/plain',
           }}
           onRemove={onClearElement}
@@ -99,26 +91,7 @@ export function ContextChipList({
           />
           <AttachmentInfo />
           {onClearElement ? (
-            <AttachmentRemove label="Remove selected elements from chat context" />
-          ) : null}
-        </Attachment>
-      ) : element ? (
-        <Attachment
-          data={{
-            type: 'source-document',
-            id: `context-element-${element.slideIndex}`,
-            sourceId: `context-element-${element.slideIndex}`,
-            title: formatElementChipLabel(element),
-            mediaType: 'text/plain',
-          }}
-          onRemove={onClearElement}
-        >
-          <AttachmentPreview
-            fallbackIcon={<BoxSelectIcon className="size-3 text-muted-foreground" />}
-          />
-          <AttachmentInfo />
-          {onClearElement ? (
-            <AttachmentRemove label="Remove selected element from chat context" />
+            <AttachmentRemove label={`Remove selected ${elementLabel} from chat context`} />
           ) : null}
         </Attachment>
       ) : null}

@@ -48,7 +48,8 @@ describe('ChatContextChips', () => {
     )
 
     expect(screen.getByLabelText('Chat context')).toBeInTheDocument()
-    expect(screen.getByText(/Slide 2 · text-box/)).toBeInTheDocument()
+    expect(screen.getByText('1 element')).toBeInTheDocument()
+    expect(screen.queryByText(/Slide 2 · text-box/)).toBeNull()
     expect(screen.getByText('Slide 1 — Title')).toBeInTheDocument()
 
     await user.click(
@@ -112,7 +113,8 @@ describe('ChatContextChips', () => {
     render(<ContextChipList className="mt-2" label="Attached context" {...chips} />)
 
     expect(screen.getByLabelText('Attached context')).toBeInTheDocument()
-    expect(screen.getByText(/Slide 1 · image/)).toBeInTheDocument()
+    expect(screen.getByText('1 element')).toBeInTheDocument()
+    expect(screen.queryByText(/Slide 1 · image/)).toBeNull()
     expect(screen.getByText('Slide 2 — Agenda')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Remove selected element from chat context' }),
