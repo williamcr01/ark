@@ -171,8 +171,12 @@ export function DecksDashboard() {
   }, [])
 
   const handleRemoveRecent = useCallback(async (deck: DeckSummary) => {
-    await removeRecentWorkspace(deck.id)
-    setDecks((current) => current.filter((item) => item.id !== deck.id))
+    try {
+      await removeRecentWorkspace(deck.id)
+      setDecks((current) => current.filter((item) => item.id !== deck.id))
+    } catch {
+      toast.error('Could not remove recent workspace')
+    }
   }, [])
 
   const handleHtmlUpload = useCallback(
