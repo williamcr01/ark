@@ -140,8 +140,12 @@ export class McpInteractionStore {
       throw new McpInteractionError('INVALID_INTERACTION_RESPONSE', 'Response type does not match.')
     }
     if (answer.kind === 'themes') {
+      if ('refresh' in answer && answer.refresh) {
+        this.finish(record, 'answered', answer)
+        return
+      }
       const request = record.interaction.kind === 'themes' ? record.interaction.request : null
-      if (!request?.themes.some((theme) => theme.id === answer.themeId)) {
+      if (!('themeId' in answer) || !request?.themes.some((theme) => theme.id === answer.themeId)) {
         throw new McpInteractionError('INVALID_INTERACTION_RESPONSE', 'Unknown theme choice.')
       }
     } else {

@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
 import { ChatPanel } from '@/components/ChatPanel'
 import { ContextChipList } from '@/components/ChatContextChips'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -116,7 +117,8 @@ describe('ChatPanel submit control', () => {
   it('renders and submits visual themes requested through MCP', async () => {
     const onMcpInteractionSubmit = vi.fn()
     const user = userEvent.setup()
-    const sampleHtml = '<!doctype html><html><body><section class="slide"></section></body></html>'
+    const proposal = exampleThemeProposal('Pick a direction')
+    const chosen = proposal.themes[2]!
 
     render(
       <TooltipProvider>
@@ -130,28 +132,20 @@ describe('ChatPanel submit control', () => {
             createdAt: '2026-08-06T12:00:00.000Z',
             expiresAt: '2026-08-06T12:30:00.000Z',
             kind: 'themes',
-            request: {
-              title: 'Pick a direction',
-              themes: Array.from({ length: 4 }, (_, index) => ({
-                id: `theme-${index}`,
-                name: `Theme ${index}`,
-                description: `Direction ${index}`,
-                fonts: themeFonts,
-                sampleHtml,
-              })),
-            },
+            request: proposal,
           }}
           onMcpInteractionSubmit={onMcpInteractionSubmit}
         />
       </TooltipProvider>,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Select Theme 2' }))
-    await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 2' }))
+    await user.click(screen.getByRole('button', { name: `Select ${chosen.name}` }))
+    await user.click(screen.getByRole('button', { name: `Use this theme: ${chosen.name}` }))
     expect(onMcpInteractionSubmit).toHaveBeenCalledWith({
       kind: 'themes',
-      themeId: 'theme-2',
-      fonts: themeFonts,
+      themeId: chosen.id,
+      fonts: chosen.fonts,
+      theme: chosen.theme,
     })
   })
 
@@ -260,37 +254,7 @@ describe('ChatPanel submit control', () => {
   it('renders propose_themes picker above the composer and submits a choice', async () => {
     const onQuestionSubmit = vi.fn()
     const user = userEvent.setup()
-    const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
-    const themes = [
-      {
-        id: 'midnight',
-        name: 'Midnight Editorial',
-        description: 'Dark and sharp',
-        fonts: themeFonts,
-        sampleHtml,
-      },
-      {
-        id: 'sunlit',
-        name: 'Sunlit Studio',
-        description: 'Warm and airy',
-        fonts: themeFonts,
-        sampleHtml,
-      },
-      {
-        id: 'signal',
-        name: 'Signal Grid',
-        description: 'Bold sans',
-        fonts: themeFonts,
-        sampleHtml,
-      },
-      {
-        id: 'folio',
-        name: 'Quiet Folio',
-        description: 'Soft paper',
-        fonts: themeFonts,
-        sampleHtml,
-      },
-    ]
+    const proposal = exampleThemeProposal()
 
     render(
       <TooltipProvider>
@@ -307,10 +271,7 @@ describe('ChatPanel submit control', () => {
                   type: 'tool-call',
                   toolName: 'propose_themes',
                   summary: '4 theme(s)',
-                  input: {
-                    title: 'Pick a visual direction',
-                    themes,
-                  },
+                  input: proposal,
                 },
               ],
             },
@@ -327,9 +288,13 @@ describe('ChatPanel submit control', () => {
 
     expect(onQuestionSubmit).toHaveBeenCalledWith(
       expect.stringContaining('Midnight Editorial (id: midnight)'),
+      expect.objectContaining({
+        themeSelection: expect.objectContaining({ themeId: 'midnight' }),
+      }),
     )
     expect(onQuestionSubmit).toHaveBeenCalledWith(
       expect.stringContaining('- Fonts: display georgia, body calibri, mono courier-new'),
+      expect.anything(),
     )
   })
 

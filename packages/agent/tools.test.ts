@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
+import { buildDeckThemeRootCss, serializeDeckThemeSpec } from '@ark/deck/document/theme.ts'
+
 import { createDeckTools } from './tools.ts'
 import { createDeckWorkspace } from './workspace.ts'
 
@@ -179,18 +182,8 @@ describe('attachment tools', () => {
 })
 
 describe('propose_themes tool', () => {
-  const sampleHtml = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8" /><title>Theme</title>
-<style>html,body{margin:0;height:100%} .slide{width:100vw;height:100vh}</style>
-</head><body><section class="slide"><h1>Title</h1></section></body></html>`
-
-  const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
-  const themes = [
-    { id: 'a', name: 'Alpha', description: 'Dark', fonts, sampleHtml },
-    { id: 'b', name: 'Beta', description: 'Light', fonts, sampleHtml },
-    { id: 'c', name: 'Gamma', description: 'Bold', fonts, sampleHtml },
-    { id: 'd', name: 'Delta', description: 'Soft', fonts, sampleHtml },
-  ]
+  const request = exampleThemeProposal()
+  const themes = request.themes
 
   it.each([
     ['empty', ''],
@@ -219,7 +212,7 @@ describe('propose_themes tool', () => {
       execute({ title: 'Pick a visual direction', themes: invalid }, {}),
     ).resolves.toMatchObject({
       ok: false,
-      themeId: 'a',
+      themeId: 'midnight',
     })
   })
 
@@ -228,12 +221,13 @@ describe('propose_themes tool', () => {
     const schema = tools.propose_themes!.inputSchema
     const parsed = schema.parse({ title: 'Pick a visual direction', themes })
 
-    expect(parsed.themes[0]?.fonts).toEqual(fonts)
-    expect(parsed.themes[0]?.sampleHtml).toBe(sampleHtml)
+    expect(parsed.themes[0]?.fonts).toEqual(themes[0]?.fonts)
+    expect(parsed.themes[0]?.theme.signature).toBe(themes[0]?.theme.signature)
+    expect(parsed.themes[0]?.sampleHtml).toBe(themes[0]?.sampleHtml)
     expect(
       schema.safeParse({
         title: 'Pick a visual direction',
-        themes: themes.map(({ fonts: _fonts, ...theme }) => theme),
+        themes: themes.map(({ fonts: _fonts, theme: _theme, ...rest }) => rest),
       }).success,
     ).toBe(false)
     expect(
@@ -246,5 +240,60 @@ describe('propose_themes tool', () => {
         ),
       }).success,
     ).toBe(false)
+  })
+
+  it('rejects samples that do not demonstrate the theme recipes', async () => {
+    const tools = createDeckTools(createDeckWorkspace(''))
+    const execute = tools.propose_themes!.execute as unknown as ToolExecute
+    const invalid = themes.map((theme, index) =>
+      index === 0
+        ? {
+            ...theme,
+            sampleHtml: `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>X</title>
+<style>html,body{margin:0}</style></head>
+<body><section class="slide"><h1>Only cover</h1></section></body></html>`,
+          }
+        : theme,
+    )
+    await expect(execute({ title: request.title, themes: invalid }, {})).resolves.toMatchObject({
+      ok: false,
+      themeId: themes[0]?.id,
+    })
+  })
+})
+
+describe('write_deck theme matching', () => {
+  it('rejects a write that does not embed the selected theme', async () => {
+    const selected = exampleThemeProposal().themes[0]!.theme
+    const tools = createDeckTools(createDeckWorkspace(''), { expectedTheme: selected })
+    const execute = tools.write_deck.execute as unknown as ToolExecute
+    await expect(
+      execute(
+        {
+          html: `<!DOCTYPE html><html><body><section class="slide"><h1>Nope</h1></section></body></html>`,
+        },
+        {},
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('selected theme'),
+    })
+  })
+
+  it('accepts a write that matches the selected contract', async () => {
+    const selected = exampleThemeProposal().themes[0]!.theme
+    const tools = createDeckTools(createDeckWorkspace(''), { expectedTheme: selected })
+    const execute = tools.write_deck.execute as unknown as ToolExecute
+    const html = `<!DOCTYPE html><html lang="en" data-ark-font-display="${selected.fonts.display}" data-ark-font-body="${selected.fonts.body}" data-ark-font-mono="${selected.fonts.mono}">
+<head><script type="application/json" data-ark-theme>${serializeDeckThemeSpec(selected)}</script>
+<style>${buildDeckThemeRootCss(selected)}</style></head>
+<body>
+<section class="slide" data-ark-slide-kind="cover" data-ark-layout="${selected.slideRecipes.cover.layout}"><h1>Cover</h1></section>
+<section class="slide" data-ark-slide-kind="content" data-ark-layout="${selected.slideRecipes.content.layout}"><h2>Body</h2></section>
+</body></html>`
+    await expect(execute({ html }, {})).resolves.toMatchObject({
+      ok: true,
+      slideCount: 2,
+    })
   })
 })

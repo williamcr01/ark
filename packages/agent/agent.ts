@@ -10,6 +10,7 @@ import {
 } from '@ark/chat/chat.ts'
 import { assembleDeckAgentContext } from '@ark/chat/chat-context.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
+import type { DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import type { ProviderCallMetrics, ReasoningEffort } from '@ark/chat/generation-job.ts'
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildDeckFontPromptSection } from '@ark/runtime-registry/deck-font-registry.ts'
@@ -67,7 +68,7 @@ For an image, use the exact Ark URL returned by the attachment tools; never repr
 
 Use ask_user when critical context is missing: ask concise questions, then stop. Never re-ask information already present in the conversation.
 - New deck: the request wrapper tells you when you are starting one: either there is no deck yet, or the workspace holds an empty starter deck with no authored content. In both cases build from scratch; never treat a starter deck as the user's work, and do not read it before writing. Before generating, check whether the user's prompt already covers audience, approximate slide count, and content priorities (concise / story-led / data-heavy / visual). Ask one ask_user round for whichever of those are missing, and add other questions only if they are genuinely load-bearing for a good first draft. If the prompt already covers everything needed, skip ask_user.
-- After context is clear for a NEW deck (and before write_deck), call propose_themes with exactly 4 lean single-slide title samples in distinct visual directions, then stop. After the user picks a theme, write the full deck in that look. Never re-propose unless asked.
+- After context is clear for a NEW deck (and before write_deck), call propose_themes with exactly 4 distinct directions. Each needs a full theme spec (fonts, colors, type, spacing, slide recipes), a rationale, and a lean three-slide sample (cover, content, and one of section/data/closing) using --ark-* variables. Then stop. After the user picks a theme, write the full deck from that exact contract: embed the spec as <script type="application/json" data-ark-theme>, materialize CSS variables, and classify every slide with data-ark-slide-kind and data-ark-layout. Never re-propose unless asked.
 - Existing deck: ask only when guessing would materially change the result. Call propose_themes only when the user explicitly asks to retheme the whole deck or requests new theme options. After they pick, apply that direction consistently across the deck while preserving its content and structure unless they requested broader changes.
 
 Approved runtime libraries (Ark-served only; use exact pinned URLs, never CDNs):
@@ -589,9 +590,12 @@ export async function runDeckAgent({
   throwIfAborted(abortSignal)
 
   const workspace = createDeckWorkspace(currentHtml)
+  const lastUser = messages.findLast((message) => message.role === 'user')
+  const expectedTheme: DeckThemeSpecV1 | null = lastUser?.context?.themeSelection?.theme ?? null
   const { tools, activeDefinitions } = createActiveDeckTools(workspace, {
     logger,
     attachmentInspector,
+    expectedTheme,
   })
   const accumulatedSteps: AgentStep[] = []
   const transcriptParts: ChatMessagePart[] = []

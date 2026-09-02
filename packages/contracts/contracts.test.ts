@@ -18,6 +18,7 @@ import {
   restoreDocumentHistoryRequestSchema,
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
 import { MAX_EDITOR_SELECTIONS as chatEditorSelectionCap } from '@ark/chat/chat.ts'
 import {
   generationJobResponseSchema,
@@ -46,6 +47,7 @@ import {
   mcpClientIdSchema,
   mcpClientInstallationSchema,
   mcpClientInstallationsSchema,
+  mcpInteractionAnswerSchema,
   mcpPendingInteractionSchema,
   themeProposalRequestSchema,
 } from './mcp.ts'
@@ -867,8 +869,9 @@ describe('theme proposal contract', () => {
     { id: 'signal', name: 'Signal Grid', description: 'Bold', fonts, sampleHtml },
     { id: 'folio', name: 'Quiet Folio', description: 'Soft', fonts, sampleHtml },
   ]
+  const request = exampleThemeProposal()
 
-  it('parses a theme proposal with registry font ids through the MCP interaction schema', () => {
+  it('parses a structured theme proposal through the MCP interaction schema', () => {
     const parsed = mcpPendingInteractionSchema.parse({
       id: '00000000-0000-4000-8000-000000000001',
       deckId,
@@ -877,15 +880,15 @@ describe('theme proposal contract', () => {
       createdAt: '2026-09-01T00:00:00.000Z',
       expiresAt: '2026-09-01T00:30:00.000Z',
       kind: 'themes',
-      request: { title: 'Pick a visual direction', themes },
+      request,
     })
 
     expect(parsed.kind).toBe('themes')
     if (parsed.kind !== 'themes') throw new Error('expected themes interaction')
-    expect(parsed.request.themes[0]?.fonts).toEqual(fonts)
-    expect(parsed.request.themes[0]?.sampleHtml).toBe(sampleHtml)
+    expect(parsed.request.themes[0]?.fonts).toEqual(request.themes[0]?.fonts)
+    expect(parsed.request.themes[0]?.theme.colors.canvas).toMatch(/^#/)
     expect(themeProposalRequestSchema.parse(parsed.request).themes[1]?.fonts.display).toBe(
-      'georgia',
+      'cambria',
     )
   })
 
@@ -934,5 +937,21 @@ describe('theme proposal contract', () => {
         },
       }).success,
     ).toBe(false)
+  })
+
+  it('parses structured theme answers and refresh requests', () => {
+    const selected = request.themes[0]!
+    expect(
+      mcpInteractionAnswerSchema.parse({
+        kind: 'themes',
+        themeId: selected.id,
+        fonts: selected.fonts,
+        theme: selected.theme,
+      }),
+    ).toMatchObject({ themeId: 'midnight' })
+    expect(mcpInteractionAnswerSchema.parse({ kind: 'themes', refresh: true })).toEqual({
+      kind: 'themes',
+      refresh: true,
+    })
   })
 })

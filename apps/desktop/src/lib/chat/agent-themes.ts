@@ -1,11 +1,12 @@
 import {
+  isThemeRefreshContent,
   parseStoredThemeProposalRequest,
   parseThemeChoiceId,
-  type ThemeProposalRequest,
+  type StoredThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
 import type { ChatMessage } from '@ark/chat/chat.ts'
 
-export function getThemeProposalRequest(message: ChatMessage): ThemeProposalRequest | null {
+export function getThemeProposalRequest(message: ChatMessage): StoredThemeProposalRequest | null {
   if (message.role !== 'assistant') return null
   for (const part of message.parts ?? []) {
     if (part.type !== 'tool-call' || part.toolName !== 'propose_themes') continue
@@ -15,7 +16,9 @@ export function getThemeProposalRequest(message: ChatMessage): ThemeProposalRequ
   return null
 }
 
-export function findPendingThemeProposal(messages: ChatMessage[]): ThemeProposalRequest | null {
+export function findPendingThemeProposal(
+  messages: ChatMessage[],
+): StoredThemeProposalRequest | null {
   const lastUserIndex = messages.findLastIndex((message) => message.role === 'user')
 
   for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
@@ -32,13 +35,23 @@ export function isThemeChoiceMessage(messages: ChatMessage[], index: number) {
   if (!message || message.role !== 'user') return false
   const previous = messages[index - 1]
   if (!previous || !getThemeProposalRequest(previous)) return false
-  return parseThemeChoiceId(message.content) !== null
+  return (
+    Boolean(message.context?.themeSelection) ||
+    parseThemeChoiceId(message.content) !== null ||
+    isThemeRefreshContent(message.content)
+  )
 }
 
 export function findThemeChoiceAfter(messages: ChatMessage[], assistantIndex: number) {
   const next = messages[assistantIndex + 1]
   if (!next || next.role !== 'user') return null
   if (!getThemeProposalRequest(messages[assistantIndex]!)) return null
-  if (parseThemeChoiceId(next.content) === null) return null
+  if (
+    !next.context?.themeSelection &&
+    parseThemeChoiceId(next.content) === null &&
+    !isThemeRefreshContent(next.content)
+  ) {
+    return null
+  }
   return next
 }

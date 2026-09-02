@@ -1,7 +1,8 @@
 import type { ExternalDeckUpdate, McpToolResponse } from '@ark/contracts'
 import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
 import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
-import { formatThemeFontPairingLine } from '@ark/chat/agent-themes.ts'
+import { formatDeckThemeSummary, THEME_REFRESH_PROMPT } from '@ark/chat/agent-themes.ts'
+import { isMcpThemeRefreshAnswer } from '@ark/contracts'
 import { MCP_TOOL_CATALOG, isMcpToolName, type McpToolName } from './tool-catalog.ts'
 import { createActiveDeckTools } from '@ark/agent/tool-catalog.ts'
 import type { DeckStore } from '@ark/storage/records/deck-record.ts'
@@ -142,9 +143,17 @@ export function createMcpRunner(options: {
           }
         }
         if (result.status === 'answered' && result.answer?.kind === 'themes') {
+          if (isMcpThemeRefreshAnswer(result.answer)) {
+            return {
+              text: `The user asked for different theme directions in Ark. Call propose_themes again with four new, visually distinct options. ${THEME_REFRESH_PROMPT}`,
+              activitySummary: 'Received an MCP theme refresh request.',
+              structuredContent: result,
+            }
+          }
           const lines = [
             `The user chose theme id "${result.answer.themeId}" in Ark.`,
-            formatThemeFontPairingLine(result.answer.fonts),
+            formatDeckThemeSummary(result.answer.theme),
+            'Embed this exact spec as <script type="application/json" data-ark-theme>, materialize its CSS variables, and classify every slide with data-ark-slide-kind and data-ark-layout matching the recipes.',
           ]
           return {
             text: lines.join('\n'),

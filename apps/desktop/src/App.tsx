@@ -199,8 +199,10 @@ export default function App() {
         agentQuestions={normalAgentQuestions}
         disabled={isGenerating || !canGenerateForDeck}
         mcpInteraction={activeMcpInteraction}
-        onAgentQuestionSubmit={(content) => {
-          void generateDeck(content)
+        onAgentQuestionSubmit={(content, context) => {
+          void generateDeck(content, [], {
+            themeSelection: context?.themeSelection,
+          })
         }}
         onMcpInteractionCancel={() => {
           void cancelMcpInteraction()

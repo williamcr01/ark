@@ -17,7 +17,7 @@ import {
 } from '@ark/agent/tool-schemas.ts'
 
 import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
-import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
+import { themeProposalRequestObjectSchema } from '@ark/chat/agent-themes.ts'
 
 const targetSchema = z.object({
   deckId: z.string().uuid().optional().describe('Deck id returned by the latest read.'),
@@ -33,7 +33,7 @@ const mutationTargetSchema = z.object({
 })
 
 export const MCP_SERVER_INSTRUCTIONS =
-  'Before the first Ark deck edit in each conversation, call get_authoring_guide once, then get_active_deck. When isBlank is true, use ask_user for critical missing context, then propose_themes with exactly four visual samples; after either call, use wait_for_interaction until Ark returns the user response. Build the chosen direction with write_deck. For authored decks, call parse_deck or list_slides and prefer patch_deck; use edit_deck for small exact edits and write_deck only for explicit full rewrites. Carry deckId and documentRevision from reads into writes. Produce one self-contained HTML document with no external resource URLs. Use only approved /api/runtimes/... assets and existing Ark asset URLs. After a revision conflict, re-read and retry.'
+  'Before the first Ark deck edit in each conversation, call get_authoring_guide once, then get_active_deck. When isBlank is true, use ask_user for critical missing context, then propose_themes with exactly four visual samples (full theme spec plus three-slide HTML); after either call, use wait_for_interaction until Ark returns the user response. Build the chosen contract with write_deck, embedding the spec as data-ark-theme JSON and classifying every slide. For authored decks, call parse_deck or list_slides and prefer patch_deck; use edit_deck for small exact edits and write_deck only for explicit full rewrites. Carry deckId and documentRevision from reads into writes. Produce one self-contained HTML document with no external resource URLs. Use only approved /api/runtimes/... assets and existing Ark asset URLs. After a revision conflict, re-read and retry.'
 
 export const MCP_TOOL_CATALOG = {
   get_authoring_guide: {
@@ -93,8 +93,8 @@ export const MCP_TOOL_CATALOG = {
   },
   propose_themes: {
     description:
-      'Show exactly four visual theme samples inside Ark. Each theme must include fonts: { display, body, mono } as approved deck font ids, plus sampleHtml. Returns an interaction id; call wait_for_interaction until the user picks one.',
-    inputSchema: mutationTargetSchema.extend(themeProposalRequestSchema.shape),
+      'Show exactly four visual theme samples inside Ark. Each theme must include a full theme spec (fonts, colors, type, spacing, slide recipes), a rationale, and a three-slide sampleHtml using --ark-* variables. Returns an interaction id; call wait_for_interaction until the user picks one or asks for different options.',
+    inputSchema: mutationTargetSchema.extend(themeProposalRequestObjectSchema.shape),
     mutating: false,
     sideEffecting: true,
   },

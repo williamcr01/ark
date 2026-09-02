@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { exampleDeckThemes } from '@ark/deck/document/theme.ts'
+
 import {
   agentStepsToChatParts,
   applyResolvedAssetAttachments,
@@ -251,6 +253,29 @@ describe('parseGenerateMessages', () => {
       ok: true,
       messages: [{ role: 'user', content: 'hello' }],
     })
+  })
+
+  it('persists a structured theme selection on the user turn', () => {
+    const theme = exampleDeckThemes().midnight
+    const result = parseGenerateMessages([
+      {
+        role: 'user',
+        content:
+          'Pick a visual direction: theme choice:\n- Theme: Midnight Editorial (id: midnight)',
+        context: {
+          themeSelection: {
+            themeId: 'midnight',
+            name: 'Midnight Editorial',
+            fonts: theme.fonts,
+            theme,
+          },
+        },
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.messages[0]?.context?.themeSelection?.theme.signature).toBe(theme.signature)
+    }
   })
 
   it('round-trips singular editorSelection as both singular and array', () => {
@@ -1102,5 +1127,28 @@ describe('wrapUserPromptForAgent', () => {
     expect(wrapped).toContain('ark-el-primary')
     expect(wrapped).toContain('ark-el-z')
     expect(wrapped).toContain('3 elements selected')
+  })
+
+  it('includes the selected theme contract when wrapping a new deck', () => {
+    const theme = exampleDeckThemes().midnight
+    const wrapped = wrapUserPromptForAgent(
+      'Midnight Editorial (id: midnight)',
+      '',
+      0,
+      undefined,
+      undefined,
+      'blank',
+      undefined,
+      {
+        themeId: 'midnight',
+        name: 'Midnight Editorial',
+        fonts: theme.fonts,
+        theme,
+      },
+    )
+    expect(wrapped).toContain('selected a visual theme')
+    expect(wrapped).toContain(theme.signature)
+    expect(wrapped).toContain('data-ark-theme')
+    expect(wrapped).toContain(theme.colors.primary)
   })
 })

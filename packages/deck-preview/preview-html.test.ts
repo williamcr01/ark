@@ -99,6 +99,29 @@ describe('buildPreviewDocument', () => {
     expect(slides[1]?.getAttribute('aria-hidden')).toBe('true')
   })
 
+  it('pre-activates a requested slide for css-only decks', () => {
+    const { html } = buildPreviewDocument(
+      `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Plain</title></head>
+<body>
+  <section class="slide"><h1>One</h1></section>
+  <section class="slide"><h1>Two</h1></section>
+  <section class="slide"><h1>Three</h1></section>
+</body>
+</html>`,
+      { initialSlideIndex: 2 },
+    )
+    const slides = [
+      ...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('section.slide'),
+    ]
+
+    expect(slides[2]?.hasAttribute('data-ark-active')).toBe(true)
+    expect(slides[2]?.hasAttribute('data-ark-hidden')).toBe(false)
+    expect(slides[0]?.hasAttribute('data-ark-hidden')).toBe(true)
+    expect(slides[1]?.hasAttribute('data-ark-hidden')).toBe(true)
+  })
+
   it('injects the handshake and rewrites cached nonce placeholders after the preview boundary', () => {
     const noncePlaceholder = 'CachedNoncePlaceholder'
     const freshNonce = 'FreshSessionNonce'

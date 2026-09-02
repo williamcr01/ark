@@ -87,4 +87,14 @@ describe('validateDeckHtml with JSDOM', () => {
       expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
     }
   })
+
+  it('does not treat inert theme metadata as executable deck JavaScript', () => {
+    const html = `<!DOCTYPE html><html><head>
+<script type="application/json" data-ark-theme>{"schemaVersion":1}</script>
+</head><body><section class="slide"><h1>Title</h1></section></body></html>`
+    const report = validateDeckHtml(html, parseDocument)
+
+    expect(report.scripts).toEqual([])
+    expect(report.issues.some((issue) => issue.code === 'script_without_marker')).toBe(false)
+  })
 })

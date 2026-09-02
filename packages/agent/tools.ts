@@ -3,6 +3,8 @@ import { z } from 'zod'
 
 import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
 import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
+import { evaluateDeckThemeMatch, evaluateThemeSampleHtml } from '@ark/deck/document/theme-html.ts'
+import type { DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import { applyDeckEdits } from '@ark/deck/patch/text-edit.ts'
 import {
   deckEditInputSchema,
@@ -56,6 +58,8 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
     runtime: parsed.runtime,
     slideSelector: parsed.slideSelector,
     slideCount: parsed.slideCount,
+    theme: parsed.theme,
+    fonts: parsed.fonts,
     slides: parsed.slides.map((slide) => ({
       index: slide.index,
       slideId: slide.slideId,
@@ -63,6 +67,8 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
       title: slide.title,
       preview: slide.preview,
       notes: slide.notes,
+      kind: slide.kind,
+      layout: slide.layout,
     })),
     editableElements: parsed.editableElements.map((group) => ({
       slideIndex: group.slideIndex,
@@ -82,19 +88,31 @@ function projectParsedDeck(parsed: ReturnType<typeof parseDeckStructure>) {
   }
 }
 
+function rejectThemeMismatch(html: string, expectedTheme: DeckThemeSpecV1 | null | undefined) {
+  if (!expectedTheme) return null
+  const issues = evaluateDeckThemeMatch(html, expectedTheme)
+  if (issues.length === 0) return null
+  return {
+    ok: false as const,
+    error: `Deck does not match the selected theme: ${issues.map((issue) => issue.message).join(' ')}`,
+    themeIssues: issues,
+  }
+}
+
 export function createDeckTools(
   workspace: DeckWorkspace,
   options: {
     logger?: Logger
     attachmentInspector?: DeckAttachmentInspector
+    expectedTheme?: DeckThemeSpecV1 | null
   } = {},
 ) {
-  const { logger, attachmentInspector } = options
+  const { logger, attachmentInspector, expectedTheme = null } = options
   const timingOptions = logger ? { logger } : {}
   const baseTools = {
     parse_deck: tool({
       description:
-        'Parse the deck into structured metadata: title, runtime, slides, notes, styles, scripts, asset references, and editable element ids. Use before edits to understand deck shape.',
+        'Parse the deck into structured metadata: title, runtime, theme, slides (including kind/layout), notes, styles, scripts, asset references, and editable element ids. Use before edits to understand deck shape.',
       inputSchema: z.object({}),
       execute: async () => {
         if (!workspace.html.trim()) {
@@ -183,6 +201,9 @@ export function createDeckTools(
           }
         }
 
+        const themeError = rejectThemeMismatch(html, expectedTheme)
+        if (themeError) return themeError
+
         setDeckWorkspaceHtml(workspace, html)
 
         const warnings = collectValidationWarnings(validation)
@@ -230,6 +251,9 @@ export function createDeckTools(
             validation,
           }
         }
+
+        const themeError = rejectThemeMismatch(applied.html, expectedTheme)
+        if (themeError) return themeError
 
         setDeckWorkspaceHtml(workspace, applied.html)
 
@@ -283,6 +307,9 @@ export function createDeckTools(
           }
         }
 
+        const themeError = rejectThemeMismatch(patched.html, expectedTheme)
+        if (themeError) return themeError
+
         setDeckWorkspaceHtml(workspace, patched.html)
 
         const warnings = collectValidationWarnings(validation)
@@ -335,6 +362,9 @@ export function createDeckTools(
           }
         }
 
+        const themeError = rejectThemeMismatch(patched.html, expectedTheme)
+        if (themeError) return themeError
+
         setDeckWorkspaceHtml(workspace, patched.html)
 
         const warnings = collectValidationWarnings(validation)
@@ -367,17 +397,26 @@ export function createDeckTools(
     }),
     propose_themes: tool({
       description:
-        'Propose exactly four visually distinct theme directions as single-slide sample HTML documents, each with a fonts pairing (display, body, mono) from the approved deck font ids. Use before creating a new deck, or when the user explicitly asks to retheme the whole existing deck, then stop and wait for the user to pick one.',
+        'Propose exactly four visually distinct theme directions. Each candidate needs a full theme spec (fonts, colors, type, spacing, slide recipes), a one-line rationale, and a lean three-slide sampleHtml (cover, content, and one of section/data/closing) using --ark-* CSS variables. Use before creating a new deck, or when the user explicitly asks to retheme the whole existing deck, then stop and wait for the user to pick one.',
       inputSchema: themeProposalRequestSchema,
       execute: async ({ themes }) => {
-        for (const theme of themes) {
-          const validation = validateDeckHtmlOnServer(theme.sampleHtml, timingOptions)
+        for (const candidate of themes) {
+          const validation = validateDeckHtmlOnServer(candidate.sampleHtml, timingOptions)
           if (!validation.valid) {
             const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
             return {
               ok: false,
-              error: `Theme "${theme.name}" sampleHtml failed validation: ${primaryIssue?.message ?? 'invalid HTML'}`,
-              themeId: theme.id,
+              error: `Theme "${candidate.name}" sampleHtml failed validation: ${primaryIssue?.message ?? 'invalid HTML'}`,
+              themeId: candidate.id,
+            }
+          }
+          const sampleIssues = evaluateThemeSampleHtml(candidate.sampleHtml, candidate.theme)
+          if (sampleIssues.length > 0) {
+            return {
+              ok: false,
+              error: `Theme "${candidate.name}" sampleHtml does not follow its theme spec: ${sampleIssues.map((issue) => issue.message).join(' ')}`,
+              themeId: candidate.id,
+              sampleIssues,
             }
           }
         }

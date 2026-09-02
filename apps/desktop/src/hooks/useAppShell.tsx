@@ -1158,8 +1158,10 @@ export function useAppShell() {
       onInputChange={setInput}
       onModelSelect={handleModelSelect}
       onPromptSubmit={handlePromptSubmit}
-      onQuestionSubmit={(content) => {
-        void generateDeck(content)
+      onQuestionSubmit={(content, context) => {
+        void generateDeck(content, [], {
+          themeSelection: context?.themeSelection,
+        })
       }}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}

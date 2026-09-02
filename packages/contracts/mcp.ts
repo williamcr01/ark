@@ -4,11 +4,18 @@ import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
 import {
   themeCandidateSchema,
   themeFontPairingSchema,
+  themeProposalRequestObjectSchema,
   themeProposalRequestSchema,
 } from '@ark/chat/agent-themes.ts'
+import { deckThemeSpecV1Schema } from '@ark/deck/document/theme.ts'
 import { deckIdSchema } from './common.ts'
 
-export { themeCandidateSchema, themeFontPairingSchema, themeProposalRequestSchema }
+export {
+  themeCandidateSchema,
+  themeFontPairingSchema,
+  themeProposalRequestObjectSchema,
+  themeProposalRequestSchema,
+}
 
 export const mcpServiceStateSchema = z.enum(['stopped', 'running', 'stopping'])
 
@@ -113,16 +120,31 @@ export const mcpPendingInteractionSchema = z.discriminatedUnion('kind', [
 
 export type McpPendingInteraction = z.infer<typeof mcpPendingInteractionSchema>
 
-export const mcpInteractionAnswerSchema = z.discriminatedUnion('kind', [
+export const mcpThemeSelectAnswerSchema = z.object({
+  kind: z.literal('themes'),
+  themeId: z.string().min(1).max(64),
+  fonts: themeFontPairingSchema,
+  theme: deckThemeSpecV1Schema,
+})
+
+export const mcpThemeRefreshAnswerSchema = z.object({
+  kind: z.literal('themes'),
+  refresh: z.literal(true),
+})
+
+export const mcpInteractionAnswerSchema = z.union([
   z.object({ kind: z.literal('questions'), answers: mcpQuestionAnswersSchema }),
-  z.object({
-    kind: z.literal('themes'),
-    themeId: z.string().min(1).max(64),
-    fonts: themeFontPairingSchema,
-  }),
+  mcpThemeRefreshAnswerSchema,
+  mcpThemeSelectAnswerSchema,
 ])
 
 export type McpInteractionAnswer = z.infer<typeof mcpInteractionAnswerSchema>
+
+export function isMcpThemeRefreshAnswer(
+  answer: McpInteractionAnswer,
+): answer is z.infer<typeof mcpThemeRefreshAnswerSchema> {
+  return answer.kind === 'themes' && 'refresh' in answer && answer.refresh === true
+}
 
 export const mcpInteractionChangedSchema = z.object({
   interaction: mcpPendingInteractionSchema.nullable(),

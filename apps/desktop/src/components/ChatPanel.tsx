@@ -57,7 +57,13 @@ import type { ResolvedAppearance } from '@/hooks/useAppearance'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
-import type { AgentStep, ChatAttachment, ChatMessage, ChatMessagePart } from '@ark/chat/chat.ts'
+import type {
+  AgentStep,
+  ChatAttachment,
+  ChatMessage,
+  ChatMessageContext,
+  ChatMessagePart,
+} from '@ark/chat/chat.ts'
 import { agentStepsToChatParts, MAX_CHAT_ATTACHMENT_BYTES } from '@ark/chat/chat.ts'
 import {
   agentQuestionRequestSchema,
@@ -70,7 +76,8 @@ import {
   parseThemeChoiceFonts,
   parseThemeChoiceName,
   parseStoredThemeProposalRequest,
-  type ThemeProposalRequest,
+  THEME_REFRESH_PROMPT,
+  type StoredThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
 import { formatThemeFontPairingLabel } from '@/lib/chat/theme-fonts'
 import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
@@ -361,7 +368,7 @@ function ThemeProposalTranscript({
   request,
   choiceContent,
 }: {
-  request: ThemeProposalRequest
+  request: StoredThemeProposalRequest
   choiceContent?: string | null
 }) {
   const chosenName = choiceContent ? parseThemeChoiceName(request, choiceContent) : null
@@ -765,7 +772,7 @@ export type ChatPanelProps = {
   onInputChange: (value: string) => void
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
-  onQuestionSubmit?: (content: string) => void
+  onQuestionSubmit?: (content: string, context?: ChatMessageContext) => void
   mcpInteraction?: McpPendingInteraction | null
   onMcpInteractionSubmit?: (answer: McpInteractionAnswer) => void
   onMcpInteractionCancel?: () => void
@@ -893,12 +900,38 @@ export function ChatPanel({
         (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
           <ThemePicker
             disabled={isGenerating || (!mcpInteraction && !canGenerate)}
-            onSubmit={(themeId, fonts) => {
+            onSubmit={(result) => {
               if (mcpInteraction?.kind === 'themes' && onMcpInteractionSubmit) {
-                onMcpInteractionSubmit({ kind: 'themes', themeId, fonts })
+                if (result.action === 'refresh') {
+                  onMcpInteractionSubmit({ kind: 'themes', refresh: true })
+                  return
+                }
+                if (!result.theme) return
+                onMcpInteractionSubmit({
+                  kind: 'themes',
+                  themeId: result.themeId,
+                  fonts: result.fonts,
+                  theme: result.theme,
+                })
                 return
               }
-              onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId, fonts))
+              if (result.action === 'refresh') {
+                onQuestionSubmit?.(THEME_REFRESH_PROMPT)
+                return
+              }
+              onQuestionSubmit?.(
+                formatThemeChoice(activeThemes, result.themeId, result.fonts, result.theme),
+                result.theme
+                  ? {
+                      themeSelection: {
+                        themeId: result.themeId,
+                        name: result.name,
+                        fonts: result.fonts,
+                        theme: result.theme,
+                      },
+                    }
+                  : undefined,
+              )
             }}
             request={activeThemes}
             size={isHome ? 'lg' : 'sm'}

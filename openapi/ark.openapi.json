@@ -33,11 +33,212 @@
                 },
                 "name": { "type": "string", "minLength": 1, "maxLength": 80 },
                 "description": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "rationale": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "Why this direction suits the deck, audience, and content."
+                },
+                "theme": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": { "type": "number", "enum": [1] },
+                    "fonts": {
+                      "type": "object",
+                      "properties": {
+                        "display": {
+                          "type": "string",
+                          "enum": [
+                            "calibri",
+                            "arial",
+                            "cambria",
+                            "georgia",
+                            "times-new-roman",
+                            "courier-new"
+                          ],
+                          "description": "Approved deck font id from the registry, not a CSS stack."
+                        },
+                        "body": {
+                          "type": "string",
+                          "enum": [
+                            "calibri",
+                            "arial",
+                            "cambria",
+                            "georgia",
+                            "times-new-roman",
+                            "courier-new"
+                          ],
+                          "description": "Approved deck font id from the registry, not a CSS stack."
+                        },
+                        "mono": {
+                          "type": "string",
+                          "enum": [
+                            "calibri",
+                            "arial",
+                            "cambria",
+                            "georgia",
+                            "times-new-roman",
+                            "courier-new"
+                          ],
+                          "description": "Approved deck font id from the registry, not a CSS stack."
+                        }
+                      },
+                      "required": ["display", "body", "mono"]
+                    },
+                    "colors": {
+                      "type": "object",
+                      "properties": {
+                        "canvas": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                        "surface": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                        "foreground": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                        "muted": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                        "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                        "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                        "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+                      },
+                      "required": [
+                        "canvas",
+                        "surface",
+                        "foreground",
+                        "muted",
+                        "primary",
+                        "secondary",
+                        "accent"
+                      ]
+                    },
+                    "typography": {
+                      "type": "object",
+                      "properties": {
+                        "displayPx": { "type": "integer", "minimum": 40, "maximum": 96 },
+                        "titlePx": { "type": "integer", "minimum": 24, "maximum": 56 },
+                        "bodyPx": { "type": "integer", "minimum": 14, "maximum": 28 },
+                        "captionPx": { "type": "integer", "minimum": 11, "maximum": 18 }
+                      },
+                      "required": ["displayPx", "titlePx", "bodyPx", "captionPx"]
+                    },
+                    "spacing": {
+                      "type": "object",
+                      "properties": {
+                        "pagePaddingPx": { "type": "integer", "minimum": 24, "maximum": 96 },
+                        "sectionGapPx": { "type": "integer", "minimum": 8, "maximum": 64 },
+                        "itemGapPx": { "type": "integer", "minimum": 4, "maximum": 32 },
+                        "radiusPx": { "type": "integer", "minimum": 0, "maximum": 32 }
+                      },
+                      "required": ["pagePaddingPx", "sectionGapPx", "itemGapPx", "radiusPx"]
+                    },
+                    "slideRecipes": {
+                      "type": "object",
+                      "properties": {
+                        "cover": {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                            },
+                            "rules": {
+                              "type": "array",
+                              "items": { "type": "string", "minLength": 1, "maxLength": 160 },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": ["layout", "rules"]
+                        },
+                        "section": {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                            },
+                            "rules": {
+                              "type": "array",
+                              "items": { "type": "string", "minLength": 1, "maxLength": 160 },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": ["layout", "rules"]
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                            },
+                            "rules": {
+                              "type": "array",
+                              "items": { "type": "string", "minLength": 1, "maxLength": 160 },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": ["layout", "rules"]
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                            },
+                            "rules": {
+                              "type": "array",
+                              "items": { "type": "string", "minLength": 1, "maxLength": 160 },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": ["layout", "rules"]
+                        },
+                        "closing": {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                            },
+                            "rules": {
+                              "type": "array",
+                              "items": { "type": "string", "minLength": 1, "maxLength": 160 },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": ["layout", "rules"]
+                        }
+                      },
+                      "required": ["cover", "section", "content", "data", "closing"]
+                    },
+                    "signature": { "type": "string", "minLength": 1, "maxLength": 64 }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "fonts",
+                    "colors",
+                    "typography",
+                    "spacing",
+                    "slideRecipes"
+                  ],
+                  "description": "Durable design contract: fonts, colors, type, spacing, and slide recipes."
+                },
                 "sampleHtml": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 10240,
-                  "description": "Complete self-contained single-slide HTML document (inline CSS, no external URLs). Keep lean (max ~10 KiB)."
+                  "maxLength": 8192,
+                  "description": "Complete self-contained three-slide HTML document (cover, content, and one of section/data/closing). Inline CSS using --ark-* variables, no external URLs. Keep lean (max ~8 KiB)."
                 },
                 "fonts": {
                   "type": "object",
@@ -80,10 +281,10 @@
                     }
                   },
                   "required": ["display", "body", "mono"],
-                  "description": "Font pairing for this theme. Registry ids only (for example georgia, calibri, courier-new). Apply the same pairing in sampleHtml with data-ark-font-* markers."
+                  "description": "Font pairing for this theme. Must match theme.fonts. Registry ids only."
                 }
               },
-              "required": ["id", "name", "description", "sampleHtml", "fonts"]
+              "required": ["id", "name", "description", "rationale", "theme", "sampleHtml", "fonts"]
             }
           }
         },
@@ -2091,6 +2292,338 @@
                                   "required": ["slideIndex"]
                                 },
                                 "maxItems": 64
+                              },
+                              "themeSelection": {
+                                "type": "object",
+                                "properties": {
+                                  "themeId": { "type": "string", "minLength": 1, "maxLength": 64 },
+                                  "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                                  "fonts": {
+                                    "type": "object",
+                                    "properties": {
+                                      "display": {
+                                        "type": "string",
+                                        "enum": [
+                                          "calibri",
+                                          "arial",
+                                          "cambria",
+                                          "georgia",
+                                          "times-new-roman",
+                                          "courier-new"
+                                        ],
+                                        "description": "Approved deck font id from the registry, not a CSS stack."
+                                      },
+                                      "body": {
+                                        "type": "string",
+                                        "enum": [
+                                          "calibri",
+                                          "arial",
+                                          "cambria",
+                                          "georgia",
+                                          "times-new-roman",
+                                          "courier-new"
+                                        ],
+                                        "description": "Approved deck font id from the registry, not a CSS stack."
+                                      },
+                                      "mono": {
+                                        "type": "string",
+                                        "enum": [
+                                          "calibri",
+                                          "arial",
+                                          "cambria",
+                                          "georgia",
+                                          "times-new-roman",
+                                          "courier-new"
+                                        ],
+                                        "description": "Approved deck font id from the registry, not a CSS stack."
+                                      }
+                                    },
+                                    "required": ["display", "body", "mono"]
+                                  },
+                                  "theme": {
+                                    "type": "object",
+                                    "properties": {
+                                      "schemaVersion": { "type": "number", "enum": [1] },
+                                      "fonts": {
+                                        "type": "object",
+                                        "properties": {
+                                          "display": {
+                                            "type": "string",
+                                            "enum": [
+                                              "calibri",
+                                              "arial",
+                                              "cambria",
+                                              "georgia",
+                                              "times-new-roman",
+                                              "courier-new"
+                                            ],
+                                            "description": "Approved deck font id from the registry, not a CSS stack."
+                                          },
+                                          "body": {
+                                            "type": "string",
+                                            "enum": [
+                                              "calibri",
+                                              "arial",
+                                              "cambria",
+                                              "georgia",
+                                              "times-new-roman",
+                                              "courier-new"
+                                            ],
+                                            "description": "Approved deck font id from the registry, not a CSS stack."
+                                          },
+                                          "mono": {
+                                            "type": "string",
+                                            "enum": [
+                                              "calibri",
+                                              "arial",
+                                              "cambria",
+                                              "georgia",
+                                              "times-new-roman",
+                                              "courier-new"
+                                            ],
+                                            "description": "Approved deck font id from the registry, not a CSS stack."
+                                          }
+                                        },
+                                        "required": ["display", "body", "mono"]
+                                      },
+                                      "colors": {
+                                        "type": "object",
+                                        "properties": {
+                                          "canvas": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          },
+                                          "surface": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          },
+                                          "foreground": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          },
+                                          "muted": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          },
+                                          "primary": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          },
+                                          "secondary": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          },
+                                          "accent": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9a-fA-F]{6}$"
+                                          }
+                                        },
+                                        "required": [
+                                          "canvas",
+                                          "surface",
+                                          "foreground",
+                                          "muted",
+                                          "primary",
+                                          "secondary",
+                                          "accent"
+                                        ]
+                                      },
+                                      "typography": {
+                                        "type": "object",
+                                        "properties": {
+                                          "displayPx": {
+                                            "type": "integer",
+                                            "minimum": 40,
+                                            "maximum": 96
+                                          },
+                                          "titlePx": {
+                                            "type": "integer",
+                                            "minimum": 24,
+                                            "maximum": 56
+                                          },
+                                          "bodyPx": {
+                                            "type": "integer",
+                                            "minimum": 14,
+                                            "maximum": 28
+                                          },
+                                          "captionPx": {
+                                            "type": "integer",
+                                            "minimum": 11,
+                                            "maximum": 18
+                                          }
+                                        },
+                                        "required": ["displayPx", "titlePx", "bodyPx", "captionPx"]
+                                      },
+                                      "spacing": {
+                                        "type": "object",
+                                        "properties": {
+                                          "pagePaddingPx": {
+                                            "type": "integer",
+                                            "minimum": 24,
+                                            "maximum": 96
+                                          },
+                                          "sectionGapPx": {
+                                            "type": "integer",
+                                            "minimum": 8,
+                                            "maximum": 64
+                                          },
+                                          "itemGapPx": {
+                                            "type": "integer",
+                                            "minimum": 4,
+                                            "maximum": 32
+                                          },
+                                          "radiusPx": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 32
+                                          }
+                                        },
+                                        "required": [
+                                          "pagePaddingPx",
+                                          "sectionGapPx",
+                                          "itemGapPx",
+                                          "radiusPx"
+                                        ]
+                                      },
+                                      "slideRecipes": {
+                                        "type": "object",
+                                        "properties": {
+                                          "cover": {
+                                            "type": "object",
+                                            "properties": {
+                                              "layout": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                              },
+                                              "rules": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 160
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 3
+                                              }
+                                            },
+                                            "required": ["layout", "rules"]
+                                          },
+                                          "section": {
+                                            "type": "object",
+                                            "properties": {
+                                              "layout": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                              },
+                                              "rules": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 160
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 3
+                                              }
+                                            },
+                                            "required": ["layout", "rules"]
+                                          },
+                                          "content": {
+                                            "type": "object",
+                                            "properties": {
+                                              "layout": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                              },
+                                              "rules": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 160
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 3
+                                              }
+                                            },
+                                            "required": ["layout", "rules"]
+                                          },
+                                          "data": {
+                                            "type": "object",
+                                            "properties": {
+                                              "layout": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                              },
+                                              "rules": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 160
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 3
+                                              }
+                                            },
+                                            "required": ["layout", "rules"]
+                                          },
+                                          "closing": {
+                                            "type": "object",
+                                            "properties": {
+                                              "layout": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                              },
+                                              "rules": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 160
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 3
+                                              }
+                                            },
+                                            "required": ["layout", "rules"]
+                                          }
+                                        },
+                                        "required": [
+                                          "cover",
+                                          "section",
+                                          "content",
+                                          "data",
+                                          "closing"
+                                        ]
+                                      },
+                                      "signature": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 64
+                                      }
+                                    },
+                                    "required": [
+                                      "schemaVersion",
+                                      "fonts",
+                                      "colors",
+                                      "typography",
+                                      "spacing",
+                                      "slideRecipes"
+                                    ]
+                                  }
+                                },
+                                "required": ["themeId", "name", "fonts", "theme"]
                               }
                             }
                           },
@@ -2395,6 +2928,286 @@
                           "required": ["slideIndex"]
                         },
                         "maxItems": 64
+                      },
+                      "themeSelection": {
+                        "type": "object",
+                        "properties": {
+                          "themeId": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                          "fonts": {
+                            "type": "object",
+                            "properties": {
+                              "display": {
+                                "type": "string",
+                                "enum": [
+                                  "calibri",
+                                  "arial",
+                                  "cambria",
+                                  "georgia",
+                                  "times-new-roman",
+                                  "courier-new"
+                                ],
+                                "description": "Approved deck font id from the registry, not a CSS stack."
+                              },
+                              "body": {
+                                "type": "string",
+                                "enum": [
+                                  "calibri",
+                                  "arial",
+                                  "cambria",
+                                  "georgia",
+                                  "times-new-roman",
+                                  "courier-new"
+                                ],
+                                "description": "Approved deck font id from the registry, not a CSS stack."
+                              },
+                              "mono": {
+                                "type": "string",
+                                "enum": [
+                                  "calibri",
+                                  "arial",
+                                  "cambria",
+                                  "georgia",
+                                  "times-new-roman",
+                                  "courier-new"
+                                ],
+                                "description": "Approved deck font id from the registry, not a CSS stack."
+                              }
+                            },
+                            "required": ["display", "body", "mono"]
+                          },
+                          "theme": {
+                            "type": "object",
+                            "properties": {
+                              "schemaVersion": { "type": "number", "enum": [1] },
+                              "fonts": {
+                                "type": "object",
+                                "properties": {
+                                  "display": {
+                                    "type": "string",
+                                    "enum": [
+                                      "calibri",
+                                      "arial",
+                                      "cambria",
+                                      "georgia",
+                                      "times-new-roman",
+                                      "courier-new"
+                                    ],
+                                    "description": "Approved deck font id from the registry, not a CSS stack."
+                                  },
+                                  "body": {
+                                    "type": "string",
+                                    "enum": [
+                                      "calibri",
+                                      "arial",
+                                      "cambria",
+                                      "georgia",
+                                      "times-new-roman",
+                                      "courier-new"
+                                    ],
+                                    "description": "Approved deck font id from the registry, not a CSS stack."
+                                  },
+                                  "mono": {
+                                    "type": "string",
+                                    "enum": [
+                                      "calibri",
+                                      "arial",
+                                      "cambria",
+                                      "georgia",
+                                      "times-new-roman",
+                                      "courier-new"
+                                    ],
+                                    "description": "Approved deck font id from the registry, not a CSS stack."
+                                  }
+                                },
+                                "required": ["display", "body", "mono"]
+                              },
+                              "colors": {
+                                "type": "object",
+                                "properties": {
+                                  "canvas": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                                  "surface": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                                  "foreground": {
+                                    "type": "string",
+                                    "pattern": "^#[0-9a-fA-F]{6}$"
+                                  },
+                                  "muted": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                                  "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                                  "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                                  "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+                                },
+                                "required": [
+                                  "canvas",
+                                  "surface",
+                                  "foreground",
+                                  "muted",
+                                  "primary",
+                                  "secondary",
+                                  "accent"
+                                ]
+                              },
+                              "typography": {
+                                "type": "object",
+                                "properties": {
+                                  "displayPx": { "type": "integer", "minimum": 40, "maximum": 96 },
+                                  "titlePx": { "type": "integer", "minimum": 24, "maximum": 56 },
+                                  "bodyPx": { "type": "integer", "minimum": 14, "maximum": 28 },
+                                  "captionPx": { "type": "integer", "minimum": 11, "maximum": 18 }
+                                },
+                                "required": ["displayPx", "titlePx", "bodyPx", "captionPx"]
+                              },
+                              "spacing": {
+                                "type": "object",
+                                "properties": {
+                                  "pagePaddingPx": {
+                                    "type": "integer",
+                                    "minimum": 24,
+                                    "maximum": 96
+                                  },
+                                  "sectionGapPx": {
+                                    "type": "integer",
+                                    "minimum": 8,
+                                    "maximum": 64
+                                  },
+                                  "itemGapPx": { "type": "integer", "minimum": 4, "maximum": 32 },
+                                  "radiusPx": { "type": "integer", "minimum": 0, "maximum": 32 }
+                                },
+                                "required": [
+                                  "pagePaddingPx",
+                                  "sectionGapPx",
+                                  "itemGapPx",
+                                  "radiusPx"
+                                ]
+                              },
+                              "slideRecipes": {
+                                "type": "object",
+                                "properties": {
+                                  "cover": {
+                                    "type": "object",
+                                    "properties": {
+                                      "layout": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                      },
+                                      "rules": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 160
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      }
+                                    },
+                                    "required": ["layout", "rules"]
+                                  },
+                                  "section": {
+                                    "type": "object",
+                                    "properties": {
+                                      "layout": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                      },
+                                      "rules": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 160
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      }
+                                    },
+                                    "required": ["layout", "rules"]
+                                  },
+                                  "content": {
+                                    "type": "object",
+                                    "properties": {
+                                      "layout": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                      },
+                                      "rules": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 160
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      }
+                                    },
+                                    "required": ["layout", "rules"]
+                                  },
+                                  "data": {
+                                    "type": "object",
+                                    "properties": {
+                                      "layout": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                      },
+                                      "rules": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 160
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      }
+                                    },
+                                    "required": ["layout", "rules"]
+                                  },
+                                  "closing": {
+                                    "type": "object",
+                                    "properties": {
+                                      "layout": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                      },
+                                      "rules": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 160
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      }
+                                    },
+                                    "required": ["layout", "rules"]
+                                  }
+                                },
+                                "required": ["cover", "section", "content", "data", "closing"]
+                              },
+                              "signature": { "type": "string", "minLength": 1, "maxLength": 64 }
+                            },
+                            "required": [
+                              "schemaVersion",
+                              "fonts",
+                              "colors",
+                              "typography",
+                              "spacing",
+                              "slideRecipes"
+                            ]
+                          }
+                        },
+                        "required": ["themeId", "name", "fonts", "theme"]
                       }
                     }
                   },
@@ -2585,6 +3398,332 @@
                                 "required": ["slideIndex"]
                               },
                               "maxItems": 64
+                            },
+                            "themeSelection": {
+                              "type": "object",
+                              "properties": {
+                                "themeId": { "type": "string", "minLength": 1, "maxLength": 64 },
+                                "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                                "fonts": {
+                                  "type": "object",
+                                  "properties": {
+                                    "display": {
+                                      "type": "string",
+                                      "enum": [
+                                        "calibri",
+                                        "arial",
+                                        "cambria",
+                                        "georgia",
+                                        "times-new-roman",
+                                        "courier-new"
+                                      ],
+                                      "description": "Approved deck font id from the registry, not a CSS stack."
+                                    },
+                                    "body": {
+                                      "type": "string",
+                                      "enum": [
+                                        "calibri",
+                                        "arial",
+                                        "cambria",
+                                        "georgia",
+                                        "times-new-roman",
+                                        "courier-new"
+                                      ],
+                                      "description": "Approved deck font id from the registry, not a CSS stack."
+                                    },
+                                    "mono": {
+                                      "type": "string",
+                                      "enum": [
+                                        "calibri",
+                                        "arial",
+                                        "cambria",
+                                        "georgia",
+                                        "times-new-roman",
+                                        "courier-new"
+                                      ],
+                                      "description": "Approved deck font id from the registry, not a CSS stack."
+                                    }
+                                  },
+                                  "required": ["display", "body", "mono"]
+                                },
+                                "theme": {
+                                  "type": "object",
+                                  "properties": {
+                                    "schemaVersion": { "type": "number", "enum": [1] },
+                                    "fonts": {
+                                      "type": "object",
+                                      "properties": {
+                                        "display": {
+                                          "type": "string",
+                                          "enum": [
+                                            "calibri",
+                                            "arial",
+                                            "cambria",
+                                            "georgia",
+                                            "times-new-roman",
+                                            "courier-new"
+                                          ],
+                                          "description": "Approved deck font id from the registry, not a CSS stack."
+                                        },
+                                        "body": {
+                                          "type": "string",
+                                          "enum": [
+                                            "calibri",
+                                            "arial",
+                                            "cambria",
+                                            "georgia",
+                                            "times-new-roman",
+                                            "courier-new"
+                                          ],
+                                          "description": "Approved deck font id from the registry, not a CSS stack."
+                                        },
+                                        "mono": {
+                                          "type": "string",
+                                          "enum": [
+                                            "calibri",
+                                            "arial",
+                                            "cambria",
+                                            "georgia",
+                                            "times-new-roman",
+                                            "courier-new"
+                                          ],
+                                          "description": "Approved deck font id from the registry, not a CSS stack."
+                                        }
+                                      },
+                                      "required": ["display", "body", "mono"]
+                                    },
+                                    "colors": {
+                                      "type": "object",
+                                      "properties": {
+                                        "canvas": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        },
+                                        "surface": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        },
+                                        "foreground": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        },
+                                        "muted": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        },
+                                        "primary": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        },
+                                        "secondary": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        },
+                                        "accent": {
+                                          "type": "string",
+                                          "pattern": "^#[0-9a-fA-F]{6}$"
+                                        }
+                                      },
+                                      "required": [
+                                        "canvas",
+                                        "surface",
+                                        "foreground",
+                                        "muted",
+                                        "primary",
+                                        "secondary",
+                                        "accent"
+                                      ]
+                                    },
+                                    "typography": {
+                                      "type": "object",
+                                      "properties": {
+                                        "displayPx": {
+                                          "type": "integer",
+                                          "minimum": 40,
+                                          "maximum": 96
+                                        },
+                                        "titlePx": {
+                                          "type": "integer",
+                                          "minimum": 24,
+                                          "maximum": 56
+                                        },
+                                        "bodyPx": {
+                                          "type": "integer",
+                                          "minimum": 14,
+                                          "maximum": 28
+                                        },
+                                        "captionPx": {
+                                          "type": "integer",
+                                          "minimum": 11,
+                                          "maximum": 18
+                                        }
+                                      },
+                                      "required": ["displayPx", "titlePx", "bodyPx", "captionPx"]
+                                    },
+                                    "spacing": {
+                                      "type": "object",
+                                      "properties": {
+                                        "pagePaddingPx": {
+                                          "type": "integer",
+                                          "minimum": 24,
+                                          "maximum": 96
+                                        },
+                                        "sectionGapPx": {
+                                          "type": "integer",
+                                          "minimum": 8,
+                                          "maximum": 64
+                                        },
+                                        "itemGapPx": {
+                                          "type": "integer",
+                                          "minimum": 4,
+                                          "maximum": 32
+                                        },
+                                        "radiusPx": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 32
+                                        }
+                                      },
+                                      "required": [
+                                        "pagePaddingPx",
+                                        "sectionGapPx",
+                                        "itemGapPx",
+                                        "radiusPx"
+                                      ]
+                                    },
+                                    "slideRecipes": {
+                                      "type": "object",
+                                      "properties": {
+                                        "cover": {
+                                          "type": "object",
+                                          "properties": {
+                                            "layout": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                            },
+                                            "rules": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 160
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 3
+                                            }
+                                          },
+                                          "required": ["layout", "rules"]
+                                        },
+                                        "section": {
+                                          "type": "object",
+                                          "properties": {
+                                            "layout": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                            },
+                                            "rules": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 160
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 3
+                                            }
+                                          },
+                                          "required": ["layout", "rules"]
+                                        },
+                                        "content": {
+                                          "type": "object",
+                                          "properties": {
+                                            "layout": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                            },
+                                            "rules": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 160
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 3
+                                            }
+                                          },
+                                          "required": ["layout", "rules"]
+                                        },
+                                        "data": {
+                                          "type": "object",
+                                          "properties": {
+                                            "layout": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                            },
+                                            "rules": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 160
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 3
+                                            }
+                                          },
+                                          "required": ["layout", "rules"]
+                                        },
+                                        "closing": {
+                                          "type": "object",
+                                          "properties": {
+                                            "layout": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                            },
+                                            "rules": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 160
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 3
+                                            }
+                                          },
+                                          "required": ["layout", "rules"]
+                                        }
+                                      },
+                                      "required": ["cover", "section", "content", "data", "closing"]
+                                    },
+                                    "signature": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    }
+                                  },
+                                  "required": [
+                                    "schemaVersion",
+                                    "fonts",
+                                    "colors",
+                                    "typography",
+                                    "spacing",
+                                    "slideRecipes"
+                                  ]
+                                }
+                              },
+                              "required": ["themeId", "name", "fonts", "theme"]
                             }
                           }
                         },
@@ -4454,6 +5593,347 @@
                                     "required": ["slideIndex"]
                                   },
                                   "maxItems": 64
+                                },
+                                "themeSelection": {
+                                  "type": "object",
+                                  "properties": {
+                                    "themeId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    },
+                                    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                                    "fonts": {
+                                      "type": "object",
+                                      "properties": {
+                                        "display": {
+                                          "type": "string",
+                                          "enum": [
+                                            "calibri",
+                                            "arial",
+                                            "cambria",
+                                            "georgia",
+                                            "times-new-roman",
+                                            "courier-new"
+                                          ],
+                                          "description": "Approved deck font id from the registry, not a CSS stack."
+                                        },
+                                        "body": {
+                                          "type": "string",
+                                          "enum": [
+                                            "calibri",
+                                            "arial",
+                                            "cambria",
+                                            "georgia",
+                                            "times-new-roman",
+                                            "courier-new"
+                                          ],
+                                          "description": "Approved deck font id from the registry, not a CSS stack."
+                                        },
+                                        "mono": {
+                                          "type": "string",
+                                          "enum": [
+                                            "calibri",
+                                            "arial",
+                                            "cambria",
+                                            "georgia",
+                                            "times-new-roman",
+                                            "courier-new"
+                                          ],
+                                          "description": "Approved deck font id from the registry, not a CSS stack."
+                                        }
+                                      },
+                                      "required": ["display", "body", "mono"]
+                                    },
+                                    "theme": {
+                                      "type": "object",
+                                      "properties": {
+                                        "schemaVersion": { "type": "number", "enum": [1] },
+                                        "fonts": {
+                                          "type": "object",
+                                          "properties": {
+                                            "display": {
+                                              "type": "string",
+                                              "enum": [
+                                                "calibri",
+                                                "arial",
+                                                "cambria",
+                                                "georgia",
+                                                "times-new-roman",
+                                                "courier-new"
+                                              ],
+                                              "description": "Approved deck font id from the registry, not a CSS stack."
+                                            },
+                                            "body": {
+                                              "type": "string",
+                                              "enum": [
+                                                "calibri",
+                                                "arial",
+                                                "cambria",
+                                                "georgia",
+                                                "times-new-roman",
+                                                "courier-new"
+                                              ],
+                                              "description": "Approved deck font id from the registry, not a CSS stack."
+                                            },
+                                            "mono": {
+                                              "type": "string",
+                                              "enum": [
+                                                "calibri",
+                                                "arial",
+                                                "cambria",
+                                                "georgia",
+                                                "times-new-roman",
+                                                "courier-new"
+                                              ],
+                                              "description": "Approved deck font id from the registry, not a CSS stack."
+                                            }
+                                          },
+                                          "required": ["display", "body", "mono"]
+                                        },
+                                        "colors": {
+                                          "type": "object",
+                                          "properties": {
+                                            "canvas": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            },
+                                            "surface": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            },
+                                            "foreground": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            },
+                                            "muted": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            },
+                                            "primary": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            },
+                                            "secondary": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            },
+                                            "accent": {
+                                              "type": "string",
+                                              "pattern": "^#[0-9a-fA-F]{6}$"
+                                            }
+                                          },
+                                          "required": [
+                                            "canvas",
+                                            "surface",
+                                            "foreground",
+                                            "muted",
+                                            "primary",
+                                            "secondary",
+                                            "accent"
+                                          ]
+                                        },
+                                        "typography": {
+                                          "type": "object",
+                                          "properties": {
+                                            "displayPx": {
+                                              "type": "integer",
+                                              "minimum": 40,
+                                              "maximum": 96
+                                            },
+                                            "titlePx": {
+                                              "type": "integer",
+                                              "minimum": 24,
+                                              "maximum": 56
+                                            },
+                                            "bodyPx": {
+                                              "type": "integer",
+                                              "minimum": 14,
+                                              "maximum": 28
+                                            },
+                                            "captionPx": {
+                                              "type": "integer",
+                                              "minimum": 11,
+                                              "maximum": 18
+                                            }
+                                          },
+                                          "required": [
+                                            "displayPx",
+                                            "titlePx",
+                                            "bodyPx",
+                                            "captionPx"
+                                          ]
+                                        },
+                                        "spacing": {
+                                          "type": "object",
+                                          "properties": {
+                                            "pagePaddingPx": {
+                                              "type": "integer",
+                                              "minimum": 24,
+                                              "maximum": 96
+                                            },
+                                            "sectionGapPx": {
+                                              "type": "integer",
+                                              "minimum": 8,
+                                              "maximum": 64
+                                            },
+                                            "itemGapPx": {
+                                              "type": "integer",
+                                              "minimum": 4,
+                                              "maximum": 32
+                                            },
+                                            "radiusPx": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 32
+                                            }
+                                          },
+                                          "required": [
+                                            "pagePaddingPx",
+                                            "sectionGapPx",
+                                            "itemGapPx",
+                                            "radiusPx"
+                                          ]
+                                        },
+                                        "slideRecipes": {
+                                          "type": "object",
+                                          "properties": {
+                                            "cover": {
+                                              "type": "object",
+                                              "properties": {
+                                                "layout": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                                },
+                                                "rules": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 160
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 3
+                                                }
+                                              },
+                                              "required": ["layout", "rules"]
+                                            },
+                                            "section": {
+                                              "type": "object",
+                                              "properties": {
+                                                "layout": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                                },
+                                                "rules": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 160
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 3
+                                                }
+                                              },
+                                              "required": ["layout", "rules"]
+                                            },
+                                            "content": {
+                                              "type": "object",
+                                              "properties": {
+                                                "layout": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                                },
+                                                "rules": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 160
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 3
+                                                }
+                                              },
+                                              "required": ["layout", "rules"]
+                                            },
+                                            "data": {
+                                              "type": "object",
+                                              "properties": {
+                                                "layout": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                                },
+                                                "rules": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 160
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 3
+                                                }
+                                              },
+                                              "required": ["layout", "rules"]
+                                            },
+                                            "closing": {
+                                              "type": "object",
+                                              "properties": {
+                                                "layout": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                                                },
+                                                "rules": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 160
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 3
+                                                }
+                                              },
+                                              "required": ["layout", "rules"]
+                                            }
+                                          },
+                                          "required": [
+                                            "cover",
+                                            "section",
+                                            "content",
+                                            "data",
+                                            "closing"
+                                          ]
+                                        },
+                                        "signature": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        }
+                                      },
+                                      "required": [
+                                        "schemaVersion",
+                                        "fonts",
+                                        "colors",
+                                        "typography",
+                                        "spacing",
+                                        "slideRecipes"
+                                      ]
+                                    }
+                                  },
+                                  "required": ["themeId", "name", "fonts", "theme"]
                                 }
                               }
                             }

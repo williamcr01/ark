@@ -67,7 +67,7 @@ describe('OpenAPI registry', () => {
 
     const fonts = schema?.properties?.themes?.items?.properties?.fonts
     expect(schema?.properties?.themes?.items?.required).toEqual(
-      expect.arrayContaining(['fonts', 'sampleHtml']),
+      expect.arrayContaining(['fonts', 'sampleHtml', 'theme', 'rationale']),
     )
     expect(fonts?.required).toEqual(expect.arrayContaining(['display', 'body', 'mono']))
     expect(fonts?.properties?.display?.enum).toEqual([

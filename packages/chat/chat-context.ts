@@ -418,6 +418,7 @@ export function assembleDeckAgentContext({
         editorSelections,
         slideContexts,
         deckOrigin,
+        themeSelection: last.context?.themeSelection,
       }),
     })
   return {

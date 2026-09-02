@@ -8,6 +8,7 @@ import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
 import { createMcpRunner, McpRunnerError } from './runner.ts'
 import { createMcpServiceState } from './service.ts'
 import { createMcpInteractionStore } from './interactions.ts'
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
 import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 
 const html = `<!DOCTYPE html><html><head><title>MCP Deck</title></head><body><section class="slide"><h1>Opening</h1></section></body></html>`
@@ -149,47 +150,41 @@ describe('MCP runner', () => {
       structuredContent: { status: 'answered' },
     })
 
-    const sampleHtml =
-      '<!doctype html><html><head><title>Sample</title></head><body><section class="slide"><h1>Sample</h1></section></body></html>'
-    const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
+    const proposal = exampleThemeProposal('Pick a direction')
     const themeResult = await run(
       'propose_themes',
       {
         deckId: deck.id,
         expectedDocumentRevision: 1,
-        title: 'Pick a direction',
-        themes: Array.from({ length: 4 }, (_, index) => ({
-          id: `theme-${index}`,
-          name: `Theme ${index}`,
-          description: `Direction ${index}`,
-          fonts,
-          sampleHtml,
-        })),
+        ...proposal,
       },
       'Codex',
       'session-a',
     )
     const themeId = String(themeResult.structuredContent.interactionId)
+    const chosen = proposal.themes[2]!
     expect(interactionStore.getPending()).toMatchObject({
       kind: 'themes',
       request: {
         themes: expect.arrayContaining([
-          expect.objectContaining({ id: 'theme-2', fonts, sampleHtml }),
+          expect.objectContaining({ id: chosen.id, fonts: chosen.fonts }),
         ]),
       },
     })
     interactionStore.respond(themeId, {
       kind: 'themes',
-      themeId: 'theme-2',
-      fonts,
+      themeId: chosen.id,
+      fonts: chosen.fonts,
+      theme: chosen.theme,
     })
     await expect(
       run('wait_for_interaction', { interactionId: themeId, timeoutMs: 0 }, 'Codex', 'session-a'),
     ).resolves.toMatchObject({
       structuredContent: {
         status: 'answered',
-        answer: { kind: 'themes', themeId: 'theme-2', fonts },
+        answer: { kind: 'themes', themeId: chosen.id, fonts: chosen.fonts },
       },
+      text: expect.stringContaining(chosen.theme.colors.primary),
     })
   })
 

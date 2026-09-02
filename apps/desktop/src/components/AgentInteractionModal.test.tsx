@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
 import { AgentInteractionModal } from '@/components/AgentInteractionModal'
 
 vi.mock('@/components/MiniHtmlPreview', () => ({
@@ -20,16 +21,8 @@ const mcpBase = {
   expiresAt: '2026-08-06T12:30:00.000Z',
 } as const
 
-const sampleHtml = '<!doctype html><html><body><section class="slide"></section></body></html>'
-const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
-
-const themes = Array.from({ length: 4 }, (_, index) => ({
-  id: `theme-${index}`,
-  name: `Theme ${index}`,
-  description: `Direction ${index}`,
-  fonts,
-  sampleHtml,
-}))
+const proposal = exampleThemeProposal('Pick a direction')
+const themes = proposal.themes
 
 describe('AgentInteractionModal', () => {
   it('does not render when there is no pending interaction', () => {
@@ -77,12 +70,12 @@ describe('AgentInteractionModal', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Select Theme 2' }))
-    await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 2' }))
+    await user.click(screen.getByRole('button', { name: 'Select Signal Grid' }))
+    await user.click(screen.getByRole('button', { name: 'Use this theme: Signal Grid' }))
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('Theme 2 (id: theme-2)'))
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.stringContaining('- Fonts: display georgia, body calibri, mono courier-new'),
+      expect.stringContaining('Signal Grid (id: signal)'),
+      expect.objectContaining({ themeSelection: expect.objectContaining({ themeId: 'signal' }) }),
     )
   })
 
@@ -138,9 +131,14 @@ describe('AgentInteractionModal', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Select Theme 1' }))
-    await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 1' }))
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'themes', themeId: 'theme-1', fonts })
+    await user.click(screen.getByRole('button', { name: 'Select Sunlit Studio' }))
+    await user.click(screen.getByRole('button', { name: 'Use this theme: Sunlit Studio' }))
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: 'themes',
+      themeId: 'sunlit',
+      fonts: proposal.themes[1]!.fonts,
+      theme: proposal.themes[1]!.theme,
+    })
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onCancel).toHaveBeenCalledOnce()

@@ -14,12 +14,17 @@ type MiniHtmlPreviewProps = {
   html: string
   title: string
   className?: string
+  /** Show only this slide in a multi-slide sample (0-based). */
+  slideIndex?: number
 }
 
-export function MiniHtmlPreview({ html, title, className }: MiniHtmlPreviewProps) {
+export function MiniHtmlPreview({ html, title, className, slideIndex }: MiniHtmlPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0)
-  const srcDoc = useMemo(() => getPreviewHtml(html), [html])
+  const srcDoc = useMemo(
+    () => getPreviewHtml(html, { initialSlideIndex: slideIndex }),
+    [html, slideIndex],
+  )
 
   useEffect(() => {
     const element = containerRef.current

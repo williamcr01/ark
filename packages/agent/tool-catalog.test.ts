@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
+
 import { buildDeckAgentSystemPrompt } from './agent.ts'
 import { createActiveDeckTools } from './tool-catalog.ts'
 import { createDeckWorkspace } from './workspace.ts'
@@ -38,19 +40,16 @@ describe('deck tool catalog', () => {
   it('offers propose_themes for empty and existing workspaces and preserves sampleHtml', () => {
     const empty = createActiveDeckTools(createDeckWorkspace(''))
     expect(empty.tools.propose_themes?.description).toContain('four visually distinct')
-    expect(empty.tools.propose_themes?.description).toContain('fonts pairing')
-    const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>${'Theme'.repeat(200)}</h1></section></body></html>`
+    expect(empty.tools.propose_themes?.description).toContain('theme spec')
+    const request = exampleThemeProposal()
     const proposeThemes = empty.activeDefinitions.find(({ name }) => name === 'propose_themes')!
     expect(proposeThemes.summarizeInput({ themes: [{}, {}, {}, {}] })).toBe('4 theme(s)')
     const projected = proposeThemes.projectInputForTranscript({
-      title: 'Pick a visual direction',
+      title: request.title,
       themes: [
         {
-          id: 'midnight',
-          name: 'Midnight Editorial',
-          description: 'Dark and sharp',
-          fonts: { display: 'georgia', body: 'calibri', mono: 'courier-new' },
-          sampleHtml,
+          ...request.themes[0],
+          sampleHtml: `<!DOCTYPE html><html><body><section class="slide"><h1>${'Theme'.repeat(200)}</h1></section></body></html>`,
         },
       ],
     })
@@ -59,6 +58,7 @@ describe('deck tool catalog', () => {
     expect(JSON.stringify(projected.value)).toContain('"display":"georgia"')
     expect(JSON.stringify(projected.value)).toContain('"body":"calibri"')
     expect(JSON.stringify(projected.value)).toContain('"mono":"courier-new"')
+    expect(JSON.stringify(projected.value)).toContain('"canvas"')
     expect(JSON.stringify(projected.value)).not.toContain('sha256:')
     expect(projected.truncated).toBe(false)
 

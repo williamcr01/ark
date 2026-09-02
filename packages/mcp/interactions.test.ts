@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
+
 import { createMcpInteractionStore, McpInteractionError } from './interactions.ts'
 
 const target = {
@@ -48,17 +50,7 @@ describe('MCP interactions', () => {
       {
         ...target,
         kind: 'themes',
-        request: {
-          title: 'Pick a direction',
-          themes: Array.from({ length: 4 }, (_, index) => ({
-            id: `theme-${index}`,
-            name: `Theme ${index}`,
-            description: `Direction ${index}`,
-            sampleHtml:
-              '<!doctype html><html><body><section class="slide"></section></body></html>',
-            fonts: { display: 'georgia', body: 'calibri', mono: 'courier-new' },
-          })),
-        },
+        request: exampleThemeProposal('Pick a direction'),
       },
       'session-a',
     )
@@ -70,11 +62,18 @@ describe('MCP interactions', () => {
       body: 'calibri',
       mono: 'courier-new',
     })
-    expect(interaction.request.themes[0]?.sampleHtml).toContain('<section class="slide">')
+    expect(interaction.request.themes[0]?.theme.colors.canvas).toMatch(/^#/)
+    expect(interaction.request.themes[0]?.sampleHtml).toContain('<section class="slide"')
 
-    expect(() => store.respond(interaction.id, { kind: 'themes', themeId: 'missing' })).toThrow(
-      'Unknown theme choice',
-    )
+    const selected = interaction.request.themes[0]!
+    expect(() =>
+      store.respond(interaction.id, {
+        kind: 'themes',
+        themeId: 'missing',
+        fonts: selected.fonts,
+        theme: selected.theme,
+      }),
+    ).toThrow('Unknown theme choice')
 
     store.cancelForTarget(target.deckId, 2)
     await expect(store.wait(interaction.id, 'session-a', 0)).resolves.toMatchObject({

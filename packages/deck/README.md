@@ -8,7 +8,8 @@ Layer 1. May import `@ark/runtime-registry` and `@ark/telemetry`. Browser-safe: 
 
 ```
 document/   read a deck        parser, structure, slides, metadata, title, origin,
-                               network, assets, image, editable, geometry, sanitize
+                               network, assets, image, editable, geometry, sanitize,
+                               theme
 patch/      change a deck      slide-ops, patch-request, element-patch,
                                editable-elements, text-edit, text-box
 validate/   judge a deck       document
