@@ -249,7 +249,7 @@ In CSS-only preview (no approved reveal runtime script), Ark still detects `runt
 
 The iframe navigation runtimes are real TypeScript under `packages/deck-preview/runtime-src/` (one entry per injected script: `handshake`, `css-nav`, `custom-bridge`, `reveal-adapter`, plus `shared/` helpers). `scripts/build-runtimes.mjs` bundles each entry with esbuild into an unminified IIFE and writes `packages/deck-preview/runtime/generated/*.source.ts`. Those generated files are committed so tsc/Vite/vitest need no extra step.
 
-Edit `runtime-src/`, then run `pnpm build:runtimes` and commit the regenerated source. `pnpm build:runtimes:check` (CI quality job) and the deck-preview vitest both fail if an artifact is stale. The public builders keep their signatures: each prepends `var C = …` (host constants) and then the bundled IIFE.
+Edit `runtime-src/`, then run `pnpm build:runtimes` and commit the regenerated source. `pnpm build:runtimes:check` (CI quality job) and the deck-preview vitest both fail if an artifact is stale. The public builders keep their signatures: each wraps the bundled IIFE as `(function (C) { … })(hostConstants)` so injected deck runtimes do not assign a global `C` (the editor runtime still uses `var C = …`).
 
 ## Security notes
 

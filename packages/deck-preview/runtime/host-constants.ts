@@ -65,7 +65,7 @@ export function assembleDeckPreviewRuntimeScript(
   constants: DeckPreviewRuntimeConstants,
   source: string,
 ) {
-  return `var C = ${JSON.stringify(constants)};\n${source}`
+  return `(function (C) {\n${source}\n})(${JSON.stringify(constants)});`
 }
 
 export function navRuntimeConstantsFromOptions(options: DeckBridgeRuntimeScriptOptions) {

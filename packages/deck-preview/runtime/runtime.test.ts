@@ -3,6 +3,15 @@ import { JSDOM as JsdomImport } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildDeckEditorBridgeRuntimeScript,
+  createEditorConnectAckMessage,
+  createEditorEnableMessage,
+  createEditorSelectMessage,
+  EDITOR_CONNECT_MESSAGE_TYPE,
+  EDITOR_READY_MESSAGE_TYPE,
+  EDITOR_SESSION_HANDOFF_KEY,
+} from '@ark/editor-runtime'
+import {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_HANDSHAKE_MESSAGE_TYPE,
   DECK_METADATA_MESSAGE_TYPE,
@@ -54,6 +63,8 @@ describe('deck handshake sentinel', () => {
     const script = buildDeckHandshakeSentinelScript('hs-abc', 'https://ark.test')
     expect(script).toContain('ark:deck-handshake')
     expect(script).toContain('hs-abc')
+    expect(script).toMatch(/^\(function \(C\) \{/)
+    expect(script).not.toMatch(/^var C =/)
     expect(script).toContain('safeSetTimeout(postHandshake')
     expect(script).not.toContain('eval(')
     expect(script).not.toContain('new Function')
@@ -123,6 +134,99 @@ describe('deck handshake sentinel', () => {
     )
     dom.window.close()
   })
+
+  it('keeps editor MessagePort traffic working after a following deck runtime', async () => {
+    const publicMessages: RuntimeMessage[] = []
+    const editorMessages: RuntimeMessage[] = []
+    let resolveEditorReady: (() => void) | undefined
+    const editorReady = new Promise<void>((resolve) => {
+      resolveEditorReady = resolve
+    })
+    const handshakeScript = buildDeckHandshakeSentinelScript(
+      'hs-preview',
+      'https://ark.test',
+      EDITOR_SESSION_HANDOFF_KEY,
+    )
+    const editorScript = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+      parentOrigin: 'https://ark.test',
+    })
+    const bridgeScript = buildDeckBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+      previewMode: 'full-js',
+      parentOrigin: 'https://ark.test',
+    })
+    expect(bridgeScript).toMatch(/^\(function \(C\) \{/)
+    expect(bridgeScript).not.toMatch(/^var C =/)
+    const html = `<!doctype html><html><head>
+      <script id="handshake">${handshakeScript}</script>
+      <script id="editor">${editorScript}</script>
+    </head><body>
+      <section class="slide"><h1 data-ark-id="ark-el-title">One</h1></section>
+      <script id="bridge">${bridgeScript}</script>
+    </body></html>`
+    const errors: string[] = []
+    const dom = new JSDOM(html, {
+      pretendToBeVisual: true,
+      runScripts: 'dangerously',
+      url: 'https://ark.test/preview',
+      beforeParse(window) {
+        window.addEventListener('error', (event) => {
+          errors.push(String(event.message ?? event.error))
+        })
+        Object.defineProperty(window, 'MessageChannel', {
+          configurable: true,
+          value: MessageChannel,
+        })
+        Object.defineProperty(window, 'parent', {
+          configurable: true,
+          value: {
+            postMessage: (
+              message: RuntimeMessage,
+              _targetOrigin?: string,
+              transfer?: Transferable[],
+            ) => {
+              publicMessages.push(message)
+              if (
+                message.type !== EDITOR_CONNECT_MESSAGE_TYPE ||
+                message.handshake !== 'hs-preview'
+              ) {
+                return
+              }
+              const port = transfer?.[0]
+              if (!(port instanceof MessagePort)) {
+                return
+              }
+              port.onmessage = (event) => {
+                editorMessages.push(event.data as RuntimeMessage)
+                if (
+                  typeof event.data === 'object' &&
+                  event.data !== null &&
+                  'type' in event.data &&
+                  event.data.type === EDITOR_READY_MESSAGE_TYPE
+                ) {
+                  resolveEditorReady?.()
+                }
+              }
+              port.start()
+              port.postMessage(createEditorConnectAckMessage())
+              port.postMessage(createEditorEnableMessage(0))
+              port.postMessage(createEditorSelectMessage('ark-el-title', 0))
+            },
+          },
+        })
+      },
+    })
+
+    await waitForLoad(dom)
+    await editorReady
+    expect(errors).toEqual([])
+    expect(publicMessages.some((message) => message.type === DECK_HANDSHAKE_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    expect(editorMessages.some((message) => message.type === EDITOR_READY_MESSAGE_TYPE)).toBe(true)
+    dom.window.close()
+  })
 })
 
 describe('CSS-only nav shim', () => {
@@ -132,6 +236,7 @@ describe('CSS-only nav shim', () => {
       slideSelectors: ['section.slide'],
       previewMode: 'css-only',
     })
+    expect(script).toMatch(/^\(function \(C\) \{/)
     expect(script).toContain('isTypingTarget')
     expect(script).toContain('data-ark-editor-text-edit')
     expect(script).toContain('data-ark-editor-selected')

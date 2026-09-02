@@ -34,11 +34,13 @@ runtime/       builders prepend host constants onto the committed bundles
 not change.
 
 Author the iframe runtimes as real TypeScript under `runtime-src/`. Host values (slide selectors,
-preview mode, handshake id, parent origin, message-type names, protocol version) arrive as the
-global `C` object that `buildDeckCssNavRuntimeScript`, `buildDeckBridgeRuntimeScript`,
-`buildRevealNavRuntimeScript`, and `buildDeckHandshakeSentinelScript` prepend. After editing
-`runtime-src/`, run `pnpm build:runtimes` and commit the regenerated `runtime/generated/*.source.ts`
-files. `pnpm build:runtimes:check` (and a vitest in this package) fails if those files are stale.
+preview mode, handshake id, parent origin, message-type names, protocol version) arrive as the `C`
+argument that `buildDeckCssNavRuntimeScript`, `buildDeckBridgeRuntimeScript`,
+`buildRevealNavRuntimeScript`, and `buildDeckHandshakeSentinelScript` pass into the bundled IIFE.
+Builders wrap constants that way so a later nav/bridge script cannot overwrite the editor runtime's
+global `C`. After editing `runtime-src/`, run `pnpm build:runtimes` and commit the regenerated
+`runtime/generated/*.source.ts` files. `pnpm build:runtimes:check` (and a vitest in this package)
+fails if those files are stale.
 
 Document-level sanitisation is not here: stripping inline handlers and `javascript:` URLs is in
 `@ark/deck/document/sanitize.ts`, because patching a document has to strip the same vectors that
