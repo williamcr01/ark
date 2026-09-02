@@ -19,23 +19,21 @@ import type { DeckDownloadVariant } from '@/lib/deck/deck-export'
 import { newId } from '@/lib/ui/id'
 import { exportDeckHtml } from '@/lib/api/deck-api'
 
+import type { DeckDocumentActions, DeckPersistenceActions } from './deck-persistence.ts'
 import type { useChatSession } from './useChatSession'
-import type { useDeckPersistence } from './useDeckPersistence'
 import { clearStoredGenerationJob } from './useGenerationJob'
 
-type DeckPersistenceApi = ReturnType<typeof useDeckPersistence>
 type ChatSessionApi = ReturnType<typeof useChatSession>
 
-type DeckActionsDeckSlice = Pick<
-  DeckPersistenceApi,
-  | 'deckId'
-  | 'html'
-  | 'persistHtml'
-  | 'startNewDeck'
-  | 'renameActiveDeck'
-  | 'deleteActiveDeck'
-  | 'deckTitle'
->
+export type DeckActionsDeckSlice = {
+  deckId: string | null
+  html: string
+  persistHtml: DeckPersistenceActions['persistHtml']
+  startNewDeck: DeckPersistenceActions['startNewDeck']
+  renameActiveDeck: DeckDocumentActions['renameActiveDeck']
+  deleteActiveDeck: DeckDocumentActions['deleteActiveDeck']
+  deckTitle: string
+}
 
 type DeckActionsChatSlice = Pick<ChatSessionApi, 'appendMessage' | 'setMessages' | 'resetChat'>
 
@@ -93,60 +91,15 @@ export function useDeckActions({
   }, [fileInputRef])
 
   const handleHtmlUpload = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.currentTarget.files?.[0]
-      event.currentTarget.value = ''
-
-      if (!file) {
-        return
-      }
-
-      if (!isHtmlDeckFile(file)) {
-        toast.error('Upload an .html file')
-        return
-      }
-
-      try {
-        const html = await file.text()
-        const validation = validateUploadedDeck(html)
-
-        if (!validation.valid) {
-          const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
-          toast.error(primaryIssue?.message ?? 'That file does not look like a valid Ark HTML deck')
-          return
-        }
-
-        let savedDeckId = deckId
-
-        try {
-          const savedDeck = await persistHtml(html)
-
-          if (savedDeck?.id) {
-            savedDeckId = savedDeck.id
-          }
-        } catch {
-          toast.error('Deck loaded but could not be saved')
-        }
-
-        onEditHistoryBoundary?.()
-
-        setError('')
-        const uploadMessage: ChatMessage = {
-          id: newId(),
-          role: 'assistant',
-          content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
-        }
-
-        if (savedDeckId) {
-          await appendMessage(uploadMessage, savedDeckId)
-        } else {
-          setMessages((current) => [...current, uploadMessage])
-        }
-        toast.success('HTML deck loaded')
-      } catch {
-        toast.error('Could not read that HTML file')
-      }
-    },
+    (event: ChangeEvent<HTMLInputElement>) =>
+      importHtmlDeckFile(event, {
+        appendMessage,
+        deckId,
+        onEditHistoryBoundary,
+        persistHtml,
+        setError,
+        setMessages,
+      }),
     [appendMessage, deckId, onEditHistoryBoundary, persistHtml, setError, setMessages],
   )
 
@@ -192,5 +145,70 @@ export function useDeckActions({
     handleNewDeck,
     handleRenameDeck,
     handleUploadClick,
+  }
+}
+
+async function importHtmlDeckFile(
+  event: ChangeEvent<HTMLInputElement>,
+  options: {
+    appendMessage: ChatSessionApi['appendMessage']
+    deckId: string | null
+    onEditHistoryBoundary?: () => void
+    persistHtml: DeckPersistenceActions['persistHtml']
+    setError: Dispatch<SetStateAction<string>>
+    setMessages: ChatSessionApi['setMessages']
+  },
+) {
+  const file = event.currentTarget.files?.[0]
+  event.currentTarget.value = ''
+
+  if (!file) {
+    return
+  }
+
+  if (!isHtmlDeckFile(file)) {
+    toast.error('Upload an .html file')
+    return
+  }
+
+  try {
+    const html = await file.text()
+    const validation = validateUploadedDeck(html)
+
+    if (!validation.valid) {
+      const primaryIssue = validation.issues.find((issue) => issue.severity === 'error')
+      toast.error(primaryIssue?.message ?? 'That file does not look like a valid Ark HTML deck')
+      return
+    }
+
+    let savedDeckId = options.deckId
+
+    try {
+      const savedDeck = await options.persistHtml(html)
+
+      if (savedDeck?.id) {
+        savedDeckId = savedDeck.id
+      }
+    } catch {
+      toast.error('Deck loaded but could not be saved')
+    }
+
+    options.onEditHistoryBoundary?.()
+
+    options.setError('')
+    const uploadMessage: ChatMessage = {
+      id: newId(),
+      role: 'assistant',
+      content: `Loaded ${file.name} into the preview. Validation: ${describeDeckValidation(validation)}. You can ask Ark to revise this HTML deck now.`,
+    }
+
+    if (savedDeckId) {
+      await options.appendMessage(uploadMessage, savedDeckId)
+    } else {
+      options.setMessages((current) => [...current, uploadMessage])
+    }
+    toast.success('HTML deck loaded')
+  } catch {
+    toast.error('Could not read that HTML file')
   }
 }

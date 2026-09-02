@@ -7,12 +7,11 @@ import {
 } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
 
-import { useWorkspaceRuntimeContext } from './workspace-runtime-context'
+import { useDeckStore } from '@/state/deck-store.ts'
 
 export function useDeckAnalysis() {
-  const { persistence } = useWorkspaceRuntimeContext()
-  const generatedHtml = persistence.html
-  const deckId = persistence.deckId
+  const generatedHtml = useDeckStore((state) => state.html)
+  const deckId = useDeckStore((state) => state.deckId)
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
 
   useEffect(() => {

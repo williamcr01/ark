@@ -6,10 +6,10 @@ import type { WorkspaceMode } from '@/lib/ui/workspace-mode'
 import type { useAvailableModels } from './useAvailableModels'
 import type { useChatSession } from './useChatSession'
 import type { useDeckGenerationFlow } from './useDeckGenerationFlow'
-import type { useDeckPersistence } from './useDeckPersistence'
+import type { WorkspacePersistence } from './deck-persistence.ts'
 
 export type WorkspaceRuntimeValue = {
-  persistence: ReturnType<typeof useDeckPersistence>
+  persistence: WorkspacePersistence
   chat: ReturnType<typeof useChatSession>
   generation: ReturnType<typeof useDeckGenerationFlow>
   models: ReturnType<typeof useAvailableModels>

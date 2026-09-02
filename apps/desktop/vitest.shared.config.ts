@@ -7,6 +7,7 @@ export const isolatedTests = [
   'src/App.generation-history.test.tsx',
   'src/App.test.tsx',
   'src/App.undo-redo.test.tsx',
+  'src/components/AppTitleBar.test.tsx',
   'src/components/AgentInteractionModal.test.tsx',
   'src/components/ChatPanel.test.tsx',
   'src/components/DeckPreview.editor.test.tsx',

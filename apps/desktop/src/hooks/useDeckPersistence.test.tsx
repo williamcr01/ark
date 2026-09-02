@@ -1,9 +1,20 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useShallow } from 'zustand/react/shallow'
 
 import { ApiResponseError } from '@ark/contracts'
 
+import { selectDeckPersistenceSnapshot } from './deck-persistence.ts'
+import { useDeckDocumentActions } from './useDeckDocumentActions'
 import { useDeckPersistence } from './useDeckPersistence'
+import { useDeckStore } from '@/state/deck-store.ts'
+
+function usePersistenceUnderTest(routeDeckId: string | null) {
+  const actions = useDeckPersistence(routeDeckId)
+  const documents = useDeckDocumentActions()
+  const snapshot = useDeckStore(useShallow(selectDeckPersistenceSnapshot))
+  return { ...snapshot, ...actions, ...documents }
+}
 
 const html = '<!DOCTYPE html><html><head><title>Deck</title></head><body></body></html>'
 const deck = {
@@ -46,7 +57,7 @@ describe('useDeckPersistence', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    const { result } = renderHook(() => usePersistenceUnderTest(deck.id))
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.deckId).toBe(deck.id)
@@ -66,7 +77,7 @@ describe('useDeckPersistence', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence(null))
+    const { result } = renderHook(() => usePersistenceUnderTest(null))
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.deckId).toBeNull()
@@ -88,7 +99,7 @@ describe('useDeckPersistence', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useDeckPersistence(null))
+    const { result } = renderHook(() => usePersistenceUnderTest(null))
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
@@ -124,7 +135,7 @@ describe('useDeckPersistence', () => {
       return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    const { result } = renderHook(() => usePersistenceUnderTest(deck.id))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
@@ -149,7 +160,7 @@ describe('useDeckPersistence', () => {
       return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    const { result } = renderHook(() => usePersistenceUnderTest(deck.id))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
@@ -178,7 +189,7 @@ describe('useDeckPersistence', () => {
       return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    const { result } = renderHook(() => usePersistenceUnderTest(deck.id))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
@@ -225,7 +236,7 @@ describe('useDeckPersistence', () => {
       return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    const { result } = renderHook(() => usePersistenceUnderTest(deck.id))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
@@ -266,7 +277,7 @@ describe('useDeckPersistence', () => {
       return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const { result } = renderHook(() => useDeckPersistence(deck.id))
+    const { result } = renderHook(() => usePersistenceUnderTest(deck.id))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {

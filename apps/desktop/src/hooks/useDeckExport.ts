@@ -3,13 +3,13 @@ import { toast } from 'sonner'
 
 import type { DeckExportFormat } from '@/lib/deck/deck-export'
 import { formatPptxExportWarning, lintDeckHtmlForExport } from '@/lib/deck/export-lint'
+import { useDeckStore } from '@/state/deck-store.ts'
 import { useShellStore } from '@/state/shell-store.ts'
 
-import { useWorkspaceRuntimeContext } from './workspace-runtime-context'
-
 export function useDeckExport() {
-  const { persistence } = useWorkspaceRuntimeContext()
-  const { deckId, deckTitle, html: generatedHtml } = persistence
+  const deckId = useDeckStore((state) => state.deckId)
+  const deckTitle = useDeckStore((state) => state.deckTitle)
+  const generatedHtml = useDeckStore((state) => state.html)
   const exportingDeck = useShellStore((state) => state.exportingDeck)
 
   const handleExport = useCallback(
