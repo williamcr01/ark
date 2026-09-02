@@ -11,6 +11,7 @@ import { AlertCircleIcon, Loader2Icon, PlusIcon, RefreshCwIcon, XIcon } from 'lu
 
 import { AgentPresence } from '@/components/AgentPresence'
 import { AgentQuestions } from '@/components/AgentQuestions'
+import { ChatSendQueue } from '@/components/ChatSendQueue'
 import { ThemePicker } from '@/components/ThemePicker'
 import {
   Attachment,
@@ -57,6 +58,7 @@ import type { ResolvedAppearance } from '@/hooks/useAppearance'
 import { type AvailableModel } from '@/hooks/useAvailableModels'
 import type { ReasoningEffort } from '@/hooks/useReasoningEffort'
 import type { MessageDeliveryStatus } from '@/hooks/useChatSession'
+import type { QueuedChatSendPreview } from '@/lib/chat/chat-send-queue'
 import type {
   AgentStep,
   ChatAttachment,
@@ -262,14 +264,22 @@ function ChatPromptInputSubmit({
   const canSubmit = Boolean(input.trim() || attachments.files.length > 0)
 
   return (
-    <PromptInputSubmit
-      className="ark-control-accent! size-8 shrink-0 rounded-full"
-      disabled={!isGenerating && (!canSubmit || isInputDisabled)}
-      onStop={() => {
-        void onCancelGeneration()
-      }}
-      status={isGenerating ? 'streaming' : 'ready'}
-    />
+    <div className="flex shrink-0 items-center gap-1">
+      {isGenerating ? (
+        <PromptInputSubmit
+          className="size-8 shrink-0 rounded-full"
+          onStop={() => {
+            void onCancelGeneration()
+          }}
+          status="streaming"
+        />
+      ) : null}
+      <PromptInputSubmit
+        className="ark-control-accent! size-8 shrink-0 rounded-full"
+        disabled={!canSubmit || isInputDisabled}
+        status="ready"
+      />
+    </div>
   )
 }
 
@@ -769,6 +779,12 @@ export type ChatPanelProps = {
   layout?: ChatPanelLayout
   /** Context chips (selected element / attached slides) in the composer attachment row. */
   contextSlot?: ReactNode
+  /** Follow-ups parked while a generation turn is in flight. */
+  queuedSends?: QueuedChatSendPreview[]
+  onQueuedSendDismiss?: (id: string) => void
+  onQueuedSendEdit?: (id: string, text: string) => void
+  onQueuedSendNow?: (id: string) => void
+  onQueuedSendAll?: () => void
   onInputChange: (value: string) => void
   onModelSelect: (modelId: string, reasoningEffort?: ReasoningEffort) => void
   onPromptSubmit: (message: PromptInputMessage) => void
@@ -801,6 +817,11 @@ export function ChatPanel({
   modelWarnings,
   generationState,
   contextSlot,
+  queuedSends,
+  onQueuedSendDismiss,
+  onQueuedSendEdit,
+  onQueuedSendNow,
+  onQueuedSendAll,
   interactiveToolsInModal = false,
   layout = 'sidebar',
   onInputChange,
@@ -873,7 +894,8 @@ export function ChatPanel({
     activeThemes ||
     (interactiveToolsInModal && (pendingAgentQuestions || pendingThemeProposal)),
   )
-  const isSubmitDisabled = isGenerating || !canGenerate || interactionActive
+  const isSubmitDisabled = !canGenerate || interactionActive
+  const isComposerLocked = interactionActive
   const isHome = layout === 'home'
   const interaction =
     (activeQuestions &&
@@ -997,6 +1019,20 @@ export function ChatPanel({
               />
             </div>
           ) : null}
+          {queuedSends &&
+          queuedSends.length > 0 &&
+          onQueuedSendDismiss &&
+          onQueuedSendEdit &&
+          onQueuedSendNow &&
+          onQueuedSendAll ? (
+            <ChatSendQueue
+              items={queuedSends}
+              onDismiss={onQueuedSendDismiss}
+              onEdit={onQueuedSendEdit}
+              onSendAll={onQueuedSendAll}
+              onSendNow={onQueuedSendNow}
+            />
+          ) : null}
           {mcpInteraction ? (
             <div className="mb-3 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
               <span>
@@ -1057,14 +1093,16 @@ export function ChatPanel({
               <PromptInputBody>
                 <PromptInputTextarea
                   className="min-h-24 resize-none bg-transparent"
-                  disabled={isGenerating || interactionActive}
+                  disabled={isComposerLocked}
                   onChange={(event) => onInputChange(event.currentTarget.value)}
                   placeholder={
                     activeThemes
                       ? 'Pick a theme above to continue…'
                       : activeQuestions
                         ? 'Answer the questions above to continue…'
-                        : 'Describe the deck you want, or ask for an edit…'
+                        : isGenerating
+                          ? 'Queue a follow-up to send after this turn…'
+                          : 'Describe the deck you want, or ask for an edit…'
                   }
                   value={input}
                 />
@@ -1075,7 +1113,7 @@ export function ChatPanel({
                     <PromptInputActionMenuTrigger
                       aria-label="Add attachments"
                       className={cn(morphMenuTriggerClassName, 'shrink-0')}
-                      disabled={!supportsAttachments || isGenerating || interactionActive}
+                      disabled={!supportsAttachments || isComposerLocked}
                     />
                     {supportsAttachments ? (
                       <MorphMenuContent className="w-48">
