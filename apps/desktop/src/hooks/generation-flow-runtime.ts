@@ -22,11 +22,14 @@ export type GenerationHistoryChange = {
   deckChanged: boolean
 }
 
-export type GenerationFlowChat = {
-  messages: ChatMessage[]
+export type GenerationFlowMutators = {
   appendMessage: (message: ChatMessage, targetDeckId?: string | null) => Promise<void>
   reloadChat: (targetDeckId?: string | null) => Promise<ChatMessage[]>
   setMessages: (update: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void
+}
+
+export type GenerationFlowChat = GenerationFlowMutators & {
+  messages: ChatMessage[]
 }
 
 export function readRefreshedDeckHtml(value: unknown): string | null {
@@ -90,7 +93,7 @@ export async function appendFailureChatMessage(
   status: 'failed' | 'canceled',
   message: string,
   isModelFailure: boolean,
-  chat: GenerationFlowChat,
+  chat: GenerationFlowMutators,
   deckId: string | null,
 ) {
   const failureMessage: ChatMessage = {
@@ -117,7 +120,7 @@ export async function appendFailureChatMessage(
 export async function applySucceededOutcome(
   outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>,
   options: {
-    chat: GenerationFlowChat
+    chat: Pick<GenerationFlowMutators, 'reloadChat' | 'setMessages'>
     deckId: string | null
     generatedHtmlRef: { current: string }
     refreshActiveDeck: (targetDeckId?: string) => Promise<unknown>
@@ -334,7 +337,7 @@ export async function generateDeckTurn(
 }
 
 export async function retryGenerationTurn(context: {
-  chat: GenerationFlowChat
+  chat: GenerationFlowMutators
   deckId: string | null
   generatedHtmlRef: { current: string }
   refreshActiveDeck: (targetDeckId?: string) => Promise<unknown>
@@ -389,5 +392,52 @@ export async function retryGenerationTurn(context: {
     } else {
       toast.error('Could not retry generation')
     }
+  }
+}
+
+export async function recoverStoredGenerationOutcome(
+  outcome: GenerationJobOutcome | null,
+  cancelled: boolean,
+  recoveredJobIds: Set<string>,
+  options: {
+    chat: GenerationFlowMutators
+    deckId: string | null
+    generatedHtmlRef: { current: string }
+    refreshActiveDeck: (targetDeckId?: string) => Promise<unknown>
+    onError: (message: string) => void
+    onGenerationSucceeded?: (change: GenerationHistoryChange) => void
+  },
+) {
+  if (cancelled || !outcome) {
+    return
+  }
+
+  if (outcome.status === 'succeeded') {
+    if (recoveredJobIds.has(outcome.job.id)) {
+      return
+    }
+
+    recoveredJobIds.add(outcome.job.id)
+    await applySucceededOutcome(outcome, options)
+    return
+  }
+
+  const isModelFailure = outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
+  useChatStore.getState().setModelFailure(isModelFailure)
+
+  if (options.deckId) {
+    await options.chat.reloadChat(options.deckId)
+  } else {
+    await appendFailureChatMessage(
+      outcome.status,
+      outcome.message,
+      isModelFailure,
+      options.chat,
+      options.deckId,
+    )
+  }
+
+  if (!isModelFailure) {
+    options.onError(outcome.message)
   }
 }

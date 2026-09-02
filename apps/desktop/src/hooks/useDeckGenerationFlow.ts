@@ -9,14 +9,12 @@ import type {
   ThemeSelectionContext,
 } from '@ark/chat/chat.ts'
 import type { ReasoningEffort } from '@ark/contracts'
-import { isModelGenerationError } from '@ark/chat/generation-job.ts'
 import { useChatStore } from '@/state/chat-store.ts'
 
-import { useGenerationJob, type GenerationJobOutcome } from './useGenerationJob'
+import { useGenerationJob } from './useGenerationJob'
 import {
-  appendFailureChatMessage,
-  applySucceededOutcome,
   generateDeckTurn,
+  recoverStoredGenerationOutcome,
   retryGenerationTurn,
   type GenerationFlowChat,
   type GenerationHistoryChange,
@@ -88,67 +86,40 @@ export function useDeckGenerationFlow({
     generatedHtmlRef.current = generatedHtml
   }, [generatedHtml])
 
-  const applySucceeded = useCallback(
-    async (outcome: Extract<GenerationJobOutcome, { status: 'succeeded' }>) =>
-      applySucceededOutcome(outcome, {
-        chat: { messages, appendMessage, reloadChat, setMessages },
-        deckId,
-        generatedHtmlRef,
-        refreshActiveDeck,
-        onGenerationSucceeded,
-      }),
-    [appendMessage, deckId, onGenerationSucceeded, refreshActiveDeck, reloadChat, setMessages],
-  )
-
   useEffect(() => {
     if (isDeckLoading) {
       return
     }
 
     let cancelled = false
+    const recovery = {
+      chat: { appendMessage, reloadChat, setMessages },
+      deckId,
+      generatedHtmlRef,
+      refreshActiveDeck,
+      onError,
+      onGenerationSucceeded,
+    }
 
     void (async () => {
       const outcome = await resumeStoredJob()
-
-      if (cancelled || !outcome) {
-        return
-      }
-
-      if (outcome.status === 'succeeded') {
-        if (recoveredJobIdsRef.current.has(outcome.job.id)) {
-          return
-        }
-
-        recoveredJobIdsRef.current.add(outcome.job.id)
-        await applySucceeded(outcome)
-        return
-      }
-
-      const isModelFailure =
-        outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
-      useChatStore.getState().setModelFailure(isModelFailure)
-
-      if (deckId) {
-        await reloadChat(deckId)
-      } else {
-        await appendFailureChatMessage(
-          outcome.status,
-          outcome.message,
-          isModelFailure,
-          { messages, appendMessage, reloadChat, setMessages },
-          deckId,
-        )
-      }
-
-      if (!isModelFailure) {
-        onError(outcome.message)
-      }
+      await recoverStoredGenerationOutcome(outcome, cancelled, recoveredJobIdsRef.current, recovery)
     })()
 
     return () => {
       cancelled = true
     }
-  }, [applySucceeded, deckId, isDeckLoading, onError, reloadChat, resumeStoredJob, setMessages])
+  }, [
+    appendMessage,
+    deckId,
+    isDeckLoading,
+    onError,
+    onGenerationSucceeded,
+    refreshActiveDeck,
+    reloadChat,
+    resumeStoredJob,
+    setMessages,
+  ])
 
   const generateDeck = useCallback(
     async (
@@ -207,7 +178,7 @@ export function useDeckGenerationFlow({
   const handleRetryGeneration = useCallback(
     async () =>
       retryGenerationTurn({
-        chat: { messages, appendMessage, reloadChat, setMessages },
+        chat: { appendMessage, reloadChat, setMessages },
         deckId,
         generatedHtmlRef,
         refreshActiveDeck,
