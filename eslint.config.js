@@ -93,9 +93,9 @@ export default defineConfig([
     files: ['**/*.{ts,tsx}'],
     ignores: ['**/*.{test,spec}.{ts,tsx}'],
     rules: {
-      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': [
-        'warn',
+        'error',
         { max: 120, skipBlankLines: true, skipComments: true, IIFEs: true },
       ],
     },
@@ -143,7 +143,7 @@ export default defineConfig([
     files: ['apps/desktop/src/hooks/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           patterns: [
             ...boundaryPatterns.renderer,
