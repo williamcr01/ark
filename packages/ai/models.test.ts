@@ -6,21 +6,44 @@ import {
   findCatalogEntryByRef,
   MODEL_CATALOG,
   resolveCatalogReasoningEffort,
+  setDiscoveredCatalogEntries,
 } from './model-catalog.ts'
 import {
+  assertModelAvailable,
   catalogModelAccessible,
   clearModelCatalogCache,
-  ensureModelInList,
   fetchAllAvailableModels,
   getDefaultModel,
   getModelCatalog,
+  MODEL_CATALOG_TTL_MS,
+  parseModelRef,
+  pickCatalogDefaultModel,
 } from './models.ts'
+import type { OpenRouterModelPayload } from './openrouter-models.ts'
 
 const ORIGINAL_ENV = { ...process.env }
+
+const openaiList = (ids: string[]) =>
+  Response.json({
+    data: ids.map((id) => ({ id })),
+  })
+
+const openRouterModel = (
+  overrides: Partial<OpenRouterModelPayload> & Pick<OpenRouterModelPayload, 'id'>,
+): OpenRouterModelPayload => ({
+  name: overrides.id,
+  architecture: {
+    input_modalities: ['text'],
+    output_modalities: ['text'],
+  },
+  supported_parameters: ['tools', 'temperature'],
+  ...overrides,
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
   clearModelCatalogCache()
+  setDiscoveredCatalogEntries([])
 
   for (const key of Object.keys(process.env)) {
     if (!(key in ORIGINAL_ENV)) {
@@ -103,6 +126,15 @@ describe('curated model catalog', () => {
   })
 })
 
+describe('parseModelRef', () => {
+  it('parses openrouter refs including slash ids', () => {
+    expect(parseModelRef('openrouter:anthropic/claude-3.5-sonnet')).toEqual({
+      provider: 'openrouter',
+      modelId: 'anthropic/claude-3.5-sonnet',
+    })
+  })
+})
+
 describe('catalogModelAccessible', () => {
   it('matches exact ids and versioned aliases', () => {
     expect(catalogModelAccessible('claude-sonnet-5', new Set(['claude-sonnet-5-20250514']))).toBe(
@@ -116,27 +148,49 @@ describe('catalogModelAccessible', () => {
 })
 
 describe('fetchAllAvailableModels', () => {
-  it('marks providers without keys as missing_api_key and does not fetch', async () => {
+  it('returns empty models and a null default when no keys are configured', async () => {
     delete process.env.OPENAI_API_KEY
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
 
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    const { models, warnings } = await fetchAllAvailableModels()
+    const { models, warnings, defaultModel } = await fetchAllAvailableModels()
 
     expect(warnings).toEqual([])
-    expect(models).toHaveLength(MODEL_CATALOG.length)
-    expect(models.every((model) => model.available === false)).toBe(true)
-    expect(models.every((model) => model.unavailableReason === 'missing_api_key')).toBe(true)
+    expect(models).toEqual([])
+    expect(defaultModel).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('marks a provider unavailable when its API key is rejected', async () => {
+  it('omits unkeyed first-party providers from the catalog', async () => {
+    process.env.OPENAI_API_KEY = 'sk-good-key'
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => openaiList(['gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-4o'])),
+    )
+
+    const { models, warnings } = await fetchAllAvailableModels()
+
+    expect(warnings).toEqual([])
+    expect(models.every((model) => model.provider === 'openai')).toBe(true)
+    expect(models.every((model) => model.available)).toBe(true)
+    expect(models.map((model) => model.id)).toEqual(['openai:gpt-5.6-luna', 'openai:gpt-5.4-mini'])
+    expect(models.some((model) => model.provider === 'anthropic')).toBe(false)
+    expect(models.some((model) => model.provider === 'google')).toBe(false)
+  })
+
+  it('omits a keyed provider and records a warning when listing fails', async () => {
     process.env.OPENAI_API_KEY = 'sk-bad-key'
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
 
     vi.stubGlobal(
       'fetch',
@@ -145,61 +199,159 @@ describe('fetchAllAvailableModels', () => {
       ),
     )
 
-    const { models, warnings } = await fetchAllAvailableModels()
-    const openaiModels = models.filter((model) => model.provider === 'openai')
+    const { models, warnings, defaultModel } = await fetchAllAvailableModels()
 
-    expect(openaiModels.every((model) => model.available === false)).toBe(true)
-    expect(openaiModels.every((model) => model.unavailableReason === 'not_found')).toBe(true)
+    expect(models).toEqual([])
+    expect(defaultModel).toBeNull()
     expect(warnings.some((warning) => /invalid|expired|Incorrect API key/i.test(warning))).toBe(
       true,
     )
   })
 
-  it('marks only accessible catalog SKUs available when the key works', async () => {
+  it('keeps curated ∩ live ids for openai/anthropic/google', async () => {
     process.env.OPENAI_API_KEY = 'sk-good-key'
     delete process.env.ANTHROPIC_API_KEY
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        Response.json({
-          data: [{ id: 'gpt-5.6-luna' }, { id: 'gpt-5.4-mini' }, { id: 'gpt-4o' }],
-        }),
-      ),
+      vi.fn(async () => openaiList(['gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-4o'])),
     )
 
-    const { models } = await getModelCatalog()
-    const openaiModels = models.filter((model) => model.provider === 'openai')
-    const otherModels = models.filter((model) => model.provider !== 'openai')
+    const { models, defaultModel } = await getModelCatalog()
 
-    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-luna')?.available).toBe(true)
-    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.available).toBe(true)
-    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-sol')?.available).toBe(false)
-    expect(openaiModels.find((model) => model.id === 'openai:gpt-5.6-sol')?.unavailableReason).toBe(
-      'not_found',
+    expect(defaultModel).toBe('openai:gpt-5.6-luna')
+    expect(models.find((model) => model.id === 'openai:gpt-5.6-luna')).toMatchObject({
+      available: true,
+      defaultReasoningEffort: 'medium',
+    })
+    expect(models.find((model) => model.id === 'openai:gpt-5.4-mini')).toMatchObject({
+      available: true,
+      defaultReasoningEffort: 'none',
+    })
+    expect(models.find((model) => model.id === 'openai:gpt-5.6-sol')).toBeUndefined()
+    expect(models.find((model) => model.id === 'openai:gpt-4o')).toBeUndefined()
+  })
+
+  it('lists OpenRouter tools-capable chat models and skips junk', async () => {
+    delete process.env.OPENAI_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    process.env.OPENROUTER_API_KEY = 'or-good-key'
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        expect(String(input)).toBe('https://openrouter.ai/api/v1/models')
+        return Response.json({
+          data: [
+            openRouterModel({
+              id: 'anthropic/claude-3.5-sonnet',
+              name: 'Anthropic: Claude 3.5 Sonnet',
+              architecture: {
+                input_modalities: ['text', 'image'],
+                output_modalities: ['text'],
+              },
+              supported_parameters: ['tools', 'reasoning'],
+            }),
+            openRouterModel({
+              id: 'openai/gpt-4o-mini',
+              name: 'OpenAI: GPT-4o Mini',
+              supported_parameters: ['temperature'],
+            }),
+            openRouterModel({
+              id: 'black-forest-labs/flux',
+              name: 'FLUX',
+              architecture: {
+                input_modalities: ['text', 'image'],
+                output_modalities: ['image'],
+              },
+              supported_parameters: ['tools'],
+            }),
+            openRouterModel({
+              id: 'openai/text-embedding-3-large',
+              name: 'OpenAI: Text Embedding 3 Large',
+              supported_parameters: ['tools'],
+            }),
+          ],
+        })
+      }),
     )
-    expect(otherModels.every((model) => !model.available)).toBe(true)
+
+    const { models, defaultModel, warnings } = await fetchAllAvailableModels()
+
+    expect(warnings).toEqual([])
+    expect(models.map((model) => model.id)).toEqual(['openrouter:anthropic/claude-3.5-sonnet'])
+    expect(models[0]).toMatchObject({
+      provider: 'openrouter',
+      modelId: 'anthropic/claude-3.5-sonnet',
+      available: true,
+      supportsAttachments: true,
+      reasoningEfforts: ['low', 'medium', 'high'],
+      defaultReasoningEffort: 'medium',
+    })
+    expect(defaultModel).toBe('openrouter:anthropic/claude-3.5-sonnet')
     expect(
-      openaiModels.find((model) => model.id === 'openai:gpt-5.4-mini')?.defaultReasoningEffort,
-    ).toBe('none')
+      findCatalogEntryByRef('openrouter:anthropic/claude-3.5-sonnet')?.reasoningTransport,
+    ).toBe('openai-effort')
+  })
+})
+
+describe('assertModelAvailable', () => {
+  it('rejects refs whose provider has no key or that are not in the available set', async () => {
+    delete process.env.OPENAI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
+
+    await expect(assertModelAvailable('openai:gpt-5.6-luna')).rejects.toMatchObject({
+      apiError: { code: 'missing_api_key' },
+    })
+
+    process.env.OPENAI_API_KEY = 'sk-good-key'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => openaiList(['gpt-5.6-luna'])),
+    )
+
+    await expect(assertModelAvailable('openai:gpt-5.6-luna')).resolves.toMatchObject({
+      id: 'openai:gpt-5.6-luna',
+      available: true,
+    })
+    await expect(assertModelAvailable('openai:gpt-5.6-sol')).rejects.toMatchObject({
+      apiError: { code: 'provider_error' },
+    })
+  })
+})
+
+describe('catalog cache', () => {
+  it('reuses a fresh catalog and refreshes after the TTL', async () => {
+    process.env.OPENAI_API_KEY = 'sk-good-key'
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
+
+    const now = vi.spyOn(Date, 'now')
+    now.mockReturnValue(1_000)
+    const fetchMock = vi.fn(async () => openaiList(['gpt-5.6-luna']))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getModelCatalog()
+    await getModelCatalog()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    now.mockReturnValue(1_000 + MODEL_CATALOG_TTL_MS + 1)
+    await getModelCatalog()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
 
 describe('default model helpers', () => {
-  it('defaults to GPT-5.6 Luna', () => {
+  it('defaults health/env fallback to GPT-5.6 Luna', () => {
     delete process.env.ARK_DEFAULT_MODEL
     expect(getDefaultModel()).toBe(DEFAULT_MODEL_REF)
   })
 
-  it('ensures unknown defaults appear as unavailable not_found entries', () => {
-    process.env.OPENAI_API_KEY = 'test-openai-key'
-    const models = ensureModelInList([], 'openai:not-a-real-model')
-    expect(models[0]).toMatchObject({
-      id: 'openai:not-a-real-model',
-      available: false,
-      unavailableReason: 'not_found',
-      supportsAttachments: true,
-    })
+  it('picks a null catalog default when nothing is available', () => {
+    expect(pickCatalogDefaultModel([])).toBeNull()
   })
 })

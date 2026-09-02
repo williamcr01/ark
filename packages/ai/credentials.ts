@@ -11,6 +11,7 @@ const PLACEHOLDER_API_KEYS = new Set([
   'your_openai_api_key_here',
   'your_anthropic_api_key_here',
   'your_google_api_key_here',
+  'your_openrouter_api_key_here',
   'your_key_here',
   'sk-your-key-here',
 ])

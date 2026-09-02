@@ -88,6 +88,37 @@ describe('shared API contracts', () => {
     ).toMatchObject({ defaultModel: 'openai:gpt-5.6-luna' })
   })
 
+  it('allows a null defaultModel and OpenRouter rows on an empty available catalog', () => {
+    expect(
+      modelsResponseSchema.parse({
+        defaultModel: null,
+        models: [],
+        warnings: [],
+      }),
+    ).toMatchObject({ defaultModel: null, models: [], warnings: [] })
+
+    expect(
+      modelsResponseSchema.parse({
+        defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+        models: [
+          {
+            id: 'openrouter:anthropic/claude-3.5-sonnet',
+            provider: 'openrouter',
+            modelId: 'anthropic/claude-3.5-sonnet',
+            name: 'Anthropic: Claude 3.5 Sonnet',
+            available: true,
+            reasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+            supportsAttachments: true,
+          },
+        ],
+        warnings: ['Could not list OpenAI models.'],
+      }),
+    ).toMatchObject({
+      defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+    })
+  })
+
   it('requires a path or bytes for PowerPoint import', () => {
     expect(parseRequestBody(importPptxRequestSchema, { filename: 'deck.pptx' })).toMatchObject({
       ok: false,

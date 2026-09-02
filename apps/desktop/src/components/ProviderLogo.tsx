@@ -4,7 +4,7 @@ import openaiLogo from '@/assets/providers/openai.svg'
 import { cn } from '@/lib/ui/utils'
 import type { ProviderId } from '@ark/contracts'
 
-const PROVIDER_LOGOS: Record<ProviderId, string> = {
+const PROVIDER_LOGOS: Partial<Record<ProviderId, string>> = {
   anthropic: claudeLogo,
   google: geminiLogo,
   openai: openaiLogo,
@@ -17,13 +17,18 @@ export function ProviderLogo({
   className?: string
   provider: ProviderId
 }) {
+  const src = PROVIDER_LOGOS[provider]
+  if (!src) {
+    return null
+  }
+
   return (
     <img
       alt=""
       aria-hidden
       className={cn('shrink-0 object-contain', provider === 'openai' && 'dark:invert', className)}
       data-provider-logo={provider}
-      src={PROVIDER_LOGOS[provider]}
+      src={src}
     />
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ProviderId } from '@ark/contracts'
+import { ALL_PROVIDERS, type ProviderId } from '@ark/contracts'
 
 import { Button } from '@/components/ui/button'
 import { ProviderLogo } from '@/components/ProviderLogo'
@@ -16,11 +16,9 @@ type ProviderStatus = Record<
   { configured: boolean; storage: 'persistent' | 'session' | null }
 >
 
-const EMPTY_STATUS: ProviderStatus = {
-  openai: { configured: false, storage: null },
-  anthropic: { configured: false, storage: null },
-  google: { configured: false, storage: null },
-}
+const EMPTY_STATUS: ProviderStatus = Object.fromEntries(
+  ALL_PROVIDERS.map((id) => [id, { configured: false, storage: null }]),
+) as ProviderStatus
 
 export function AiProvidersSettingsSection({
   onCredentialsChanged,

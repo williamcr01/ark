@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { safeStorage } from 'electron'
-import type { ProviderId } from '@ark/contracts'
+import { ALL_PROVIDERS, type ProviderId } from '@ark/contracts'
 
 type CredentialFile = {
   version: 1
@@ -56,7 +56,7 @@ export class SecureCredentialStore {
     }
 
     const decryptedProviders = await Promise.all(
-      (['openai', 'anthropic', 'google'] as const).map(async (provider) => {
+      ALL_PROVIDERS.map(async (provider) => {
         const encrypted = file.providers[provider]
         if (!encrypted) return null
 
@@ -87,7 +87,7 @@ export class SecureCredentialStore {
 
   getStatus() {
     return Object.fromEntries(
-      (['openai', 'anthropic', 'google'] as const).map((provider) => [
+      ALL_PROVIDERS.map((provider) => [
         provider,
         {
           configured: this.sessionKeys.has(provider) || this.keys.has(provider),

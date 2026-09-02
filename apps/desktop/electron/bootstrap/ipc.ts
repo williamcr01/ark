@@ -10,7 +10,12 @@ import path from 'node:path'
 import { app, clipboard, dialog, ipcMain, shell } from 'electron'
 import electronUpdater from 'electron-updater'
 
-import { isValidDeckId, mcpInteractionAnswerSchema, type ProviderId } from '@ark/contracts'
+import {
+  isValidDeckId,
+  mcpInteractionAnswerSchema,
+  providerIdSchema,
+  type ProviderId,
+} from '@ark/contracts'
 import type { Express } from 'express'
 
 import type { McpInteractionStore } from '@ark/mcp/interactions.ts'
@@ -27,13 +32,12 @@ import {
 import { setEditHistoryMenuState } from './menu.ts'
 
 const { autoUpdater } = electronUpdater
-const providers = new Set<ProviderId>(['openai', 'anthropic', 'google'])
-
 function parseProvider(value: unknown): ProviderId {
-  if (typeof value !== 'string' || !providers.has(value as ProviderId)) {
+  const parsed = providerIdSchema.safeParse(value)
+  if (!parsed.success) {
     throw new Error('Unsupported provider.')
   }
-  return value as ProviderId
+  return parsed.data
 }
 export type IpcDependencies = {
   credentialStore: SecureCredentialStore

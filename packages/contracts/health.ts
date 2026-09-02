@@ -32,7 +32,7 @@ export const healthResponseSchema = withRequestId({
 export type HealthResponse = z.infer<typeof healthResponseSchema>
 
 export const modelsResponseSchema = withRequestId({
-  defaultModel: z.string(),
+  defaultModel: z.string().nullable(),
   models: z.array(modelInfoSchema),
   warnings: z.array(z.string()),
 })

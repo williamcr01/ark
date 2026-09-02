@@ -88,7 +88,7 @@ export const pickAvailableFallbackModel = (models: AvailableModel[]): string | n
 export const resolveSelectedModel = (
   models: AvailableModel[],
   storedModel: string | null,
-  defaultModel: string,
+  defaultModel: string | null,
 ) => {
   const stored = resolveStoredModel(models, storedModel)
   if (stored) {
@@ -176,14 +176,14 @@ export async function fetchModelCatalogWithRetry(
 export function useAvailableModels() {
   const [models, setModels] = useState<AvailableModel[]>([])
   const [selectedModel, setSelectedModelState] = useState('')
-  const [defaultModel, setDefaultModel] = useState('')
+  const [defaultModel, setDefaultModel] = useState<string | null>(null)
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>('checking')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
 
   const applyModels = useCallback(
-    (nextModels: AvailableModel[], nextDefault: string, hasConfiguredKey: boolean) => {
+    (nextModels: AvailableModel[], nextDefault: string | null, hasConfiguredKey: boolean) => {
       const nextSelected = resolveSelectedModel(
         nextModels,
         getDesktopSettings().selectedModel,
@@ -327,11 +327,12 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   google: 'Google',
+  openrouter: 'OpenRouter',
 }
 
-export const formatModelName = (model: AvailableModel) => model.name?.trim() || model.modelId
-
 export const formatProviderLabel = (provider: ProviderId) => PROVIDER_LABELS[provider]
+
+export const formatModelName = (model: AvailableModel) => model.name?.trim() || model.modelId
 
 export const formatUnavailableBadge = (model: AvailableModel) => {
   if (model.available) {

@@ -197,11 +197,19 @@ export const DEFAULT_MODEL_REF = 'openai:gpt-5.6-luna'
 
 export const toModelRef = (provider: ProviderId, modelId: string) => `${provider}:${modelId}`
 
+let discoveredCatalogEntries: readonly ModelCatalogEntry[] = []
+
+/** Overlay live-discovered models (OpenRouter) onto the static first-party catalog. */
+export const setDiscoveredCatalogEntries = (entries: readonly ModelCatalogEntry[]) => {
+  discoveredCatalogEntries = entries
+}
+
 export const findCatalogEntry = (
   provider: ProviderId,
   modelId: string,
 ): ModelCatalogEntry | undefined =>
-  MODEL_CATALOG.find((entry) => entry.provider === provider && entry.modelId === modelId)
+  MODEL_CATALOG.find((entry) => entry.provider === provider && entry.modelId === modelId) ??
+  discoveredCatalogEntries.find((entry) => entry.provider === provider && entry.modelId === modelId)
 
 export const findCatalogEntryByRef = (modelRef: string): ModelCatalogEntry | undefined => {
   const separatorIndex = modelRef.indexOf(':')

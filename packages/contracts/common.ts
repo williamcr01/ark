@@ -13,6 +13,8 @@ import {
   isValidGenerationJobId,
 } from '@ark/chat/generation-job.ts'
 import {
+  ALL_PROVIDERS,
+  FIRST_PARTY_PROVIDERS,
   PROVIDER_ENV_KEYS,
   PROVIDER_LABELS,
   providerIdSchema,
@@ -26,7 +28,14 @@ import {
 
 export { DECK_ID_PATTERN, deckIdSchema, isValidDeckId, UUID_V4_PATTERN }
 export { GENERATION_JOB_ID_PATTERN, generationJobIdSchema, isValidGenerationJobId }
-export { PROVIDER_ENV_KEYS, PROVIDER_LABELS, providerIdSchema, reasoningEffortSchema }
+export {
+  ALL_PROVIDERS,
+  FIRST_PARTY_PROVIDERS,
+  PROVIDER_ENV_KEYS,
+  PROVIDER_LABELS,
+  providerIdSchema,
+  reasoningEffortSchema,
+}
 export { REASONING_EFFORT_LABELS }
 export type { ProviderId, ReasoningEffort }
 

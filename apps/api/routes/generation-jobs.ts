@@ -10,7 +10,7 @@ import { getApiErrorFromUnknown, sendApiError } from './shared.ts'
 
 export function createGenerationJobsRouter(deps: {
   generationJobs: GenerationJobRunner
-  defaultModel: string
+  defaultModel: string | null
 }): Router {
   const { generationJobs, defaultModel } = deps
   const router = Router()
