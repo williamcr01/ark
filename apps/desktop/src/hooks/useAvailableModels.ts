@@ -83,7 +83,8 @@ export const pickAvailableFallbackModel = (models: AvailableModel[]): string | n
 /**
  * Resolve the active model for the selector.
  * Priority: available stored preference → available server default → cheap available fallback.
- * Unavailable preferences are never selected; generation recovery may still call loadModels().
+ * Ids missing from `models[]` (or an empty catalog) resolve to '' so the client
+ * clears the persisted selection instead of keeping a stale `provider:modelId`.
  */
 export const resolveSelectedModel = (
   models: AvailableModel[],
@@ -103,7 +104,7 @@ export const resolveSelectedModel = (
     return defaultEntry.id
   }
 
-  return pickAvailableFallbackModel(models) ?? stored ?? defaultEntry?.id ?? ''
+  return pickAvailableFallbackModel(models) ?? ''
 }
 
 const TRANSIENT_LOAD_ERROR =
@@ -196,10 +197,7 @@ export function useAvailableModels() {
       setSelectedModelState(nextSelected)
       setApiKeyStatus(toApiKeyStatus(hasConfiguredKey, hasAvailableModel))
       setError('')
-
-      if (nextSelected) {
-        void updateDesktopSettings({ selectedModel: nextSelected })
-      }
+      void updateDesktopSettings({ selectedModel: nextSelected || null })
     },
     [],
   )
@@ -210,8 +208,11 @@ export function useAvailableModels() {
 
     setApiKeyStatus(isTransientModelLoadError(loadError) ? 'checking' : 'invalid')
     setModels([])
+    setDefaultModel(null)
     setSelectedModelState('')
+    setWarnings([])
     setError(message)
+    void updateDesktopSettings({ selectedModel: null })
   }, [])
 
   const loadModels = useCallback(async () => {
@@ -281,8 +282,14 @@ export function useAvailableModels() {
 
   const setSelectedModel = useCallback(
     (modelId: string) => {
+      if (!modelId) {
+        setSelectedModelState('')
+        void updateDesktopSettings({ selectedModel: null })
+        return
+      }
+
       const model = models.find((entry) => entry.id === modelId)
-      if (model && !model.available) {
+      if (!model?.available) {
         return
       }
 
@@ -309,19 +316,8 @@ export function useAvailableModels() {
   }
 }
 
-export const formatModelLabel = (model: AvailableModel) => {
-  const label = model.name ? `${model.provider} · ${model.name}` : model.id
-
-  if (model.available) {
-    return label
-  }
-
-  if (model.unavailableReason === 'missing_api_key') {
-    return `${label} (no API key)`
-  }
-
-  return `${label} (unavailable)`
-}
+export const formatModelLabel = (model: AvailableModel) =>
+  model.name ? `${model.provider} · ${model.name}` : model.id
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
   openai: 'OpenAI',
@@ -334,14 +330,4 @@ export const formatProviderLabel = (provider: ProviderId) => PROVIDER_LABELS[pro
 
 export const formatModelName = (model: AvailableModel) => model.name?.trim() || model.modelId
 
-export const formatUnavailableBadge = (model: AvailableModel) => {
-  if (model.available) {
-    return null
-  }
-
-  if (model.unavailableReason === 'missing_api_key') {
-    return 'No API key'
-  }
-
-  return 'Unavailable'
-}
+export const EMPTY_MODEL_CATALOG_COPY = 'Add an API key in Settings'

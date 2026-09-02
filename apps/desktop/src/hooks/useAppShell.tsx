@@ -1234,6 +1234,7 @@ export function useAppShell() {
     isStripOpen,
     loadModels,
     mainRef,
+    modelWarnings,
     normalAgentQuestions,
     normalThemeProposal,
     preference,

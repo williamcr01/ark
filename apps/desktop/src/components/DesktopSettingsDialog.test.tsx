@@ -8,6 +8,13 @@ async function switchTab(label: string) {
   await userEvent.click(screen.getByRole('tab', { name: label }))
 }
 
+const unconfiguredCredentials = {
+  openai: { configured: false, storage: null },
+  anthropic: { configured: false, storage: null },
+  google: { configured: false, storage: null },
+  openrouter: { configured: false, storage: null },
+}
+
 describe('DesktopSettingsDialog', () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -19,12 +26,7 @@ describe('DesktopSettingsDialog', () => {
     window.arkDesktop = {
       mcp: window.arkDesktop.mcp,
       credentials: {
-        list: vi.fn().mockResolvedValue({
-          openai: { configured: false, storage: null },
-          anthropic: { configured: false, storage: null },
-          google: { configured: false, storage: null },
-          openrouter: { configured: false, storage: null },
-        }),
+        list: vi.fn().mockResolvedValue(unconfiguredCredentials),
         save: vi.fn(),
         saveSession: vi.fn(),
         remove: vi.fn(),
@@ -55,6 +57,10 @@ describe('DesktopSettingsDialog', () => {
     )
     const user = userEvent.setup()
     await switchTab('AI Providers')
+    expect(screen.getByLabelText('OpenAI')).toBeInTheDocument()
+    expect(screen.getByLabelText('Anthropic')).toBeInTheDocument()
+    expect(screen.getByLabelText('Google Gemini')).toBeInTheDocument()
+    expect(screen.getByLabelText('OpenRouter')).toBeInTheDocument()
     expect(document.querySelectorAll('[data-provider-logo]')).toHaveLength(3)
     await user.type(screen.getByLabelText('OpenAI'), 'sk-test')
     await user.click(screen.getAllByRole('button', { name: 'Test' })[0]!)
@@ -68,12 +74,7 @@ describe('DesktopSettingsDialog', () => {
     window.arkDesktop = {
       mcp: window.arkDesktop.mcp,
       credentials: {
-        list: vi.fn().mockResolvedValue({
-          openai: { configured: false, storage: null },
-          anthropic: { configured: false, storage: null },
-          google: { configured: false, storage: null },
-          openrouter: { configured: false, storage: null },
-        }),
+        list: vi.fn().mockResolvedValue(unconfiguredCredentials),
         save: vi.fn(),
         saveSession: vi.fn(),
         remove: vi.fn(),
@@ -216,5 +217,62 @@ describe('DesktopSettingsDialog', () => {
 
     act(() => vi.advanceTimersByTime(5_000))
     expect(copyButton).toHaveTextContent('Copy')
+  })
+
+  it('saves and removes an OpenRouter key through the same credentials bridge', async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, modelCount: 4 })
+    const remove = vi.fn().mockResolvedValue({ ok: true })
+    const onCredentialsChanged = vi.fn().mockResolvedValue(undefined)
+    window.arkDesktop.credentials.list = vi
+      .fn()
+      .mockResolvedValueOnce(unconfiguredCredentials)
+      .mockResolvedValueOnce({
+        ...unconfiguredCredentials,
+        openrouter: { configured: true, storage: 'persistent' },
+      })
+      .mockResolvedValueOnce(unconfiguredCredentials)
+    window.arkDesktop.credentials.save = save
+    window.arkDesktop.credentials.remove = remove
+
+    render(
+      <DesktopSettingsDialog
+        appearancePreference="system"
+        onAppearanceChange={vi.fn()}
+        onCredentialsChanged={onCredentialsChanged}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    )
+    const user = userEvent.setup()
+    await switchTab('AI Providers')
+    await user.type(screen.getByLabelText('OpenRouter'), 'or-test-key')
+    await user.click(screen.getAllByRole('button', { name: 'Save' })[3]!)
+
+    expect(save).toHaveBeenCalledWith('openrouter', 'or-test-key')
+    expect(onCredentialsChanged).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText(/OpenRouter key saved/)).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('button', { name: 'Remove' }))
+    expect(remove).toHaveBeenCalledWith('openrouter')
+    expect(onCredentialsChanged).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces catalog list warnings without inventing missing_api_key rows', async () => {
+    render(
+      <DesktopSettingsDialog
+        appearancePreference="system"
+        catalogWarnings={['Could not list OpenAI models.']}
+        onAppearanceChange={vi.fn()}
+        onCredentialsChanged={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    )
+    await switchTab('AI Providers')
+
+    expect(screen.getByText('Model catalog notice')).toBeInTheDocument()
+    expect(screen.getByText('Could not list OpenAI models.')).toBeInTheDocument()
+    expect(screen.queryByText('No API key')).not.toBeInTheDocument()
+    expect(screen.queryByText(/missing_api_key/)).not.toBeInTheDocument()
   })
 })

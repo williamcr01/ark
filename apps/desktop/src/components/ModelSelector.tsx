@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CheckIcon, ChevronsUpDownIcon, SearchIcon } from 'lucide-react'
+import { ALL_PROVIDERS, type ProviderId } from '@ark/contracts'
 
 import { Button } from '@/components/ui/button'
 import { ProviderLogo } from '@/components/ProviderLogo'
@@ -21,15 +22,14 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAnimatedHeight } from '@/hooks/useAnimatedHeight'
 import {
+  EMPTY_MODEL_CATALOG_COPY,
   formatModelName,
   formatProviderLabel,
-  formatUnavailableBadge,
   type AvailableModel,
 } from '@/hooks/useAvailableModels'
 import { formatReasoningEffortLabel, type ReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useSequencedPresence } from '@/hooks/useSequencedPresence'
 import { cn } from '@/lib/ui/utils'
-import type { ProviderId } from '@ark/contracts'
 
 function ModelSelectorTriggerLabel({
   modelName,
@@ -79,12 +79,10 @@ function ModelSelectorTriggerLabel({
   )
 }
 
-const PROVIDER_ORDER: ProviderId[] = ['openai', 'anthropic', 'google']
-
 const groupModelsByProvider = (models: AvailableModel[]) => {
   const groups = new Map<ProviderId, AvailableModel[]>()
 
-  for (const provider of PROVIDER_ORDER) {
+  for (const provider of ALL_PROVIDERS) {
     groups.set(provider, [])
   }
 
@@ -104,24 +102,16 @@ const groupModelsByProvider = (models: AvailableModel[]) => {
     readyCount: number
   }[] = []
 
-  for (const provider of PROVIDER_ORDER) {
-    const providerModels = groups.get(provider) ?? []
+  for (const [provider, providerModels] of groups) {
     if (providerModels.length === 0) {
       continue
-    }
-
-    let readyCount = 0
-    for (const model of providerModels) {
-      if (model.available) {
-        readyCount += 1
-      }
     }
 
     sections.push({
       provider,
       label: formatProviderLabel(provider),
       models: providerModels,
-      readyCount,
+      readyCount: providerModels.length,
     })
   }
 
@@ -196,13 +186,16 @@ export function ModelSelector({
   }
 
   const selectedName = selected ? formatModelName(selected) : 'Select model'
+  const emptyCatalog = !isLoading && models.length === 0
   const effortLabel =
     selected && reasoningEffort ? formatReasoningEffortLabel(reasoningEffort) : undefined
   const triggerLabel = isLoading
     ? 'Loading models…'
-    : effortLabel
-      ? `${selectedName} · ${effortLabel}`
-      : selectedName
+    : emptyCatalog
+      ? EMPTY_MODEL_CATALOG_COPY
+      : effortLabel
+        ? `${selectedName} · ${effortLabel}`
+        : selectedName
 
   const closeMenu = () => {
     setOpen(false)
@@ -265,7 +258,7 @@ export function ModelSelector({
             !canGenerate && 'text-muted-foreground',
             className,
           )}
-          disabled={disabled || isLoading}
+          disabled={disabled || isLoading || emptyCatalog}
           size="sm"
           title={isLoading ? undefined : triggerLabel}
           type="button"
@@ -275,8 +268,13 @@ export function ModelSelector({
             <Skeleton className="h-3.5 w-24" />
           ) : (
             <>
-              {selected ? <ProviderLogo className="size-4" provider={selected.provider} /> : null}
-              <ModelSelectorTriggerLabel effortLabel={effortLabel} modelName={selectedName} />
+              {selected && !emptyCatalog ? (
+                <ProviderLogo className="size-4" provider={selected.provider} />
+              ) : null}
+              <ModelSelectorTriggerLabel
+                effortLabel={emptyCatalog ? undefined : effortLabel}
+                modelName={emptyCatalog ? EMPTY_MODEL_CATALOG_COPY : selectedName}
+              />
             </>
           )}
           <ChevronsUpDownIcon className="opacity-50" data-icon="inline-end" />
@@ -311,7 +309,7 @@ export function ModelSelector({
             <div className="ark-scrollbar-none max-h-64 min-h-0 flex-1 overflow-y-auto p-1">
               {groups.length === 0 ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                  {models.length === 0 ? 'No models available.' : 'No models match your search.'}
+                  {models.length === 0 ? EMPTY_MODEL_CATALOG_COPY : 'No models match your search.'}
                 </div>
               ) : (
                 groups.map((group, groupIndex) => (
@@ -325,7 +323,6 @@ export function ModelSelector({
                     </DropdownMenuLabel>
                     <DropdownMenuGroup>
                       {group.models.map((model) => {
-                        const unavailableLabel = formatUnavailableBadge(model)
                         const isSelected = model.id === value
                         const supportsEffort = (model.reasoningEfforts ?? []).length > 0
                         const canEditEffort = model.available && supportsEffort
@@ -338,10 +335,8 @@ export function ModelSelector({
                               className={cn(
                                 'gap-2 py-1.5',
                                 canEditEffort && 'pr-10',
-                                !model.available && 'opacity-60',
                                 isExpanded && 'bg-accent text-accent-foreground',
                               )}
-                              disabled={!model.available}
                               onSelect={() => selectModel(model)}
                             >
                               <span className="min-w-0 truncate font-medium text-[var(--ark-ink)]">
@@ -350,11 +345,6 @@ export function ModelSelector({
                               {modelEffort ? (
                                 <span className="shrink-0 text-xs font-normal text-[var(--ark-muted-ink)] opacity-75">
                                   {formatReasoningEffortLabel(modelEffort)}
-                                </span>
-                              ) : null}
-                              {unavailableLabel ? (
-                                <span className="shrink-0 rounded-md bg-[var(--ark-accent-soft)] px-1.5 py-0.5 text-[0.65rem] text-[var(--ark-muted-ink)]">
-                                  {unavailableLabel}
                                 </span>
                               ) : null}
                               {isSelected ? (

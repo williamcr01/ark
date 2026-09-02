@@ -52,6 +52,7 @@ export default function App() {
     isStripOpen,
     loadModels,
     mainRef,
+    modelWarnings,
     normalAgentQuestions,
     normalThemeProposal,
     preference,
@@ -87,6 +88,7 @@ export default function App() {
           onAgentInteractionsInModalChange={setAgentInteractionsInModal}
           onHtmlUpload={handleHtmlUpload}
           onPptxUpload={handlePptxUpload}
+          catalogWarnings={modelWarnings}
           onCredentialsChanged={loadModels}
           onNewDeck={handleNewDeck}
           onOpenWorkspace={handleOpenWorkspace}

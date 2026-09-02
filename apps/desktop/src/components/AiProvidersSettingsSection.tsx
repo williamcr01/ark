@@ -5,11 +5,16 @@ import { Button } from '@/components/ui/button'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { Input } from '@/components/ui/input'
 
-const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'google', label: 'Google Gemini' },
-]
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google Gemini',
+  openrouter: 'OpenRouter',
+}
+
+const PROVIDERS = ALL_PROVIDERS.map((id) => ({ id, label: PROVIDER_LABELS[id] }))
+
+const EMPTY_CATALOG_WARNINGS: string[] = []
 
 type ProviderStatus = Record<
   ProviderId,
@@ -21,10 +26,12 @@ const EMPTY_STATUS: ProviderStatus = Object.fromEntries(
 ) as ProviderStatus
 
 export function AiProvidersSettingsSection({
+  catalogWarnings = EMPTY_CATALOG_WARNINGS,
   onCredentialsChanged,
   onMessage,
   open,
 }: {
+  catalogWarnings?: string[]
   onCredentialsChanged: () => void | Promise<void>
   onMessage: (message: string) => void
   open: boolean
@@ -74,6 +81,16 @@ export function AiProvidersSettingsSection({
 
   return (
     <div className="flex flex-col gap-6">
+      {catalogWarnings.length > 0 ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          <p className="mb-1 font-medium text-foreground">Model catalog notice</p>
+          <ul className="flex list-disc flex-col gap-1 pl-4">
+            {catalogWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {PROVIDERS.map(({ id, label }) => {
         const draft = drafts[id] ?? ''
         const configured = status[id].configured

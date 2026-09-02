@@ -9,8 +9,11 @@ import type { AppearancePreference } from '@/hooks/useAppearance'
 
 export type SettingsTab = 'general' | 'mcp' | 'providers'
 
+const EMPTY_CATALOG_WARNINGS: string[] = []
+
 export function DesktopSettingsDialog({
   appearancePreference,
+  catalogWarnings = EMPTY_CATALOG_WARNINGS,
   initialTab = 'general',
   onAgentInteractionsInModalChange,
   onAppearanceChange,
@@ -19,6 +22,7 @@ export function DesktopSettingsDialog({
   open,
 }: {
   appearancePreference: AppearancePreference
+  catalogWarnings?: string[]
   initialTab?: SettingsTab
   onAgentInteractionsInModalChange?: (enabled: boolean) => void
   onAppearanceChange: (preference: AppearancePreference) => void
@@ -62,6 +66,7 @@ export function DesktopSettingsDialog({
             </TabsContent>
             <TabsContent value="providers">
               <AiProvidersSettingsSection
+                catalogWarnings={catalogWarnings}
                 onCredentialsChanged={onCredentialsChanged}
                 onMessage={setMessage}
                 open={open}
