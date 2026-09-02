@@ -27,6 +27,7 @@ export const isolatedTests = [
   'src/hooks/usePromptSubmit.test.tsx',
   'src/hooks/useWorkspaceFileActions.test.tsx',
   'src/hooks/useWorkspaceRuntime.test.tsx',
+  'src/lib/chat/upload-prompt-attachments.test.ts',
   'src/pages/DecksDashboard.test.tsx',
   'electron/thumbnail-renderer.test.ts',
   'electron/deck-export.test.ts',
