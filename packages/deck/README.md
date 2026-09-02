@@ -10,10 +10,23 @@ Layer 1. May import `@ark/runtime-registry` and `@ark/telemetry`. Browser-safe: 
 document/   read a deck        parser, structure, slides, metadata, title, origin,
                                network, assets, image, editable, geometry, sanitize,
                                theme
-patch/      change a deck      slide-ops, patch-request, element-patch,
-                               editable-elements, text-edit, text-box
+patch/      change a deck      slide-ops, patch-request, editable-elements,
+                               text-edit, text-box, jsdom-inline-style
+patch/element-patch.ts         dispatcher: applyElementPatch and
+                               stabilizeElementPatchOperations (public API)
+patch/element/                 per-concern modules — types, resolve, validate, ids,
+                               text, insert, style, layout (move/resize), order
+                               (duplicate/delete/reorder), lock
 validate/   judge a deck       document
 ```
+
+`patch/element-patch.ts` is the public entry for element-level editor ops. Callers keep importing
+that path; implementations live beside it in `patch/element/`. Helpers take a `Document` or
+`Element`. JSDOM fragment construction for `insert_element` is isolated in `insert.ts` so a later
+server-only split can move it.
+
+`slide-ops.ts` holds an explicit `DeckDomCache` (`createDeckDomCache()` with `get` / `set` /
+`clear`). A default instance is used by `applyDeckPatches`; tests call `resetDeckDomCache()`.
 
 Two primitives are defined here and re-exported upward so the layering stays honest:
 
