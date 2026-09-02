@@ -1,16 +1,31 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import { ChatComposer } from '@/components/chat/ChatComposer'
 import { ChatGenerationStatus } from '@/components/chat/ChatGenerationStatus'
-import { ChatInteractions, useChatInteractionLock } from '@/components/chat/ChatInteractions'
-import { ChatQueuedSends } from '@/components/chat/ChatQueuedSends'
-import { ChatTranscript, useChatTranscriptVisibility } from '@/components/chat/ChatTranscript'
+import { useChatInteractionLock } from '@/components/chat/chat-interaction-lock'
+import { ChatInteractions } from '@/components/chat/ChatInteractions'
 import {
-  ChatPanelRuntimeProvider,
+  ChatPanelRuntimeContext,
   type ChatPanelLayout,
+  type ChatPanelRuntime,
 } from '@/components/chat/chat-panel-runtime'
+import { ChatQueuedSends } from '@/components/chat/ChatQueuedSends'
+import { ChatTranscript } from '@/components/chat/ChatTranscript'
 import { Card, CardContent } from '@/components/ui/card'
+import { useAppearance } from '@/hooks/useAppearance'
+import { useMcpInteraction } from '@/hooks/useMcpInteraction'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { usePromptSubmit } from '@/hooks/usePromptSubmit'
+import { useWorkspaceRuntimeContext } from '@/hooks/workspace-runtime-context'
+import { shouldShowLiveAssistant } from '@/lib/chat/chat-message-parts'
 import { cn } from '@/lib/ui/utils'
+import {
+  selectActiveJobId,
+  selectActiveSteps,
+  selectGenerationStatus,
+  useChatStore,
+} from '@/state/chat-store.ts'
+import { useShellStore } from '@/state/shell-store.ts'
 
 export type { ChatMessage } from '@ark/chat/chat.ts'
 export type { ChatPanelLayout }
@@ -26,6 +41,81 @@ export function ChatPanel({ layout = 'sidebar', contextSlot }: ChatPanelProps) {
       <ChatPanelFrame layout={layout} />
     </ChatPanelRuntimeProvider>
   )
+}
+
+function ChatPanelRuntimeProvider({
+  layout,
+  contextSlot,
+  children,
+}: {
+  layout: ChatPanelLayout
+  contextSlot?: ReactNode
+  children: ReactNode
+}) {
+  const { chat, generation, models, persistence } = useWorkspaceRuntimeContext()
+  const prompt = usePromptSubmit()
+  const mcp = useMcpInteraction(persistence.deckId)
+  const agentInteractionsInModal = useShellStore((state) => state.agentInteractionsInModal)
+  const { resolvedAppearance } = useAppearance()
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const interactiveToolsInModal = agentInteractionsInModal && layout !== 'home'
+
+  const value = useMemo<ChatPanelRuntime>(
+    () => ({
+      layout,
+      contextSlot,
+      prompt,
+      retryPersist: chat.retryPersist,
+      generateDeck: generation.generateDeck,
+      cancelGeneration: generation.cancelGeneration,
+      retryGeneration: generation.retryGeneration,
+      canGenerate: models.canGenerate,
+      setSelectedModel: models.setSelectedModel,
+      mcp,
+      interactiveToolsInModal,
+      reducedMotion,
+      resolvedAppearance,
+    }),
+    [
+      layout,
+      contextSlot,
+      prompt,
+      chat.retryPersist,
+      generation.generateDeck,
+      generation.cancelGeneration,
+      generation.retryGeneration,
+      models.canGenerate,
+      models.setSelectedModel,
+      mcp,
+      interactiveToolsInModal,
+      reducedMotion,
+      resolvedAppearance,
+    ],
+  )
+
+  return (
+    <ChatPanelRuntimeContext.Provider value={value}>{children}</ChatPanelRuntimeContext.Provider>
+  )
+}
+
+function useChatTranscriptVisibility(layout: ChatPanelLayout) {
+  const messages = useChatStore((state) => state.messages)
+  const isGenerating = useChatStore((state) => state.isGenerating)
+  const activeSteps = useChatStore(selectActiveSteps)
+  const activeJobId = useChatStore(selectActiveJobId)
+  const generationStatus = useChatStore(selectGenerationStatus)
+  const showLiveAssistant = shouldShowLiveAssistant(
+    messages,
+    isGenerating,
+    activeJobId,
+    generationStatus,
+    activeSteps.length,
+  )
+  return {
+    isHome: layout === 'home',
+    isEmpty: messages.length === 0 && !showLiveAssistant && !isGenerating,
+    showLiveAssistant,
+  }
 }
 
 function ChatPanelFrame({ layout }: { layout: ChatPanelLayout }) {

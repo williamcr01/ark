@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { type ReactNode } from 'react'
+import { MemoryRouter } from 'react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,7 +8,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
 import { ChatPanel } from '@/components/ChatPanel'
 import { ContextChipList } from '@/components/ChatContextChips'
-import { ChatPanelHarnessProvider, type ChatPanelHarness } from '@/test/chat-panel-harness'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { WorkspaceRuntimeContext } from '@/hooks/workspace-runtime-context'
+import { makeChatPanelRuntime, type ChatPanelHarness } from '@/test/chat-panel-harness'
 import { useChatStore } from '@/state/chat-store.ts'
 
 vi.mock('@/components/MiniHtmlPreview', () => ({
@@ -69,6 +73,23 @@ const baseProps: ChatPanelHarness = {
   onPromptSubmit: vi.fn(),
   onCancelGeneration: vi.fn(),
   onRetryGeneration: vi.fn(),
+}
+
+function ChatPanelHarnessProvider({
+  props = {},
+  children,
+}: {
+  props?: ChatPanelHarness
+  children: ReactNode
+}) {
+  const value = makeChatPanelRuntime(props)
+  return (
+    <MemoryRouter initialEntries={['/decks/deck-1']}>
+      <WorkspaceRuntimeContext.Provider value={value}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </WorkspaceRuntimeContext.Provider>
+    </MemoryRouter>
+  )
 }
 
 function renderChatPanel(props: ChatPanelHarness = {}) {

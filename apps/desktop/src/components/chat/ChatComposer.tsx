@@ -31,7 +31,7 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
-import { useChatInteractionLock } from '@/components/chat/ChatInteractions'
+import { useChatInteractionLock } from '@/components/chat/chat-interaction-lock'
 import { useChatPanelRuntime } from '@/components/chat/chat-panel-runtime'
 import { ModelSelector } from '@/components/ModelSelector'
 import {

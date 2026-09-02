@@ -10,7 +10,7 @@ import {
   ChatMessageDeliveryStatus,
   ChatMessageParts,
 } from '@/components/chat/ChatMessageParts'
-import { useChatPanelRuntime, type ChatPanelLayout } from '@/components/chat/chat-panel-runtime'
+import { useChatPanelRuntime } from '@/components/chat/chat-panel-runtime'
 import { shouldShowLiveAssistant } from '@/lib/chat/chat-message-parts'
 import { findAskUserAnswerAfter, isAskUserAnswerMessage } from '@/lib/chat/agent-questions'
 import { findThemeChoiceAfter, isThemeChoiceMessage } from '@/lib/chat/agent-themes'
@@ -107,24 +107,4 @@ export function ChatTranscript() {
       <ConversationScrollButton />
     </Conversation>
   )
-}
-
-export function useChatTranscriptVisibility(layout: ChatPanelLayout) {
-  const messages = useChatStore((state) => state.messages)
-  const isGenerating = useChatStore((state) => state.isGenerating)
-  const activeSteps = useChatStore(selectActiveSteps)
-  const activeJobId = useChatStore(selectActiveJobId)
-  const generationStatus = useChatStore(selectGenerationStatus)
-  const showLiveAssistant = shouldShowLiveAssistant(
-    messages,
-    isGenerating,
-    activeJobId,
-    generationStatus,
-    activeSteps.length,
-  )
-  return {
-    isHome: layout === 'home',
-    isEmpty: messages.length === 0 && !showLiveAssistant && !isGenerating,
-    showLiveAssistant,
-  }
 }

@@ -1,46 +1,11 @@
 import { AgentQuestions } from '@/components/AgentQuestions'
 import { ThemePicker } from '@/components/ThemePicker'
+import { useChatInteractionLock } from '@/components/chat/chat-interaction-lock'
 import { useChatPanelRuntime } from '@/components/chat/chat-panel-runtime'
-import { findPendingAgentQuestions } from '@/lib/chat/agent-questions'
-import { findPendingThemeProposal } from '@/lib/chat/agent-themes'
 import { cn } from '@/lib/ui/utils'
 import { useChatStore } from '@/state/chat-store.ts'
 import { formatAgentQuestionAnswers } from '@ark/chat/agent-questions.ts'
 import { formatThemeChoice, THEME_REFRESH_PROMPT } from '@ark/chat/agent-themes.ts'
-
-export function useChatInteractionLock() {
-  const { layout, canGenerate, mcp, interactiveToolsInModal } = useChatPanelRuntime()
-  const messages = useChatStore((state) => state.messages)
-  const pendingAgentQuestions = findPendingAgentQuestions(messages)
-  const pendingThemeProposal = findPendingThemeProposal(messages)
-  const mcpInteraction = mcp.activeMcpInteraction
-  const activeQuestions =
-    mcpInteraction?.kind === 'questions'
-      ? mcpInteraction.request
-      : interactiveToolsInModal
-        ? null
-        : pendingAgentQuestions
-  const activeThemes =
-    mcpInteraction?.kind === 'themes'
-      ? mcpInteraction.request
-      : interactiveToolsInModal
-        ? null
-        : pendingThemeProposal
-  const interactionActive = Boolean(
-    activeQuestions ||
-    activeThemes ||
-    (interactiveToolsInModal && (pendingAgentQuestions || pendingThemeProposal)),
-  )
-
-  return {
-    layout,
-    canGenerate,
-    activeQuestions,
-    activeThemes,
-    interactionActive,
-    mcpInteraction,
-  }
-}
 
 export function ChatInteractions() {
   const { generateDeck, canGenerate, mcp } = useChatPanelRuntime()
