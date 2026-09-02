@@ -1,91 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
-import {
-  agentStepsToChatParts,
-  buildAssistantMessageContent,
-  toApiMessages,
-  type AgentStep,
-  type ChatMessage,
-  type EditorSelectionContext,
-  type SlideContext,
+import type {
+  AgentStep,
+  ChatMessage,
+  EditorSelectionContext,
+  SlideContext,
 } from '@ark/chat/chat.ts'
-import type { GenerationJobApi, GenerationJobStatus, ReasoningEffort } from '@ark/contracts'
+import type { GenerationJobStatus } from '@ark/contracts'
+import { useChatStore } from '@/state/chat-store.ts'
+
 import {
-  cancelGenerationJob,
-  fetchGenerationJob,
-  isActiveGenerationJobStatus,
-  retryGenerationJob,
-  startGenerationJob,
-} from '@/lib/api/generation-job-api'
+  cancelActiveGeneration,
+  clearStoredGenerationJob,
+  resumeStoredGenerationJob,
+  retryFailedGeneration,
+  startTrackedGeneration,
+  type GenerationJobOutcome,
+  type UseGenerationJobOptions,
+} from './generation-job-runtime.ts'
 
-const GENERATION_JOB_STORAGE_PREFIX = 'ark:generation-job:'
-
-const readStoredJobId = (deckKey: string) => {
-  try {
-    if (typeof localStorage === 'undefined') {
-      return null
-    }
-
-    return localStorage.getItem(`${GENERATION_JOB_STORAGE_PREFIX}${deckKey}`)
-  } catch {
-    return null
-  }
-}
-
-const writeStoredJobId = (deckKey: string, jobId: string) => {
-  try {
-    if (typeof localStorage === 'undefined') {
-      return
-    }
-
-    localStorage.setItem(`${GENERATION_JOB_STORAGE_PREFIX}${deckKey}`, jobId)
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-const clearStoredJobId = (deckKey: string) => {
-  try {
-    if (typeof localStorage === 'undefined') {
-      return
-    }
-
-    localStorage.removeItem(`${GENERATION_JOB_STORAGE_PREFIX}${deckKey}`)
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-export const clearStoredGenerationJob = (deckId: string | null) => {
-  clearStoredJobId(deckId ?? 'new')
-}
-
-export type GenerationJobOutcome =
-  | {
-      status: 'succeeded'
-      job: GenerationJobApi
-      deckChanged: boolean
-      awaitingUserResponse: boolean
-      assistantParts: ReturnType<typeof agentStepsToChatParts>
-      assistantContent: string
-    }
-  | {
-      status: 'failed' | 'canceled'
-      job: GenerationJobApi
-      message: string
-      retryable: boolean
-    }
-
-export type UseGenerationJobOptions = {
-  deckId: string | null
-  baseDocumentRevision: number | null
-  selectedModel: string
-  reasoningEffort?: ReasoningEffort
-  canGenerate: boolean
-  onReloadModels?: () => Promise<void>
-}
-
-const POLL_INTERVAL_MS = 800
+export { clearStoredGenerationJob }
+export type { GenerationJobOutcome, UseGenerationJobOptions }
 
 export function useGenerationJob({
   deckId,
@@ -95,168 +30,18 @@ export function useGenerationJob({
   canGenerate,
   onReloadModels,
 }: UseGenerationJobOptions) {
-  const [activeJob, setActiveJob] = useState<GenerationJobApi | null>(null)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [error, setError] = useState('')
-  const [failedJob, setFailedJob] = useState<GenerationJobApi | null>(null)
   const pollAbortRef = useRef<AbortController | null>(null)
   const deckKey = deckId ?? 'new'
+  const activeJob = useChatStore((state) => state.activeJob)
+  const isGenerating = useChatStore((state) => state.isGenerating)
+  const error = useChatStore((state) => state.generationError)
+  const failedJob = useChatStore((state) => state.failedJob)
+  const setError = useChatStore((state) => state.setGenerationError)
 
   const stopPolling = useCallback(() => {
     pollAbortRef.current?.abort()
     pollAbortRef.current = null
   }, [])
-
-  const pollUntilTerminal = useCallback(
-    async (jobId: string): Promise<GenerationJobApi> => {
-      stopPolling()
-      const controller = new AbortController()
-      pollAbortRef.current = controller
-
-      while (!controller.signal.aborted) {
-        const job = await fetchGenerationJob(jobId, controller.signal)
-        setActiveJob(job)
-
-        if (!isActiveGenerationJobStatus(job.status)) {
-          return job
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          const timeoutId = window.setTimeout(resolve, POLL_INTERVAL_MS)
-          controller.signal.addEventListener(
-            'abort',
-            () => {
-              window.clearTimeout(timeoutId)
-              reject(new DOMException('Polling stopped.', 'AbortError'))
-            },
-            { once: true },
-          )
-        })
-      }
-
-      throw new DOMException('Polling stopped.', 'AbortError')
-    },
-    [stopPolling],
-  )
-
-  const buildOutcome = useCallback(
-    (job: GenerationJobApi): GenerationJobOutcome => {
-      const steps = job.progress.steps
-      const transcriptParts = job.progress.transcriptParts
-      const awaitingUserResponse =
-        transcriptParts && transcriptParts.length > 0
-          ? transcriptParts.some((part) => {
-              if (part.type !== 'tool-result') return false
-              if (part.toolName !== 'ask_user' && part.toolName !== 'propose_themes') return false
-              const output = part.output
-              return (
-                !!output &&
-                typeof output === 'object' &&
-                !Array.isArray(output) &&
-                (output as { awaitingUserResponse?: unknown }).awaitingUserResponse === true
-              )
-            })
-          : steps.some(
-              (step) =>
-                step.type === 'tool-result' &&
-                (step.toolName === 'ask_user' || step.toolName === 'propose_themes') &&
-                !step.error,
-            )
-
-      if (job.status === 'succeeded' && (job.result || awaitingUserResponse)) {
-        const assistantText = job.result?.assistantText ?? job.progress.assistantText ?? ''
-        const assistantContent = buildAssistantMessageContent(
-          assistantText,
-          steps,
-          job.editingExistingDeck ?? false,
-        )
-
-        return {
-          status: 'succeeded',
-          job,
-          deckChanged: Boolean(
-            job.result?.documentRevision && job.result.documentRevision !== baseDocumentRevision,
-          ),
-          awaitingUserResponse,
-          assistantParts:
-            transcriptParts && transcriptParts.length > 0
-              ? transcriptParts
-              : agentStepsToChatParts(steps),
-          assistantContent,
-        }
-      }
-
-      const message =
-        job.error?.message ??
-        (job.status === 'canceled'
-          ? 'Generation was canceled.'
-          : 'Something went wrong while generating the deck.')
-
-      return {
-        status: job.status === 'canceled' ? 'canceled' : 'failed',
-        job,
-        message,
-        retryable: job.status === 'failed' || job.status === 'canceled',
-      }
-    },
-    [baseDocumentRevision],
-  )
-
-  const finalizeJob = useCallback(
-    (job: GenerationJobApi, storageKey = deckKey) => {
-      clearStoredJobId(storageKey)
-      setActiveJob(job)
-      setIsGenerating(false)
-
-      if (job.status === 'failed' || job.status === 'canceled') {
-        setFailedJob(job)
-        setError(job.error?.message ?? '')
-
-        const code = job.error?.code
-        const category = job.error?.errorCategory
-        if (
-          code === 'missing_api_key' ||
-          code === 'invalid_api_key' ||
-          category === 'missing_api_key' ||
-          category === 'invalid_api_key'
-        ) {
-          void onReloadModels?.()
-        }
-      } else {
-        setFailedJob(null)
-        setError('')
-      }
-    },
-    [deckKey, onReloadModels],
-  )
-
-  const runJob = useCallback(
-    async (jobId: string, storageKey = deckKey) => {
-      setIsGenerating(true)
-      setError('')
-      setFailedJob(null)
-      writeStoredJobId(storageKey, jobId)
-
-      try {
-        const job = await pollUntilTerminal(jobId)
-        finalizeJob(job, storageKey)
-        return buildOutcome(job)
-      } catch (pollError) {
-        if (pollError instanceof DOMException && pollError.name === 'AbortError') {
-          return null
-        }
-
-        const message =
-          pollError instanceof Error ? pollError.message : 'Could not track the generation job.'
-
-        setError(message)
-        setIsGenerating(false)
-        clearStoredJobId(storageKey)
-        throw pollError
-      }
-    },
-    [buildOutcome, deckKey, finalizeJob, pollUntilTerminal],
-  )
 
   const startGeneration = useCallback(
     async (
@@ -269,147 +54,37 @@ export function useGenerationJob({
         editorSelections?: EditorSelectionContext[]
         slideContexts?: SlideContext[]
       } = {},
-    ) => {
-      if (isGenerating || !canGenerate) {
-        return null
-      }
-
-      const resolvedDeckId = options.deckId !== undefined ? options.deckId : deckId
-      const resolvedDeckKey = resolvedDeckId ?? 'new'
-
-      setIsGenerating(true)
-      setError('')
-      setFailedJob(null)
-
-      try {
-        const job = await startGenerationJob({
-          messages: toApiMessages(messages),
-          currentHtml: currentHtml || null,
-          model: selectedModel || undefined,
-          ...(reasoningEffort ? { reasoningEffort } : {}),
-          deckId: resolvedDeckId,
+    ) =>
+      startTrackedGeneration(
+        messages,
+        currentHtml,
+        options,
+        {
+          deckId,
           baseDocumentRevision,
-          ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
-          ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
-          ...(options.editorSelections?.length
-            ? { editorSelections: options.editorSelections }
-            : {}),
-          ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
-        })
-
-        setActiveJob(job)
-        return runJob(job.id, resolvedDeckKey)
-      } catch (startError) {
-        const code =
-          startError &&
-          typeof startError === 'object' &&
-          'code' in startError &&
-          typeof startError.code === 'string'
-            ? startError.code
-            : null
-
-        if (code === 'missing_api_key' || code === 'invalid_api_key') {
-          void onReloadModels?.()
-        }
-
-        const message =
-          startError instanceof Error ? startError.message : 'Could not start the generation job.'
-
-        setError(message)
-        setIsGenerating(false)
-        throw startError
-      }
-    },
-    [
-      baseDocumentRevision,
-      canGenerate,
-      deckId,
-      isGenerating,
-      onReloadModels,
-      reasoningEffort,
-      runJob,
-      selectedModel,
-    ],
+          selectedModel,
+          reasoningEffort,
+          canGenerate,
+          onReloadModels,
+        },
+        pollAbortRef,
+      ),
+    [baseDocumentRevision, canGenerate, deckId, onReloadModels, reasoningEffort, selectedModel],
   )
 
-  const cancelGeneration = useCallback(async () => {
-    if (!activeJob || !isActiveGenerationJobStatus(activeJob.status)) {
-      return null
-    }
-
-    try {
-      const job = await cancelGenerationJob(activeJob.id)
-      setActiveJob(job)
-      return job
-    } catch (cancelError) {
-      const message =
-        cancelError instanceof Error ? cancelError.message : 'Could not cancel generation.'
-
-      setError(message)
-      throw cancelError
-    }
-  }, [activeJob])
+  const cancelGeneration = useCallback(async () => cancelActiveGeneration(), [])
 
   const retryGeneration = useCallback(
-    async (jobId?: string) => {
-      const targetJobId = jobId ?? failedJob?.id
-
-      if (!targetJobId || isGenerating) {
-        return null
-      }
-
-      setIsGenerating(true)
-      setError('')
-      setFailedJob(null)
-
-      try {
-        const job = await retryGenerationJob(targetJobId)
-        setActiveJob(job)
-        return runJob(job.id)
-      } catch (retryError) {
-        const message =
-          retryError instanceof Error ? retryError.message : 'Could not retry generation.'
-
-        setError(message)
-        setIsGenerating(false)
-        throw retryError
-      }
-    },
-    [failedJob?.id, isGenerating, runJob],
+    async (jobId?: string) =>
+      retryFailedGeneration(jobId, pollAbortRef, deckKey, baseDocumentRevision, onReloadModels),
+    [baseDocumentRevision, deckKey, onReloadModels],
   )
 
-  const resumeStoredJob = useCallback(async () => {
-    const storedJobId = readStoredJobId(deckKey)
-
-    if (!storedJobId || isGenerating) {
-      return null
-    }
-
-    try {
-      const job = await fetchGenerationJob(storedJobId)
-
-      if (!isActiveGenerationJobStatus(job.status)) {
-        if (job.status === 'succeeded') {
-          clearStoredJobId(deckKey)
-          finalizeJob(job)
-          return buildOutcome(job)
-        }
-
-        if (job.status === 'failed' || job.status === 'canceled') {
-          setFailedJob(job)
-          setError(job.error?.message ?? '')
-        }
-
-        clearStoredJobId(deckKey)
-        return null
-      }
-
-      return runJob(job.id)
-    } catch {
-      clearStoredJobId(deckKey)
-      return null
-    }
-  }, [buildOutcome, deckKey, finalizeJob, isGenerating, runJob])
+  const resumeStoredJob = useCallback(
+    async () =>
+      resumeStoredGenerationJob(deckKey, pollAbortRef, baseDocumentRevision, onReloadModels),
+    [baseDocumentRevision, deckKey, onReloadModels],
+  )
 
   useEffect(() => {
     return () => {
@@ -419,7 +94,7 @@ export function useGenerationJob({
 
   return {
     activeJob,
-    activeSteps: activeJob?.progress.steps ?? ([] as AgentStep[]),
+    activeSteps: (activeJob?.progress.steps ?? []) as AgentStep[],
     cancelGeneration,
     error,
     failedJob,

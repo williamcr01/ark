@@ -1,190 +1,46 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
+
+import { getDesktopSettings } from '@/lib/ui/desktop-settings'
+import { useModelsStore } from '@/state/models-store.ts'
+import { useShellStore } from '@/state/shell-store.ts'
 
 import {
-  healthResponseSchema,
-  modelsResponseSchema,
-  fetchApiJsonOrThrow,
-  type ApiErrorCode,
-  type ModelInfo,
-  type ProviderId,
-} from '@ark/contracts'
-import { getDesktopSettings, updateDesktopSettings } from '@/lib/ui/desktop-settings'
+  fetchModelCatalog,
+  fetchModelCatalogWithRetry,
+  isTransientModelLoadError,
+  resolveSelectedModel,
+  toApiKeyStatus,
+  type AvailableModel,
+} from './model-catalog.ts'
 
-export type { ProviderId, ApiErrorCode }
-export type AvailableModel = ModelInfo
-
-export type ApiKeyStatus = 'checking' | 'missing' | 'invalid' | 'valid'
-
-const toApiKeyStatus = (hasConfiguredKey: boolean, hasAvailableModel: boolean): ApiKeyStatus => {
-  if (!hasConfiguredKey) {
-    return 'missing'
-  }
-
-  if (!hasAvailableModel) {
-    return 'invalid'
-  }
-
-  return 'valid'
-}
-
-const resolveStoredModel = (models: AvailableModel[], storedModel: string | null) => {
-  if (!storedModel) {
-    return null
-  }
-
-  if (models.some((model) => model.id === storedModel)) {
-    return storedModel
-  }
-
-  return null
-}
-
-/** Prefer faster/cheaper models when auto-picking a fallback. */
-const fallbackPreferenceScore = (model: AvailableModel): number => {
-  const id = model.modelId.toLowerCase()
-
-  if (id.includes('flash-lite')) {
-    return -1
-  }
-
-  if (/luna|mini|flash|haiku|nano/.test(id)) {
-    return 0
-  }
-
-  if (/terra|sonnet|gpt-4o$|pro/.test(id)) {
-    return 1
-  }
-
-  return 2
-}
-
-export const pickAvailableFallbackModel = (models: AvailableModel[]): string | null => {
-  const available = models.filter((model) => model.available)
-
-  if (available.length === 0) {
-    return null
-  }
-
-  return available.toSorted((left, right) => {
-    const scoreDiff = fallbackPreferenceScore(left) - fallbackPreferenceScore(right)
-    if (scoreDiff !== 0) {
-      return scoreDiff
-    }
-
-    const providerOrder = left.provider.localeCompare(right.provider)
-    if (providerOrder !== 0) {
-      return providerOrder
-    }
-
-    return left.modelId.localeCompare(right.modelId)
-  })[0]!.id
-}
-
-/**
- * Resolve the active model for the selector.
- * Priority: available stored preference → available server default → cheap available fallback.
- * Ids missing from `models[]` (or an empty catalog) resolve to '' so the client
- * clears the persisted selection instead of keeping a stale `provider:modelId`.
- */
-export const resolveSelectedModel = (
-  models: AvailableModel[],
-  storedModel: string | null,
-  defaultModel: string | null,
-) => {
-  const stored = resolveStoredModel(models, storedModel)
-  if (stored) {
-    const storedEntry = models.find((model) => model.id === stored)
-    if (storedEntry?.available) {
-      return stored
-    }
-  }
-
-  const defaultEntry = models.find((model) => model.id === defaultModel)
-  if (defaultEntry?.available) {
-    return defaultEntry.id
-  }
-
-  return pickAvailableFallbackModel(models) ?? ''
-}
-
-const TRANSIENT_LOAD_ERROR =
-  /failed to fetch|network|unreadable response|could not reach the ark api/i
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
-export const isTransientModelLoadError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error)
-  return TRANSIENT_LOAD_ERROR.test(message)
-}
-
-async function fetchHealth(signal?: AbortSignal) {
-  const response = await fetch('/api/health', { signal })
-  return fetchApiJsonOrThrow(response, healthResponseSchema, {
-    fallbackMessage: 'Could not reach the Ark API server.',
-  })
-}
-
-async function fetchAvailableModels(signal?: AbortSignal) {
-  const response = await fetch('/api/models', { signal })
-  const data = await fetchApiJsonOrThrow(response, modelsResponseSchema, {
-    fallbackMessage: 'Could not load available models.',
-  })
-
-  return {
-    defaultModel: data.defaultModel,
-    models: data.models,
-    warnings: data.warnings,
-  }
-}
-
-async function fetchModelCatalog(signal?: AbortSignal) {
-  const [health, { defaultModel, models, warnings }] = await Promise.all([
-    fetchHealth(signal),
-    fetchAvailableModels(signal),
-  ])
-
-  return {
-    health,
-    defaultModel,
-    models,
-    warnings,
-  }
-}
-
-export async function fetchModelCatalogWithRetry(
-  options: { retries?: number; delayMs?: number; signal?: AbortSignal } = {},
-) {
-  const { retries = 5, delayMs = 200, signal } = options
-  let lastError: unknown
-
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    try {
-      return await fetchModelCatalog(signal)
-    } catch (error) {
-      lastError = error
-
-      if (!isTransientModelLoadError(error) || attempt === retries) {
-        throw error
-      }
-
-      await sleep(delayMs * (attempt + 1))
-    }
-  }
-
-  throw lastError
-}
+export type { ApiErrorCode, ApiKeyStatus, AvailableModel, ProviderId } from './model-catalog.ts'
+export {
+  EMPTY_MODEL_CATALOG_COPY,
+  fetchModelCatalogWithRetry,
+  formatModelLabel,
+  formatModelName,
+  formatProviderLabel,
+  isTransientModelLoadError,
+  pickAvailableFallbackModel,
+  resolveSelectedModel,
+} from './model-catalog.ts'
 
 export function useAvailableModels() {
-  const [models, setModels] = useState<AvailableModel[]>([])
-  const [selectedModel, setSelectedModelState] = useState('')
-  const [defaultModel, setDefaultModel] = useState<string | null>(null)
-  const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>('checking')
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [warnings, setWarnings] = useState<string[]>([])
+  const models = useModelsStore((state) => state.models)
+  const selectedModel = useShellStore((state) => state.selectedModel)
+  const defaultModel = useModelsStore((state) => state.defaultModel)
+  const apiKeyStatus = useModelsStore((state) => state.apiKeyStatus)
+  const isLoading = useModelsStore((state) => state.isLoading)
+  const error = useModelsStore((state) => state.error)
+  const warnings = useModelsStore((state) => state.warnings)
 
   const applyModels = useCallback(
-    (nextModels: AvailableModel[], nextDefault: string | null, hasConfiguredKey: boolean) => {
+    (
+      nextModels: AvailableModel[],
+      nextDefault: string | null,
+      hasConfiguredKey: boolean,
+      nextWarnings: string[] = [],
+    ) => {
       const nextSelected = resolveSelectedModel(
         nextModels,
         getDesktopSettings().selectedModel,
@@ -192,12 +48,13 @@ export function useAvailableModels() {
       )
       const hasAvailableModel = nextModels.some((model) => model.available)
 
-      setModels(nextModels)
-      setDefaultModel(nextDefault)
-      setSelectedModelState(nextSelected)
-      setApiKeyStatus(toApiKeyStatus(hasConfiguredKey, hasAvailableModel))
-      setError('')
-      void updateDesktopSettings({ selectedModel: nextSelected || null })
+      useModelsStore.getState().applyCatalog({
+        models: nextModels,
+        defaultModel: nextDefault,
+        warnings: nextWarnings,
+        apiKeyStatus: toApiKeyStatus(hasConfiguredKey, hasAvailableModel),
+      })
+      useShellStore.getState().setSelectedModel(nextSelected)
     },
     [],
   )
@@ -206,19 +63,17 @@ export function useAvailableModels() {
     const message =
       loadError instanceof Error ? loadError.message : 'Could not load available models.'
 
-    setApiKeyStatus(isTransientModelLoadError(loadError) ? 'checking' : 'invalid')
-    setModels([])
-    setDefaultModel(null)
-    setSelectedModelState('')
-    setWarnings([])
-    setError(message)
-    void updateDesktopSettings({ selectedModel: null })
+    useModelsStore
+      .getState()
+      .clearCatalog(message, isTransientModelLoadError(loadError) ? 'checking' : 'invalid')
+    useShellStore.getState().setSelectedModel('')
   }, [])
 
   const loadModels = useCallback(async () => {
-    setIsLoading(true)
-    setError('')
-    setWarnings([])
+    const modelsStore = useModelsStore.getState()
+    modelsStore.setLoading(true)
+    modelsStore.setError('')
+    modelsStore.setWarnings([])
 
     try {
       const {
@@ -228,12 +83,11 @@ export function useAvailableModels() {
         warnings: nextWarnings,
       } = await fetchModelCatalog()
 
-      setWarnings(nextWarnings)
-      applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured))
+      applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured), nextWarnings)
     } catch (loadError) {
       handleLoadFailure(loadError)
     } finally {
-      setIsLoading(false)
+      useModelsStore.getState().setLoading(false)
     }
   }, [applyModels, handleLoadFailure])
 
@@ -243,9 +97,10 @@ export function useAvailableModels() {
     const controller = new AbortController()
 
     const load = async () => {
-      setIsLoading(true)
-      setError('')
-      setWarnings([])
+      const modelsStore = useModelsStore.getState()
+      modelsStore.setLoading(true)
+      modelsStore.setError('')
+      modelsStore.setWarnings([])
 
       try {
         const {
@@ -259,8 +114,7 @@ export function useAvailableModels() {
           return
         }
 
-        setWarnings(nextWarnings)
-        applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured))
+        applyModels(nextModels, nextDefault, Boolean(health.apiKey?.configured), nextWarnings)
       } catch (loadError) {
         if (cancelled) {
           return
@@ -268,7 +122,7 @@ export function useAvailableModels() {
 
         handleLoadFailure(loadError)
       } finally {
-        setIsLoading((current) => (cancelled ? current : false))
+        useModelsStore.getState().setLoading((current) => (cancelled ? current : false))
       }
     }
 
@@ -280,24 +134,19 @@ export function useAvailableModels() {
     }
   }, [applyModels, handleLoadFailure])
 
-  const setSelectedModel = useCallback(
-    (modelId: string) => {
-      if (!modelId) {
-        setSelectedModelState('')
-        void updateDesktopSettings({ selectedModel: null })
-        return
-      }
+  const setSelectedModel = useCallback((modelId: string) => {
+    if (!modelId) {
+      useShellStore.getState().setSelectedModel('')
+      return
+    }
 
-      const model = models.find((entry) => entry.id === modelId)
-      if (!model?.available) {
-        return
-      }
+    const model = useModelsStore.getState().models.find((entry) => entry.id === modelId)
+    if (!model?.available) {
+      return
+    }
 
-      setSelectedModelState(modelId)
-      void updateDesktopSettings({ selectedModel: modelId })
-    },
-    [models],
-  )
+    useShellStore.getState().setSelectedModel(modelId)
+  }, [])
 
   const selectedModelInfo = models.find((model) => model.id === selectedModel)
   const canGenerate = Boolean(selectedModelInfo?.available)
@@ -315,19 +164,3 @@ export function useAvailableModels() {
     warnings,
   }
 }
-
-export const formatModelLabel = (model: AvailableModel) =>
-  model.name ? `${model.provider} · ${model.name}` : model.id
-
-const PROVIDER_LABELS: Record<ProviderId, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  google: 'Google',
-  openrouter: 'OpenRouter',
-}
-
-export const formatProviderLabel = (provider: ProviderId) => PROVIDER_LABELS[provider]
-
-export const formatModelName = (model: AvailableModel) => model.name?.trim() || model.modelId
-
-export const EMPTY_MODEL_CATALOG_COPY = 'Add an API key in Settings'

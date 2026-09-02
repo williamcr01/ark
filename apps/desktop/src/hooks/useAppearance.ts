@@ -1,10 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import {
-  getDesktopSettings,
-  updateDesktopSettings,
-  type AppearancePreference,
-} from '@/lib/ui/desktop-settings'
+import { type AppearancePreference } from '@/lib/ui/desktop-settings'
+import { useShellStore } from '@/state/shell-store.ts'
 
 export type { AppearancePreference }
 export type ResolvedAppearance = 'light' | 'dark'
@@ -20,9 +17,13 @@ function resolveAppearance(preference: AppearancePreference): ResolvedAppearance
 }
 
 export function useAppearance() {
-  const [preference, setPreferenceState] = useState<AppearancePreference>(
-    () => getDesktopSettings().appearance,
-  )
+  useState(() => {
+    useShellStore.getState().syncFromDesktopSettings()
+    return true
+  })
+
+  const preference = useShellStore((state) => state.appearancePreference)
+  const setPreference = useShellStore((state) => state.setAppearancePreference)
   const [resolvedAppearance, setResolvedAppearance] = useState<ResolvedAppearance>(() =>
     resolveAppearance(preference),
   )
@@ -39,11 +40,6 @@ export function useAppearance() {
     if (preference === 'system') media?.addEventListener('change', apply)
     return () => media?.removeEventListener('change', apply)
   }, [preference])
-
-  const setPreference = useCallback((next: AppearancePreference) => {
-    setPreferenceState(next)
-    void updateDesktopSettings({ appearance: next })
-  }, [])
 
   return { preference, resolvedAppearance, setPreference }
 }

@@ -50,7 +50,6 @@ import {
 import { findPendingAgentQuestions } from '@/lib/chat/agent-questions'
 import { findPendingThemeProposal } from '@/lib/chat/agent-themes'
 import { toQueuedChatSendPreview } from '@/lib/chat/chat-send-queue'
-import { getDesktopSettings } from '@/lib/ui/desktop-settings'
 import type {
   DeckElementPatchOperation,
   DeckPatchOperation,
@@ -64,8 +63,6 @@ import {
   extractSlideTitleFromOuterHtml,
   resolveContextSlides,
   sameContextSlideEntries,
-  toggleContextSlideEntry,
-  type ContextSlideEntry,
 } from '@/lib/deck/slide-context'
 import type { PatchDeckResponse } from '@/lib/api/deck-api'
 import { importPptx } from '@/lib/api/deck-api'
@@ -75,6 +72,9 @@ import {
   waitForRevealThumbnailStylesPreload,
 } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
+import { useChatStore } from '@/state/chat-store.ts'
+import { useEditorStore } from '@/state/editor-store.ts'
+import { useShellStore } from '@/state/shell-store.ts'
 
 import {
   loadChatOpenPreference,
@@ -184,57 +184,45 @@ export function useAppShell() {
       toast.warning('Could not refresh chat from server — showing cached messages')
     }, []),
   })
-  const isDesktop = useMediaQuery('(min-width: 1180px)')
+  const isDesktopQuery = useMediaQuery('(min-width: 1180px)')
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
-  const [input, setInput] = useState('')
-  const [agentInteractionsInModal, setAgentInteractionsInModal] = useState(
-    () => getDesktopSettings().agentInteractionsInModal === true,
-  )
-  const [editorSelection, setEditorSelection] = useState<EditorSelectionInfo | null>(null)
-  const [editorSelections, setEditorSelections] = useState<EditorSelectionInfo[]>([])
+  useState(() => {
+    useShellStore.getState().syncFromDesktopSettings()
+    useShellStore.getState().setDesktop(isDesktopQuery)
+    useShellStore.getState().setChatOpen(loadChatOpenPreference() ?? isDesktopQuery)
+    return true
+  })
+  const isDesktop = useShellStore((state) => state.isDesktop)
+  const isChatOpen = useShellStore((state) => state.isChatOpen)
+  const input = useChatStore((state) => state.input)
+  const setInput = useChatStore((state) => state.setInput)
+  const agentInteractionsInModal = useShellStore((state) => state.agentInteractionsInModal)
+  const setAgentInteractionsInModal = useShellStore((state) => state.setAgentInteractionsInModal)
+  const editorSelection = useEditorStore((state) => state.editorSelection)
+  const editorSelections = useEditorStore((state) => state.editorSelections)
   const clearEditorSelectionRef = useRef<(() => boolean) | null>(null)
-  const [contextSlideEntries, setContextSlideEntries] = useState<ContextSlideEntry[]>([])
-  // The agent panel preference persists across sessions; layout defaults apply when unset
-  // (open side-by-side on desktop, closed as a drawer on narrow windows). The drawer must
-  // never force itself open over the deck, so it closes when the layout collapses to mobile.
-  const [isChatOpen, setIsChatOpen] = useState<boolean>(() => loadChatOpenPreference() ?? isDesktop)
-  const [isStripOpen, setIsStripOpen] = useState(true)
-  // When the layout collapses to mobile, close the agent drawer *before* the sheet mounts so
-  // it never pops open over the deck and never races a close the user makes at the same
-  // moment (an effect-based close happened a frame too late: the drawer mounted open, then
-  // closed, and a close click in between reopened it). React re-renders immediately when
-  // state is set during render, so the sheet mounts closed. This is a layout accommodation,
-  // not a user preference, so it is not persisted.
-  const [prevIsDesktop, setPrevIsDesktop] = useState(isDesktop)
-  if (prevIsDesktop !== isDesktop) {
-    // React re-renders immediately after render-phase state updates, so the
-    // sheet still mounts closed (React "adjusting state during render"
-    // pattern — storing the previous value in state instead of mutating a
-    // ref, which render must stay pure of).
-    setPrevIsDesktop(isDesktop)
-    if (!isDesktop && isChatOpen) {
-      setIsChatOpen(false)
+  const contextSlideEntries = useEditorStore((state) => state.contextSlides)
+  const isStripOpen = useEditorStore((state) => state.isStripOpen)
+  const setIsStripOpen = useEditorStore((state) => state.setStripOpen)
+  if (isDesktop !== isDesktopQuery) {
+    const wasDesktop = isDesktop
+    useShellStore.getState().setDesktop(isDesktopQuery)
+    if (wasDesktop && !isDesktopQuery && isChatOpen) {
+      useShellStore.getState().setChatOpen(false)
     }
   }
   const handleToggleChat = useCallback(() => {
-    const next = !isChatOpen
-    setIsChatOpen(next)
+    const next = !useShellStore.getState().isChatOpen
+    useShellStore.getState().setChatOpen(next)
     storeChatOpenPreference(next)
-  }, [isChatOpen])
-  const handleChatOpenChange = useCallback(
-    (open: boolean) => {
-      // Radix reports only user-initiated changes (close button, ESC, outside click);
-      // programmatic `open` prop changes never reach this callback. While the drawer is
-      // closed it stays force-mounted, so stray outside interactions still fire this
-      // callback with `false`; skip them instead of clobbering the stored preference.
-      if (open === isChatOpen) {
-        return
-      }
-      setIsChatOpen(open)
-      storeChatOpenPreference(open)
-    },
-    [isChatOpen],
-  )
+  }, [])
+  const handleChatOpenChange = useCallback((open: boolean) => {
+    if (open === useShellStore.getState().isChatOpen) {
+      return
+    }
+    useShellStore.getState().setChatOpen(open)
+    storeChatOpenPreference(open)
+  }, [])
   const handleChatShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (isCreationWorkspace) {
       return
@@ -270,7 +258,8 @@ export function useAppShell() {
     [],
   )
   const [error, setError] = useState('')
-  const [attachmentError, setAttachmentError] = useState('')
+  const attachmentError = useChatStore((state) => state.attachmentError)
+  const setAttachmentError = useChatStore((state) => state.setAttachmentError)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pptxFileInputRef = useRef<HTMLInputElement>(null)
   const [thumbnailStylesRevision, setThumbnailStylesRevision] = useState(0)
@@ -350,10 +339,10 @@ export function useAppShell() {
     canGenerate: canGenerateForDeck,
     loadModels,
     onError: setError,
-    onGenerationStart: useCallback(() => setAttachmentError(''), []),
+    onGenerationStart: useCallback(() => useChatStore.getState().setAttachmentError(''), []),
     onGenerationSucceeded: useCallback(
       (change) => {
-        setContextSlideEntries([])
+        useEditorStore.getState().setContextSlides([])
         if (!change.deckChanged) {
           return
         }
@@ -543,40 +532,13 @@ export function useAppShell() {
   const [prevDeckIdForContext, setPrevDeckIdForContext] = useState(deckId)
   if (deckId !== prevDeckIdForContext) {
     setPrevDeckIdForContext(deckId)
-    setContextSlideEntries([])
-    setEditorSelection(null)
-    setEditorSelections([])
+    useEditorStore.getState().setContextSlides([])
+    useEditorStore.getState().clearSelection()
   }
 
   const handleEditorSelectionChange = useCallback(
     (selection: EditorSelectionInfo | null, selections: EditorSelectionInfo[] = []) => {
-      setEditorSelection((current) => {
-        if (current === selection) {
-          return current
-        }
-
-        if (
-          current &&
-          selection &&
-          current.elementId === selection.elementId &&
-          current.slideIndex === selection.slideIndex &&
-          current.slideId === selection.slideId &&
-          current.tagName === selection.tagName &&
-          current.locked === selection.locked &&
-          current.managed === selection.managed &&
-          current.editableKind === selection.editableKind &&
-          current.textPreview === selection.textPreview &&
-          current.surface === selection.surface &&
-          current.geometryEditable === selection.geometryEditable &&
-          current.role === selection.role &&
-          current.imageFit === selection.imageFit
-        ) {
-          return current
-        }
-
-        return selection
-      })
-      setEditorSelections(selections)
+      useEditorStore.getState().select(selection, selections)
     },
     [],
   )
@@ -584,11 +546,9 @@ export function useAppShell() {
   const handleClearEditorSelection = useCallback(() => {
     const clear = clearEditorSelectionRef.current
     if (clear?.()) {
-      // Bridge accepted the clear; selection change event will null local state.
       return
     }
-    setEditorSelection(null)
-    setEditorSelections([])
+    useEditorStore.getState().clearSelection()
   }, [])
 
   const deckAnalysis = useMemo(() => {
@@ -598,43 +558,39 @@ export function useAppShell() {
 
   const handleToggleContextSlide = useCallback(
     (slideIndex: number) => {
-      const result = toggleContextSlideEntry(
-        contextSlideEntries,
-        slideIndex,
-        deckAnalysis.slides,
-        MAX_SLIDE_CONTEXTS,
-      )
+      const result = useEditorStore
+        .getState()
+        .toggleContextSlide(slideIndex, deckAnalysis.slides, MAX_SLIDE_CONTEXTS)
       if (result.capped) {
         toast.warning(`You can attach up to ${MAX_SLIDE_CONTEXTS} slides to the chat`)
-        return
       }
-      setContextSlideEntries(result.entries)
     },
-    [contextSlideEntries, deckAnalysis.slides],
+    [deckAnalysis.slides],
   )
 
   const handleRemoveContextSlide = useCallback(
     (slideIndex: number) => {
-      setContextSlideEntries((current) =>
-        resolveContextSlides(current, deckAnalysis.slides).filter(
-          (entry) => entry.slideIndex !== slideIndex,
-        ),
-      )
+      useEditorStore
+        .getState()
+        .setContextSlides((current) =>
+          resolveContextSlides(current, deckAnalysis.slides).filter(
+            (entry) => entry.slideIndex !== slideIndex,
+          ),
+        )
     },
     [deckAnalysis.slides],
   )
 
   const handleClearContextSlides = useCallback(() => {
-    setContextSlideEntries([])
+    useEditorStore.getState().setContextSlides([])
   }, [])
 
-  // Keep attached-slide state aligned with the live deck (reorder/delete/snapshot restore).
   const resolvedContextSlides = useMemo(
     () => resolveContextSlides(contextSlideEntries, deckAnalysis.slides),
     [contextSlideEntries, deckAnalysis.slides],
   )
   if (!sameContextSlideEntries(resolvedContextSlides, contextSlideEntries)) {
-    setContextSlideEntries(resolvedContextSlides)
+    useEditorStore.getState().setContextSlides(resolvedContextSlides)
   }
 
   const contextSlideIndexes = useMemo(
