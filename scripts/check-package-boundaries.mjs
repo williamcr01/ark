@@ -6,7 +6,9 @@
  * ESLint's `no-restricted-imports` catches the coarse rules (renderer ↛ apps/api, packages ↛ apps,
  * browser-safe ↛ node:*), but it cannot see the layer graph: it does not know that @ark/storage
  * sits below @ark/contracts, or that a declared dependency nothing imports is a phantom edge that
- * can make the graph cyclic without any source file being wrong. This checks all of that.
+ * can make the graph cyclic without any source file being wrong. This checks all of that, and
+ * rejects a browser-safe package importing a server-only package even when the layer number
+ * would allow it.
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -96,6 +98,7 @@ export function findViolations(workspace, repoRoot = root) {
 
     const layer = LAYERS[name]
     if (layer === undefined) continue
+    const browserSafe = !SERVER_ONLY.has(name)
     for (const dep of [...entry.used].sort()) {
       const depLayer = LAYERS[dep]
       if (depLayer === undefined) {
@@ -103,6 +106,11 @@ export function findViolations(workspace, repoRoot = root) {
       } else if (depLayer >= layer) {
         problems.push(
           `${name} (layer ${layer}) imports ${dep} (layer ${depLayer}) — packages may import from a strictly lower layer only`,
+        )
+      }
+      if (browserSafe && SERVER_ONLY.has(dep)) {
+        problems.push(
+          `${name} is browser-safe but imports server-only ${dep} — browser-safe packages may not import server-only packages regardless of layer`,
         )
       }
     }
