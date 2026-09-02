@@ -230,7 +230,7 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
+        const { applyDeckPatches } = await import('@ark/deck-node/patch/slide-ops.ts')
         const applyStartedAt = performance.now()
         const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
           activeSlideIndex: parsedBody.data.activeSlideIndex,

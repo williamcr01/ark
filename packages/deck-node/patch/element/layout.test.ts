@@ -5,9 +5,9 @@ import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck/document/metadata.ts'
-import { parseDeckDocument } from '../../document/parser.ts'
+import { parseDeckDocument } from '@ark/deck/document/parser.ts'
 import { applyDeckPatches } from '../slide-ops.ts'
-import { arkManagedDeck } from './test-decks.ts'
+import { arkManagedDeck } from '@ark/deck/patch/element/test-decks.ts'
 
 function parseDeckHtml(html: string) {
   return parseDeckDocument(new JSDOM(html).window.document, html)

@@ -290,7 +290,7 @@ export function createDeckTools(
           }
         }
 
-        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
+        const { applyDeckPatches } = await import('@ark/deck-node/patch/slide-ops.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {
@@ -345,7 +345,7 @@ export function createDeckTools(
           }
         }
 
-        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
+        const { applyDeckPatches } = await import('@ark/deck-node/patch/slide-ops.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {

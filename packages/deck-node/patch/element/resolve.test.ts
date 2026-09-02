@@ -1,9 +1,9 @@
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
-import { parseDeckDocument } from '../../document/parser.ts'
+import { parseDeckDocument } from '@ark/deck/document/parser.ts'
 import { applyDeckPatches } from '../slide-ops.ts'
-import { arkManagedDeck } from './test-decks.ts'
+import { arkManagedDeck } from '@ark/deck/patch/element/test-decks.ts'
 
 function parseDeckHtml(html: string) {
   return parseDeckDocument(new JSDOM(html).window.document, html)
@@ -84,5 +84,26 @@ describe('element target resolution', () => {
         },
       ]),
     ).toMatchObject({ ok: false, error: expect.stringContaining('was not found') })
+  })
+
+  it('reports duplicate stable ids as ambiguous patch targets', () => {
+    const duplicateDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Duplicate ids</title></head>
+<body>
+  <section class="slide">
+    <h1 data-ark-id="dup-id" data-ark-editable="true">First</h1>
+  </section>
+  <section class="slide">
+    <h2 data-ark-id="dup-id" data-ark-editable="true">Second</h2>
+  </section>
+</body>
+</html>`
+
+    expect(
+      applyDeckPatches(duplicateDeck, [
+        { op: 'replace_text', elementId: 'dup-id', text: 'Ambiguous' },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
   })
 })

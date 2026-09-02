@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ARK_LOCKED_ATTR } from '@ark/deck/document/metadata.ts'
 import { applyDeckPatches } from '../slide-ops.ts'
-import { arkManagedDeck } from './test-decks.ts'
+import { arkManagedDeck } from '@ark/deck/patch/element/test-decks.ts'
 
 describe('lock_element and unlock_element', () => {
   it('locks and unlocks managed elements', () => {

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { buildDeckAssetProxyUrl } from '@ark/deck/document/network.ts'
 import { applyDeckPatches } from '../slide-ops.ts'
-import { arkManagedDeck, arkManagedLinkDeck, tinyPngDataUrl } from './test-decks.ts'
+import {
+  arkManagedDeck,
+  arkManagedLinkDeck,
+  tinyPngDataUrl,
+} from '@ark/deck/patch/element/test-decks.ts'
 
 describe('set_attrs and set_inline_style', () => {
   it('applies inline style updates on flow and managed elements', () => {

@@ -1,3 +1,5 @@
+export type ParseFragment = (html: string) => Document
+
 export type ElementPatchContext = {
   doc: Document
   slides: Element[]
@@ -5,6 +7,7 @@ export type ElementPatchContext = {
   changedElementIds: Set<string>
   summaries: string[]
   activeSlideIndex?: number
+  parseFragment: ParseFragment
 }
 
 export type ResolvedElement = {

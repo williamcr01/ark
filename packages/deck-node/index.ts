@@ -10,3 +10,9 @@ export {
   validateDeckHtmlOnServer,
   type DeckValidationOptions,
 } from './validate/timed.ts'
+export {
+  applyDeckPatches,
+  createDeckDomCache,
+  resetDeckDomCache,
+  type ApplyDeckPatchesOptions,
+} from './patch/slide-ops.ts'
