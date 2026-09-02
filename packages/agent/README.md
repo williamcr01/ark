@@ -18,8 +18,15 @@ HTTP response shape. Server-only.
 | `response.ts`     | Validating and shaping what the model produced                        |
 | `guides.ts`       | Loads `agent-guides/*.md` into the system prompt                      |
 | `prompt.ts`       | User-prompt wrapping (new-deck vs revise, selection/theme notes)      |
-| `job-runner.ts`   | Job lifecycle: start, stream, cancel, persist, retry                  |
+| `job-runner.ts`   | Job lifecycle: queue, schedule, start, cancel, retry                  |
+| `job/`            | Generation job phases — claim, attachments, run, persist, fail        |
 | `job-wire.ts`     | Maps a job to its REST shape                                          |
+
+A generation job is a sequence of plain functions over a `JobContext` (`job/context.ts`):
+claim the lease, resolve attachments, run the agent, persist the result, or record failure.
+`createGenerationJobRunner` wires those phases, owns scheduling, and holds a
+`JobControllerRegistry` (`job/controller-registry.ts`) instead of module-level abort state.
+`startJob` and `retryJob` share request-building in `job/build-job.ts`.
 
 `tool-schemas.ts` lives here rather than in `@ark/mcp` because the agent loop and the MCP server
 expose the same deck tools; putting them in MCP made the two packages mutually dependent.
