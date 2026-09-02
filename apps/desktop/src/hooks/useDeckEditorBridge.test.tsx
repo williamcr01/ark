@@ -49,7 +49,7 @@ function EditorHarness({
   sandboxOrigin = null,
   iframeGenerationKey = currentTestFrameKey(),
   sessionHandshake = currentTestHandshake(),
-  forwardPublicMessages = sessionHandshake.startsWith(TEST_SESSION_HANDSHAKE),
+  forwardPublicMessages = Boolean(sessionHandshake?.startsWith(TEST_SESSION_HANDSHAKE)),
   canPostToFrame,
   shouldAcceptInbound,
   onSelectionChange,
