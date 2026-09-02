@@ -22,6 +22,7 @@ import type { Logger } from '@ark/telemetry/logger.ts'
 export type ApplyDeckPatchesOptions = {
   activeSlideIndex?: number
   logger?: Logger
+  cache?: DeckDomCache
 }
 
 type ResolvedSlide = {
@@ -47,25 +48,16 @@ function serializeDeckHtml(dom: JSDOM) {
   return dom.serialize()
 }
 
-type CachedDeckDom = {
-  html: string
-  dom: JSDOM
-}
-
-let cachedDeckDom: CachedDeckDom | null = null
-
 function closeJsdomWindow(dom: JSDOM) {
   const maybeClose = (dom.window as unknown as { close?: () => void }).close
   maybeClose?.()
 }
 
-function discardCachedDeckDom() {
-  if (!cachedDeckDom) {
-    return
-  }
-
-  closeJsdomWindow(cachedDeckDom.dom)
-  cachedDeckDom = null
+export type DeckDomCache = {
+  get(html: string): JSDOM | null
+  set(html: string, dom: JSDOM): void
+  clear(): void
+  release(dom: JSDOM): void
 }
 
 /**
@@ -79,29 +71,55 @@ function discardCachedDeckDom() {
  * therefore differ from a cold parse in those corners; that is accepted so the
  * sequential editor path stays on the already-mutated tree.
  */
-function takeCachedDeckDom(html: string): JSDOM | null {
-  if (!cachedDeckDom || cachedDeckDom.html !== html) {
-    return null
+export function createDeckDomCache(): DeckDomCache {
+  let entry: { html: string; dom: JSDOM } | null = null
+
+  const clear = () => {
+    if (!entry) {
+      return
+    }
+
+    closeJsdomWindow(entry.dom)
+    entry = null
   }
 
-  const { dom } = cachedDeckDom
-  cachedDeckDom = null
-  return dom
+  return {
+    get(html) {
+      if (!entry || entry.html !== html) {
+        return null
+      }
+
+      const { dom } = entry
+      entry = null
+      return dom
+    },
+    set(html, dom) {
+      if (entry?.dom === dom) {
+        entry = { html, dom }
+        return
+      }
+
+      clear()
+      entry = { html, dom }
+    },
+    clear,
+    release(dom) {
+      if (entry?.dom === dom) {
+        entry = null
+      }
+    },
+  }
 }
 
-function rememberCachedDeckDom(html: string, dom: JSDOM) {
-  if (cachedDeckDom?.dom === dom) {
-    cachedDeckDom = { html, dom }
-    return
-  }
+const defaultDeckDomCache = createDeckDomCache()
 
-  discardCachedDeckDom()
-  cachedDeckDom = { html, dom }
+export function resetDeckDomCache() {
+  defaultDeckDomCache.clear()
 }
 
 /** @internal */
 export function resetApplyDeckDomCacheForTests() {
-  discardCachedDeckDom()
+  resetDeckDomCache()
 }
 
 function findSlideContainer(doc: Document, slides: Element[]) {
@@ -501,6 +519,7 @@ export function applyDeckPatches(
   }
 
   let workingHtml = html
+  const cache = options.cache ?? defaultDeckDomCache
   const aggregateChangedSlides = new Set<number>()
   const aggregateChangedElements = new Set<string>()
   const aggregateSummaries: string[] = []
@@ -514,10 +533,7 @@ export function applyDeckPatches(
       return
     }
 
-    if (cachedDeckDom?.dom === dom) {
-      cachedDeckDom = null
-    }
-
+    cache.release(dom)
     closeJsdomWindow(dom)
     dom = null
   }
@@ -535,10 +551,10 @@ export function applyDeckPatches(
 
   const getDomContext = (): PatchContext => {
     if (!dom) {
-      dom = takeCachedDeckDom(workingHtml)
+      dom = cache.get(workingHtml)
 
       if (!dom) {
-        discardCachedDeckDom()
+        cache.clear()
         // Skip eager css-tree parse of every inline style; editor ops use attributes.
         dom = createDeckJsdom(workingHtml)
       }
@@ -631,7 +647,7 @@ export function applyDeckPatches(
       workingHtml,
       options.logger ? { logger: options.logger } : undefined,
     )
-    rememberCachedDeckDom(workingHtml, liveDom)
+    cache.set(workingHtml, liveDom)
   } else {
     flushDom()
   }

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ARK_SLIDE_ID_ATTR } from '@ark/deck/document/metadata.ts'
-import { applyDeckPatches, resetApplyDeckDomCacheForTests } from './slide-ops.ts'
+import { applyDeckPatches, createDeckDomCache, resetDeckDomCache } from './slide-ops.ts'
 import { parseDeckHtml } from '../document/parser.ts'
 import { validateDeckHtmlOnServer } from '../validate/timed.ts'
 
@@ -253,7 +253,7 @@ const otherDeck = `<!DOCTYPE html>
 
 describe('applyDeckPatches live JSDOM reuse', () => {
   beforeEach(() => {
-    resetApplyDeckDomCacheForTests()
+    resetDeckDomCache()
     deckJsdomParses.count = 0
   })
 
@@ -393,5 +393,46 @@ describe('applyDeckPatches live JSDOM reuse', () => {
     expect(deckJsdomParses.count).toBe(1)
     expect(second.html).toContain('left: 640px')
     expect(second.html).toContain('left: 320px')
+  })
+
+  it('keeps an injected cache independent of the default instance', () => {
+    const cache = createDeckDomCache()
+    const first = applyDeckPatches(
+      sequentialDeck,
+      [{ op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.5, y: 0.5 }],
+      { cache },
+    )
+
+    expect(first.ok).toBe(true)
+    if (!first.ok) {
+      return
+    }
+
+    expect(deckJsdomParses.count).toBe(1)
+
+    const second = applyDeckPatches(
+      first.html,
+      [{ op: 'move_element', elementId: 'ark-el-1', slideIndex: 0, x: 0.25, y: 0.25 }],
+      { cache },
+    )
+
+    expect(second.ok).toBe(true)
+    if (!second.ok) {
+      return
+    }
+
+    expect(deckJsdomParses.count).toBe(1)
+
+    const viaDefault = applyDeckPatches(second.html, [
+      { op: 'move_element', elementId: 'ark-el-0', slideIndex: 0, x: 0.1, y: 0.1 },
+    ])
+
+    expect(viaDefault.ok).toBe(true)
+    if (!viaDefault.ok) {
+      return
+    }
+
+    expect(deckJsdomParses.count).toBe(2)
+    cache.clear()
   })
 })
