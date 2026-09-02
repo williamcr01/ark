@@ -1,0 +1,20 @@
+{
+  "name": "@ark/deck-node",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "exports": {
+    "./*": "./*"
+  },
+  "dependencies": {
+    "@ark/deck": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vitest": "^4.1.9"
+  }
+}

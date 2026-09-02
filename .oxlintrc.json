@@ -190,7 +190,9 @@
                   "@ark/storage",
                   "@ark/storage/*",
                   "@ark/deck-import",
-                  "@ark/deck-import/*"
+                  "@ark/deck-import/*",
+                  "@ark/deck-node",
+                  "@ark/deck-node/*"
                 ],
                 "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
               }
@@ -223,7 +225,9 @@
                   "@ark/storage",
                   "@ark/storage/*",
                   "@ark/deck-import",
-                  "@ark/deck-import/*"
+                  "@ark/deck-import/*",
+                  "@ark/deck-node",
+                  "@ark/deck-node/*"
                 ],
                 "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
               },
@@ -312,6 +316,7 @@
         "packages/mcp/**/*.ts",
         "packages/storage/**/*.ts",
         "packages/deck-import/**/*.ts",
+        "packages/deck-node/**/*.ts",
         "packages/telemetry/request-id.ts",
         "packages/**/*-disk.ts",
         "packages/contracts/**/*.ts",

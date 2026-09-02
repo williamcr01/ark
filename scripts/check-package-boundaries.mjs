@@ -27,6 +27,7 @@ export const LAYERS = {
   '@ark/chat': 2,
   '@ark/deck-export': 2,
   '@ark/deck-import': 2,
+  '@ark/deck-node': 2,
   '@ark/deck-preview': 3,
   '@ark/storage': 4,
   '@ark/contracts': 5,
@@ -35,7 +36,13 @@ export const LAYERS = {
 }
 
 /** Packages the renderer must not bundle: they use node built-ins. */
-export const SERVER_ONLY = new Set(['@ark/storage', '@ark/agent', '@ark/mcp', '@ark/deck-import'])
+export const SERVER_ONLY = new Set([
+  '@ark/storage',
+  '@ark/agent',
+  '@ark/mcp',
+  '@ark/deck-import',
+  '@ark/deck-node',
+])
 
 function listDir(dir) {
   return existsSync(dir)
