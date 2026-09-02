@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
-import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { DatabaseSync, backup } from 'node:sqlite'
 
@@ -22,7 +21,6 @@ import {
   defaultWorkspaceDir,
   inspectWorkspaceFile,
   readWorkspace,
-  readWorkspaceMetadata,
   recentWorkspacesPath,
   safeFileStem,
 } from './file.ts'
@@ -36,25 +34,24 @@ import {
   SCHEMA,
 } from './schema.ts'
 import { appendDocumentHistory, listDocumentHistory, readDocumentHistoryHtml } from './history.ts'
+import { RecentList } from './recent-list.ts'
 import { WorkspaceDocumentConflictError, WorkspaceDocumentHistoryNotFoundError } from './types.ts'
-import type { OpenWorkspace, RecentWorkspace, WorkspaceRow } from './types.ts'
+import type { OpenWorkspace, WorkspaceRow } from './types.ts'
 import type { DocumentHistorySource } from '../../records/document-history.ts'
 
 export class WorkspaceStore {
   private defaultDir: string
-  private readonly recentFilePath: string
+  private readonly recents: RecentList
   private readonly byId = new Map<string, OpenWorkspace>()
   private readonly byPath = new Map<string, OpenWorkspace>()
   private indexed = false
-  private readonly recent = new Map<string, RecentWorkspace>()
-  private recentLoaded = false
   private pendingFileMove: Promise<void> | null = null
 
   constructor(rootDir?: string) {
     this.defaultDir = path.resolve(rootDir ?? defaultWorkspaceDir())
-    this.recentFilePath = rootDir
-      ? path.join(this.defaultDir, 'recent-workspaces.json')
-      : recentWorkspacesPath()
+    this.recents = new RecentList(
+      rootDir ? path.join(this.defaultDir, 'recent-workspaces.json') : recentWorkspacesPath(),
+    )
   }
 
   get rootDir() {
@@ -99,49 +96,16 @@ export class WorkspaceStore {
     // reopening the file at its stale path mid-move.
     while (this.pendingFileMove) await this.pendingFileMove
     if (this.indexed) return
-    if (!this.recentLoaded) {
-      try {
-        const entries = JSON.parse(await readFile(this.recentFilePath, 'utf8')) as RecentWorkspace[]
-        for (const entry of entries) {
-          if (isValidDeckId(entry.id) && typeof entry.path === 'string')
-            this.recent.set(entry.id, entry)
-        }
-      } catch {
-        // The recent index is disposable.
-      }
-      this.recentLoaded = true
-    }
-    await mkdir(this.rootDir, { recursive: true })
-    const entries = await readdir(this.rootDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.ark')) continue
-      try {
-        const metadata = inspectWorkspaceFile(path.join(this.rootDir, entry.name))
-        const existing = this.recent.get(metadata.id)
-        // Recents JSON is disposable. Html-only document saves keep the
-        // in-memory row current without rewriting that file; refresh
-        // title/path/updatedAt from the `.ark` itself so a later process
-        // still sorts by the document's real mtime.
-        this.recent.set(metadata.id, {
-          id: metadata.id,
-          path: metadata.path,
-          title: metadata.title,
-          updatedAt: metadata.updatedAt,
-          lastOpened: existing?.lastOpened ?? metadata.updatedAt,
-          ...(existing?.cover ? { cover: existing.cover } : {}),
-        })
-      } catch {
-        // Invalid files stay untouched and do not appear in Ark.
-      }
-    }
+    await this.recents.loadIfNeeded()
+    await this.recents.ingestDirectory(this.rootDir)
     this.indexed = true
-    await this.persistRecent()
+    await this.recents.persist()
   }
 
   private openById(id: string) {
     const existing = this.byId.get(id)
     if (existing) return existing
-    const recent = this.recent.get(id)
+    const recent = this.recents.get(id)
     if (!recent) return null
     try {
       const metadata = inspectWorkspaceFile(recent.path)
@@ -152,41 +116,14 @@ export class WorkspaceStore {
     }
   }
 
-  private recentSnapshot() {
-    return JSON.stringify([...this.recent.values()], null, 2)
-  }
-
-  private persistRecentSync() {
-    const filePath = this.recentFilePath
-    mkdirSync(path.dirname(filePath), { recursive: true })
-    const temporary = `${filePath}.${randomUUID()}.tmp`
-    writeFileSync(temporary, this.recentSnapshot(), 'utf8')
-    renameSync(temporary, filePath)
-  }
-
-  private async persistRecent() {
-    const filePath = this.recentFilePath
-    await mkdir(path.dirname(filePath), { recursive: true })
-    const temporary = `${filePath}.${randomUUID()}.tmp`
-    await writeFile(temporary, this.recentSnapshot(), 'utf8')
-    await rename(temporary, filePath)
-  }
-
-  private rememberRecent(workspace: WorkspaceRow) {
-    const cover = this.recent.get(workspace.id)?.cover
-    this.recent.set(workspace.id, {
-      id: workspace.id,
-      path: workspace.path,
-      title: workspace.title,
-      updatedAt: workspace.updatedAt,
-      lastOpened: new Date().toISOString(),
-      ...(cover ? { cover } : {}),
-    })
-  }
-
-  private async touchRecent(workspace: WorkspaceRow) {
-    this.rememberRecent(workspace)
-    await this.persistRecent()
+  private openAdopted(filePath: string) {
+    const open = this.openFile(filePath)
+    const current = readWorkspace(open)
+    const title = this.titleFromFileName(open.path, current.title)
+    if (title) {
+      this.adoptFileName(open, current, title)
+    }
+    return readWorkspace(open)
   }
 
   /**
@@ -221,22 +158,6 @@ export class WorkspaceStore {
       this.openFile(open.path)
       throw error
     }
-  }
-
-  /**
-   * Forget the recent-index row for a file that is about to be replaced. The
-   * overwritten workspace's id still resolves to that path, so leaving it
-   * listed shows a dashboard entry that opens a different deck.
-   */
-  private async forgetRecentAtPath(filePath: string, keepId?: string) {
-    const resolved = path.resolve(filePath)
-    let changed = false
-    for (const [id, entry] of this.recent) {
-      if (id === keepId || path.resolve(entry.path) !== resolved) continue
-      this.recent.delete(id)
-      changed = true
-    }
-    if (changed) await this.persistRecent()
   }
 
   private async exists(filePath: string) {
@@ -336,7 +257,7 @@ export class WorkspaceStore {
     if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
     }
-    if (targetExists) await this.forgetRecentAtPath(filePath, id)
+    if (targetExists) await this.recents.forgetAtPath(filePath, id)
     // Build the workspace beside its destination and swap it in once it is
     // complete, so a failed build never destroys the file being overwritten.
     const staged = `${filePath}.${randomUUID()}.tmp`
@@ -389,20 +310,14 @@ export class WorkspaceStore {
     }
     const open = this.openFile(filePath)
     const workspace = readWorkspace(open)
-    await this.touchRecent(workspace)
+    await this.recents.touch(workspace)
     return workspace
   }
 
   async open(filePath: string) {
     await this.index()
-    const open = this.openFile(filePath)
-    const current = readWorkspace(open)
-    const title = this.titleFromFileName(open.path, current.title)
-    if (title) {
-      this.adoptFileName(open, current, title)
-    }
-    const workspace = readWorkspace(open)
-    await this.touchRecent(workspace)
+    const workspace = this.openAdopted(filePath)
+    await this.recents.touch(workspace)
     return workspace
   }
 
@@ -414,55 +329,17 @@ export class WorkspaceStore {
 
   async listRecent() {
     await this.index()
-    const summaries = await Promise.all(
-      [...this.recent.values()].map(async (recent) => {
-        const open = this.byId.get(recent.id)
-        if (open) {
-          return { ...readWorkspaceMetadata(open), missing: false as const, cover: recent.cover }
-        }
-        let missing = false
-        try {
-          await access(recent.path)
-        } catch {
-          missing = true
-        }
-        return {
-          id: recent.id,
-          title: recent.title,
-          createdAt: recent.updatedAt,
-          updatedAt: recent.updatedAt,
-          documentRevision: null,
-          path: recent.path,
-          missing,
-          cover: recent.cover,
-        }
-      }),
-    )
-    return summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    return this.recents.list(this.byId)
   }
 
   async removeRecent(id: string) {
     await this.index()
-    const removed = this.recent.delete(id)
-    if (removed) await this.persistRecent()
-    return removed
+    return this.recents.remove(id)
   }
 
   async locate(id: string, filePath: string) {
     await this.index()
-    const metadata = inspectWorkspaceFile(filePath)
-    if (metadata.id !== id) {
-      throw new Error('Selected workspace has a different identity.')
-    }
-    const open = this.openFile(filePath)
-    const current = readWorkspace(open)
-    const title = this.titleFromFileName(open.path, current.title)
-    if (title) {
-      this.adoptFileName(open, current, title)
-    }
-    const workspace = readWorkspace(open)
-    await this.touchRecent(workspace)
-    return workspace
+    return this.recents.locate(id, filePath, (adoptedPath) => this.openAdopted(adoptedPath))
   }
 
   async listDocumentHistory(id: string) {
@@ -572,7 +449,7 @@ export class WorkspaceStore {
       html,
       path: open.path,
     }
-    this.rememberRecent(workspace)
+    this.recents.remember(workspace)
 
     // When the agent establishes a new title (the title row is still
     // auto-derived from HTML), keep the on-disk filename in sync wherever the
@@ -587,12 +464,12 @@ export class WorkspaceStore {
     // sorts by its real updatedAt after restart. Durability of the document
     // and of full history snapshots is unchanged.
     if (title !== current.title) {
-      await this.persistRecent()
+      await this.recents.persist()
       const targetPath = await this.uniquePath(title, path.dirname(open.path), open.path)
       if (targetPath !== open.path) {
         try {
           const renamed = await this.renameOpenWorkspaceFile(open, targetPath)
-          await this.touchRecent(renamed)
+          await this.recents.touch(renamed)
           return renamed
         } catch (error) {
           // The document save already committed; a cosmetic filename sync must
@@ -679,12 +556,12 @@ export class WorkspaceStore {
         workspace.html,
         now,
       )
-      await this.touchRecent(workspace)
+      await this.recents.touch(workspace)
       return workspace
     }
     this.appendRenameHistory(open.id, htmlChanged, previous.documentRevision + 1, syncedHtml, now)
     const workspace = readWorkspace(open)
-    await this.touchRecent(workspace)
+    await this.recents.touch(workspace)
     return workspace
   }
 
@@ -720,13 +597,13 @@ export class WorkspaceStore {
     this.closeDatabase(open.database, open.path)
     try {
       await unlink(open.path)
-      this.recent.delete(id)
-      await this.persistRecent()
+      this.recents.delete(id)
+      await this.recents.persist()
       return true
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        this.recent.delete(id)
-        await this.persistRecent()
+        this.recents.delete(id)
+        await this.recents.persist()
         return false
       }
       this.openFile(open.path)
@@ -802,10 +679,10 @@ export class WorkspaceStore {
         new Date().toISOString(),
       )
     if (input.cover) {
-      const recent = this.recent.get(id)
+      const recent = this.recents.get(id)
       if (recent) {
         recent.cover = `data:${input.mediaType};base64,${input.image.toString('base64')}`
-        await this.persistRecent()
+        await this.recents.persist()
       }
     }
     return true
@@ -845,7 +722,7 @@ export class WorkspaceStore {
     if (targetExists && !overwrite) {
       throw new Error('A file already exists at the selected workspace path.')
     }
-    if (targetExists) await this.forgetRecentAtPath(resolved, id)
+    if (targetExists) await this.recents.forgetAtPath(resolved, id)
     // Back up beside the destination and swap it in, so a failed backup never
     // destroys the file being overwritten.
     const staged = `${resolved}.${randomUUID()}.tmp`
@@ -863,7 +740,7 @@ export class WorkspaceStore {
     this.closeDatabase(open.database, open.path)
     const reopened = this.openFile(resolved)
     const workspace = readWorkspace(reopened)
-    await this.touchRecent(workspace)
+    await this.recents.touch(workspace)
     return workspace
   }
 
@@ -881,9 +758,9 @@ export class WorkspaceStore {
     }
     // rename() replaces the destination atomically, so a confirmed overwrite
     // never leaves the target missing.
-    if (targetExists) await this.forgetRecentAtPath(resolved, id)
+    if (targetExists) await this.recents.forgetAtPath(resolved, id)
     const workspace = await this.renameOpenWorkspaceFile(open, resolved)
-    await this.touchRecent(workspace)
+    await this.recents.touch(workspace)
     return workspace
   }
 
@@ -1011,7 +888,7 @@ export class WorkspaceStore {
 
   close() {
     try {
-      this.persistRecentSync()
+      this.recents.persistSync()
     } catch (error) {
       console.warn('Could not persist recent workspaces.', error)
     }
