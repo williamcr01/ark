@@ -6,6 +6,7 @@ Zustand stores in this folder are the shared state layer for the desktop rendere
 
 - **Stores** hold domain state and synchronous reducers. Components and hooks subscribe with selectors (`useDeckStore((s) => s.html)`).
 - **Hooks** under `src/hooks/` own async orchestration: API calls, job polling, bridge sessions, timers, and chat/job session side effects. They read and write stores.
+- Workspace orchestration hooks (`useWorkspaceRuntime`, `useWorkspaceFileActions`, `useManualEditCommits`, `usePromptSubmit`, `useChatContextSlides`, `useExternalDeckUpdates`, `useChatPanelLayout`) live next to those session hooks. They may import stores, `@/lib/**`, and other hooks — never `@/components/*`. Shell components under `src/components/shell/` call them and build `DeckPreview` / `ChatPanel` / `AppTitleBar` props locally.
 
 ## Rules
 

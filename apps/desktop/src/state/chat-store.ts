@@ -24,6 +24,7 @@ export type ChatStoreState = {
   failedJob: GenerationJobApi | null
   isGenerating: boolean
   generationError: string
+  workspaceError: string
   isPreviewUpdating: boolean
   isModelFailure: boolean
 }
@@ -58,6 +59,7 @@ export type ChatStoreActions = {
   setFailedPersistIds: (update: StateUpdate<Set<string>>) => void
   setGenerating: (isGenerating: boolean) => void
   setGenerationError: (generationError: string) => void
+  setWorkspaceError: (workspaceError: string) => void
   setInput: (update: StateUpdate<string>) => void
   setMessagesDeckId: (messagesDeckId: string | null) => void
   setModelFailure: (isModelFailure: boolean) => void
@@ -105,6 +107,7 @@ const initialState = (): ChatStoreState => ({
   failedJob: null,
   isGenerating: false,
   generationError: '',
+  workspaceError: '',
   isPreviewUpdating: false,
   isModelFailure: false,
 })
@@ -145,7 +148,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     return item
   },
   dismissError: () => {
-    set({ attachmentError: '', generationError: '' })
+    set({ attachmentError: '', generationError: '', workspaceError: '' })
   },
   enqueueSend: (item) => {
     const queued: QueuedChatSend = {
@@ -219,6 +222,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
   setGenerationError: (generationError) => {
     set({ generationError })
+  },
+  setWorkspaceError: (workspaceError) => {
+    set({ workspaceError })
   },
   setInput: (update) => {
     set((state) => ({ input: resolveUpdate(state.input, update) }))
