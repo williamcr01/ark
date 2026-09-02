@@ -4,10 +4,15 @@ import type { EditorNormalizedRect, EditorSelectionInfo } from '@ark/editor-runt
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import { isInlineTextEditableTag } from '@ark/deck/document/editable.ts'
 import { isTextBoxEditableValue } from '@ark/deck/patch/text-box.ts'
+import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck/document/metadata.ts'
+
+export const COLOR_COMMIT_DEBOUNCE_MS = 400
+export const FONT_SIZE_RANGE = { max: 400, min: 4 }
+export const LINE_HEIGHT_RANGE = { max: 600, min: 4 }
 
 export type InspectorElementKind = 'text-box' | 'image' | 'text' | 'element'
 
@@ -275,4 +280,78 @@ export function cssColorToHex(color: string): string | null {
       .padStart(2, '0')
 
   return `#${toHexPart(match[1])}${toHexPart(match[2])}${toHexPart(match[3])}`
+}
+
+/** Parses a px input into a clamped positive size, or null when invalid. */
+export function parseClampedPxInput(raw: string, min: number, max: number): number | null {
+  const parsed = Number.parseFloat(raw)
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null
+  }
+
+  return Math.max(min, Math.min(max, Math.round(parsed * 10) / 10))
+}
+
+export function formatPxValue(value: number): string {
+  return String(Math.round(value * 10) / 10)
+}
+
+export function formatLineHeightValue(lineHeight: number | null): string {
+  return lineHeight === null ? '' : formatPxValue(lineHeight)
+}
+
+export function formatImageNaturalSize(size: { height: number; width: number } | null): string {
+  return size ? `${size.width} × ${size.height} px` : 'Unknown'
+}
+
+export function buildImageFitOperations(
+  selection: EditorSelectionInfo,
+  fit: ImageFitMode,
+): DeckElementPatchOperation[] {
+  return [
+    buildInlineStyleOperation(selection, { 'object-fit': fit }),
+    buildAttrsOperation(selection, { 'data-ark-fit': fit }),
+  ]
+}
+
+export function buildReorderElementOperation(
+  selection: EditorSelectionInfo,
+  direction: 'front' | 'back',
+): DeckElementPatchOperation {
+  return {
+    op: 'reorder_element',
+    ...buildInspectorTarget(selection),
+    direction,
+  }
+}
+
+export function reorderElementSummary(direction: 'front' | 'back'): string {
+  return direction === 'front' ? 'Brought element forward' : 'Sent element backward'
+}
+
+export function buildLockToggleOperation(
+  selection: EditorSelectionInfo,
+): DeckElementPatchOperation {
+  return {
+    op: selection.locked ? 'unlock_element' : 'lock_element',
+    ...buildInspectorTarget(selection),
+  }
+}
+
+export function lockToggleSummary(locked: boolean): string {
+  return locked ? 'Unlocked element' : 'Locked element'
+}
+
+export function applyInspectorOperations(
+  onApplyOperations:
+    ((operations: DeckElementPatchOperation[], summary: string) => void) | undefined,
+  operations: DeckElementPatchOperation[],
+  summary: string,
+) {
+  if (operations.length === 0) {
+    return
+  }
+
+  onApplyOperations?.(operations, summary)
 }
