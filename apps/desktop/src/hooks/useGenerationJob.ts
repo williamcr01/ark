@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 
-import type {
-  AgentStep,
-  ChatMessage,
-  EditorSelectionContext,
-  SlideContext,
-} from '@ark/chat/chat.ts'
-import type { GenerationJobStatus } from '@ark/contracts'
+import type { ChatMessage, EditorSelectionContext, SlideContext } from '@ark/chat/chat.ts'
 import { useChatStore } from '@/state/chat-store.ts'
 
 import {
@@ -32,10 +26,6 @@ export function useGenerationJob({
 }: UseGenerationJobOptions) {
   const pollAbortRef = useRef<AbortController | null>(null)
   const deckKey = deckId ?? 'new'
-  const activeJob = useChatStore((state) => state.activeJob)
-  const isGenerating = useChatStore((state) => state.isGenerating)
-  const error = useChatStore((state) => state.generationError)
-  const failedJob = useChatStore((state) => state.failedJob)
   const setError = useChatStore((state) => state.setGenerationError)
 
   const stopPolling = useCallback(() => {
@@ -93,16 +83,10 @@ export function useGenerationJob({
   }, [stopPolling])
 
   return {
-    activeJob,
-    activeSteps: (activeJob?.progress.steps ?? []) as AgentStep[],
     cancelGeneration,
-    error,
-    failedJob,
-    isGenerating,
     retryGeneration,
     resumeStoredJob,
     setError,
     startGeneration,
-    status: (activeJob?.status ?? null) as GenerationJobStatus | null,
   }
 }

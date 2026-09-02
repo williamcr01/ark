@@ -111,6 +111,7 @@ export function useWorkspaceRuntime(): WorkspaceRuntimeValue {
     onResetFailure: notifyChatResetFailure,
     onReloadFallback: notifyChatReloadFallback,
   })
+  const messages = useChatStore((state) => state.messages)
 
   const models = useAvailableModels()
   const { reasoningEffort } = useReasoningEffort(models.selectedModel, models.models)
@@ -151,7 +152,7 @@ export function useWorkspaceRuntime(): WorkspaceRuntimeValue {
       refreshActiveDeck,
     },
     chat: {
-      messages: chat.messages,
+      messages,
       appendMessage: chat.appendMessage,
       reloadChat: chat.reloadChat,
       setMessages: chat.setMessages,

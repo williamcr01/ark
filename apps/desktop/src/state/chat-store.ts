@@ -248,12 +248,14 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 }))
 
+const EMPTY_AGENT_STEPS: AgentStep[] = []
+
 export const selectActiveJobId = (state: ChatStoreState) => state.activeJob?.id ?? null
 
 export const selectFailedJobId = (state: ChatStoreState) => state.failedJob?.id ?? null
 
 export const selectActiveSteps = (state: ChatStoreState): AgentStep[] =>
-  state.activeJob?.progress.steps ?? []
+  state.activeJob?.progress.steps ?? EMPTY_AGENT_STEPS
 
 export const selectGenerationStatus = (state: ChatStoreState): GenerationJobStatus | null =>
   state.activeJob?.status ?? null
