@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import express from 'express'
+import express, { type Express } from 'express'
 import { app, BrowserWindow } from 'electron'
 import electronUpdater from 'electron-updater'
 import {
@@ -36,24 +36,142 @@ const smokeDataDirectory = desktopSmoke
   ? path.join(app.getPath('temp'), `ark-desktop-smoke-${process.pid}`)
   : null
 
-async function startDesktop() {
-  configureApplicationMenu()
-
-  const developmentApiPort = rendererDevelopmentUrl ? Number(process.env.PORT?.trim() || 8787) : 0
-  const developmentSandboxPort = rendererDevelopmentUrl
-    ? Number(process.env.SANDBOX_PORT?.trim() || 5174)
-    : 0
-  const [apiServer, sandboxServer] = await Promise.all([
-    listen(developmentApiPort),
-    listen(developmentSandboxPort),
+async function runDesktopSmoke(input: {
+  window: BrowserWindow
+  apiServerOrigin: string
+  sandboxServerOrigin: string
+  thumbnailRenderer: ReturnType<typeof createElectronThumbnailRenderer>
+  generateDeckExport: ReturnType<typeof createDeckExportGenerator>
+  deckRenderConfig: {
+    apiOrigin: string
+    previewSessionStore: ReturnType<
+      typeof import('@ark/storage/stores/preview-sessions.ts').createPreviewSessionStore
+    >
+    renderSecret: string
+  }
+}) {
+  const {
+    window,
+    apiServerOrigin,
+    sandboxServerOrigin,
+    thumbnailRenderer,
+    generateDeckExport,
+    deckRenderConfig,
+  } = input
+  const rendererReady = (await window.webContents.executeJavaScript(
+    `Boolean(document.getElementById('root')) &&
+          typeof window.arkDesktop?.credentials?.list === 'function'`,
+    true,
+  )) as boolean
+  const [healthResponse, sandboxHealthResponse] = await Promise.all([
+    fetch(`${apiServerOrigin}/api/health`),
+    fetch(`${sandboxServerOrigin}/health`),
   ])
-  const appOrigin = rendererDevelopmentUrl ?? apiServer.origin
+  const smokeDeckHtml = [
+    '<!doctype html><html lang="en" data-ark-font-body="calibri"><head><style>',
+    'html,body{margin:0}',
+    ':root{--ark-font-body:"Calibri","Carlito",sans-serif}',
+    'section{width:100vw;height:100vh;background:#123;color:#fff;font-family:var(--ark-font-body)}',
+    '.card{background:#2a3f55;border-radius:16px;padding:24px}',
+    '</style></head><body>',
+    '<section class="slide"><h1>Ark desktop smoke</h1><p>Exported from the render window.</p></section>',
+    '<section class="slide"><div class="card"><h2>Second slide</h2><ul><li>First point</li><li>Second point</li></ul></div></section>',
+    '</body></html>',
+  ].join('')
+  const thumbnail = await thumbnailRenderer.render({ html: smokeDeckHtml })
+  const exportedPdf = await generateDeckExport({
+    format: 'pdf',
+    html: smokeDeckHtml,
+    title: 'Ark desktop smoke',
+  })
+  const exportReport = await inspectExportedPdf(exportedPdf.output)
+  const exportedPptx = await generateDeckExport({
+    format: 'pptx',
+    html: smokeDeckHtml,
+    title: 'Ark desktop smoke',
+  })
+  const pptxReport = await inspectExportedPptx(exportedPptx.output)
+  const scene = await extractDeckScene(deckRenderConfig, { html: smokeDeckHtml })
+  const sceneReport = inspectExtractedScene(scene)
 
-  process.env.ARK_API_ORIGIN = apiServer.origin
+  if (
+    !rendererReady ||
+    !healthResponse.ok ||
+    !sandboxHealthResponse.ok ||
+    !thumbnail.ok ||
+    thumbnail.slides[0]?.subarray(1, 4).toString('ascii') !== 'PNG' ||
+    !exportReport.ok ||
+    !sceneReport.ok ||
+    !pptxReport.ok
+  ) {
+    throw new Error(
+      `Desktop smoke validation failed. ${exportReport.detail} ${sceneReport.detail} ${pptxReport.detail}`.trim(),
+    )
+  }
+
+  console.log('ARK_DESKTOP_SMOKE_OK')
+  app.quit()
+}
+
+function openDesktopWindow(appOrigin: string, loadUrl: string) {
+  const window = new BrowserWindow({
+    title: 'Ark',
+    width: 1440,
+    height: 960,
+    minWidth: 980,
+    minHeight: 680,
+    backgroundColor: '#101010',
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.resolve(dirname, '../preload/preload.cjs'),
+      sandbox: true,
+      webSecurity: true,
+    },
+  })
+  lockRendererNetwork(window.webContents, appOrigin)
+  window.once('ready-to-show', () => window.show())
+  window.once('closed', () => app.quit())
+  return window.loadURL(loadUrl).then(() => window)
+}
+
+function wireDesktopBeforeQuit(
+  api: Express,
+  apiServer: { server: Parameters<typeof closeServer>[0] },
+  sandboxServer: { server: Parameters<typeof closeServer>[0] },
+  getMcpManager: () => McpManager | null,
+) {
+  let closing = false
+  app.on('before-quit', (event) => {
+    if (closing) return
+    event.preventDefault()
+    closing = true
+    const thumbnailService = api.locals.thumbnailService as
+      { close: () => Promise<void> } | undefined
+    const workspaceStore = api.locals.workspaceStore as { close: () => void } | undefined
+    void Promise.all([
+      getMcpManager()?.stop() ?? Promise.resolve(),
+      thumbnailService?.close() ?? Promise.resolve(),
+      closeServer(apiServer.server),
+      closeServer(sandboxServer.server),
+    ])
+      .then(() => workspaceStore?.close())
+      .then(() =>
+        smokeDataDirectory
+          ? rm(smokeDataDirectory, { recursive: true, force: true })
+          : Promise.resolve(),
+      )
+      .finally(() => app.quit())
+  })
+}
+
+function configureDesktopProcessEnv(apiOrigin: string, sandboxOrigin: string, appOrigin: string) {
+  process.env.ARK_API_ORIGIN = apiOrigin
   process.env.ARK_APP_ORIGIN = appOrigin
-  process.env.ARK_SANDBOX_ORIGIN = sandboxServer.origin
-  process.env.PORT = new URL(apiServer.origin).port
-  process.env.SANDBOX_PORT = new URL(sandboxServer.origin).port
+  process.env.ARK_SANDBOX_ORIGIN = sandboxOrigin
+  process.env.PORT = new URL(apiOrigin).port
+  process.env.SANDBOX_PORT = new URL(sandboxOrigin).port
   process.env.ARK_DATA_DIR = app.getPath('userData')
   const workspacesDir = resolveDesktopWorkspacesDir({
     isPackaged: app.isPackaged,
@@ -61,13 +179,16 @@ async function startDesktop() {
     env: process.env,
   })
   process.env.ARK_WORKSPACES_DIR = workspacesDir.directory
-
   const resourceRoot = app.isPackaged
     ? process.resourcesPath
     : path.resolve(app.getAppPath(), '../..')
   process.env.ARK_RUNTIMES_DIR = path.join(resourceRoot, 'runtimes')
   process.env.ARK_AGENT_GUIDES_DIR = path.join(resourceRoot, 'agent-guides')
   process.env.ARK_MCP_GUIDES_DIR = path.join(resourceRoot, 'mcp-guides')
+  return workspacesDir
+}
+
+async function loadDesktopRuntimeModules() {
   const [
     { createApp },
     { createSandboxHost },
@@ -87,6 +208,87 @@ async function startDesktop() {
     import('@ark/ai/credentials.ts'),
     import('@ark/ai/models.ts'),
   ])
+  return {
+    createApp,
+    createSandboxHost,
+    createPreviewSessionStore,
+    createThumbnailRenderSecret,
+    createMcpServiceState,
+    createMcpInteractionStore,
+    setProviderApiKeySource,
+    clearModelCatalogCache,
+    testProviderApiKey,
+    warmModelCatalog,
+  }
+}
+
+function mountDesktopRenderer(api: Express, rendererDirectory: string, sandboxOrigin: string) {
+  api.use((request, response, next) => {
+    if (request.path.startsWith('/api/')) {
+      response.status(404).json({ error: 'API route not found.' })
+      return
+    }
+
+    response.setHeader('Content-Security-Policy', getRendererContentSecurityPolicy(sandboxOrigin))
+    next()
+  })
+  api.use(express.static(rendererDirectory, { index: 'index.html' }))
+  api.use((_request, response) => response.sendFile(path.join(rendererDirectory, 'index.html')))
+}
+
+function createDesktopMcpManager(input: {
+  apiOrigin: string
+  settingsStore: DesktopSettingsStore
+  mcpServiceState: ReturnType<
+    Awaited<ReturnType<typeof loadDesktopRuntimeModules>>['createMcpServiceState']
+  >
+  mcpInteractionStore: ReturnType<
+    Awaited<ReturnType<typeof loadDesktopRuntimeModules>>['createMcpInteractionStore']
+  >
+  sendToRenderer: (
+    channel: string,
+    value: McpStatus | ExternalDeckUpdate | McpActivityEvent | McpInteractionChanged,
+  ) => void
+}) {
+  return new McpManager({
+    apiOrigin: input.apiOrigin,
+    userDataDirectory: app.getPath('userData'),
+    serviceState: input.mcpServiceState,
+    interactionStore: input.mcpInteractionStore,
+    getAutoStart: () => input.settingsStore.get().mcpAutoStart,
+    setAutoStart: async (enabled) => {
+      await input.settingsStore.update({ mcpAutoStart: enabled })
+    },
+    executableArgs: resolveMcpExecutableArgs({
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      ...(process.env.APPIMAGE ? { appImagePath: process.env.APPIMAGE } : {}),
+    }),
+    onStatusChanged: (status) => input.sendToRenderer('mcp:status-changed', status),
+    onDeckUpdated: (update) => input.sendToRenderer('mcp:deck-updated', update),
+  })
+}
+
+async function startDesktop() {
+  configureApplicationMenu()
+
+  const developmentApiPort = rendererDevelopmentUrl ? Number(process.env.PORT?.trim() || 8787) : 0
+  const developmentSandboxPort = rendererDevelopmentUrl
+    ? Number(process.env.SANDBOX_PORT?.trim() || 5174)
+    : 0
+  const [apiServer, sandboxServer] = await Promise.all([
+    listen(developmentApiPort),
+    listen(developmentSandboxPort),
+  ])
+  const appOrigin = rendererDevelopmentUrl ?? apiServer.origin
+  const workspacesDir = configureDesktopProcessEnv(
+    apiServer.origin,
+    sandboxServer.origin,
+    appOrigin,
+  )
+  const runtime = await loadDesktopRuntimeModules()
 
   const credentialStore = new SecureCredentialStore(path.join(app.getPath('userData'), 'auth.json'))
   const settingsStore = new DesktopSettingsStore(
@@ -97,12 +299,12 @@ async function startDesktop() {
     process.env.ARK_WORKSPACES_DIR =
       settingsStore.get().defaultWorkspaceDirectory || process.env.ARK_WORKSPACES_DIR
   }
-  setProviderApiKeySource(credentialStore)
-  void warmModelCatalog()
+  runtime.setProviderApiKeySource(credentialStore)
+  void runtime.warmModelCatalog()
 
-  const previewSessionStore = createPreviewSessionStore()
-  const mcpServiceState = createMcpServiceState()
-  const thumbnailRenderSecret = createThumbnailRenderSecret()
+  const previewSessionStore = runtime.createPreviewSessionStore()
+  const mcpServiceState = runtime.createMcpServiceState()
+  const thumbnailRenderSecret = runtime.createThumbnailRenderSecret()
   const deckRenderConfig = {
     apiOrigin: apiServer.origin,
     previewSessionStore,
@@ -119,10 +321,10 @@ async function startDesktop() {
     const target = window
     if (target && !target.isDestroyed()) target.webContents.send(channel, value)
   }
-  const mcpInteractionStore = createMcpInteractionStore((change) =>
+  const mcpInteractionStore = runtime.createMcpInteractionStore((change) =>
     sendToRenderer('mcp:interaction-changed', change),
   )
-  const api = createApp({
+  const api = runtime.createApp({
     previewSessionStore,
     thumbnailRenderer,
     thumbnailRenderSecret,
@@ -131,51 +333,25 @@ async function startDesktop() {
     onExternalDeckUpdate: (update) => mcpManager?.recordExternalUpdate(update),
     onMcpActivity: (activity) => mcpManager?.recordActivity(activity),
   })
-  mcpManager = new McpManager({
+  mcpManager = createDesktopMcpManager({
     apiOrigin: apiServer.origin,
-    userDataDirectory: app.getPath('userData'),
-    serviceState: mcpServiceState,
-    interactionStore: mcpInteractionStore,
-    getAutoStart: () => settingsStore.get().mcpAutoStart,
-    setAutoStart: async (enabled) => {
-      await settingsStore.update({ mcpAutoStart: enabled })
-    },
-    executableArgs: resolveMcpExecutableArgs({
-      isPackaged: app.isPackaged,
-      execPath: process.execPath,
-      appPath: app.getAppPath(),
-      platform: process.platform,
-      ...(process.env.APPIMAGE ? { appImagePath: process.env.APPIMAGE } : {}),
-    }),
-    onStatusChanged: (status) => sendToRenderer('mcp:status-changed', status),
-    onDeckUpdated: (update) => sendToRenderer('mcp:deck-updated', update),
+    settingsStore,
+    mcpServiceState,
+    mcpInteractionStore,
+    sendToRenderer,
   })
   await mcpManager.cleanupStartup()
-  const rendererDirectory = path.resolve(dirname, '../renderer')
-
-  api.use((request, response, next) => {
-    if (request.path.startsWith('/api/')) {
-      response.status(404).json({ error: 'API route not found.' })
-      return
-    }
-
-    response.setHeader(
-      'Content-Security-Policy',
-      getRendererContentSecurityPolicy(sandboxServer.origin),
-    )
-    next()
-  })
-  api.use(express.static(rendererDirectory, { index: 'index.html' }))
-  api.use((_request, response) => response.sendFile(path.join(rendererDirectory, 'index.html')))
+  mountDesktopRenderer(api, path.resolve(dirname, '../renderer'), sandboxServer.origin)
   apiServer.setHandler(api)
 
   if (settingsStore.get().mcpAutoStart) await mcpManager.start()
 
-  const sandbox = createSandboxHost({
-    apiOrigin: apiServer.origin,
-    previewSessionStore,
-  })
-  sandboxServer.setHandler(sandbox)
+  sandboxServer.setHandler(
+    runtime.createSandboxHost({
+      apiOrigin: apiServer.origin,
+      previewSessionStore,
+    }),
+  )
 
   registerIpcHandlers({
     credentialStore,
@@ -183,118 +359,31 @@ async function startDesktop() {
     mcpInteractionStore,
     api,
     getMcpManager: () => mcpManager!,
-    clearModelCatalogCache,
-    warmModelCatalog,
-    testProviderApiKey,
+    clearModelCatalogCache: runtime.clearModelCatalogCache,
+    warmModelCatalog: runtime.warmModelCatalog,
+    testProviderApiKey: runtime.testProviderApiKey,
     generateDeckExport,
   })
 
   configureSessionSecurity(new Set([appOrigin, apiServer.origin, sandboxServer.origin]))
-  window = new BrowserWindow({
-    title: 'Ark',
-    width: 1440,
-    height: 960,
-    minWidth: 980,
-    minHeight: 680,
-    backgroundColor: '#101010',
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: path.resolve(dirname, '../preload/preload.cjs'),
-      sandbox: true,
-      webSecurity: true,
-    },
-  })
-  lockRendererNetwork(window.webContents, appOrigin)
-  window.once('ready-to-show', () => window.show())
-  window.once('closed', () => app.quit())
-  await window.loadURL(rendererDevelopmentUrl ?? apiServer.origin)
+  window = await openDesktopWindow(appOrigin, rendererDevelopmentUrl ?? apiServer.origin)
 
   if (app.isPackaged && !desktopSmoke) {
     void autoUpdater.checkForUpdatesAndNotify().catch(() => undefined)
   }
 
-  let closing = false
-  app.on('before-quit', (event) => {
-    if (closing) return
-    event.preventDefault()
-    closing = true
-    const thumbnailService = api.locals.thumbnailService as
-      { close: () => Promise<void> } | undefined
-    const workspaceStore = api.locals.workspaceStore as { close: () => void } | undefined
-    void Promise.all([
-      mcpManager?.stop() ?? Promise.resolve(),
-      thumbnailService?.close() ?? Promise.resolve(),
-      closeServer(apiServer.server),
-      closeServer(sandboxServer.server),
-    ])
-      .then(() => workspaceStore?.close())
-      .then(() =>
-        smokeDataDirectory
-          ? rm(smokeDataDirectory, { recursive: true, force: true })
-          : Promise.resolve(),
-      )
-      .finally(() => app.quit())
-  })
+  wireDesktopBeforeQuit(api, apiServer, sandboxServer, () => mcpManager)
 
   if (desktopSmoke) {
     try {
-      const rendererReady = (await window.webContents.executeJavaScript(
-        `Boolean(document.getElementById('root')) &&
-          typeof window.arkDesktop?.credentials?.list === 'function'`,
-        true,
-      )) as boolean
-      const [healthResponse, sandboxHealthResponse] = await Promise.all([
-        fetch(`${apiServer.origin}/api/health`),
-        fetch(`${sandboxServer.origin}/health`),
-      ])
-      // Exercises the export paths that matter: prose, a bulleted list, and a
-      // painted container, so the scene walk has text, bullets, and a shape.
-      const smokeDeckHtml = [
-        '<!doctype html><html lang="en" data-ark-font-body="calibri"><head><style>',
-        'html,body{margin:0}',
-        ':root{--ark-font-body:"Calibri","Carlito",sans-serif}',
-        'section{width:100vw;height:100vh;background:#123;color:#fff;font-family:var(--ark-font-body)}',
-        '.card{background:#2a3f55;border-radius:16px;padding:24px}',
-        '</style></head><body>',
-        '<section class="slide"><h1>Ark desktop smoke</h1><p>Exported from the render window.</p></section>',
-        '<section class="slide"><div class="card"><h2>Second slide</h2><ul><li>First point</li><li>Second point</li></ul></div></section>',
-        '</body></html>',
-      ].join('')
-      const thumbnail = await thumbnailRenderer.render({ html: smokeDeckHtml })
-      const exportedPdf = await generateDeckExport({
-        format: 'pdf',
-        html: smokeDeckHtml,
-        title: 'Ark desktop smoke',
+      await runDesktopSmoke({
+        window,
+        apiServerOrigin: apiServer.origin,
+        sandboxServerOrigin: sandboxServer.origin,
+        thumbnailRenderer,
+        generateDeckExport,
+        deckRenderConfig,
       })
-      const exportReport = await inspectExportedPdf(exportedPdf.output)
-      const exportedPptx = await generateDeckExport({
-        format: 'pptx',
-        html: smokeDeckHtml,
-        title: 'Ark desktop smoke',
-      })
-      const pptxReport = await inspectExportedPptx(exportedPptx.output)
-      const scene = await extractDeckScene(deckRenderConfig, { html: smokeDeckHtml })
-      const sceneReport = inspectExtractedScene(scene)
-
-      if (
-        !rendererReady ||
-        !healthResponse.ok ||
-        !sandboxHealthResponse.ok ||
-        !thumbnail.ok ||
-        thumbnail.slides[0]?.subarray(1, 4).toString('ascii') !== 'PNG' ||
-        !exportReport.ok ||
-        !sceneReport.ok ||
-        !pptxReport.ok
-      ) {
-        throw new Error(
-          `Desktop smoke validation failed. ${exportReport.detail} ${sceneReport.detail} ${pptxReport.detail}`.trim(),
-        )
-      }
-
-      console.log('ARK_DESKTOP_SMOKE_OK')
-      app.quit()
     } catch (error) {
       console.error(error)
       app.exit(1)

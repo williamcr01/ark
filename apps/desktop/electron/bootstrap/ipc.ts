@@ -53,19 +53,8 @@ export type IpcDependencies = {
   generateDeckExport: (request: DeckExportRequest) => Promise<DeckExportResult>
 }
 
-export function registerIpcHandlers(deps: IpcDependencies) {
-  const {
-    credentialStore,
-    settingsStore,
-    mcpInteractionStore,
-    api,
-    getMcpManager,
-    clearModelCatalogCache,
-    warmModelCatalog,
-    testProviderApiKey,
-    generateDeckExport,
-  } = deps
-
+function registerCredentialIpc(deps: IpcDependencies) {
+  const { credentialStore, clearModelCatalogCache, warmModelCatalog, testProviderApiKey } = deps
   ipcMain.handle('credentials:list', () => credentialStore.getStatus())
   ipcMain.handle('credentials:save', async (_event, rawProvider, rawApiKey) => {
     try {
@@ -120,6 +109,10 @@ export function registerIpcHandlers(deps: IpcDependencies) {
       return { ok: false, error: error instanceof Error ? error.message : 'Could not test key.' }
     }
   })
+}
+
+function registerSettingsIpc(deps: IpcDependencies) {
+  const { settingsStore, api } = deps
   ipcMain.handle('settings:get', () => settingsStore.get())
   ipcMain.handle('settings:update', async (_event, patch) => {
     const settings = await settingsStore.update(patch)
@@ -130,6 +123,10 @@ export function registerIpcHandlers(deps: IpcDependencies) {
     }
     return settings
   })
+}
+
+function registerMcpIpc(deps: IpcDependencies) {
+  const { getMcpManager, mcpInteractionStore } = deps
   ipcMain.handle('mcp:get-status', () => getMcpManager().getStatus())
   ipcMain.handle('mcp:start', () => getMcpManager().start())
   ipcMain.handle('mcp:stop', () => getMcpManager().stop())
@@ -183,6 +180,10 @@ export function registerIpcHandlers(deps: IpcDependencies) {
     }
     clipboard.writeText(command)
   })
+}
+
+function registerFilesIpc(deps: IpcDependencies) {
+  const { settingsStore } = deps
   ipcMain.handle('files:open-workspace', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -222,6 +223,10 @@ export function registerIpcHandlers(deps: IpcDependencies) {
   ipcMain.handle('files:reveal', (_event, filePath) => {
     if (typeof filePath === 'string') shell.showItemInFolder(filePath)
   })
+}
+
+function registerExportIpc(deps: IpcDependencies) {
+  const { settingsStore, generateDeckExport } = deps
   ipcMain.handle('export:create', async (event, rawRequest) => {
     try {
       const request = parseDeckExportRequest(rawRequest)
@@ -277,4 +282,12 @@ export function registerIpcHandlers(deps: IpcDependencies) {
       return { ok: false, error: error instanceof Error ? error.message : 'Update check failed.' }
     }
   })
+}
+
+export function registerIpcHandlers(deps: IpcDependencies) {
+  registerCredentialIpc(deps)
+  registerSettingsIpc(deps)
+  registerMcpIpc(deps)
+  registerFilesIpc(deps)
+  registerExportIpc(deps)
 }
