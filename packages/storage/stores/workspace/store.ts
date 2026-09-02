@@ -35,6 +35,7 @@ import {
 } from './schema.ts'
 import { appendDocumentHistory, listDocumentHistory, readDocumentHistoryHtml } from './history.ts'
 import { RecentList } from './recent-list.ts'
+import { ThumbnailFiles } from './thumbnail-files.ts'
 import { WorkspaceDocumentConflictError, WorkspaceDocumentHistoryNotFoundError } from './types.ts'
 import type { OpenWorkspace, WorkspaceRow } from './types.ts'
 import type { DocumentHistorySource } from '../../records/document-history.ts'
@@ -42,6 +43,7 @@ import type { DocumentHistorySource } from '../../records/document-history.ts'
 export class WorkspaceStore {
   private defaultDir: string
   private readonly recents: RecentList
+  private readonly thumbnails: ThumbnailFiles
   private readonly byId = new Map<string, OpenWorkspace>()
   private readonly byPath = new Map<string, OpenWorkspace>()
   private indexed = false
@@ -52,6 +54,7 @@ export class WorkspaceStore {
     this.recents = new RecentList(
       rootDir ? path.join(this.defaultDir, 'recent-workspaces.json') : recentWorkspacesPath(),
     )
+    this.thumbnails = new ThumbnailFiles((id) => this.database(id), this.recents)
   }
 
   get rootDir() {
@@ -622,23 +625,7 @@ export class WorkspaceStore {
     rendererVersion: string,
     manifestHash: string,
   ) {
-    const database = await this.database(id)
-    if (!database) return null
-    const row = database
-      .prepare(
-        `SELECT media_type, width, height, image FROM thumbnails
-         WHERE slide_hash = ? AND renderer_version = ? AND manifest_hash = ?`,
-      )
-      .get(slideHash, rendererVersion, manifestHash) as
-      { media_type: string; width: number; height: number; image: Uint8Array } | undefined
-    return row
-      ? {
-          mediaType: row.media_type,
-          width: row.width,
-          height: row.height,
-          image: Buffer.from(row.image),
-        }
-      : null
+    return this.thumbnails.readThumbnail(id, slideHash, rendererVersion, manifestHash)
   }
 
   async writeThumbnail(
@@ -654,38 +641,7 @@ export class WorkspaceStore {
       cover?: boolean
     },
   ) {
-    const database = await this.database(id)
-    if (!database) return false
-    database
-      .prepare(
-        `INSERT INTO thumbnails
-         (slide_hash, renderer_version, manifest_hash, media_type, width, height, image, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(slide_hash, renderer_version, manifest_hash) DO UPDATE SET
-           media_type = excluded.media_type,
-           width = excluded.width,
-           height = excluded.height,
-           image = excluded.image,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        input.slideHash,
-        input.rendererVersion,
-        input.manifestHash,
-        input.mediaType,
-        input.width,
-        input.height,
-        input.image,
-        new Date().toISOString(),
-      )
-    if (input.cover) {
-      const recent = this.recents.get(id)
-      if (recent) {
-        recent.cover = `data:${input.mediaType};base64,${input.image.toString('base64')}`
-        await this.recents.persist()
-      }
-    }
-    return true
+    return this.thumbnails.writeThumbnail(id, input)
   }
 
   async pruneThumbnails(
@@ -694,20 +650,7 @@ export class WorkspaceStore {
     rendererVersion: string,
     manifestHash: string,
   ) {
-    const database = await this.database(id)
-    if (!database) return false
-    if (slideHashes.length === 0) {
-      database.prepare('DELETE FROM thumbnails').run()
-      return true
-    }
-    database
-      .prepare(
-        `DELETE FROM thumbnails
-         WHERE renderer_version != ? OR manifest_hash != ?
-            OR slide_hash NOT IN (${slideHashes.map(() => '?').join(', ')})`,
-      )
-      .run(rendererVersion, manifestHash, ...slideHashes)
-    return true
+    return this.thumbnails.pruneThumbnails(id, slideHashes, rendererVersion, manifestHash)
   }
 
   async saveAs(id: string, targetPath: string, overwrite = false) {
