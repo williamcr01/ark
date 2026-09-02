@@ -13,7 +13,7 @@ export type DeckEditorLayerBridgeSlice = {
   enableEditor: (slideIndex?: number, tool?: EditorTool, scale?: number) => boolean
   requestGeometry: (elementId: string, slideIndex?: number) => boolean
   selection: { elementId: string; slideIndex: number } | null
-  selections: Array<{ elementId: string; slideIndex: number }>
+  selections?: Array<{ elementId: string; slideIndex: number }>
   setTransformPreviewListener: (
     listener: ((preview: EditorTransformPreviewMessage | null) => void) | null,
   ) => void
@@ -99,12 +99,20 @@ function useDeckEditorLayerPreviewSync(input: LayerEffectsInput) {
 
 function useDeckEditorLayerSelectionSync(input: LayerEffectsInput) {
   const { chrome, frame, navigation, refs, selectedTool, bridge } = input
-  const { clearSelection, configureEditor, editorReady, enableEditor, requestGeometry, selection } =
-    bridge
-  const selections = bridge.selections ?? []
+  const {
+    clearSelection,
+    configureEditor,
+    editorReady,
+    enableEditor,
+    requestGeometry,
+    selection,
+    selections,
+  } = bridge
   const selectedElementId = selection?.elementId ?? null
   const selectedSlideIndex = selection?.slideIndex ?? null
-  const selectedElementIds = (selections.length > 0 ? selections : selection ? [selection] : [])
+  const selectedElementIds = (
+    selections && selections.length > 0 ? selections : selection ? [selection] : []
+  )
     .map((item) => item.elementId)
     .join('\0')
 
@@ -133,7 +141,7 @@ function useDeckEditorLayerSelectionSync(input: LayerEffectsInput) {
       return
     }
     const targets =
-      selections.length > 0
+      selections && selections.length > 0
         ? selections
         : [{ elementId: selectedElementId, slideIndex: selectedSlideIndex }]
     for (const target of targets) {
