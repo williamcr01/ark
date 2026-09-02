@@ -25,6 +25,19 @@ export const createLanguageModel = (modelRef: string) => {
       return { model: createAnthropic({ apiKey })(modelId), provider, modelId }
     case 'google':
       return { model: createGoogleGenerativeAI({ apiKey })(modelId), provider, modelId }
+    case 'openrouter':
+      return {
+        model: createOpenAI({
+          apiKey,
+          baseURL: 'https://openrouter.ai/api/v1',
+          headers: {
+            'HTTP-Referer': 'https://github.com/williamcr01/ark',
+            'X-Title': 'Ark',
+          },
+        })(modelId),
+        provider,
+        modelId,
+      }
     default:
       throw new Error(`Unsupported provider: ${String(provider)}`)
   }

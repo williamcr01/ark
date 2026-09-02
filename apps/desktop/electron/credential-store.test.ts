@@ -44,6 +44,7 @@ describe('SecureCredentialStore', () => {
     await restored.load()
     expect(restored.getApiKey('openai')).toBe('sk-secret')
     expect(restored.getStatus().openai.storage).toBe('persistent')
+    expect(restored.getStatus().openrouter).toEqual({ configured: false, storage: null })
 
     await restored.remove('openai')
     expect(restored.getStatus().openai.configured).toBe(false)
@@ -87,6 +88,16 @@ describe('SecureCredentialStore', () => {
     await restored.load()
     expect(restored.getApiKey('openai')).toBe('persistent-secret')
     expect(restored.getApiKey('google')).toBeNull()
+  })
+
+  it('persists and lists openrouter keys', async () => {
+    const store = new SecureCredentialStore(filePath)
+    await store.set('openrouter', 'or-secret')
+
+    const restored = new SecureCredentialStore(filePath)
+    await restored.load()
+    expect(restored.getApiKey('openrouter')).toBe('or-secret')
+    expect(restored.getStatus().openrouter).toEqual({ configured: true, storage: 'persistent' })
   })
 
   it('leaves a corrupt credential file untouched', async () => {

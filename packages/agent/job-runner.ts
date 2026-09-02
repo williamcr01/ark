@@ -45,7 +45,7 @@ import {
   findCatalogEntryByRef,
   resolveCatalogReasoningEffort,
 } from '@ark/ai/model-catalog.ts'
-import { clearModelCatalogCache } from '@ark/ai/models.ts'
+import { assertModelAvailable, clearModelCatalogCache } from '@ark/ai/models.ts'
 import { WorkspaceDocumentConflictError } from '@ark/storage/stores/workspace-store.ts'
 
 function invalidateModelCatalogOnAuthFailure(errorCategory: string | null | undefined) {
@@ -60,6 +60,7 @@ export type GenerationJobRunnerOptions = {
   chatStore?: ChatStore | null
   assetStore?: AssetStore | null
   createModel?: typeof createLanguageModel
+  assertModelAvailable?: typeof assertModelAvailable
   runAgent?: (options: Parameters<typeof runDeckAgent>[0]) => Promise<RunDeckAgentResult>
   now?: () => Date
   onDocumentPersisted?: (deckId: string, documentRevision: number) => void
@@ -67,7 +68,7 @@ export type GenerationJobRunnerOptions = {
 
 export type StartGenerationJobOptions = {
   body: StartGenerationJobRequest
-  defaultModel: string
+  defaultModel: string | null
   requestId?: string | null
 }
 
@@ -138,6 +139,7 @@ export function createGenerationJobRunner({
   chatStore = null,
   assetStore = null,
   createModel = createLanguageModel,
+  assertModelAvailable: assertAvailable = assertModelAvailable,
   runAgent = runDeckAgent,
   now = () => new Date(),
   onDocumentPersisted,
@@ -765,7 +767,18 @@ export function createGenerationJobRunner({
       })
     }
 
-    const modelRef = body.model?.trim() || defaultModel
+    const requestedRef = body.model?.trim() || defaultModel
+    if (!requestedRef) {
+      throw Object.assign(new Error('No available model. Add a provider key in Settings.'), {
+        apiError: {
+          code: 'missing_api_key',
+          error: 'No available model. Add a provider key in Settings.',
+        },
+      })
+    }
+
+    await assertAvailable(requestedRef)
+    const modelRef = requestedRef
     const { provider } = createModel(modelRef)
     const catalogEntry = findCatalogEntryByRef(modelRef)
     const resolvedEffort = resolveCatalogReasoningEffort(catalogEntry, body.reasoningEffort ?? null)
@@ -1014,6 +1027,8 @@ export function createGenerationJobRunner({
       request,
       retryOfJobId: existing.id,
     }
+
+    await assertAvailable(existing.model)
 
     const job = await jobStore.createJob(input)
     enqueueJob(job.id, existing.observability?.requestId ?? null)

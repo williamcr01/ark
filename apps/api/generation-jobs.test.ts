@@ -64,6 +64,13 @@ describe('generation job runner', () => {
       jobStore,
       runAgent,
       createModel: () => ({ model: {} as never, provider: 'openai', modelId: 'gpt-test' }),
+      assertModelAvailable: async (modelRef) => ({
+        id: modelRef,
+        provider: 'openai',
+        modelId: modelRef.split(':')[1] ?? modelRef,
+        available: true,
+        supportsAttachments: true,
+      }),
     })
     return { assetStore, chatStore, deckStore, jobStore, runner }
   }

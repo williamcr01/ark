@@ -71,6 +71,7 @@ describe('AppTitleBar accessibility', () => {
           openai: { configured: false, storage: null },
           anthropic: { configured: false, storage: null },
           google: { configured: false, storage: null },
+          openrouter: { configured: false, storage: null },
         }),
         save: vi.fn(),
         saveSession: vi.fn(),

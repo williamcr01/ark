@@ -1,26 +1,26 @@
 import type { ModelInfo } from './model-info.ts'
-import type { ProviderId } from './provider-id.ts'
+import {
+  ALL_PROVIDERS,
+  providerIdSchema,
+  type FirstPartyProviderId,
+  type ProviderId,
+} from './provider-id.ts'
 import type { ReasoningEffort } from './reasoning-effort.ts'
 import { getProviderApiKey, parseProviderHttpError, PROVIDER_LABELS } from './credentials.ts'
 import {
   DEFAULT_MODEL_REF,
-  findCatalogEntry,
   MODEL_CATALOG,
+  setDiscoveredCatalogEntries,
   toModelRef,
   type ModelCatalogEntry,
 } from './model-catalog.ts'
+import { listOpenRouterCatalogEntries } from './openrouter-models.ts'
 
 export type { ProviderId, ModelInfo }
 
-type ModelUnavailableReason = NonNullable<ModelInfo['unavailableReason']>
+export const MODEL_CATALOG_TTL_MS = 10 * 60 * 1000
 
-const ALL_PROVIDERS: ProviderId[] = ['openai', 'anthropic', 'google']
-
-const catalogEntryToModelInfo = (
-  entry: ModelCatalogEntry,
-  available: boolean,
-  unavailableReason?: ModelUnavailableReason,
-): ModelInfo => {
+const catalogEntryToModelInfo = (entry: ModelCatalogEntry): ModelInfo => {
   const reasoningEfforts = [...entry.reasoningEfforts] as ReasoningEffort[]
 
   return {
@@ -28,8 +28,7 @@ const catalogEntryToModelInfo = (
     provider: entry.provider,
     modelId: entry.modelId,
     name: entry.name,
-    available,
-    unavailableReason: available ? undefined : unavailableReason,
+    available: true,
     reasoningEfforts,
     ...(entry.defaultReasoningEffort
       ? { defaultReasoningEffort: entry.defaultReasoningEffort }
@@ -46,14 +45,11 @@ export const parseModelRef = (
   const separatorIndex = trimmed.indexOf(':')
 
   if (separatorIndex > 0) {
-    const provider = trimmed.slice(0, separatorIndex) as ProviderId
+    const parsedProvider = providerIdSchema.safeParse(trimmed.slice(0, separatorIndex))
     const modelId = trimmed.slice(separatorIndex + 1).trim()
 
-    if (
-      (provider === 'openai' || provider === 'anthropic' || provider === 'google') &&
-      modelId.length > 0
-    ) {
-      return { provider, modelId }
+    if (parsedProvider.success && modelId.length > 0) {
+      return { provider: parsedProvider.data, modelId }
     }
   }
 
@@ -63,6 +59,7 @@ export const parseModelRef = (
   }
 }
 
+/** Env/boot default used by `/api/health`. Catalog default may be null when nothing is available. */
 export const getDefaultModel = () => {
   const configured = process.env.ARK_DEFAULT_MODEL?.trim()
   if (configured) {
@@ -73,9 +70,31 @@ export const getDefaultModel = () => {
   return DEFAULT_MODEL_REF
 }
 
+export const pickCatalogDefaultModel = (models: readonly ModelInfo[]): string | null => {
+  if (models.length === 0) {
+    return null
+  }
+
+  const configured = process.env.ARK_DEFAULT_MODEL?.trim()
+  if (configured) {
+    const { provider, modelId } = parseModelRef(configured)
+    const ref = `${provider}:${modelId}`
+    if (models.some((model) => model.id === ref)) {
+      return ref
+    }
+  }
+
+  if (models.some((model) => model.id === DEFAULT_MODEL_REF)) {
+    return DEFAULT_MODEL_REF
+  }
+
+  return models[0]?.id ?? null
+}
+
 export type ModelCatalog = {
   models: ModelInfo[]
   warnings: string[]
+  defaultModel: string | null
 }
 
 /** True when the suffix looks like a dated/versioned alias (e.g. claude-sonnet-5-20250514). */
@@ -202,15 +221,22 @@ async function listGoogleModelIds(apiKey: string): Promise<Set<string>> {
   return ids
 }
 
-const PROVIDER_LISTERS: Record<ProviderId, (apiKey: string) => Promise<Set<string>>> = {
-  openai: listOpenAIModelIds,
-  anthropic: listAnthropicModelIds,
-  google: listGoogleModelIds,
-}
+const FIRST_PARTY_LISTERS: Record<FirstPartyProviderId, (apiKey: string) => Promise<Set<string>>> =
+  {
+    openai: listOpenAIModelIds,
+    anthropic: listAnthropicModelIds,
+    google: listGoogleModelIds,
+  }
 
 export async function testProviderApiKey(provider: ProviderId, apiKey: string) {
-  const ids = await PROVIDER_LISTERS[provider](apiKey.trim())
+  const trimmed = apiKey.trim()
 
+  if (provider === 'openrouter') {
+    const entries = await listOpenRouterCatalogEntries(trimmed)
+    return { modelCount: entries.length }
+  }
+
+  const ids = await FIRST_PARTY_LISTERS[provider](trimmed)
   return { modelCount: ids.size }
 }
 
@@ -225,35 +251,79 @@ export const formatModelCatalogWarning = (provider: ProviderId, error: unknown):
     /enotfound/i.test(message) ||
     /econnrefused/i.test(message)
   ) {
-    return `Could not reach ${label} to verify models. Showing them as unavailable until the network is available.`
+    return `Could not reach ${label} to list models.`
   }
 
   if (!message) {
-    return `Could not verify ${label} models.`
+    return `Could not list ${label} models.`
   }
 
   if (message.includes(label) || /api key/i.test(message)) {
     return message
   }
 
-  return `Could not verify ${label} models: ${message}`
+  return `Could not list ${label} models: ${message}`
 }
 
+type ProviderAccess =
+  | { ok: true; kind: 'first-party'; ids: Set<string> }
+  | { ok: true; kind: 'openrouter'; entries: ModelCatalogEntry[] }
+  | { ok: false }
+
 let modelCatalogCache: ModelCatalog | null = null
+let modelCatalogCachedAt = 0
 let modelCatalogInflight: Promise<ModelCatalog> | null = null
 
 export const clearModelCatalogCache = () => {
   modelCatalogCache = null
+  modelCatalogCachedAt = 0
   modelCatalogInflight = null
+  setDiscoveredCatalogEntries([])
+}
+
+const unavailableModelError = (modelRef: string) =>
+  Object.assign(new Error(`Model ${modelRef} is not available.`), {
+    apiError: {
+      code: 'provider_error' as const,
+      error: `Model ${modelRef} is not available.`,
+    },
+  })
+
+const missingProviderKeyError = (provider: ProviderId) =>
+  Object.assign(new Error(`No API key configured for ${PROVIDER_LABELS[provider]}.`), {
+    apiError: {
+      code: 'missing_api_key' as const,
+      error: `No API key configured for ${PROVIDER_LABELS[provider]}.`,
+    },
+  })
+
+/** Reject model refs whose provider has no key or that are missing from the available catalog. */
+export async function assertModelAvailable(modelRef: string): Promise<ModelInfo> {
+  const { provider, modelId } = parseModelRef(modelRef)
+  const ref = `${provider}:${modelId}`
+
+  if (!getProviderApiKey(provider)) {
+    throw missingProviderKeyError(provider)
+  }
+
+  const catalog = await getModelCatalog()
+  const model = catalog.models.find((entry) => entry.id === ref)
+
+  if (!model) {
+    throw unavailableModelError(ref)
+  }
+
+  return model
 }
 
 /**
- * Build the curated model catalog. Availability requires a configured key and a
- * successful provider probe that includes the catalog SKU (or a versioned alias).
+ * Build the available-only model catalog. Unkeyed providers are omitted.
+ * Keyed providers that fail to list contribute a warning and no rows.
+ * First-party rows are curated `MODEL_CATALOG` ∩ live ids; OpenRouter is live-filtered.
  */
 export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
   const warnings: string[] = []
-  const accessByProvider = new Map<ProviderId, { ok: true; ids: Set<string> } | { ok: false }>()
+  const accessByProvider = new Map<ProviderId, ProviderAccess>()
 
   await Promise.all(
     ALL_PROVIDERS.map(async (provider) => {
@@ -264,8 +334,14 @@ export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
       }
 
       try {
-        const ids = await PROVIDER_LISTERS[provider](apiKey)
-        accessByProvider.set(provider, { ok: true, ids })
+        if (provider === 'openrouter') {
+          const entries = await listOpenRouterCatalogEntries(apiKey)
+          accessByProvider.set(provider, { ok: true, kind: 'openrouter', entries })
+          return
+        }
+
+        const ids = await FIRST_PARTY_LISTERS[provider](apiKey)
+        accessByProvider.set(provider, { ok: true, kind: 'first-party', ids })
       } catch (error) {
         warnings.push(formatModelCatalogWarning(provider, error))
         accessByProvider.set(provider, { ok: false })
@@ -273,24 +349,40 @@ export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
     }),
   )
 
-  const models = MODEL_CATALOG.map((entry) => {
-    const access = accessByProvider.get(entry.provider)
+  const models: ModelInfo[] = []
+  const discovered: ModelCatalogEntry[] = []
 
-    if (!access) {
-      return catalogEntryToModelInfo(entry, false, 'missing_api_key')
+  for (const provider of ALL_PROVIDERS) {
+    const access = accessByProvider.get(provider)
+    if (!access || !access.ok) {
+      continue
     }
 
-    if (!access.ok) {
-      return catalogEntryToModelInfo(entry, false, 'not_found')
+    if (access.kind === 'openrouter') {
+      for (const entry of access.entries) {
+        discovered.push(entry)
+        models.push(catalogEntryToModelInfo(entry))
+      }
+      continue
     }
 
-    const available = catalogModelAccessible(entry.modelId, access.ids)
-    return catalogEntryToModelInfo(entry, available, available ? undefined : 'not_found')
-  })
+    for (const entry of MODEL_CATALOG) {
+      if (entry.provider !== provider) {
+        continue
+      }
+
+      if (catalogModelAccessible(entry.modelId, access.ids)) {
+        models.push(catalogEntryToModelInfo(entry))
+      }
+    }
+  }
+
+  setDiscoveredCatalogEntries(discovered)
 
   return {
     models,
     warnings,
+    defaultModel: pickCatalogDefaultModel(models),
   }
 }
 
@@ -298,15 +390,20 @@ export async function fetchAllAvailableModels(): Promise<ModelCatalog> {
 export async function refreshModelCatalog(): Promise<ModelCatalog> {
   const catalog = await fetchAllAvailableModels()
   modelCatalogCache = catalog
+  modelCatalogCachedAt = Date.now()
   return catalog
 }
 
+const cacheIsFresh = () =>
+  Boolean(modelCatalogCache) && Date.now() - modelCatalogCachedAt < MODEL_CATALOG_TTL_MS
+
 /**
- * Return the cached catalog, sharing one in-flight refresh when empty.
+ * Return the cached catalog, sharing one in-flight refresh when empty or stale.
  * Call {@link warmModelCatalog} at process startup so page reloads stay local.
+ * Cache lives ~10 minutes and is cleared on credential changes.
  */
 export async function getModelCatalog(): Promise<ModelCatalog> {
-  if (modelCatalogCache) {
+  if (cacheIsFresh() && modelCatalogCache) {
     return modelCatalogCache
   }
 
@@ -326,38 +423,4 @@ export async function warmModelCatalog(): Promise<void> {
   } catch {
     // Boot continues; the next /api/models request retries.
   }
-}
-
-export function ensureModelInList(models: ModelInfo[], modelRef: string): ModelInfo[] {
-  if (models.some((model) => model.id === modelRef)) {
-    return models
-  }
-
-  const { provider, modelId } = parseModelRef(modelRef)
-  const catalogEntry = findCatalogEntry(provider, modelId)
-
-  if (catalogEntry) {
-    const hasKey = Boolean(getProviderApiKey(provider))
-    return [
-      ...models,
-      catalogEntryToModelInfo(catalogEntry, false, hasKey ? 'not_found' : 'missing_api_key'),
-    ]
-  }
-
-  const unavailableReason: ModelUnavailableReason = getProviderApiKey(provider)
-    ? 'not_found'
-    : 'missing_api_key'
-
-  return [
-    ...models,
-    {
-      id: `${provider}:${modelId}`,
-      provider,
-      modelId,
-      available: false,
-      unavailableReason,
-      reasoningEfforts: [],
-      supportsAttachments: true,
-    },
-  ]
 }

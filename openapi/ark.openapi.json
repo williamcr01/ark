@@ -128,6 +128,11 @@
                           "type": "object",
                           "properties": { "configured": { "type": "boolean" } },
                           "required": ["configured"]
+                        },
+                        "openrouter": {
+                          "type": "object",
+                          "properties": { "configured": { "type": "boolean" } },
+                          "required": ["configured"]
                         }
                       }
                     },
@@ -160,7 +165,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "defaultModel": { "type": "string" },
+                    "defaultModel": { "type": "string", "nullable": true },
                     "models": {
                       "type": "array",
                       "items": {
@@ -169,7 +174,7 @@
                           "id": { "type": "string" },
                           "provider": {
                             "type": "string",
-                            "enum": ["openai", "anthropic", "google"]
+                            "enum": ["openai", "anthropic", "google", "openrouter"]
                           },
                           "modelId": { "type": "string" },
                           "name": { "type": "string" },

@@ -155,6 +155,13 @@ describe('HTTP API contract drift prevention', () => {
         provider: 'openai',
         modelId: 'gpt-4.1-mini',
       }),
+      assertModelAvailable: async (modelRef) => ({
+        id: modelRef,
+        provider: 'openai',
+        modelId: modelRef.split(':')[1] ?? modelRef,
+        available: true,
+        supportsAttachments: true,
+      }),
       runAgent: stubAgentFailure,
     })
 

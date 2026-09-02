@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { apiErrorPayloadSchema, parseRequestBody, simpleErrorResponseSchema } from './common.ts'
+import {
+  apiErrorPayloadSchema,
+  parseRequestBody,
+  providerIdSchema,
+  simpleErrorResponseSchema,
+} from './common.ts'
 import {
   DOCUMENT_HISTORY_SOURCES,
   createDeckRequestSchema,
@@ -58,6 +63,7 @@ describe('shared API contracts', () => {
           openai: { configured: true },
           anthropic: { configured: false },
           google: { configured: false },
+          openrouter: { configured: false },
         },
         preview: {
           sandboxOrigin: 'http://localhost:5174',
@@ -65,6 +71,24 @@ describe('shared API contracts', () => {
         },
       }),
     ).toMatchObject({ ok: true })
+
+    expect(providerIdSchema.parse('openrouter')).toBe('openrouter')
+    expect(providerIdSchema.safeParse('azure').success).toBe(false)
+    expect(
+      healthResponseSchema.safeParse({
+        ok: true,
+        model: 'openai:gpt-5.6-luna',
+        apiKey: { configured: false },
+        providers: {
+          openai: { configured: false },
+          azure: { configured: true },
+        },
+        preview: {
+          sandboxOrigin: 'http://localhost:5174',
+          appOrigin: 'http://localhost:5173',
+        },
+      }).success,
+    ).toBe(false)
   })
 
   it('parses models response', () => {
@@ -86,6 +110,37 @@ describe('shared API contracts', () => {
         warnings: [],
       }),
     ).toMatchObject({ defaultModel: 'openai:gpt-5.6-luna' })
+  })
+
+  it('allows a null defaultModel and OpenRouter rows on an empty available catalog', () => {
+    expect(
+      modelsResponseSchema.parse({
+        defaultModel: null,
+        models: [],
+        warnings: [],
+      }),
+    ).toMatchObject({ defaultModel: null, models: [], warnings: [] })
+
+    expect(
+      modelsResponseSchema.parse({
+        defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+        models: [
+          {
+            id: 'openrouter:anthropic/claude-3.5-sonnet',
+            provider: 'openrouter',
+            modelId: 'anthropic/claude-3.5-sonnet',
+            name: 'Anthropic: Claude 3.5 Sonnet',
+            available: true,
+            reasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+            supportsAttachments: true,
+          },
+        ],
+        warnings: ['Could not list OpenAI models.'],
+      }),
+    ).toMatchObject({
+      defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+    })
   })
 
   it('requires a path or bytes for PowerPoint import', () => {
