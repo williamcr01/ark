@@ -1,4 +1,4 @@
-import { MAX_CHAT_ATTACHMENT_BYTES } from '@ark/chat/chat.ts'
+import { MAX_CHAT_ATTACHMENT_BYTES } from '@ark/chat/attachments.ts'
 
 export function formatAttachmentError(error: { code: string; message: string }) {
   switch (error.code) {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import type { AgentStep, ChatMessage } from '@ark/chat/chat.ts'
+import type { AgentStep, ChatMessage } from '@ark/chat/messages.ts'
 import type { GenerationJobApi, GenerationJobStatus } from '@ark/contracts'
 import type { QueuedChatSend } from '@/lib/chat/chat-send-queue'
 

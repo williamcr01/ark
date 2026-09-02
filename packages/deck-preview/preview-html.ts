@@ -3,7 +3,7 @@ import {
   buildDeckCssNavRuntimeScript,
   buildDeckHandshakeSentinelScript,
   buildRevealNavRuntimeScript,
-} from './deck-bridge.ts'
+} from './runtime/index.ts'
 import { EDITOR_SESSION_HANDOFF_KEY } from '@ark/editor-runtime'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import {
@@ -32,6 +32,7 @@ import {
   injectRuntimeCspMeta,
   stripDeckScriptsAndHandlers,
   stripInlineHandlers,
+  absolutizePreviewAssetReferences,
 } from './preview-html-inject.ts'
 
 export {

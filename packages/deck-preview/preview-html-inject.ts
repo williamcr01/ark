@@ -1,4 +1,4 @@
-import { buildDeckHandshakeSentinelScript } from './deck-bridge.ts'
+import { buildDeckHandshakeSentinelScript } from './runtime/index.ts'
 import { buildDeckEditorBridgeRuntimeScript, EDITOR_SESSION_HANDOFF_KEY } from '@ark/editor-runtime'
 import {
   documentAllowsDeckInitScripts,

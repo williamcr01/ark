@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
 import fullJsDeck from '@fixtures/full-js-deck.html?raw'
@@ -17,7 +18,10 @@ import {
   runtimeModeAllowsDeckScripts,
   runtimeModeToBridgePreviewMode,
   STRICT_DECK_CSP,
-} from './deck-runtime'
+} from './deck-runtime.ts'
+
+const origin = window.location.origin
+const originPattern = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 describe('detectRuntimeMode', () => {
   it('defaults blank and plain CSS decks to static', () => {
@@ -92,16 +96,16 @@ describe('runtime policies', () => {
 
     expect(csp).toContain('script-src')
     expect(csp).toContain('style-src')
-    expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
-    expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.css')
+    expect(csp).toContain(`${origin}/api/runtimes/reveal.js/5.1.0/reveal.js`)
+    expect(csp).toContain(`${origin}/api/runtimes/reveal.js/5.1.0/reveal.css`)
     expect(csp).toContain(
-      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css',
+      `${origin}/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro.css`,
     )
     expect(csp).toContain('font-src data:')
     expect(csp).toContain(
-      'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
+      `${origin}/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff`,
     )
-    expect(csp).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/white.css')
+    expect(csp).toContain(`${origin}/api/runtimes/reveal.js/5.1.0/theme/white.css`)
     expect(csp).toContain("connect-src 'none'")
   })
 
@@ -118,10 +122,12 @@ describe('runtime policies', () => {
     const csp = getRuntimeCsp('static')
 
     expect(csp).toContain(
-      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
+      `${origin}/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2`,
     )
     expect(csp).toMatch(
-      /font-src[^;]*http:\/\/localhost:5173\/api\/runtimes\/deck-fonts\/1\.0\.0\/carlito\/carlito-latin-400-normal\.woff2/,
+      new RegExp(
+        `font-src[^;]*${originPattern}/api/runtimes/deck-fonts/1\\.0\\.0/carlito/carlito-latin-400-normal\\.woff2`,
+      ),
     )
     expect(csp).not.toContain('/api/runtimes/reveal.js/')
     expect(csp).not.toContain('/api/runtimes/chart.js/')
@@ -165,7 +171,7 @@ describe('injectRuntimeCsp', () => {
     expect(html).toContain('http-equiv="Content-Security-Policy"')
     expect(html).toContain("connect-src 'none'")
     expect(html).toContain(
-      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
+      `${origin}/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2`,
     )
     expect(buildCspMetaTag(STRICT_DECK_CSP)).toContain("connect-src 'none'")
   })
@@ -181,7 +187,7 @@ describe('injectRuntimeCsp', () => {
     const html = injectRuntimeCsp(revealDeck, 'reveal')
 
     expect(html).toContain('http-equiv="Content-Security-Policy"')
-    expect(html).toContain('http://localhost:5173/api/runtimes/reveal.js/5.1.0/reveal.js')
+    expect(html).toContain(`${origin}/api/runtimes/reveal.js/5.1.0/reveal.js`)
   })
 })
 

@@ -5,7 +5,7 @@ import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
 import { useChatStore } from '@/state/chat-store.ts'
 import { getTestLocalStorage } from '@/test/storage'
 import { renderWithRouter } from '@/test/render-with-router'
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const chatPanelProps = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }))

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { ChatMessagePart } from '@ark/chat/chat.ts'
+import type { ChatMessagePart } from '@ark/chat/messages.ts'
 import type {
   GenerationJob,
   GenerationJobObservability,

@@ -11,7 +11,6 @@ model has to sit below all four. `@ark/agent` holds the loop that runs against i
 
 | Module               | Responsibility                                                        |
 | -------------------- | --------------------------------------------------------------------- |
-| `chat.ts`            | Barrel re-export of the conversation-model modules below              |
 | `messages.ts`        | Message, part, and agent-step types; ids; persistence size limits     |
 | `attachments.ts`     | Attachment shape, parse/decode helpers, asset-id collection           |
 | `context.ts`         | Editor/slide/theme context types, normalisation, factual descriptions |

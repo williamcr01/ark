@@ -6,7 +6,7 @@ import { extractDeckTitle } from '@ark/deck/document/title.ts'
 import { deckOriginAfterWrite } from '@ark/deck/document/origin.ts'
 
 import type { EmbeddedAsset } from '../../records/embedded-assets.ts'
-import type { DocumentHistorySource } from '../../records/document-history.ts'
+import type { DocumentHistorySource } from '@ark/deck/document/document-history.ts'
 import {
   garbageCollectUnreferencedAssets,
   insertEmbeddedAssets,

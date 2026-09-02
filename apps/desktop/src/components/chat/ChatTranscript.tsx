@@ -20,7 +20,7 @@ import {
   selectGenerationStatus,
   useChatStore,
 } from '@/state/chat-store.ts'
-import { agentStepsToChatParts } from '@ark/chat/chat.ts'
+import { agentStepsToChatParts } from '@ark/chat/api-projection.ts'
 
 export function ChatTranscript() {
   const { layout, retryPersist } = useChatPanelRuntime()

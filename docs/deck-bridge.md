@@ -1,6 +1,6 @@
 # Ark deck runtime bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `packages/deck-preview/protocol/` (re-exported from `packages/deck-preview/deck-bridge.ts`). Injected iframe scripts are authored as TypeScript under `packages/deck-preview/runtime-src/` and assembled by `packages/deck-preview/runtime/`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `packages/deck-preview/protocol/` (re-exported from `packages/deck-preview/index.ts`). Injected iframe scripts are authored as TypeScript under `packages/deck-preview/runtime-src/` and assembled by `packages/deck-preview/runtime/`.
 
 The shell-side lifecycle and ownership boundaries are summarized in
 [deck-preview-orchestration.md](./deck-preview-orchestration.md). `DeckPreview`
@@ -235,7 +235,7 @@ In CSS-only preview (no approved reveal runtime script), Ark still detects `runt
 
 ## Shell helpers
 
-`packages/deck-preview/protocol/` and `packages/deck-preview/runtime/` (re-exported from `packages/deck-preview/deck-bridge.ts`) export:
+`packages/deck-preview/protocol/` and `packages/deck-preview/runtime/` (re-exported from `packages/deck-preview/index.ts`) export:
 
 - Message constants and TypeScript types
 - `createDeckGotoMessage`, `createDeckReadyMessage`, etc.

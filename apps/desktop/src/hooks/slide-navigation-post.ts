@@ -1,9 +1,6 @@
 import type { MutableRefObject, RefObject } from 'react'
 
-import {
-  createDeckGotoMessage,
-  createDeckPatchSlidesMessage,
-} from '@ark/deck-preview/deck-bridge.ts'
+import { createDeckGotoMessage, createDeckPatchSlidesMessage } from '@ark/deck-preview'
 import { resolvePatchActiveSlideIndex, type DeckSlidePatch } from '@ark/deck-preview/slide-patch.ts'
 import { DECK_BRIDGE_POST_MESSAGE_TARGET } from '@ark/runtime-registry/sandbox-origin.ts'
 import { clampSlideIndex } from '@/lib/deck/slide-navigation-keys.ts'

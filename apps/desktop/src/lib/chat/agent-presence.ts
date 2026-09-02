@@ -1,4 +1,4 @@
-import type { AgentStep } from '@ark/chat/chat.ts'
+import type { AgentStep } from '@ark/chat/messages.ts'
 import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 
 export type AgentPresenceState =

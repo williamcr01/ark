@@ -15,5 +15,8 @@ export {
   DOCUMENT_HISTORY_MAX_BYTES,
   DOCUMENT_HISTORY_MAX_ENTRIES,
   DOCUMENT_HISTORY_SOURCES,
-} from '../records/document-history.ts'
-export type { DocumentHistorySource, DocumentHistorySummary } from '../records/document-history.ts'
+} from '@ark/deck/document/document-history.ts'
+export type {
+  DocumentHistorySource,
+  DocumentHistorySummary,
+} from '@ark/deck/document/document-history.ts'

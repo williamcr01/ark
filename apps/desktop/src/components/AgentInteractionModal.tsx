@@ -1,5 +1,5 @@
 import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
-import type { ChatMessageContext } from '@ark/chat/chat.ts'
+import type { ChatMessageContext } from '@ark/chat/context.ts'
 import type { StoredThemeProposalRequest } from '@ark/chat/agent-themes.ts'
 import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import {

@@ -6,7 +6,7 @@ import {
   isDeckRuntimeErrorMessage,
   isDeckSlideChangeMessage,
   type DeckMetadata,
-} from '@ark/deck-preview/deck-bridge.ts'
+} from '@ark/deck-preview'
 import {
   DECK_BRIDGE_POST_MESSAGE_TARGET,
   isAllowedBridgeMessageOrigin,

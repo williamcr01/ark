@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 
-import type { ChatMessage, EditorSelectionContext, SlideContext } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
+import type { EditorSelectionContext, SlideContext } from '@ark/chat/context.ts'
 import { useChatStore } from '@/state/chat-store.ts'
 
 import {

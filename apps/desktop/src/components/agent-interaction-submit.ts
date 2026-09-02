@@ -1,6 +1,6 @@
 import type { AgentQuestionAnswers, AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
 import { formatAgentQuestionAnswers } from '@ark/chat/agent-questions.ts'
-import type { ChatMessageContext } from '@ark/chat/chat.ts'
+import type { ChatMessageContext } from '@ark/chat/context.ts'
 import type { StoredThemeProposalRequest } from '@ark/chat/agent-themes.ts'
 import { formatThemeChoice, THEME_REFRESH_PROMPT } from '@ark/chat/agent-themes.ts'
 import type { McpInteractionAnswer } from '@ark/contracts'

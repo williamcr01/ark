@@ -1,12 +1,12 @@
 import { toast } from 'sonner'
 
+import type { ChatMessage } from '@ark/chat/messages.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
 import type {
-  ChatAttachment,
-  ChatMessage,
   EditorSelectionContext,
   SlideContext,
   ThemeSelectionContext,
-} from '@ark/chat/chat.ts'
+} from '@ark/chat/context.ts'
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
 import { withEditorSelectionJobFields } from '@/lib/editor/editor-selection-context'

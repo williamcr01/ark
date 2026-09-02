@@ -1,5 +1,6 @@
-import { normalizeEditorSelectionFields, parseGenerateMessages } from '@ark/chat/chat.ts'
-import type { ApiChatMessage } from '@ark/chat/chat.ts'
+import { normalizeEditorSelectionFields } from '@ark/chat/context.ts'
+import { parseGenerateMessages } from '@ark/chat/api-projection.ts'
+import type { ApiChatMessage } from '@ark/chat/api-projection.ts'
 import type { CreateGenerationJobInput } from '@ark/chat/generation-job.ts'
 import { ACTIVE_GENERATION_JOB_STATUSES } from '@ark/chat/generation-job.ts'
 import { type StartGenerationJobRequest } from '@ark/contracts'

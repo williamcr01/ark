@@ -3,7 +3,7 @@ import {
   DECK_READY_MESSAGE_TYPE,
   DECK_RUNTIME_ERROR_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-} from '@ark/deck-preview/deck-bridge.ts'
+} from '@ark/deck-preview'
 
 export const THUMBNAIL_SETTLE_REQUEST_MESSAGE_TYPE = 'ark:thumbnail-settle'
 export const THUMBNAIL_SETTLED_MESSAGE_TYPE = 'ark:thumbnail-settled'

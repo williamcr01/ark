@@ -1,8 +1,5 @@
-import {
-  buildAssistantMessageContent,
-  type ApiChatMessage,
-  type ChatMessagePart,
-} from '@ark/chat/chat.ts'
+import type { ChatMessagePart } from '@ark/chat/messages.ts'
+import { buildAssistantMessageContent, type ApiChatMessage } from '@ark/chat/api-projection.ts'
 import { projectAssistantTurnForPersistence } from '@ark/chat/chat-context.ts'
 import type {
   GenerationJob,

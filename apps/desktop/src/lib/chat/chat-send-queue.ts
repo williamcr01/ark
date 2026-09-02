@@ -1,4 +1,5 @@
-import type { ChatAttachment, EditorSelectionContext, SlideContext } from '@ark/chat/chat.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
+import type { EditorSelectionContext, SlideContext } from '@ark/chat/context.ts'
 
 /**
  * A user send parked while a generation turn is in flight.

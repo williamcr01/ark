@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import type { ChatAttachment } from '@ark/chat/chat.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
 import { toast } from 'sonner'
 
 import {

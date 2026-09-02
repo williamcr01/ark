@@ -8,9 +8,9 @@ import {
 import {
   MAX_MODEL_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
-  type ApiChatMessage,
   type ChatMessagePart,
-} from './chat.ts'
+} from './messages.ts'
+import type { ApiChatMessage } from './api-projection.ts'
 
 const toolStep = (
   stepIndex: number,

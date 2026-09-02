@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 /**
  * Merge server chat with local state, preserving only messages explicitly marked

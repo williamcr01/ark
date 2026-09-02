@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type MutableRefObject, type RefObject } from 'react'
 
-import type { DeckMetadata } from '@ark/deck-preview/deck-bridge.ts'
+import type { DeckMetadata } from '@ark/deck-preview'
 import type { DeckSlidePatch } from '@ark/deck-preview/slide-patch.ts'
 import {
   getPresentKeyboardTargetIndex,

@@ -1,5 +1,5 @@
 import { reportRuntimeError, type ReportRuntimeErrorInput } from '@/lib/api/runtime-error-api'
-import type { DeckRuntimeMode } from '@/lib/deck/deck-runtime'
+import type { DeckRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 
 export const MAX_RUNTIME_ERROR_REPORTS_PER_DECK_VERSION = 20

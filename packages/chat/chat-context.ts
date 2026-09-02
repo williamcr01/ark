@@ -3,14 +3,12 @@ import type { ModelMessage } from 'ai'
 import {
   MAX_MODEL_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
-  buildUserModelContent,
-  type ApiChatMessage,
   type ChatMessagePart,
-  type EditorSelectionContext,
   type JsonValue,
-  type SlideContext,
-  type WrapUserPrompt,
-} from './chat.ts'
+} from './messages.ts'
+import type { ApiChatMessage } from './api-projection.ts'
+import type { EditorSelectionContext, SlideContext } from './context.ts'
+import { buildUserModelContent, type WrapUserPrompt } from './model-messages.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength

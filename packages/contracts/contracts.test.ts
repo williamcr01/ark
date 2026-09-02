@@ -19,7 +19,7 @@ import {
 } from './decks.ts'
 import { healthResponseSchema, modelsResponseSchema } from './health.ts'
 import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
-import { MAX_EDITOR_SELECTIONS as chatEditorSelectionCap } from '@ark/chat/chat.ts'
+import { MAX_EDITOR_SELECTIONS as chatEditorSelectionCap } from '@ark/chat/context.ts'
 import {
   generationJobResponseSchema,
   MAX_EDITOR_SELECTIONS,

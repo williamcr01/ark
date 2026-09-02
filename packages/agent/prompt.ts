@@ -7,7 +7,7 @@ import {
   type EditorSelectionContext,
   type SlideContext,
   type ThemeSelectionContext,
-} from '@ark/chat/chat.ts'
+} from '@ark/chat/context.ts'
 
 function describeEditorSelection(selection: EditorSelectionContext): string {
   const lockGuidance = selection.locked

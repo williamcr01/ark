@@ -19,7 +19,8 @@ import {
 import { formatThemeFontPairingLabel } from '@/lib/chat/theme-fonts'
 import { cn } from '@/lib/ui/utils'
 import type { MessageDeliveryStatus } from '@/state/chat-store.ts'
-import type { ChatAttachment, ChatMessage, ChatMessagePart } from '@ark/chat/chat.ts'
+import type { ChatMessage, ChatMessagePart } from '@ark/chat/messages.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
 import {
   agentQuestionRequestSchema,
   parseAgentQuestionAnswerLines,

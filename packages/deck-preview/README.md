@@ -30,8 +30,8 @@ runtime/       builders prepend host constants onto the committed bundles
                generated/        esbuild IIFE string modules (committed artifacts)
 ```
 
-`deck-bridge.ts` is a re-export barrel so existing `@ark/deck-preview/deck-bridge.ts` importers do
-not change.
+Import the protocol and runtime from `@ark/deck-preview` (`index.ts`), or from
+`protocol/` and `runtime/` directly.
 
 Author the iframe runtimes as real TypeScript under `runtime-src/`. Host values (slide selectors,
 preview mode, handshake id, parent origin, message-type names, protocol version) arrive as the `C`

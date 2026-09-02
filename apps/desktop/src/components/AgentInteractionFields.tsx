@@ -1,6 +1,6 @@
 import { CableIcon, SparklesIcon } from 'lucide-react'
 
-import type { ChatMessageContext } from '@ark/chat/chat.ts'
+import type { ChatMessageContext } from '@ark/chat/context.ts'
 import type { McpInteractionAnswer } from '@ark/contracts'
 import { AgentQuestions } from '@/components/AgentQuestions'
 import { ThemePicker } from '@/components/ThemePicker'

@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 import { persistedMessageToChatMessage } from '@ark/chat/chat-thread.ts'
 import { appendDeckChatMessage, clearDeckChat, fetchAllDeckChat } from '@/lib/api/chat-api'
 import { reconcileChatMessages } from '@/lib/chat/chat-reconcile'

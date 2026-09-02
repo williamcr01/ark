@@ -15,9 +15,9 @@ stores/   how it is stored   deck, chat, workspace, asset, generation-job, previ
 fs/       where it lives     data dir, repo root, deck manifest
 ```
 
-`records/stored-deck.ts` and `records/document-history.ts` re-export Zod schemas from
-`@ark/deck` (`document/stored-deck.ts`, `document/document-history.ts`). The shapes are
-browser-safe document vocabulary; this package owns how they are persisted.
+Stored-deck and document-history Zod schemas live in `@ark/deck`
+(`document/stored-deck.ts`, `document/document-history.ts`). This package owns how
+those browser-safe shapes are persisted.
 
 An Ark workspace is one `.ark` SQLite file per deck. `stores/workspace/` holds the pieces:
 

@@ -46,7 +46,7 @@ import { cn } from '@/lib/ui/utils'
 import { useChatStore } from '@/state/chat-store.ts'
 import { useModelsStore } from '@/state/models-store.ts'
 import { useShellStore } from '@/state/shell-store.ts'
-import { MAX_CHAT_ATTACHMENT_BYTES } from '@ark/chat/chat.ts'
+import { MAX_CHAT_ATTACHMENT_BYTES } from '@ark/chat/attachments.ts'
 
 const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
   ComponentType<BorderBeamProps>
