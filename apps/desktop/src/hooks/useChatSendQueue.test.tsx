@@ -134,7 +134,7 @@ describe('useFlushQueuedChatSends', () => {
     expect(result.current.queue.items).toHaveLength(0)
   })
 
-  it('Send now while busy only reorders for the next idle flush', async () => {
+  it('Send now while busy reorders; idle dequeues into the send path in that order', async () => {
     const send = createSendMock()
     const { result, rerender } = renderHook(
       ({ busy }: { busy: boolean }) => {
@@ -166,9 +166,9 @@ describe('useFlushQueuedChatSends', () => {
     expect(send.mock.calls[1]?.[0]).toMatchObject({ id: 'a', text: 'first' })
   })
 
-  it('Send now while idle dispatches that item first', async () => {
+  it('Send now while idle dequeues that chip into the send path', async () => {
     const send = createSendMock()
-    const { result } = renderHook(
+    const { result, rerender } = renderHook(
       ({ busy }: { busy: boolean }) => {
         const queue = useChatSendQueue()
         const flush = useFlushQueuedChatSends(queue, busy, send)
@@ -182,17 +182,15 @@ describe('useFlushQueuedChatSends', () => {
       result.current.queue.enqueue(makeItem({ id: 'b', text: 'now' }))
     })
 
-    await act(async () => {
-      await result.current.flush.sendNow('b')
-    })
-    expect(send).not.toHaveBeenCalled()
+    rerender({ busy: false })
 
     await act(async () => {
       await result.current.flush.sendNow('b')
     })
 
-    // Still busy: Send now keeps that chip first without starting a turn.
-    expect(result.current.queue.items.map((item) => item.id)).toEqual(['b', 'a'])
+    await waitFor(() => {
+      expect(send.mock.calls.some((call) => call[0]?.id === 'b')).toBe(true)
+    })
   })
 
   it('Send all while busy leaves the queue for the idle flush, preserving order', async () => {

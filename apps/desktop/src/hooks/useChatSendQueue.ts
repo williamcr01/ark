@@ -95,12 +95,13 @@ export function useChatSendQueue(): UseChatSendQueueResult {
 }
 
 /**
- * Drains parked sends as sequential generation turns. Jobs have no steer
- * endpoint, so a busy run cannot accept a mid-turn follow-up — `sendNow`
- * while busy only reorders so that chip is first once the current turn ends.
+ * Drains parked sends through the normal `generateDeck` path once the current
+ * turn is idle. No Backend change: jobs are start/poll/cancel/retry only, so
+ * this is flush-on-idle rather than mid-turn steer.
  *
- * One queued send starts per idle moment. After that turn finishes, this hook
- * starts the next item so follow-ups land in order.
+ * Send now / Send all dequeue into `send` after busy clears (immediately when
+ * already idle). One queued send starts per idle moment; remaining chips follow
+ * in order after that turn ends.
  */
 export function useFlushQueuedChatSends(
   queue: UseChatSendQueueResult,
@@ -115,7 +116,18 @@ export function useFlushQueuedChatSends(
     sendRef.current = send
   }, [send])
 
-  const { items, moveToFront, takeNext } = queue
+  const { items, moveToFront, take, takeNext } = queue
+
+  const dispatch = useCallback(async (item: ChatSendQueueItem) => {
+    sendingRef.current = true
+    try {
+      await sendRef.current(item)
+      return true
+    } finally {
+      sendingRef.current = false
+      setPump((value) => value + 1)
+    }
+  }, [])
 
   const flushNext = useCallback(async () => {
     if (isBusy || sendingRef.current) {
@@ -127,15 +139,8 @@ export function useFlushQueuedChatSends(
       return false
     }
 
-    sendingRef.current = true
-    try {
-      await sendRef.current(next)
-      return true
-    } finally {
-      sendingRef.current = false
-      setPump((value) => value + 1)
-    }
-  }, [isBusy, takeNext])
+    return dispatch(next)
+  }, [dispatch, isBusy, takeNext])
 
   useEffect(() => {
     if (!isBusy && items.length > 0) {
@@ -145,14 +150,19 @@ export function useFlushQueuedChatSends(
 
   const sendNow = useCallback(
     async (id: string) => {
-      moveToFront(id)
-      if (isBusy) {
+      if (isBusy || sendingRef.current) {
+        moveToFront(id)
         return
       }
 
-      await flushNext()
+      const item = take(id)
+      if (!item) {
+        return
+      }
+
+      await dispatch(item)
     },
-    [flushNext, isBusy, moveToFront],
+    [dispatch, isBusy, moveToFront, take],
   )
 
   const sendAll = useCallback(async () => {

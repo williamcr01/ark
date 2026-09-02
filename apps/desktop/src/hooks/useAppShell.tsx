@@ -376,6 +376,7 @@ export function useAppShell() {
   const clearSendQueue = sendQueue.clear
   const dispatchQueuedSend = useCallback(
     async (item: ChatSendQueueItem) => {
+      // Flush-on-idle: dequeue into the normal generation send path. No job steer API.
       await generateDeck(item.text, item.attachments, {
         assetIds: item.assetIds,
         deckId: item.deckId,
