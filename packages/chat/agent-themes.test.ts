@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { APPROVED_DECK_FONT_IDS } from '@ark/runtime-registry/deck-font-registry.ts'
 
 import {
+  DEFAULT_THEME_FONT_PAIRING,
   deckFontIdSchema,
   formatThemeChoice,
+  parseStoredThemeProposalRequest,
   parseThemeChoiceId,
   parseThemeChoiceName,
   THEME_SAMPLE_HTML_MAX_CHARS,
@@ -114,15 +116,19 @@ describe('agent themes', () => {
     ).toBe(false)
   })
 
-  it('requires a registry font pairing on every theme', () => {
-    const parsed = themeCandidateSchema.safeParse({
-      id: 'midnight',
-      name: 'Midnight Editorial',
-      description: 'Dark',
-      sampleHtml,
+  it('backfills default fonts when replaying persisted proposals', () => {
+    const parsed = parseStoredThemeProposalRequest({
+      title: 'Pick a visual direction',
+      themes: [
+        { id: 'midnight', name: 'Midnight Editorial', description: 'Dark', sampleHtml },
+        { id: 'sunlit', name: 'Sunlit Studio', description: 'Warm', sampleHtml },
+        { id: 'signal', name: 'Signal Grid', description: 'Bold', sampleHtml },
+        { id: 'folio', name: 'Quiet Folio', description: 'Soft', sampleHtml },
+      ],
     })
 
-    expect(parsed.success).toBe(false)
+    expect(parsed?.themes.every((theme) => theme.fonts === DEFAULT_THEME_FONT_PAIRING)).toBe(true)
+    expect(themeProposalRequestSchema.safeParse(parsed).success).toBe(true)
   })
 
   it('rejects CSS stacks and unknown font ids', () => {

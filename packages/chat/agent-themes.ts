@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
-import { APPROVED_DECK_FONT_IDS } from '@ark/runtime-registry/deck-font-registry.ts'
+import {
+  APPROVED_DECK_FONT_IDS,
+  DEFAULT_DECK_FONT_IDS,
+} from '@ark/runtime-registry/deck-font-registry.ts'
 
 /** Per-sample budget kept under the 50 KiB transcript value cap for 4 themes. */
 export const THEME_SAMPLE_HTML_MAX_BYTES = 10 * 1024
@@ -17,7 +20,15 @@ export const themeFontPairingSchema = z.object({
   mono: deckFontIdSchema,
 })
 
-export const themeCandidateSchema = z.object({
+export type ThemeFontPairing = z.infer<typeof themeFontPairingSchema>
+
+export const DEFAULT_THEME_FONT_PAIRING: ThemeFontPairing = {
+  display: DEFAULT_DECK_FONT_IDS.display,
+  body: DEFAULT_DECK_FONT_IDS.body,
+  mono: DEFAULT_DECK_FONT_IDS.mono,
+}
+
+const themeCandidateBaseSchema = z.object({
   id: z
     .string()
     .min(1)
@@ -25,9 +36,6 @@ export const themeCandidateSchema = z.object({
     .regex(/^[a-z0-9_-]+$/),
   name: z.string().min(1).max(80),
   description: z.string().min(1).max(200),
-  fonts: themeFontPairingSchema.describe(
-    'Font pairing for this theme. Registry ids only (for example georgia, calibri, courier-new). Apply the same pairing in sampleHtml with data-ark-font-* markers.',
-  ),
   sampleHtml: z
     .string()
     .min(1)
@@ -37,14 +45,39 @@ export const themeCandidateSchema = z.object({
     ),
 })
 
+export const themeCandidateSchema = themeCandidateBaseSchema.extend({
+  fonts: themeFontPairingSchema.describe(
+    'Font pairing for this theme. Registry ids only (for example georgia, calibri, courier-new). Apply the same pairing in sampleHtml with data-ark-font-* markers.',
+  ),
+})
+
 export const themeProposalRequestSchema = z.object({
   title: z.string().min(1).max(120),
   themes: z.array(themeCandidateSchema).length(4),
 })
 
-export type ThemeFontPairing = z.infer<typeof themeFontPairingSchema>
+const themeCandidateStoredSchema = themeCandidateBaseSchema
+  .extend({
+    fonts: themeFontPairingSchema.optional(),
+  })
+  .transform((candidate) => ({
+    ...candidate,
+    fonts: candidate.fonts ?? DEFAULT_THEME_FONT_PAIRING,
+  }))
+
+/** Lenient parser for persisted tool-call input that predates the fonts contract. */
+export const themeProposalRequestStoredSchema = z.object({
+  title: z.string().min(1).max(120),
+  themes: z.array(themeCandidateStoredSchema).length(4),
+})
+
 export type ThemeCandidate = z.infer<typeof themeCandidateSchema>
 export type ThemeProposalRequest = z.infer<typeof themeProposalRequestSchema>
+
+export function parseStoredThemeProposalRequest(input: unknown): ThemeProposalRequest | null {
+  const parsed = themeProposalRequestStoredSchema.safeParse(input)
+  return parsed.success ? parsed.data : null
+}
 
 export function formatThemeChoice(request: ThemeProposalRequest, themeId: string) {
   const theme = request.themes.find((entry) => entry.id === themeId)

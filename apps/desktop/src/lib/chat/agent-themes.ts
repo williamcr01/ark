@@ -1,6 +1,6 @@
 import {
+  parseStoredThemeProposalRequest,
   parseThemeChoiceId,
-  themeProposalRequestSchema,
   type ThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
 import type { ChatMessage } from '@ark/chat/chat.ts'
@@ -9,8 +9,8 @@ export function getThemeProposalRequest(message: ChatMessage): ThemeProposalRequ
   if (message.role !== 'assistant') return null
   for (const part of message.parts ?? []) {
     if (part.type !== 'tool-call' || part.toolName !== 'propose_themes') continue
-    const parsed = themeProposalRequestSchema.safeParse(part.input)
-    if (parsed.success) return parsed.data
+    const parsed = parseStoredThemeProposalRequest(part.input)
+    if (parsed) return parsed
   }
   return null
 }

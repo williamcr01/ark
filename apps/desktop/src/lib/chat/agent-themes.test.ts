@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ChatMessage } from '@ark/chat/chat.ts'
+import { DEFAULT_THEME_FONT_PAIRING } from '@ark/chat/agent-themes.ts'
 import {
   findThemeChoiceAfter,
   getThemeProposalRequest,
@@ -56,7 +57,10 @@ describe('agent theme chat helpers', () => {
         },
       ],
     }
-    expect(getThemeProposalRequest(withoutFonts)).toBeNull()
+    expect(getThemeProposalRequest(withoutFonts)?.themes[0]?.fonts).toEqual(
+      DEFAULT_THEME_FONT_PAIRING,
+    )
+    expect(getThemeProposalRequest(withoutFonts)?.themes[0]?.sampleHtml).toBe(sampleHtml)
   })
 
   it('only suppresses parseable theme choice messages', () => {
