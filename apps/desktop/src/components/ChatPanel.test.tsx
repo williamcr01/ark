@@ -815,25 +815,20 @@ describe('ChatPanel submit control', () => {
         <ChatPanel
           {...baseProps}
           generationState={{ ...baseProps.generationState, canGenerate: false }}
-          models={[
-            {
-              id: 'openai:gpt-5.6-luna',
-              provider: 'openai',
-              modelId: 'gpt-5.6-luna',
-              name: 'GPT-5.6 Luna',
-              available: false,
-              unavailableReason: 'missing_api_key',
-              reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
-              defaultReasoningEffort: 'medium',
-              supportsAttachments: true,
-            },
-          ]}
-          selectedModel="openai:gpt-5.6-luna"
+          models={[]}
+          selectedModel=""
         />
       </TooltipProvider>,
     )
 
     expect(screen.queryByText('API key required')).not.toBeInTheDocument()
+    expect(screen.queryByText('No API key')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select model' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent(
+      'Add an API key in Settings',
+    )
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
   })
 
   it('keeps reasoning effort inside the model picker', () => {

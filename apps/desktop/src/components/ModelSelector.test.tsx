@@ -27,28 +27,6 @@ const models: AvailableModel[] = [
     supportsAttachments: true,
   },
   {
-    id: 'openai:gpt-5.5',
-    provider: 'openai',
-    modelId: 'gpt-5.5',
-    name: 'GPT-5.5',
-    available: false,
-    unavailableReason: 'missing_api_key',
-    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'],
-    defaultReasoningEffort: 'medium',
-    supportsAttachments: true,
-  },
-  {
-    id: 'anthropic:claude-sonnet-5',
-    provider: 'anthropic',
-    modelId: 'claude-sonnet-5',
-    name: 'Claude Sonnet 5',
-    available: false,
-    unavailableReason: 'missing_api_key',
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-    defaultReasoningEffort: 'high',
-    supportsAttachments: true,
-  },
-  {
     id: 'google:gemini-3.5-flash',
     provider: 'google',
     modelId: 'gemini-3.5-flash',
@@ -57,6 +35,23 @@ const models: AvailableModel[] = [
     reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
     defaultReasoningEffort: 'medium',
     supportsAttachments: true,
+  },
+  {
+    id: 'openrouter:anthropic/claude-3.5-sonnet',
+    provider: 'openrouter',
+    modelId: 'anthropic/claude-3.5-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    available: true,
+    reasoningEfforts: ['low', 'medium', 'high'],
+    defaultReasoningEffort: 'medium',
+    supportsAttachments: true,
+  },
+  {
+    id: 'openrouter:meta-llama/llama-3.1-8b-instruct',
+    provider: 'openrouter',
+    modelId: 'meta-llama/llama-3.1-8b-instruct',
+    available: true,
+    supportsAttachments: false,
   },
   {
     id: 'openai:text-only-fixture',
@@ -92,12 +87,15 @@ describe('ModelSelector', () => {
 
     const menu = screen.getByRole('menu')
     expect(menu.querySelectorAll('[data-provider-logo="openai"]')).toHaveLength(1)
-    expect(menu.querySelectorAll('[data-provider-logo="anthropic"]')).toHaveLength(1)
     expect(menu.querySelectorAll('[data-provider-logo="google"]')).toHaveLength(1)
     expect(screen.getByText('OpenAI · 3 ready')).toBeInTheDocument()
-    expect(screen.getByText('Anthropic · 0 ready')).toBeInTheDocument()
     expect(screen.getByText('Google · 1 ready')).toBeInTheDocument()
-    expect(screen.getAllByText('No API key').length).toBeGreaterThan(0)
+    expect(screen.getByText('OpenRouter · 2 ready')).toBeInTheDocument()
+    expect(screen.getByText('Claude 3.5 Sonnet')).toBeInTheDocument()
+    expect(screen.getByText('meta-llama/llama-3.1-8b-instruct')).toBeInTheDocument()
+    expect(screen.queryByText('No API key')).not.toBeInTheDocument()
+    expect(screen.queryByText(/missing_api_key/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Anthropic · 0 ready')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('menuitem', { name: /Gemini 3\.5 Flash\s*High/i }))
 
@@ -230,7 +228,7 @@ describe('ModelSelector', () => {
     expect(onSelect).toHaveBeenCalledWith('openai:text-only-fixture')
   })
 
-  it('does not select unavailable models', async () => {
+  it('does not render missing_api_key ghost rows', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
 
@@ -245,11 +243,18 @@ describe('ModelSelector', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select model' }))
 
-    const unavailable = screen.getByText('Claude Sonnet 5').closest('[data-disabled]')
-    expect(unavailable).toBeTruthy()
+    expect(screen.queryByText('No API key')).not.toBeInTheDocument()
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0)
+  })
 
-    await user.click(screen.getByText('Claude Sonnet 5'))
-    expect(onSelect).not.toHaveBeenCalled()
+  it('disables the picker and shows an empty state when the catalog has no models', () => {
+    render(<ModelSelector models={[]} onSelect={vi.fn()} value="" />)
+
+    const trigger = screen.getByRole('button', { name: 'Select model' })
+    expect(trigger).toBeDisabled()
+    expect(trigger).toHaveTextContent('Add an API key in Settings')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
   it('shows loading placeholder and model · effort on the trigger', () => {

@@ -412,6 +412,7 @@ export type AppTitleBarProps = {
   exportLint?: DeckHtmlExportLintEntry[]
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onPptxUpload: (event: ChangeEvent<HTMLInputElement>) => void
+  catalogWarnings?: string[]
   onCredentialsChanged?: () => void | Promise<void>
   onNewDeck: () => void
   onOpenWorkspace: () => void
@@ -426,6 +427,8 @@ export type AppTitleBarProps = {
   onUploadClick: () => void
   onPptxImportClick: () => void
 }
+
+const EMPTY_CATALOG_WARNINGS: string[] = []
 
 export function AppTitleBar({
   variant = 'editor',
@@ -443,6 +446,7 @@ export function AppTitleBar({
   exportLint = [],
   onHtmlUpload,
   onPptxUpload,
+  catalogWarnings = EMPTY_CATALOG_WARNINGS,
   onCredentialsChanged = () => undefined,
   onNewDeck,
   onOpenWorkspace,
@@ -713,6 +717,7 @@ export function AppTitleBar({
 
       <DesktopSettingsDialog
         appearancePreference={appearancePreference}
+        catalogWarnings={catalogWarnings}
         initialTab={settingsTab}
         onAgentInteractionsInModalChange={onAgentInteractionsInModalChange}
         onAppearanceChange={onAppearanceChange}

@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -6,13 +6,13 @@ import {
   formatModelLabel,
   formatModelName,
   formatProviderLabel,
-  formatUnavailableBadge,
   isTransientModelLoadError,
   pickAvailableFallbackModel,
   resolveSelectedModel,
   useAvailableModels,
   type AvailableModel,
 } from './useAvailableModels'
+import { getDesktopSettings, resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
 
 const healthResponse = {
   ok: true,
@@ -141,6 +141,10 @@ describe('useAvailableModels startup loading', () => {
     expect(result.current.error).toBe('')
     expect(result.current.apiKeyStatus).toBe('valid')
     expect(result.current.models).toHaveLength(1)
+    expect([...new Set(fetchMock.mock.calls.map(([input]) => String(input)))].sort()).toEqual([
+      '/api/health',
+      '/api/models',
+    ])
   })
 
   it('keeps checking status when startup retries are exhausted', async () => {
@@ -159,6 +163,234 @@ describe('useAvailableModels startup loading', () => {
     expect(result.current.error).toBe('The API returned an unreadable response.')
     expect(result.current.apiKeyStatus).toBe('checking')
     expect(result.current.models).toEqual([])
+    expect(result.current.selectedModel).toBe('')
+    expect(getDesktopSettings().selectedModel).toBeNull()
+  })
+
+  it('clears the stored selection when the catalog is empty', async () => {
+    resetDesktopSettingsForTests({ selectedModel: 'openai:gpt-5.6-luna' })
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse({
+          ...healthResponse,
+          apiKey: { configured: false },
+          providers: {
+            openai: { configured: false },
+            anthropic: { configured: false },
+            google: { configured: false },
+            openrouter: { configured: false },
+          },
+        })
+      }
+
+      return jsonResponse({ defaultModel: null, models: [], warnings: [] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.models).toEqual([])
+    expect(result.current.defaultModel).toBeNull()
+    expect(result.current.selectedModel).toBe('')
+    expect(result.current.canGenerate).toBe(false)
+    expect(result.current.apiKeyStatus).toBe('missing')
+    expect(getDesktopSettings().selectedModel).toBeNull()
+
+    act(() => {
+      result.current.setSelectedModel('openai:gpt-5.6-luna')
+    })
+    expect(result.current.selectedModel).toBe('')
+    expect(result.current.canGenerate).toBe(false)
+    expect(getDesktopSettings().selectedModel).toBeNull()
+  })
+
+  it('clears a stale stored id after the catalog loads', async () => {
+    resetDesktopSettingsForTests({ selectedModel: 'openai:gpt-gone' })
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse(healthResponse)
+      }
+
+      return jsonResponse(modelsResponse)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.selectedModel).toBe('openai:gpt-5.6-luna')
+    expect(getDesktopSettings().selectedModel).toBe('openai:gpt-5.6-luna')
+  })
+
+  it('surfaces catalog warnings without adding missing_api_key rows', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse({
+          ...healthResponse,
+          providers: {
+            ...healthResponse.providers,
+            openrouter: { configured: true },
+          },
+        })
+      }
+
+      return jsonResponse({
+        defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+        models: [
+          {
+            id: 'openrouter:anthropic/claude-3.5-sonnet',
+            provider: 'openrouter',
+            modelId: 'anthropic/claude-3.5-sonnet',
+            name: 'Claude 3.5 Sonnet',
+            available: true,
+            reasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+            supportsAttachments: true,
+          },
+        ],
+        warnings: ['Could not list OpenAI models.'],
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.warnings).toEqual(['Could not list OpenAI models.'])
+    expect(result.current.models).toHaveLength(1)
+    expect(result.current.models[0]?.provider).toBe('openrouter')
+    expect(
+      result.current.models.some((entry) => entry.unavailableReason === 'missing_api_key'),
+    ).toBe(false)
+    expect(result.current.selectedModel).toBe('openrouter:anthropic/claude-3.5-sonnet')
+    expect(result.current.canGenerate).toBe(true)
+  })
+
+  it('clears a previously selected model after a credential change empties the catalog', async () => {
+    resetDesktopSettingsForTests({ selectedModel: 'openai:gpt-5.6-luna' })
+    let catalogEmpty = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse(
+          catalogEmpty
+            ? {
+                ...healthResponse,
+                apiKey: { configured: false },
+                providers: {
+                  openai: { configured: false },
+                  anthropic: { configured: false },
+                  google: { configured: false },
+                  openrouter: { configured: false },
+                },
+              }
+            : healthResponse,
+        )
+      }
+
+      return jsonResponse(
+        catalogEmpty ? { defaultModel: null, models: [], warnings: [] } : modelsResponse,
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect(result.current.selectedModel).toBe('openai:gpt-5.6-luna')
+
+    catalogEmpty = true
+    await result.current.loadModels()
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe('')
+    })
+    expect(result.current.models).toEqual([])
+    expect(result.current.canGenerate).toBe(false)
+    expect(getDesktopSettings().selectedModel).toBeNull()
+  })
+
+  it('falls back after a credential change removes the selected model from the catalog', async () => {
+    resetDesktopSettingsForTests({ selectedModel: 'openrouter:anthropic/claude-3.5-sonnet' })
+    let includeOpenRouter = true
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse(
+          includeOpenRouter
+            ? {
+                ...healthResponse,
+                providers: {
+                  ...healthResponse.providers,
+                  openrouter: { configured: true },
+                },
+              }
+            : healthResponse,
+        )
+      }
+
+      if (includeOpenRouter) {
+        return jsonResponse({
+          defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+          models: [
+            {
+              id: 'openrouter:anthropic/claude-3.5-sonnet',
+              provider: 'openrouter',
+              modelId: 'anthropic/claude-3.5-sonnet',
+              name: 'Claude 3.5 Sonnet',
+              available: true,
+              supportsAttachments: true,
+            },
+            modelsResponse.models[0],
+          ],
+          warnings: [],
+        })
+      }
+
+      return jsonResponse(modelsResponse)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect(result.current.selectedModel).toBe('openrouter:anthropic/claude-3.5-sonnet')
+
+    includeOpenRouter = false
+    await result.current.loadModels()
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe('openai:gpt-5.6-luna')
+    })
+    expect(result.current.models.map((model) => model.id)).toEqual(['openai:gpt-5.6-luna'])
+    expect(result.current.canGenerate).toBe(true)
+    expect(getDesktopSettings().selectedModel).toBe('openai:gpt-5.6-luna')
+    expect([...new Set(fetchMock.mock.calls.map(([input]) => String(input)))].sort()).toEqual([
+      '/api/health',
+      '/api/models',
+    ])
   })
 })
 
@@ -221,17 +453,7 @@ describe('pickAvailableFallbackModel', () => {
   })
 
   it('returns null when no models are available', () => {
-    const models: AvailableModel[] = [
-      model({
-        id: 'openai:gpt-5.6-luna',
-        provider: 'openai',
-        modelId: 'gpt-5.6-luna',
-        available: false,
-        unavailableReason: 'missing_api_key',
-      }),
-    ]
-
-    expect(pickAvailableFallbackModel(models)).toBeNull()
+    expect(pickAvailableFallbackModel([])).toBeNull()
   })
 })
 
@@ -242,8 +464,7 @@ describe('resolveSelectedModel', () => {
       provider: 'openai',
       modelId: 'gpt-5.6-sol',
       name: 'GPT-5.6 Sol',
-      available: false,
-      unavailableReason: 'missing_api_key',
+      available: true,
     }),
     model({
       id: 'openai:gpt-5.6-luna',
@@ -266,6 +487,13 @@ describe('resolveSelectedModel', () => {
       name: 'Gemini 3.5 Flash',
       available: true,
     }),
+    model({
+      id: 'openrouter:anthropic/claude-3.5-sonnet',
+      provider: 'openrouter',
+      modelId: 'anthropic/claude-3.5-sonnet',
+      name: 'Claude 3.5 Sonnet',
+      available: true,
+    }),
   ]
 
   it('keeps the stored model when it is available', () => {
@@ -278,27 +506,43 @@ describe('resolveSelectedModel', () => {
     expect(resolveSelectedModel(models, null, 'openai:gpt-5.6-luna')).toBe('openai:gpt-5.6-luna')
   })
 
-  it('falls back when the default model has no API key', () => {
-    expect(resolveSelectedModel(models, null, 'openai:gpt-5.6-sol')).toBe(
+  it('falls back when the default model is missing from the catalog', () => {
+    expect(resolveSelectedModel(models, null, 'openai:gpt-missing')).toBe(
       'anthropic:claude-haiku-4-5',
     )
   })
 
-  it('falls back when the stored model is unavailable', () => {
-    expect(resolveSelectedModel(models, 'openai:gpt-5.6-sol', 'openai:gpt-5.6-sol')).toBe(
-      'anthropic:claude-haiku-4-5',
-    )
-  })
-
-  it('uses the available default when the stored model is unavailable', () => {
-    expect(resolveSelectedModel(models, 'openai:gpt-5.6-sol', 'openai:gpt-5.6-luna')).toBe(
+  it('clears a stale stored id that is no longer in the catalog', () => {
+    expect(resolveSelectedModel(models, 'openai:gpt-gone', 'openai:gpt-5.6-luna')).toBe(
       'openai:gpt-5.6-luna',
     )
+  })
+
+  it('skips an unavailable stored model still present in the payload', () => {
+    const withGhost: AvailableModel[] = [
+      model({
+        id: 'openai:gpt-ghost',
+        provider: 'openai',
+        modelId: 'gpt-ghost',
+        available: false,
+        unavailableReason: 'missing_api_key',
+      }),
+      ...models,
+    ]
+
+    expect(resolveSelectedModel(withGhost, 'openai:gpt-ghost', 'openai:gpt-5.6-luna')).toBe(
+      'openai:gpt-5.6-luna',
+    )
+  })
+
+  it('clears the selection when the catalog is empty', () => {
+    expect(resolveSelectedModel([], 'openai:gpt-5.6-luna', null)).toBe('')
+    expect(resolveSelectedModel([], 'openai:gpt-5.6-luna', 'openai:gpt-5.6-luna')).toBe('')
   })
 })
 
 describe('formatModelLabel', () => {
-  it('marks missing API keys and other unavailable models', () => {
+  it('uses the display name when present, otherwise the catalog id', () => {
     expect(
       formatModelLabel(
         model({
@@ -306,29 +550,26 @@ describe('formatModelLabel', () => {
           provider: 'openai',
           modelId: 'gpt-5.6-luna',
           name: 'GPT-5.6 Luna',
-          available: false,
-          unavailableReason: 'missing_api_key',
+          available: true,
         }),
       ),
-    ).toBe('openai · GPT-5.6 Luna (no API key)')
+    ).toBe('openai · GPT-5.6 Luna')
 
     expect(
       formatModelLabel(
         model({
-          id: 'openai:gpt-5.6-sol',
-          provider: 'openai',
-          modelId: 'gpt-5.6-sol',
-          name: 'GPT-5.6 Sol',
-          available: false,
-          unavailableReason: 'not_found',
+          id: 'openrouter:meta-llama/llama-3.1-8b-instruct',
+          provider: 'openrouter',
+          modelId: 'meta-llama/llama-3.1-8b-instruct',
+          available: true,
         }),
       ),
-    ).toBe('openai · GPT-5.6 Sol (unavailable)')
+    ).toBe('openrouter:meta-llama/llama-3.1-8b-instruct')
   })
 })
 
 describe('model selector display helpers', () => {
-  it('formats names, provider labels, and unavailable badges', () => {
+  it('formats names and provider labels, including OpenRouter', () => {
     const available = model({
       id: 'openai:gpt-5.6-luna',
       provider: 'openai',
@@ -339,25 +580,8 @@ describe('model selector display helpers', () => {
 
     expect(formatModelName(available)).toBe('GPT-5.6 Luna')
     expect(formatModelName(model({ ...available, name: undefined }))).toBe('gpt-5.6-luna')
+    expect(formatModelName(model({ ...available, name: '  ' }))).toBe('gpt-5.6-luna')
     expect(formatProviderLabel('anthropic')).toBe('Anthropic')
-    expect(formatUnavailableBadge(available)).toBeNull()
-    expect(
-      formatUnavailableBadge(
-        model({
-          ...available,
-          available: false,
-          unavailableReason: 'missing_api_key',
-        }),
-      ),
-    ).toBe('No API key')
-    expect(
-      formatUnavailableBadge(
-        model({
-          ...available,
-          available: false,
-          unavailableReason: 'not_found',
-        }),
-      ),
-    ).toBe('Unavailable')
+    expect(formatProviderLabel('openrouter')).toBe('OpenRouter')
   })
 })
