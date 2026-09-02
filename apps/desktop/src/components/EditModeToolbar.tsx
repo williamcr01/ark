@@ -16,30 +16,16 @@ import { Badge } from '@/components/ui/badge'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DeckRestoreHistoryMenu } from '@/components/DeckRestoreHistoryMenu'
+import { useManualEditCommits } from '@/hooks/useManualEditCommits'
 import type { EditorTool } from '@ark/editor-runtime'
 import type { ImageFitMode } from '@ark/deck/document/image.ts'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { cn } from '@/lib/ui/utils'
+import { useChatStore } from '@/state/chat-store.ts'
+import { useDeckStore } from '@/state/deck-store.ts'
+import { useEditorStore } from '@/state/editor-store.ts'
 
-export type EditModeToolbarProps = {
-  activeTool: EditorTool
-  /** Orthogonal editor capability flags (grouped to keep the props surface small). */
-  state: {
-    canEditText: boolean
-    canRedo: boolean
-    canUndo: boolean
-    hasDeck: boolean
-    hasSelection: boolean
-    isGenerating: boolean
-    isSaving: boolean
-    selectedImage: boolean
-    selectionLocked: boolean
-    selectionManaged: boolean
-    selectionUnsafe?: boolean
-    textEditActive: boolean
-  }
-  imageAlt?: string
-  imageFit?: ImageFitMode
+export type EditModeToolbarActions = {
   onBringForward?: () => void
   onDelete?: () => void
   onDuplicate?: () => void
@@ -47,12 +33,24 @@ export type EditModeToolbarProps = {
   onImageAltChange?: (alt: string) => void
   onImageFitChange?: (fit: ImageFitMode) => void
   onPickImage?: () => void
-  onRedo?: () => void
   onSendBackward?: () => void
   onToolChange: (tool: EditorTool) => void
-  onUndo?: () => void
   onRestoreHistory?: (revision: number) => Promise<void>
-  deckId?: string | null
+}
+
+type EditModeToolbarProps = {
+  state: {
+    canEditText: boolean
+    hasDeck: boolean
+    hasSelection: boolean
+    selectedImage: boolean
+    selectionLocked: boolean
+    selectionManaged: boolean
+    selectionUnsafe?: boolean
+  }
+  imageAlt?: string
+  imageFit?: ImageFitMode
+  actions: EditModeToolbarActions
 }
 
 type ToolbarButtonProps = {
@@ -103,38 +101,42 @@ function ToolbarButton({
 }
 
 export function EditModeToolbar({
-  activeTool,
   state,
   imageAlt = '',
   imageFit = 'contain',
-  onBringForward,
-  onDelete,
-  onDuplicate,
-  onEditText,
-  onImageAltChange,
-  onImageFitChange,
-  onPickImage,
-  onRedo,
-  onSendBackward,
-  onToolChange,
-  onUndo,
-  onRestoreHistory,
-  deckId = null,
+  actions,
 }: EditModeToolbarProps) {
   const {
+    onBringForward,
+    onDelete,
+    onDuplicate,
+    onEditText,
+    onImageAltChange,
+    onImageFitChange,
+    onPickImage,
+    onSendBackward,
+    onToolChange,
+    onRestoreHistory,
+  } = actions
+  const {
     canEditText,
-    canRedo,
-    canUndo,
     hasDeck,
     hasSelection,
-    isGenerating,
-    isSaving,
     selectedImage,
     selectionLocked,
     selectionManaged,
     selectionUnsafe = false,
-    textEditActive,
   } = state
+  const deckId = useDeckStore((store) => store.deckId)
+  const isSaving = useDeckStore((store) => store.isPatching || store.isSaving)
+  const isGenerating = useChatStore((store) => store.isGenerating)
+  const activeTool = useEditorStore((store) => store.selectedTool)
+  const textEditActive = useEditorStore((store) => store.textEditActive)
+  const edits = useManualEditCommits()
+  const canUndo = edits.canUndo
+  const canRedo = edits.canRedo
+  const onUndo = edits.handleUndoEdit
+  const onRedo = edits.handleRedoEdit
   const toolbarDisabled = !hasDeck || isGenerating || isSaving
   const canModifySelection =
     hasSelection && !selectionLocked && !selectionUnsafe && !toolbarDisabled && !textEditActive
