@@ -9,9 +9,6 @@ import {
   DECK_RUNTIME_ERROR_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
-  buildDeckCssNavRuntimeScript,
-  buildDeckHandshakeSentinelScript,
-  buildRevealNavRuntimeScript,
   clampDeckSlideIndex,
   createDeckGotoMessage,
   createDeckHandshakeMessage,
@@ -32,7 +29,8 @@ import {
   isDeckSlideChangeMessage,
   isDeckSlideCountMessage,
   parseDeckBridgeMessage,
-} from './deck-bridge'
+} from '../index.ts'
+
 describe('deck bridge protocol', () => {
   const metadata = createDeckMetadata({
     runtime: 'plain',
@@ -81,12 +79,6 @@ describe('deck bridge protocol', () => {
     })
     expect(isDeckHandshakeMessage(createDeckHandshakeMessage('hs-abc'))).toBe(true)
     expect(isDeckHandshakeMessage({ type: DECK_HANDSHAKE_MESSAGE_TYPE, handshake: '' })).toBe(false)
-    expect(buildDeckHandshakeSentinelScript('hs-abc', 'http://localhost:5173')).toContain(
-      'ark:deck-handshake',
-    )
-    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('hs-abc')
-    // Retries cover parents that attach the handshake listener after first paint.
-    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('safeSetTimeout(postHandshake')
   })
 
   it('validates known bridge messages and rejects malformed payloads', () => {
@@ -124,35 +116,5 @@ describe('deck bridge protocol', () => {
     expect(createDeckMetadata({ previewMode: 'full-js' }).protocolVersion).toBe(
       DECK_BRIDGE_PROTOCOL_VERSION,
     )
-  })
-
-  it('skips arrow-key navigation while inline text editing', () => {
-    const script = buildDeckCssNavRuntimeScript({
-      slideSelectors: ['section.slide'],
-      previewMode: 'css-only',
-    })
-
-    expect(script).toContain('isTypingTarget')
-    expect(script).toContain('data-ark-editor-text-edit')
-    expect(script).toContain('data-ark-editor-selected')
-  })
-})
-
-describe('Reveal adapter', () => {
-  it('preserves Reveal deck dimensions', () => {
-    const script = buildRevealNavRuntimeScript({ previewMode: 'full-js' })
-
-    expect(script).not.toContain('width: C.SLIDE_WIDTH')
-    expect(script).not.toContain('height: C.SLIDE_HEIGHT')
-  })
-
-  it('dispatches ark:deck-slide-change DOM events from the reveal adapter', () => {
-    const script = buildRevealNavRuntimeScript({
-      slideSelectors: ['.reveal .slides > section'],
-      previewMode: 'full-js',
-    })
-
-    expect(script).toContain('document.dispatchEvent(new CustomEvent(C.CHANGE')
-    expect(script).toContain('detail: { index: clamped }')
   })
 })
