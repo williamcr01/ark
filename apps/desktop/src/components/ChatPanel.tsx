@@ -81,6 +81,7 @@ import {
   type ThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
 import { formatThemeFontPairingLabel } from '@/lib/chat/theme-fonts'
+import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import {
   findAskUserAnswerAfter,
