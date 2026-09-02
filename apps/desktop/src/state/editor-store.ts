@@ -127,6 +127,8 @@ export type EditorStoreState = {
   history: HistoryState
   isStripOpen: boolean
   selectedTool: EditorTool
+  textEditActive: boolean
+  activeSlideIndex: number
 }
 
 export type EditorStoreActions = {
@@ -140,6 +142,8 @@ export type EditorStoreActions = {
   setContextSlides: (update: StateUpdate<ContextSlideEntry[]>) => void
   setSelectedTool: (selectedTool: EditorTool) => void
   setStripOpen: (update: StateUpdate<boolean>) => void
+  setTextEditActive: (textEditActive: boolean) => void
+  setActiveSlideIndex: (update: StateUpdate<number>) => void
   syncContextSlides: (slides: SlideHtmlEntry[]) => void
   toggleContextSlide: (
     slideIndex: number,
@@ -157,6 +161,8 @@ const initialState: EditorStoreState = {
   history: EMPTY_HISTORY_STATE,
   isStripOpen: true,
   selectedTool: 'select',
+  textEditActive: false,
+  activeSlideIndex: 0,
 }
 
 export const useEditorStore = create<EditorStore>()((set, get) => ({
@@ -188,12 +194,22 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
     set({ history: EMPTY_HISTORY_STATE })
   },
   select: (selection, selections = []) => {
-    set((state) => ({
-      editorSelection: sameSelection(state.editorSelection, selection)
-        ? state.editorSelection
-        : selection,
-      editorSelections: selections,
-    }))
+    set((state) => {
+      const samePrimary = sameSelection(state.editorSelection, selection)
+      const sameSet =
+        state.editorSelections.length === selections.length &&
+        state.editorSelections.every((item, index) =>
+          sameSelection(item, selections[index] ?? null),
+        )
+      if (samePrimary && sameSet) {
+        return state
+      }
+
+      return {
+        editorSelection: samePrimary ? state.editorSelection : selection,
+        editorSelections: sameSet ? state.editorSelections : selections,
+      }
+    })
   },
   setContextSlides: (update) => {
     set((state) => ({ contextSlides: resolveUpdate(state.contextSlides, update) }))
@@ -203,6 +219,12 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
   },
   setStripOpen: (update) => {
     set((state) => ({ isStripOpen: resolveUpdate(state.isStripOpen, update) }))
+  },
+  setTextEditActive: (textEditActive) => {
+    set({ textEditActive })
+  },
+  setActiveSlideIndex: (update) => {
+    set((state) => ({ activeSlideIndex: resolveUpdate(state.activeSlideIndex, update) }))
   },
   syncContextSlides: (slides) => {
     set((state) => ({ contextSlides: resolveContextSlides(state.contextSlides, slides) }))
