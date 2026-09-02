@@ -250,7 +250,7 @@ describe('buildPreviewDocument', () => {
     expect(html).toContain('data-ark-preview-reveal')
     expect(html).toContain('new Chart(')
     expect(html).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
-    expect(html).toContain('document.dispatchEvent(new CustomEvent(C.CHANGE')
+    expect(html).toMatch(/document\.dispatchEvent\(\s*new CustomEvent\(C\.CHANGE/)
     expect(csp).toContain("'unsafe-inline'")
     expect(csp).toContain('chart.js/4.5.1/chart.umd.min.js')
   })
