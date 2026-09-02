@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import * as generationJobApi from './generation-job-api'
 import {
   fetchGenerationJob,
   isActiveGenerationJobStatus,
@@ -9,6 +10,17 @@ import {
 describe('generation-job-api', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('keeps generation jobs to start, poll, cancel, and retry — no mid-turn steer', () => {
+    expect(Object.keys(generationJobApi).sort()).toEqual([
+      'cancelGenerationJob',
+      'fetchGenerationJob',
+      'isActiveGenerationJobStatus',
+      'isFailedGenerationJobStatus',
+      'retryGenerationJob',
+      'startGenerationJob',
+    ])
   })
 
   it('starts and reads generation jobs', async () => {

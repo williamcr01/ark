@@ -1069,3 +1069,105 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByText('Updated the deck.')).toBeInTheDocument()
   })
 })
+
+describe('ChatPanel send queue', () => {
+  const queuedSends = [
+    { id: 'q1', text: 'make it darker', attachmentCount: 0 },
+    { id: 'q2', text: 'add a timeline', attachmentCount: 0 },
+  ]
+
+  it('submits immediately when idle', async () => {
+    const onPromptSubmit = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel {...baseProps} input="make slides" onPromptSubmit={onPromptSubmit} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(onPromptSubmit).toHaveBeenCalled()
+  })
+
+  it('keeps the composer writable and Stop available while generating', async () => {
+    const onPromptSubmit = vi.fn()
+    const onCancelGeneration = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <ChatPanel
+          {...baseProps}
+          generationState={{ ...baseProps.generationState, isGenerating: true }}
+          generationStatus="running"
+          input="queue this"
+          onCancelGeneration={onCancelGeneration}
+          onPromptSubmit={onPromptSubmit}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByPlaceholderText(/Queue a follow-up/i)).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(onPromptSubmit).toHaveBeenCalled()
+    expect(onCancelGeneration).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
+    expect(onCancelGeneration).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['sidebar', 'home'] as const)(
+    'shows queued chips with Send now / Send all in the %s shell',
+    async (layout) => {
+      const onQueuedSendAll = vi.fn()
+      const onQueuedSendDismiss = vi.fn()
+      const onQueuedSendEdit = vi.fn()
+      const onQueuedSendNow = vi.fn()
+      const onCancelGeneration = vi.fn()
+      const user = userEvent.setup()
+
+      render(
+        <TooltipProvider>
+          <ChatPanel
+            {...baseProps}
+            generationState={{ ...baseProps.generationState, isGenerating: true }}
+            generationStatus="running"
+            layout={layout}
+            onCancelGeneration={onCancelGeneration}
+            onQueuedSendAll={onQueuedSendAll}
+            onQueuedSendDismiss={onQueuedSendDismiss}
+            onQueuedSendEdit={onQueuedSendEdit}
+            onQueuedSendNow={onQueuedSendNow}
+            queuedSends={queuedSends}
+          />
+        </TooltipProvider>,
+      )
+
+      expect(screen.getByText('2 queued messages')).toBeInTheDocument()
+      expect(screen.getByText('make it darker')).toBeInTheDocument()
+      expect(screen.getByText('add a timeline')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+
+      await user.click(screen.getAllByRole('button', { name: 'Send now' })[0]!)
+      expect(onQueuedSendNow).toHaveBeenCalledWith('q1')
+
+      await user.click(screen.getByRole('button', { name: 'Send all' }))
+      expect(onQueuedSendAll).toHaveBeenCalledTimes(1)
+
+      await user.click(screen.getAllByRole('button', { name: 'Dismiss queued message' })[1]!)
+      expect(onQueuedSendDismiss).toHaveBeenCalledWith('q2')
+
+      await user.click(screen.getByRole('button', { name: 'make it darker' }))
+      const editor = screen.getByRole('textbox', { name: 'Edit queued message' })
+      await user.clear(editor)
+      await user.type(editor, 'make it navy')
+      await user.keyboard('{Enter}')
+      expect(onQueuedSendEdit).toHaveBeenCalledWith('q1', 'make it navy')
+    },
+  )
+})

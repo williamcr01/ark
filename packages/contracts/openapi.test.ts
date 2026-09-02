@@ -19,6 +19,16 @@ describe('OpenAPI registry', () => {
     expect(document.paths?.['/api/generation-jobs/{id}']?.get).toBeTruthy()
     expect(document.paths?.['/api/generation-jobs/{id}/cancel']?.post).toBeTruthy()
     expect(document.paths?.['/api/generation-jobs/{id}/retry']?.post).toBeTruthy()
+    expect(
+      Object.keys(document.paths ?? {})
+        .filter((path) => path.includes('generation-jobs'))
+        .sort(),
+    ).toEqual([
+      '/api/generation-jobs',
+      '/api/generation-jobs/{id}',
+      '/api/generation-jobs/{id}/cancel',
+      '/api/generation-jobs/{id}/retry',
+    ])
     expect(document.paths?.['/api/runtimes']?.get).toBeTruthy()
     expect(document.paths?.['/api/workspaces/open']?.post).toBeTruthy()
     expect(document.paths?.['/api/decks/{id}/duplicate']?.post).toBeTruthy()
