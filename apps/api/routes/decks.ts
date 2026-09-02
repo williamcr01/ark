@@ -12,7 +12,7 @@ import type { AssetStore } from '@ark/storage/records/asset-record.ts'
 import { resolveArkAssetUrls } from '@ark/storage/records/asset-resolve.ts'
 import { stripDeckScriptsForPreview } from '@ark/deck-preview/preview-slides.ts'
 import { buildDeckRuntimeManifestFromValidation } from '@ark/storage/fs/deck-manifest.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 import { WorkspaceDocumentConflictError } from '@ark/storage/stores/workspace-store.ts'
@@ -230,7 +230,7 @@ export function createDecksRouter(deps: {
           return
         }
 
-        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
+        const { applyDeckPatches } = await import('@ark/deck-node/patch/slide-ops.ts')
         const applyStartedAt = performance.now()
         const patched = applyDeckPatches(existing.html, parsedBody.data.operations, {
           activeSlideIndex: parsedBody.data.activeSlideIndex,

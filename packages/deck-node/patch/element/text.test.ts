@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyDeckPatches } from '../slide-ops.ts'
-import { arkManagedDeck } from './test-decks.ts'
+import { arkManagedDeck } from '@ark/deck/patch/element/test-decks.ts'
 
 describe('replace_text', () => {
   it('replaces text on a managed element', () => {

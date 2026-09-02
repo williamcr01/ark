@@ -3,8 +3,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { parseDeckHtml, summarizeParsedDeck, toDeckSlideSummaries } from './parser.ts'
+import { JSDOM } from 'jsdom'
+
+import { parseDeckDocument, summarizeParsedDeck, toDeckSlideSummaries } from './parser.ts'
 import { buildThemeSampleHtml, exampleDeckThemes, serializeDeckThemeSpec } from './theme.ts'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new JSDOM(html).window.document, html)
+}
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

@@ -48,6 +48,8 @@ const PROJECTS = [
   'packages/deck-export/tsconfig.test.json',
   'packages/deck-import/tsconfig.json',
   'packages/deck-import/tsconfig.test.json',
+  'packages/deck-node/tsconfig.json',
+  'packages/deck-node/tsconfig.test.json',
   'packages/deck-preview/tsconfig.json',
   'packages/deck-preview/tsconfig.test.json',
   'packages/editor-runtime/tsconfig.json',

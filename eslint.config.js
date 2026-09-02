@@ -18,7 +18,7 @@ const apiContractPatterns = [
  * They may import `node:*`; the renderer may not import them. Everything else under `packages/`
  * is browser-safe and stays free of Node built-ins so the renderer can bundle it.
  */
-const SERVER_ONLY_PACKAGES = ['agent', 'mcp', 'storage', 'deck-import']
+const SERVER_ONLY_PACKAGES = ['agent', 'mcp', 'storage', 'deck-import', 'deck-node']
 
 const serverOnlyPackageFiles = SERVER_ONLY_PACKAGES.map((name) => `packages/${name}/**/*.ts`)
 

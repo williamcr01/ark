@@ -1,12 +1,17 @@
+import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck/document/metadata.ts'
-import { parseDeckHtml } from '../../document/parser.ts'
+import { parseDeckDocument } from '@ark/deck/document/parser.ts'
 import { applyDeckPatches } from '../slide-ops.ts'
-import { arkManagedDeck } from './test-decks.ts'
+import { arkManagedDeck } from '@ark/deck/patch/element/test-decks.ts'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new JSDOM(html).window.document, html)
+}
 
 describe('move_element and resize_element', () => {
   it('adopts unmanaged elements on move and preserves their measured size', () => {

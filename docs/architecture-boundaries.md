@@ -18,6 +18,7 @@ only. Boundary violations fail `pnpm lint`.
 | 2     | `@ark/chat`             | The conversation model: messages, steps, jobs, agent protocols |
 | 2     | `@ark/deck-export`      | Slide → scene model for PowerPoint export                      |
 | 2     | `@ark/deck-import`      | PowerPoint (`.pptx`) → Ark HTML deck (server-only)             |
+| 2     | `@ark/deck-node`        | JSDOM HTML parse/validate/patch apply (server-only)            |
 | 3     | `@ark/deck-preview`     | Deck → preview document, and the parent ↔ frame protocol       |
 | 4     | `@ark/storage`          | Persistence: records, stores, the `.ark` workspace file        |
 | 5     | `@ark/contracts`        | The local HTTP API's Zod schemas and OpenAPI registry          |
@@ -27,7 +28,7 @@ only. Boundary violations fail `pnpm lint`.
 ```text
 runtime-registry, telemetry
   └► deck, ai
-       └► editor-runtime, chat, deck-export, deck-import
+       └► editor-runtime, chat, deck-export, deck-import, deck-node
             └► deck-preview
                  └► storage
                       └► contracts
@@ -76,7 +77,8 @@ Packages are one or the other, and it is enforced:
   `pnpm check:boundaries` rejects that edge so the renderer cannot reach Node-only code
   through contracts. Shared document schemas live in `@ark/deck` instead.
 - **Server-only** — `node:*` allowed, still no Express or React. `storage`, `agent`, `mcp`,
-  `deck-import`. **The renderer must not import these**, which is a lint rule, not a convention.
+  `deck-import`, `deck-node`. **The renderer must not import these**, which is a lint rule, not a
+  convention.
 
 Shared vocabulary a lower layer needs is defined in that lower layer and re-exported upward, so a
 consumer's import path does not change. `@ark/contracts` re-exports the provider and reasoning

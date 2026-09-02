@@ -35,6 +35,9 @@
       "path": "./packages/deck-import"
     },
     {
+      "path": "./packages/deck-node"
+    },
+    {
       "path": "./packages/deck-preview"
     },
     {

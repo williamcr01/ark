@@ -11,13 +11,12 @@
   },
   "dependencies": {
     "@ark/runtime-registry": "workspace:*",
-    "@ark/telemetry": "workspace:*",
-    "jsdom": "29.1.1",
     "nanoid": "^5.1.16",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.3",
+    "jsdom": "29.1.1",
     "@types/node": "^24.12.3",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.9"

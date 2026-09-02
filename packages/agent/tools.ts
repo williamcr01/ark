@@ -3,7 +3,10 @@ import { z } from 'zod'
 
 import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
 import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
-import { evaluateDeckThemeMatch, evaluateThemeSampleHtml } from '@ark/deck/document/theme-html.ts'
+import {
+  evaluateDeckThemeMatch,
+  evaluateThemeSampleHtml,
+} from '@ark/deck-node/document/theme-html.ts'
 import type { DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import { applyDeckEdits } from '@ark/deck/patch/text-edit.ts'
 import {
@@ -20,7 +23,10 @@ import {
   readDeckHtmlSlice,
   readDeckSlideHtml,
 } from './document.ts'
-import { validateDeckHtmlOnServer, type DeckValidationReport } from '@ark/deck/validate/timed.ts'
+import {
+  validateDeckHtmlOnServer,
+  type DeckValidationReport,
+} from '@ark/deck-node/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './workspace.ts'
 
@@ -284,7 +290,7 @@ export function createDeckTools(
           }
         }
 
-        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
+        const { applyDeckPatches } = await import('@ark/deck-node/patch/slide-ops.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {
@@ -339,7 +345,7 @@ export function createDeckTools(
           }
         }
 
-        const { applyDeckPatches } = await import('@ark/deck/patch/slide-ops.ts')
+        const { applyDeckPatches } = await import('@ark/deck-node/patch/slide-ops.ts')
         const patched = applyDeckPatches(workspace.html, operations, { activeSlideIndex, logger })
 
         if (!patched.ok) {

@@ -1,20 +1,15 @@
 import { ARK_ELEMENT_ID_ATTR, ARK_MANAGED_ATTR } from '@ark/deck/document/metadata.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 import { stampEditableElementIds } from '../editable-elements.ts'
-import { createDeckJsdom } from '../jsdom-inline-style.ts'
 import { ensureStableElementId } from './ids.ts'
 import { findElementInSlide, resolveSlideTarget } from './resolve.ts'
-import type { ElementPatchContext } from './types.ts'
+import type { ElementPatchContext, ParseFragment } from './types.ts'
 import { markElementChanged } from './types.ts'
 import {
   findUnsafeInsertedAttribute,
   findUnsafeInsertedElement,
   validateInsertedImageSources,
 } from './validate.ts'
-
-function parseFragmentDocument(html: string): Document {
-  return createDeckJsdom(`<!DOCTYPE html><body>${html}</body>`).window.document
-}
 
 function importInsertedElement(doc: Document, body: ParentNode) {
   if (body.children.length !== 1) {
@@ -47,14 +42,14 @@ function importInsertedElement(doc: Document, body: ParentNode) {
   return { element }
 }
 
-function parseElementHtml(doc: Document, html: string) {
+function parseElementHtml(doc: Document, html: string, parseFragment: ParseFragment) {
   const trimmed = html.trim()
 
   if (!trimmed) {
     return { error: 'Element HTML must not be empty.' } as const
   }
 
-  return importInsertedElement(doc, parseFragmentDocument(trimmed).body)
+  return importInsertedElement(doc, parseFragment(trimmed).body)
 }
 
 export function applyInsertElement(
@@ -75,7 +70,7 @@ export function applyInsertElement(
     return slideTarget
   }
 
-  const parsed = parseElementHtml(context.doc, operation.html)
+  const parsed = parseElementHtml(context.doc, operation.html, context.parseFragment)
 
   if ('error' in parsed) {
     return parsed

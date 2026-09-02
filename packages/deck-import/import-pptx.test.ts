@@ -4,7 +4,8 @@ import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
 } from '@ark/deck/document/metadata.ts'
-import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import { parseDeckDocument } from '@ark/deck/document/parser.ts'
+import { JSDOM } from 'jsdom'
 import {
   DEFAULT_DECK_FONT_IDS,
   getDeckFont,
@@ -28,6 +29,10 @@ import { parseXml } from './xml.ts'
 
 const SLIDE_CX_EMU = 12_192_000
 const SLIDE_CY_EMU = 6_858_000
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new JSDOM(html).window.document, html)
+}
 
 function emuBoxStyle(x: number, y: number, cx: number, cy: number) {
   return [

@@ -6,7 +6,7 @@ import {
   readDeckThemeFromDocument,
   type DeckThemeIssue,
   type DeckThemeSpecV1,
-} from './theme.ts'
+} from '@ark/deck/document/theme.ts'
 
 export function evaluateThemeSampleHtml(html: string, theme: DeckThemeSpecV1): DeckThemeIssue[] {
   const doc = new JSDOM(html).window.document
