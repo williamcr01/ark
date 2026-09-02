@@ -41,7 +41,14 @@ import {
   deckThumbnailsQuerySchema,
   deckThumbnailsResponseSchema,
 } from './thumbnails.ts'
-import { mcpPendingInteractionSchema, themeProposalRequestSchema } from './mcp.ts'
+import {
+  MCP_CLIENT_IDS,
+  mcpClientIdSchema,
+  mcpClientInstallationSchema,
+  mcpClientInstallationsSchema,
+  mcpPendingInteractionSchema,
+  themeProposalRequestSchema,
+} from './mcp.ts'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 const jobId = 'a0000000-0000-4000-8000-000000000001'
@@ -813,6 +820,41 @@ describe('shared API contracts', () => {
         html: '<script>nope</script>',
       }).ok,
     ).toBe(false)
+  })
+})
+
+describe('MCP client installation contracts', () => {
+  it('parses client ids, statuses, and installation lists', () => {
+    expect(MCP_CLIENT_IDS).toEqual([
+      'codex',
+      'claudeCode',
+      'grok',
+      'cursor',
+      'openCode',
+      'devinCli',
+    ])
+    for (const clientId of MCP_CLIENT_IDS) {
+      expect(mcpClientIdSchema.parse(clientId)).toBe(clientId)
+    }
+    expect(
+      mcpClientInstallationSchema.parse({
+        clientId: 'cursor',
+        status: 'installed',
+      }),
+    ).toEqual({ clientId: 'cursor', status: 'installed' })
+    expect(
+      mcpClientInstallationSchema.parse({
+        clientId: 'codex',
+        status: 'unavailable',
+        error: 'Install Codex CLI to connect it to Ark.',
+      }),
+    ).toMatchObject({ status: 'unavailable' })
+    expect(
+      mcpClientInstallationsSchema.parse(
+        MCP_CLIENT_IDS.map((clientId) => ({ clientId, status: 'notInstalled' as const })),
+      ),
+    ).toHaveLength(6)
+    expect(mcpClientIdSchema.safeParse('devinCloud').success).toBe(false)
   })
 })
 

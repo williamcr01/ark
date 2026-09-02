@@ -1,5 +1,7 @@
 import type {
   ExternalDeckUpdate,
+  McpClientId,
+  McpClientInstallation,
   McpInteractionAnswer,
   McpInteractionChanged,
   McpPendingInteraction,
@@ -54,6 +56,10 @@ declare global {
         respondToInteraction: (id: string, answer: McpInteractionAnswer) => Promise<void>
         cancelInteraction: (id: string) => Promise<boolean>
         getSetupCommands: () => Promise<McpSetupCommands>
+        getClientInstallations: () => Promise<McpClientInstallation[]>
+        addClient: (clientId: McpClientId) => Promise<McpClientInstallation>
+        removeClient: (clientId: McpClientId) => Promise<McpClientInstallation>
+        updateClient: (clientId: McpClientId) => Promise<McpClientInstallation>
         copySetupCommand: (command: string) => Promise<void>
         onStatusChanged: (listener: (status: McpStatus) => void) => () => void
         onDeckUpdated: (listener: (update: ExternalDeckUpdate) => void) => () => void

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ExternalDeckUpdate,
+  McpClientId,
   McpInteractionAnswer,
   McpInteractionChanged,
   McpPendingInteraction,
@@ -42,6 +43,10 @@ contextBridge.exposeInMainWorld('arkDesktop', {
       ipcRenderer.invoke('mcp:respond-interaction', id, answer),
     cancelInteraction: (id: string) => ipcRenderer.invoke('mcp:cancel-interaction', id),
     getSetupCommands: () => ipcRenderer.invoke('mcp:get-setup-commands'),
+    getClientInstallations: () => ipcRenderer.invoke('mcp:get-client-installations'),
+    addClient: (clientId: McpClientId) => ipcRenderer.invoke('mcp:add-client', clientId),
+    removeClient: (clientId: McpClientId) => ipcRenderer.invoke('mcp:remove-client', clientId),
+    updateClient: (clientId: McpClientId) => ipcRenderer.invoke('mcp:update-client', clientId),
     copySetupCommand: (command: string) => ipcRenderer.invoke('mcp:copy-setup-command', command),
     onStatusChanged: (listener: (status: McpStatus) => void) =>
       subscribe('mcp:status-changed', listener),

@@ -1,14 +1,26 @@
 import { randomBytes } from 'node:crypto'
+import os from 'node:os'
 
 import type {
   ExternalDeckUpdate,
   McpActivityEvent,
+  McpClientId,
+  McpClientInstallation,
+  McpClientInstallations,
   McpSetupCommands,
   McpStatus,
 } from '@ark/contracts'
 import type { McpServiceState } from '@ark/mcp/service.ts'
 import type { McpInteractionStore } from '@ark/mcp/interactions.ts'
 import { mcpDiscoveryPath, removeMcpDiscovery, writeMcpDiscovery } from '@ark/mcp/discovery.ts'
+
+import type { McpClientHost } from './mcp-client-cli.ts'
+import {
+  addMcpClient,
+  getMcpClientInstallations,
+  removeMcpClient,
+  updateMcpClient,
+} from './mcp-client-installations.ts'
 
 const quoteExecutable = (value: string) => `"${value.replaceAll('"', '\\"')}"`
 const commandArgument = (value: string, index: number) =>
@@ -47,6 +59,7 @@ export class McpManager {
     executableArgs: string[]
     onStatusChanged: (status: McpStatus) => void
     onDeckUpdated: (update: ExternalDeckUpdate) => void
+    clientHost?: Partial<Omit<McpClientHost, 'executableArgs'>>
   }
   private state: McpStatus['state'] = 'stopped'
   private activeDeckId: string | null = null
@@ -55,6 +68,7 @@ export class McpManager {
   private lastActivity: McpStatus['lastActivity'] = null
   private error: string | null = null
   private readonly discoveryPath: string
+  private readonly clientHost: McpClientHost
 
   constructor(options: {
     apiOrigin: string
@@ -66,9 +80,20 @@ export class McpManager {
     executableArgs: string[]
     onStatusChanged: (status: McpStatus) => void
     onDeckUpdated: (update: ExternalDeckUpdate) => void
+    clientHost?: Partial<Omit<McpClientHost, 'executableArgs'>>
   }) {
     this.options = options
     this.discoveryPath = mcpDiscoveryPath(options.userDataDirectory)
+    this.clientHost = {
+      executableArgs: options.executableArgs,
+      homedir: options.clientHost?.homedir ?? os.homedir(),
+      env: options.clientHost?.env ?? process.env,
+      platform: options.clientHost?.platform ?? process.platform,
+      ...(options.clientHost?.runCli ? { runCli: options.clientHost.runCli } : {}),
+      ...(options.clientHost?.resolveBinary
+        ? { resolveBinary: options.clientHost.resolveBinary }
+        : {}),
+    }
   }
 
   getStatus(): McpStatus {
@@ -177,5 +202,21 @@ export class McpManager {
       codex: `codex mcp add ark -- ${command}`,
       claudeCode: `claude mcp add --transport stdio --scope user ark -- ${command}`,
     }
+  }
+
+  getClientInstallations(): Promise<McpClientInstallations> {
+    return getMcpClientInstallations(this.clientHost)
+  }
+
+  addClient(clientId: McpClientId): Promise<McpClientInstallation> {
+    return addMcpClient(this.clientHost, clientId)
+  }
+
+  removeClient(clientId: McpClientId): Promise<McpClientInstallation> {
+    return removeMcpClient(this.clientHost, clientId)
+  }
+
+  updateClient(clientId: McpClientId): Promise<McpClientInstallation> {
+    return updateMcpClient(this.clientHost, clientId)
   }
 }
