@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 const CHAT_SESSION_STORAGE_PREFIX = 'ark:chat-session:'
 

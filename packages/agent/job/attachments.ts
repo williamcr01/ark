@@ -1,9 +1,10 @@
+import { isReadableTextMediaType } from '@ark/chat/attachments.ts'
 import {
   applyResolvedAssetAttachments,
   collectAssetIdsFromMessages,
-  isReadableTextMediaType,
-} from '@ark/chat/chat.ts'
-import type { ApiChatMessage, ChatAttachment } from '@ark/chat/chat.ts'
+} from '@ark/chat/model-messages.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
+import type { ApiChatMessage } from '@ark/chat/api-projection.ts'
 import { buildArkAssetUrl } from '@ark/deck/document/assets.ts'
 import { resolveAssetAttachments } from '@ark/storage/records/asset-resolve.ts'
 import { type AssetRecord } from '@ark/storage/records/asset-record.ts'

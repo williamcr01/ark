@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 import { DEFAULT_THEME_FONT_PAIRING } from '@ark/chat/agent-themes.ts'
 import {
   findThemeChoiceAfter,

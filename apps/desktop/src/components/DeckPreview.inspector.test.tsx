@@ -41,6 +41,16 @@ const editorBridgeMock = vi.hoisted(() => ({
     editableKind: string | null
     textPreview: string | null
   } | null,
+  selections: [] as Array<{
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    tagName: string
+    locked: boolean
+    managed: boolean
+    editableKind: string | null
+    textPreview: string | null
+  }>,
   geometry: null as EditorNormalizedRect | null,
   slideBounds: null as EditorNormalizedRect | null,
   selectionZIndex: null,

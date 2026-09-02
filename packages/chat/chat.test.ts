@@ -3,19 +3,22 @@ import { describe, expect, it } from 'vitest'
 import { exampleDeckThemes } from '@ark/deck/document/theme.ts'
 
 import {
-  agentStepsToChatParts,
-  applyResolvedAssetAttachments,
-  buildAssistantMessageContent,
-  chatAttachmentsToModelParts,
   collectAssetIds,
-  collectAssetIdsFromMessages,
   isReadableTextMediaType,
   MAX_INLINE_TEXT_ATTACHMENT_CHARS,
-  MAX_EDITOR_SELECTIONS,
-  normalizeEditorSelectionFields,
+} from './attachments.ts'
+import { MAX_EDITOR_SELECTIONS, normalizeEditorSelectionFields } from './context.ts'
+import {
+  applyResolvedAssetAttachments,
+  chatAttachmentsToModelParts,
+  collectAssetIdsFromMessages,
+} from './model-messages.ts'
+import {
+  agentStepsToChatParts,
+  buildAssistantMessageContent,
   parseGenerateMessages,
-  MAX_PERSISTED_TOOL_VALUE_BYTES,
-} from './chat.ts'
+} from './api-projection.ts'
+import { MAX_PERSISTED_TOOL_VALUE_BYTES } from './messages.ts'
 import { convertChatHistoryToModelMessages } from './chat-context.ts'
 
 const ASSET_ID = '00000000-0000-4000-8000-000000000901'

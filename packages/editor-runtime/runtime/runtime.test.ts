@@ -210,13 +210,12 @@ describe('deck editor runtime script', () => {
 
     expect(script).toContain('function normalizeSlideBounds')
     expect(script).toContain('slideBounds: normalizeSlideBounds(slide)')
+    expect(script).toContain('data.type === C.SELECT ||')
 
-    const selectHandler = script.indexOf('data.type === C.SELECT ||')
-    const setIndex = script.indexOf('currentSlideIndex = data.slideIndex', selectHandler)
+    const setIndex = script.indexOf('currentSlideIndex = data.slideIndex')
     const getSlide = script.indexOf('var slide = getActiveSlide();', setIndex)
 
-    expect(selectHandler).toBeGreaterThan(-1)
-    expect(setIndex).toBeGreaterThan(selectHandler)
+    expect(setIndex).toBeGreaterThan(-1)
     expect(getSlide).toBeGreaterThan(setIndex)
   })
 

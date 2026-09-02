@@ -1,29 +1,16 @@
 import { useCallback, useEffect, useRef, type MutableRefObject, type RefObject } from 'react'
 
+import type { DeckMetadata } from '@ark/deck-preview'
+import type { DeckSlidePatch } from '@ark/deck-preview/slide-patch.ts'
 import {
-  createDeckGotoMessage,
-  createDeckPatchSlidesMessage,
-  isDeckBridgeMessageFromRuntime,
-  isDeckPatchSlidesResultMessage,
-  isDeckReadyMessage,
-  isDeckRuntimeErrorMessage,
-  isDeckSlideChangeMessage,
-  type DeckMetadata,
-} from '@ark/deck-preview/deck-bridge.ts'
-import { resolvePatchActiveSlideIndex, type DeckSlidePatch } from '@ark/deck-preview/slide-patch.ts'
-import {
-  DECK_BRIDGE_POST_MESSAGE_TARGET,
-  isAllowedBridgeMessageOrigin,
-} from '@ark/runtime-registry/sandbox-origin.ts'
-import {
-  clampSlideIndex,
   getPresentKeyboardTargetIndex,
   getPreviewKeyboardTargetIndex,
   isActivatableTarget,
   isTypingTarget,
 } from '@/lib/deck/slide-navigation-keys.ts'
 
-const SLIDE_PATCH_TIMEOUT_MS = 2_000
+import { handleSlideBridgeMessage, handleSlideKeyboard } from './slide-navigation-messages.ts'
+import { postDeckGoto, postDeckSlidePatch } from './slide-navigation-post.ts'
 
 export type DeckNavKeyboardMode = 'preview' | 'present' | 'off'
 
@@ -72,7 +59,6 @@ export function useSlideNavigationSync(
     if (patchTimeoutRef.current === null) {
       return
     }
-
     window.clearTimeout(patchTimeoutRef.current)
     patchTimeoutRef.current = null
   }, [])
@@ -83,194 +69,144 @@ export function useSlideNavigationSync(
     onSlidePatchFailedRef.current = onSlidePatchFailed
   }, [canPostToFrame, onSlidePatchFailed, shouldAcceptInbound])
 
-  useEffect(() => {
-    return () => {
-      clearPatchTimeout()
-    }
-  }, [clearPatchTimeout])
-
+  useEffect(() => () => clearPatchTimeout(), [clearPatchTimeout])
   useEffect(() => {
     iframeGenerationRef.current += 1
   }, [html, reloadRevision, sandboxOrigin, slideCount])
-
   useEffect(() => {
     pendingSlidePatchRef.current = null
     clearPatchTimeout()
   }, [clearPatchTimeout, html, reloadRevision, sandboxOrigin])
 
   const goToSlide = useCallback(
-    (index: number) => {
-      if (index < 0 || index >= slideCount) {
-        return
-      }
-
-      const clampedIndex = clampSlideIndex(index, slideCount)
-      commitSlideIndex(clampedIndex)
-
-      if (pendingFrameSyncIndexRef.current !== null) {
-        pendingFrameSyncIndexRef.current = clampedIndex
-      }
-
-      if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
-        return
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-      if (!iframeWindow) {
-        return
-      }
-
-      iframeWindow.postMessage(createDeckGotoMessage(clampedIndex), DECK_BRIDGE_POST_MESSAGE_TARGET)
-    },
-    [commitSlideIndex, iframeRef, slideCount],
+    (index: number) =>
+      postDeckGoto(
+        index,
+        slideCount,
+        iframeRef,
+        pendingFrameSyncIndexRef,
+        canPostToFrameRef,
+        commitSlideIndex,
+      ),
+    [commitSlideIndex, iframeRef, pendingFrameSyncIndexRef, slideCount],
   )
 
   const patchSlides = useCallback(
-    (patch: DeckSlidePatch) => {
-      if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
-        return false
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-      if (!iframeWindow) {
-        return false
-      }
-
-      const targetIndex = resolvePatchActiveSlideIndex(patch, activeSlideIndexRef.current)
-      if (activeSlideIndexRef.current !== targetIndex) {
-        commitSlideIndex(targetIndex, patch.slideCount)
-      }
-
-      patchSequenceRef.current += 1
-      const patchId = `slide-patch-${patchSequenceRef.current}`
-      pendingSlidePatchRef.current = { patchId, slideCount: patch.slideCount }
-      clearPatchTimeout()
-      iframeWindow.postMessage(
-        createDeckPatchSlidesMessage(patchId, patch.operations, targetIndex),
-        DECK_BRIDGE_POST_MESSAGE_TARGET,
-      )
-
-      patchTimeoutRef.current = window.setTimeout(() => {
-        patchTimeoutRef.current = null
-        if (pendingSlidePatchRef.current?.patchId !== patchId) {
-          return
-        }
-
-        pendingSlidePatchRef.current = null
-        onSlidePatchFailedRef.current?.()
-      }, SLIDE_PATCH_TIMEOUT_MS)
-
-      return true
-    },
+    (patch: DeckSlidePatch) =>
+      postDeckSlidePatch(patch, {
+        iframeRef,
+        activeSlideIndexRef,
+        canPostToFrameRef,
+        pendingSlidePatchRef,
+        patchSequenceRef,
+        patchTimeoutRef,
+        onSlidePatchFailedRef,
+        commitSlideIndex,
+        clearPatchTimeout,
+      }),
     [activeSlideIndexRef, clearPatchTimeout, commitSlideIndex, iframeRef],
   )
 
+  useSlideNavigationListeners({
+    iframeRef,
+    iframeGenerationRef,
+    shouldAcceptInboundRef,
+    canPostToFrameRef,
+    pendingSlidePatchRef,
+    pendingFrameSyncIndexRef,
+    onSlidePatchFailedRef,
+    enabled,
+    html,
+    reloadRevision,
+    sandboxOrigin,
+    slideCount,
+    clearPatchTimeout,
+    commitSlideIndex,
+    onDeckReady,
+    onRuntimeError,
+    keyboardMode,
+    shouldSuspendKeyboard,
+    activeSlideIndexRef,
+    goToSlide,
+  })
+
+  return { goToSlide, patchSlides }
+}
+
+type SlideNavigationListenerArgs = {
+  iframeRef: RefObject<HTMLIFrameElement | null>
+  iframeGenerationRef: MutableRefObject<number>
+  shouldAcceptInboundRef: MutableRefObject<(() => boolean) | undefined>
+  canPostToFrameRef: MutableRefObject<(() => boolean) | undefined>
+  pendingSlidePatchRef: MutableRefObject<{ patchId: string; slideCount: number } | null>
+  pendingFrameSyncIndexRef: MutableRefObject<number | null>
+  onSlidePatchFailedRef: MutableRefObject<(() => void) | undefined>
+  enabled: boolean
+  html: string
+  reloadRevision: number
+  sandboxOrigin: string | null
+  slideCount: number
+  clearPatchTimeout: () => void
+  commitSlideIndex: (index: number, boundSlideCount?: number) => void
+  onDeckReady?: UseSlideNavigationSyncOptions['onDeckReady']
+  onRuntimeError?: UseSlideNavigationSyncOptions['onRuntimeError']
+  keyboardMode: DeckNavKeyboardMode
+  shouldSuspendKeyboard?: () => boolean
+  activeSlideIndexRef: MutableRefObject<number>
+  goToSlide: (index: number) => void
+}
+
+function useSlideNavigationListeners(args: SlideNavigationListenerArgs) {
+  useSlideNavigationMessageListener(args)
+  useSlideNavigationKeyboardListener(args)
+}
+
+function useSlideNavigationMessageListener({
+  iframeRef,
+  iframeGenerationRef,
+  shouldAcceptInboundRef,
+  canPostToFrameRef,
+  pendingSlidePatchRef,
+  pendingFrameSyncIndexRef,
+  onSlidePatchFailedRef,
+  enabled,
+  html,
+  reloadRevision,
+  sandboxOrigin,
+  slideCount,
+  clearPatchTimeout,
+  commitSlideIndex,
+  onDeckReady,
+  onRuntimeError,
+}: SlideNavigationListenerArgs) {
   useEffect(() => {
     if (!enabled) {
       return
     }
 
     const messageGeneration = iframeGenerationRef.current
+    const refs = {
+      iframeRef,
+      iframeGenerationRef,
+      shouldAcceptInboundRef,
+      canPostToFrameRef,
+      pendingSlidePatchRef,
+      pendingFrameSyncIndexRef,
+      onSlidePatchFailedRef,
+    }
 
     const handleMessage = (event: MessageEvent) => {
-      if (messageGeneration !== iframeGenerationRef.current) {
-        return
-      }
-
-      if (shouldAcceptInboundRef.current && !shouldAcceptInboundRef.current()) {
-        return
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-      if (!iframeWindow || event.source !== iframeWindow) {
-        return
-      }
-
-      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
-        return
-      }
-
-      const data = event.data
-      if (!isDeckBridgeMessageFromRuntime(data)) {
-        return
-      }
-
-      if (isDeckPatchSlidesResultMessage(data)) {
-        const pending = pendingSlidePatchRef.current
-        if (!data.applied) {
-          if (pending?.patchId === data.patchId) {
-            pendingSlidePatchRef.current = null
-            clearPatchTimeout()
-          }
-
-          onSlidePatchFailedRef.current?.()
-          return
-        }
-
-        if (!pending || pending.patchId !== data.patchId) {
-          return
-        }
-
-        pendingSlidePatchRef.current = null
-        clearPatchTimeout()
-        if (data.slideCount !== pending.slideCount) {
-          onSlidePatchFailedRef.current?.()
-        }
-
-        return
-      }
-
-      const syncPendingFrameIndex = (reportedIndex: number) => {
-        const pendingIndex = pendingFrameSyncIndexRef.current
-        if (pendingIndex === null) {
-          return false
-        }
-
-        const targetIndex = clampSlideIndex(pendingIndex, slideCount)
-        if (targetIndex === clampSlideIndex(reportedIndex, slideCount)) {
-          pendingFrameSyncIndexRef.current = null
-          commitSlideIndex(targetIndex)
-          return true
-        }
-
-        commitSlideIndex(targetIndex)
-        if (canPostToFrameRef.current && !canPostToFrameRef.current()) {
-          return true
-        }
-
-        iframeWindow.postMessage(
-          createDeckGotoMessage(targetIndex),
-          DECK_BRIDGE_POST_MESSAGE_TARGET,
-        )
-        return true
-      }
-
-      if (isDeckReadyMessage(data)) {
-        onDeckReady?.({
-          index: data.index,
-          slideCount: data.slideCount,
-          metadata: data.metadata,
-        })
-        if (syncPendingFrameIndex(data.index)) {
-          return
-        }
-
-        commitSlideIndex(data.index)
-        return
-      }
-
-      if (isDeckRuntimeErrorMessage(data)) {
-        onRuntimeError?.(data.message, data.source)
-        return
-      }
-
-      if (isDeckSlideChangeMessage(data)) {
-        if (syncPendingFrameIndex(data.index)) {
-          return
-        }
-
-        commitSlideIndex(data.index)
-      }
+      handleSlideBridgeMessage(
+        event,
+        messageGeneration,
+        refs,
+        sandboxOrigin,
+        slideCount,
+        clearPatchTimeout,
+        commitSlideIndex,
+        onDeckReady,
+        onRuntimeError,
+      )
     }
 
     window.addEventListener('message', handleMessage)
@@ -278,60 +214,55 @@ export function useSlideNavigationSync(
       window.removeEventListener('message', handleMessage)
     }
   }, [
+    canPostToFrameRef,
     clearPatchTimeout,
     commitSlideIndex,
     enabled,
     html,
+    iframeGenerationRef,
     iframeRef,
     onDeckReady,
     onRuntimeError,
+    onSlidePatchFailedRef,
+    pendingFrameSyncIndexRef,
+    pendingSlidePatchRef,
     reloadRevision,
     sandboxOrigin,
+    shouldAcceptInboundRef,
     slideCount,
   ])
+}
 
+function useSlideNavigationKeyboardListener({
+  enabled,
+  slideCount,
+  keyboardMode,
+  shouldSuspendKeyboard,
+  activeSlideIndexRef,
+  goToSlide,
+}: SlideNavigationListenerArgs) {
   useEffect(() => {
     if (!enabled || slideCount === 0 || keyboardMode === 'off') {
       return
     }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (shouldSuspendKeyboard?.()) {
-        return
-      }
-
-      if (event.altKey) {
-        return
-      }
-
-      if (isTypingTarget(event.target)) {
-        return
-      }
-
-      if (keyboardMode === 'present' && isActivatableTarget(event.target)) {
-        return
-      }
-
-      const targetIndex =
-        keyboardMode === 'present'
-          ? getPresentKeyboardTargetIndex(event.key, activeSlideIndexRef.current, slideCount)
-          : getPreviewKeyboardTargetIndex(event.key, activeSlideIndexRef.current, slideCount)
-
-      if (targetIndex === null) {
-        return
-      }
-
-      event.preventDefault()
-      if (targetIndex !== activeSlideIndexRef.current) {
-        goToSlide(targetIndex)
-      }
+    const onKeyDown = (event: KeyboardEvent) => {
+      handleSlideKeyboard(event, {
+        keyboardMode,
+        shouldSuspendKeyboard,
+        activeSlideIndexRef,
+        slideCount,
+        goToSlide,
+        getPresentKeyboardTargetIndex,
+        getPreviewKeyboardTargetIndex,
+        isActivatableTarget,
+        isTypingTarget,
+      })
     }
 
-    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keydown', onKeyDown, true)
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('keydown', onKeyDown, true)
     }
   }, [activeSlideIndexRef, enabled, goToSlide, keyboardMode, shouldSuspendKeyboard, slideCount])
-
-  return { goToSlide, patchSlides }
 }

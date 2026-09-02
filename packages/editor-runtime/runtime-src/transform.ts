@@ -83,6 +83,28 @@ export function applyLiveMovePreview(
   return rect
 }
 
+function writeTransformSize(
+  element: HTMLElement,
+  slide: HTMLElement,
+  rect: NormalizedRect,
+  slideRect: { width: number; height: number },
+  positionContext?: PositionContext | null,
+) {
+  var containingScale = positionContext
+    ? { x: positionContext.scaleX, y: positionContext.scaleY }
+    : readContainingBlockScale(element, slide)
+  element.style.width = (rect.width * slideRect.width) / containingScale.x + 'px'
+
+  if (isImageElement(element)) {
+    element.style.height = (rect.height * slideRect.height) / containingScale.y + 'px'
+    element.style.minHeight = ''
+    return
+  }
+
+  element.style.minHeight = (rect.height * slideRect.height) / containingScale.y + 'px'
+  element.style.height = ''
+}
+
 export function applyTransform(
   element: HTMLElement,
   slide: HTMLElement,
@@ -138,18 +160,7 @@ export function applyTransform(
   // during a resize, otherwise elements sized with an explicit height would
   // silently change dimensions when merely repositioned.
   if (mode !== 'move') {
-    var containingScale = positionContext
-      ? { x: positionContext.scaleX, y: positionContext.scaleY }
-      : readContainingBlockScale(element, slide)
-    element.style.width = (rect.width * slideRect.width) / containingScale.x + 'px'
-
-    if (isImageElement(element)) {
-      element.style.height = (rect.height * slideRect.height) / containingScale.y + 'px'
-      element.style.minHeight = ''
-    } else {
-      element.style.minHeight = (rect.height * slideRect.height) / containingScale.y + 'px'
-      element.style.height = ''
-    }
+    writeTransformSize(element, slide, rect, slideRect, positionContext)
   }
 
   if (preview) {

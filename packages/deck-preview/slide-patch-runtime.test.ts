@@ -9,7 +9,7 @@ import {
   isDeckPatchSlidesResultMessage,
   isDeckSlideChangeMessage,
   type DeckSlidePatchOperation,
-} from './deck-bridge.ts'
+} from './index.ts'
 import { createDeckSlideSnapshot, diffDeckSlideSnapshots } from './slide-patch.ts'
 import { findSlideElements, SLIDE_SELECTOR_CHAIN } from './preview-slides.ts'
 

@@ -3,15 +3,17 @@
 **One job:** turning a deck document into something safe to render in the preview frame, and
 carrying the shell ↔ frame conversation while it is rendered.
 
-Layer 2. May import `@ark/deck`, `@ark/editor-runtime`, `@ark/runtime-registry`. Browser-safe.
+Layer 3. May import `@ark/deck`, `@ark/editor-runtime`, `@ark/runtime-registry`. Browser-safe.
+The public entry is `@ark/deck-preview` (`index.ts`); deep imports remain supported.
 
-| Module              | Responsibility                                                       |
-| ------------------- | -------------------------------------------------------------------- |
-| `preview-html.ts`   | Builds the document served to the preview frame                      |
-| `preview-slides.ts` | Preview-time script stripping and runtime CSP injection              |
-| `thumbnail-html.ts` | The stripped, single-slide document thumbnails render from           |
-| `slide-patch.ts`    | Swaps changed slides inside a loaded preview instead of reloading it |
-| `csp-nonce.ts`      | Per-render nonces for the injected CSP                               |
+| Module                   | Responsibility                                                       |
+| ------------------------ | -------------------------------------------------------------------- |
+| `preview-html.ts`        | Builds the document served to the preview frame                      |
+| `preview-html-inject.ts` | CSP, handshake, script/asset injection helpers                       |
+| `preview-slides.ts`      | Preview-time script stripping and runtime CSP injection              |
+| `thumbnail-html.ts`      | The stripped, single-slide document thumbnails render from           |
+| `slide-patch.ts`         | Swaps changed slides inside a loaded preview instead of reloading it |
+| `csp-nonce.ts`           | Per-render nonces for the injected CSP                               |
 
 The parent ↔ deck navigation protocol (`ark:deck-*`) lives next to the injected iframe scripts:
 
@@ -30,8 +32,8 @@ runtime/       builders prepend host constants onto the committed bundles
                generated/        esbuild IIFE string modules (committed artifacts)
 ```
 
-`deck-bridge.ts` is a re-export barrel so existing `@ark/deck-preview/deck-bridge.ts` importers do
-not change.
+Import the protocol and runtime from `@ark/deck-preview` (`index.ts`), or from
+`protocol/` and `runtime/` directly.
 
 Author the iframe runtimes as real TypeScript under `runtime-src/`. Host values (slide selectors,
 preview mode, handshake id, parent origin, message-type names, protocol version) arrive as the `C`

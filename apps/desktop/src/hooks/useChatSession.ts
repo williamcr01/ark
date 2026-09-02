@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 import { writeChatSession } from '@/lib/chat/chat-session'
 import { useChatStore, type MessageDeliveryStatus } from '@/state/chat-store.ts'
 

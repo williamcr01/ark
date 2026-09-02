@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ALL_PROVIDERS, type ProviderId } from '@ark/contracts'
 
-import { Button } from '@/components/ui/button'
 import { ProviderLogo } from '@/components/ProviderLogo'
 import { Input } from '@/components/ui/input'
+
+import { AiProviderKeyActions } from './AiProviderKeyActions.tsx'
+import { runProviderCredential } from './AiProviderKeyRow.tsx'
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
   openai: 'OpenAI',
@@ -51,33 +53,21 @@ export function AiProvidersSettingsSection({
     }
   }, [open])
 
-  const run = async (
+  const run = (
     provider: ProviderId,
     operation: () => Promise<{ ok: true; modelCount?: number } | { ok: false; error: string }>,
     successMessage: string,
-  ) => {
-    setBusyProvider(provider)
-    onMessage('')
-    try {
-      const result = await operation()
-      if (!result.ok) {
-        onMessage(result.error)
-        return false
-      }
-      onMessage(
-        result.modelCount === undefined
-          ? successMessage
-          : `${successMessage} ${result.modelCount} models are available.`,
-      )
-      setStatus(await window.arkDesktop.credentials.list())
-      return true
-    } catch (error) {
-      onMessage(error instanceof Error ? error.message : 'The operation failed.')
-      return false
-    } finally {
-      setBusyProvider(null)
-    }
-  }
+  ) =>
+    runProviderCredential(
+      provider,
+      operation,
+      successMessage,
+      setBusyProvider,
+      onMessage,
+      async () => {
+        setStatus(await window.arkDesktop.credentials.list())
+      },
+    )
 
   return (
     <div className="flex flex-col gap-6">
@@ -91,126 +81,86 @@ export function AiProvidersSettingsSection({
           </ul>
         </div>
       ) : null}
-      {PROVIDERS.map(({ id, label }) => {
-        const draft = drafts[id] ?? ''
-        const configured = status[id].configured
-        const storage = status[id].storage
-        const busy = busyProvider === id
-
-        return (
-          <section className="flex flex-col gap-2" key={id}>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 font-medium" htmlFor={`ark-key-${id}`}>
-                <ProviderLogo className="size-5" provider={id} />
-                <span>{label}</span>
-              </label>
-              <span className="text-xs text-muted-foreground">
-                {configured
-                  ? storage === 'session'
-                    ? 'Session only'
-                    : 'Saved securely'
-                  : 'Not configured'}
-              </span>
-            </div>
-            <Input
-              autoComplete="off"
-              id={`ark-key-${id}`}
-              onChange={(event) =>
-                setDrafts((current) => ({ ...current, [id]: event.target.value }))
-              }
-              placeholder={configured ? 'Enter a replacement key' : 'Enter API key'}
-              type="password"
-              value={draft}
-            />
-            <div className="flex justify-end gap-2">
-              {configured ? (
-                <Button
-                  disabled={busy}
-                  onClick={() => {
-                    void (async () => {
-                      if (
-                        await run(
-                          id,
-                          () => window.arkDesktop.credentials.remove(id),
-                          `${label} key removed.`,
-                        )
-                      )
-                        await onCredentialsChanged()
-                    })().catch((error) => {
-                      onMessage(
-                        error instanceof Error ? error.message : 'Could not refresh models.',
-                      )
-                    })
-                  }}
-                  size="sm"
-                  variant="outline"
-                >
-                  Remove
-                </Button>
-              ) : null}
-              <Button
-                disabled={busy || !draft.trim()}
-                onClick={() => {
-                  void run(
-                    id,
-                    () => window.arkDesktop.credentials.test(id, draft),
-                    `${label} key is valid.`,
-                  )
-                }}
-                size="sm"
-                variant="outline"
-              >
-                Test
-              </Button>
-              <Button
-                disabled={busy || !draft.trim()}
-                onClick={() => {
-                  void (async () => {
-                    if (
-                      await run(
-                        id,
-                        () => window.arkDesktop.credentials.saveSession(id, draft),
-                        `${label} key will be kept until Ark quits.`,
-                      )
-                    ) {
-                      setDrafts((current) => ({ ...current, [id]: '' }))
-                      await onCredentialsChanged()
-                    }
-                  })().catch((error) => {
-                    onMessage(error instanceof Error ? error.message : 'Could not refresh models.')
-                  })
-                }}
-                size="sm"
-                variant="outline"
-              >
-                Use for session
-              </Button>
-              <Button
-                disabled={busy || !draft.trim()}
-                onClick={() => {
-                  void (async () => {
-                    if (
-                      await run(
-                        id,
-                        () => window.arkDesktop.credentials.save(id, draft),
-                        `${label} key saved.`,
-                      )
-                    ) {
-                      setDrafts((current) => ({ ...current, [id]: '' }))
-                      await onCredentialsChanged()
-                    }
-                  })().catch((error) => {
-                    onMessage(error instanceof Error ? error.message : 'Could not refresh models.')
-                  })
-                }}
-                size="sm"
-              >
-                Save
-              </Button>
-            </div>
-          </section>
-        )
-      })}
+      {PROVIDERS.map(({ id, label }) => (
+        <AiProviderKeyRow
+          busy={busyProvider === id}
+          configured={status[id].configured}
+          draft={drafts[id] ?? ''}
+          id={id}
+          key={id}
+          label={label}
+          onCredentialsChanged={onCredentialsChanged}
+          onDraftChange={(value) => setDrafts((current) => ({ ...current, [id]: value }))}
+          onMessage={onMessage}
+          run={run}
+          storage={status[id].storage}
+        />
+      ))}
     </div>
+  )
+}
+
+function AiProviderKeyRow({
+  busy,
+  configured,
+  draft,
+  id,
+  label,
+  onCredentialsChanged,
+  onDraftChange,
+  onMessage,
+  run,
+  storage,
+}: {
+  busy: boolean
+  configured: boolean
+  draft: string
+  id: ProviderId
+  label: string
+  onCredentialsChanged: () => void | Promise<void>
+  onDraftChange: (value: string) => void
+  onMessage: (message: string) => void
+  run: (
+    provider: ProviderId,
+    operation: () => Promise<{ ok: true; modelCount?: number } | { ok: false; error: string }>,
+    successMessage: string,
+  ) => Promise<boolean>
+  storage: 'persistent' | 'session' | null
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <label className="flex items-center gap-2 font-medium" htmlFor={`ark-key-${id}`}>
+          <ProviderLogo className="size-5" provider={id} />
+          <span>{label}</span>
+        </label>
+        <span className="text-xs text-muted-foreground">
+          {configured
+            ? storage === 'session'
+              ? 'Session only'
+              : 'Saved securely'
+            : 'Not configured'}
+        </span>
+      </div>
+      <Input
+        autoComplete="off"
+        id={`ark-key-${id}`}
+        onChange={(event) => onDraftChange(event.target.value)}
+        placeholder={configured ? 'Enter a replacement key' : 'Enter API key'}
+        type="password"
+        value={draft}
+      />
+      <AiProviderKeyActions
+        busy={busy}
+        configured={configured}
+        draft={draft}
+        id={id}
+        label={label}
+        onCredentialsChanged={onCredentialsChanged}
+        onDraftChange={onDraftChange}
+        onMessage={onMessage}
+        run={run}
+      />
+    </section>
   )
 }

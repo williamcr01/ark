@@ -3,9 +3,10 @@
 **One job:** persistence. Every read and write of a deck, its chat, its assets, and its generation
 jobs goes through here, and nothing here knows about HTTP or the agent.
 
-Layer 3. May import `@ark/deck`, `@ark/chat`, `@ark/runtime-registry`, `@ark/telemetry`.
+Layer 4. May import `@ark/deck`, `@ark/chat`, `@ark/runtime-registry`, `@ark/telemetry`.
 **Server-only:** it uses `node:sqlite`, `node:fs`, and `node:crypto`, so the renderer must not
-import it. That is enforced in `eslint.config.js`.
+import it. That is enforced in `eslint.config.js`. The public entry is `@ark/storage` (`index.ts`);
+deep imports remain supported.
 
 ```
 records/  what is stored     deck, chat, asset, generation-job records; chat persistence,
@@ -15,9 +16,9 @@ stores/   how it is stored   deck, chat, workspace, asset, generation-job, previ
 fs/       where it lives     data dir, repo root, deck manifest
 ```
 
-`records/stored-deck.ts` and `records/document-history.ts` re-export Zod schemas from
-`@ark/deck` (`document/stored-deck.ts`, `document/document-history.ts`). The shapes are
-browser-safe document vocabulary; this package owns how they are persisted.
+Stored-deck and document-history Zod schemas live in `@ark/deck`
+(`document/stored-deck.ts`, `document/document-history.ts`). This package owns how
+those browser-safe shapes are persisted.
 
 An Ark workspace is one `.ark` SQLite file per deck. `stores/workspace/` holds the pieces:
 

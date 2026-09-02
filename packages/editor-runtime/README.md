@@ -3,7 +3,8 @@
 **One job:** the manual editor — the protocol the shell and the deck frame speak, and the script
 that runs inside the frame to implement it.
 
-Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. Browser-safe.
+Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. Browser-safe. The public entry is
+`@ark/editor-runtime` (`index.ts`); deep imports remain supported.
 
 ```
 protocol/      message-types.ts  the wire identifiers
@@ -16,11 +17,11 @@ runtime/       script.ts         prepends host constants onto the committed bund
 ```
 
 Author the iframe runtime as real TypeScript under `runtime-src/`. Shared mutable state lives in
-`state.ts`; host values (`message-type` names, attribute names, sizes, `MAX_SELECTIONS`) arrive as
-the global `C` object that `buildDeckEditorBridgeRuntimeScript` prepends. After editing
-`runtime-src/`, run `pnpm build:runtimes` and commit the regenerated
-`runtime/generated/editor-runtime.source.ts`. `pnpm build:runtimes:check` (and a vitest in this
-package) fails if that file is stale.
+`state.ts`; pointer handling is split across `pointer.ts` and `pointer-flush.ts`. Host values
+(`message-type` names, attribute names, sizes, `MAX_SELECTIONS`) arrive as the global `C` object
+that `buildDeckEditorBridgeRuntimeScript` prepends. After editing `runtime-src/`, run
+`pnpm build:runtimes` and commit the regenerated `runtime/generated/editor-runtime.source.ts`.
+`pnpm build:runtimes:check` (and a vitest in this package) fails if that file is stale.
 
 `EditorNormalizedRect` is an alias for `NormalizedRect` in `@ark/deck/document/geometry.ts` — the
 deck model needs the rect too, so it is defined below this package.

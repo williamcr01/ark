@@ -12,7 +12,7 @@
     "build:runtimes:check": "node scripts/build-runtimes.mjs --check",
     "package": "pnpm --filter @ark/desktop run pack",
     "package:installers": "pnpm --filter @ark/desktop run dist",
-    "lint": "oxlint . && eslint . --cache --cache-location .eslintcache && node scripts/check-package-boundaries.mjs && node scripts/check-structure.mjs",
+    "lint": "oxlint . && eslint . --cache --cache-location .eslintcache && node scripts/check-package-boundaries.mjs && node scripts/check-structure.mjs --strict",
     "lint:eslint": "eslint . --cache --cache-location .eslintcache",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

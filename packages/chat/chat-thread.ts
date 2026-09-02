@@ -1,4 +1,6 @@
-import type { ChatAttachment, ChatMessageContext, ChatMessagePart } from './chat.ts'
+import type { ChatAttachment } from './attachments.ts'
+import type { ChatMessageContext } from './context.ts'
+import type { ChatMessagePart } from './messages.ts'
 
 export type ChatThreadStatus = 'active' | 'archived'
 

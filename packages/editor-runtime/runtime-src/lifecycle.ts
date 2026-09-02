@@ -116,6 +116,78 @@ export function disableEditor() {
   postToParent({ type: C.HOVER, slideIndex: runtime.currentSlideIndex, elementId: null })
 }
 
+function handleAssignElementId(data: Record<string, unknown>) {
+  if (typeof data.fromElementId !== 'string' || typeof data.toElementId !== 'string') {
+    return
+  }
+
+  if (typeof data.slideIndex !== 'number') {
+    return
+  }
+
+  runtime.currentSlideIndex = data.slideIndex
+  var assignSlide = getActiveSlide()!
+
+  if (!assignSlide) {
+    postError('No active slide found for editor command.', 'missing-slide')
+    return
+  }
+
+  var assignTarget = findElementById(data.fromElementId, assignSlide, data.slideIndex)
+
+  if (!assignTarget) {
+    postError('Element "' + data.fromElementId + '" was not found.', 'missing-element')
+    return
+  }
+
+  assignTarget.setAttribute(C.ELEMENT_ID_ATTR, data.toElementId)
+
+  if (data.managed) {
+    assignTarget.setAttribute(C.MANAGED_ATTR, 'true')
+  }
+
+  if (runtime.selectedElement === assignTarget || isSelectionMember(assignTarget)) {
+    postSelection(assignTarget, assignSlide, data.slideIndex)
+    refreshSelectionChrome(runtime.selectedElement || assignTarget, assignSlide, data.slideIndex)
+  }
+}
+
+function handleElementShellCommand(data: Record<string, unknown>) {
+  if (typeof data.elementId !== 'string' || typeof data.slideIndex !== 'number') {
+    return
+  }
+
+  runtime.currentSlideIndex = data.slideIndex
+  var slide = getActiveSlide()!
+
+  if (!slide) {
+    postError('No active slide found for editor command.', 'missing-slide')
+    return
+  }
+
+  var element = findElementById(data.elementId, slide, data.slideIndex)
+
+  if (!element) {
+    postError('Element "' + data.elementId + '" was not found.', 'missing-element')
+    return
+  }
+
+  if (data.type === C.SELECT) {
+    setSelectedElement(element, slide, data.slideIndex)
+    postSelection(element, slide, data.slideIndex)
+    return
+  }
+
+  if (data.type === C.REQUEST_GEOMETRY) {
+    postGeometryForElement(element, slide, data.slideIndex)
+    return
+  }
+
+  if (data.type === C.START_TEXT_EDIT) {
+    startTextEditOnElement(element, slide, data.slideIndex)
+  }
+}
+
 export function handleShellMessage(data: unknown) {
   if (!isRecord(data) || typeof data.type !== 'string' || data.type.indexOf('ark:editor-') !== 0) {
     return
@@ -169,42 +241,8 @@ export function handleShellMessage(data: unknown) {
       return
     }
 
-    if (
-      data.type === C.ASSIGN_ID &&
-      typeof data.fromElementId === 'string' &&
-      typeof data.toElementId === 'string' &&
-      typeof data.slideIndex === 'number'
-    ) {
-      runtime.currentSlideIndex = data.slideIndex
-      var assignSlide = getActiveSlide()!
-
-      if (!assignSlide) {
-        postError('No active slide found for editor command.', 'missing-slide')
-        return
-      }
-
-      var assignTarget = findElementById(data.fromElementId, assignSlide, data.slideIndex)
-
-      if (!assignTarget) {
-        postError('Element "' + data.fromElementId + '" was not found.', 'missing-element')
-        return
-      }
-
-      assignTarget.setAttribute(C.ELEMENT_ID_ATTR, data.toElementId)
-
-      if (data.managed) {
-        assignTarget.setAttribute(C.MANAGED_ATTR, 'true')
-      }
-
-      if (runtime.selectedElement === assignTarget || isSelectionMember(assignTarget)) {
-        postSelection(assignTarget, assignSlide, data.slideIndex)
-        refreshSelectionChrome(
-          runtime.selectedElement || assignTarget,
-          assignSlide,
-          data.slideIndex,
-        )
-      }
-
+    if (data.type === C.ASSIGN_ID) {
+      handleAssignElementId(data)
       return
     }
 
@@ -237,49 +275,16 @@ export function handleShellMessage(data: unknown) {
     }
 
     if (
-      (data.type === C.SELECT ||
-        data.type === C.REQUEST_GEOMETRY ||
-        data.type === C.START_TEXT_EDIT) &&
-      typeof data.elementId === 'string' &&
-      typeof data.slideIndex === 'number'
+      data.type === C.SELECT ||
+      data.type === C.REQUEST_GEOMETRY ||
+      data.type === C.START_TEXT_EDIT
     ) {
-      // Update the active slide index before resolving the slide so geometry
-      // and selection target the requested slide during rapid navigation.
-      runtime.currentSlideIndex = data.slideIndex
-      var slide = getActiveSlide()!
-
-      if (!slide) {
-        postError('No active slide found for editor command.', 'missing-slide')
-        return
-      }
-
-      var element = findElementById(data.elementId, slide, data.slideIndex)
-
-      if (!element) {
-        postError('Element "' + data.elementId + '" was not found.', 'missing-element')
-        return
-      }
-
-      if (data.type === C.SELECT) {
-        setSelectedElement(element, slide, data.slideIndex)
-        postSelection(element, slide, data.slideIndex)
-        return
-      }
-
-      if (data.type === C.REQUEST_GEOMETRY) {
-        postGeometryForElement(element, slide, data.slideIndex)
-        return
-      }
-
-      if (data.type === C.START_TEXT_EDIT) {
-        startTextEditOnElement(element, slide, data.slideIndex)
-        return
-      }
+      handleElementShellCommand(data)
+      return
     }
 
     if (data.type === C.CANCEL_TEXT_EDIT) {
       endTextEdit(false)
-      return
     }
   } catch (error: unknown) {
     var caught = error as { message?: string }

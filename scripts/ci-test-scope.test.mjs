@@ -27,7 +27,7 @@ test('runs affected tests and smoke for runtime workspace code', () => {
     'apps/sandbox/sandbox-host.ts',
     'apps/desktop/src/App.tsx',
     'packages/contracts/index.ts',
-    'packages/deck-preview/deck-bridge.ts',
+    'packages/deck-preview/index.ts',
     'packages/deck-export/index.ts',
     'packages/runtime-registry/deck-runtime-registry.ts',
   ]) {

@@ -42,7 +42,8 @@ duplicated into an injected string.
 
 `@ark/deck` (layer 1) and `@ark/runtime-registry` (layer 0). Browser-safe: no
 `node:*`, no Express, no React. The runtime chunks are plain strings, so they are
-never bundled as modules.
+never bundled as modules. The public entry is `@ark/deck-export` (`index.ts`);
+deep imports remain supported.
 
 ## Testing
 

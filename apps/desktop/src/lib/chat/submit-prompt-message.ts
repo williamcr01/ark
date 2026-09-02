@@ -1,4 +1,5 @@
-import type { ChatAttachment, EditorSelectionContext, SlideContext } from '@ark/chat/chat.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
+import type { EditorSelectionContext, SlideContext } from '@ark/chat/context.ts'
 import type { EditorSelectionInfo } from '@ark/editor-runtime'
 
 import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'

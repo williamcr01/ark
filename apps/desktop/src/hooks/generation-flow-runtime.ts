@@ -1,12 +1,12 @@
 import { toast } from 'sonner'
 
+import type { ChatMessage } from '@ark/chat/messages.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
 import type {
-  ChatAttachment,
-  ChatMessage,
   EditorSelectionContext,
   SlideContext,
   ThemeSelectionContext,
-} from '@ark/chat/chat.ts'
+} from '@ark/chat/context.ts'
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
 import { withEditorSelectionJobFields } from '@/lib/editor/editor-selection-context'
@@ -188,6 +188,111 @@ export async function applySucceededOutcome(
   toast.success(outcome.job.editingExistingDeck ? 'Deck updated' : 'Deck generated')
 }
 
+export function buildGenerateDeckUserMessage(
+  rawPrompt: string,
+  attachments: ChatAttachment[],
+  options: {
+    editorSelection?: EditorSelectionContext
+    editorSelections?: EditorSelectionContext[]
+    slideContexts?: SlideContext[]
+    themeSelection?: ThemeSelectionContext
+  },
+) {
+  const selectionFields = withEditorSelectionJobFields({
+    editorSelection: options.editorSelection,
+    editorSelections: options.editorSelections,
+  })
+  const messageContext =
+    selectionFields.editorSelection ||
+    selectionFields.editorSelections?.length ||
+    options.slideContexts?.length ||
+    options.themeSelection
+      ? {
+          ...selectionFields,
+          ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
+          ...(options.themeSelection ? { themeSelection: options.themeSelection } : {}),
+        }
+      : undefined
+  return {
+    selectionFields,
+    userMessage: {
+      id: newId(),
+      role: 'user' as const,
+      content: rawPrompt.trim(),
+      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(messageContext ? { context: messageContext as ChatMessage['context'] } : {}),
+    } satisfies ChatMessage,
+  }
+}
+
+async function reportGenerateDeckTurnOutcome(
+  outcome: Exclude<GenerationJobOutcome, { status: 'succeeded' }>,
+  resolvedDeckId: string | null,
+  context: {
+    chat: GenerationFlowChat
+    deckId: string | null
+    onError: (message: string) => void
+  },
+) {
+  const message = outcome.message
+  const isModelFailure = outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
+  useChatStore.getState().setModelFailure(isModelFailure)
+  if (!isModelFailure) {
+    context.onError(message)
+  }
+
+  if (resolvedDeckId) {
+    await context.chat.reloadChat(resolvedDeckId)
+  } else {
+    await appendFailureChatMessage(
+      outcome.status,
+      message,
+      isModelFailure,
+      context.chat,
+      context.deckId,
+    )
+  }
+
+  if (outcome.status === 'canceled') {
+    toast.info('Generation canceled')
+  } else if (outcome.job.error?.code === 'document_conflict') {
+    toast.error('Deck changed during generation')
+  } else if (!isModelFailure) {
+    toast.error('Generation failed')
+  }
+}
+
+async function reportGenerateDeckTurnException(
+  generationFailure: unknown,
+  resolvedDeckId: string | null,
+  context: {
+    chat: GenerationFlowChat
+    deckId: string | null
+    onError: (message: string) => void
+  },
+) {
+  const message =
+    generationFailure instanceof Error
+      ? generationFailure.message
+      : 'Something went wrong while generating the deck.'
+
+  const isModelFailure = isModelGenerationError(generationFailure)
+  useChatStore.getState().setModelFailure(isModelFailure)
+
+  if (isModelFailure) {
+    await appendFailureChatMessage('failed', message, true, context.chat, context.deckId)
+    return
+  }
+
+  context.onError(message)
+  if (resolvedDeckId) {
+    await context.chat.reloadChat(resolvedDeckId)
+  } else {
+    await appendFailureChatMessage('failed', message, false, context.chat, context.deckId)
+  }
+  toast.error('Generation failed')
+}
+
 export async function generateDeckTurn(
   rawPrompt: string,
   attachments: ChatAttachment[] = [],
@@ -236,32 +341,15 @@ export async function generateDeckTurn(
   useChatStore.getState().setModelFailure(false)
   context.setGenerationError('')
   context.onGenerationStart?.()
-  const selectionFields = withEditorSelectionJobFields({
-    editorSelection: options.editorSelection,
-    editorSelections: options.editorSelections,
-  })
+  const { selectionFields, userMessage } = buildGenerateDeckUserMessage(
+    rawPrompt,
+    attachments,
+    options,
+  )
   const { themeSelection: _themeSelection, ...jobSource } = options
   const jobOptions = {
     ...jobSource,
     ...selectionFields,
-  }
-  const messageContext =
-    selectionFields.editorSelection ||
-    selectionFields.editorSelections?.length ||
-    options.slideContexts?.length ||
-    options.themeSelection
-      ? {
-          ...selectionFields,
-          ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
-          ...(options.themeSelection ? { themeSelection: options.themeSelection } : {}),
-        }
-      : undefined
-  const userMessage: ChatMessage = {
-    id: newId(),
-    role: 'user',
-    content: rawPrompt.trim(),
-    ...(attachments.length > 0 ? { attachments } : {}),
-    ...(messageContext ? { context: messageContext as ChatMessage['context'] } : {}),
   }
   const nextMessages: ChatMessage[] = [...context.chat.messages, userMessage]
   const resolvedDeckId = options.deckId ?? context.deckId
@@ -287,52 +375,9 @@ export async function generateDeckTurn(
       return
     }
 
-    const message = outcome.message
-    const isModelFailure = outcome.status === 'failed' && isModelGenerationError(outcome.job.error)
-    useChatStore.getState().setModelFailure(isModelFailure)
-    if (!isModelFailure) {
-      context.onError(message)
-    }
-
-    if (resolvedDeckId) {
-      await context.chat.reloadChat(resolvedDeckId)
-    } else {
-      await appendFailureChatMessage(
-        outcome.status,
-        message,
-        isModelFailure,
-        context.chat,
-        context.deckId,
-      )
-    }
-
-    if (outcome.status === 'canceled') {
-      toast.info('Generation canceled')
-    } else if (outcome.job.error?.code === 'document_conflict') {
-      toast.error('Deck changed during generation')
-    } else if (!isModelFailure) {
-      toast.error('Generation failed')
-    }
+    await reportGenerateDeckTurnOutcome(outcome, resolvedDeckId, context)
   } catch (generationFailure) {
-    const message =
-      generationFailure instanceof Error
-        ? generationFailure.message
-        : 'Something went wrong while generating the deck.'
-
-    const isModelFailure = isModelGenerationError(generationFailure)
-    useChatStore.getState().setModelFailure(isModelFailure)
-
-    if (isModelFailure) {
-      await appendFailureChatMessage('failed', message, true, context.chat, context.deckId)
-    } else {
-      context.onError(message)
-      if (resolvedDeckId) {
-        await context.chat.reloadChat(resolvedDeckId)
-      } else {
-        await appendFailureChatMessage('failed', message, false, context.chat, context.deckId)
-      }
-      toast.error('Generation failed')
-    }
+    await reportGenerateDeckTurnException(generationFailure, resolvedDeckId, context)
   }
 }
 

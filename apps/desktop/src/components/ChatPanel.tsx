@@ -27,7 +27,7 @@ import {
 } from '@/state/chat-store.ts'
 import { useShellStore } from '@/state/shell-store.ts'
 
-export type { ChatMessage } from '@ark/chat/chat.ts'
+export type { ChatMessage } from '@ark/chat/messages.ts'
 export type { ChatPanelLayout }
 
 export type ChatPanelProps = {

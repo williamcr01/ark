@@ -3,7 +3,7 @@ import {
   detectRuntimeMode,
   runtimeModeAllowsDeckScripts,
   usesRevealRuntimeAdapter,
-} from '@/lib/deck/deck-runtime'
+} from '@ark/runtime-registry/deck-runtime.ts'
 import { manifestIndicatesScriptStripping } from '@/lib/deck/deck-runtime-manifest'
 import { isInertArkThemeScript } from '@ark/deck/document/theme.ts'
 import { stripDeckScriptsForPreview } from '@/lib/deck/deck-slides'

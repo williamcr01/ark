@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { editorSelectionFieldsSlideIndex } from '@ark/chat/chat.ts'
+import { editorSelectionFieldsSlideIndex } from '@ark/chat/context.ts'
 import { themeFontPairingSchema } from '@ark/chat/agent-themes.ts'
 import { deckThemeSpecV1Schema } from '@ark/deck/document/theme.ts'
 

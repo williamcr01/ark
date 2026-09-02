@@ -208,6 +208,54 @@ function parseThemeSelectionContext(
   }
 }
 
+function parseSlideContextsField(
+  input: unknown,
+  messageIndex: number,
+): { ok: true; slideContexts?: SlideContext[] } | { ok: false; error: string } {
+  if (input === undefined) {
+    return { ok: true }
+  }
+  if (!Array.isArray(input)) {
+    return {
+      ok: false,
+      error: `messages[${messageIndex}].context.slideContexts must be an array.`,
+    }
+  }
+  if (input.length > 64) {
+    return {
+      ok: false,
+      error: `messages[${messageIndex}].context.slideContexts exceeds the 64 slide limit.`,
+    }
+  }
+  const slideContexts: SlideContext[] = []
+  for (const [slideOffset, item] of input.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.slideContexts[${slideOffset}] must be an object.`,
+      }
+    }
+    const slideIndex = (item as { slideIndex?: unknown }).slideIndex
+    if (typeof slideIndex !== 'number' || !Number.isInteger(slideIndex) || slideIndex < 0) {
+      return {
+        ok: false,
+        error: `messages[${messageIndex}].context.slideContexts[${slideOffset}].slideIndex must be a non-negative integer.`,
+      }
+    }
+    const slide: SlideContext = { slideIndex }
+    const slideId = (item as { slideId?: unknown }).slideId
+    if (typeof slideId === 'string' && slideId.trim()) {
+      slide.slideId = slideId.trim()
+    }
+    const title = (item as { title?: unknown }).title
+    if (typeof title === 'string' && title.trim()) {
+      slide.title = title.trim().slice(0, 200)
+    }
+    slideContexts.push(slide)
+  }
+  return { ok: true, slideContexts: slideContexts.length > 0 ? slideContexts : undefined }
+}
+
 export function parseChatMessageContext(
   input: unknown,
   messageIndex: number,
@@ -276,46 +324,10 @@ export function parseChatMessageContext(
   }
 
   if (record.slideContexts !== undefined) {
-    if (!Array.isArray(record.slideContexts)) {
-      return {
-        ok: false,
-        error: `messages[${messageIndex}].context.slideContexts must be an array.`,
-      }
-    }
-    if (record.slideContexts.length > 64) {
-      return {
-        ok: false,
-        error: `messages[${messageIndex}].context.slideContexts exceeds the 64 slide limit.`,
-      }
-    }
-    const slideContexts: SlideContext[] = []
-    for (const [slideOffset, item] of record.slideContexts.entries()) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) {
-        return {
-          ok: false,
-          error: `messages[${messageIndex}].context.slideContexts[${slideOffset}] must be an object.`,
-        }
-      }
-      const slideIndex = (item as { slideIndex?: unknown }).slideIndex
-      if (typeof slideIndex !== 'number' || !Number.isInteger(slideIndex) || slideIndex < 0) {
-        return {
-          ok: false,
-          error: `messages[${messageIndex}].context.slideContexts[${slideOffset}].slideIndex must be a non-negative integer.`,
-        }
-      }
-      const slide: SlideContext = { slideIndex }
-      const slideId = (item as { slideId?: unknown }).slideId
-      if (typeof slideId === 'string' && slideId.trim()) {
-        slide.slideId = slideId.trim()
-      }
-      const title = (item as { title?: unknown }).title
-      if (typeof title === 'string' && title.trim()) {
-        slide.title = title.trim().slice(0, 200)
-      }
-      slideContexts.push(slide)
-    }
-    if (slideContexts.length > 0) {
-      context.slideContexts = slideContexts
+    const parsedSlides = parseSlideContextsField(record.slideContexts, messageIndex)
+    if (!parsedSlides.ok) return parsedSlides
+    if (parsedSlides.slideContexts) {
+      context.slideContexts = parsedSlides.slideContexts
     }
   }
 

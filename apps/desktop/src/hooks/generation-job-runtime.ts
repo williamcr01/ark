@@ -1,11 +1,10 @@
+import type { ChatMessage } from '@ark/chat/messages.ts'
+import type { EditorSelectionContext, SlideContext } from '@ark/chat/context.ts'
 import {
   agentStepsToChatParts,
   buildAssistantMessageContent,
   toApiMessages,
-  type ChatMessage,
-  type EditorSelectionContext,
-  type SlideContext,
-} from '@ark/chat/chat.ts'
+} from '@ark/chat/api-projection.ts'
 import type { GenerationJobApi, ReasoningEffort } from '@ark/contracts'
 import {
   cancelGenerationJob,

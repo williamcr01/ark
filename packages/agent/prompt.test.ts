@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import { exampleDeckThemes } from '@ark/deck/document/theme.ts'
 import { assembleDeckAgentContext, buildAgentModelMessages } from '@ark/chat/chat-context.ts'
-import { MAX_EDITOR_SELECTIONS, type ApiChatMessage, type ChatMessagePart } from '@ark/chat/chat.ts'
+import type { ChatMessagePart } from '@ark/chat/messages.ts'
+import { MAX_EDITOR_SELECTIONS } from '@ark/chat/context.ts'
+import type { ApiChatMessage } from '@ark/chat/api-projection.ts'
 
 import {
   describeEditorSelections,

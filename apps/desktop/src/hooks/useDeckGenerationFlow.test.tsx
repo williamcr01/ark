@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GenerationJobApi } from '@ark/contracts'
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 import { useDeckGenerationFlow, type UseDeckGenerationFlowOptions } from './useDeckGenerationFlow'
 

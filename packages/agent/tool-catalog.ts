@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { THEME_SAMPLE_HTML_MAX_BYTES } from '@ark/chat/agent-themes.ts'
-import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/chat/chat.ts'
+import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/chat/messages.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import type { DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import { createDeckTools, type DeckAttachmentInspector } from './tools.ts'

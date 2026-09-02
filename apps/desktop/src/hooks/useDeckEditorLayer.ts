@@ -1,15 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  type MutableRefObject,
-  type RefObject,
-} from 'react'
+import { useCallback, useRef, type MutableRefObject, type RefObject } from 'react'
 
 import { useDeckEditorBridge } from '@/hooks/useDeckEditorBridge'
 import { useDeckEditorPatchCoordinator } from '@/hooks/useDeckEditorPatchCoordinator'
-import { useDeckEditorShellShortcuts } from '@/hooks/useDeckEditorShellShortcuts'
+import { useDeckEditorLayerChrome } from '@/hooks/useDeckEditorLayerChrome'
+import { createDeckEditorCoordinatorInput } from '@/hooks/useDeckEditorLayerPatches'
 import { useManualEditCommits } from '@/hooks/useManualEditCommits'
 import type { DeckPreviewFrameModel } from '@/hooks/useDeckPreviewFrame'
 import type { PreviewBridgeSessionResult } from '@/hooks/usePreviewBridgeSession'
@@ -32,6 +26,35 @@ export type DeckEditorCompanionGeometry = {
   locked?: boolean
   slideBounds?: EditorNormalizedRect | null
   surface?: EditorSelectionInfo['surface']
+}
+
+function collectCompanionGeometries(
+  selection: EditorSelectionInfo | null,
+  selections: EditorSelectionInfo[],
+  selectionGeometries: Record<
+    string,
+    { geometry: EditorNormalizedRect; slideBounds?: EditorNormalizedRect | null }
+  >,
+): DeckEditorCompanionGeometry[] {
+  const selectionSet = selections.length > 0 ? selections : selection ? [selection] : []
+  const companionGeometries: DeckEditorCompanionGeometry[] = []
+  for (const item of selectionSet) {
+    if (item.elementId === selection?.elementId) {
+      continue
+    }
+    const box = selectionGeometries[item.elementId]
+    if (!box) {
+      continue
+    }
+    companionGeometries.push({
+      elementId: item.elementId,
+      geometry: box.geometry,
+      slideBounds: box.slideBounds,
+      locked: item.locked,
+      surface: item.surface,
+    })
+  }
+  return companionGeometries
 }
 
 export type DeckEditorLayerProps = {
@@ -101,23 +124,7 @@ export function useDeckEditorLayer({
     onSelectionChange: handleBridgeSelectionChange,
   })
 
-  const {
-    enableEditor,
-    setTool,
-    clearSelection,
-    setTransformPreviewListener,
-    disableEditor,
-    startTextEdit,
-    cancelTextEdit,
-    configureEditor,
-    requestGeometry,
-    editorReady,
-    selection,
-    selections = [],
-    textEditActive,
-    selectionGeometries = {},
-  } = bridge
-
+  const setTool = bridge.setTool
   const handleToolChange = useCallback(
     (tool: EditorTool) => {
       useEditorStore.getState().setSelectedTool(tool)
@@ -126,215 +133,68 @@ export function useDeckEditorLayer({
     [setTool],
   )
 
-  const coordinator = useDeckEditorPatchCoordinator({
-    activeSlideIndex: navigation.activeSlideIndex,
-    canRedo: edits.canRedo,
-    canUndo: edits.canUndo,
-    editChromeActive: chrome.editActive,
-    editorReady,
-    geometry: bridge.geometry,
-    iframeKey: frame.model.iframeKey,
-    isTextEditSaving,
-    lastDeleteRequest: bridge.lastDeleteRequest,
-    lastInsertRequest: bridge.lastInsertRequest,
-    lastShortcutRequest: bridge.lastShortcutRequest,
-    lastTextCommit: bridge.lastTextCommit,
-    onCommitTextEdit: edits.handleCommitTextEdit,
-    onPatchEditorOperations: edits.handlePatchEditorOperations,
-    onRedo: edits.handleRedoEdit,
-    onSelectElement: bridge.selectElement,
-    onSelectTool: handleToolChange,
-    onUndo: edits.handleUndoEdit,
-    preserveRedoSlideIndex: edits.redoSlideIndex,
-    preserveUndoSlideIndex: edits.undoSlideIndex,
-    previewContentRevision: source.contentRevision,
-    selection,
-    selections,
-    scopeKey: deckId,
-    textEditActive,
-    transformCancelSequence: bridge.transformCancelSequence,
-    transformCommit: bridge.transformCommit,
-    transformPreview: bridge.transformPreview,
-    beginLivePatch: source.beginLivePatch,
-    finishLivePatch: source.finishLivePatch,
-    goToSlide: navigation.goToSlide,
-    rollbackLivePatch: source.rollbackLivePatch,
-    onAssignElementId: bridge.assignElementId,
-  })
+  const coordinator = useDeckEditorPatchCoordinator(
+    createDeckEditorCoordinatorInput({
+      activeSlideIndex: navigation.activeSlideIndex,
+      beginLivePatch: source.beginLivePatch,
+      contentRevision: source.contentRevision,
+      deckId,
+      editChromeActive: chrome.editActive,
+      edits,
+      finishLivePatch: source.finishLivePatch,
+      goToSlide: navigation.goToSlide,
+      handleToolChange,
+      iframeKey: frame.model.iframeKey,
+      isTextEditSaving,
+      rollbackLivePatch: source.rollbackLivePatch,
+      bridge,
+    }),
+  )
 
   const beginTextEdit = useCallback(() => {
-    if (!selection || !coordinator.canEditSelectedText || textEditActive) {
+    if (!bridge.selection || !coordinator.canEditSelectedText || bridge.textEditActive) {
       return
     }
-    startTextEdit(selection.elementId, selection.slideIndex)
-  }, [coordinator.canEditSelectedText, selection, startTextEdit, textEditActive])
+    bridge.startTextEdit(bridge.selection.elementId, bridge.selection.slideIndex)
+  }, [bridge, coordinator.canEditSelectedText])
 
   const endTextEditing = useCallback(() => {
-    if (!textEditActive) {
+    if (!bridge.textEditActive) {
       return
     }
-    cancelTextEdit()
-  }, [cancelTextEdit, textEditActive])
+    bridge.cancelTextEdit()
+  }, [bridge])
 
-  useLayoutEffect(() => {
-    setTransformPreviewListener((preview) => {
-      if (!preview) {
-        selectionOverlayRef.current?.clearTransformPreview()
-        return
-      }
-      selectionOverlayRef.current?.applyTransformPreview(preview.geometry, preview.slideBounds)
-    })
-    return () => {
-      setTransformPreviewListener(null)
-    }
-  }, [setTransformPreviewListener])
-
-  useLayoutEffect(() => {
-    refs.clearSelectionRef.current = clearSelection
-  }, [clearSelection, refs.clearSelectionRef])
-
-  useEffect(() => {
-    refs.textEditActiveRef.current = textEditActive
-    useEditorStore.getState().setTextEditActive(textEditActive)
-  }, [refs.textEditActiveRef, textEditActive])
-
-  useEffect(() => {
-    if (!session.armed || session.compromised) {
-      return
-    }
-    navigation.goToSlide(navigation.activeSlideIndexRef.current)
-    if (chrome.editorBridgeActive) {
-      enableEditor(navigation.activeSlideIndexRef.current, selectedTool, frame.scale || undefined)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tool/scale are initial enable payloads; their dedicated messages own later updates
-  }, [
-    chrome.editorBridgeActive,
-    enableEditor,
-    frame.model.iframeKey,
-    navigation.goToSlide,
-    session.armed,
-    session.compromised,
-  ])
-
-  useEffect(() => {
-    const wasEditChromeActive = wasEditChromeActiveRef.current
-    wasEditChromeActiveRef.current = chrome.editActive
-    if (!wasEditChromeActive || chrome.editActive) {
-      return
-    }
-    endTextEditing()
-    disableEditor()
-  }, [chrome.editActive, disableEditor, endTextEditing])
-
-  useDeckEditorShellShortcuts({
-    active: chrome.editActive,
-    textEditActive,
+  useDeckEditorLayerChrome({
+    chrome,
+    frame,
+    navigation,
+    refs,
+    session,
+    selectedTool,
+    selectionOverlayRef,
+    bridge,
+    endTextEditing,
+    wasEditChromeActiveRef,
     isTextEditSaving,
-    activeTool: selectedTool,
     canEditSelectedText: coordinator.canEditSelectedText,
     canUndo: edits.canUndo,
     canRedo: edits.canRedo,
     onUndo: coordinator.handleUndo,
     onRedo: coordinator.handleRedo,
-    onEndTextEditing: endTextEditing,
     onSelectTool: () => handleToolChange('select'),
     onBeginTextEdit: beginTextEdit,
     onInsertImage: (file) => void coordinator.handleInsertImageFile(file),
-    onClearSelection: clearSelection,
   })
-
-  useEffect(() => {
-    if (!chrome.editorBridgeActive || !editorReady) {
-      return
-    }
-    enableEditor(navigation.activeSlideIndex, selectedTool, frame.scale || undefined)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tool/scale are initial enable payloads; their dedicated messages own later updates
-  }, [
-    chrome.editorBridgeActive,
-    editorReady,
-    enableEditor,
-    frame.model.iframeKey,
-    navigation.activeSlideIndex,
-  ])
-
-  useEffect(() => {
-    if (chrome.editorBridgeActive && editorReady && frame.scale > 0) {
-      configureEditor(frame.scale)
-    }
-  }, [chrome.editorBridgeActive, configureEditor, editorReady, frame.scale])
-
-  const selectedElementId = selection?.elementId ?? null
-  const selectedSlideIndex = selection?.slideIndex ?? null
-  const selectedElementIds = (selections.length > 0 ? selections : selection ? [selection] : [])
-    .map((item) => item.elementId)
-    .join('\0')
-
-  useEffect(() => {
-    if (!chrome.editActive || selectedElementId === null || selectedSlideIndex === null) {
-      return
-    }
-    const targets =
-      selections.length > 0
-        ? selections
-        : [{ elementId: selectedElementId, slideIndex: selectedSlideIndex }]
-    for (const target of targets) {
-      requestGeometry(target.elementId, target.slideIndex)
-    }
-  }, [
-    chrome.editActive,
-    frame.viewportSize.height,
-    frame.viewportSize.width,
-    requestGeometry,
-    selectedElementId,
-    selectedElementIds,
-    selectedSlideIndex,
-    selections,
-  ])
-
-  useEffect(() => {
-    if (!refs.clearEditorSelectionRef) {
-      return
-    }
-    if (chrome.editorBridgeActive && chrome.bridgeEnabled) {
-      refs.clearEditorSelectionRef.current = clearSelection
-    } else {
-      refs.clearEditorSelectionRef.current = null
-    }
-    return () => {
-      if (refs.clearEditorSelectionRef) {
-        refs.clearEditorSelectionRef.current = null
-      }
-    }
-  }, [
-    chrome.bridgeEnabled,
-    chrome.editorBridgeActive,
-    clearSelection,
-    refs.clearEditorSelectionRef,
-  ])
-
-  const selectionSet = selections.length > 0 ? selections : selection ? [selection] : []
-  const companionGeometries: DeckEditorCompanionGeometry[] = []
-  for (const item of selectionSet) {
-    if (item.elementId === selection?.elementId) {
-      continue
-    }
-    const box = selectionGeometries[item.elementId]
-    if (!box) {
-      continue
-    }
-    companionGeometries.push({
-      elementId: item.elementId,
-      geometry: box.geometry,
-      slideBounds: box.slideBounds,
-      locked: item.locked,
-      surface: item.surface,
-    })
-  }
 
   return {
     beginTextEdit,
     bridge,
-    companionGeometries,
+    companionGeometries: collectCompanionGeometries(
+      bridge.selection,
+      bridge.selections ?? [],
+      bridge.selectionGeometries ?? {},
+    ),
     coordinator,
     handleToolChange,
     selectionOverlayRef,

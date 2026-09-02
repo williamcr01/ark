@@ -182,8 +182,12 @@ function pushIssue(issues: DeckValidationIssue[], issue: DeckValidationIssue) {
   issues.push(issue)
 }
 
-export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValidationReport {
-  const issues: DeckValidationIssue[] = []
+function collectStructureIssues(
+  issues: DeckValidationIssue[],
+  doc: Document,
+  rawHtml: string | undefined,
+  slideElements: Element[],
+) {
   const parserError = doc.querySelector('parsererror')
 
   if (parserError) {
@@ -218,10 +222,7 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
     })
   }
 
-  const slideElements = findSlideElements(doc)
-  const slideCount = slideElements.length
-
-  if (slideCount === 0) {
+  if (slideElements.length === 0) {
     pushIssue(issues, {
       code: 'no_slides',
       message:
@@ -270,6 +271,19 @@ export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValid
     })
   }
 
+  return { forms, iframes, malformedSlides }
+}
+
+export function validateDeckDocument(doc: Document, rawHtml?: string): DeckValidationReport {
+  const issues: DeckValidationIssue[] = []
+  const slideElements = findSlideElements(doc)
+  const { forms, iframes, malformedSlides } = collectStructureIssues(
+    issues,
+    doc,
+    rawHtml,
+    slideElements,
+  )
+  const slideCount = slideElements.length
   const scripts = collectScripts(doc)
   const runtimeMarkers = readRuntimeMarkers(doc)
 

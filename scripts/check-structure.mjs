@@ -3,9 +3,8 @@
 /**
  * Inventory of desktop renderer structure-budget offenders.
  *
- * Warns (exit 0) when an exported `*Props` type/interface has more than 12 fields,
- * or an `export function use*` returns an object literal with more than 10 keys.
- * Pass `--strict` to exit 1 when any offender is found.
+ * `pnpm lint` runs this with `--strict` (exit 1 when any offender is found).
+ * Without `--strict`, the inventory is printed and the process exits 0.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
@@ -179,7 +178,7 @@ export function formatStructureReport(offenders) {
   const props = offenders.filter((item) => item.kind === 'props')
   const hooks = offenders.filter((item) => item.kind === 'hook-return')
   const lines = [
-    'Structure budget inventory (warnings; use --strict to fail):',
+    'Structure budget inventory (--strict fails when non-empty):',
     `  Props types with >${MAX_PROPS_FIELDS} fields: ${props.length}`,
     `  Hooks returning >${MAX_HOOK_RETURN_KEYS} keys: ${hooks.length}`,
   ]

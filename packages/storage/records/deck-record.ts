@@ -1,14 +1,14 @@
 import type { EmbeddedAsset } from './embedded-assets.ts'
 
-export type { DeckSummary, StoredDeck } from './stored-deck.ts'
+export type { DeckSummary, StoredDeck } from '@ark/deck/document/stored-deck.ts'
 export type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
 export { isValidDeckId } from '@ark/deck/document/id.ts'
 export { extractDeckTitle, normalizeDeckTitle } from '@ark/deck/document/title.ts'
 
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
-import type { DocumentHistorySource } from './document-history.ts'
-import type { DeckSummary, StoredDeck } from './stored-deck.ts'
+import type { DocumentHistorySource } from '@ark/deck/document/document-history.ts'
+import type { DeckSummary, StoredDeck } from '@ark/deck/document/stored-deck.ts'
 
 export type DeckSaveOptions = {
   embeddedAssets?: EmbeddedAsset[]

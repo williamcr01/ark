@@ -1,4 +1,4 @@
-import { type ChatAttachment } from '@ark/chat/chat.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
 
 import { uploadDeckAsset } from '@/lib/api/asset-api'
 

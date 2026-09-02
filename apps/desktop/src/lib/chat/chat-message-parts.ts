@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatMessagePart } from '@ark/chat/chat.ts'
+import type { ChatMessage, ChatMessagePart } from '@ark/chat/messages.ts'
 import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
 
 export type IndexedToolPart = {

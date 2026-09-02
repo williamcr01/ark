@@ -5,14 +5,15 @@ document lives here, and nothing here knows about HTTP, storage, previews, or th
 
 Layer 1. May import `@ark/runtime-registry`. Browser-safe: no `node:*`, no `Buffer`, no Express, no
 React, no `jsdom` — the renderer bundles it. Callers pass a `Document`; this package never
-constructs one from an HTML string.
+constructs one from an HTML string. The public entry is `@ark/deck` (`index.ts`); deep imports
+remain supported.
 
 ```
 document/   read a deck        parser (parseDeckDocument), structure, slides, metadata, title,
                                origin, network, assets, image, editable, geometry, sanitize,
-                               theme, stored-deck, document-history
+                               theme (theme-spec, theme-document), stored-deck, document-history
 patch/      change a deck      slide-ops (applySlidePatch on a Document), patch-request,
-                               editable-elements, text-edit, text-box
+                               editable-elements (classify/style), text-edit, text-box
 patch/element-patch.ts         dispatcher: applyElementPatch and
                                stabilizeElementPatchOperations (public API)
 patch/element/                 per-concern modules — types, resolve, validate, ids,

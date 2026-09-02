@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { uploadPromptAttachments } from './upload-prompt-attachments.ts'
 
@@ -11,10 +11,12 @@ vi.mock('@/lib/api/asset-api', () => ({
 }))
 
 describe('uploadPromptAttachments', () => {
+  beforeEach(() => {
+    uploadDeckAsset.mockReset()
+  })
+
   it('uploads files in original order with bounded concurrency', async () => {
-    const seen: string[] = []
     uploadDeckAsset.mockImplementation(async (_deckId: string, input: { filename: string }) => {
-      seen.push(input.filename)
       return {
         id: `id-${input.filename}`,
         mediaType: 'image/png',
@@ -31,6 +33,6 @@ describe('uploadPromptAttachments', () => {
     ])
 
     expect(attachments.map((item) => item.filename)).toEqual(['a.png', 'b.png', 'c.png', 'd.png'])
-    expect(seen).toHaveLength(4)
+    expect(uploadDeckAsset).toHaveBeenCalledTimes(4)
   })
 })

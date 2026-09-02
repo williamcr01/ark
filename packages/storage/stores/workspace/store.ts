@@ -29,7 +29,7 @@ import {
 } from './schema.ts'
 import { ThumbnailFiles } from './thumbnail-files.ts'
 import type { OpenWorkspace } from './types.ts'
-import type { DocumentHistorySource } from '../../records/document-history.ts'
+import type { DocumentHistorySource } from '@ark/deck/document/document-history.ts'
 
 export class WorkspaceStore {
   private defaultDir: string

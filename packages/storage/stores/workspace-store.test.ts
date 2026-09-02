@@ -12,7 +12,7 @@ import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 import {
   DOCUMENT_HISTORY_MAX_BYTES,
   DOCUMENT_HISTORY_MAX_ENTRIES,
-} from '../records/document-history.ts'
+} from '@ark/deck/document/document-history.ts'
 import { garbageCollectUnreferencedAssets } from './workspace/assets.ts'
 import { evictDocumentHistory } from './workspace/history.ts'
 

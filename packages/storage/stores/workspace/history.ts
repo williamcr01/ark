@@ -8,7 +8,7 @@ import {
   type DocumentHistoryLimits,
   type DocumentHistorySource,
   type DocumentHistorySummary,
-} from '../../records/document-history.ts'
+} from '@ark/deck/document/document-history.ts'
 import { dropHistoryAssetReferences, pinHistoryAssetReferences } from './assets.ts'
 
 export const DOCUMENT_HISTORY_TABLE = `CREATE TABLE document_history (
