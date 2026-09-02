@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -141,6 +141,10 @@ describe('useAvailableModels startup loading', () => {
     expect(result.current.error).toBe('')
     expect(result.current.apiKeyStatus).toBe('valid')
     expect(result.current.models).toHaveLength(1)
+    expect([...new Set(fetchMock.mock.calls.map(([input]) => String(input)))].sort()).toEqual([
+      '/api/health',
+      '/api/models',
+    ])
   })
 
   it('keeps checking status when startup retries are exhausted', async () => {
@@ -196,6 +200,13 @@ describe('useAvailableModels startup loading', () => {
     expect(result.current.selectedModel).toBe('')
     expect(result.current.canGenerate).toBe(false)
     expect(result.current.apiKeyStatus).toBe('missing')
+    expect(getDesktopSettings().selectedModel).toBeNull()
+
+    act(() => {
+      result.current.setSelectedModel('openai:gpt-5.6-luna')
+    })
+    expect(result.current.selectedModel).toBe('')
+    expect(result.current.canGenerate).toBe(false)
     expect(getDesktopSettings().selectedModel).toBeNull()
   })
 
@@ -316,6 +327,70 @@ describe('useAvailableModels startup loading', () => {
     expect(result.current.models).toEqual([])
     expect(result.current.canGenerate).toBe(false)
     expect(getDesktopSettings().selectedModel).toBeNull()
+  })
+
+  it('falls back after a credential change removes the selected model from the catalog', async () => {
+    resetDesktopSettingsForTests({ selectedModel: 'openrouter:anthropic/claude-3.5-sonnet' })
+    let includeOpenRouter = true
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/health')) {
+        return jsonResponse(
+          includeOpenRouter
+            ? {
+                ...healthResponse,
+                providers: {
+                  ...healthResponse.providers,
+                  openrouter: { configured: true },
+                },
+              }
+            : healthResponse,
+        )
+      }
+
+      if (includeOpenRouter) {
+        return jsonResponse({
+          defaultModel: 'openrouter:anthropic/claude-3.5-sonnet',
+          models: [
+            {
+              id: 'openrouter:anthropic/claude-3.5-sonnet',
+              provider: 'openrouter',
+              modelId: 'anthropic/claude-3.5-sonnet',
+              name: 'Claude 3.5 Sonnet',
+              available: true,
+              supportsAttachments: true,
+            },
+            modelsResponse.models[0],
+          ],
+          warnings: [],
+        })
+      }
+
+      return jsonResponse(modelsResponse)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAvailableModels())
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect(result.current.selectedModel).toBe('openrouter:anthropic/claude-3.5-sonnet')
+
+    includeOpenRouter = false
+    await result.current.loadModels()
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe('openai:gpt-5.6-luna')
+    })
+    expect(result.current.models.map((model) => model.id)).toEqual(['openai:gpt-5.6-luna'])
+    expect(result.current.canGenerate).toBe(true)
+    expect(getDesktopSettings().selectedModel).toBe('openai:gpt-5.6-luna')
+    expect([...new Set(fetchMock.mock.calls.map(([input]) => String(input)))].sort()).toEqual([
+      '/api/health',
+      '/api/models',
+    ])
   })
 })
 

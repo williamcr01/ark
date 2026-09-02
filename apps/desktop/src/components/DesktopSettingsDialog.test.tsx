@@ -257,6 +257,31 @@ describe('DesktopSettingsDialog', () => {
     expect(onCredentialsChanged).toHaveBeenCalledTimes(2)
   })
 
+  it('tests an OpenRouter key through the same credentials bridge without refreshing the catalog', async () => {
+    const test = vi.fn().mockResolvedValue({ ok: true, modelCount: 8 })
+    const onCredentialsChanged = vi.fn()
+    window.arkDesktop.credentials.list = vi.fn().mockResolvedValue(unconfiguredCredentials)
+    window.arkDesktop.credentials.test = test
+
+    render(
+      <DesktopSettingsDialog
+        appearancePreference="system"
+        onAppearanceChange={vi.fn()}
+        onCredentialsChanged={onCredentialsChanged}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    )
+    const user = userEvent.setup()
+    await switchTab('AI Providers')
+    await user.type(screen.getByLabelText('OpenRouter'), 'or-test-key')
+    await user.click(screen.getAllByRole('button', { name: 'Test' })[3]!)
+
+    expect(test).toHaveBeenCalledWith('openrouter', 'or-test-key')
+    expect(onCredentialsChanged).not.toHaveBeenCalled()
+    expect(await screen.findByText(/8 models are available/)).toBeInTheDocument()
+  })
+
   it('surfaces catalog list warnings without inventing missing_api_key rows', async () => {
     render(
       <DesktopSettingsDialog

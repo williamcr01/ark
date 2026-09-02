@@ -827,6 +827,8 @@ describe('ChatPanel submit control', () => {
     expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent(
       'Add an API key in Settings',
     )
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled()
   })
 
   it('keeps reasoning effort inside the model picker', () => {
