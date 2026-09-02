@@ -16,6 +16,7 @@ export function renderWithRouter(
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route element={children} path={path} />
+          <Route element={children} path="/" />
           <Route element={<div data-testid="decks-dashboard" />} path="/decks" />
           <Route element={children} path="/decks/new" />
         </Routes>

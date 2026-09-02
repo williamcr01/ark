@@ -132,7 +132,7 @@ describe('DecksDashboard', () => {
       <MemoryRouter initialEntries={['/decks']}>
         <Routes>
           <Route element={<DecksDashboard />} path="/decks" />
-          <Route element={<div>Fresh deck</div>} path="/decks/new" />
+          <Route element={<div>Fresh deck</div>} path="/" />
         </Routes>
       </MemoryRouter>,
     )

@@ -18,7 +18,7 @@ import {
   type StoredDeck,
 } from '@/lib/api/deck-api'
 import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
-import { ApiResponseError, extractDeckTitle } from '@ark/contracts'
+import { ApiResponseError, extractDeckTitle, type DeckOrigin } from '@ark/contracts'
 
 /** A blank white slide: no starter content, so the first edit or generation owns the deck. */
 const NEW_DECK_HTML = `<!DOCTYPE html>
@@ -43,7 +43,8 @@ const upsertDeckSummary = (decks: DeckSummary[], deck: StoredDeck) =>
   ])
 
 /**
- * @param routeDeckId Deck id from `/decks/:deckId`, or `null` on `/decks/new`.
+ * @param routeDeckId Deck id from `/decks/:deckId`, or `null` on `/` until the
+ * first prompt creates a blank workspace.
  */
 export function useDeckPersistence(routeDeckId: string | null = null) {
   const [decks, setDecks] = useState<DeckSummary[]>([])
@@ -52,6 +53,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
   const [deckId, setDeckId] = useState<string | null>(null)
   const [deckTitle, setDeckTitle] = useState('')
   const [filePath, setFilePath] = useState<string | null>(null)
+  const [origin, setOrigin] = useState<DeckOrigin | null>(null)
   const [documentRevision, setDocumentRevision] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -72,6 +74,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     setDeckId(deck.id)
     setDeckTitle(deck.title)
     setFilePath(deck.filePath)
+    setOrigin(deck.origin)
     setHtml(deck.html)
     setSavedHtml(deck.html)
     setDocumentRevision(deck.documentRevision)
@@ -84,6 +87,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     setDeckId(null)
     setDeckTitle('')
     setFilePath(null)
+    setOrigin(null)
     setHtml('')
     setSavedHtml('')
     setDocumentRevision(null)
@@ -125,16 +129,14 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
 
         if (!routeDeckId) {
           clearActiveDeck()
-
-          const deck = await (newDeckPromiseRef.current ??= createDeck(NEW_DECK_HTML, 'blank'))
+          newDeckPromiseRef.current = null
           const summaries = await summariesPromise
 
           if (!bootStillOwnsSession()) {
             return
           }
 
-          setActiveDeck(deck)
-          setDecks(upsertDeckSummary(summaries, deck))
+          setDecks(summaries)
           setSaveError('')
           return
         }
@@ -246,6 +248,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         setDeckId(deck.id)
         setDeckTitle(deck.title)
         setFilePath(deck.filePath)
+        setOrigin(deck.origin)
         setDocumentRevision(deck.documentRevision)
         documentRevisionRef.current = deck.documentRevision
         setSavedHtml(deck.html)
@@ -307,14 +310,27 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     saveRequestIdRef.current += 1
     setIsSaving(false)
     setSaveError('')
+    newDeckPromiseRef.current = null
     clearActiveDeck()
-    const promise = createDeck(NEW_DECK_HTML, 'blank')
-    newDeckPromiseRef.current = promise
+  }, [clearActiveDeck])
+
+  const ensureBlankDeck = useCallback(async () => {
+    if (deckIdRef.current) {
+      return deckIdRef.current
+    }
+
+    const requestId = saveRequestIdRef.current
+    const promise = (newDeckPromiseRef.current ??= createDeck(NEW_DECK_HTML, 'blank'))
     const deck = await promise
+
+    if (saveRequestIdRef.current !== requestId) {
+      return deckIdRef.current
+    }
+
     setActiveDeck(deck)
     setDecks((current) => upsertDeckSummary(current, deck))
-    return deck
-  }, [clearActiveDeck, setActiveDeck])
+    return deck.id
+  }, [setActiveDeck])
 
   const renameActiveDeck = useCallback(
     async (title: string) => {
@@ -333,6 +349,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
         htmlRef.current = deck.html
         setDeckTitle(deck.title)
         setFilePath(deck.filePath)
+        setOrigin(deck.origin)
         setHtml(deck.html)
         setSavedHtml(deck.html)
         setDocumentRevision(deck.documentRevision)
@@ -457,6 +474,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     htmlRef.current = deck.html
     setHtml(deck.html)
     setSavedHtml(deck.html)
+    setOrigin(deck.origin)
     setDocumentRevision(deck.documentRevision)
     documentRevisionRef.current = deck.documentRevision
     setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
@@ -508,6 +526,7 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
           htmlRef.current = deck.html
           setHtml(deck.html)
           setSavedHtml(deck.html)
+          setOrigin(deck.origin)
           setDocumentRevision(deck.documentRevision)
           documentRevisionRef.current = deck.documentRevision
           setDecks((currentDecks) => upsertDeckSummary(currentDecks, deck))
@@ -647,8 +666,10 @@ export function useDeckPersistence(routeDeckId: string | null = null) {
     duplicate,
     deckId,
     deckTitle,
+    origin,
     decks,
     deleteActiveDeck,
+    ensureBlankDeck,
     hasDeck,
     html,
     filePath,

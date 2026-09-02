@@ -203,8 +203,8 @@ export function useGenerationJob({
   )
 
   const finalizeJob = useCallback(
-    (job: GenerationJobApi) => {
-      clearStoredJobId(deckKey)
+    (job: GenerationJobApi, storageKey = deckKey) => {
+      clearStoredJobId(storageKey)
       setActiveJob(job)
       setIsGenerating(false)
 
@@ -231,15 +231,15 @@ export function useGenerationJob({
   )
 
   const runJob = useCallback(
-    async (jobId: string) => {
+    async (jobId: string, storageKey = deckKey) => {
       setIsGenerating(true)
       setError('')
       setFailedJob(null)
-      writeStoredJobId(deckKey, jobId)
+      writeStoredJobId(storageKey, jobId)
 
       try {
         const job = await pollUntilTerminal(jobId)
-        finalizeJob(job)
+        finalizeJob(job, storageKey)
         return buildOutcome(job)
       } catch (pollError) {
         if (pollError instanceof DOMException && pollError.name === 'AbortError') {
@@ -251,7 +251,7 @@ export function useGenerationJob({
 
         setError(message)
         setIsGenerating(false)
-        clearStoredJobId(deckKey)
+        clearStoredJobId(storageKey)
         throw pollError
       }
     },
@@ -264,6 +264,7 @@ export function useGenerationJob({
       currentHtml: string,
       options: {
         assetIds?: string[]
+        deckId?: string | null
         editorSelection?: EditorSelectionContext
         editorSelections?: EditorSelectionContext[]
         slideContexts?: SlideContext[]
@@ -272,6 +273,9 @@ export function useGenerationJob({
       if (isGenerating || !canGenerate) {
         return null
       }
+
+      const resolvedDeckId = options.deckId !== undefined ? options.deckId : deckId
+      const resolvedDeckKey = resolvedDeckId ?? 'new'
 
       setIsGenerating(true)
       setError('')
@@ -283,7 +287,7 @@ export function useGenerationJob({
           currentHtml: currentHtml || null,
           model: selectedModel || undefined,
           ...(reasoningEffort ? { reasoningEffort } : {}),
-          deckId,
+          deckId: resolvedDeckId,
           baseDocumentRevision,
           ...(options.assetIds?.length ? { assetIds: options.assetIds } : {}),
           ...(options.editorSelection ? { editorSelection: options.editorSelection } : {}),
@@ -294,7 +298,7 @@ export function useGenerationJob({
         })
 
         setActiveJob(job)
-        return runJob(job.id)
+        return runJob(job.id, resolvedDeckKey)
       } catch (startError) {
         const code =
           startError &&

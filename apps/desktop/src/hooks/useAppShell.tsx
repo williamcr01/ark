@@ -128,7 +128,9 @@ export function useAppShell() {
     isPatching: isDeckPatching,
     deckId,
     deckTitle,
+    origin,
     deleteActiveDeck,
+    ensureBlankDeck,
     patchDeckOperations,
     persistHtml,
     moveTo,
@@ -141,7 +143,15 @@ export function useAppShell() {
     startNewDeck,
   } = useDeckPersistence(routeDeckId)
 
-  // After the first save on /decks/new, put the real id in the URL.
+  const workspaceMode =
+    origin === 'blank' || !routeDeckId
+      ? 'create'
+      : isDeckLoading && origin == null
+        ? 'loading'
+        : 'editor'
+  const isCreationWorkspace = workspaceMode === 'create'
+
+  // After the blank deck is created on `/`, put the real id in the URL.
   useEffect(() => {
     if (deckId && !routeDeckId) {
       navigate(`/decks/${deckId}`, { replace: true })
@@ -220,6 +230,9 @@ export function useAppShell() {
     [isChatOpen],
   )
   const handleChatShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (isCreationWorkspace) {
+      return
+    }
     if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
       return
     }
@@ -272,7 +285,7 @@ export function useAppShell() {
     selectedModel,
     models,
   )
-  const canGenerateForDeck = canGenerate && Boolean(deckId)
+  const canGenerateForDeck = canGenerate
 
   const { activeMcpInteraction, cancelMcpInteraction, respondToMcpInteraction } =
     useMcpInteraction(deckId)
@@ -353,8 +366,10 @@ export function useAppShell() {
     ),
   })
 
-  const normalAgentQuestions = agentInteractionsInModal ? findPendingAgentQuestions(messages) : null
-  const normalThemeProposal = agentInteractionsInModal ? findPendingThemeProposal(messages) : null
+  const normalAgentQuestions =
+    agentInteractionsInModal && !isCreationWorkspace ? findPendingAgentQuestions(messages) : null
+  const normalThemeProposal =
+    agentInteractionsInModal && !isCreationWorkspace ? findPendingThemeProposal(messages) : null
 
   useEffect(() => {
     startRevealThumbnailStylesPreload()
@@ -649,9 +664,12 @@ export function useAppShell() {
   })
 
   const handleNewDeck = useCallback(async () => {
+    if (isCreationWorkspace) {
+      return
+    }
     await newDeckAction()
-    navigate('/decks/new')
-  }, [navigate, newDeckAction])
+    navigate('/')
+  }, [isCreationWorkspace, navigate, newDeckAction])
 
   const [exportingDeck, setExportingDeck] = useState<DeckExportFormat | false>(false)
   const handleExport = useCallback(
@@ -844,7 +862,7 @@ export function useAppShell() {
     const hasAttachments = message.files.length > 0
     const hasContent = Boolean(message.text.trim() || hasAttachments)
 
-    if (!hasContent || !canGenerate || !deckId) {
+    if (!hasContent || !canGenerate || isGenerating) {
       return
     }
 
@@ -856,10 +874,16 @@ export function useAppShell() {
       return
     }
 
+    const workspaceId = deckId ?? (await ensureBlankDeck())
+    if (!workspaceId) {
+      setAttachmentError('Could not create a deck for this prompt.')
+      return
+    }
+
     let attachments: ChatAttachment[]
     try {
       // Bound concurrency so large selections upload promptly without flooding the browser or API.
-      attachments = await uploadPromptAttachments(deckId, message.files)
+      attachments = await uploadPromptAttachments(workspaceId, message.files)
       setAttachmentError('')
     } catch (uploadError) {
       setAttachmentError(
@@ -879,6 +903,7 @@ export function useAppShell() {
         : undefined
     await generateDeck(message.text, attachments, {
       assetIds,
+      deckId: workspaceId,
       ...selectionFields,
       ...(slideContexts?.length ? { slideContexts } : {}),
     })
@@ -1122,7 +1147,8 @@ export function useAppShell() {
       getMessageDeliveryStatus={getMessageDeliveryStatus}
       getReasoningEffort={getReasoningEffort}
       input={input}
-      interactiveToolsInModal={agentInteractionsInModal}
+      interactiveToolsInModal={agentInteractionsInModal && !isCreationWorkspace}
+      layout={isCreationWorkspace ? 'home' : 'sidebar'}
       messages={messages}
       models={models}
       modelsError={modelsError}
@@ -1229,6 +1255,7 @@ export function useAppShell() {
     hasDeck,
     hasSlides,
     isChatOpen,
+    isCreationWorkspace,
     isDesktop,
     isGenerating,
     isStripOpen,
@@ -1243,5 +1270,6 @@ export function useAppShell() {
     setIsStripOpen,
     setPreference,
     showSanitizedDownload,
+    workspaceMode,
   }
 }

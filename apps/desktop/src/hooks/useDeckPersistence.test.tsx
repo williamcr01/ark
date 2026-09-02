@@ -56,7 +56,7 @@ describe('useDeckPersistence', () => {
     expect(fetchMock.mock.calls.every(([input]) => !String(input).includes('/history'))).toBe(true)
   })
 
-  it('creates a real workspace immediately on the new route', async () => {
+  it('does not create a workspace on the new route until asked', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
       if (String(input) === '/api/decks' && init?.method === 'POST') {
         return jsonResponse({ deck }, { status: 201 })
@@ -69,12 +69,41 @@ describe('useDeckPersistence', () => {
     const { result } = renderHook(() => useDeckPersistence(null))
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(result.current.deckId).toBe(deck.id)
-    expect(result.current.hasDeck).toBe(true)
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(result.current.deckId).toBeNull()
+    expect(result.current.hasDeck).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/decks',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('creates a blank workspace once when the first prompt needs one', async () => {
+    const blankDeck = { ...deck, origin: 'blank' as const }
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input) === '/api/decks' && init?.method === 'POST') {
+        return jsonResponse({ deck: blankDeck }, { status: 201 })
+      }
+      if (String(input) === '/api/decks') return jsonResponse({ decks: [] })
+      return jsonResponse({ error: 'Not found' }, { ok: false, status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useDeckPersistence(null))
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    let firstId: string | null = null
+    let secondId: string | null = null
+    await act(async () => {
+      firstId = await result.current.ensureBlankDeck()
+      secondId = await result.current.ensureBlankDeck()
+    })
+
+    expect(firstId).toBe(blankDeck.id)
+    expect(secondId).toBe(blankDeck.id)
+    expect(result.current.origin).toBe('blank')
+    expect(result.current.deckId).toBe(blankDeck.id)
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
   })
 
   it('saves into the open workspace and adopts its next document revision and path', async () => {

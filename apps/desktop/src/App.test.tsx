@@ -9,10 +9,14 @@ const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const chatPanelProps = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }))
 const deckPreviewLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 const deckPreviewRenders = vi.hoisted(() => ({ count: 0 }))
-const persistenceState = vi.hoisted(() => ({ deckId: 'deck-1' as string | null }))
+const persistenceState = vi.hoisted(() => ({
+  deckId: 'deck-1' as string | null,
+  origin: 'authored' as 'blank' | 'authored' | null,
+}))
 const persistenceCallbacks = vi.hoisted(() => ({
   patchDeckOperations: vi.fn(),
   refreshActiveDeck: vi.fn(),
+  ensureBlankDeck: vi.fn(async () => 'deck-new'),
 }))
 const generationState = vi.hoisted(() => ({ generateDeck: vi.fn() }))
 const chatSessionState = vi.hoisted(() => ({ messages: [] as Array<Record<string, unknown>> }))
@@ -40,6 +44,7 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     isPatching: false,
     deckId: persistenceState.deckId,
     deckTitle: 'Deck',
+    origin: persistenceState.origin,
     decks: [],
     deleteActiveDeck: vi.fn(),
     patchDeckOperations: persistenceCallbacks.patchDeckOperations,
@@ -49,6 +54,7 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     saveError: '',
     selectDeck: vi.fn(),
     startNewDeck: vi.fn(),
+    ensureBlankDeck: persistenceCallbacks.ensureBlankDeck,
   }),
 }))
 
@@ -135,6 +141,7 @@ const { default: App } = await import('./App')
 describe('App chat panel layout', () => {
   beforeEach(() => {
     persistenceState.deckId = 'deck-1'
+    persistenceState.origin = 'authored'
     chatPanelProps.calls = []
     deckPreviewLifecycle.mounts = 0
     deckPreviewLifecycle.unmounts = 0
@@ -152,6 +159,17 @@ describe('App chat panel layout', () => {
     const { getAllByTestId } = renderWithRouter(<App />)
 
     expect(getAllByTestId('chat-panel')).toHaveLength(1)
+    expect(screen.getByTestId('deck-preview')).toBeInTheDocument()
+  })
+
+  it('keeps a blank deck on the creation chat until it is authored', () => {
+    mediaState.isDesktop = true
+    persistenceState.origin = 'blank'
+    renderWithRouter(<App />)
+
+    expect(screen.getByTestId('creation-workspace')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('deck-preview')).not.toBeInTheDocument()
   })
 
   it('renders a single chat panel in the mobile layout', () => {
@@ -550,12 +568,27 @@ describe('App chat panel layout', () => {
     )
   })
 
-  it('keeps first-message attachment submission disabled until the workspace exists', async () => {
+  it('creates a workspace on the first prompt before uploading attachments', async () => {
     persistenceState.deckId = null
-    renderWithRouter(<App />)
+    persistenceState.origin = 'blank'
+    assetApi.uploadDeckAsset.mockResolvedValueOnce({
+      id: '00000000-0000-4000-8000-000000000702',
+      deckId: 'deck-new',
+      chatMessageId: null,
+      filename: 'data.csv',
+      mediaType: 'text/csv',
+      category: 'document',
+      byteSize: 2,
+      checksum: 'abc',
+      source: 'upload',
+      storageKind: 'sqlite',
+      url: '/api/decks/deck-new/assets/00000000-0000-4000-8000-000000000702',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    renderWithRouter(<App />, { initialEntry: '/', path: '/' })
 
     const props = chatPanelProps.calls.at(-1)
-    expect((props?.generationState as { canGenerate: boolean }).canGenerate).toBe(false)
+    expect((props?.generationState as { canGenerate: boolean }).canGenerate).toBe(true)
 
     await act(async () => {
       await (props?.onPromptSubmit as (message: unknown) => Promise<void>)({
@@ -571,8 +604,22 @@ describe('App chat panel layout', () => {
       })
     })
 
-    expect(assetApi.uploadDeckAsset).not.toHaveBeenCalled()
-    expect(generationState.generateDeck).not.toHaveBeenCalled()
+    expect(persistenceCallbacks.ensureBlankDeck).toHaveBeenCalledTimes(1)
+    expect(assetApi.uploadDeckAsset).toHaveBeenCalledWith(
+      'deck-new',
+      expect.objectContaining({ filename: 'data.csv', mediaType: 'text/csv' }),
+    )
+    expect(generationState.generateDeck).toHaveBeenCalledWith(
+      'Start a deck from this CSV',
+      [
+        expect.objectContaining({
+          assetId: '00000000-0000-4000-8000-000000000702',
+        }),
+      ],
+      expect.objectContaining({
+        deckId: 'deck-new',
+      }),
+    )
   })
 
   it('surfaces first-prompt attachment staging failures', async () => {

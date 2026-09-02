@@ -9,11 +9,14 @@ export const DecksDashboard = lazy(() =>
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate replace to="/decks" />} />
+      <Route path="/decks/new" element={<Navigate replace to="/" />} />
       <Route path="/decks" element={<DecksDashboard />} />
-      <Route path="/decks/:deckId" element={<App />} />
+      <Route element={<App />}>
+        <Route index element={null} />
+        <Route path="decks/:deckId" element={null} />
+      </Route>
       <Route path="/deck/:deckId" element={<App />} />
-      <Route path="*" element={<Navigate replace to="/decks" />} />
+      <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
   )
 }

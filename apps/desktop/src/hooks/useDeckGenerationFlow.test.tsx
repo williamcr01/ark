@@ -504,6 +504,7 @@ describe('useDeckGenerationFlow', () => {
         content: 'make this punchier',
         context: { editorSelection, editorSelections: [editorSelection], slideContexts },
       }),
+      'deck-1',
     )
   })
 
@@ -542,6 +543,7 @@ describe('useDeckGenerationFlow', () => {
       expect.objectContaining({
         context: { editorSelection, editorSelections },
       }),
+      'deck-1',
     )
   })
 
