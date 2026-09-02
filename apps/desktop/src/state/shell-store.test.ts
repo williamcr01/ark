@@ -51,4 +51,12 @@ describe('useShellStore', () => {
     expect(useShellStore.getState().isChatOpen).toBe(true)
     expect(window.localStorage.getItem('ark:chat-open')).toBeNull()
   })
+
+  it('tracks an in-flight export without persisting', () => {
+    useShellStore.getState().reset()
+    useShellStore.getState().setExportingDeck('pdf')
+    expect(useShellStore.getState().exportingDeck).toBe('pdf')
+    useShellStore.getState().setExportingDeck(false)
+    expect(useShellStore.getState().exportingDeck).toBe(false)
+  })
 })

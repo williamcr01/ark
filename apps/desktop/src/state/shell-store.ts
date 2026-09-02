@@ -9,6 +9,8 @@ import {
 
 import { resolveUpdate, type StateUpdate } from './apply-update.ts'
 
+export type ExportingDeck = false | 'pdf' | 'pptx'
+
 export type ShellStoreState = {
   isChatOpen: boolean
   isDesktop: boolean
@@ -16,6 +18,7 @@ export type ShellStoreState = {
   appearancePreference: AppearancePreference
   reasoningEffortByModel: Record<string, ReasoningEffort>
   selectedModel: string
+  exportingDeck: ExportingDeck
 }
 
 export type ShellStoreActions = {
@@ -24,6 +27,7 @@ export type ShellStoreActions = {
   setAppearancePreference: (preference: AppearancePreference) => void
   setChatOpen: (update: StateUpdate<boolean>) => void
   setDesktop: (isDesktop: boolean) => void
+  setExportingDeck: (exportingDeck: ExportingDeck) => void
   setReasoningEffortByModel: (effortByModel: Record<string, ReasoningEffort>) => void
   setSelectedModel: (modelId: string) => void
   syncFromDesktopSettings: () => void
@@ -47,6 +51,7 @@ const initialState = (): ShellStoreState => ({
   isChatOpen: false,
   isDesktop: false,
   selectedModel: '',
+  exportingDeck: false,
   ...readPreferenceState(),
 })
 
@@ -69,6 +74,9 @@ export const useShellStore = create<ShellStore>()((set) => ({
   },
   setDesktop: (isDesktop) => {
     set({ isDesktop })
+  },
+  setExportingDeck: (exportingDeck) => {
+    set({ exportingDeck })
   },
   setReasoningEffortByModel: (reasoningEffortByModel) => {
     set({ reasoningEffortByModel })
