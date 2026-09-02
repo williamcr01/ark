@@ -8,5 +8,6 @@
     }
   },
   "include": ["./**/*.test.ts", "./**/*.spec.ts"],
-  "exclude": []
+  "exclude": ["./runtime-src/**"]
 }
+
