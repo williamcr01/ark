@@ -10,13 +10,6 @@ import { DECK_FONT_ROLES, type DeckFontRole } from '@ark/runtime-registry/deck-f
 import { MiniHtmlPreview } from '@/components/MiniHtmlPreview'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   applyThemeFontPairingToSampleHtml,
   formatThemeFontPairingLabel,
   resolveThemeFontPairing,
@@ -29,6 +22,7 @@ type ThemePickerProps = {
   request: ThemeProposalRequest
   disabled?: boolean
   onSubmit: (themeId: string, fonts: ThemeFontPairing) => void
+  size?: 'sm' | 'lg'
   submitLabel?: string
 }
 
@@ -76,10 +70,10 @@ export function ThemePicker({
   request,
   disabled = false,
   onSubmit,
+  size = 'sm',
   submitLabel = 'Use this theme',
 }: ThemePickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [previewId, setPreviewId] = useState<string | null>(null)
   const [fontOverrides, setFontOverrides] = useState<Record<string, ThemeFontPairing>>({})
 
   const fontsFor = (theme: ThemeCandidate) => fontOverrides[theme.id] ?? theme.fonts
@@ -93,12 +87,17 @@ export function ThemePicker({
   }
 
   const selected = request.themes.find((theme) => theme.id === selectedId) ?? null
-  const enlarged = request.themes.find((theme) => theme.id === previewId) ?? null
   const selectedFonts = selected ? fontsFor(selected) : null
-  const enlargedFonts = enlarged ? fontsFor(enlarged) : null
+
+  const isLarge = size === 'lg'
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-background/60 p-3">
+    <div
+      className={cn(
+        'flex flex-col rounded-xl border border-border/80 bg-background/60',
+        isLarge ? 'gap-4 p-4' : 'gap-3 p-3',
+      )}
+    >
       <div className="flex items-start gap-2">
         <PaletteIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
@@ -109,7 +108,7 @@ export function ThemePicker({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className={cn('grid grid-cols-2', isLarge ? 'gap-3' : 'gap-2')}>
         {request.themes.map((theme) => {
           const isSelected = theme.id === selectedId
           const fonts = fontsFor(theme)
@@ -130,7 +129,6 @@ export function ThemePicker({
                 className="group flex w-full flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={disabled}
                 onClick={() => setSelectedId(theme.id)}
-                onDoubleClick={() => setPreviewId(theme.id)}
                 type="button"
               >
                 <span className="relative block w-full">
@@ -161,14 +159,6 @@ export function ThemePicker({
                   onChange={(role, id) => updateFonts(theme, role, id)}
                   themeName={theme.name}
                 />
-                <button
-                  className="text-muted-foreground w-fit text-[11px] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  disabled={disabled}
-                  onClick={() => setPreviewId(theme.id)}
-                  type="button"
-                >
-                  Enlarge
-                </button>
               </div>
             </div>
           )
@@ -185,59 +175,6 @@ export function ThemePicker({
       >
         {selected ? `${submitLabel}: ${selected.name}` : 'Select a theme'}
       </Button>
-
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open) setPreviewId(null)
-        }}
-        open={Boolean(enlarged)}
-      >
-        <DialogContent className="max-w-3xl">
-          {enlarged && enlargedFonts ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>{enlarged.name}</DialogTitle>
-                <DialogDescription>{enlarged.description}</DialogDescription>
-              </DialogHeader>
-              <MiniHtmlPreview
-                className="rounded-md border"
-                html={applyThemeFontPairingToSampleHtml(enlarged.sampleHtml, enlargedFonts)}
-                title={`${enlarged.name} enlarged preview`}
-              />
-              <ThemeFontRoleSelects
-                disabled={disabled}
-                fonts={enlargedFonts}
-                onChange={(role, id) => updateFonts(enlarged, role, id)}
-                themeName={enlarged.name}
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  onClick={() => {
-                    setSelectedId(enlarged.id)
-                    setPreviewId(null)
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Select
-                </Button>
-                <Button
-                  onClick={() => {
-                    setSelectedId(enlarged.id)
-                    setPreviewId(null)
-                    onSubmit(enlarged.id, enlargedFonts)
-                  }}
-                  size="sm"
-                  type="button"
-                >
-                  {submitLabel}
-                </Button>
-              </div>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

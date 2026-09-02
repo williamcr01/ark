@@ -12,13 +12,13 @@ import {
   CodeIcon,
   DownloadIcon,
   FileTextIcon,
-  FilePlus2Icon,
   FileUpIcon,
   FolderOpenIcon,
   FolderInputIcon,
   CopyIcon,
   Share2Icon,
   MapPinIcon,
+  MoreHorizontalIcon,
   PanelLeftCloseIcon,
   PanelLeftIcon,
   PanelRightCloseIcon,
@@ -34,6 +34,7 @@ import { buttonVariants } from '@/components/ui/button-variants'
 import { ButtonGroup } from '@/components/ui/button-group'
 import {
   DropdownMenu,
+  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -336,7 +337,58 @@ function DeckTitleEditor({
   )
 }
 
+export type AppTitleBarVariant = 'home' | 'library' | 'editor'
+export type AppTitleBarNav = 'new' | 'slides' | null
+
+function navTabClassName(active: boolean) {
+  return cn(
+    'inline-flex h-7 items-center rounded-sm px-2.5 text-xs font-medium outline-none',
+    'focus-visible:ring-2 focus-visible:ring-ring',
+    active
+      ? 'bg-[var(--ark-titlebar-hover)] text-[var(--ark-titlebar-fg)]'
+      : 'text-[var(--ark-titlebar-muted)] hover:text-[var(--ark-titlebar-fg)]',
+  )
+}
+
+function AppNavTabs({
+  disabled,
+  navActive,
+  onNew,
+}: {
+  disabled?: boolean
+  navActive: AppTitleBarNav
+  onNew: () => void
+}) {
+  return (
+    <nav aria-label="Workspace" className="flex shrink-0 items-center gap-0.5">
+      {navActive === 'new' ? (
+        <span aria-current="page" className={navTabClassName(true)}>
+          New
+        </span>
+      ) : (
+        <button
+          className={navTabClassName(false)}
+          disabled={disabled}
+          onClick={onNew}
+          type="button"
+        >
+          New
+        </button>
+      )}
+      <Link
+        aria-current={navActive === 'slides' ? 'page' : undefined}
+        className={navTabClassName(navActive === 'slides')}
+        to="/decks"
+      >
+        Slides
+      </Link>
+    </nav>
+  )
+}
+
 export type AppTitleBarProps = {
+  variant?: AppTitleBarVariant
+  navActive?: AppTitleBarNav
   appearancePreference?: AppearancePreference
   activeDeckId: string | null
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -376,6 +428,8 @@ export type AppTitleBarProps = {
 }
 
 export function AppTitleBar({
+  variant = 'editor',
+  navActive = null,
   appearancePreference = 'system',
   activeDeckId,
   fileInputRef,
@@ -407,9 +461,12 @@ export function AppTitleBar({
 }: AppTitleBarProps) {
   const { hasDeck, hasSlides, isChatOpen, isGenerating, isStripOpen, showSanitizedDownload } =
     uiState
+  const isEditor = variant === 'editor'
+  const isLibrary = variant === 'library'
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
+  const [fileMenuOpen, setFileMenuOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -426,7 +483,7 @@ export function AppTitleBar({
   }, [])
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-2 text-foreground">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-[var(--ark-panel-raised)] px-3 text-foreground">
       <input
         accept=".html,.htm,text/html"
         className="hidden"
@@ -441,7 +498,7 @@ export function AppTitleBar({
         ref={pptxFileInputRef}
         type="file"
       />
-      {hasSlides ? (
+      {isEditor && hasSlides ? (
         <ButtonGroup className="shrink-0">
           <TitleBarButton
             aria-controls="ark-slide-strip"
@@ -453,57 +510,55 @@ export function AppTitleBar({
           </TitleBarButton>
         </ButtonGroup>
       ) : null}
-      <div className="flex min-w-0 items-center gap-2 px-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              aria-label="All decks"
-              className="inline-flex shrink-0 items-center rounded-sm text-[var(--ark-focus)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              to="/decks"
-            >
-              <PresentationIcon aria-hidden className="size-4" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">All decks</TooltipContent>
-        </Tooltip>
+      <div className="flex min-w-0 items-center gap-3 px-1">
         <Link
-          className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 items-center gap-2 rounded-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           to="/decks"
         >
-          Ark
+          <PresentationIcon aria-hidden className="size-4 shrink-0 text-[var(--ark-focus)]" />
+          <span className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight">
+            Ark
+          </span>
         </Link>
-        <span aria-hidden className="text-muted-foreground">
-          /
-        </span>
-        <DeckTitleEditor
-          activeDeckId={activeDeckId}
-          deckTitle={deckTitle}
-          disabled={isGenerating}
-          onRenameDeck={onRenameDeck}
-        />
+        <AppNavTabs disabled={isGenerating} navActive={navActive} onNew={onNewDeck} />
+        {isEditor ? (
+          <>
+            <span aria-hidden className="text-muted-foreground">
+              /
+            </span>
+            <DeckTitleEditor
+              activeDeckId={activeDeckId}
+              deckTitle={deckTitle}
+              disabled={isGenerating}
+              onRenameDeck={onRenameDeck}
+            />
+          </>
+        ) : null}
       </div>
 
       <div className="min-w-0 flex-1" aria-hidden />
 
       <ButtonGroup className="shrink-0">
-        <TitleBarButton
-          label="MCP settings"
-          onClick={() => {
-            setSettingsTab('mcp')
-            setSettingsOpen(true)
-          }}
-        >
-          <span className="relative inline-flex">
-            <CableIcon />
-            {mcpStatus?.state === 'running' ? (
-              <span
-                aria-hidden
-                className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 ring-1 ring-[var(--ark-panel-raised)]"
-                data-testid="mcp-running-indicator"
-              />
-            ) : null}
-          </span>
-        </TitleBarButton>
+        {isEditor ? (
+          <TitleBarButton
+            label="MCP settings"
+            onClick={() => {
+              setSettingsTab('mcp')
+              setSettingsOpen(true)
+            }}
+          >
+            <span className="relative inline-flex">
+              <CableIcon />
+              {mcpStatus?.state === 'running' ? (
+                <span
+                  aria-hidden
+                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 ring-1 ring-[var(--ark-panel-raised)]"
+                  data-testid="mcp-running-indicator"
+                />
+              ) : null}
+            </span>
+          </TitleBarButton>
+        ) : null}
         <TitleBarButton
           label="Settings"
           onClick={() => {
@@ -513,77 +568,147 @@ export function AppTitleBar({
         >
           <SettingsIcon />
         </TitleBarButton>
-        <TitleBarButton disabled={isGenerating} label="New deck" onClick={onNewDeck}>
-          <FilePlus2Icon />
-        </TitleBarButton>
-        <TitleBarButton
-          disabled={isGenerating}
-          label="Open Ark workspace"
-          onClick={onOpenWorkspace}
-        >
-          <FolderOpenIcon />
-        </TitleBarButton>
-        <TitleBarButton disabled={!activeDeckId || isGenerating} label="Save As" onClick={onSaveAs}>
-          <CopyIcon />
-        </TitleBarButton>
-        <TitleBarButton
-          disabled={!activeDeckId || isGenerating}
-          label="Move workspace"
-          onClick={onMove}
-        >
-          <FolderInputIcon />
-        </TitleBarButton>
-        <TitleBarButton disabled={!activeDeckId} label="Reveal in file manager" onClick={onReveal}>
-          <MapPinIcon />
-        </TitleBarButton>
-        <TitleBarButton
-          disabled={!activeDeckId || isGenerating}
-          label="Duplicate presentation"
-          onClick={onDuplicate}
-        >
-          <CopyIcon />
-        </TitleBarButton>
-        <TitleBarButton
-          disabled={!activeDeckId || isGenerating}
-          label="Share Ark Project"
-          onClick={onShareProject}
-        >
-          <Share2Icon />
-        </TitleBarButton>
-        <ExportTitleBarButton
-          disabled={!hasDeck}
-          exportLint={exportLint}
-          exporting={exportingDeck}
-          onDownload={onDownload}
-          onExport={onExport}
-          showSanitizedDownload={showSanitizedDownload}
-        />
-        <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
-          <UploadIcon />
-        </TitleBarButton>
-        <TitleBarButton
-          disabled={isGenerating}
-          label="Import PowerPoint"
-          onClick={onPptxImportClick}
-        >
-          <FileUpIcon />
-        </TitleBarButton>
-        <TitleBarButton
-          disabled={!hasSlides || isGenerating}
-          label="Present fullscreen"
-          onClick={onPresent}
-          primary
-        >
-          <Maximize2Icon />
-        </TitleBarButton>
-        <TitleBarButton
-          aria-controls="ark-chat-panel"
-          aria-expanded={isChatOpen}
-          label={isChatOpen ? 'Hide chat panel (Ctrl/⌘B)' : 'Show chat panel (Ctrl/⌘B)'}
-          onClick={onToggleChat}
-        >
-          {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightIcon />}
-        </TitleBarButton>
+        {isLibrary ? (
+          <>
+            <TitleBarButton
+              disabled={isGenerating}
+              label="Open Ark workspace"
+              onClick={onOpenWorkspace}
+            >
+              <FolderOpenIcon />
+            </TitleBarButton>
+            <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
+              <UploadIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={isGenerating}
+              label="Import PowerPoint"
+              onClick={onPptxImportClick}
+            >
+              <FileUpIcon />
+            </TitleBarButton>
+          </>
+        ) : null}
+        {variant === 'home' ? (
+          <DropdownMenu onOpenChange={setFileMenuOpen} open={fileMenuOpen}>
+            <Tooltip>
+              <DropdownMenuTrigger asChild>
+                <TooltipTrigger asChild>
+                  <button
+                    aria-label="File actions"
+                    className={cn(
+                      buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+                      'size-[26px] rounded-sm border-0 text-[var(--ark-titlebar-fg)] shadow-none',
+                      'hover:!bg-transparent dark:hover:!bg-transparent active:!translate-y-0',
+                      'aria-expanded:!bg-transparent',
+                    )}
+                    disabled={isGenerating}
+                    type="button"
+                  >
+                    <span aria-hidden className="inline-flex">
+                      <MoreHorizontalIcon />
+                    </span>
+                  </button>
+                </TooltipTrigger>
+              </DropdownMenuTrigger>
+              <TooltipContent side="bottom">File actions</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={isGenerating} onSelect={onOpenWorkspace}>
+                <FolderOpenIcon />
+                Open Ark workspace
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={isGenerating} onSelect={onUploadClick}>
+                <UploadIcon />
+                Upload HTML
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={isGenerating} onSelect={onPptxImportClick}>
+                <FileUpIcon />
+                Import PowerPoint
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        {isEditor ? (
+          <>
+            <TitleBarButton
+              disabled={isGenerating}
+              label="Open Ark workspace"
+              onClick={onOpenWorkspace}
+            >
+              <FolderOpenIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!activeDeckId || isGenerating}
+              label="Save As"
+              onClick={onSaveAs}
+            >
+              <CopyIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!activeDeckId || isGenerating}
+              label="Move workspace"
+              onClick={onMove}
+            >
+              <FolderInputIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!activeDeckId}
+              label="Reveal in file manager"
+              onClick={onReveal}
+            >
+              <MapPinIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!activeDeckId || isGenerating}
+              label="Duplicate presentation"
+              onClick={onDuplicate}
+            >
+              <CopyIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!activeDeckId || isGenerating}
+              label="Share Ark Project"
+              onClick={onShareProject}
+            >
+              <Share2Icon />
+            </TitleBarButton>
+            <ExportTitleBarButton
+              disabled={!hasDeck}
+              exportLint={exportLint}
+              exporting={exportingDeck}
+              onDownload={onDownload}
+              onExport={onExport}
+              showSanitizedDownload={showSanitizedDownload}
+            />
+            <TitleBarButton disabled={isGenerating} label="Upload HTML" onClick={onUploadClick}>
+              <UploadIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={isGenerating}
+              label="Import PowerPoint"
+              onClick={onPptxImportClick}
+            >
+              <FileUpIcon />
+            </TitleBarButton>
+            <TitleBarButton
+              disabled={!hasSlides || isGenerating}
+              label="Present fullscreen"
+              onClick={onPresent}
+              primary
+            >
+              <Maximize2Icon />
+            </TitleBarButton>
+            <TitleBarButton
+              aria-controls="ark-chat-panel"
+              aria-expanded={isChatOpen}
+              label={isChatOpen ? 'Hide chat panel (Ctrl/⌘B)' : 'Show chat panel (Ctrl/⌘B)'}
+              onClick={onToggleChat}
+            >
+              {isChatOpen ? <PanelRightCloseIcon /> : <PanelRightIcon />}
+            </TitleBarButton>
+          </>
+        ) : null}
       </ButtonGroup>
 
       <DesktopSettingsDialog

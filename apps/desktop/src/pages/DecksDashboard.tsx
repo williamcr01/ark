@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
-import {
-  FilePlus2Icon,
-  FileUpIcon,
-  FolderOpenIcon,
-  PresentationIcon,
-  SettingsIcon,
-  UploadIcon,
-} from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { FilePlus2Icon, FileUpIcon, PresentationIcon, UploadIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { AppTitleBar } from '@/components/AppTitleBar'
 import { DeckCard } from '@/components/DeckCard'
-import { DesktopSettingsDialog } from '@/components/DesktopSettingsDialog'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -69,8 +62,8 @@ export function DecksDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [isUploading, setIsUploading] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const { preference, setPreference } = useAppearance()
+  const noop = useCallback(() => undefined, [])
 
   useEffect(() => {
     let cancelled = false
@@ -113,7 +106,7 @@ export function DecksDashboard() {
   const handleNewDeck = useCallback(() => {
     clearChatSession(null)
     clearStoredGenerationJob(null)
-    navigate('/decks/new')
+    navigate('/')
   }, [navigate])
 
   const handleOpenWorkspace = useCallback(async () => {
@@ -256,64 +249,48 @@ export function DecksDashboard() {
   return (
     <TooltipProvider>
       <div className="flex h-svh flex-col overflow-y-auto bg-[var(--ark-canvas)] text-foreground">
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-[var(--ark-panel-raised)] px-4">
-          <input
-            accept=".html,.htm,text/html"
-            className="hidden"
-            onChange={handleHtmlUpload}
-            ref={fileInputRef}
-            type="file"
-          />
-          <input
-            accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            className="hidden"
-            onChange={handlePptxUpload}
-            ref={pptxFileInputRef}
-            type="file"
-          />
-          <Link
-            className="flex min-w-0 items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            to="/decks"
-          >
-            <PresentationIcon aria-hidden className="size-4 shrink-0 text-[var(--ark-focus)]" />
-            <span className="truncate font-heading text-[15px] font-semibold leading-none tracking-tight">
-              Ark
-            </span>
-          </Link>
-          <span className="text-sm text-muted-foreground">Decks</span>
-          <div className="min-w-0 flex-1" aria-hidden />
-          <Button onClick={() => setSettingsOpen(true)} size="sm" variant="ghost">
-            <SettingsIcon data-icon="inline-start" />
-            Settings
-          </Button>
-          <Button disabled={isUploading} onClick={handleUploadClick} size="sm" variant="outline">
-            <UploadIcon data-icon="inline-start" />
-            Upload HTML
-          </Button>
-          <Button
-            disabled={isUploading}
-            onClick={handlePptxImportClick}
-            size="sm"
-            variant="outline"
-          >
-            <FileUpIcon data-icon="inline-start" />
-            Import PowerPoint
-          </Button>
-          <Button onClick={() => void handleOpenWorkspace()} size="sm" variant="outline">
-            <FolderOpenIcon data-icon="inline-start" />
-            Open .ark
-          </Button>
-          <Button onClick={handleNewDeck} size="sm">
-            <FilePlus2Icon data-icon="inline-start" />
-            New deck
-          </Button>
-        </header>
+        <AppTitleBar
+          activeDeckId={null}
+          appearancePreference={preference}
+          deckTitle=""
+          fileInputRef={fileInputRef}
+          navActive="slides"
+          pptxFileInputRef={pptxFileInputRef}
+          uiState={{
+            hasDeck: false,
+            hasSlides: false,
+            isChatOpen: false,
+            isGenerating: isUploading,
+            isStripOpen: false,
+            showSanitizedDownload: false,
+          }}
+          variant="library"
+          onAppearanceChange={setPreference}
+          onCredentialsChanged={noop}
+          onDownload={noop}
+          onDuplicate={noop}
+          onExport={noop}
+          onHtmlUpload={handleHtmlUpload}
+          onMove={noop}
+          onNewDeck={handleNewDeck}
+          onOpenWorkspace={() => void handleOpenWorkspace()}
+          onPptxImportClick={handlePptxImportClick}
+          onPptxUpload={handlePptxUpload}
+          onPresent={noop}
+          onRenameDeck={noop}
+          onReveal={noop}
+          onSaveAs={noop}
+          onShareProject={noop}
+          onToggleChat={noop}
+          onToggleStrip={noop}
+          onUploadClick={handleUploadClick}
+        />
 
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-8">
           <div className="flex flex-col gap-1">
-            <h1 className="font-heading text-2xl font-semibold tracking-tight">Your decks</h1>
+            <h1 className="font-heading text-2xl font-semibold tracking-tight">Slides</h1>
             <p className="text-sm text-muted-foreground">
-              Open a deck to edit, or start a new one.
+              Open a presentation to edit, or start a new one from New.
             </p>
           </div>
 
@@ -372,13 +349,6 @@ export function DecksDashboard() {
           )}
         </main>
       </div>
-      <DesktopSettingsDialog
-        appearancePreference={preference}
-        onAppearanceChange={setPreference}
-        onCredentialsChanged={() => undefined}
-        onOpenChange={setSettingsOpen}
-        open={settingsOpen}
-      />
       <Toaster position="bottom-center" />
     </TooltipProvider>
   )

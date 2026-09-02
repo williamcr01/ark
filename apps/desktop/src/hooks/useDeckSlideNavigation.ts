@@ -218,7 +218,7 @@ export function useDeckSlideNavigation(
     prevHtmlRef.current = html
 
     if (!html) {
-      // Cleared deck (e.g. /decks/new) — allow the next load to deep-link again.
+      // Cleared deck (e.g. New workspace) — allow the next load to deep-link again.
       appliedInitialSlideRef.current = false
       commitSlideIndex(0)
       return

@@ -1,9 +1,10 @@
 /**
  * How the deck's current content came to exist.
  *
- * Ark creates a deck the moment the user opens `/decks/new`, so "the deck has
- * HTML" cannot tell the agent whether it is looking at the user's work or at a
- * starter document nobody has touched. Origin records that intent explicitly.
+ * Ark creates a blank deck the moment the user sends the first prompt from the
+ * New workspace (`/` or a blank `/decks/:deckId`), so "the deck has HTML" cannot
+ * tell the agent whether it is looking at the user's work or at a starter
+ * document nobody has touched. Origin records that intent explicitly.
  *
  * - `blank` — Ark's empty starter deck. No one has authored anything yet, so the
  *   agent opens a new-deck conversation (ask for missing context, propose themes)

@@ -328,6 +328,7 @@ export function useDeckGenerationFlow({
       attachments: ChatAttachment[] = [],
       options: {
         assetIds?: string[]
+        deckId?: string | null
         editorSelection?: EditorSelectionContext
         editorSelections?: EditorSelectionContext[]
         slideContexts?: SlideContext[]
@@ -370,15 +371,19 @@ export function useDeckGenerationFlow({
         ...(messageContext ? { context: messageContext as ChatMessage['context'] } : {}),
       }
       const nextMessages: ChatMessage[] = [...messages, userMessage]
+      const resolvedDeckId = options.deckId ?? deckId
 
-      if (deckId) {
-        await appendMessage(userMessage)
+      if (resolvedDeckId) {
+        await appendMessage(userMessage, resolvedDeckId)
       } else {
         setMessages(nextMessages)
       }
 
       try {
-        const outcome = await startGeneration(nextMessages, generatedHtml, jobOptions)
+        const outcome = await startGeneration(nextMessages, generatedHtml, {
+          ...jobOptions,
+          deckId: resolvedDeckId,
+        })
 
         if (!outcome) {
           return
@@ -397,8 +402,8 @@ export function useDeckGenerationFlow({
           onError(message)
         }
 
-        if (deckId) {
-          await reloadChat()
+        if (resolvedDeckId) {
+          await reloadChat(resolvedDeckId)
         } else {
           await appendFailureChatMessage(outcome.status, message, isModelFailure)
         }
@@ -423,8 +428,8 @@ export function useDeckGenerationFlow({
           await appendFailureChatMessage('failed', message, true)
         } else {
           onError(message)
-          if (deckId) {
-            await reloadChat()
+          if (resolvedDeckId) {
+            await reloadChat(resolvedDeckId)
           } else {
             await appendFailureChatMessage('failed', message, false)
           }

@@ -7,14 +7,7 @@ import {
   useState,
 } from 'react'
 import type { BorderBeamProps } from 'border-beam'
-import {
-  AlertCircleIcon,
-  Loader2Icon,
-  PlusIcon,
-  RefreshCwIcon,
-  SparklesIcon,
-  XIcon,
-} from 'lucide-react'
+import { AlertCircleIcon, Loader2Icon, PlusIcon, RefreshCwIcon, XIcon } from 'lucide-react'
 
 import { AgentPresence } from '@/components/AgentPresence'
 import { AgentQuestions } from '@/components/AgentQuestions'
@@ -30,7 +23,6 @@ import {
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
@@ -103,6 +95,8 @@ const BorderBeam = lazy(() => import('border-beam')) as LazyExoticComponent<
 const ARK_RADIUS_LG = 10
 
 export type { ChatMessage } from '@ark/chat/chat.ts'
+
+export type ChatPanelLayout = 'sidebar' | 'home'
 
 type ChatAlertId = 'generation' | 'attachment' | 'models' | 'model-warnings'
 
@@ -653,100 +647,75 @@ function ChatFloatingAlerts({
 function ChatMessageList({
   activeSteps,
   getMessageDeliveryStatus,
-  interactionActive,
+  layout,
   messages,
-  onInputChange,
   onRetryPersist,
   showLiveAssistant,
 }: {
   activeSteps: AgentStep[]
   getMessageDeliveryStatus?: (messageId: string) => MessageDeliveryStatus | undefined
-  interactionActive: boolean
+  layout: ChatPanelLayout
   messages: ChatMessage[]
-  onInputChange: (value: string) => void
   onRetryPersist?: (messageId: string) => void | Promise<void | boolean>
   showLiveAssistant: boolean
 }) {
+  const isHome = layout === 'home'
+
   return (
     <Conversation>
-      <ConversationContent className="gap-5 px-5 py-6">
-        {messages.length === 0 && !interactionActive ? (
-          <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 text-center">
-            <ConversationEmptyState
-              description="Start with an audience, raw notes, or one clear outcome."
-              icon={<SparklesIcon className="size-8" />}
-              title="Direct the next cut"
-            />
-            <div className="flex max-w-sm flex-col gap-2">
-              {[
-                'Turn my notes into a concise narrative',
-                'Build a six-slide pitch for this idea',
-                'Give this deck a sharper visual hierarchy',
-              ].map((prompt) => (
-                <Button
-                  className="h-auto justify-start whitespace-normal text-left"
-                  key={prompt}
-                  onClick={() => onInputChange(prompt)}
-                  size="sm"
-                  variant="outline"
-                >
-                  {prompt}
-                </Button>
-              ))}
-            </div>
-          </div>
-        ) : messages.length > 0 ? (
-          messages.map((message, index) => {
-            // Answers stay in history for the model, but render under the matching tool call.
-            if (isAskUserAnswerMessage(messages, index)) return null
-            if (isThemeChoiceMessage(messages, index)) return null
+      <ConversationContent className={isHome ? 'gap-6 px-1 py-10 sm:px-2' : 'gap-5 px-5 py-6'}>
+        {messages.length > 0
+          ? messages.map((message, index) => {
+              // Answers stay in history for the model, but render under the matching tool call.
+              if (isAskUserAnswerMessage(messages, index)) return null
+              if (isThemeChoiceMessage(messages, index)) return null
 
-            const askUserAnswers =
-              message.role === 'assistant'
-                ? (findAskUserAnswerAfter(messages, index)?.content ?? null)
-                : null
-            const themeChoice =
-              message.role === 'assistant'
-                ? (findThemeChoiceAfter(messages, index)?.content ?? null)
-                : null
+              const askUserAnswers =
+                message.role === 'assistant'
+                  ? (findAskUserAnswerAfter(messages, index)?.content ?? null)
+                  : null
+              const themeChoice =
+                message.role === 'assistant'
+                  ? (findThemeChoiceAfter(messages, index)?.content ?? null)
+                  : null
 
-            return (
-              <Message from={message.role} key={message.id}>
-                <MessageContent>
-                  {message.parts?.length ? (
-                    <ChatMessageParts
-                      askUserAnswers={askUserAnswers}
-                      parts={message.parts}
-                      themeChoice={themeChoice}
+              return (
+                <Message from={message.role} key={message.id}>
+                  <MessageContent>
+                    {message.parts?.length ? (
+                      <ChatMessageParts
+                        askUserAnswers={askUserAnswers}
+                        parts={message.parts}
+                        themeChoice={themeChoice}
+                      />
+                    ) : (
+                      <MessageResponse>{message.content}</MessageResponse>
+                    )}
+                    {message.attachments?.length ? (
+                      <ChatMessageAttachments attachments={message.attachments} />
+                    ) : null}
+                    {message.role === 'user' && message.context ? (
+                      <ContextChipList
+                        className="mt-2"
+                        label="Attached context"
+                        {...contextToChipProps(message.context)}
+                      />
+                    ) : null}
+                    <ChatMessageDeliveryStatus
+                      onRetry={
+                        onRetryPersist
+                          ? () => {
+                              void onRetryPersist(message.id)
+                            }
+                          : undefined
+                      }
+                      status={getMessageDeliveryStatus?.(message.id)}
                     />
-                  ) : (
-                    <MessageResponse>{message.content}</MessageResponse>
-                  )}
-                  {message.attachments?.length ? (
-                    <ChatMessageAttachments attachments={message.attachments} />
-                  ) : null}
-                  {message.role === 'user' && message.context ? (
-                    <ContextChipList
-                      className="mt-2"
-                      label="Attached context"
-                      {...contextToChipProps(message.context)}
-                    />
-                  ) : null}
-                  <ChatMessageDeliveryStatus
-                    onRetry={
-                      onRetryPersist
-                        ? () => {
-                            void onRetryPersist(message.id)
-                          }
-                        : undefined
-                    }
-                    status={getMessageDeliveryStatus?.(message.id)}
-                  />
-                </MessageContent>
-              </Message>
-            )
-          })
-        ) : null}
+                  </MessageContent>
+                </Message>
+              )
+            })
+          : null}
         {showLiveAssistant ? (
           <Message from="assistant">
             <MessageContent>
@@ -789,6 +758,8 @@ export type ChatPanelProps = {
   }
   /** Keep normal ask_user/theme tools in the global modal instead of this panel. */
   interactiveToolsInModal?: boolean
+  /** Home uses a wide centered canvas; sidebar is the editor agent panel. */
+  layout?: ChatPanelLayout
   /** Context chips (selected element / attached slides) in the composer attachment row. */
   contextSlot?: ReactNode
   onInputChange: (value: string) => void
@@ -824,6 +795,7 @@ export function ChatPanel({
   generationState,
   contextSlot,
   interactiveToolsInModal = false,
+  layout = 'sidebar',
   onInputChange,
   onModelSelect,
   onPromptSubmit,
@@ -895,21 +867,93 @@ export function ChatPanel({
     (interactiveToolsInModal && (pendingAgentQuestions || pendingThemeProposal)),
   )
   const isSubmitDisabled = isGenerating || !canGenerate || interactionActive
+  const isHome = layout === 'home'
+  const interaction =
+    (activeQuestions &&
+      (mcpInteraction?.kind === 'questions' ? onMcpInteractionSubmit : onQuestionSubmit)) ||
+    (activeThemes &&
+      (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : onQuestionSubmit)) ? (
+      <div className="flex flex-col gap-4">
+        {activeQuestions &&
+        (mcpInteraction?.kind === 'questions' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
+          <AgentQuestions
+            disabled={isGenerating || (!mcpInteraction && !canGenerate)}
+            onSubmit={(answers) => {
+              if (mcpInteraction?.kind === 'questions' && onMcpInteractionSubmit) {
+                onMcpInteractionSubmit({ kind: 'questions', answers })
+                return
+              }
+              onQuestionSubmit?.(formatAgentQuestionAnswers(activeQuestions, answers))
+            }}
+            request={activeQuestions}
+            submitLabel="Send answers"
+          />
+        ) : null}
+        {activeThemes &&
+        (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
+          <ThemePicker
+            disabled={isGenerating || (!mcpInteraction && !canGenerate)}
+            onSubmit={(themeId, fonts) => {
+              if (mcpInteraction?.kind === 'themes' && onMcpInteractionSubmit) {
+                onMcpInteractionSubmit({ kind: 'themes', themeId, fonts })
+                return
+              }
+              onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId, fonts))
+            }}
+            request={activeThemes}
+            size={isHome ? 'lg' : 'sm'}
+            submitLabel="Use this theme"
+          />
+        ) : null}
+      </div>
+    ) : null
+  const isHomeEmpty =
+    isHome && messages.length === 0 && !interaction && !showLiveAssistant && !isGenerating
 
   return (
-    <Card className="flex h-full min-h-0 gap-0 rounded-none border-0 bg-[var(--ark-panel)] py-0 shadow-none ring-0 [--card-spacing:0]">
-      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-        <ChatMessageList
-          activeSteps={activeSteps}
-          getMessageDeliveryStatus={getMessageDeliveryStatus}
-          interactionActive={interactionActive}
-          messages={messages}
-          onInputChange={onInputChange}
-          onRetryPersist={onRetryPersist}
-          showLiveAssistant={showLiveAssistant}
-        />
+    <Card
+      className={cn(
+        'flex h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none ring-0 [--card-spacing:0]',
+        isHome ? 'bg-transparent' : 'bg-[var(--ark-panel)]',
+      )}
+    >
+      <CardContent
+        className={cn('flex min-h-0 flex-1 flex-col p-0', isHomeEmpty && 'justify-center')}
+      >
+        {isHomeEmpty ? null : (
+          <ChatMessageList
+            activeSteps={activeSteps}
+            getMessageDeliveryStatus={getMessageDeliveryStatus}
+            layout={layout}
+            messages={messages}
+            onRetryPersist={onRetryPersist}
+            showLiveAssistant={showLiveAssistant}
+          />
+        )}
 
-        <div className="relative shrink-0 bg-[var(--ark-paper)] p-4" data-slot="agent-composer">
+        {interaction ? (
+          <div
+            className={cn(
+              'shrink-0 overflow-y-auto',
+              isHome ? 'px-1 sm:px-2' : 'px-4',
+              isHome ? 'max-h-[min(70vh,40rem)]' : 'max-h-[min(50vh,28rem)]',
+            )}
+          >
+            {interaction}
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            'relative shrink-0',
+            isHome
+              ? isHomeEmpty
+                ? 'bg-transparent px-1 py-2 sm:px-2'
+                : 'bg-transparent px-1 pb-8 pt-2 sm:px-2'
+              : 'bg-[var(--ark-paper)] p-4',
+          )}
+          data-slot="agent-composer"
+        >
           {isGenerating ? (
             <div className="mb-2 flex min-h-5 items-center px-1">
               <AgentPresence
@@ -932,36 +976,6 @@ export function ChatPanel({
                 </Button>
               ) : null}
             </div>
-          ) : null}
-          {activeQuestions &&
-          (mcpInteraction?.kind === 'questions' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
-            <AgentQuestions
-              disabled={isGenerating || (!mcpInteraction && !canGenerate)}
-              onSubmit={(answers) => {
-                if (mcpInteraction?.kind === 'questions' && onMcpInteractionSubmit) {
-                  onMcpInteractionSubmit({ kind: 'questions', answers })
-                  return
-                }
-                onQuestionSubmit?.(formatAgentQuestionAnswers(activeQuestions, answers))
-              }}
-              request={activeQuestions}
-              submitLabel="Send answers"
-            />
-          ) : null}
-          {activeThemes &&
-          (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : onQuestionSubmit) ? (
-            <ThemePicker
-              disabled={isGenerating || (!mcpInteraction && !canGenerate)}
-              onSubmit={(themeId, fonts) => {
-                if (mcpInteraction?.kind === 'themes' && onMcpInteractionSubmit) {
-                  onMcpInteractionSubmit({ kind: 'themes', themeId, fonts })
-                  return
-                }
-                onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId, fonts))
-              }}
-              request={activeThemes}
-              submitLabel="Use this theme"
-            />
           ) : null}
 
           {hasFloatingAlerts ? (

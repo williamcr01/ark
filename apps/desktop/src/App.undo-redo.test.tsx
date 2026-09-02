@@ -69,6 +69,7 @@ vi.mock('@/hooks/useDeckPersistence', () => ({
     saveError: '',
     selectDeck: vi.fn(),
     startNewDeck: vi.fn(),
+    ensureBlankDeck: vi.fn(),
   }),
 }))
 

@@ -116,7 +116,7 @@ describe('AppTitleBar accessibility', () => {
     renderTitleBar()
 
     expect(screen.getByRole('button', { name: 'Test Deck' })).not.toHaveAttribute('aria-pressed')
-    expect(screen.getByRole('button', { name: 'New deck' })).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: 'New' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Export deck' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Upload HTML' })).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('button', { name: 'Import PowerPoint' })).not.toHaveAttribute(
@@ -130,10 +130,25 @@ describe('AppTitleBar accessibility', () => {
   it('does not visually change title-bar controls on hover', () => {
     renderTitleBar()
 
-    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('hover:!bg-transparent')
-    expect(screen.getByRole('button', { name: 'New deck' })).toHaveClass('active:!translate-y-0')
     expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass('hover:!bg-transparent')
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass('active:!translate-y-0')
     expect(screen.getByRole('button', { name: 'Test Deck' })).toHaveClass('hover:!bg-transparent')
+  })
+
+  it('marks New as the current workspace tab on the creation home', () => {
+    renderTitleBar({ variant: 'home', navActive: 'new' })
+
+    expect(screen.getByText('New')).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Slides' })).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('button', { name: 'Present fullscreen' })).not.toBeInTheDocument()
+  })
+
+  it('marks Slides as the current workspace tab on the library', () => {
+    renderTitleBar({ variant: 'library', navActive: 'slides' })
+
+    expect(screen.getByRole('link', { name: 'Slides' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Present fullscreen' })).not.toBeInTheDocument()
   })
 
   it('shows MCP running with a green light and opens the MCP settings tab', async () => {
