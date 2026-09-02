@@ -103,3 +103,19 @@ public deployment surfaces.
 
 The preload bridge exposes only credential, settings, MCP, file-dialog, and update operations. Deck
 HTML never receives preload or Node access.
+
+## Structure budgets
+
+These are **warnings** in this phase (inventory for later enforcement). `pnpm lint` reports them
+but still exits 0 for budget breaches.
+
+| Budget                               | Limit                                                 | Where                                              |
+| ------------------------------------ | ----------------------------------------------------- | -------------------------------------------------- |
+| File length                          | 500 lines (`skipBlankLines`, `skipComments`)          | `**/*.{ts,tsx}` except tests (`max-lines`)         |
+| Function length                      | 120 lines (`skipBlankLines`, `skipComments`, `IIFEs`) | same (`max-lines-per-function`)                    |
+| Exported `*Props`                    | 12 fields                                             | `apps/desktop/src` (`scripts/check-structure.mjs`) |
+| `export function use*` return object | 10 keys                                               | `apps/desktop/src` (`scripts/check-structure.mjs`) |
+
+Hooks under `apps/desktop/src/hooks/` must not import `@/components/*` or `../components/*`
+(`no-restricted-imports`, currently a warning). `scripts/check-structure.mjs --strict` exits 1
+when the Props/hook inventory is non-empty.

@@ -31,7 +31,7 @@ pnpm typecheck  # parallel native TypeScript check (all apps/packages)
 pnpm build      # build renderer, main, and preload
 pnpm package              # unpacked app for the current platform
 pnpm package:installers   # installers for the current platform
-pnpm lint       # run oxlint and ESLint
+pnpm lint       # oxlint, ESLint, package boundaries, structure budgets
 pnpm test       # Vitest: packages in parallel, apps serial
 ```
 
@@ -61,20 +61,6 @@ ark/
 │   ├── contracts/          #  5  HTTP API Zod schemas + OpenAPI registry
 │   ├── agent/              #  6  the generation loop, its tools, the job runner
 │   └── mcp/                #  7  Ark's deck tools exposed to external agents
-├── packages/               #  L  package                one job
-│   ├── runtime-registry/   #  0  approved runtime assets, pinned versions
-│   ├── telemetry/          #  0  logging, redaction, request ids, timing
-│   ├── deck/               #  1  the deck document model: read, patch, validate
-│   ├── ai/                 #  1  providers, models, credentials, provider options
-│   ├── deck-preview/       #  2  deck → preview document, parent ↔ frame protocol
-│   ├── editor-runtime/     #  2  manual editor protocol + injected script
-│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
-│   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
-│   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
-│   ├── storage/            #  3  records, stores, the `.ark` workspace file
-│   ├── contracts/          #  4  HTTP API Zod schemas + OpenAPI registry
-│   ├── agent/              #  5  the generation loop, its tools, the job runner
-│   └── mcp/                #  5  Ark's deck tools exposed to external agents
 ├── test/                   # cross-layer HTML fixtures (`test/fixtures/`) for tests and smoke scripts
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
 ├── agent-guides/           # always-on markdown appended to the deck agent system prompt
@@ -247,7 +233,6 @@ Fully working editor, not a scaffold. Implemented today:
 - **BYOK settings** backed by Electron `safeStorage`, with add/remove/test controls for each provider.
 - **Desktop packaging** for Linux, macOS, and Windows with GitHub Releases and `electron-updater`.
 - **Approved runtime registry** with vendored reveal.js 5.1.0 and chart.js 4.5.1 served from `/api/runtimes/...`.
-- **Deck export** to vector PDF (printed per slide, selectable text) and to PowerPoint as native editable shapes, text runs, bullets, and tables — with an export lint reporting anything that had to flatten to a picture. See [packages/deck-export/README.md](packages/deck-export/README.md).
 - **PowerPoint import** from Import PowerPoint (and the Open dialog) into a **new** `.ark` workspace. Local OOXML conversion only; speaker notes and `ark-asset:` images come along. See [packages/deck-import/README.md](packages/deck-import/README.md).
 - **Manual editing**: CSS-only, approved Reveal, Reveal+Chart.js, and custom-JS decks support PowerPoint-style selection and movement through the sandbox-safe editor bridge ([docs/deck-editor-bridge.md](docs/deck-editor-bridge.md), `packages/editor-runtime/`) and structured element patch API (`POST /api/decks/:id/patch`). The editor uses a private per-preview `MessagePort` established before deck-authored scripts run, so scripted decks cannot forge editor commits through public `postMessage`. Users can select deck-authored text, images, SVG, and containers; move or resize unlocked elements with snapping and keyboard nudge; insert text boxes/images; edit text and properties; duplicate, delete, reorder; and undo/redo. Moving unmanaged content adopts it into Ark's absolute layout while preserving its containing block and measured width. Selection chrome adapts to light/dark surfaces and preview scale.
 
