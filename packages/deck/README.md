@@ -3,30 +3,36 @@
 **One job:** the deck document model. Everything that reads, mutates, or validates deck HTML as a
 document lives here, and nothing here knows about HTTP, storage, previews, or the agent.
 
-Layer 1. May import `@ark/runtime-registry` and `@ark/telemetry`. Browser-safe: no `node:*`, no
-`Buffer`, no Express, no React — the renderer bundles it.
+Layer 1. May import `@ark/runtime-registry`. Browser-safe: no `node:*`, no `Buffer`, no Express, no
+React, no `jsdom` — the renderer bundles it. Callers pass a `Document`; this package never
+constructs one from an HTML string.
 
 ```
-document/   read a deck        parser, structure, slides, metadata, title, origin,
-                               network, assets, image, editable, geometry, sanitize,
+document/   read a deck        parser (parseDeckDocument), structure, slides, metadata, title,
+                               origin, network, assets, image, editable, geometry, sanitize,
                                theme, stored-deck, document-history
-patch/      change a deck      slide-ops, patch-request, editable-elements,
-                               text-edit, text-box, jsdom-inline-style
+patch/      change a deck      slide-ops (applySlidePatch on a Document), patch-request,
+                               editable-elements, text-edit, text-box
 patch/element-patch.ts         dispatcher: applyElementPatch and
                                stabilizeElementPatchOperations (public API)
 patch/element/                 per-concern modules — types, resolve, validate, ids,
                                text, insert, style, layout (move/resize), order
                                (duplicate/delete/reorder), lock
-validate/   judge a deck       document
+validate/   judge a deck       document (validateDeckDocument / validateDeckHtml with
+                               an injected parseDocument)
 ```
 
 `patch/element-patch.ts` is the public entry for element-level editor ops. Callers keep importing
 that path; implementations live beside it in `patch/element/`. Helpers take a `Document` or
-`Element`. JSDOM fragment construction for `insert_element` is isolated in `insert.ts` so a later
-server-only split can move it.
+`Element`. `insert_element` takes `parseFragment: (html) => Document` on `ElementPatchContext` so
+this package never constructs a document.
 
-`slide-ops.ts` holds an explicit `DeckDomCache` (`createDeckDomCache()` with `get` / `set` /
-`clear`). A default instance is used by `applyDeckPatches`; tests call `resetDeckDomCache()`.
+`slide-ops.ts` applies a single `DeckPatchOperation` to a live `Document` (`applySlidePatch`).
+HTML-string apply, JSDOM caching (`DeckDomCache`), and `applyDeckPatches` live in `@ark/deck-node`.
+
+HTML-string entry points (`parseDeckHtml`, `readDeckThemeFromHtml`, `validateDeckHtmlOnServer`,
+`applyDeckPatches`) live in `@ark/deck-node`. The renderer uses `parseDeckDocument` /
+`validateDeckHtml` with the browser `DOMParser`.
 
 Primitives defined here and re-exported upward so the layering stays honest:
 
@@ -39,6 +45,3 @@ Primitives defined here and re-exported upward so the layering stays honest:
 
 `document/sanitize.ts` (inline handlers, `javascript:` URLs) is here rather than in the preview
 layer because patching a document has to strip the same vectors that rendering one does.
-
-Server-side instrumentation stays out: `apps/api/deck-validate.ts` wraps the validator in JSDOM and
-timing, and the agent's read/slice API is `apps/api/deck-html.ts`.

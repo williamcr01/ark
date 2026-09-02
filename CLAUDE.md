@@ -55,6 +55,7 @@ ark/
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
 │   ├── deck-export/        #  2  slide → scene model for PowerPoint export
 │   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
+│   ├── deck-node/          #  2  JSDOM HTML parse/validate/patch (server-only)
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
 │   ├── deck-preview/       #  3  deck → preview document, parent ↔ frame protocol
 │   ├── storage/            #  4  records, stores, the `.ark` workspace file
@@ -85,7 +86,7 @@ strictly lower layer, every workspace dependency must be both declared and used,
 - **Browser-safe packages** (no `node:*`, no Express, no React): `runtime-registry`, `telemetry`,
   `deck`, `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
   `runtime-stylesheet-disk.ts` and `telemetry/request-id.ts`.
-- **Server-only packages**: `storage`, `agent`, `mcp`, `deck-import`. `apps/desktop/src` must not import them.
+- **Server-only packages**: `storage`, `agent`, `mcp`, `deck-import`, `deck-node`. `apps/desktop/src` must not import them.
 - `apps/desktop/src` (the renderer) may import browser-safe packages only — never `apps/api`.
 - `apps/desktop/electron` (the trusted main process) owns and may import `@ark/api` and
   `@ark/sandbox`.
