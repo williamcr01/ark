@@ -13,6 +13,7 @@ const deckApiMocks = vi.hoisted(() => ({
   deleteDeck: vi.fn(),
   importPptx: vi.fn(),
   listDecks: vi.fn(),
+  removeRecentWorkspace: vi.fn(),
   renameDeck: vi.fn(),
 }))
 
@@ -24,6 +25,16 @@ const useDeckThumbnailsMock = vi.hoisted(() =>
     isLoading: false,
   })),
 )
+
+const missingDeck = {
+  id: 'be4b3f4e-d05b-45d1-9da6-89d6df227b54',
+  title: 'Missing deck',
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-02T00:00:00.000Z',
+  documentRevision: null,
+  filePath: '/tmp/missing.ark',
+  missing: true,
+}
 
 vi.mock('@/lib/api/deck-api', () => deckApiMocks)
 
@@ -53,6 +64,8 @@ describe('DecksDashboard', () => {
     deckApiMocks.listDecks.mockResolvedValue([])
     deckApiMocks.importPptx.mockReset()
     deckApiMocks.createDeck.mockReset()
+    deckApiMocks.removeRecentWorkspace.mockReset()
+    deckApiMocks.removeRecentWorkspace.mockResolvedValue(undefined)
     window.arkDesktop = {
       mcp: window.arkDesktop.mcp,
       credentials: {
@@ -156,6 +169,46 @@ describe('DecksDashboard', () => {
     fireEvent.click(await screen.findByRole('link', { name: 'Open Roadmap' }))
 
     expect(await screen.findByText('Opened deck')).toBeInTheDocument()
+  })
+
+  it('removes a missing workspace from the recent list', async () => {
+    deckApiMocks.listDecks.mockResolvedValue([missingDeck])
+
+    render(
+      <MemoryRouter initialEntries={['/decks']}>
+        <Routes>
+          <Route element={<DecksDashboard />} path="/decks" />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+
+    await waitFor(() => {
+      expect(deckApiMocks.removeRecentWorkspace).toHaveBeenCalledWith(missingDeck.id)
+      expect(screen.queryByText('File not found')).not.toBeInTheDocument()
+    })
+    expect(await screen.findByText('No decks yet')).toBeInTheDocument()
+  })
+
+  it('reports a failed missing-workspace removal', async () => {
+    deckApiMocks.listDecks.mockResolvedValue([missingDeck])
+    deckApiMocks.removeRecentWorkspace.mockRejectedValueOnce(new Error('Request failed'))
+
+    render(
+      <MemoryRouter initialEntries={['/decks']}>
+        <Routes>
+          <Route element={<DecksDashboard />} path="/decks" />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Could not remove recent workspace')
+    })
+    expect(screen.getByText('File not found')).toBeInTheDocument()
   })
 
   it('imports a PowerPoint file into a new workspace', async () => {
