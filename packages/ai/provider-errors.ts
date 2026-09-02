@@ -36,85 +36,59 @@ function matchesAny(message: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(message))
 }
 
+function details(
+  category: ProviderErrorCategory,
+  apiErrorCode: ApiErrorCode,
+  retryable: boolean,
+  statusCode?: number | null,
+): ProviderErrorDetails {
+  return { category, apiErrorCode, retryable, ...(statusCode !== undefined ? { statusCode } : {}) }
+}
+
+function categorizeApiCallError(error: APICallError): ProviderErrorDetails {
+  const message = error.message.trim()
+  const statusCode = error.statusCode ?? null
+
+  if (statusCode === 401 || statusCode === 403) {
+    return details('invalid_api_key', 'invalid_api_key', false, statusCode)
+  }
+
+  if (
+    statusCode === 429 ||
+    matchesAny(message, [/rate limit/i, /too many requests/i, /quota exceeded/i])
+  ) {
+    return details('rate_limit', 'provider_error', true, statusCode)
+  }
+
+  if (
+    statusCode === 400 &&
+    matchesAny(message, [/context length/i, /maximum context/i, /token limit/i, /too long/i])
+  ) {
+    return details('context_length', 'provider_error', false, statusCode)
+  }
+
+  if (matchesAny(message, [/content policy/i, /content filter/i, /safety/i, /moderation/i])) {
+    return details('content_filter', 'provider_error', false, statusCode)
+  }
+
+  if (matchesAny(message, [/timed out/i, /timeout/i, /deadline exceeded/i])) {
+    return details('timeout', 'provider_error', true, statusCode)
+  }
+
+  if (matchesAny(message, [/network/i, /fetch failed/i, /econnreset/i, /enotfound/i])) {
+    return details('network', 'provider_error', true, statusCode)
+  }
+
+  return details('provider_error', 'provider_error', false, statusCode)
+}
+
 export function categorizeProviderError(error: unknown): ProviderErrorDetails {
   if (error instanceof DOMException && error.name === 'AbortError') {
-    return {
-      category: 'aborted',
-      apiErrorCode: 'provider_error',
-      retryable: true,
-    }
+    return details('aborted', 'provider_error', true)
   }
 
   if (APICallError.isInstance(error)) {
-    const message = error.message.trim()
-    const statusCode = error.statusCode ?? null
-
-    if (statusCode === 401 || statusCode === 403) {
-      return {
-        category: 'invalid_api_key',
-        apiErrorCode: 'invalid_api_key',
-        statusCode,
-        retryable: false,
-      }
-    }
-
-    if (
-      statusCode === 429 ||
-      matchesAny(message, [/rate limit/i, /too many requests/i, /quota exceeded/i])
-    ) {
-      return {
-        category: 'rate_limit',
-        apiErrorCode: 'provider_error',
-        statusCode,
-        retryable: true,
-      }
-    }
-
-    if (
-      statusCode === 400 &&
-      matchesAny(message, [/context length/i, /maximum context/i, /token limit/i, /too long/i])
-    ) {
-      return {
-        category: 'context_length',
-        apiErrorCode: 'provider_error',
-        statusCode,
-        retryable: false,
-      }
-    }
-
-    if (matchesAny(message, [/content policy/i, /content filter/i, /safety/i, /moderation/i])) {
-      return {
-        category: 'content_filter',
-        apiErrorCode: 'provider_error',
-        statusCode,
-        retryable: false,
-      }
-    }
-
-    if (matchesAny(message, [/timed out/i, /timeout/i, /deadline exceeded/i])) {
-      return {
-        category: 'timeout',
-        apiErrorCode: 'provider_error',
-        statusCode,
-        retryable: true,
-      }
-    }
-
-    if (matchesAny(message, [/network/i, /fetch failed/i, /econnreset/i, /enotfound/i])) {
-      return {
-        category: 'network',
-        apiErrorCode: 'provider_error',
-        statusCode,
-        retryable: true,
-      }
-    }
-
-    return {
-      category: 'provider_error',
-      apiErrorCode: 'provider_error',
-      statusCode,
-      retryable: false,
-    }
+    return categorizeApiCallError(error)
   }
 
   const message = readErrorMessage(error)

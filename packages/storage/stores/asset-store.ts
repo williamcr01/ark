@@ -18,6 +18,54 @@ function toRecord(deckId: string, row: Record<string, unknown>): AssetRecord {
   }
 }
 
+async function insertDeckAsset(workspaces: WorkspaceStore, input: CreateAssetInput) {
+  const database = await workspaces.database(input.deckId)
+  if (!database) throw new Error('Deck not found.')
+  const checksum = createHash('sha256').update(input.bytes).digest('hex')
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  database.exec('BEGIN IMMEDIATE')
+  try {
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO blobs
+           (checksum, media_type, byte_size, bytes, created_at) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(checksum, input.mediaType, input.bytes.byteLength, input.bytes, now)
+    database
+      .prepare(
+        `INSERT INTO assets
+           (id, blob_checksum, filename, media_type, category, source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, checksum, input.filename, input.mediaType, input.category, input.source, now)
+    if (input.chatMessageId) {
+      database
+        .prepare(
+          `INSERT OR IGNORE INTO asset_references
+             (asset_id, owner_type, owner_id, purpose) VALUES (?, 'message', ?, 'attachment')`,
+        )
+        .run(id, input.chatMessageId)
+    }
+    database.exec('COMMIT')
+  } catch (error) {
+    database.exec('ROLLBACK')
+    throw error
+  }
+  return {
+    id,
+    deckId: input.deckId,
+    chatMessageId: input.chatMessageId ?? null,
+    filename: input.filename,
+    mediaType: input.mediaType,
+    category: input.category,
+    byteSize: input.bytes.byteLength,
+    checksum,
+    source: input.source,
+    createdAt: now,
+  }
+}
+
 export function createAssetStore(
   workspaceOrDirectory: WorkspaceStore | string = createWorkspaceStore(),
 ): AssetStore {
@@ -26,53 +74,7 @@ export function createAssetStore(
       ? createWorkspaceStore(workspaceOrDirectory)
       : workspaceOrDirectory
 
-  const createAsset = async (input: CreateAssetInput) => {
-    const database = await workspaces.database(input.deckId)
-    if (!database) throw new Error('Deck not found.')
-    const checksum = createHash('sha256').update(input.bytes).digest('hex')
-    const id = randomUUID()
-    const now = new Date().toISOString()
-    database.exec('BEGIN IMMEDIATE')
-    try {
-      database
-        .prepare(
-          `INSERT OR IGNORE INTO blobs
-           (checksum, media_type, byte_size, bytes, created_at) VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(checksum, input.mediaType, input.bytes.byteLength, input.bytes, now)
-      database
-        .prepare(
-          `INSERT INTO assets
-           (id, blob_checksum, filename, media_type, category, source, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(id, checksum, input.filename, input.mediaType, input.category, input.source, now)
-      if (input.chatMessageId) {
-        database
-          .prepare(
-            `INSERT OR IGNORE INTO asset_references
-             (asset_id, owner_type, owner_id, purpose) VALUES (?, 'message', ?, 'attachment')`,
-          )
-          .run(id, input.chatMessageId)
-      }
-      database.exec('COMMIT')
-    } catch (error) {
-      database.exec('ROLLBACK')
-      throw error
-    }
-    return {
-      id,
-      deckId: input.deckId,
-      chatMessageId: input.chatMessageId ?? null,
-      filename: input.filename,
-      mediaType: input.mediaType,
-      category: input.category,
-      byteSize: input.bytes.byteLength,
-      checksum,
-      source: input.source,
-      createdAt: now,
-    }
-  }
+  const createAsset = async (input: CreateAssetInput) => insertDeckAsset(workspaces, input)
 
   const getAsset = async (deckId: string, id: string) => {
     const database = await workspaces.database(deckId)

@@ -111,31 +111,16 @@ function parseDeckFragment(html: string): Document {
 
 const parseFragment: ParseFragment = parseDeckFragment
 
-/**
- * Apply structured deck patch operations. Slide-level and element-level ops are supported.
- */
-export function applyDeckPatches(
+function createDeckPatchSession(
   html: string,
-  operations: DeckPatchOperation[],
-  options: ApplyDeckPatchesOptions = {},
-): DeckPatchResult {
-  if (!html.trim()) {
-    return { ok: false, error: 'No deck HTML is loaded.' }
-  }
-
-  if (operations.length === 0) {
-    return { ok: false, error: 'At least one patch operation is required.' }
-  }
-
+  cache: DeckDomCache,
+  aggregateChangedSlides: Set<number>,
+  aggregateChangedElements: Set<string>,
+  aggregateSummaries: string[],
+  activeSlideIndex: number | undefined,
+) {
   let workingHtml = html
-  const cache = options.cache ?? defaultDeckDomCache
-  const aggregateChangedSlides = new Set<number>()
-  const aggregateChangedElements = new Set<string>()
-  const aggregateSummaries: string[] = []
-  let activeSlideIndex = options.activeSlideIndex
-  let appliedCount = 0
   let dom: JSDOM | null = null
-  let validation: DeckValidationReport | undefined
 
   const closeDom = () => {
     if (!dom) {
@@ -156,34 +141,76 @@ export function applyDeckPatches(
     closeDom()
   }
 
-  const getLiveDom = (): JSDOM | null => dom
-
-  const getDomContext = (): ElementPatchContext => {
-    if (!dom) {
-      dom = cache.get(workingHtml)
-
+  return {
+    closeDom,
+    flushDom,
+    getLiveDom: () => dom,
+    getWorkingHtml: () => workingHtml,
+    setWorkingHtml: (next: string) => {
+      workingHtml = next
+    },
+    getActiveSlideIndex: () => activeSlideIndex,
+    setActiveSlideIndex: (next: number | undefined) => {
+      activeSlideIndex = next
+    },
+    getDomContext: (): ElementPatchContext => {
       if (!dom) {
-        cache.clear()
-        // Skip eager css-tree parse of every inline style; editor ops use attributes.
-        dom = createDeckJsdom(workingHtml)
-      }
-    }
+        dom = cache.get(workingHtml)
 
-    return {
-      doc: dom.window.document,
-      slides: findSlideElements(dom.window.document),
-      changedSlideIndexes: aggregateChangedSlides,
-      changedElementIds: aggregateChangedElements,
-      summaries: aggregateSummaries,
-      activeSlideIndex,
-      parseFragment,
-    }
+        if (!dom) {
+          cache.clear()
+          dom = createDeckJsdom(workingHtml)
+        }
+      }
+
+      return {
+        doc: dom.window.document,
+        slides: findSlideElements(dom.window.document),
+        changedSlideIndexes: aggregateChangedSlides,
+        changedElementIds: aggregateChangedElements,
+        summaries: aggregateSummaries,
+        activeSlideIndex,
+        parseFragment,
+      }
+    },
   }
+}
+
+/**
+ * Apply structured deck patch operations. Slide-level and element-level ops are supported.
+ */
+export function applyDeckPatches(
+  html: string,
+  operations: DeckPatchOperation[],
+  options: ApplyDeckPatchesOptions = {},
+): DeckPatchResult {
+  if (!html.trim()) {
+    return { ok: false, error: 'No deck HTML is loaded.' }
+  }
+
+  if (operations.length === 0) {
+    return { ok: false, error: 'At least one patch operation is required.' }
+  }
+
+  const cache = options.cache ?? defaultDeckDomCache
+  const aggregateChangedSlides = new Set<number>()
+  const aggregateChangedElements = new Set<string>()
+  const aggregateSummaries: string[] = []
+  let appliedCount = 0
+  let validation: DeckValidationReport | undefined
+  const session = createDeckPatchSession(
+    html,
+    cache,
+    aggregateChangedSlides,
+    aggregateChangedElements,
+    aggregateSummaries,
+    options.activeSlideIndex,
+  )
 
   const elementOperations = operations.filter(isElementPatchOperation)
   const rewrittenElementOperations =
     elementOperations.length > 0
-      ? stabilizeElementPatchOperations(getDomContext(), elementOperations)
+      ? stabilizeElementPatchOperations(session.getDomContext(), elementOperations)
       : []
   let rewrittenElementIndex = 0
   const preparedOperations = operations.map((operation) => {
@@ -196,22 +223,22 @@ export function applyDeckPatches(
 
   for (const [operationIndex, operation] of preparedOperations.entries()) {
     if (isElementPatchOperation(operation)) {
-      const context = getDomContext()
+      const context = session.getDomContext()
       const result = applyElementPatch(context, operation)
 
       if ('error' in result) {
-        flushDom()
+        session.flushDom()
         return { ok: false, error: result.error ?? 'Patch operation failed.', operationIndex }
       }
 
-      activeSlideIndex = context.activeSlideIndex
+      session.setActiveSlideIndex(context.activeSlideIndex)
       appliedCount += 1
       continue
     }
 
     if (isTextReplacePatchOperation(operation)) {
-      flushDom()
-      const replaced = applyDeckEdits(workingHtml, [
+      session.flushDom()
+      const replaced = applyDeckEdits(session.getWorkingHtml(), [
         { oldText: operation.oldText, newText: operation.newText },
       ])
 
@@ -219,14 +246,14 @@ export function applyDeckPatches(
         return { ok: false, error: replaced.error, operationIndex }
       }
 
-      workingHtml = replaced.html
+      session.setWorkingHtml(replaced.html)
       appliedCount += 1
       aggregateSummaries.push(summarizePatchOperation(operation))
       continue
     }
 
     if (!isSlidePatchOperation(operation)) {
-      flushDom()
+      session.flushDom()
       return {
         ok: false,
         error: `operations[${operationIndex}] is not a recognized patch operation.`,
@@ -234,21 +261,20 @@ export function applyDeckPatches(
       }
     }
 
-    const context = getDomContext()
+    const context = session.getDomContext()
     const result = applySlidePatch(context, operation)
 
     if ('error' in result) {
-      flushDom()
+      session.flushDom()
       return { ok: false, error: result.error ?? 'Patch operation failed.', operationIndex }
     }
 
-    activeSlideIndex = context.activeSlideIndex
+    session.setActiveSlideIndex(context.activeSlideIndex)
     appliedCount += 1
   }
 
-  // Validate on the live document before serialize so the route/tool path can
-  // skip a second full JSDOM parse (issue #287 persistence latency).
-  const liveDom = getLiveDom()
+  const liveDom = session.getLiveDom()
+  let workingHtml: string
   if (liveDom) {
     workingHtml = serializeDeckHtml(liveDom)
     validation = validateDeckDocumentOnServer(
@@ -258,23 +284,21 @@ export function applyDeckPatches(
     )
     cache.set(workingHtml, liveDom)
   } else {
-    flushDom()
+    session.flushDom()
+    workingHtml = session.getWorkingHtml()
   }
 
   if (workingHtml === html) {
     return { ok: false, error: 'Patch operations did not change the deck.' }
   }
 
-  const changedSlideIndexes = [...aggregateChangedSlides].sort((a, b) => a - b)
-  const summary = aggregateSummaries.join(' ')
-
   return {
     ok: true,
     html: workingHtml,
-    changedSlideIndexes,
+    changedSlideIndexes: [...aggregateChangedSlides].sort((a, b) => a - b),
     changedElementIds: [...aggregateChangedElements],
-    summary,
-    suggestedActiveSlideIndex: activeSlideIndex,
+    summary: aggregateSummaries.join(' '),
+    suggestedActiveSlideIndex: session.getActiveSlideIndex(),
     appliedCount,
     ...(validation ? { validation } : {}),
   }
