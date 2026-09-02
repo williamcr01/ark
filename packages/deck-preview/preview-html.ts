@@ -212,7 +212,10 @@ function injectRuntimeCspMeta(
 let cachedApprovedRuntimeAssetUrls: readonly string[] | null = null
 
 function getCachedApprovedRuntimeAssetUrls() {
-  return cachedApprovedRuntimeAssetUrls ?? (cachedApprovedRuntimeAssetUrls = getApprovedRuntimeAssetUrls())
+  return (
+    cachedApprovedRuntimeAssetUrls ??
+    (cachedApprovedRuntimeAssetUrls = getApprovedRuntimeAssetUrls())
+  )
 }
 
 /** Rewrite approved runtime asset URLs inside text (for injected CSS). */

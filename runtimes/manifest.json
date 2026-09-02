@@ -9,31 +9,16 @@
       "source": "https://github.com/hakimel/reveal.js",
       "previewMode": "css-only",
       "allowsDeckScripts": false,
-      "allowedGlobals": [
-        "Reveal"
-      ],
+      "allowedGlobals": ["Reveal"],
       "markers": {
-        "arkRuntime": [
-          "reveal"
-        ],
-        "arkDeck": [
-          "reveal"
-        ],
-        "arkRuntimeLib": [
-          "reveal.js"
-        ]
+        "arkRuntime": ["reveal"],
+        "arkDeck": ["reveal"],
+        "arkRuntimeLib": ["reveal.js"]
       },
-      "structureHints": [
-        ".reveal .slides > section"
-      ],
+      "structureHints": [".reveal .slides > section"],
       "requiredAssets": {
-        "css": [
-          "reveal.css",
-          "theme/white.css"
-        ],
-        "js": [
-          "reveal.js"
-        ]
+        "css": ["reveal.css", "theme/white.css"],
+        "js": ["reveal.js"]
       },
       "assets": [
         {
@@ -148,21 +133,13 @@
       "source": "https://github.com/chartjs/Chart.js",
       "previewMode": "full-js",
       "allowsDeckScripts": true,
-      "allowedGlobals": [
-        "Chart"
-      ],
+      "allowedGlobals": ["Chart"],
       "markers": {
-        "arkRuntime": [
-          "chart"
-        ],
-        "arkRuntimeLib": [
-          "chart.js"
-        ]
+        "arkRuntime": ["chart"],
+        "arkRuntimeLib": ["chart.js"]
       },
       "requiredAssets": {
-        "js": [
-          "chart.umd.min.js"
-        ]
+        "js": ["chart.umd.min.js"]
       },
       "assets": [
         {

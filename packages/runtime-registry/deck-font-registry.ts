@@ -315,8 +315,9 @@ export function buildMetricCloneFontAssetUrl(path: string) {
 export function buildMetricCloneFontFaceCss() {
   return METRIC_CLONE_FONT_FACES.map((face) => {
     const url = buildMetricCloneFontAssetUrl(face.path)
-    const local =
-      face.family.startsWith('Liberation ') ? `local(${JSON.stringify(face.family)}), ` : ''
+    const local = face.family.startsWith('Liberation ')
+      ? `local(${JSON.stringify(face.family)}), `
+      : ''
 
     return [
       '@font-face {',
