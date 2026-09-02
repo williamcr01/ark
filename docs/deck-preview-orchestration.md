@@ -6,14 +6,17 @@ they do not authenticate messages or decide whether a frame load is trusted.
 
 ## Ownership
 
-| Owner                           | Responsibility                                                                                                                                          | Must not own                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `DeckPreview`                   | iframe identity/ref, bridge-session gates, frame-load decision, navigation/editor activation                                                            | deck protocol parsing             |
-| `useDeckPreviewSource`          | canonical versus rendered HTML, reload revision, live-patch begin/finish/rollback, deck reset                                                           | iframe loads or messages          |
-| `useDeckEditorBridge`           | private editor port and authenticated editor events                                                                                                     | persistence authorization         |
-| `useDeckEditorPatchCoordinator` | authenticated editor-event persistence, deduplication, transform baseline, pending-transform serialization, stable-ID mapping, slide/reselection intent | origin/handshake validation       |
-| `useDeckEditorShellShortcuts`   | active window keyboard/paste subscriptions and cleanup                                                                                                  | bridge transport                  |
-| view components                 | render explicit props                                                                                                                                   | iframe generation or bridge state |
+| Owner                                                                     | Responsibility                                                                                                                                          | Must not own                      |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `DeckPreview`                                                             | Compose frame, editor layer, and chrome; thumbnail strip; present-mode exit                                                                             | deck protocol parsing             |
+| `DeckPreviewFrame`                                                        | iframe identity/ref, bridge-session load gate, status overlays                                                                                          | persistence authorization         |
+| `useDeckPreviewSource`                                                    | canonical versus rendered HTML, reload revision, live-patch begin/finish/rollback, deck reset                                                           | iframe loads or messages          |
+| `useEditorBridgePort`                                                     | private editor port lifecycle, handshake, and shell commands                                                                                            | persistence authorization         |
+| `useEditorBridgeMessages`                                                 | dispatch authenticated runtime messages into overlay state / editor-store                                                                               | origin/handshake validation       |
+| `useEditorPatchQueue` / `useEditorDragCommit` / `useEditorRuntimePatches` | authenticated editor-event persistence, deduplication, transform baseline, pending-transform serialization, stable-ID mapping, slide/reselection intent | origin/handshake validation       |
+| `useSlideIndex` / `useSlideNavigationSync`                                | store-backed slide index and public deck-bridge navigation sync                                                                                         | editor MessagePort                |
+| `useDeckEditorShellShortcuts`                                             | active window keyboard/paste subscriptions and cleanup                                                                                                  | bridge transport                  |
+| view components                                                           | render explicit props                                                                                                                                   | iframe generation or bridge state |
 
 The server remains authoritative for every element patch. Selection metadata
 from the client identifies an edit target; it never authorizes an operation.
@@ -37,18 +40,15 @@ reselection). React state is used for renderable source, editor, and UI state.
 
 ## Security review boundary
 
-Moving the iframe into a presentational child is intentionally out of scope.
-The owner of `onFrameLoad` must synchronously call the bridge-session load gate
-before navigation or editor synchronization. Public navigation messages and the
-private editor `MessagePort` remain separate capabilities.
+The iframe lives in `DeckPreviewFrame`. The owner of `onFrameLoad` must
+synchronously call the bridge-session load gate before navigation or editor
+synchronization. Public navigation messages and the private editor `MessagePort`
+remain separate capabilities.
 
 ## Remaining `DeckPreview` boundary
 
-After extraction, `DeckPreview` remains larger than a typical React component
-because it is the single owner of the iframe ref and generation key, the
-synchronous frame-load compromise gate, navigation activation, private editor
-activation, Present-mode frame reuse, and viewport composition. Splitting those
-across child mounts would obscure effect ordering and synchronous send gating.
-The remaining size is therefore a reviewed trust boundary, not a target for a
-line-count-only split. Display-only header and status overlays live in
-`DeckPreviewHeader` and `DeckPreviewStatusOverlays`.
+`DeckPreview` is the composition root for the preview stage. The sandbox iframe
+lives in `DeckPreviewFrame` so it can call the bridge-session load gate
+synchronously from `onLoad` before navigation or editor activation. Public
+navigation messages and the private editor `MessagePort` remain separate
+capabilities. Display-only status overlays live in `DeckPreviewStatusOverlays`.

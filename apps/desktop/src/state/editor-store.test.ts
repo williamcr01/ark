@@ -68,6 +68,16 @@ describe('useEditorStore', () => {
     expect(useEditorStore.getState().editorSelections).toEqual([])
   })
 
+  it('does not emit a new selection snapshot when the same set is selected again', () => {
+    useEditorStore.getState().reset()
+    useEditorStore.getState().select(selection, [selection])
+    const first = useEditorStore.getState()
+    useEditorStore.getState().select(selection, [selection])
+    const second = useEditorStore.getState()
+    expect(second.editorSelection).toBe(first.editorSelection)
+    expect(second.editorSelections).toBe(first.editorSelections)
+  })
+
   it('records history and supports undo/redo', () => {
     useEditorStore.getState().reset()
     useEditorStore.getState().recordEdit(makeManualEntry('a'))
@@ -97,6 +107,19 @@ describe('useEditorStore', () => {
     expect(useEditorStore.getState().isStripOpen).toBe(true)
     useEditorStore.getState().setStripOpen((open) => !open)
     expect(useEditorStore.getState().isStripOpen).toBe(false)
+  })
+
+  it('tracks selected tool, text-edit activity, and the active slide index', () => {
+    useEditorStore.getState().reset()
+    useEditorStore.getState().setSelectedTool('text')
+    useEditorStore.getState().setTextEditActive(true)
+    useEditorStore.getState().setActiveSlideIndex(2)
+    expect(useEditorStore.getState().selectedTool).toBe('text')
+    expect(useEditorStore.getState().textEditActive).toBe(true)
+    expect(useEditorStore.getState().activeSlideIndex).toBe(2)
+
+    useEditorStore.getState().setActiveSlideIndex((index) => index + 1)
+    expect(useEditorStore.getState().activeSlideIndex).toBe(3)
   })
 })
 

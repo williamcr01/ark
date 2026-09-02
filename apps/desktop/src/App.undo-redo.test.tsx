@@ -145,46 +145,47 @@ vi.mock('@/components/ChatPanel', () => ({
   ChatPanel: () => <div data-testid="chat-panel" />,
 }))
 
-vi.mock('@/components/DeckPreview', () => ({
-  DeckPreview: (props: {
-    state: { canUndo: boolean; canRedo: boolean }
-    onUndo?: () => void | Promise<void>
-    onRedo?: () => void | Promise<void>
-    onPatchEditorOperations?: (
-      operations: unknown[],
-      slideIndex: number,
-      summary: string,
-    ) => Promise<unknown>
-    onReorderSlide?: (
-      fromIndex: number,
-      toIndex: number,
-      activeSlideIndex: number,
-    ) => Promise<unknown>
-  }) => (
-    <div data-testid="deck-preview">
-      <button disabled={!props.state.canUndo} onClick={() => void props.onUndo?.()} type="button">
-        Undo
-      </button>
-      <button disabled={!props.state.canRedo} onClick={() => void props.onRedo?.()} type="button">
-        Redo
-      </button>
-      <button
-        onClick={() =>
-          void (async () => {
-            await props.onPatchEditorOperations?.([], 0, 'Dragged element')
-            await props.onPatchEditorOperations?.([], 0, 'Duplicated element')
-          })()
-        }
-        type="button"
-      >
-        Drag then duplicate
-      </button>
-      <button onClick={() => void props.onReorderSlide?.(0, 2, 0)} type="button">
-        Reorder slide
-      </button>
-    </div>
-  ),
-}))
+vi.mock('@/components/DeckPreview', async () => {
+  const { useManualEditCommits } = await import('@/hooks/useManualEditCommits')
+
+  return {
+    DeckPreview: () => {
+      const edits = useManualEditCommits()
+      return (
+        <div data-testid="deck-preview">
+          <button
+            disabled={!edits.canUndo}
+            onClick={() => void edits.handleUndoEdit()}
+            type="button"
+          >
+            Undo
+          </button>
+          <button
+            disabled={!edits.canRedo}
+            onClick={() => void edits.handleRedoEdit()}
+            type="button"
+          >
+            Redo
+          </button>
+          <button
+            onClick={() =>
+              void (async () => {
+                await edits.handlePatchEditorOperations?.([], 0, 'Dragged element')
+                await edits.handlePatchEditorOperations?.([], 0, 'Duplicated element')
+              })()
+            }
+            type="button"
+          >
+            Drag then duplicate
+          </button>
+          <button onClick={() => void edits.handleReorderSlide?.(0, 2, 0)} type="button">
+            Reorder slide
+          </button>
+        </div>
+      )
+    },
+  }
+})
 
 const { default: App } = await import('./App')
 

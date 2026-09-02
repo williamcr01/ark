@@ -1,4 +1,5 @@
 import type { EditorNormalizedRect, EditorTransformCommitMessage } from '@ark/editor-runtime'
+import { STABLE_ELEMENT_ID_PREFIX } from '@ark/deck/document/metadata.ts'
 import { buildTextBoxHtml } from '@ark/deck/patch/text-box.ts'
 import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts'
 
@@ -69,6 +70,13 @@ export function buildTransformPatchOperations(
   }
 
   return operations
+}
+
+export function pickStableChangedElementId(changedElementIds: string[]) {
+  return (
+    changedElementIds.find((id) => id.startsWith(STABLE_ELEMENT_ID_PREFIX)) ??
+    (changedElementIds.length === 1 ? changedElementIds[0] : undefined)
+  )
 }
 
 export function buildTextBoxInsertOperation(

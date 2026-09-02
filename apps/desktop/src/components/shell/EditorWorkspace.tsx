@@ -7,14 +7,10 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { useChatContextSlides } from '@/hooks/useChatContextSlides'
 import { useDeckAnalysis } from '@/hooks/useDeckAnalysis'
-import { useManualEditCommits } from '@/hooks/useManualEditCommits'
 import { useWorkspaceRuntimeContext } from '@/hooks/workspace-runtime-context'
 import { CHAT_PANEL_MIN_WIDTH_PX } from '@/lib/chat/chat-panel-layout'
 import { isChatPanelToggleTarget } from '@/lib/ui/app-shell-preferences'
-import { routeDeckIdFromParam } from '@/lib/ui/workspace-mode'
-import { useEditorStore } from '@/state/editor-store.ts'
 import { useShellStore } from '@/state/shell-store.ts'
-import { useParams } from 'react-router'
 
 const MemoizedDeckPreview = memo(DeckPreview)
 
@@ -29,52 +25,23 @@ export function EditorWorkspace({
   deckDefaultSizeWithChat,
   onChatOpenChange,
 }: EditorWorkspaceProps) {
-  const { persistence, generation, initialSlideIndex, deckPreviewRef } =
-    useWorkspaceRuntimeContext()
-  const { deckId: routeParam } = useParams<{ deckId: string }>()
-  const routeDeckId = routeDeckIdFromParam(routeParam)
-  const edits = useManualEditCommits()
+  const { initialSlideIndex, deckPreviewRef } = useWorkspaceRuntimeContext()
   const context = useChatContextSlides()
-  const deckAnalysis = useDeckAnalysis()
+  useDeckAnalysis()
   const isDesktop = useShellStore((state) => state.isDesktop)
   const isChatOpen = useShellStore((state) => state.isChatOpen)
-  const isStripOpen = useEditorStore((state) => state.isStripOpen)
   const [deckChromeHost, setDeckChromeHost] = useState<HTMLDivElement | null>(null)
   const contextSlot = <WorkspaceChatContextSlot context={context} />
 
   const preview = (
     <MemoizedDeckPreview
-      state={{
-        canRedo: edits.canRedo,
-        canUndo: edits.canUndo,
-        editorBridgeEnabled: true,
-        isDeckLoading: Boolean(routeDeckId && persistence.isLoading),
-        isGenerating: generation.isGenerating,
-        isPreviewUpdating: generation.isPreviewUpdating ?? false,
-        isStripOpen,
-        isTextEditSaving: persistence.isPatching || persistence.isSaving,
-      }}
       chromeHost={deckChromeHost}
       clearEditorSelectionRef={context.clearEditorSelectionRef}
-      contextSlideIndexes={context.contextSlideIndexes}
-      deckId={persistence.deckId}
-      html={persistence.html}
+      editorBridgeEnabled
       initialSlideIndex={initialSlideIndex}
       layout={isDesktop ? 'desktop' : 'mobile'}
-      onCommitTextEdit={edits.handleCommitTextEdit}
-      onEditorSelectionChange={context.handleEditorSelectionChange}
-      onPatchEditorOperations={edits.handlePatchEditorOperations}
-      onReorderSlide={edits.handleReorderSlide}
-      presentHandleRef={deckPreviewRef}
-      onRedo={edits.handleRedoEdit}
-      onRestoreDocumentHistory={edits.handleRestoreDocumentHistory}
       onToggleContextSlide={context.handleToggleContextSlide}
-      onUndo={edits.handleUndoEdit}
-      deckAnalysis={deckAnalysis}
-      redoSlideIndex={edits.redoSlideIndex}
-      recentGenerationJobId={generation.recentGenerationJobId}
-      undoSlideIndex={edits.undoSlideIndex}
-      documentRevision={persistence.documentRevision}
+      presentHandleRef={deckPreviewRef}
     />
   )
 

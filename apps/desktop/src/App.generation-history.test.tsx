@@ -164,33 +164,32 @@ vi.mock('@/components/ChatPanel', () => ({
   ChatPanel: () => <div data-testid="chat-panel" />,
 }))
 
-vi.mock('@/components/DeckPreview', () => ({
-  DeckPreview: (props: {
-    state: { canUndo: boolean; canRedo: boolean }
-    presentHandleRef?: {
-      current: { openPresent: () => void; getActiveSlideIndex: () => number } | null
-    }
-    onRestoreDocumentHistory?: (revision: number) => Promise<void>
-  }) => {
-    restoreCapture.onRestoreDocumentHistory = props.onRestoreDocumentHistory ?? null
-    if (props.presentHandleRef) {
-      props.presentHandleRef.current = {
-        openPresent: () => undefined,
-        getActiveSlideIndex: () => previewState.activeSlideIndex,
+vi.mock('@/components/DeckPreview', async () => {
+  const { useManualEditCommits } = await import('@/hooks/useManualEditCommits')
+
+  return {
+    DeckPreview: (props: {
+      presentHandleRef?: {
+        current: { openPresent: () => void; getActiveSlideIndex: () => number } | null
       }
-    }
-    return (
-      <div data-testid="deck-preview">
-        <output aria-label="Undo availability">
-          {props.state.canUndo ? 'enabled' : 'disabled'}
-        </output>
-        <output aria-label="Redo availability">
-          {props.state.canRedo ? 'enabled' : 'disabled'}
-        </output>
-      </div>
-    )
-  },
-}))
+    }) => {
+      const edits = useManualEditCommits()
+      restoreCapture.onRestoreDocumentHistory = edits.handleRestoreDocumentHistory
+      if (props.presentHandleRef) {
+        props.presentHandleRef.current = {
+          openPresent: () => undefined,
+          getActiveSlideIndex: () => previewState.activeSlideIndex,
+        }
+      }
+      return (
+        <div data-testid="deck-preview">
+          <output aria-label="Undo availability">{edits.canUndo ? 'enabled' : 'disabled'}</output>
+          <output aria-label="Redo availability">{edits.canRedo ? 'enabled' : 'disabled'}</output>
+        </div>
+      )
+    },
+  }
+})
 
 const { default: App } = await import('./App')
 

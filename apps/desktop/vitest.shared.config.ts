@@ -19,6 +19,7 @@ export const isolatedTests = [
   'src/hooks/useChatContextSlides.test.tsx',
   'src/hooks/useChatPanelLayout.test.tsx',
   'src/hooks/useDeckActions.test.tsx',
+  'src/hooks/useDeckEditorBridge.test.tsx',
   'src/hooks/useDeckGenerationFlow.test.tsx',
   'src/hooks/useDeckPreviewFrame.test.tsx',
   'src/hooks/useExternalDeckUpdates.test.tsx',
