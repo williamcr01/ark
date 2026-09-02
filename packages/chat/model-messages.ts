@@ -12,7 +12,6 @@ import {
   type ChatAttachment,
 } from './attachments.ts'
 import type { EditorSelectionContext, SlideContext, ThemeSelectionContext } from './context.ts'
-import type { ChatMessageRole } from './messages.ts'
 
 const PROVIDER_SAFE_IMAGE_MEDIA_TYPES = new Set([
   'image/png',
@@ -88,26 +87,6 @@ export function chatAttachmentsToModelParts(
   return parts
 }
 
-export function wrapUserPromptForGeneration(prompt: string, currentHtml: string) {
-  if (currentHtml.trim()) {
-    return `The user wants to revise the existing Ark HTML deck.
-
-User instruction:
-${prompt}
-
-Current full HTML deck:
-${currentHtml}
-
-Return the complete revised HTML document only.`
-  }
-
-  return `Create a new complete Ark HTML slide deck from this user request:
-
-${prompt}
-
-Return the complete HTML document only.`
-}
-
 export type WrapUserPrompt = (
   prompt: string,
   currentHtml: string,
@@ -163,33 +142,6 @@ export function toModelMessage(message: ApiChatMessage): ModelMessage {
     role: 'user',
     content: buildUserModelContent(message),
   }
-}
-
-export function buildModelMessages(
-  messages: ApiChatMessage[],
-  currentHtml: string,
-): Array<{ role: ChatMessageRole; content: string }> {
-  if (messages.length === 0) {
-    return []
-  }
-
-  const prior = messages.slice(0, -1).map((message) => ({
-    role: message.role,
-    content: message.content,
-  }))
-
-  const last = messages[messages.length - 1]
-  if (last.role !== 'user') {
-    return prior
-  }
-
-  return [
-    ...prior,
-    {
-      role: 'user' as const,
-      content: wrapUserPromptForGeneration(last.content, currentHtml),
-    },
-  ]
 }
 
 /** Collect unique Ark asset ids referenced by user messages in chat history. */
