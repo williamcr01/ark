@@ -99,15 +99,9 @@ function useDeckEditorLayerPreviewSync(input: LayerEffectsInput) {
 
 function useDeckEditorLayerSelectionSync(input: LayerEffectsInput) {
   const { chrome, frame, navigation, refs, selectedTool, bridge } = input
-  const {
-    clearSelection,
-    configureEditor,
-    editorReady,
-    enableEditor,
-    requestGeometry,
-    selection,
-    selections,
-  } = bridge
+  const { clearSelection, configureEditor, editorReady, enableEditor, requestGeometry, selection } =
+    bridge
+  const selections = bridge.selections ?? []
   const selectedElementId = selection?.elementId ?? null
   const selectedSlideIndex = selection?.slideIndex ?? null
   const selectedElementIds = (selections.length > 0 ? selections : selection ? [selection] : [])
