@@ -184,11 +184,12 @@ describe('propose_themes tool', () => {
 <style>html,body{margin:0;height:100%} .slide{width:100vw;height:100vh}</style>
 </head><body><section class="slide"><h1>Title</h1></section></body></html>`
 
+  const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
   const themes = [
-    { id: 'a', name: 'Alpha', description: 'Dark', sampleHtml },
-    { id: 'b', name: 'Beta', description: 'Light', sampleHtml },
-    { id: 'c', name: 'Gamma', description: 'Bold', sampleHtml },
-    { id: 'd', name: 'Delta', description: 'Soft', sampleHtml },
+    { id: 'a', name: 'Alpha', description: 'Dark', fonts, sampleHtml },
+    { id: 'b', name: 'Beta', description: 'Light', fonts, sampleHtml },
+    { id: 'c', name: 'Gamma', description: 'Bold', fonts, sampleHtml },
+    { id: 'd', name: 'Delta', description: 'Soft', fonts, sampleHtml },
   ]
 
   it.each([
@@ -220,5 +221,30 @@ describe('propose_themes tool', () => {
       ok: false,
       themeId: 'a',
     })
+  })
+
+  it('preserves registry fonts with sampleHtml on the live input schema', () => {
+    const tools = createDeckTools(createDeckWorkspace(''))
+    const schema = tools.propose_themes!.inputSchema
+    const parsed = schema.parse({ title: 'Pick a visual direction', themes })
+
+    expect(parsed.themes[0]?.fonts).toEqual(fonts)
+    expect(parsed.themes[0]?.sampleHtml).toBe(sampleHtml)
+    expect(
+      schema.safeParse({
+        title: 'Pick a visual direction',
+        themes: themes.map(({ fonts: _fonts, ...theme }) => theme),
+      }).success,
+    ).toBe(false)
+    expect(
+      schema.safeParse({
+        title: 'Pick a visual direction',
+        themes: themes.map((theme, index) =>
+          index === 0
+            ? { ...theme, fonts: { display: 'inter', body: 'calibri', mono: 'courier-new' } }
+            : theme,
+        ),
+      }).success,
+    ).toBe(false)
   })
 })

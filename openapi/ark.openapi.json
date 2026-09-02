@@ -14,7 +14,84 @@
       }
     }
   ],
-  "components": { "schemas": {}, "parameters": {} },
+  "components": {
+    "schemas": {
+      "ThemeProposalRequest": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "themes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9_-]+$"
+                },
+                "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                "description": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "sampleHtml": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 10240,
+                  "description": "Complete self-contained single-slide HTML document (inline CSS, no external URLs). Keep lean (max ~10 KiB)."
+                },
+                "fonts": {
+                  "type": "object",
+                  "properties": {
+                    "display": {
+                      "type": "string",
+                      "enum": [
+                        "calibri",
+                        "arial",
+                        "cambria",
+                        "georgia",
+                        "times-new-roman",
+                        "courier-new"
+                      ],
+                      "description": "Approved deck font id from the registry, not a CSS stack."
+                    },
+                    "body": {
+                      "type": "string",
+                      "enum": [
+                        "calibri",
+                        "arial",
+                        "cambria",
+                        "georgia",
+                        "times-new-roman",
+                        "courier-new"
+                      ],
+                      "description": "Approved deck font id from the registry, not a CSS stack."
+                    },
+                    "mono": {
+                      "type": "string",
+                      "enum": [
+                        "calibri",
+                        "arial",
+                        "cambria",
+                        "georgia",
+                        "times-new-roman",
+                        "courier-new"
+                      ],
+                      "description": "Approved deck font id from the registry, not a CSS stack."
+                    }
+                  },
+                  "required": ["display", "body", "mono"],
+                  "description": "Font pairing for this theme. Registry ids only (for example georgia, calibri, courier-new). Apply the same pairing in sampleHtml with data-ark-font-* markers."
+                }
+              },
+              "required": ["id", "name", "description", "sampleHtml", "fonts"]
+            }
+          }
+        },
+        "required": ["title", "themes"]
+      }
+    },
+    "parameters": {}
+  },
   "paths": {
     "/api/health": {
       "get": {

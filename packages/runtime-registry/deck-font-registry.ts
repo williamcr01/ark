@@ -26,8 +26,23 @@ export type DeckFontAvailability =
   /** Ships with Microsoft Office on both platforms. */
   | 'office'
 
+/**
+ * Registry ids a deck (or theme proposal) may name. CSS stacks are not valid
+ * here — look the id up and use `cssStack` / `pptxTypeface` from the entry.
+ */
+export const APPROVED_DECK_FONT_IDS = [
+  'calibri',
+  'arial',
+  'cambria',
+  'georgia',
+  'times-new-roman',
+  'courier-new',
+] as const
+
+export type DeckFontId = (typeof APPROVED_DECK_FONT_IDS)[number]
+
 export type DeckFont = {
-  id: string
+  id: DeckFontId
   label: string
   category: DeckFontCategory
   /** The single family name written to OOXML on export. */
@@ -116,7 +131,7 @@ export const APPROVED_DECK_FONTS: readonly DeckFont[] = [
   },
 ]
 
-export const DEFAULT_DECK_FONT_IDS: Record<DeckFontRole, string> = {
+export const DEFAULT_DECK_FONT_IDS: Record<DeckFontRole, DeckFontId> = {
   display: 'calibri',
   body: 'calibri',
   mono: 'courier-new',
@@ -348,7 +363,7 @@ export function readDeckFontSelection(doc: Document): DeckFontSelection {
   ) as DeckFontSelection
 }
 
-const FONTS_BY_ID = new Map(APPROVED_DECK_FONTS.map((font) => [font.id, font]))
+const FONTS_BY_ID = new Map<string, DeckFont>(APPROVED_DECK_FONTS.map((font) => [font.id, font]))
 
 export function getApprovedDeckFonts() {
   return APPROVED_DECK_FONTS

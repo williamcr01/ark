@@ -151,6 +151,7 @@ describe('MCP runner', () => {
 
     const sampleHtml =
       '<!doctype html><html><head><title>Sample</title></head><body><section class="slide"><h1>Sample</h1></section></body></html>'
+    const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
     const themeResult = await run(
       'propose_themes',
       {
@@ -161,6 +162,7 @@ describe('MCP runner', () => {
           id: `theme-${index}`,
           name: `Theme ${index}`,
           description: `Direction ${index}`,
+          fonts,
           sampleHtml,
         })),
       },
@@ -168,7 +170,14 @@ describe('MCP runner', () => {
       'session-a',
     )
     const themeId = String(themeResult.structuredContent.interactionId)
-    expect(interactionStore.getPending()).toMatchObject({ kind: 'themes' })
+    expect(interactionStore.getPending()).toMatchObject({
+      kind: 'themes',
+      request: {
+        themes: expect.arrayContaining([
+          expect.objectContaining({ id: 'theme-2', fonts, sampleHtml }),
+        ]),
+      },
+    })
     interactionStore.respond(themeId, { kind: 'themes', themeId: 'theme-2' })
     await expect(
       run('wait_for_interaction', { interactionId: themeId, timeoutMs: 0 }, 'Codex', 'session-a'),
@@ -178,6 +187,61 @@ describe('MCP runner', () => {
         answer: { kind: 'themes', themeId: 'theme-2' },
       },
     })
+  })
+
+  it('rejects theme proposals that send CSS stacks or omit fonts', async () => {
+    const { deck, run } = await setup()
+    const sampleHtml =
+      '<!doctype html><html><head><title>Sample</title></head><body><section class="slide"><h1>Sample</h1></section></body></html>'
+    const validTheme = {
+      id: 'theme-0',
+      name: 'Theme 0',
+      description: 'Direction 0',
+      fonts: { display: 'georgia', body: 'calibri', mono: 'courier-new' },
+      sampleHtml,
+    }
+    const themes = Array.from({ length: 4 }, (_, index) => ({
+      ...validTheme,
+      id: `theme-${index}`,
+      name: `Theme ${index}`,
+    }))
+
+    await expect(
+      run(
+        'propose_themes',
+        {
+          deckId: deck.id,
+          expectedDocumentRevision: 1,
+          title: 'Pick a direction',
+          themes: themes.map((theme, index) =>
+            index === 0
+              ? {
+                  ...theme,
+                  fonts: {
+                    display: '"Georgia", "Gelasio", serif',
+                    body: 'calibri',
+                    mono: 'courier-new',
+                  },
+                }
+              : theme,
+          ),
+        },
+        'Codex',
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_TOOL_ARGUMENTS' })
+
+    await expect(
+      run(
+        'propose_themes',
+        {
+          deckId: deck.id,
+          expectedDocumentRevision: 1,
+          title: 'Pick a direction',
+          themes: themes.map(({ fonts: _fonts, ...theme }) => theme),
+        },
+        'Codex',
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_TOOL_ARGUMENTS' })
   })
 
   it('returns recoverable errors for stale, inactive, and disabled access', async () => {

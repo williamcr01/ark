@@ -71,6 +71,7 @@ import {
 } from './deck-asset-proxy.ts'
 import { runtimeErrorInputSchema, runtimeErrorResponseSchema } from './runtime-errors.ts'
 import { runtimeAssetParamsSchema, runtimeRegistryResponseSchema } from './runtimes.ts'
+import { themeProposalRequestSchema } from './mcp.ts'
 
 extendZodWithOpenApi(z)
 
@@ -100,6 +101,8 @@ const jsonApiError = {
 
 export function createArkOpenApiRegistry() {
   const registry = new OpenAPIRegistry()
+
+  registry.register('ThemeProposalRequest', z.object(themeProposalRequestSchema.shape))
 
   registry.registerPath({
     method: 'get',

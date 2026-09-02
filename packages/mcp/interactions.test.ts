@@ -56,11 +56,21 @@ describe('MCP interactions', () => {
             description: `Direction ${index}`,
             sampleHtml:
               '<!doctype html><html><body><section class="slide"></section></body></html>',
+            fonts: { display: 'georgia', body: 'calibri', mono: 'courier-new' },
           })),
         },
       },
       'session-a',
     )
+
+    expect(interaction.kind).toBe('themes')
+    if (interaction.kind !== 'themes') throw new Error('expected themes interaction')
+    expect(interaction.request.themes[0]?.fonts).toEqual({
+      display: 'georgia',
+      body: 'calibri',
+      mono: 'courier-new',
+    })
+    expect(interaction.request.themes[0]?.sampleHtml).toContain('<section class="slide">')
 
     expect(() => store.respond(interaction.id, { kind: 'themes', themeId: 'missing' })).toThrow(
       'Unknown theme choice',

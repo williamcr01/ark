@@ -76,7 +76,7 @@ import {
 import {
   formatThemeChoice,
   parseThemeChoiceName,
-  themeProposalRequestSchema,
+  parseStoredThemeProposalRequest,
   type ThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
 import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
@@ -501,17 +501,15 @@ function ChatMessageParts({
               })}
               {themeParts.map(({ index, part }) => {
                 const parsed =
-                  part.type === 'tool-call'
-                    ? themeProposalRequestSchema.safeParse(part.input)
-                    : null
-                if (!parsed?.success) {
+                  part.type === 'tool-call' ? parseStoredThemeProposalRequest(part.input) : null
+                if (!parsed) {
                   return <ToolActivityLine key={`tool-${index}`} part={part} />
                 }
                 return (
                   <ThemeProposalTranscript
                     choiceContent={themeChoice}
                     key={`propose-themes-${index}`}
-                    request={parsed.data}
+                    request={parsed}
                   />
                 )
               })}

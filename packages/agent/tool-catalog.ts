@@ -204,6 +204,16 @@ function projectReadOnly(toolName: string, value: unknown): TranscriptProjection
 }
 
 /** Preserve lean sampleHtml for client theme previews (default projector strips HTML). */
+function projectThemeFonts(value: unknown) {
+  const record = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const fonts = record as Record<string, unknown>
+  return {
+    display: typeof fonts.display === 'string' ? fonts.display : '',
+    body: typeof fonts.body === 'string' ? fonts.body : '',
+    mono: typeof fonts.mono === 'string' ? fonts.mono : '',
+  }
+}
+
 function projectProposeThemesInput(value: unknown): TranscriptProjection {
   const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const themes = Array.isArray(source.themes) ? source.themes : []
@@ -219,6 +229,7 @@ function projectProposeThemesInput(value: unknown): TranscriptProjection {
       name: typeof record.name === 'string' ? truncateString(record.name, 80) : '',
       description:
         typeof record.description === 'string' ? truncateString(record.description, 200) : '',
+      fonts: projectThemeFonts(record.fonts),
       sampleHtml: page.content,
     }
   })

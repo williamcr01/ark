@@ -93,7 +93,7 @@ export const MCP_TOOL_CATALOG = {
   },
   propose_themes: {
     description:
-      'Show exactly four visual theme samples inside Ark. Returns an interaction id; call wait_for_interaction until the user picks one.',
+      'Show exactly four visual theme samples inside Ark. Each theme must include fonts: { display, body, mono } as approved deck font ids, plus sampleHtml. Returns an interaction id; call wait_for_interaction until the user picks one.',
     inputSchema: mutationTargetSchema.extend(themeProposalRequestSchema.shape),
     mutating: false,
     sideEffecting: true,

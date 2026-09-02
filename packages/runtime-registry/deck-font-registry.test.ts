@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  APPROVED_DECK_FONT_IDS,
   APPROVED_DECK_FONTS,
   buildDeckFontPromptSection,
   buildDeckFontRootCss,
@@ -34,6 +35,7 @@ describe('approved deck fonts', () => {
     const ids = APPROVED_DECK_FONTS.map((font) => font.id)
 
     expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual([...APPROVED_DECK_FONT_IDS])
   })
 
   it('names a single OOXML typeface per font, with no fallback list', () => {

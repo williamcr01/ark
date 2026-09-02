@@ -36,6 +36,7 @@ import {
   deckThumbnailsQuerySchema,
   deckThumbnailsResponseSchema,
 } from './thumbnails.ts'
+import { mcpPendingInteractionSchema, themeProposalRequestSchema } from './mcp.ts'
 
 const deckId = 'be4b3f4e-d05b-45d1-9da6-89d6df227b54'
 const jobId = 'a0000000-0000-4000-8000-000000000001'
@@ -756,6 +757,85 @@ describe('shared API contracts', () => {
         expectedDocumentRevision: 3,
         html: '<script>nope</script>',
       }).ok,
+    ).toBe(false)
+  })
+})
+
+describe('theme proposal contract', () => {
+  const sampleHtml = `<!DOCTYPE html><html><body><section class="slide"><h1>Title</h1></section></body></html>`
+  const fonts = { display: 'georgia', body: 'calibri', mono: 'courier-new' } as const
+  const themes = [
+    { id: 'midnight', name: 'Midnight Editorial', description: 'Dark', fonts, sampleHtml },
+    { id: 'sunlit', name: 'Sunlit Studio', description: 'Warm', fonts, sampleHtml },
+    { id: 'signal', name: 'Signal Grid', description: 'Bold', fonts, sampleHtml },
+    { id: 'folio', name: 'Quiet Folio', description: 'Soft', fonts, sampleHtml },
+  ]
+
+  it('parses a theme proposal with registry font ids through the MCP interaction schema', () => {
+    const parsed = mcpPendingInteractionSchema.parse({
+      id: '00000000-0000-4000-8000-000000000001',
+      deckId,
+      baseDocumentRevision: 1,
+      clientName: 'Codex',
+      createdAt: '2026-09-01T00:00:00.000Z',
+      expiresAt: '2026-09-01T00:30:00.000Z',
+      kind: 'themes',
+      request: { title: 'Pick a visual direction', themes },
+    })
+
+    expect(parsed.kind).toBe('themes')
+    if (parsed.kind !== 'themes') throw new Error('expected themes interaction')
+    expect(parsed.request.themes[0]?.fonts).toEqual(fonts)
+    expect(parsed.request.themes[0]?.sampleHtml).toBe(sampleHtml)
+    expect(themeProposalRequestSchema.parse(parsed.request).themes[1]?.fonts.display).toBe(
+      'georgia',
+    )
+  })
+
+  it('rejects CSS stacks and unknown font ids on the live schema', () => {
+    expect(
+      themeProposalRequestSchema.safeParse({
+        title: 'Pick a visual direction',
+        themes: themes.map((theme, index) =>
+          index === 0
+            ? {
+                ...theme,
+                fonts: {
+                  display: '"Georgia", "Gelasio", serif',
+                  body: 'calibri',
+                  mono: 'courier-new',
+                },
+              }
+            : theme,
+        ),
+      }).success,
+    ).toBe(false)
+
+    expect(
+      themeProposalRequestSchema.safeParse({
+        title: 'Pick a visual direction',
+        themes: themes.map((theme, index) =>
+          index === 0
+            ? { ...theme, fonts: { display: 'inter', body: 'calibri', mono: 'courier-new' } }
+            : theme,
+        ),
+      }).success,
+    ).toBe(false)
+
+    expect(
+      mcpPendingInteractionSchema.safeParse({
+        id: '00000000-0000-4000-8000-000000000001',
+        deckId,
+        baseDocumentRevision: 1,
+        clientName: 'Codex',
+        createdAt: '2026-09-01T00:00:00.000Z',
+        expiresAt: '2026-09-01T00:30:00.000Z',
+        kind: 'themes',
+        request: {
+          title: 'Pick a visual direction',
+          themes: themes.map(({ fonts: _fonts, ...theme }) => theme),
+        },
+      }).success,
     ).toBe(false)
   })
 })

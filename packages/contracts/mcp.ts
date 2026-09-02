@@ -1,8 +1,14 @@
 import { z } from 'zod'
 
 import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
-import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
+import {
+  themeCandidateSchema,
+  themeFontPairingSchema,
+  themeProposalRequestSchema,
+} from '@ark/chat/agent-themes.ts'
 import { deckIdSchema } from './common.ts'
+
+export { themeCandidateSchema, themeFontPairingSchema, themeProposalRequestSchema }
 
 export const mcpServiceStateSchema = z.enum(['stopped', 'running', 'stopping'])
 
