@@ -35,7 +35,7 @@ export function parseColor(value: unknown): RgbaColor | null {
   }
 
   var parts = match[1]
-    .split(/[\s,\/]+/)
+    .split(/[\s,/]+/)
     .filter(Boolean)
     .map(Number)
 

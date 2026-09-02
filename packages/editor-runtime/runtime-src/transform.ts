@@ -28,7 +28,6 @@ import type {
   NudgeState,
   PendingPointer,
   PositionContext,
-  SpacerFootprint,
   TransformCache,
   TransformState,
 } from './types.ts'

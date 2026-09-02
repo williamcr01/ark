@@ -1,7 +1,6 @@
 import './constants.ts'
 import { prepareMove, settleSlideRelativePosition } from './adopt.ts'
 import {
-  clearEditorOverlays,
   clearGuides,
   clearMarquee,
   isSelectionUnsafe,

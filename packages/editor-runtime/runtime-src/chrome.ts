@@ -394,6 +394,7 @@ export function findElementById(
   slide: HTMLElement,
   slideIndex: number,
 ): HTMLElement | null {
+  void slideIndex
   var byAttr = slide.querySelector(
     '[' + C.ELEMENT_ID_ATTR + '="' + elementId.replace(/"/g, '') + '"]',
   )
