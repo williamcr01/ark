@@ -1,9 +1,9 @@
 /**
  * Builds the editor runtime script injected into the deck iframe.
  *
- * The script is one IIFE whose parts close over shared state, so it cannot be split into
- * real modules. It is split into ordered source chunks instead — see the sibling files —
- * and concatenated here in the order they must appear.
+ * Edit `runtime-src/` and run `pnpm build:runtimes` to refresh the committed
+ * bundle at `runtime/generated/editor-runtime.source.ts`. This module prepends
+ * host constants and returns the script the preview iframe evaluates.
  */
 
 import {
@@ -53,19 +53,7 @@ import {
   DEFAULT_TEXT_BOX_NORMALIZED_SIZE,
   MIN_TEXT_BOX_NORMALIZED_SIZE,
 } from '@ark/deck/patch/text-box.ts'
-import { preambleChunk } from './preamble.ts'
-import { portChunk } from './port.ts'
-import { selectionChunk } from './selection.ts'
-import { surfaceChunk } from './surface.ts'
-import { geometryChunk } from './geometry.ts'
-import { chromeChunk } from './chrome.ts'
-import { textEditChunk } from './text-edit.ts'
-import { transformChunk } from './transform.ts'
-import { adoptChunk } from './adopt.ts'
-import { snapChunk } from './snap.ts'
-import { pointerChunk } from './pointer.ts'
-import { keyboardChunk } from './keyboard.ts'
-import { lifecycleChunk } from './lifecycle.ts'
+import { EDITOR_RUNTIME_SOURCE } from './generated/editor-runtime.source.ts'
 
 export type DeckEditorBridgeRuntimeScriptOptions = {
   slideSelectors: readonly string[]
@@ -125,20 +113,5 @@ export function buildDeckEditorBridgeRuntimeScript(
     MAX_SELECTIONS: MAX_EDITOR_SELECTIONS,
   }
 
-  return [
-    '',
-    preambleChunk(JSON.stringify(constants)),
-    portChunk,
-    selectionChunk,
-    surfaceChunk,
-    geometryChunk,
-    chromeChunk,
-    textEditChunk,
-    transformChunk,
-    adoptChunk,
-    snapChunk,
-    pointerChunk,
-    keyboardChunk,
-    lifecycleChunk,
-  ].join('\n')
+  return `var C = ${JSON.stringify(constants)};\n${EDITOR_RUNTIME_SOURCE}`
 }

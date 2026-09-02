@@ -226,14 +226,14 @@ describe('deck editor runtime script', () => {
       'a',
       'hr',
     ]) {
-      expect(script).toContain(`tag === '${tag}'`)
+      expect(script).toContain(`tag === "${tag}"`)
     }
 
     expect(script).toContain('if (!bounds.width || !bounds.height)')
-    const ancestorPreferenceIndex = script.indexOf('managedAncestor === selectedElement ||')
+    const ancestorPreferenceIndex = script.indexOf('managedAncestor === runtime.selectedElement ||')
     expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
     expect(script).toContain(
-      'selectedElement && managedAncestor && managedAncestor.contains(selectedElement)',
+      'runtime.selectedElement && managedAncestor && managedAncestor.contains(runtime.selectedElement)',
     )
     expect(script).toContain('function selectParent(slide)')
   })
@@ -816,7 +816,7 @@ describe('deck editor runtime script', () => {
     expect(emptyClickIndex).toBeGreaterThan(-1)
 
     const deselectIndex = script.indexOf(
-      'postSelection(null, slide, currentSlideIndex);',
+      'postSelection(null, slide, runtime.currentSlideIndex);',
       emptyClickIndex,
     )
     expect(deselectIndex).toBeGreaterThan(emptyClickIndex)
@@ -832,16 +832,16 @@ describe('deck editor runtime script', () => {
 
     expect(() => new Function(script)).not.toThrow()
     expect(script).toContain('function detectSurface(element, slide)')
-    expect(script).toContain("return luminance >= 0.5 ? 'light' : 'dark'")
+    expect(script).toContain('return luminance >= 0.5 ? "light" : "dark"')
     expect(script).toContain('surface: detectSurface(element, slide)')
-    expect(script).toContain('geometry: target ? normalizeRect(target, slide) : undefined')
-    expect(script).toContain('var hitSize = 18 / editorScale')
-    expect(script).toContain('var visualSize = 10 / editorScale')
+    expect(script).toContain('geometry: target ? normalizeRect(target, slide) : void 0')
+    expect(script).toContain('var hitSize = 18 / runtime.editorScale')
+    expect(script).toContain('var visualSize = 10 / runtime.editorScale')
     expect(script).toContain('handle.style.cursor = cursors[handles[i]]')
     expect(script).toContain('data-ark-editor-movable')
     expect(script).toContain('data.type === C.CONFIGURE')
-    expect(script).toContain("tag === 'svg'")
-    expect(script).toContain("tag === 'picture'")
+    expect(script).toContain('tag === "svg"')
+    expect(script).toContain('tag === "picture"')
   })
 
   it('supports adopt-on-move, snapping, modifiers, nudge, shortcuts, and unlocked delete', () => {
@@ -855,22 +855,22 @@ describe('deck editor runtime script', () => {
     expect(script).toContain('function insertAdoptSpacer(element, slide, cache)')
     expect(script).toContain('function removeAdoptSpacer(cache)')
     expect(script).toContain('data-ark-spacer')
-    expect(script).toContain('adopted: adopted ? true : undefined')
-    expect(script).toContain('spacer: adopted && spacerFootprint ? spacerFootprint : undefined')
+    expect(script).toContain('adopted: adopted ? true : void 0')
+    expect(script).toContain('spacer: adopted && spacerFootprint ? spacerFootprint : void 0')
     expect(script).toContain(
       'function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis',
     )
     expect(script).toContain('function applySnapGuides(slide, guides, cache)')
     expect(script).toContain('liveTransform:')
     expect(script).toContain('liveTransformBase')
-    expect(script).toContain("willChange = 'transform'")
+    expect(script).toContain('willChange = "transform"')
     expect(script).toContain('data.type === C.TRANSFORM_END')
     expect(script).toContain('candidates.length < 60')
     expect(script).not.toContain('!isManagedElement(element)')
     expect(script).toContain('event.altKey')
     expect(script).toContain('event.shiftKey')
     expect(script).toContain('window.setTimeout(finishNudge, 400)')
-    expect(script).toContain('postToParent({ type: C.SHORTCUT, action: action })')
+    expect(script).toContain('postToParent({ type: C.SHORTCUT, action })')
     expect(script).toContain('restoreInlineStyle(state.element, state.snapshot)')
     expect(script).toContain('data.type === C.TRANSFORM_CANCEL')
 
@@ -882,11 +882,14 @@ describe('deck editor runtime script', () => {
     expect(cancelTransformIndex).toBeGreaterThan(finishNudgeIndex)
     expect(setSlideIndex).toBeGreaterThan(cancelTransformIndex)
 
-    const deleteHandlerIndex = script.indexOf("event.key === 'Delete'")
+    const deleteHandlerIndex = script.indexOf('event.key === "Delete"')
     expect(deleteHandlerIndex).toBeGreaterThan(-1)
     expect(script.indexOf('!isManagedElement(selectedElement)', deleteHandlerIndex)).toBe(-1)
     expect(
-      script.indexOf("selectedElement.getAttribute(C.LOCKED_ATTR) === 'true'", deleteHandlerIndex),
+      script.indexOf(
+        'runtime.selectedElement.getAttribute(C.LOCKED_ATTR) === "true"',
+        deleteHandlerIndex,
+      ),
     ).toBeGreaterThan(deleteHandlerIndex)
   })
 
