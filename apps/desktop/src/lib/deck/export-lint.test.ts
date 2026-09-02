@@ -133,6 +133,6 @@ describe('lintDeckHtmlForExport', () => {
     ).toContain(EXPORT_LINT_COPY['unknown-font-id'])
     expect(
       formatPptxExportWarning('some font weights collapsed to regular or bold', lint),
-    ).toContain('some font weights collapsed to regular or bold')
+    ).toContain(EXPORT_LINT_COPY['font-weight-unsafe'])
   })
 })

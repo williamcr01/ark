@@ -102,6 +102,17 @@ export function parseThemeChoiceId(content: string): string | null {
   return match?.[1] ?? null
 }
 
+export function parseThemeChoiceFonts(content: string): ThemeFontPairing | null {
+  const match = content.match(/- Fonts: display ([a-z0-9-]+), body ([a-z0-9-]+), mono ([a-z0-9-]+)/)
+  if (!match) return null
+  const parsed = themeFontPairingSchema.safeParse({
+    display: match[1],
+    body: match[2],
+    mono: match[3],
+  })
+  return parsed.success ? parsed.data : null
+}
+
 export function parseThemeChoiceName(
   request: ThemeProposalRequest,
   content: string,

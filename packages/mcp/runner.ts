@@ -1,6 +1,7 @@
 import type { ExternalDeckUpdate, McpToolResponse } from '@ark/contracts'
 import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
 import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
+import { formatThemeFontPairingLine } from '@ark/chat/agent-themes.ts'
 import { MCP_TOOL_CATALOG, isMcpToolName, type McpToolName } from './tool-catalog.ts'
 import { createActiveDeckTools } from '@ark/agent/tool-catalog.ts'
 import type { DeckStore } from '@ark/storage/records/deck-record.ts'
@@ -141,8 +142,12 @@ export function createMcpRunner(options: {
           }
         }
         if (result.status === 'answered' && result.answer?.kind === 'themes') {
+          const lines = [
+            `The user chose theme id "${result.answer.themeId}" in Ark.`,
+            formatThemeFontPairingLine(result.answer.fonts),
+          ]
           return {
-            text: `The user chose theme id "${result.answer.themeId}" in Ark.`,
+            text: lines.join('\n'),
             activitySummary: 'Received an MCP theme choice.',
             structuredContent: result,
           }

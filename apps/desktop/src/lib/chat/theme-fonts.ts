@@ -1,6 +1,8 @@
 import type { ThemeFontPairing } from '@ark/chat/agent-themes.ts'
 import {
   APPROVED_DECK_FONTS,
+  buildDeckFontRootCss,
+  DECK_FONT_MARKER_ATTRS,
   DECK_FONT_ROLES,
   getDeckFont,
   type DeckFontId,
@@ -37,4 +39,27 @@ export function resolveThemeFontPairing(
 ): ThemeFontPairing {
   if (!isThemeFontId(nextId)) return fonts
   return { ...fonts, [role]: nextId }
+}
+
+/** Apply the selected registry pairing to a theme sample for preview. */
+export function applyThemeFontPairingToSampleHtml(sampleHtml: string, fonts: ThemeFontPairing) {
+  const doc = new DOMParser().parseFromString(sampleHtml, 'text/html')
+  const root = doc.documentElement
+
+  for (const role of DECK_FONT_ROLES) {
+    root.setAttribute(DECK_FONT_MARKER_ATTRS[role], fonts[role])
+  }
+
+  const head = doc.head ?? doc.createElement('head')
+  if (!doc.head) {
+    root.insertBefore(head, root.firstChild)
+  }
+
+  head.querySelector('style[data-ark-theme-fonts]')?.remove()
+  const style = doc.createElement('style')
+  style.setAttribute('data-ark-theme-fonts', '')
+  style.textContent = buildDeckFontRootCss(fonts)
+  head.append(style)
+
+  return `<!DOCTYPE html>\n${root.outerHTML}`
 }

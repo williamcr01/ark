@@ -75,11 +75,12 @@ import {
 } from '@ark/chat/agent-questions.ts'
 import {
   formatThemeChoice,
+  parseThemeChoiceFonts,
   parseThemeChoiceName,
   parseStoredThemeProposalRequest,
   type ThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
-import type { GenerationJobStatus } from '@ark/chat/generation-job.ts'
+import { formatThemeFontPairingLabel } from '@/lib/chat/theme-fonts'
 import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import {
   findAskUserAnswerAfter,
@@ -369,6 +370,7 @@ function ThemeProposalTranscript({
   choiceContent?: string | null
 }) {
   const chosenName = choiceContent ? parseThemeChoiceName(request, choiceContent) : null
+  const chosenFonts = choiceContent ? parseThemeChoiceFonts(choiceContent) : null
   const answered = Boolean(chosenName)
 
   return (
@@ -380,6 +382,11 @@ function ThemeProposalTranscript({
         <div className="mt-1.5 flex flex-col gap-1.5 pl-4">
           {request.title ? (
             <p className="text-muted-foreground/80 text-[11px]">{request.title}</p>
+          ) : null}
+          {chosenFonts ? (
+            <p className="text-muted-foreground text-[11px]">
+              {formatThemeFontPairingLabel(chosenFonts)}
+            </p>
           ) : null}
           <ul className="flex flex-col gap-0.5 text-muted-foreground">
             {request.themes.map((theme) => (
@@ -946,7 +953,7 @@ export function ChatPanel({
               disabled={isGenerating || (!mcpInteraction && !canGenerate)}
               onSubmit={(themeId, fonts) => {
                 if (mcpInteraction?.kind === 'themes' && onMcpInteractionSubmit) {
-                  onMcpInteractionSubmit({ kind: 'themes', themeId })
+                  onMcpInteractionSubmit({ kind: 'themes', themeId, fonts })
                   return
                 }
                 onQuestionSubmit?.(formatThemeChoice(activeThemes, themeId, fonts))

@@ -199,9 +199,7 @@ export function formatPptxExportWarning(
   sceneWarning: string | undefined,
   htmlLint: DeckHtmlExportLint,
 ) {
-  const htmlOnly = htmlLint.entries
-    .filter((item) => item.code === 'literal-font-family' || item.code === 'unknown-font-id')
-    .map((item) => item.message)
-  const parts = [sceneWarning, ...htmlOnly].filter(Boolean)
+  const htmlMessages = htmlLint.entries.map((item) => item.message)
+  const parts = [sceneWarning, ...htmlMessages].filter(Boolean)
   return parts.length > 0 ? parts.join(' ') : undefined
 }

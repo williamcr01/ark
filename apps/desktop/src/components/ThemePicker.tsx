@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  applyThemeFontPairingToSampleHtml,
   formatThemeFontPairingLabel,
   resolveThemeFontPairing,
   THEME_FONT_ROLE_LABELS,
@@ -133,7 +134,10 @@ export function ThemePicker({
                 type="button"
               >
                 <span className="relative block w-full">
-                  <MiniHtmlPreview html={theme.sampleHtml} title={`${theme.name} preview`} />
+                  <MiniHtmlPreview
+                    html={applyThemeFontPairingToSampleHtml(theme.sampleHtml, fonts)}
+                    title={`${theme.name} preview`}
+                  />
                   {isSelected ? (
                     <span className="absolute right-1.5 top-1.5 inline-flex size-5 items-center justify-center rounded-full bg-foreground text-background">
                       <CheckIcon aria-hidden className="size-3" />
@@ -197,7 +201,7 @@ export function ThemePicker({
               </DialogHeader>
               <MiniHtmlPreview
                 className="rounded-md border"
-                html={enlarged.sampleHtml}
+                html={applyThemeFontPairingToSampleHtml(enlarged.sampleHtml, enlargedFonts)}
                 title={`${enlarged.name} enlarged preview`}
               />
               <ThemeFontRoleSelects

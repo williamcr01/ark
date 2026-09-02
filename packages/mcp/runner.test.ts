@@ -178,13 +178,17 @@ describe('MCP runner', () => {
         ]),
       },
     })
-    interactionStore.respond(themeId, { kind: 'themes', themeId: 'theme-2' })
+    interactionStore.respond(themeId, {
+      kind: 'themes',
+      themeId: 'theme-2',
+      fonts,
+    })
     await expect(
       run('wait_for_interaction', { interactionId: themeId, timeoutMs: 0 }, 'Codex', 'session-a'),
     ).resolves.toMatchObject({
       structuredContent: {
         status: 'answered',
-        answer: { kind: 'themes', themeId: 'theme-2' },
+        answer: { kind: 'themes', themeId: 'theme-2', fonts },
       },
     })
   })

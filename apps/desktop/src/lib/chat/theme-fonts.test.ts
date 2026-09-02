@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DECK_FONT_ROLES } from '@ark/runtime-registry/deck-font-registry.ts'
 
 import {
+  applyThemeFontPairingToSampleHtml,
   formatThemeFontPairingLabel,
   isThemeFontId,
   resolveThemeFontPairing,
@@ -52,5 +53,20 @@ describe('theme font role mapping', () => {
     expect(resolveThemeFontPairing(pairing, 'body', 'inter')).toEqual(pairing)
     expect(isThemeFontId('calibri')).toBe(true)
     expect(isThemeFontId('inter')).toBe(false)
+  })
+
+  it('injects font markers and root variables into theme sample HTML', () => {
+    const sampleHtml =
+      '<!DOCTYPE html><html lang="en"><head><title>Theme</title></head><body><section class="slide"><h1>Title</h1></section></body></html>'
+    const html = applyThemeFontPairingToSampleHtml(sampleHtml, {
+      display: 'cambria',
+      body: 'calibri',
+      mono: 'courier-new',
+    })
+
+    expect(html).toContain('data-ark-font-display="cambria"')
+    expect(html).toContain('data-ark-font-body="calibri"')
+    expect(html).toContain('data-ark-theme-fonts')
+    expect(html).toContain('--ark-font-display')
   })
 })
