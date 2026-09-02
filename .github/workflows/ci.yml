@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -30,8 +29,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Test CI scope classifier
-        run: node --test scripts/ci-test-scope.test.mjs
+      - name: Test CI helper scripts
+        run: node --test scripts/ci-test-scope.test.mjs scripts/profile-editor-drag.test.mjs
 
       - name: Select CI scope
         id: scope

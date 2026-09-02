@@ -28,7 +28,7 @@ Local coding agents can edit the presentation visible in Ark through the optiona
 
 ## Local data
 
-Each presentation is a portable `.ark` SQLite workspace containing the current HTML document, assets, conversations, and current thumbnail cache. New workspaces are created immediately in `Documents/Ark` by default; Settings can point that default at another directory, and Open/Save As/Move can place a workspace anywhere.
+Each presentation is a portable `.ark` SQLite workspace containing the current HTML document, assets, conversations, and current thumbnail cache. New workspaces are created immediately in `Documents/Ark` by default; Settings can point that default at another directory, and Open/Save As/Move can place a workspace anywhere. An open workspace may also have a `*.ark-journal` sibling (SQLite PERSIST rollback journal) that is safe to ignore and is removed when the file is closed.
 
 Electron's per-user `userData` directory contains the disposable recent-workspace index, preferences, and encrypted credentials:
 
@@ -69,6 +69,8 @@ pnpm lint:eslint  # run ESLint alone
 pnpm format       # format the repository
 pnpm test         # run Vitest
 pnpm build        # build renderer, main, and preload bundles
+pnpm profile:editor-drag   # Electron/CDP editor-drag profile (see docs/editor-drag-profiling.md)
+pnpm bench:editor-patch    # Node-only applyDeckPatches bench
 pnpm package                # create an unpacked app for the current platform
 pnpm package:installers     # create installers for the current platform
 ```
