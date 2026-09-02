@@ -332,6 +332,14 @@ Transforms, inserts, duplicates, deletes, inspector changes, and layer changes f
 
 Preview sessions record `editorBridge` so the sandbox host serves HTML with the editor script only when requested (`POST /api/preview-sessions` with `editorBridge: true`).
 
+## Authoring the injected runtime
+
+The iframe editor is real TypeScript under `packages/editor-runtime/runtime-src/` (one module per former source chunk: `state`, `port`, `selection`, `surface`, `geometry`, `chrome`, `text-edit`, `transform`, `adopt`, `snap`, `pointer`, `keyboard`, `lifecycle`). `scripts/build-runtimes.mjs` bundles the `index.ts` entry with esbuild into an unminified IIFE and writes `packages/editor-runtime/runtime/generated/editor-runtime.source.ts`. That generated file is committed so tsc/Vite/vitest need no extra step.
+
+Edit `runtime-src/`, then run `pnpm build:runtimes` and commit the regenerated source. `pnpm build:runtimes:check` (CI quality job) and the editor-runtime vitest both fail if the artifact is stale. `buildDeckEditorBridgeRuntimeScript(options)` keeps its public signature: it prepends `var C = …` (host constants) and then the bundled IIFE.
+
+To register another iframe runtime later (for example deck-preview), add one row to `RUNTIME_ENTRIES` in `scripts/build-runtimes.mjs`.
+
 ## Extension guidance
 
 To add a new `ark:editor-*` message safely:
@@ -339,7 +347,7 @@ To add a new `ark:editor-*` message safely:
 1. **Type union** — Add the constant, payload interface, and entry in `EDITOR_SHELL_MESSAGE_TYPES` or `EDITOR_RUNTIME_MESSAGE_TYPES` in `packages/editor-runtime/`.
 2. **Validator** — Implement `isEditorFooMessage` with strict field checks; register it in `isEditorShellMessage` or `isEditorRuntimeMessage`.
 3. **Factory** — Add `createEditorFooMessage` for tests and shell callers.
-4. **Runtime handler** — Update `buildDeckEditorBridgeRuntimeScript` to emit or consume the message on the established port.
+4. **Runtime handler** — Handle the message in `packages/editor-runtime/runtime-src/` (then `pnpm build:runtimes`). `buildDeckEditorBridgeRuntimeScript` still prepends host constants onto that bundle.
 5. **Hook handler** — Handle the message in `useDeckEditorBridge` (or a dedicated hook) with port and generation guards.
 6. **Persistence** — Map commit-style messages to `DeckPatchOperation` types in `packages/deck/patch/patch-request.ts` and `packages/deck/patch/element-patch.ts`; never write deck HTML from the client alone.
 7. **Tests** — Add validator tests in `packages/editor-runtime/protocol/protocol.test.ts`; add hook/integration tests in `apps/desktop/src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.

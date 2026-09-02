@@ -6,18 +6,21 @@ that runs inside the frame to implement it.
 Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. Browser-safe.
 
 ```
-protocol/   message-types.ts  the wire identifiers
-            types.ts          message and selection shapes
-            guards.ts         validation of incoming postMessage payloads
-            factories.ts      message constructors and the shell-side send helper
-runtime/    script.ts         composes the chunks below into the injected script
-            port, selection, surface, geometry, chrome, text-edit, transform,
-            adopt, snap, pointer, keyboard, lifecycle
+protocol/      message-types.ts  the wire identifiers
+               types.ts          message and selection shapes
+               guards.ts         validation of incoming postMessage payloads
+               factories.ts      message constructors and the shell-side send helper
+runtime-src/   typed iframe editor runtime (IIFE body). Edit these modules.
+runtime/       script.ts         prepends host constants onto the committed bundle
+               generated/        esbuild IIFE string module (committed artifact)
 ```
 
-The injected script is one IIFE whose parts close over shared state, so it cannot become real
-modules. The `runtime/` files are ordered source chunks of that one program, concatenated by
-`script.ts`; each is a named section rather than an independent unit.
+Author the iframe runtime as real TypeScript under `runtime-src/`. Shared mutable state lives in
+`state.ts`; host values (`message-type` names, attribute names, sizes, `MAX_SELECTIONS`) arrive as
+the global `C` object that `buildDeckEditorBridgeRuntimeScript` prepends. After editing
+`runtime-src/`, run `pnpm build:runtimes` and commit the regenerated
+`runtime/generated/editor-runtime.source.ts`. `pnpm build:runtimes:check` (and a vitest in this
+package) fails if that file is stale.
 
 `EditorNormalizedRect` is an alias for `NormalizedRect` in `@ark/deck/document/geometry.ts` — the
 deck model needs the rect too, so it is defined below this package.
