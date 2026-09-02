@@ -94,6 +94,12 @@ describe('sandbox-origin', () => {
     expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
       'http://localhost:5173/api/runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/source-sans-pro-regular.woff',
     )
+    expect(buildSandboxResponseCsp('http://localhost:5173')).toMatch(
+      /font-src[^;]*http:\/\/localhost:5173\/api\/runtimes\/deck-fonts\/1\.0\.0\/carlito\/carlito-latin-400-normal\.woff2/,
+    )
+    expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
+      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/liberation-sans/LiberationSans-Regular.woff2',
+    )
   })
 
   it('uses a nonce instead of unsafe-inline for static/reveal response CSP', () => {

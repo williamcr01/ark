@@ -1,23 +1,33 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
   APPROVED_DECK_FONTS,
   buildDeckFontPromptSection,
   buildDeckFontRootCss,
+  buildMetricCloneFontAssetUrl,
+  buildMetricCloneFontFaceCss,
   DECK_FONT_CSS_VARS,
   DECK_FONT_MARKER_ATTRS,
   DECK_FONT_ROLES,
   DECK_FONT_SAFE_WEIGHTS,
+  DECK_FONTS_RUNTIME_ID,
+  DECK_FONTS_RUNTIME_VERSION,
   DEFAULT_DECK_FONT_IDS,
   getDeckFont,
   getDeckFontByPptxTypeface,
   getDeckFontsByCategory,
   isApprovedDeckFontId,
   isExportSafeFontWeight,
+  METRIC_CLONE_FONT_FACES,
   readDeckFontSelection,
   resolveDeckFont,
   resolvePptxTypeface,
 } from './deck-font-registry.ts'
+import { getApprovedRuntime } from './deck-runtime-registry.ts'
 
 describe('approved deck fonts', () => {
   it('gives every font a unique id', () => {
@@ -96,6 +106,30 @@ describe('buildDeckFontRootCss', () => {
   it('fills unspecified roles with the defaults', () => {
     expect(buildDeckFontRootCss()).toBe(buildDeckFontRootCss(DEFAULT_DECK_FONT_IDS))
   })
+
+  it('declares only :root variables, not vendored @font-face rules', () => {
+    const css = buildDeckFontRootCss()
+
+    expect(css.startsWith(':root {')).toBe(true)
+    expect(css).not.toContain('@font-face')
+  })
+})
+
+describe('buildMetricCloneFontFaceCss', () => {
+  it('emits @font-face rules that load vendored clones, not Office typeface names', () => {
+    const css = buildMetricCloneFontFaceCss()
+
+    for (const face of METRIC_CLONE_FONT_FACES) {
+      const url = buildMetricCloneFontAssetUrl(face.path)
+
+      expect(css).toContain(`font-family: ${JSON.stringify(face.family)}`)
+      expect(css).toContain(`url("${url}") format("${face.format}")`)
+    }
+
+    for (const font of APPROVED_DECK_FONTS) {
+      expect(css).not.toContain(`font-family: ${JSON.stringify(font.pptxTypeface)}`)
+    }
+  })
 })
 
 describe('resolvePptxTypeface', () => {
@@ -123,6 +157,15 @@ describe('resolvePptxTypeface', () => {
 
   it('passes the family through when nothing in the chain is resolvable', () => {
     expect(resolvePptxTypeface('"Brand Grotesk"')).toBe('Brand Grotesk')
+  })
+
+  it('still names the Office typeface when the stack starts with a vendored clone', () => {
+    expect(resolvePptxTypeface('"Carlito", sans-serif')).toBe('Calibri')
+    expect(resolvePptxTypeface('"Caladea", serif')).toBe('Cambria')
+    expect(resolvePptxTypeface('"Gelasio", serif')).toBe('Georgia')
+    expect(resolvePptxTypeface('"Liberation Sans", sans-serif')).toBe('Arial')
+    expect(resolvePptxTypeface('"Liberation Serif", serif')).toBe('Times New Roman')
+    expect(resolvePptxTypeface('"Liberation Mono", monospace')).toBe('Courier New')
   })
 })
 
@@ -166,5 +209,110 @@ describe('buildDeckFontPromptSection', () => {
       expect(prompt).toContain(DECK_FONT_MARKER_ATTRS[role])
       expect(prompt).toContain(DECK_FONT_CSS_VARS[role])
     }
+  })
+})
+
+describe('vendored metric clone faces', () => {
+  const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+  it('covers every clone named in the registry with 400/700 regular and italic', () => {
+    const families = new Set(METRIC_CLONE_FONT_FACES.map((face) => face.family))
+
+    for (const font of APPROVED_DECK_FONTS) {
+      expect(font.metricClones.every((clone) => families.has(clone))).toBe(true)
+    }
+
+    for (const family of families) {
+      const faces = METRIC_CLONE_FONT_FACES.filter((face) => face.family === family)
+      expect(faces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ weight: 400, style: 'normal' }),
+          expect.objectContaining({ weight: 400, style: 'italic' }),
+          expect.objectContaining({ weight: 700, style: 'normal' }),
+          expect.objectContaining({ weight: 700, style: 'italic' }),
+        ]),
+      )
+    }
+  })
+
+  it('matches the approved deck-fonts runtime assets on disk', () => {
+    const runtime = getApprovedRuntime(DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION)
+
+    expect(runtime).not.toBeNull()
+    expect(runtime?.runtimeMode).toBe('static')
+    expect(runtime?.license).toBe('OFL-1.1')
+
+    const assetPaths = new Set(runtime?.assets.map((asset) => asset.path))
+    const facePaths = new Set(METRIC_CLONE_FONT_FACES.map((face) => face.path))
+
+    expect(assetPaths).toEqual(facePaths)
+
+    for (const face of METRIC_CLONE_FONT_FACES) {
+      const asset = runtime?.assets.find((entry) => entry.path === face.path)
+
+      expect(asset?.kind).toBe('font')
+      expect(asset?.license).toBe('OFL-1.1')
+      expect(
+        existsSync(
+          path.join(ROOT, 'runtimes', DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION, face.path),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  it('records the clones in NOTICE and keeps only the six metric-clone families on disk', () => {
+    const notice = readFileSync(path.join(ROOT, 'NOTICE'), 'utf8')
+    const familyDirs = readdirSync(
+      path.join(ROOT, 'runtimes', DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION),
+      { withFileTypes: true },
+    )
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+
+    expect(familyDirs).toEqual([
+      'caladea',
+      'carlito',
+      'gelasio',
+      'liberation-mono',
+      'liberation-sans',
+      'liberation-serif',
+    ])
+
+    expect(notice).toContain('Carlito')
+    expect(notice).toContain('Caladea')
+    expect(notice).toContain('Gelasio')
+    expect(notice).toContain('Liberation Sans')
+    expect(notice).toContain('Liberation Serif')
+    expect(notice).toContain('Liberation Mono')
+    expect(notice).toContain('runtimes/deck-fonts/')
+    expect(notice).toMatch(/OFL-1\.1/)
+  })
+
+  it('does not vendor Tier 2 OFL display faces', () => {
+    const notice = readFileSync(path.join(ROOT, 'NOTICE'), 'utf8')
+    const families = [...new Set(METRIC_CLONE_FONT_FACES.map((face) => face.family))]
+
+    expect(APPROVED_DECK_FONTS.map((font) => font.id)).toEqual([
+      'calibri',
+      'arial',
+      'cambria',
+      'georgia',
+      'times-new-roman',
+      'courier-new',
+    ])
+    expect(families).toEqual([
+      'Carlito',
+      'Caladea',
+      'Gelasio',
+      'Liberation Sans',
+      'Liberation Serif',
+      'Liberation Mono',
+    ])
+    expect(isApprovedDeckFontId('inter')).toBe(false)
+    expect(notice).not.toContain('IBM Plex')
+    expect(notice).not.toContain('Literata')
+    expect(notice).not.toContain('JetBrains Mono')
+    expect(notice).not.toContain('Source Sans 3')
   })
 })

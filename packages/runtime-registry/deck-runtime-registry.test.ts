@@ -20,10 +20,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const SOURCE_SANS_PRO_LICENSE_PATH = 'runtimes/reveal.js/5.1.0/theme/fonts/source-sans-pro/LICENSE'
 
 describe('approved runtime registry', () => {
-  it('includes reveal.js and chart.js as approved runtimes', () => {
+  it('includes reveal.js, chart.js, and deck-fonts as approved runtimes', () => {
     const runtimes = getApprovedRuntimes()
 
-    expect(runtimes).toHaveLength(2)
+    expect(runtimes).toHaveLength(3)
     expect(runtimes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -39,6 +39,14 @@ describe('approved runtime registry', () => {
           license: 'MIT',
           previewMode: 'full-js',
           allowsDeckScripts: true,
+        }),
+        expect.objectContaining({
+          id: 'deck-fonts',
+          version: '1.0.0',
+          runtimeMode: 'static',
+          license: 'OFL-1.1',
+          previewMode: 'css-only',
+          allowsDeckScripts: false,
         }),
       ]),
     )
@@ -125,6 +133,17 @@ describe('approved runtime registry', () => {
     expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'custom-js', kind: 'script' })).toEqual([
       '/api/runtimes/chart.js/4.5.1/chart.umd.min.js',
     ])
+    expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'static', kind: 'font' })).toEqual(
+      expect.arrayContaining([
+        '/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
+        '/api/runtimes/deck-fonts/1.0.0/liberation-sans/LiberationSans-Regular.woff2',
+      ]),
+    )
+    expect(
+      getApprovedRuntimeAssetUrls({ runtimeMode: 'static', kind: 'font' }).every((url) =>
+        url.startsWith('/api/runtimes/deck-fonts/1.0.0/'),
+      ),
+    ).toBe(true)
   })
 
   it('keeps the Source Sans Pro OFL license next to vendored reveal.js fonts', () => {
@@ -141,6 +160,27 @@ describe('approved runtime registry', () => {
 
     expect(existsSync(path.join(ROOT, 'runtimes/chart.js/4.5.1/LICENSE.md'))).toBe(true)
     expect(runtime?.assets.some((asset) => asset.path === 'LICENSE.md')).toBe(false)
+  })
+
+  it('keeps OFL licenses next to vendored metric-clone fonts', () => {
+    const runtime = getApprovedRuntime('deck-fonts', '1.0.0')
+    const families = [
+      'carlito',
+      'caladea',
+      'gelasio',
+      'liberation-sans',
+      'liberation-serif',
+      'liberation-mono',
+    ]
+
+    expect(
+      runtime?.assets.every((asset) => asset.kind === 'font' && asset.license === 'OFL-1.1'),
+    ).toBe(true)
+
+    for (const family of families) {
+      expect(existsSync(path.join(ROOT, `runtimes/deck-fonts/1.0.0/${family}/LICENSE`))).toBe(true)
+      expect(runtime?.assets.some((asset) => asset.path === `${family}/LICENSE`)).toBe(false)
+    }
   })
 
   it('rejects unapproved runtime asset references', () => {
@@ -321,5 +361,7 @@ describe('approved runtime registry', () => {
     expect(prompt).toContain('chart.js@4.5.1')
     expect(prompt).toContain('/api/runtimes/chart.js/4.5.1/chart.umd.min.js')
     expect(prompt).toContain('data-ark-runtime="chart"')
+    expect(prompt).not.toContain('deck-fonts@1.0.0')
+    expect(prompt).not.toContain('data-ark-runtime-lib="deck-fonts"')
   })
 })

@@ -149,6 +149,187 @@
           "size": 208522
         }
       ]
+    },
+    {
+      "id": "deck-fonts",
+      "version": "1.0.0",
+      "runtimeMode": "static",
+      "license": "OFL-1.1",
+      "source": "https://github.com/williamcr01/ark/blob/main/NOTICE",
+      "previewMode": "css-only",
+      "allowsDeckScripts": false,
+      "markers": {},
+      "requiredAssets": {},
+      "assets": [
+        {
+          "path": "caladea/caladea-latin-400-italic.woff2",
+          "kind": "font",
+          "sha256": "6d439cdc4db2e6cc3252e4dfec76438a4180ec872ff9394ce4dc8792d26d58d1",
+          "size": 22224,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "caladea/caladea-latin-400-normal.woff2",
+          "kind": "font",
+          "sha256": "367a4c4dd45c762f6f680ccedbbf18be9d10e13b068aad2813ece1dba881369b",
+          "size": 20964,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "caladea/caladea-latin-700-italic.woff2",
+          "kind": "font",
+          "sha256": "097d08d9ec3e2304f083e066a72acae181f400832249a07b334f30a53c20ebc7",
+          "size": 22140,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "caladea/caladea-latin-700-normal.woff2",
+          "kind": "font",
+          "sha256": "6a6549b8ec8be5ad7db66f28dee13ea008710379e7bd992870eb2d7ac14c9c3a",
+          "size": 20948,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "carlito/carlito-latin-400-italic.woff2",
+          "kind": "font",
+          "sha256": "6bbdd83c5797d207bd2027f2687a70e428513c56130feaad1ffc0a1a7ace7c07",
+          "size": 30476,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "carlito/carlito-latin-400-normal.woff2",
+          "kind": "font",
+          "sha256": "a29c4a4e61863753cf6a10831efaa05f849dcaa8f580422dbc41bc058c3b6b64",
+          "size": 30156,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "carlito/carlito-latin-700-italic.woff2",
+          "kind": "font",
+          "sha256": "e1bbd00245b0b22d0c540413ac73a91f7afff587899260a683acec3564f06ac3",
+          "size": 31108,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "carlito/carlito-latin-700-normal.woff2",
+          "kind": "font",
+          "sha256": "af249cfe4107221070ff077c29a043004e8f2efea977dcbaaf217a24f3b7680e",
+          "size": 31464,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "gelasio/gelasio-latin-400-italic.woff2",
+          "kind": "font",
+          "sha256": "0a06efba3949d19ad4cb02d20d1d28f970fcd881183a927bffeb59f154aa1d04",
+          "size": 21800,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "gelasio/gelasio-latin-400-normal.woff2",
+          "kind": "font",
+          "sha256": "68e2b704c5624ba84e70d826e33c5fc08d75eb452f834d869abdecc39f3b26ac",
+          "size": 19536,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "gelasio/gelasio-latin-700-italic.woff2",
+          "kind": "font",
+          "sha256": "33881ef5fa10796ddad4401691dbae1deb6719b0e1356545d4a5b51fabbd9455",
+          "size": 21980,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "gelasio/gelasio-latin-700-normal.woff2",
+          "kind": "font",
+          "sha256": "dff91a5084db8f15e401e902acdac8768f5ae1746205c5319ad2cf3655517170",
+          "size": 19844,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-mono/LiberationMono-Bold.woff2",
+          "kind": "font",
+          "sha256": "b082b6e35faab2a5a95d08a165cccc297d655592633b01a0f0dc88ab64be7481",
+          "size": 123176,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-mono/LiberationMono-BoldItalic.woff2",
+          "kind": "font",
+          "sha256": "e9072b8357f8bb731f64a09b0d0ae866a602919f352486b825298539ab33d70a",
+          "size": 117112,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-mono/LiberationMono-Italic.woff2",
+          "kind": "font",
+          "sha256": "49adbe6b97abb52dc954adb9c2ade02abf74b2231dcff1a89cb82b6186536bbb",
+          "size": 114788,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-mono/LiberationMono-Regular.woff2",
+          "kind": "font",
+          "sha256": "6f07214fe4b412ba40eea4a0403765647c3581c83b41c5584819f54b55ccc14e",
+          "size": 126008,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-sans/LiberationSans-Bold.woff2",
+          "kind": "font",
+          "sha256": "3d76b4fa411adb469b4aba15c4615b258078db44b2ca3818a46768cea36e02a9",
+          "size": 148296,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-sans/LiberationSans-BoldItalic.woff2",
+          "kind": "font",
+          "sha256": "90d86afcb286288eda87880ffb678e8e41fde79ac330f56d03a474ab59acc269",
+          "size": 151052,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-sans/LiberationSans-Italic.woff2",
+          "kind": "font",
+          "sha256": "4c99d43be3ca6a4f5e162c58e52c55725e3516a7133e80704e43e8e2fe7ae7bd",
+          "size": 153304,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-sans/LiberationSans-Regular.woff2",
+          "kind": "font",
+          "sha256": "96354f9eccff91c022e39f790d287a66d33091c381beb014075255a0ba618a74",
+          "size": 146772,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-serif/LiberationSerif-Bold.woff2",
+          "kind": "font",
+          "sha256": "5ac1297c46dd2af44e82c2a567ba0d90133fc3160fa410e3b074c65e931699e7",
+          "size": 140992,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-serif/LiberationSerif-BoldItalic.woff2",
+          "kind": "font",
+          "sha256": "1d37b19a948d283b14d05e37971e4852d1026f644e15a4ac0f570d9b2c9fb6cd",
+          "size": 147368,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-serif/LiberationSerif-Italic.woff2",
+          "kind": "font",
+          "sha256": "5ad457961a8605c74b8b23e63a580a02d451940480db7e011aba45afe3705b48",
+          "size": 147536,
+          "license": "OFL-1.1"
+        },
+        {
+          "path": "liberation-serif/LiberationSerif-Regular.woff2",
+          "kind": "font",
+          "sha256": "7e492e71a58452920f6ab6be52e14f50a8b5963c2097370231df205b71936d15",
+          "size": 146548,
+          "license": "OFL-1.1"
+        }
+      ]
     }
   ]
 }

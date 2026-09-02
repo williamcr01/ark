@@ -170,6 +170,8 @@ describe('parseDeckSlides', () => {
       const slides = thumbnailDoc.querySelectorAll('section.slide')
 
       expect(srcDoc).toContain('data-ark-thumb-fill')
+      expect(srcDoc).toContain('data-ark-metric-fonts')
+      expect(srcDoc).toContain('/api/runtimes/deck-fonts/1.0.0/carlito/')
       expectStrictThumbnailCsp(srcDoc)
       expectThumbnailSecurity(srcDoc)
       expect(slides).toHaveLength(1)

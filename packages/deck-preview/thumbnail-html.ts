@@ -17,6 +17,8 @@ import {
 import { generateCspNonce } from './csp-nonce.ts'
 import { getApprovedRuntimeStylesheetContent } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
 import { absolutizeArkAssetReferences, scopeArkAssetReferences } from '@ark/deck/document/assets.ts'
+import { buildMetricCloneFontFaceCss } from '@ark/runtime-registry/deck-font-registry.ts'
+import { absolutizeApprovedRuntimeAssetText } from './preview-html.ts'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
 
@@ -90,6 +92,12 @@ export const thumbnailFillStyle = `
     overflow: hidden !important;
   }
 </style>`
+
+function buildThumbnailMetricFontStyle(assetOrigin?: string | null) {
+  const css = absolutizeApprovedRuntimeAssetText(buildMetricCloneFontFaceCss(), assetOrigin)
+
+  return `<style data-ark-metric-fonts>\n${css}\n</style>`
+}
 
 export type ThumbnailHtmlOptions = {
   assetOrigin?: string | null
@@ -430,6 +438,7 @@ export function createThumbnailSrcDocBuilder(
 ${materials.htmlOpen}
 <head>
 ${materials.headHtml}
+${buildThumbnailMetricFontStyle(materials.assetOrigin)}
 ${thumbnailFillStyle}
 ${materials.revealShim}
 </head>

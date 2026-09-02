@@ -67,6 +67,38 @@ describe('finalizeSceneSlide', () => {
     expect(node.paragraphs[0].runs[0].fontFace).toBe('Calibri')
   })
 
+  it('names the Office typeface, not the vendored metric clone, on export', () => {
+    const slide = finalizeSceneSlide(
+      slideWith([
+        textNode([
+          run({ fontFace: '"Carlito", sans-serif' }),
+          run({ fontFace: '"Caladea", serif' }),
+          run({ fontFace: '"Gelasio", serif' }),
+          run({ fontFace: '"Liberation Sans", sans-serif' }),
+          run({ fontFace: '"Liberation Serif", serif' }),
+          run({ fontFace: '"Liberation Mono", monospace' }),
+        ]),
+      ]),
+    )
+    const node = slide.nodes[0] as SceneTextNode
+    const faces = node.paragraphs[0].runs.map((entry) => entry.fontFace)
+
+    expect(faces).toEqual([
+      'Calibri',
+      'Cambria',
+      'Georgia',
+      'Arial',
+      'Times New Roman',
+      'Courier New',
+    ])
+    expect(faces).not.toContain('Carlito')
+    expect(faces).not.toContain('Caladea')
+    expect(faces).not.toContain('Gelasio')
+    expect(faces).not.toContain('Liberation Sans')
+    expect(faces).not.toContain('Liberation Serif')
+    expect(faces).not.toContain('Liberation Mono')
+  })
+
   it('maps a platform stack PowerPoint cannot resolve', () => {
     const slide = finalizeSceneSlide(
       slideWith([textNode([run({ fontFace: '-apple-system, "Segoe UI", sans-serif' })])]),

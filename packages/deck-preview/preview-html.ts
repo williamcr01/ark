@@ -29,6 +29,7 @@ import {
   hasApprovedRevealRuntimeInDocument,
   isApprovedRuntimeAssetUrl,
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
+import { buildMetricCloneFontFaceCss } from '@ark/runtime-registry/deck-font-registry.ts'
 import { absolutizeArkAssetReferences } from '@ark/deck/document/assets.ts'
 
 export type PreviewHtmlOptions = {
@@ -166,7 +167,7 @@ function appendScript(
 
 function appendPreviewFill(
   doc: Document,
-  options: { historyShim?: boolean; nonce?: string | null } = {},
+  options: { historyShim?: boolean; nonce?: string | null; assetOrigin?: string | null } = {},
 ) {
   const head = ensureHead(doc)
 
@@ -185,6 +186,11 @@ function appendPreviewFill(
   style.setAttribute('data-ark-preview-fill', '')
   style.textContent = previewFillStyleContent
   head.append(style)
+
+  const fontFace = doc.createElement('style')
+  fontFace.setAttribute('data-ark-metric-fonts', '')
+  fontFace.textContent = `\n${absolutizeApprovedRuntimeAssetText(buildMetricCloneFontFaceCss(), options.assetOrigin)}\n`
+  head.append(fontFace)
 }
 
 function injectRuntimeCspMeta(
@@ -203,28 +209,24 @@ function injectRuntimeCspMeta(
   head.insertBefore(meta, head.firstChild)
 }
 
-function absolutizeApprovedRuntimeAssetAttribute(value: string, assetOrigin?: string | null) {
-  if (!assetOrigin?.trim()) {
-    return value
-  }
+let cachedApprovedRuntimeAssetUrls: readonly string[] | null = null
 
-  for (const assetUrl of getApprovedRuntimeAssetUrls()) {
-    if (value === assetUrl) {
-      return toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin }) ?? value
-    }
-  }
-
-  return value
+function getCachedApprovedRuntimeAssetUrls() {
+  return (
+    cachedApprovedRuntimeAssetUrls ??
+    (cachedApprovedRuntimeAssetUrls = getApprovedRuntimeAssetUrls())
+  )
 }
 
-function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string | null) {
+/** Rewrite approved runtime asset URLs inside text (for injected CSS). */
+export function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string | null) {
   if (!assetOrigin?.trim()) {
     return value
   }
 
   let output = value
 
-  for (const assetUrl of getApprovedRuntimeAssetUrls()) {
+  for (const assetUrl of getCachedApprovedRuntimeAssetUrls()) {
     const absoluteUrl = toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin })
 
     if (!absoluteUrl) {
@@ -237,6 +239,20 @@ function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string 
   }
 
   return output
+}
+
+function absolutizeApprovedRuntimeAssetAttribute(value: string, assetOrigin?: string | null) {
+  if (!assetOrigin?.trim()) {
+    return value
+  }
+
+  for (const assetUrl of getCachedApprovedRuntimeAssetUrls()) {
+    if (value === assetUrl) {
+      return toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin }) ?? value
+    }
+  }
+
+  return value
 }
 
 /**
@@ -499,7 +515,7 @@ export function buildPreviewDocument(
   if (runtimeModeAllowsDeckScripts(mode)) {
     absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
-    appendPreviewFill(doc, { historyShim: true, nonce })
+    appendPreviewFill(doc, { historyShim: true, nonce, assetOrigin })
     appendScript(
       doc,
       body,
@@ -525,7 +541,7 @@ export function buildPreviewDocument(
     }
     absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
     injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
-    appendPreviewFill(doc, { historyShim: true, nonce })
+    appendPreviewFill(doc, { historyShim: true, nonce, assetOrigin })
     appendScript(
       doc,
       body,
@@ -548,7 +564,7 @@ export function buildPreviewDocument(
   })
   absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
   injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
-  appendPreviewFill(doc, { nonce })
+  appendPreviewFill(doc, { nonce, assetOrigin })
   activateInitialCssNavSlide(doc)
   appendScript(
     doc,

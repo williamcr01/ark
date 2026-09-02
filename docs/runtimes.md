@@ -14,7 +14,7 @@ An approved runtime is a library version listed in `runtimes/manifest.json` with
 - Required asset paths that decks must reference
 - Preview policy (`previewMode`, `allowsDeckScripts`, `allowedGlobals`)
 
-Today the registry contains **reveal.js 5.1.0** and **chart.js 4.5.1**. The same model is intended for future libraries (animation, etc.) without reopening arbitrary CDN access.
+Today the registry contains **reveal.js 5.1.0**, **chart.js 4.5.1**, and **deck-fonts 1.0.0** (OFL metric-compatible clones of the Office typefaces). The same model is intended for future libraries (animation, etc.) without reopening arbitrary CDN access.
 
 ## Why are arbitrary CDNs still blocked?
 
@@ -113,7 +113,10 @@ Example:
 /api/runtimes/reveal.js/5.1.0/reveal.css
 /api/runtimes/reveal.js/5.1.0/theme/white.css
 /api/runtimes/chart.js/4.5.1/chart.umd.min.js
+/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2
 ```
+
+`deck-fonts` is a font catalog, not a presentation library: decks must not set `data-ark-runtime-lib="deck-fonts"`. Preview and thumbnail fallback inject `@font-face` rules so metric clones load from these URLs; stored deck HTML only declares `:root` font variables via `buildDeckFontRootCss`. Sandbox CSP `font-src` allowlists the approved files, which preview absolutizes to the app origin like other runtime assets.
 
 Validation checks:
 

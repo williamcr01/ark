@@ -1,5 +1,6 @@
 import {
   buildRuntimeAssetUrl,
+  getApprovedRuntime,
   getApprovedRuntimeAssetUrls,
   hasApprovedRevealRuntimeInHtml,
   hasCustomJsMarker,
@@ -10,6 +11,7 @@ import {
   type ApprovedRuntimeEntry,
   type RuntimeAssetKind,
 } from './deck-runtime-registry.ts'
+import { DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION } from './deck-font-registry.ts'
 
 export type DeckRuntimeMode = 'static' | 'reveal' | 'custom-js'
 
@@ -216,6 +218,24 @@ export function getRuntimeAssetCspSources(
     .filter((source): source is string => Boolean(source))
 }
 
+function getDeckFontRuntimeAssetCspSources(options: RuntimeCspOptions = {}) {
+  const runtime = getApprovedRuntime(DECK_FONTS_RUNTIME_ID, DECK_FONTS_RUNTIME_VERSION)
+
+  if (!runtime) {
+    return []
+  }
+
+  return runtime.assets
+    .filter((asset) => asset.kind === 'font')
+    .map((asset) =>
+      toAbsoluteRuntimeAssetSource(
+        buildRuntimeAssetUrl(runtime.id, runtime.version, asset.path),
+        options,
+      ),
+    )
+    .filter((source): source is string => Boolean(source))
+}
+
 export function getDeckRuntimeCsp(
   doc: Document,
   mode: DeckRuntimeMode,
@@ -275,6 +295,7 @@ export function getRuntimeCsp(mode: DeckRuntimeMode, options: RuntimeCspBuildOpt
   const fontSources = [
     ...getRuntimeAssetCspSources(mode, 'font', options),
     ...getApprovedRuntimeAssetCspSourcesForEntries(addonRuntimes, 'font', options),
+    ...getDeckFontRuntimeAssetCspSources(options),
   ]
   const useNonce = shouldUseScriptNonce(mode, options)
   const nonceSource = useNonce && options.nonce ? [`'nonce-${options.nonce}'`] : []
