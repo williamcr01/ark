@@ -33,6 +33,12 @@
                 },
                 "name": { "type": "string", "minLength": 1, "maxLength": 80 },
                 "description": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "sampleHtml": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 10240,
+                  "description": "Complete self-contained single-slide HTML document (inline CSS, no external URLs). Keep lean (max ~10 KiB)."
+                },
                 "fonts": {
                   "type": "object",
                   "properties": {
@@ -75,15 +81,9 @@
                   },
                   "required": ["display", "body", "mono"],
                   "description": "Font pairing for this theme. Registry ids only (for example georgia, calibri, courier-new). Apply the same pairing in sampleHtml with data-ark-font-* markers."
-                },
-                "sampleHtml": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 10240,
-                  "description": "Complete self-contained single-slide HTML document (inline CSS, no external URLs). Keep lean (max ~10 KiB)."
                 }
               },
-              "required": ["id", "name", "description", "fonts", "sampleHtml"]
+              "required": ["id", "name", "description", "sampleHtml", "fonts"]
             }
           }
         },

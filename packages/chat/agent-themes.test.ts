@@ -10,7 +10,6 @@ import {
   parseThemeChoiceId,
   parseThemeChoiceName,
   THEME_SAMPLE_HTML_MAX_CHARS,
-  themeCandidateSchema,
   themeFontPairingSchema,
   themeProposalRequestSchema,
 } from './agent-themes.ts'
