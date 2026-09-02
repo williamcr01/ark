@@ -17,6 +17,7 @@ HTTP response shape. Server-only.
 | `document.ts`     | Reading deck HTML by line, byte, or slide — what `read_deck` returns  |
 | `response.ts`     | Validating and shaping what the model produced                        |
 | `guides.ts`       | Loads `agent-guides/*.md` into the system prompt                      |
+| `prompt.ts`       | User-prompt wrapping (new-deck vs revise, selection/theme notes)      |
 | `job-runner.ts`   | Job lifecycle: start, stream, cancel, persist, retry                  |
 | `job-wire.ts`     | Maps a job to its REST shape                                          |
 

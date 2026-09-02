@@ -15,6 +15,7 @@ import type { ProviderCallMetrics, ReasoningEffort } from '@ark/chat/generation-
 import { buildRuntimeRegistryPromptSection } from '@ark/runtime-registry/deck-runtime-registry.ts'
 import { buildDeckFontPromptSection } from '@ark/runtime-registry/deck-font-registry.ts'
 import { buildAgentGuidesPromptSection, getAgentGuidesMetadata } from './guides.ts'
+import { wrapUserPromptForAgent } from './prompt.ts'
 import { createDeckWorkspace } from './workspace.ts'
 import { type DeckAttachmentInspector } from './tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './response.ts'
@@ -609,6 +610,7 @@ export async function runDeckAgent({
     editorSelections,
     slideContexts,
     deckOrigin,
+    wrapUserPrompt: wrapUserPromptForAgent,
   })
   const guideMetadata = getAgentGuidesMetadata()
   logger?.info('generation.context.assembled', {
