@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
@@ -18,7 +18,11 @@ const persistenceCallbacks = vi.hoisted(() => ({
   refreshActiveDeck: vi.fn(),
   ensureBlankDeck: vi.fn(async () => 'deck-new'),
 }))
-const generationState = vi.hoisted(() => ({ generateDeck: vi.fn() }))
+const generationState = vi.hoisted(() => ({
+  cancelGeneration: vi.fn(),
+  generateDeck: vi.fn(),
+  isGenerating: false,
+}))
 const chatSessionState = vi.hoisted(() => ({ messages: [] as Array<Record<string, unknown>> }))
 const assetApi = vi.hoisted(() => ({
   uploadDeckAsset: vi.fn(),
@@ -87,12 +91,12 @@ vi.mock('@/hooks/useAvailableModels', () => ({
 vi.mock('@/hooks/useDeckGenerationFlow', () => ({
   useDeckGenerationFlow: () => ({
     activeSteps: [],
-    cancelGeneration: vi.fn(),
+    cancelGeneration: generationState.cancelGeneration,
     failedJobId: null,
     generateDeck: generationState.generateDeck,
     generationError: '',
-    generationStatus: null,
-    isGenerating: false,
+    generationStatus: generationState.isGenerating ? 'running' : null,
+    isGenerating: generationState.isGenerating,
     retryGeneration: vi.fn(),
   }),
 }))
@@ -147,6 +151,7 @@ describe('App chat panel layout', () => {
     deckPreviewLifecycle.unmounts = 0
     deckPreviewRenders.count = 0
     chatSessionState.messages = []
+    generationState.isGenerating = false
     resetDesktopSettingsForTests()
   })
 
@@ -645,5 +650,181 @@ describe('App chat panel layout', () => {
 
     expect(chatPanelProps.calls.at(-1)?.attachmentError).toBe('Unsupported image format.')
     expect(generationState.generateDeck).not.toHaveBeenCalled()
+  })
+})
+
+describe('App chat send queue', () => {
+  beforeEach(() => {
+    mediaState.isDesktop = true
+    persistenceState.deckId = 'deck-1'
+    persistenceState.origin = 'authored'
+    chatPanelProps.calls = []
+    generationState.isGenerating = false
+    resetDesktopSettingsForTests()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  async function submitPrompt(text: string) {
+    const onPromptSubmit = chatPanelProps.calls.at(-1)?.onPromptSubmit as (
+      message: unknown,
+    ) => Promise<void>
+    await act(async () => {
+      await onPromptSubmit({ text, files: [] })
+    })
+  }
+
+  function latestQueuedSends() {
+    return (chatPanelProps.calls.at(-1)?.queuedSends ?? []) as Array<{
+      id: string
+      text: string
+      attachmentCount: number
+    }>
+  }
+
+  it('sends immediately through generateDeck when idle', async () => {
+    renderWithRouter(<App />)
+
+    await submitPrompt('make slides')
+
+    expect(generationState.generateDeck).toHaveBeenCalledTimes(1)
+    expect(generationState.generateDeck).toHaveBeenCalledWith(
+      'make slides',
+      [],
+      expect.objectContaining({ deckId: 'deck-1' }),
+    )
+    expect(latestQueuedSends()).toEqual([])
+  })
+
+  it.each([
+    { origin: 'authored' as const, layout: 'sidebar', name: 'sidebar' },
+    { origin: 'blank' as const, layout: 'home', name: 'home' },
+  ])(
+    'enqueues a busy send as a chip in the $name shell without a second job or cancel',
+    async ({ origin, layout }) => {
+      persistenceState.origin = origin
+      generationState.isGenerating = true
+      renderWithRouter(<App />)
+
+      expect(chatPanelProps.calls.at(-1)?.layout).toBe(layout)
+      await submitPrompt('queue this follow-up')
+
+      expect(generationState.generateDeck).not.toHaveBeenCalled()
+      expect(generationState.cancelGeneration).not.toHaveBeenCalled()
+      expect(latestQueuedSends()).toEqual([
+        expect.objectContaining({ text: 'queue this follow-up', attachmentCount: 0 }),
+      ])
+    },
+  )
+
+  it('flushes queued chips one turn at a time through generateDeck once idle', async () => {
+    generationState.isGenerating = true
+    const { rerender } = renderWithRouter(<App />)
+
+    await submitPrompt('first follow-up')
+    await submitPrompt('second follow-up')
+    expect(generationState.generateDeck).not.toHaveBeenCalled()
+    expect(latestQueuedSends().map((item) => item.text)).toEqual([
+      'first follow-up',
+      'second follow-up',
+    ])
+
+    generationState.isGenerating = false
+    rerender(<App />)
+
+    await waitFor(() => {
+      expect(generationState.generateDeck).toHaveBeenCalledTimes(2)
+    })
+    expect(generationState.generateDeck.mock.calls.map((call) => call[0])).toEqual([
+      'first follow-up',
+      'second follow-up',
+    ])
+    expect(latestQueuedSends()).toEqual([])
+  })
+
+  it('Send now while busy fronts that chip; idle dequeues it first into generateDeck', async () => {
+    generationState.isGenerating = true
+    const { rerender } = renderWithRouter(<App />)
+
+    await submitPrompt('keep in place')
+    await submitPrompt('send me next')
+    const sendNow = chatPanelProps.calls.at(-1)?.onQueuedSendNow as (id: string) => void
+    const nextId = latestQueuedSends().find((item) => item.text === 'send me next')?.id
+    expect(nextId).toBeDefined()
+
+    await act(async () => {
+      sendNow(nextId!)
+    })
+
+    expect(generationState.generateDeck).not.toHaveBeenCalled()
+    expect(latestQueuedSends().map((item) => item.text)).toEqual(['send me next', 'keep in place'])
+
+    generationState.isGenerating = false
+    rerender(<App />)
+
+    await waitFor(() => {
+      expect(generationState.generateDeck).toHaveBeenCalledTimes(2)
+    })
+    expect(generationState.generateDeck.mock.calls.map((call) => call[0])).toEqual([
+      'send me next',
+      'keep in place',
+    ])
+  })
+
+  it('Send all while busy leaves chips for the idle generateDeck flush in order', async () => {
+    generationState.isGenerating = true
+    const { rerender } = renderWithRouter(<App />)
+
+    await submitPrompt('one')
+    await submitPrompt('two')
+    const sendAll = chatPanelProps.calls.at(-1)?.onQueuedSendAll as () => void
+
+    await act(async () => {
+      sendAll()
+    })
+    expect(generationState.generateDeck).not.toHaveBeenCalled()
+    expect(latestQueuedSends().map((item) => item.text)).toEqual(['one', 'two'])
+
+    generationState.isGenerating = false
+    rerender(<App />)
+
+    await waitFor(() => {
+      expect(generationState.generateDeck).toHaveBeenCalledTimes(2)
+    })
+    expect(generationState.generateDeck.mock.calls.map((call) => call[0])).toEqual(['one', 'two'])
+  })
+
+  it('dismiss and edit update parked chips before the idle flush', async () => {
+    generationState.isGenerating = true
+    const { rerender } = renderWithRouter(<App />)
+
+    await submitPrompt('drop me')
+    await submitPrompt('edit me')
+    const queued = latestQueuedSends()
+    const dismiss = chatPanelProps.calls.at(-1)?.onQueuedSendDismiss as (id: string) => void
+    const edit = chatPanelProps.calls.at(-1)?.onQueuedSendEdit as (id: string, text: string) => void
+
+    act(() => {
+      dismiss(queued[0]!.id)
+      edit(queued[1]!.id, 'edited copy')
+    })
+
+    expect(latestQueuedSends()).toEqual([
+      expect.objectContaining({ id: queued[1]!.id, text: 'edited copy' }),
+    ])
+
+    generationState.isGenerating = false
+    rerender(<App />)
+
+    await waitFor(() => {
+      expect(generationState.generateDeck).toHaveBeenCalledTimes(1)
+    })
+    expect(generationState.generateDeck).toHaveBeenCalledWith(
+      'edited copy',
+      [],
+      expect.objectContaining({ deckId: 'deck-1' }),
+    )
   })
 })

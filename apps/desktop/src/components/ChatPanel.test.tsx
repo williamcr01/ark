@@ -1161,6 +1161,13 @@ describe('ChatPanel send queue', () => {
 
       await user.click(screen.getAllByRole('button', { name: 'Dismiss queued message' })[1]!)
       expect(onQueuedSendDismiss).toHaveBeenCalledWith('q2')
+
+      await user.click(screen.getByRole('button', { name: 'make it darker' }))
+      const editor = screen.getByRole('textbox', { name: 'Edit queued message' })
+      await user.clear(editor)
+      await user.type(editor, 'make it navy')
+      await user.keyboard('{Enter}')
+      expect(onQueuedSendEdit).toHaveBeenCalledWith('q1', 'make it navy')
     },
   )
 })

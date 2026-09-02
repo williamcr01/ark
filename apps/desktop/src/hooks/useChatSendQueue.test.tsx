@@ -85,6 +85,48 @@ describe('useChatSendQueue', () => {
 })
 
 describe('useFlushQueuedChatSends', () => {
+  it('starts only one generateDeck send at a time while a flush is in flight', async () => {
+    let releaseFirst: (() => void) | undefined
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const send = vi.fn<(item: QueuedChatSend) => Promise<void>>(async (item) => {
+      if (item.id === 'a') {
+        await firstGate
+      }
+    })
+    const { result, rerender } = renderHook(
+      ({ busy }: { busy: boolean }) => {
+        const queue = useChatSendQueue()
+        const flush = useFlushQueuedChatSends(queue, busy, send)
+        return { queue, flush }
+      },
+      { initialProps: { busy: true } },
+    )
+
+    act(() => {
+      result.current.queue.enqueue(makeItem({ id: 'a', text: 'first' }))
+      result.current.queue.enqueue(makeItem({ id: 'b', text: 'second' }))
+    })
+
+    rerender({ busy: false })
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(1)
+    })
+    expect(send.mock.calls[0]?.[0]).toMatchObject({ id: 'a', text: 'first' })
+    expect(result.current.queue.items.map((item) => item.id)).toEqual(['b'])
+
+    await act(async () => {
+      releaseFirst?.()
+    })
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2)
+    })
+    expect(send.mock.calls[1]?.[0]).toMatchObject({ id: 'b', text: 'second' })
+  })
+
   it('does not flush while busy', async () => {
     const send = createSendMock()
     const { result } = renderHook(
