@@ -57,6 +57,19 @@ Emitted when `validateDeckHtmlOnServer` runs with a logger (deck create/update, 
 | `deck.validation.completed` | debug | `durationMs`, `htmlBytes`, `valid`, `issueCount`               |
 | `deck.validation.failed`    | warn  | `issueCount`, `primaryCode`, `statusCode` (HTTP 400 responses) |
 
+## Editor patch (measurement)
+
+Emitted on a successful `POST /api/decks/:id/patch` **after** `response.json`. The HTTP body is unchanged (not a client contract). Durations are milliseconds with sub-ms precision.
+
+| Event                  | Level | Key `fields`                                                                                                                                   |
+| ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deck.patch.completed` | info  | `loadMs`, `applyMs`, `validateMs`, `persistMs`, `notifyMs`, `serializeMs`, `htmlBytes`, `reusedValidation`, `appliedCount`, `documentRevision` |
+
+- `applyMs` includes live-DOM validation inside `applyDeckPatches`.
+- `validateMs` is the extra route-level pass (~0 when `reusedValidation` is true).
+- `notifyMs` is thumbnail scheduling (editor patches remain deferred 250 ms).
+- Pair with Chromium Network TTFB / `loadingFinished` from `pnpm profile:editor-drag`. See [editor-drag-profiling.md](./editor-drag-profiling.md).
+
 ## Preview sessions
 
 | Event                     | Level | Key `fields`                                                                                              |

@@ -26,6 +26,7 @@ import { registerIpcHandlers } from './bootstrap/ipc.ts'
 import { configureApplicationMenu } from './bootstrap/menu.ts'
 import { configureSessionSecurity, lockRendererNetwork } from './bootstrap/security.ts'
 import { closeServer, listen } from './bootstrap/servers.ts'
+import { resolveDesktopWorkspacesDir } from './workspaces-dir.ts'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const { autoUpdater } = electronUpdater
@@ -54,7 +55,12 @@ async function startDesktop() {
   process.env.PORT = new URL(apiServer.origin).port
   process.env.SANDBOX_PORT = new URL(sandboxServer.origin).port
   process.env.ARK_DATA_DIR = app.getPath('userData')
-  process.env.ARK_WORKSPACES_DIR = path.join(app.getPath('documents'), 'Ark')
+  const workspacesDir = resolveDesktopWorkspacesDir({
+    isPackaged: app.isPackaged,
+    documentsArk: path.join(app.getPath('documents'), 'Ark'),
+    env: process.env,
+  })
+  process.env.ARK_WORKSPACES_DIR = workspacesDir.directory
 
   const resourceRoot = app.isPackaged
     ? process.resourcesPath
@@ -87,8 +93,10 @@ async function startDesktop() {
     path.join(app.getPath('userData'), 'settings.json'),
   )
   await Promise.all([credentialStore.load(), settingsStore.load()])
-  process.env.ARK_WORKSPACES_DIR =
-    settingsStore.get().defaultWorkspaceDirectory || process.env.ARK_WORKSPACES_DIR
+  if (!workspacesDir.usedEnvOverride) {
+    process.env.ARK_WORKSPACES_DIR =
+      settingsStore.get().defaultWorkspaceDirectory || process.env.ARK_WORKSPACES_DIR
+  }
   setProviderApiKeySource(credentialStore)
   void warmModelCatalog()
 

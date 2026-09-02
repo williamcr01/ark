@@ -24,8 +24,7 @@ overrides:
   js-yaml: 4.3.1
   'nanoid@>=3.0.0 <4.0.0': 3.3.18
   'nanoid@>=4.0.0 <6.0.0': 5.1.16
-  # GHSA-c83g-rgw3-j3cx / GHSA-73wf-gq98-2v4g: unbounded cache growth and
-  # prototype write in browserslist <= 4.28.6 (transitive via @babel/core).
+  # GHSA-c83g-rgw3-j3cx / GHSA-73wf-gq98-2v4g: unbounded cache + prototype write.
   browserslist: 4.28.7
 
 allowBuilds:

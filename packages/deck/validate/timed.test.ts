@@ -36,4 +36,13 @@ describe('validateDeckHtmlOnServer', () => {
     expect(report.slideCount).toBe(0)
     expect(report.issues[0]?.code).toBe('missing_html')
   })
+
+  it('rejects entity-encoded external URLs on the upload/save/generation path', () => {
+    const html = `<!DOCTYPE html><html><body><section class="slide"><img src="https&#58;//evil.example/x.png" alt="x"></section></body></html>`
+    const report = validateDeckHtmlOnServer(html)
+
+    expect(report.valid).toBe(false)
+    expect(report.externalUrls.some((url) => url.includes('evil.example'))).toBe(true)
+    expect(report.issues.some((issue) => issue.code === 'external_url')).toBe(true)
+  })
 })

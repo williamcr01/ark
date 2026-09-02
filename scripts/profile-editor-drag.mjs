@@ -7,16 +7,22 @@
  *
  *   pnpm profile:editor-drag
  *   pnpm profile:editor-drag -- --case absolute-500 --runs 5 --output /tmp/ark-profile.json
+ *   pnpm profile:editor-drag -- --case absolute-500 --runs 5 --cpu-profile --user-data-dir /path/on/disk
  *
  * The harness uses the Chrome DevTools Protocol over Electron's remote-debugging
- * port.  It drives the editor with Input.dispatchMouseEvent and only uses
- * Runtime.evaluate for setup, counters, and the synthetic pointercancel needed
- * to exercise the cancellation invariant (public postMessage is never forged).
+ * port (renderer + sandbox iframe) and, when `--cpu-profile` is set, the Node
+ * inspector on the Electron main process.  It drives the editor with
+ * Input.dispatchMouseEvent and only uses Runtime.evaluate for setup, counters,
+ * and the synthetic pointercancel needed to exercise the cancellation invariant
+ * (public postMessage is never forged).
+ *
+ * See docs/editor-drag-profiling.md for storage paths, Chromium artifacts, and
+ * how to interpret PATCH phase logs after #308–#313.
  */
 
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -31,6 +37,9 @@ const DEFAULT_CASES = ['absolute-100', 'absolute-500', 'reveal-50', 'adoption']
 const DEFAULT_RUNS = 3
 const DEFAULT_DRAG_STEPS = 12
 const DEBUG_PORT = Number(process.env.ARK_PROFILE_CDP_PORT || 0)
+const INSPECT_PORT = Number(process.env.ARK_PROFILE_INSPECT_PORT || 0)
+const TRACE_CATEGORIES =
+  'devtools.timeline,blink.user_timing,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,disabled-by-default-network'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -40,10 +49,15 @@ function parseArgs(argv) {
     runs: DEFAULT_RUNS,
     steps: DEFAULT_DRAG_STEPS,
     output: null,
+    artifactsDir: null,
+    userDataDir: process.env.ARK_PROFILE_USER_DATA_DIR?.trim() || null,
+    workspacesDir: process.env.ARK_PROFILE_WORKSPACES_DIR?.trim() || null,
     headed: false,
     keepProfile: false,
     undo: false,
     trace: true,
+    cpuProfile: false,
+    heapSnapshot: false,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -60,6 +74,12 @@ function parseArgs(argv) {
       options.steps = Math.max(1, Number(argv[++index] || DEFAULT_DRAG_STEPS))
     } else if (arg === '--output') {
       options.output = argv[++index] || null
+    } else if (arg === '--artifacts-dir') {
+      options.artifactsDir = argv[++index] || null
+    } else if (arg === '--user-data-dir') {
+      options.userDataDir = argv[++index] || null
+    } else if (arg === '--workspaces-dir') {
+      options.workspacesDir = argv[++index] || null
     } else if (arg === '--headed') {
       options.headed = true
     } else if (arg === '--keep-profile') {
@@ -68,6 +88,10 @@ function parseArgs(argv) {
       options.undo = true
     } else if (arg === '--no-trace') {
       options.trace = false
+    } else if (arg === '--cpu-profile') {
+      options.cpuProfile = true
+    } else if (arg === '--heap-snapshot') {
+      options.heapSnapshot = true
     } else if (arg === '--help' || arg === '-h') {
       printUsage()
       process.exit(0)
@@ -92,16 +116,147 @@ Options:
   --runs <n>           Warmed runs per case (default: ${DEFAULT_RUNS})
   --steps <n>          Native pointer moves per gesture (default: ${DEFAULT_DRAG_STEPS})
   --output <path>      Write the full JSON report to a file
+  --artifacts-dir <path>  Directory for CPU profiles, heap snapshots, and traces
+  --user-data-dir <path>  Electron userData (default: tmpdir overlay; set to a real disk)
+  --workspaces-dir <path>  .ark persist directory (default: <user-data-dir>/workspaces)
   --headed             Do not wrap Electron in xvfb-run on Linux
-  --keep-profile      Keep the temporary Electron user-data directory
+  --keep-profile      Keep the Electron user-data directory
   --undo              Exercise Ctrl/Cmd-Z after a committed gesture
   --no-trace           Skip Tracing domain collection (faster, less paint detail)
+  --cpu-profile        Capture Chromium + Electron-main V8 CPU profiles per gesture
+  --heap-snapshot      Capture renderer/iframe heap snapshots after each commit
+
+Env:
+  ARK_PROFILE_USER_DATA_DIR / ARK_PROFILE_WORKSPACES_DIR  same as the path flags
+  ARK_PROFILE_CDP_PORT / ARK_PROFILE_INSPECT_PORT         pin debugger ports
+  ELECTRON_DISABLE_SANDBOX=1                              needed in some containers
 `)
 }
 
 function randomPort() {
   if (DEBUG_PORT > 0) return DEBUG_PORT
   return 39_000 + Math.floor(Math.random() * 1_000)
+}
+
+function randomInspectPort() {
+  if (INSPECT_PORT > 0) return INSPECT_PORT
+  return 40_000 + Math.floor(Math.random() * 1_000)
+}
+
+function roundMs(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Number(value.toFixed(3))
+}
+
+function percentile(sorted, p) {
+  if (!sorted.length) return null
+  const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)
+  return roundMs(sorted[idx])
+}
+
+async function inspectStoragePath(directory) {
+  const resolved = path.resolve(directory)
+  await mkdir(resolved, { recursive: true })
+  let fsType = 'unknown'
+  let mount = '/'
+  try {
+    const mounts = await readFile('/proc/mounts', 'utf8')
+    for (const line of mounts.split('\n')) {
+      const parts = line.split(/\s+/)
+      if (parts.length < 3) continue
+      const mountPoint = parts[1]?.replace(/\\040/g, ' ')
+      const type = parts[2]
+      if (!mountPoint || !type) continue
+      const prefix = mountPoint.endsWith('/') ? mountPoint : `${mountPoint}/`
+      if (
+        resolved === mountPoint ||
+        resolved.startsWith(prefix) ||
+        `${resolved}/`.startsWith(prefix)
+      ) {
+        if (mountPoint.length >= mount.length) {
+          mount = mountPoint
+          fsType = type
+        }
+      }
+    }
+  } catch {
+    // /proc/mounts is Linux-only; macOS/Windows reports stay "unknown".
+  }
+  const ephemeral = ['tmpfs', 'overlay', 'ramfs', 'aufs'].includes(fsType)
+  return { path: resolved, fsType, mount, ephemeral }
+}
+
+async function resolveProfileStorage(options) {
+  const ephemeralUserData = !options.userDataDir
+  const profileDirectory = options.userDataDir
+    ? path.resolve(options.userDataDir)
+    : await mkdtemp(path.join(os.tmpdir(), 'ark-editor-profile-'))
+  await mkdir(profileDirectory, { recursive: true })
+  const workspacesDirectory = path.resolve(
+    options.workspacesDir || path.join(profileDirectory, 'workspaces'),
+  )
+  await mkdir(workspacesDirectory, { recursive: true })
+  const storage = {
+    userData: await inspectStoragePath(profileDirectory),
+    workspaces: await inspectStoragePath(workspacesDirectory),
+  }
+  return { ephemeralUserData, profileDirectory, workspacesDirectory, storage }
+}
+
+function isShellApiReady(href, healthOk) {
+  return Boolean(href && String(href).startsWith('http') && healthOk)
+}
+
+function summarizeCpuProfile(profile, topN = 12) {
+  if (!profile?.nodes?.length) return null
+  const nodes = profile.nodes
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const samples = profile.samples || []
+  const timeDeltas = profile.timeDeltas || []
+  const selfUs = new Map()
+  if (samples.length && timeDeltas.length) {
+    for (let index = 0; index < samples.length; index += 1) {
+      const nodeId = samples[index]
+      const delta = timeDeltas[index] || 0
+      selfUs.set(nodeId, (selfUs.get(nodeId) || 0) + delta)
+    }
+  } else {
+    for (const node of nodes) {
+      selfUs.set(node.id, (node.hitCount || 0) * 100)
+    }
+  }
+  const idleIds = new Set()
+  for (const node of nodes) {
+    const name = node.callFrame?.functionName || ''
+    if (name === '(idle)' || name === '(program)' || name === '(garbage collector)') {
+      idleIds.add(node.id)
+    }
+  }
+  const rows = [...selfUs.entries()]
+    .filter(([id, us]) => us > 0 && !idleIds.has(id))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([id, us]) => {
+      const node = byId.get(id)
+      const frame = node?.callFrame || {}
+      return {
+        functionName: frame.functionName || '(anonymous)',
+        url: frame.url || '',
+        lineNumber: typeof frame.lineNumber === 'number' ? frame.lineNumber : null,
+        selfMs: roundMs(us / 1_000),
+      }
+    })
+  const totalUs = [...selfUs.values()].reduce((sum, value) => sum + value, 0)
+  const idleUs = [...idleIds].reduce((sum, id) => sum + (selfUs.get(id) || 0), 0)
+  return {
+    startTime: profile.startTime,
+    endTime: profile.endTime,
+    durationMs: roundMs(((profile.endTime || 0) - (profile.startTime || 0)) / 1_000),
+    sampleCount: samples.length,
+    idleMs: roundMs(idleUs / 1_000),
+    activeMs: roundMs((totalUs - idleUs) / 1_000),
+    top: rows,
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -329,11 +484,61 @@ async function evaluate(context, expression, options = {}) {
   return result?.result?.value
 }
 
-async function enableContext(context, { network = false, performance = false } = {}) {
+async function enableContext(
+  context,
+  { network = false, performance = false, profiler = false, heap = false } = {},
+) {
   await context.send('Runtime.enable')
   await context.send('Page.enable').catch(() => undefined)
   if (network) await context.send('Network.enable')
   if (performance) await context.send('Performance.enable')
+  if (profiler) await context.send('Profiler.enable').catch(() => undefined)
+  if (heap) await context.send('HeapProfiler.enable').catch(() => undefined)
+}
+
+async function startCpuProfile(context) {
+  if (!context) return false
+  try {
+    await context.send('Profiler.setSamplingInterval', { interval: 100 })
+    await context.send('Profiler.start')
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function stopCpuProfile(context, filePath) {
+  if (!context) return null
+  try {
+    const result = await context.send('Profiler.stop')
+    const summary = summarizeCpuProfile(result?.profile)
+    if (filePath && result?.profile) {
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, JSON.stringify(result.profile), 'utf8')
+      return { ...summary, path: filePath }
+    }
+    return summary
+  } catch {
+    return null
+  }
+}
+
+async function captureHeapSnapshot(context, filePath) {
+  if (!context || !filePath) return null
+  const chunks = []
+  const off = context.on('HeapProfiler.addHeapSnapshotChunk', ({ params }) => {
+    if (params?.chunk) chunks.push(params.chunk)
+  })
+  try {
+    await context.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false })
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, chunks.join(''), 'utf8')
+    return { path: filePath, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0) }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) }
+  } finally {
+    off()
+  }
 }
 
 function metricMap(metrics) {
@@ -609,8 +814,16 @@ async function buildCases() {
 }
 
 async function launchElectron(options) {
-  const profileDirectory = await mkdtemp(path.join(os.tmpdir(), 'ark-editor-profile-'))
+  const { ephemeralUserData, profileDirectory, workspacesDirectory, storage } =
+    await resolveProfileStorage(options)
+  if (storage.userData.ephemeral || storage.workspaces.ephemeral) {
+    console.error(
+      `Storage is ephemeral (${storage.workspaces.fsType} at ${storage.workspaces.path}). PATCH persist timings will not match a real disk. See docs/editor-drag-profiling.md.`,
+    )
+  }
+
   const port = randomPort()
+  const inspectPort = options.cpuProfile || options.heapSnapshot ? randomInspectPort() : 0
   const electronArgs = [
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profileDirectory}`,
@@ -619,8 +832,9 @@ async function launchElectron(options) {
     '--disable-backgrounding-occluded-windows',
     '--disable-renderer-backgrounding',
     '--disable-features=CalculateNativeWinOcclusion',
-    '.',
   ]
+  if (inspectPort) electronArgs.push(`--inspect=${inspectPort}`)
+  electronArgs.push('.')
   let command = electronBinary
   let args = electronArgs
   if (process.platform === 'linux' && !process.env.DISPLAY && !options.headed) {
@@ -640,6 +854,8 @@ async function launchElectron(options) {
     env: {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      ARK_PROFILE_WORKSPACES_DIR: workspacesDirectory,
+      ARK_WORKSPACES_DIR: workspacesDirectory,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform !== 'win32',
@@ -693,21 +909,88 @@ async function launchElectron(options) {
   )
   const connection = await new CdpConnection(targets.webSocketDebuggerUrl).connect()
   const page = contextFor(connection, null, 'shell')
-  await enableContext(page, { network: true, performance: true })
+  await enableContext(page, {
+    network: true,
+    performance: true,
+    profiler: true,
+    heap: options.heapSnapshot,
+  })
   await page
     .send('Page.addScriptToEvaluateOnNewDocument', { source: PROFILE_INSTALL })
     .catch(() => undefined)
+
+  let main = null
+  if (inspectPort) {
+    const inspectBase = `http://127.0.0.1:${inspectPort}`
+    const inspectTarget = await waitFor(
+      'Electron main inspector',
+      async () => {
+        try {
+          const listed = await fetchJson(`${inspectBase}/json`)
+          const items = Array.isArray(listed) ? listed : listed ? [listed] : []
+          return items.find((target) => target.webSocketDebuggerUrl) || null
+        } catch {
+          if (child.exitCode !== null)
+            throw new Error(`Electron exited with code ${child.exitCode}`)
+          return null
+        }
+      },
+      15_000,
+    )
+    if (inspectTarget?.webSocketDebuggerUrl) {
+      const mainConnection = await new CdpConnection(inspectTarget.webSocketDebuggerUrl).connect()
+      main = contextFor(mainConnection, null, 'electron-main')
+      await main.send('Profiler.enable').catch(() => undefined)
+      if (options.heapSnapshot) await main.send('HeapProfiler.enable').catch(() => undefined)
+    } else {
+      console.error(
+        'Electron main inspector did not expose a websocket; main CPU profiles skipped.',
+      )
+    }
+  }
+
+  await waitFor(
+    'shell HTTP origin and API',
+    async () => {
+      const href = await evaluate(page, 'location.href').catch(() => '')
+      if (!href || !String(href).startsWith('http')) return false
+      try {
+        const healthOk = Boolean(
+          await evaluate(
+            page,
+            `fetch('/api/health').then((response) => response.ok).catch(() => false)`,
+          ),
+        )
+        return isShellApiReady(href, healthOk)
+      } catch {
+        return false
+      }
+    },
+    90_000,
+  )
+
   return {
     child,
     logs,
     profileDirectory,
+    workspacesDirectory,
+    storage,
+    ephemeralUserData,
     port,
+    inspectPort,
     debuggerBase,
     connection,
     page,
+    main,
+    cpuProfile: options.cpuProfile,
+    heapSnapshot: options.heapSnapshot,
+    artifactsDir: options.artifactsDir,
     async close() {
       try {
         await connection.close()
+      } catch {}
+      try {
+        await main?.connection.close()
       } catch {}
       const killTree = (signal) => {
         if (child.exitCode !== null) return
@@ -722,7 +1005,8 @@ async function launchElectron(options) {
       await waitFor('Electron shutdown', () => child.exitCode !== null, 10_000, 50).catch(() =>
         killTree('SIGKILL'),
       )
-      if (!options.keepProfile) await rm(profileDirectory, { recursive: true, force: true })
+      if (!options.keepProfile && ephemeralUserData)
+        await rm(profileDirectory, { recursive: true, force: true })
     },
   }
 }
@@ -767,7 +1051,11 @@ async function getIframeContext(session) {
   const iframe = contextFor(session.connection, attached.sessionId, 'sandbox-iframe')
   iframe.targetId = target.targetId
   iframe.targetUrl = target.url
-  await enableContext(iframe, { performance: true })
+  await enableContext(iframe, {
+    performance: true,
+    profiler: true,
+    heap: Boolean(session.heapSnapshot),
+  })
   await evaluate(iframe, PROFILE_INSTALL)
   session.iframe = iframe
   return iframe
@@ -889,6 +1177,7 @@ async function readPerformance(context) {
 function networkCollector(session) {
   const requests = []
   const responses = []
+  const finished = []
   const offRequest = session.page.on('Network.requestWillBeSent', ({ params }) => {
     requests.push({
       requestId: params.requestId,
@@ -906,18 +1195,30 @@ function networkCollector(session) {
       status: params.response?.status,
       timestamp: params.timestamp,
       mimeType: params.response?.mimeType,
+      encodedDataLength: params.response?.encodedDataLength,
+      timing: params.response?.timing || null,
+    })
+  })
+  const offFinished = session.page.on('Network.loadingFinished', ({ params }) => {
+    finished.push({
+      requestId: params.requestId,
+      timestamp: params.timestamp,
+      encodedDataLength: params.encodedDataLength,
     })
   })
   return {
     requests,
     responses,
+    finished,
     reset() {
       requests.length = 0
       responses.length = 0
+      finished.length = 0
     },
     stop() {
       offRequest()
       offResponse()
+      offFinished()
     },
   }
 }
@@ -941,13 +1242,45 @@ function summarizeNetwork(network) {
     ...response,
     kind: requestKind(response.url),
   }))
+  const finishedById = new Map((network.finished || []).map((entry) => [entry.requestId, entry]))
+  const patchRequests = requests.filter((request) => request.kind === 'patch')
+  const patchResponses = responses.filter((response) => response.kind === 'patch')
+  const patch = patchRequests.map((request) => {
+    const response = patchResponses.find((entry) => entry.requestId === request.requestId)
+    const loaded = finishedById.get(request.requestId)
+    const timing = response?.timing || null
+    const waitingMs =
+      timing && typeof timing.receiveHeadersEnd === 'number' && typeof timing.sendEnd === 'number'
+        ? roundMs(timing.receiveHeadersEnd - timing.sendEnd)
+        : null
+    const receiveMs =
+      timing && loaded && typeof timing.requestTime === 'number'
+        ? roundMs((loaded.timestamp - timing.requestTime) * 1_000 - timing.receiveHeadersEnd)
+        : null
+    return {
+      requestId: request.requestId,
+      url: request.url,
+      method: request.method,
+      status: response?.status ?? null,
+      ttfbMs:
+        request && response ? roundMs((response.timestamp - request.timestamp) * 1_000) : null,
+      loadingFinishedMs:
+        request && loaded ? roundMs((loaded.timestamp - request.timestamp) * 1_000) : null,
+      encodedDataLength: loaded?.encodedDataLength ?? response?.encodedDataLength ?? null,
+      waitingMs,
+      receiveMs,
+      timing,
+    }
+  })
   return {
     requestCount: requests.length,
-    patchRequests: requests.filter((request) => request.kind === 'patch'),
-    patchResponses: responses.filter((response) => response.kind === 'patch'),
+    patchRequests,
+    patchResponses,
+    patch,
     thumbnailRequests: requests.filter((request) => request.kind === 'thumbnail-status'),
     requests,
     responses,
+    finished: network.finished || [],
   }
 }
 
@@ -1051,7 +1384,7 @@ async function traceStart(context, collector) {
   })
   await context
     .send('Tracing.start', {
-      categories: 'devtools.timeline,blink.user_timing,disabled-by-default-devtools.timeline.frame',
+      categories: TRACE_CATEGORIES,
       options: 'record-until-full',
     })
     .catch(() => {
@@ -1086,7 +1419,7 @@ function summarizeTrace(events) {
   return summary
 }
 
-function phaseTimings(frameProfile, shellProfile, patchRequest, patchResponse) {
+function phaseTimings(frameProfile, shellProfile, patchRequest, patchResponse, patchFinished) {
   const pointerUp = [...(frameProfile?.pointerEvents || [])]
     .reverse()
     .find((event) => event.type === 'pointerup' || event.type === 'pointercancel')
@@ -1117,6 +1450,7 @@ function phaseTimings(frameProfile, shellProfile, patchRequest, patchResponse) {
       ? null
       : Number((to - from).toFixed(3))
 
+  const timing = patchResponse?.timing || null
   return {
     pointerDownToFirstPreviewMs: frameProfile?.firstPreviewAfterPointerDownMs ?? null,
     pointerUpToPatchRequestMs: duration(pointerUpWallMs, requestWallMs),
@@ -1124,12 +1458,55 @@ function phaseTimings(frameProfile, shellProfile, patchRequest, patchResponse) {
       patchRequest && patchResponse
         ? Number(((patchResponse.timestamp - patchRequest.timestamp) * 1_000).toFixed(3))
         : null,
+    patchRequestToLoadingFinishedMs:
+      patchRequest && patchFinished
+        ? Number(((patchFinished.timestamp - patchRequest.timestamp) * 1_000).toFixed(3))
+        : null,
+    patchWaitingMs:
+      timing && typeof timing.receiveHeadersEnd === 'number' && typeof timing.sendEnd === 'number'
+        ? roundMs(timing.receiveHeadersEnd - timing.sendEnd)
+        : null,
+    patchReceiveMs:
+      timing &&
+      patchFinished &&
+      typeof timing.requestTime === 'number' &&
+      typeof timing.receiveHeadersEnd === 'number'
+        ? roundMs((patchFinished.timestamp - timing.requestTime) * 1_000 - timing.receiveHeadersEnd)
+        : null,
+    patchEncodedDataLength:
+      patchFinished?.encodedDataLength ?? patchResponse?.encodedDataLength ?? null,
     responseToFrameMutationMs: duration(responseWallMs, firstFrameMutationWallMs),
     responseToOverlayMutationMs: duration(responseWallMs, firstOverlayWallMs),
   }
 }
 
-async function performGesture(session, iframe, network, deck, elementId, { cancel, trace, steps }) {
+function patchPhasesFromLogs(logs) {
+  const entry = logs.find((item) => item.event === 'deck.patch.completed')
+  if (!entry) return null
+  const fields = entry.fields || {}
+  return {
+    durationMs: entry.durationMs ?? fields.durationMs ?? null,
+    loadMs: fields.loadMs ?? null,
+    applyMs: fields.applyMs ?? null,
+    validateMs: fields.validateMs ?? null,
+    persistMs: fields.persistMs ?? null,
+    notifyMs: fields.notifyMs ?? null,
+    serializeMs: fields.serializeMs ?? null,
+    htmlBytes: fields.htmlBytes ?? null,
+    reusedValidation: fields.reusedValidation ?? null,
+    documentRevision: fields.documentRevision ?? null,
+    appliedCount: fields.appliedCount ?? null,
+  }
+}
+
+async function performGesture(
+  session,
+  iframe,
+  network,
+  deck,
+  elementId,
+  { cancel, trace, steps, label },
+) {
   const beforeRevision = deck.documentRevision
   const startLogIndex = session.logs.length
   network.reset()
@@ -1142,6 +1519,11 @@ async function performGesture(session, iframe, network, deck, elementId, { cance
   const frameTrace = trace ? {} : null
   await traceStart(session.page, shellTrace)
   await traceStart(iframe, frameTrace)
+  if (session.cpuProfile) {
+    await startCpuProfile(session.page)
+    await startCpuProfile(iframe)
+    await startCpuProfile(session.main)
+  }
   const gesture = await drag(session.page, iframe, elementId, { cancel, steps })
   await sleep(cancel ? 120 : 160)
   const shellAfter = await readPerformance(session.page)
@@ -1165,9 +1547,50 @@ async function performGesture(session, iframe, network, deck, elementId, { cance
     afterDeck = afterDeck.deck
   }
 
+  const cpuProfiles = session.cpuProfile
+    ? {
+        shell: await stopCpuProfile(
+          session.page,
+          session.artifactsDir
+            ? path.join(session.artifactsDir, `${label || 'gesture'}-shell.cpuprofile`)
+            : null,
+        ),
+        iframe: await stopCpuProfile(
+          iframe,
+          session.artifactsDir
+            ? path.join(session.artifactsDir, `${label || 'gesture'}-iframe.cpuprofile`)
+            : null,
+        ),
+        main: await stopCpuProfile(
+          session.main,
+          session.artifactsDir
+            ? path.join(session.artifactsDir, `${label || 'gesture'}-main.cpuprofile`)
+            : null,
+        ),
+      }
+    : null
+
+  let heapSnapshots = null
+  if (session.heapSnapshot && !cancel && session.artifactsDir) {
+    const stem = label || 'commit'
+    heapSnapshots = {
+      shell: await captureHeapSnapshot(
+        session.page,
+        path.join(session.artifactsDir, `${stem}-shell.heapsnapshot`),
+      ),
+      iframe: await captureHeapSnapshot(
+        iframe,
+        path.join(session.artifactsDir, `${stem}-iframe.heapsnapshot`),
+      ),
+    }
+  }
+
   const networkSummary = summarizeNetwork(network)
   const patchRequests = networkSummary.patchRequests
   const patchResponses = networkSummary.patchResponses
+  const patchFinished = (network.finished || []).find(
+    (entry) => entry.requestId === patchRequests[0]?.requestId,
+  )
   const frameTargetId = session.iframe?.targetId || null
   const logs = structuredLogsBetween(session.logs, startLogIndex)
   return {
@@ -1183,7 +1606,9 @@ async function performGesture(session, iframe, network, deck, elementId, { cance
       shellProfile,
       patchRequests[0] || null,
       patchResponses[0] || null,
+      patchFinished || null,
     ),
+    serverPatch: patchPhasesFromLogs(logs),
     network: networkSummary,
     serverEvents: logs.filter((entry) =>
       /patch|validation|thumbnail|http\.request/.test(entry.event || ''),
@@ -1192,6 +1617,8 @@ async function performGesture(session, iframe, network, deck, elementId, { cance
     iframeMetrics: metricDelta(frameBefore, frameAfter),
     shellProfile,
     iframeProfile: frameProfile,
+    cpuProfiles,
+    heapSnapshots,
     trace: {
       shell: summarizeTrace(shellTraceEvents),
       iframe: summarizeTrace(frameTraceEvents),
@@ -1237,6 +1664,36 @@ function assertInvariant(name, condition, details) {
   return { name, ok: Boolean(condition), details }
 }
 
+function evaluateGestureInvariants(testCaseName, runs) {
+  return runs
+    .filter((run) => run.phase === 'cancel' || run.phase === 'commit')
+    .map((run) => {
+      if (run.phase === 'cancel') {
+        return assertInvariant(
+          `${testCaseName} run ${run.run} cancellation`,
+          run.requestCount === 0 && run.afterRevision === run.beforeRevision,
+          {
+            patchRequests: run.requestCount,
+            beforeRevision: run.beforeRevision,
+            afterRevision: run.afterRevision,
+          },
+        )
+      }
+      return assertInvariant(
+        `${testCaseName} run ${run.run} commit`,
+        run.requestCount === 1 &&
+          run.afterRevision > run.beforeRevision &&
+          run.sessionRetained !== false,
+        {
+          patchRequests: run.requestCount,
+          beforeRevision: run.beforeRevision,
+          afterRevision: run.afterRevision,
+          sessionRetained: run.sessionRetained,
+        },
+      )
+    })
+}
+
 async function runCase(session, testCase, options) {
   const created = await createDeck(session.page, testCase.html)
   const deck = created.deck
@@ -1256,12 +1713,14 @@ async function runCase(session, testCase, options) {
       cancel: true,
       trace: options.trace,
       steps: options.steps,
+      label: `${testCase.name}-run${run + 1}-cancel`,
     })
     runs.push({ run: run + 1, phase: 'cancel', ...cancel })
     const commit = await performGesture(session, iframe, network, deck, testCase.elementId, {
       cancel: false,
       trace: options.trace,
       steps: options.steps,
+      label: `${testCase.name}-run${run + 1}-commit`,
     })
     runs.push({ run: run + 1, phase: 'commit', ...commit })
     if (run === 0 && options.undo) {
@@ -1290,33 +1749,7 @@ async function runCase(session, testCase, options) {
 
   network.stop()
   await deleteDeck(session.page, deck.id)
-  const invariants = runs
-    .filter((run) => run.phase === 'cancel' || run.phase === 'commit')
-    .map((run) => {
-      if (run.phase === 'cancel') {
-        return assertInvariant(
-          `${testCase.name} run ${run.run} cancellation`,
-          run.requestCount === 0 && run.afterRevision === run.beforeRevision,
-          {
-            patchRequests: run.requestCount,
-            beforeRevision: run.beforeRevision,
-            afterRevision: run.afterRevision,
-          },
-        )
-      }
-      return assertInvariant(
-        `${testCase.name} run ${run.run} commit`,
-        run.requestCount === 1 &&
-          run.afterRevision > run.beforeRevision &&
-          run.sessionRetained !== false,
-        {
-          patchRequests: run.requestCount,
-          beforeRevision: run.beforeRevision,
-          afterRevision: run.afterRevision,
-          sessionRetained: run.sessionRetained,
-        },
-      )
-    })
+  const invariants = evaluateGestureInvariants(testCase.name, runs)
 
   if (options.undo) {
     const undo = runs.find((run) => run.phase === 'undo')
@@ -1352,6 +1785,83 @@ function flattenInvariantFailures(report) {
   return report.results.flatMap((result) => result.invariants.filter((invariant) => !invariant.ok))
 }
 
+function compactSummary(report) {
+  return report.results.map((result) => {
+    const commits = result.runs.filter((run) => run.phase === 'commit')
+    const pick = (read) => {
+      const values = commits
+        .map(read)
+        .filter((value) => typeof value === 'number')
+        .sort((a, b) => a - b)
+      return { p50: percentile(values, 50), p95: percentile(values, 95), n: values.length }
+    }
+    return {
+      name: result.name,
+      cancelPatchRequests: result.runs
+        .filter((run) => run.phase === 'cancel')
+        .map((run) => run.requestCount),
+      commitPatchRequests: commits.map((run) => run.requestCount),
+      pointerDownToFirstPreviewMs: pick((run) => run.phaseTimings?.pointerDownToFirstPreviewMs),
+      shellScriptDurationMs: pick((run) => run.shellMetrics?.ScriptDuration),
+      shellTaskDurationMs: pick((run) => run.shellMetrics?.TaskDuration),
+      iframeLayoutDurationMs: pick((run) => run.iframeMetrics?.LayoutDuration),
+      patchRequestToResponseMs: pick((run) => run.phaseTimings?.patchRequestToResponseMs),
+      patchRequestToLoadingFinishedMs: pick(
+        (run) => run.phaseTimings?.patchRequestToLoadingFinishedMs,
+      ),
+      patchWaitingMs: pick((run) => run.phaseTimings?.patchWaitingMs),
+      patchReceiveMs: pick((run) => run.phaseTimings?.patchReceiveMs),
+      patchEncodedDataLength: pick((run) => run.phaseTimings?.patchEncodedDataLength),
+      server: {
+        durationMs: pick((run) => run.serverPatch?.durationMs),
+        loadMs: pick((run) => run.serverPatch?.loadMs),
+        applyMs: pick((run) => run.serverPatch?.applyMs),
+        validateMs: pick((run) => run.serverPatch?.validateMs),
+        persistMs: pick((run) => run.serverPatch?.persistMs),
+        notifyMs: pick((run) => run.serverPatch?.notifyMs),
+        serializeMs: pick((run) => run.serverPatch?.serializeMs),
+        htmlBytes: commits[0]?.serverPatch?.htmlBytes ?? null,
+        reusedValidation: commits.every((run) => run.serverPatch?.reusedValidation !== false),
+      },
+    }
+  })
+}
+
+function printSummary(report) {
+  console.error(
+    '\nEditor-drag profile summary (commit runs, after #308–#313 baseline when dist includes that stack)',
+  )
+  console.error(
+    `storage: userData=${report.storage?.userData?.fsType || '?'} ephemeral=${report.storage?.userData?.ephemeral} path=${report.storage?.userData?.path}`,
+  )
+  console.error(
+    `         workspaces=${report.storage?.workspaces?.fsType || '?'} ephemeral=${report.storage?.workspaces?.ephemeral} path=${report.storage?.workspaces?.path}`,
+  )
+  for (const entry of report.summary || []) {
+    const line = (label, stat) =>
+      `${label.padEnd(34)} p50=${stat?.p50 ?? 'n/a'} p95=${stat?.p95 ?? 'n/a'} n=${stat?.n ?? 0}`
+    console.error(`\n${entry.name}`)
+    console.error(`  ${line('pointerDown→first preview ms', entry.pointerDownToFirstPreviewMs)}`)
+    console.error(`  ${line('shell ScriptDuration ms', entry.shellScriptDurationMs)}`)
+    console.error(`  ${line('shell TaskDuration ms', entry.shellTaskDurationMs)}`)
+    console.error(`  ${line('iframe LayoutDuration ms', entry.iframeLayoutDurationMs)}`)
+    console.error(`  ${line('PATCH TTFB ms', entry.patchRequestToResponseMs)}`)
+    console.error(`  ${line('PATCH loadingFinished ms', entry.patchRequestToLoadingFinishedMs)}`)
+    console.error(`  ${line('PATCH waiting (TTFB-send) ms', entry.patchWaitingMs)}`)
+    console.error(`  ${line('PATCH receive body ms', entry.patchReceiveMs)}`)
+    console.error(`  ${line('server total ms', entry.server.durationMs)}`)
+    console.error(`  ${line('  load ms', entry.server.loadMs)}`)
+    console.error(`  ${line('  applyDeckPatches ms', entry.server.applyMs)}`)
+    console.error(`  ${line('  extra validate ms', entry.server.validateMs)}`)
+    console.error(`  ${line('  persist ms', entry.server.persistMs)}`)
+    console.error(`  ${line('  notify (thumbnails) ms', entry.server.notifyMs)}`)
+    console.error(`  ${line('  serialize/json ms', entry.server.serializeMs)}`)
+    console.error(
+      `  htmlBytes=${entry.server.htmlBytes} reusedValidation=${entry.server.reusedValidation} cancelPatches=${entry.cancelPatchRequests.join(',')} commitPatches=${entry.commitPatchRequests.join(',')}`,
+    )
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   const cases = await buildCases()
@@ -1375,18 +1885,39 @@ async function main() {
     throw new Error('Built desktop artifacts are missing. Run `pnpm build` before profiling.')
   }
 
+  if (options.output && !options.artifactsDir) {
+    options.artifactsDir = path.dirname(path.resolve(options.output))
+  }
+  if (options.artifactsDir) {
+    options.artifactsDir = path.resolve(options.artifactsDir)
+    await mkdir(options.artifactsDir, { recursive: true })
+  }
+  if ((options.cpuProfile || options.heapSnapshot) && !options.artifactsDir) {
+    options.artifactsDir = await mkdtemp(path.join(os.tmpdir(), 'ark-editor-profile-artifacts-'))
+    console.error(`Writing CPU/heap artifacts to ${options.artifactsDir}`)
+  }
+
   const session = await launchElectron(options)
   const report = {
     benchmark: 'editor-drag-profile',
-    issue: 287,
+    issue: 291,
+    baseline:
+      'after #308–#313 when desktop dist is rebuilt from that stack; this script itself is measurement-only',
     generatedAt: new Date().toISOString(),
+    storage: session.storage,
     electron: {
       cdpPort: session.port,
+      inspectPort: session.inspectPort,
+      userDataDir: session.profileDirectory,
+      workspacesDir: session.workspacesDirectory,
       cases: options.cases,
       runs: options.runs,
       steps: options.steps,
       trace: options.trace,
       undo: options.undo,
+      cpuProfile: options.cpuProfile,
+      heapSnapshot: options.heapSnapshot,
+      artifactsDir: options.artifactsDir,
     },
     results: [],
   }
@@ -1403,13 +1934,30 @@ async function main() {
 
   const failures = flattenInvariantFailures(report)
   report.invariants = { passed: failures.length === 0, failures }
+  report.summary = compactSummary(report)
+  printSummary(report)
   const json = JSON.stringify(report, null, 2)
   if (options.output) await writeFile(path.resolve(options.output), `${json}\n`, 'utf8')
   console.log(json)
   if (failures.length) process.exitCode = 1
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack || error.message : error)
-  process.exitCode = 1
-})
+export {
+  parseArgs,
+  inspectStoragePath,
+  resolveProfileStorage,
+  isShellApiReady,
+  patchPhasesFromLogs,
+  evaluateGestureInvariants,
+  flattenInvariantFailures,
+}
+
+const invokedAsScript =
+  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+
+if (invokedAsScript) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack || error.message : error)
+    process.exitCode = 1
+  })
+}

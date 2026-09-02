@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -197,6 +197,93 @@ describe('WorkspaceStore file operations', () => {
     await expect(access(path.join(root, 'Board plan 2.ark'))).rejects.toMatchObject({
       code: 'ENOENT',
     })
+  })
+
+  it('does not rewrite the recents index on an html-only document update', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const recentsPath = path.join(root, 'recent-workspaces.json')
+    const before = await readFile(recentsPath, 'utf8')
+
+    const updated = await workspaces.updateDocument(created.id, html.replace('Hello', 'Moved'), 1)
+
+    expect(updated?.html).toContain('Moved')
+    expect(updated?.documentRevision).toBe(2)
+    expect(await readFile(recentsPath, 'utf8')).toBe(before)
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, updatedAt: updated?.updatedAt }),
+    ])
+    await expect(workspaces.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+
+    workspaces.close()
+    store = createWorkspaceStore(root)
+    await expect(store.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, updatedAt: updated?.updatedAt }),
+    ])
+    await expect(store.get(created.id)).resolves.toMatchObject({
+      html: expect.stringContaining('Moved'),
+      documentRevision: 2,
+    })
+    await expect(store.listDocumentHistory(created.id)).resolves.toEqual([
+      expect.objectContaining({ revision: 1, source: 'create' }),
+      expect.objectContaining({ revision: 2, source: 'editor' }),
+    ])
+  })
+
+  it('flushes recents on close for a workspace saved outside the managed directory', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const outsideRoot = await mkdtemp(path.join(os.tmpdir(), 'ark-outside-'))
+    const outsidePath = path.join(outsideRoot, 'External.ark')
+
+    try {
+      const saved = await workspaces.move(created.id, outsidePath)
+      const recentsPath = path.join(root, 'recent-workspaces.json')
+      const before = await readFile(recentsPath, 'utf8')
+
+      const updated = await workspaces.updateDocument(
+        saved.id,
+        html.replace('Hello', 'Outside'),
+        saved.documentRevision,
+      )
+
+      expect(updated?.path).toBe(outsidePath)
+      expect(await readFile(recentsPath, 'utf8')).toBe(before)
+
+      workspaces.close()
+      store = createWorkspaceStore(root)
+      await expect(store.listRecent()).resolves.toEqual([
+        expect.objectContaining({
+          id: saved.id,
+          path: outsidePath,
+          updatedAt: updated?.updatedAt,
+        }),
+      ])
+    } finally {
+      await rm(outsideRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('still persists recents when a document update changes the title', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    const recentsPath = path.join(root, 'recent-workspaces.json')
+    const before = await readFile(recentsPath, 'utf8')
+
+    const updated = await workspaces.updateDocument(
+      created.id,
+      html.replace('<title>Workspace</title>', '<title>Board plan</title>'),
+      1,
+    )
+
+    expect(updated?.title).toBe('Board plan')
+    expect(await readFile(recentsPath, 'utf8')).not.toBe(before)
+    await expect(workspaces.listRecent()).resolves.toEqual([
+      expect.objectContaining({ id: created.id, title: 'Board plan', path: updated?.path }),
+    ])
   })
 
   it('renames the managed file when an agent-established title changes', async () => {
@@ -540,6 +627,45 @@ describe('WorkspaceStore file operations', () => {
     await copyFile(created.path, copiedPath)
 
     await expect(workspaces.open(copiedPath)).rejects.toThrow(created.path)
+  })
+
+  it('keeps a persist rollback journal only while the workspace is open', async () => {
+    const workspaces = await setup()
+    const created = await workspaces.create(html)
+    await workspaces.updateDocument(created.id, html.replace('Hello', 'Edited'), 1)
+
+    const journalPath = `${created.path}-journal`
+    await expect(access(journalPath)).resolves.toBeUndefined()
+
+    const database = await workspaces.database(created.id)
+    expect(database?.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'persist' })
+
+    workspaces.close()
+    await expect(access(journalPath)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('still closes every workspace if the rollback journal cannot be unlinked', async () => {
+    const workspaces = await setup()
+    const first = await workspaces.create(html)
+    const second = await workspaces.create(html.replace('Hello', 'Second'))
+    await workspaces.updateDocument(first.id, html.replace('Hello', 'Edited'), 1)
+
+    const journalPath = `${first.path}-journal`
+    await rm(journalPath)
+    await mkdir(journalPath)
+    await writeFile(path.join(journalPath, 'blocker'), 'blocked')
+
+    expect(() => workspaces.close()).not.toThrow()
+
+    store = createWorkspaceStore(root)
+    await expect(store.get(second.id)).resolves.toMatchObject({
+      html: expect.stringContaining('Second'),
+    })
+
+    await rm(journalPath, { recursive: true, force: true })
+    await expect(store.get(first.id)).resolves.toMatchObject({
+      html: expect.stringContaining('Edited'),
+    })
   })
 
   it('garbage-collects document-orphaned assets and blobs on save', async () => {
@@ -929,8 +1055,10 @@ describe('WorkspaceStore document history', () => {
       }),
     ])
 
-    // Save As uses sqlite backup() (Node 24 / Electron). journal_mode=DELETE
-    // means a closed-file copy is the same bytes, including document_history.
+    // Save As uses sqlite backup() (Node 24 / Electron). journal_mode=PERSIST
+    // still commits into the main file (not WAL), so a closed-file copy is the
+    // complete database, including document_history. The leftover rollback
+    // journal is invalidated and removed when the connection closes.
     workspaces.close()
     const savedPath = path.join(root, 'Saved.ark')
     await copyFile(sourcePath, savedPath)
