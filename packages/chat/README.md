@@ -3,7 +3,8 @@
 **One job:** the conversation model — what a chat message, an agent step, a generation job, an
 agent question, and a theme proposal _are_.
 
-Layer 2. May import `@ark/runtime-registry`, `@ark/deck`, and `@ark/ai`. Browser-safe.
+Layer 2. May import `@ark/runtime-registry`, `@ark/deck`, and `@ark/ai`. Browser-safe. The public
+entry is `@ark/chat` (`index.ts`); deep imports remain supported.
 
 This is deliberately not part of `@ark/agent`. The renderer renders these shapes, `@ark/storage`
 persists them, `@ark/contracts` puts them on the wire, and the agent runtime produces them — so the

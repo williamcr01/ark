@@ -3,7 +3,8 @@
 **One job:** turning a deck document into something safe to render in the preview frame, and
 carrying the shell ↔ frame conversation while it is rendered.
 
-Layer 2. May import `@ark/deck`, `@ark/editor-runtime`, `@ark/runtime-registry`. Browser-safe.
+Layer 3. May import `@ark/deck`, `@ark/editor-runtime`, `@ark/runtime-registry`. Browser-safe.
+The public entry is `@ark/deck-preview` (`index.ts`); deep imports remain supported.
 
 | Module              | Responsibility                                                       |
 | ------------------- | -------------------------------------------------------------------- |

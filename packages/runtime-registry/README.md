@@ -4,7 +4,8 @@
 version. Nothing outside this package decides what is approved.
 
 Layer 0 — the bottom of the stack. Imports no other workspace package. Browser-safe, except
-`runtime-stylesheet-disk.ts`, whose name marks it as the Node-side reader.
+`runtime-stylesheet-disk.ts`, whose name marks it as the Node-side reader. The public entry is
+`@ark/runtime-registry` (`index.ts`); deep imports remain supported.
 
 | Module                          | Responsibility                                                   |
 | ------------------------------- | ---------------------------------------------------------------- |

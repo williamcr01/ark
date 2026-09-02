@@ -6,7 +6,7 @@
 import { deckResponseSchema, parseRequestBody } from '@ark/contracts'
 ```
 
-Do not import individual files such as `@ark/contracts/decks.ts` from application code — only modules inside `packages/contracts/` may import each other directly.
+Do not import individual files such as `@ark/contracts/decks.ts` from application code — only modules inside `packages/contracts/` may import each other directly. Deep imports remain supported in this change; collapsing them is a follow-up.
 
 The contracts layer depends on **Zod** and browser-safe shared helpers only (`@ark/deck`,
 `@ark/ai`, `@ark/chat`, `@ark/runtime-registry`). It must not import React, Express, Node

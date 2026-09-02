@@ -4,6 +4,7 @@
 
 Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. **Server-only:** it reads OOXML zips
 with JSZip and jsdom, so the renderer must not import it. The local API owns the HTTP surface.
+The public entry is `@ark/deck-import` (`index.ts`); deep imports remain supported.
 
 Conversion stays on the machine. There is no commercial cloud convert. Round-trip identity with
 PPTX export is not required.

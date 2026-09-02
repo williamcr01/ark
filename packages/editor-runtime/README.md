@@ -3,7 +3,8 @@
 **One job:** the manual editor — the protocol the shell and the deck frame speak, and the script
 that runs inside the frame to implement it.
 
-Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. Browser-safe.
+Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. Browser-safe. The public entry is
+`@ark/editor-runtime` (`index.ts`); deep imports remain supported.
 
 ```
 protocol/      message-types.ts  the wire identifiers

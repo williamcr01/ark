@@ -3,9 +3,10 @@
 **One job:** running a deck generation. One user message becomes one agent run: as many
 model/tool steps as it takes, then a deck update and an assistant summary.
 
-Layer 5 — the top of the package stack, below the apps. It speaks both the domain packages and
+Layer 6 — the top of the package stack, below the apps. It speaks both the domain packages and
 the wire (`@ark/contracts`), because a job runner is handed an HTTP request shape and returns an
-HTTP response shape. Server-only.
+HTTP response shape. Server-only. The public entry is `@ark/agent` (`index.ts`); deep imports
+remain supported.
 
 | Module            | Responsibility                                                        |
 | ----------------- | --------------------------------------------------------------------- |

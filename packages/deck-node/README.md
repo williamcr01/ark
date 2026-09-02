@@ -5,7 +5,8 @@ patch apply that construct a `Document` from a string live here.
 
 Layer 2. May import `@ark/deck`, `@ark/runtime-registry`, `@ark/telemetry`, `jsdom`, and `node:*`.
 **Server-only:** the renderer must not import it. Use `@ark/deck` document/patch helpers with the
-browser `DOMParser` instead.
+browser `DOMParser` instead. The public entry is `@ark/deck-node` (`index.ts`); deep imports remain
+supported.
 
 ```
 document/   parse HTML         parser (parseDeckHtml → JSDOM → parseDeckDocument),

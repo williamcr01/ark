@@ -3,6 +3,7 @@
 **One job:** structured logging, secret redaction, request correlation, and timing.
 
 Layer 0. Imports nothing from other workspace packages. Server-only (`node:crypto`).
+The public entry is `@ark/telemetry` (`index.ts`); deep imports remain supported.
 
 | Module          | Responsibility                                                  |
 | --------------- | --------------------------------------------------------------- |

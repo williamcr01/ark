@@ -3,8 +3,9 @@
 **One job:** exposing Ark's deck tools to external agents over MCP, and routing their calls into
 the deck the user is actually looking at.
 
-Layer 5. Depends on `@ark/agent` for the tool implementations and schemas. Server-only.
+Layer 7. Depends on `@ark/agent` for the tool implementations and schemas. Server-only.
 `apps/mcp` (`@ark/mcp-server`) is the stdio executable that serves this over the wire.
+The public entry is `@ark/mcp` (`index.ts`); deep imports remain supported.
 
 | Module            | Responsibility                                               |
 | ----------------- | ------------------------------------------------------------ |
