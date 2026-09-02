@@ -44,6 +44,40 @@ export const mcpSetupCommandsSchema = z.object({
 
 export type McpSetupCommands = z.infer<typeof mcpSetupCommandsSchema>
 
+export const MCP_CLIENT_IDS = [
+  'codex',
+  'claudeCode',
+  'grok',
+  'cursor',
+  'openCode',
+  'devinCli',
+] as const
+
+export const mcpClientIdSchema = z.enum(MCP_CLIENT_IDS)
+
+export type McpClientId = z.infer<typeof mcpClientIdSchema>
+
+export const mcpClientInstallationStatusSchema = z.enum([
+  'notInstalled',
+  'installed',
+  'needsUpdate',
+  'unavailable',
+])
+
+export type McpClientInstallationStatus = z.infer<typeof mcpClientInstallationStatusSchema>
+
+export const mcpClientInstallationSchema = z.object({
+  clientId: mcpClientIdSchema,
+  status: mcpClientInstallationStatusSchema,
+  error: z.string().min(1).max(1_000).optional(),
+})
+
+export type McpClientInstallation = z.infer<typeof mcpClientInstallationSchema>
+
+export const mcpClientInstallationsSchema = z.array(mcpClientInstallationSchema)
+
+export type McpClientInstallations = z.infer<typeof mcpClientInstallationsSchema>
+
 export const mcpInteractionStatusSchema = z.enum([
   'pending',
   'answered',

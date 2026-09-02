@@ -12,6 +12,7 @@ import electronUpdater from 'electron-updater'
 
 import {
   isValidDeckId,
+  mcpClientIdSchema,
   mcpInteractionAnswerSchema,
   providerIdSchema,
   type ProviderId,
@@ -163,6 +164,16 @@ export function registerIpcHandlers(deps: IpcDependencies) {
     return mcpInteractionStore.cancel(id)
   })
   ipcMain.handle('mcp:get-setup-commands', () => getMcpManager().getSetupCommands())
+  ipcMain.handle('mcp:get-client-installations', () => getMcpManager().getClientInstallations())
+  ipcMain.handle('mcp:add-client', (_event, clientId) =>
+    getMcpManager().addClient(mcpClientIdSchema.parse(clientId)),
+  )
+  ipcMain.handle('mcp:remove-client', (_event, clientId) =>
+    getMcpManager().removeClient(mcpClientIdSchema.parse(clientId)),
+  )
+  ipcMain.handle('mcp:update-client', (_event, clientId) =>
+    getMcpManager().updateClient(mcpClientIdSchema.parse(clientId)),
+  )
   ipcMain.handle('mcp:copy-setup-command', (_event, command) => {
     if (
       typeof command !== 'string' ||

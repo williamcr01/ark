@@ -14,6 +14,6 @@ export default defineConfig({
     },
   },
   ssr: {
-    noExternal: [/^@ark\//, /^@modelcontextprotocol\//],
+    noExternal: [/^@ark\//, /^@modelcontextprotocol\//, 'jsonc-parser'],
   },
 })
