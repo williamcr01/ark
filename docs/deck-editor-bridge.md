@@ -4,13 +4,13 @@ Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The sh
 
 See [deck-preview-orchestration.md](./deck-preview-orchestration.md) for the
 shell-side ownership and state-transition table. The private editor port stays
-inside `useDeckEditorBridge`; extracted source and shortcut hooks cannot post
+inside `useEditorBridgePort`; extracted source and shortcut hooks cannot post
 bridge messages or authorize persistence.
 
 Authenticated editor events are persisted by
-`useDeckEditorPatchCoordinator`. That hook owns event deduplication, transform
+`useEditorPatchQueue` and `useEditorDragCommit` (composed by `useDeckEditorPatchCoordinator`). Those hooks own event deduplication, transform
 baselines, pending-transform serialization, stable-ID reselection, and
-live-patch rollback, but receives events only after `useDeckEditorBridge` has
+live-patch rollback, but receive events only after `useDeckEditorBridge` has
 accepted them through the private port. Server-side element patch validation
 remains authoritative.
 
@@ -243,7 +243,7 @@ After acknowledgement, the shell ignores public `ark:editor-*` runtime payloads 
 ### Stale-frame and forged messages
 
 - **Capability channel:** routine editor traffic is accepted only on the authenticated per-preview port.
-- **Generation guard:** `useDeckEditorBridge` tags each iframe load with `iframeGenerationKey`, closes the prior port, and drops stale messages.
+- **Generation guard:** `useEditorBridgePort` tags each iframe load with `iframeGenerationKey`, closes the prior port, and drops stale messages.
 - **Source/origin guards:** public bootstrap messages not originating from the current preview `contentWindow` and configured sandbox origin are dropped.
 - **Shape guard:** only payloads passing `isEditorRuntimeMessage` / `isEditorShellMessage` are handled; unknown `ark:editor-*` types are ignored.
 - **Authoritative patch guard:** the API resolves targets against persisted source HTML and rechecks editable metadata, unsafe tags, locks, allowed attributes/styles, and numeric bounds.
@@ -317,18 +317,19 @@ Transforms, inserts, duplicates, deletes, inspector changes, and layer changes f
 
 ## Shell integration
 
-| Component / module                                         | Role                                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `apps/desktop/src/components/DeckPreview.tsx`              | Always-on edit chrome, text commit orchestration, overlay, keyboard shortcuts |
-| `apps/desktop/src/hooks/useDeckEditorBridge.ts`            | Authenticated port bootstrap, runtime listener, and shell command helpers     |
-| `apps/desktop/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                                    |
-| `apps/desktop/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                                 |
-| `apps/desktop/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                                        |
-| `apps/desktop/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel                 |
-| `apps/desktop/src/lib/deck-text-edit.ts`                   | `isTextEditableSelection` guard for inline text                               |
-| `packages/deck-preview/preview-html.ts`                    | Injects editor runtime when `editorBridge: true`                              |
-| `packages/deck/patch/element-patch.ts`                     | Server-side patch application and validation                                  |
-| `packages/deck/patch/editable-elements.ts`                 | Editable metadata parsing (#74)                                               |
+| Component / module                                         | Role                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------- |
+| `apps/desktop/src/components/DeckPreview.tsx`              | Compose frame, editor layer, and chrome                       |
+| `apps/desktop/src/hooks/useEditorBridgePort.ts`            | Authenticated port bootstrap and shell command helpers        |
+| `apps/desktop/src/hooks/useEditorBridgeMessages.ts`        | Runtime message dispatch into overlay state                   |
+| `apps/desktop/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                    |
+| `apps/desktop/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                 |
+| `apps/desktop/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                        |
+| `apps/desktop/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel |
+| `apps/desktop/src/lib/editor/deck-text-edit.ts`            | `isTextEditableSelection` guard for inline text               |
+| `packages/deck-preview/preview-html.ts`                    | Injects editor runtime when `editorBridge: true`              |
+| `packages/deck/patch/element-patch.ts`                     | Server-side patch application and validation                  |
+| `packages/deck/patch/editable-elements.ts`                 | Editable metadata parsing (#74)                               |
 
 Preview sessions record `editorBridge` so the sandbox host serves HTML with the editor script only when requested (`POST /api/preview-sessions` with `editorBridge: true`).
 
