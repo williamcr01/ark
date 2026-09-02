@@ -2,6 +2,7 @@ import type { RefObject } from 'react'
 
 import { DeckPreviewStrip } from '@/components/DeckPreviewStrip'
 import type { DeckEditorLayerModel } from '@/hooks/useDeckEditorLayer'
+import type { DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
 import { cn } from '@/lib/ui/utils'
 import type { DeckBrowserAnalysis } from '@/lib/deck/deck-analysis'
 
@@ -31,7 +32,10 @@ export function DeckPreviewView({
   analysis: DeckBrowserAnalysis
   chromeHost?: HTMLElement | null
   editorBridgeEnabled: boolean
-  handleReorderSlide: (fromIndex: number, toIndex: number) => Promise<unknown>
+  handleReorderSlide: (
+    fromIndex: number,
+    toIndex: number,
+  ) => Promise<DeckPreviewPatchResult | undefined>
   hasDeck: boolean
   imageInputRef: RefObject<HTMLInputElement | null>
   layer: DeckEditorLayerModel

@@ -97,7 +97,7 @@ function flushMovePointer(
 
   if (runtime.transformState!.members && runtime.transformState!.members.length > 1) {
     runtime.transformState!.lastGeometry = applyGroupMove(
-      runtime.transformState,
+      runtime.transformState!,
       slide,
       snapped.rect,
       true,
@@ -184,7 +184,16 @@ export function flushTransformPointer(slide: HTMLElement) {
   }
 
   if (runtime.transformState!.kind === 'move' && runtime.transformState!.element) {
-    flushMovePointer(slide, pointer, cache)
+    flushMovePointer(
+      slide,
+      {
+        clientX: pointer.clientX,
+        clientY: pointer.clientY,
+        shiftKey: pointer.shiftKey ?? false,
+        altKey: pointer.altKey ?? false,
+      },
+      cache,
+    )
     return
   }
 

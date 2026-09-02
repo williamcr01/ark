@@ -52,7 +52,12 @@ export function useGenerationOutcomeRecovery(args: {
 
     void (async () => {
       const outcome = await resumeStoredJob()
-      await recoverStoredGenerationOutcome(outcome, cancelled, recoveredJobIdsRef.current, recovery)
+      await recoverStoredGenerationOutcome(
+        outcome ?? null,
+        cancelled,
+        recoveredJobIdsRef.current,
+        recovery,
+      )
     })()
 
     return () => {

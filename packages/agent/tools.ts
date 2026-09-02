@@ -4,6 +4,7 @@ import type { DeckWorkspace } from './workspace.ts'
 import { createInspectDeckTools } from './tools/inspect.ts'
 import { createInteractionDeckTools } from './tools/interact.ts'
 import { createMutateDeckTools } from './tools/mutate.ts'
+import type { DeckAttachmentInspector } from './tools/helpers.ts'
 export type { DeckAttachmentInspector, DeckAttachmentSummary } from './tools/helpers.ts'
 
 export function createDeckTools(

@@ -12,10 +12,15 @@ import {
   readThumbnailPng,
   resolveThumbnailStatus,
   type ThumbnailEnqueueInput,
+  type ThumbnailStatusInput,
   type ThumbnailStatusResult,
 } from './service-status.ts'
 
-export type { ThumbnailEnqueueInput, ThumbnailStatusResult } from './service-status.ts'
+export type {
+  ThumbnailEnqueueInput,
+  ThumbnailStatusInput,
+  ThumbnailStatusResult,
+} from './service-status.ts'
 
 export function thumbnailManifestHash(html: string) {
   return hashRuntimeManifest(buildDeckRuntimeManifestFromHtml(html))

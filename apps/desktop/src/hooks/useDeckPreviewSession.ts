@@ -15,24 +15,20 @@ import {
 } from '@/hooks/usePreviewBridgeSession'
 import { useDeckPreviewRuntimeError } from '@/hooks/useDeckPreviewRuntimeError'
 import { useDeckPreviewPresent } from '@/hooks/useDeckPreviewPresent'
-import { useChatStore } from '@/state/chat-store.ts'
+import { useChatStore, type ChatStore } from '@/state/chat-store.ts'
 import { useDeckStore } from '@/state/deck-store.ts'
 
-const recentGenerationJobIdSelector =
-  (documentRevision: number | null) =>
-  (state: {
-    activeJob: { status: string; id: string; result?: { documentRevision?: number } } | null
-  }) => {
-    const job = state.activeJob
-    if (
-      job?.status === 'succeeded' &&
-      documentRevision !== null &&
-      job.result?.documentRevision === documentRevision
-    ) {
-      return job.id
-    }
-    return null
+const recentGenerationJobIdSelector = (documentRevision: number | null) => (state: ChatStore) => {
+  const job = state.activeJob
+  if (
+    job?.status === 'succeeded' &&
+    documentRevision !== null &&
+    job.result?.documentRevision === documentRevision
+  ) {
+    return job.id
   }
+  return null
+}
 
 function dispatchQueuedSlidePatch(
   patch: DeckSlidePatch,

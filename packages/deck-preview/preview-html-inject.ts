@@ -5,6 +5,7 @@ import {
   getDeckRuntimeCsp,
   getRuntimeCsp,
   toAbsoluteRuntimeAssetSource,
+  type DeckRuntimeMode,
 } from '@ark/runtime-registry/deck-runtime.ts'
 import { findSlideElements, stripHostileNavigationFromHtml } from './preview-slides.ts'
 import {

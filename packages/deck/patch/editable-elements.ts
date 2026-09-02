@@ -6,6 +6,7 @@ import {
   TEXT_TAGS,
   UNSAFE_TAGS,
   hasDirectText,
+  isRuntimeControl,
   isSpeakerNotesElement,
 } from './editable-element-style.ts'
 

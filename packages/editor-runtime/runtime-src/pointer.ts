@@ -1,9 +1,17 @@
 import './constants.ts'
-import { clearEditorOverlays, clearGuides, clearMarquee, setHoverCursor } from './chrome.ts'
+import {
+  clearEditorOverlays,
+  clearGuides,
+  clearMarquee,
+  postSelection,
+  setHoverCursor,
+  setSelectedElement,
+} from './chrome.ts'
 import { getTextEditTarget, isTextBox, normalizeRect, normalizeSlideBounds } from './geometry.ts'
 import { cancelTransform } from './keyboard.ts'
 import { postToParent } from './port.ts'
 import {
+  findEditableTarget,
   getActiveSlide,
   isEditableCandidate,
   isTextEditableTag,
@@ -13,7 +21,7 @@ import { finishTextBoxDraw, pointerFromCache } from './snap.ts'
 import { runtime } from './state.ts'
 import { detectSurface } from './surface.ts'
 import { startTextEditOnElement } from './text-edit.ts'
-import { commitGroupMove, restoreTransformMembers } from './transform.ts'
+import { applyTransform, commitGroupMove, restoreTransformMembers } from './transform.ts'
 import type { PendingPointer } from './types.ts'
 import {
   cancelTransformRaf,

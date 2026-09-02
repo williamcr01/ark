@@ -1,4 +1,4 @@
-import { hasToolCall, isLoopFinished, streamText, type LanguageModel } from 'ai'
+import { hasToolCall, isLoopFinished, streamText, type LanguageModel, type ModelMessage } from 'ai'
 
 import type { AgentStep, ChatMessagePart } from '@ark/chat/messages.ts'
 import {
@@ -6,6 +6,13 @@ import {
   buildCachedSystemPrompt,
 } from '@ark/ai/prompt-cache-options.ts'
 import { createThinkingProgressReporter, type ThinkingProgressReporter } from './agent-progress.ts'
+import {
+  extractAgentSteps,
+  extractAgentTranscriptParts,
+  extractThinkingText,
+  type ExtractableAgentStep,
+} from './agent-steps.ts'
+import type { DeckToolDefinition } from './tool-catalog.ts'
 
 /** Stop only after a successful pause tool (failed propose_themes can retry in-loop). */
 export function hasAwaitingUserToolResult(toolName: string) {
@@ -29,13 +36,6 @@ export function hasAwaitingUserToolResult(toolName: string) {
     )
   }
 }
-import {
-  extractAgentSteps,
-  extractAgentTranscriptParts,
-  extractThinkingText,
-  type ExtractableAgentStep,
-} from './agent-steps.ts'
-import type { DeckToolDefinition } from './tool-catalog.ts'
 
 export function throwIfAborted(abortSignal?: AbortSignal) {
   if (abortSignal?.aborted) {
@@ -49,7 +49,7 @@ export type StreamDeckAgentInput = {
   model: LanguageModel
   provider: string
   tools: DeckAgentStreamTools
-  modelMessages: Parameters<typeof streamText>[0]['messages']
+  modelMessages: ModelMessage[]
   reasoningEffort?: string
   providerOptions?: Parameters<typeof streamText>[0]['providerOptions']
   abortSignal?: AbortSignal
@@ -60,11 +60,13 @@ export type StreamDeckAgentInput = {
   systemPrompt: string
 }
 
+type StreamTextResult = ReturnType<typeof streamText>
+
 export type StreamDeckAgentOutput = {
   text: string
-  steps: Awaited<ReturnType<ReturnType<typeof streamText>['steps']>>
-  totalUsage: Awaited<ReturnType<ReturnType<typeof streamText>['totalUsage']>>
-  finishReason: Awaited<ReturnType<ReturnType<typeof streamText>['finishReason']>>
+  steps: Awaited<StreamTextResult['steps']>
+  totalUsage: Awaited<StreamTextResult['totalUsage']>
+  finishReason: Awaited<StreamTextResult['finishReason']>
 }
 
 async function onDeckAgentStepFinish(input: {

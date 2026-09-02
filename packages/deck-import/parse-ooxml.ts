@@ -4,7 +4,7 @@ import { DEFAULT_DECK_FONT_IDS } from '@ark/runtime-registry/deck-font-registry.
 
 import { assertPptxBytes } from './detect.ts'
 import { PPTX_ENCRYPTED_MESSAGE, PPTX_INVALID_MESSAGE, PptxImportError } from './errors.ts'
-import type { ImportedPresentation, ImportedSlide } from './types.ts'
+import type { ImportedObject, ImportedPresentation, ImportedSlide } from './types.ts'
 import {
   attrNS,
   descendant,
