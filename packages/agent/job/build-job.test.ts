@@ -83,7 +83,6 @@ describe('buildStartJobInput', () => {
       body: {
         deckId: deck.id,
         currentHtml: SAMPLE_HTML,
-        editingExistingDeck: true,
         messages: [{ role: 'user', content: 'Make slides' }],
       },
       defaultModel: 'openai:gpt-test',

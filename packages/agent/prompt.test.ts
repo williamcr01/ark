@@ -17,26 +17,30 @@ const sampleAttachment = {
   url: 'data:image/png;base64,AAAA',
 }
 
-const toolStep = (stepIndex: number, id: string, summary: string, error = false) =>
-  [
-    {
-      type: 'tool-call',
-      toolName: 'read_deck',
-      summary,
-      stepIndex,
-      toolCallId: id,
-      input: { offset: stepIndex + 1, padding: 'x'.repeat(900) },
-    },
-    {
-      type: 'tool-result',
-      toolName: 'read_deck',
-      summary: error ? 'read failed' : `slide ${stepIndex}`,
-      stepIndex,
-      toolCallId: id,
-      output: error ? { error: 'read failed' } : { title: `Slide ${stepIndex}` },
-      isError: error,
-    },
-  ] satisfies ChatMessagePart[]
+const toolStep = (
+  stepIndex: number,
+  id: string,
+  summary: string,
+  error = false,
+): ChatMessagePart[] => [
+  {
+    type: 'tool-call',
+    toolName: 'read_deck',
+    summary,
+    stepIndex,
+    toolCallId: id,
+    input: { offset: stepIndex + 1, padding: 'x'.repeat(900) },
+  },
+  {
+    type: 'tool-result',
+    toolName: 'read_deck',
+    summary: error ? 'read failed' : `slide ${stepIndex}`,
+    stepIndex,
+    toolCallId: id,
+    output: error ? { error: 'read failed' } : { title: `Slide ${stepIndex}` },
+    isError: error,
+  },
+]
 
 describe('buildAgentModelMessages', () => {
   it('does not embed full HTML in the latest user turn', () => {
