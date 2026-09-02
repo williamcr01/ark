@@ -100,7 +100,7 @@ export const resolveSelectedModel = (
 
   const defaultEntry = models.find((model) => model.id === defaultModel)
   if (defaultEntry?.available) {
-    return defaultModel
+    return defaultEntry.id
   }
 
   return pickAvailableFallbackModel(models) ?? stored ?? defaultEntry?.id ?? ''

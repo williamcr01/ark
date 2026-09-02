@@ -22,6 +22,7 @@ const healthResponse = {
     openai: { configured: true },
     anthropic: { configured: false },
     google: { configured: false },
+    openrouter: { configured: false },
   },
   preview: {
     sandboxOrigin: 'http://localhost:5174',
