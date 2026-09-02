@@ -104,6 +104,7 @@ module there.
 - Colocate component styles (CSS modules or co-located `.css` files) — match existing patterns in the file you edit.
 - Keep the shell thin: presentation rendering lives in HTML files, not in React components.
 - Prefer extracting reusable logic into hooks under `src/hooks/`.
+- Domain state lives in `src/state/` (zustand stores: state + synchronous reducers only). Effects, API calls, and orchestration stay in `src/hooks/`.
 - Run `pnpm lint` after substantive changes.
 - Always run `pnpm format` before committing; CI enforces `pnpm format:check`.
 - CI runs `quality` (lockfile/lint/format/audit/openapi), `build`, `test`, and `smoke` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
