@@ -5,8 +5,9 @@ Implementation plan for [issue #275](https://github.com/williamcr01/ark/issues/2
 ## Status
 
 Implemented. This document describes the first production scope and its implementation. The
-first release lets Codex, Claude Code, and other local MCP clients edit the presentation currently
-open in Ark. Opening existing presentations and creating new ones through MCP are follow-ups.
+first release lets Codex, Claude Code, Grok, Cursor, OpenCode, Devin CLI, and other local MCP
+clients edit the presentation currently open in Ark. Devin is the local CLI only, not Devin Cloud.
+Opening existing presentations and creating new ones through MCP are follow-ups.
 
 ## Product behavior
 
@@ -15,17 +16,18 @@ Ark exposes an **External agents (MCP)** control in the deck toolbar and in Sett
 When a deck is open, the user can:
 
 1. Select **Start MCP server**.
-2. Copy a generated setup command for Codex or Claude Code.
+2. Select **Add**, **Update**, or **Remove** for Codex, Claude Code, Grok, Cursor, OpenCode, or
+   Devin CLI. Those buttons call Electron IPC and write client config only on click.
 3. Ask that client to edit the presentation currently visible in Ark.
 4. Watch the preview and thumbnails update after each successful MCP edit.
 5. Select **Stop MCP server** to revoke access.
 
-Settings also contains **Start MCP server when Ark opens**. It is off by default. Manual start is
+Settings also contains **Start automatically when Ark opens**. It is off by default. Manual start is
 session-only; automatic start persists as a desktop setting.
 
-The external conversation remains in Codex or Claude Code. Ark shows connection and tool activity,
-but does not copy the external conversation into Ark chat. The external client uses its own account
-and authentication, so Ark provider API keys are not required.
+The external conversation remains in the MCP client. Ark shows connection and tool activity, but
+does not copy the external conversation into Ark chat. The external client uses its own account and
+authentication, so Ark provider API keys are not required.
 
 ### Proposed UI states
 
@@ -33,7 +35,8 @@ Stopped:
 
 ```text
 External agents (MCP)
-Let Codex or Claude Code edit the presentation currently open in Ark.
+Let Codex, Claude Code, Grok, Cursor, OpenCode, or Devin CLI edit the
+presentation currently open in Ark.
 
 Status: Stopped
 [ Start MCP server ]
@@ -47,25 +50,23 @@ Running:
 External agents (MCP)
 
 Status: Running
-Sharing: Quarterly Review
-Last activity: Codex patched 2 slides
 
 [ Stop MCP server ]
 
 [x] Start automatically when Ark opens
 
-Codex
-codex mcp add ark -- "/path/to/Ark" --headless --mcp
-[ Copy command ]
-
-Claude Code
-claude mcp add --transport stdio --scope user ark -- "/path/to/Ark" --headless --mcp
-[ Copy command ]
+Codex          Not installed   [ Add ]
+Claude Code    Installed       [ Remove ]
+Grok           Needs update    [ Update ] [ Remove ]
+Cursor         Unavailable     [ Add disabled ]
+  Install the Cursor CLI.
+OpenCode       Not installed   [ Add ]
+Devin CLI      Installed       [ Remove ]
 ```
 
-Ark generates an absolute, platform-correct executable path. The commands are examples, not
-hard-coded strings. The setup command is needed once; starting or stopping the service later does
-not modify client configuration.
+Opening Settings only reads installation status. Add, Update, and Remove write the matching client
+config. Unavailable rows show the error under the row and keep actions disabled. Copy-paste setup
+commands remain available from Electron (`getSetupCommands`) as a fallback, not as Settings UX.
 
 The deck toolbar should show a small status indicator while MCP is enabled. Settings owns the
 autostart preference and detailed status. The toolbar control remains the fastest contextual entry
@@ -374,21 +375,26 @@ type McpDesktopApi = {
   setAutoStart(enabled: boolean): Promise<McpStatus>
   setActiveDeck(deckId: string | null): Promise<void>
   getSetupCommands(): Promise<{ codex: string; claudeCode: string }>
+  getClientInstallations(): Promise<McpClientInstallation[]>
+  addClient(clientId: McpClientId): Promise<McpClientInstallation>
+  removeClient(clientId: McpClientId): Promise<McpClientInstallation>
+  updateClient(clientId: McpClientId): Promise<McpClientInstallation>
   onStatusChanged(listener: (status: McpStatus) => void): () => void
   onDeckUpdated(listener: (update: ExternalDeckUpdate) => void): () => void
 }
 ```
 
-Exact types belong in shared contracts where they cross the renderer/main boundary. Do not expose
-the API origin or session capability through this interface.
+`McpClientId` is `codex | claudeCode | grok | cursor | openCode | devinCli`. Installation status is
+`notInstalled | installed | needsUpdate | unavailable`. Exact types belong in shared contracts
+where they cross the renderer/main boundary. Do not expose the API origin or session capability
+through this interface.
 
 The settings store gains one durable boolean, defaulting to false. Running state, active deck,
 clients, token, origin, and activity are process-local state.
 
-The UI should initially provide copy buttons rather than modifying third-party configuration files
-directly. A later one-click installer may invoke the official `codex mcp add` and `claude mcp add`
-commands with argument arrays and `shell: false`; it should still keep copyable commands as the
-fallback.
+Settings rows call `addClient` / `removeClient` / `updateClient` only on user click. Opening the
+section calls `getClientInstallations` (read-only). `getSetupCommands` remains for fallback docs
+and tests; it is not the Settings primary UX.
 
 ## Package and dependency shape
 
@@ -467,8 +473,8 @@ This phase is required before any MCP mutation is enabled.
 
 - Add the deck-toolbar entry and running indicator.
 - Add the Settings integration section and autostart toggle.
-- Expose status, start, stop, active-deck, commands, and update events through preload.
-- Generate and copy platform-specific Codex and Claude Code commands.
+- Expose status, start, stop, active-deck, client installations, and update events through preload.
+- Add/Remove/Update Codex, Claude Code, Grok, Cursor, OpenCode, and Devin CLI from Settings.
 - Show the shared deck title, connected client, last activity, and actionable errors.
 - Cover keyboard access, focus handling, screen-reader labels, and reduced-motion behavior.
 
@@ -487,7 +493,7 @@ The v1 feature is complete when:
 
 - A user can start and stop MCP from an open deck.
 - The autostart preference behaves consistently across restarts and defaults off.
-- The UI generates working Codex and Claude Code commands for each packaged platform.
+- Settings can Add, Update, and Remove the six local clients without copy-paste setup as the primary UX.
 - Users do not install Node.js, npm, or a second Ark package.
 - A configured client can connect after Ark restarts without changing its configuration.
 - Read tools operate only on the visible deck.
@@ -510,7 +516,7 @@ After active-deck editing is stable, add these independently:
 3. `create_deck` using Ark's normal workspace-location behavior.
 4. Attachment and asset tools scoped to the selected workspace.
 5. Persistent revision history and rollback tools.
-6. Optional one-click CLI setup/removal.
+6. Optional copy-paste setup commands in Settings (IPC still exposes `getSetupCommands`).
 7. Streamable HTTP only if a real non-local or URL-based client requirement appears.
 
 None of these should delay the first useful flow: start MCP, connect a local agent, and safely edit

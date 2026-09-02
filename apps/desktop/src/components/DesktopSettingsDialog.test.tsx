@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -163,7 +163,7 @@ describe('DesktopSettingsDialog', () => {
     expect(checkbox).toBeChecked()
   })
 
-  it('starts MCP and shows copyable client commands', async () => {
+  it('starts MCP and shows client Add/Remove/Update rows', async () => {
     const running = {
       state: 'running' as const,
       autoStart: false,
@@ -179,11 +179,18 @@ describe('DesktopSettingsDialog', () => {
       error: null,
     }
     window.arkDesktop.mcp.start = vi.fn().mockResolvedValue(running)
-    window.arkDesktop.mcp.getSetupCommands = vi.fn().mockResolvedValue({
-      codex: 'codex mcp add ark -- "/path/to/Ark" --mcp',
-      claudeCode: 'claude mcp add --transport stdio --scope user ark -- "/path/to/Ark" --mcp',
+    window.arkDesktop.mcp.getClientInstallations = vi.fn().mockResolvedValue([
+      { clientId: 'codex', status: 'notInstalled' },
+      { clientId: 'claudeCode', status: 'installed' },
+      { clientId: 'grok', status: 'needsUpdate' },
+      { clientId: 'cursor', status: 'unavailable', error: 'Install the Cursor CLI.' },
+      { clientId: 'openCode', status: 'notInstalled' },
+      { clientId: 'devinCli', status: 'installed' },
+    ])
+    window.arkDesktop.mcp.addClient = vi.fn().mockResolvedValue({
+      clientId: 'codex',
+      status: 'installed',
     })
-    window.arkDesktop.mcp.copySetupCommand = vi.fn().mockResolvedValue(undefined)
 
     render(
       <DesktopSettingsDialog
@@ -195,28 +202,29 @@ describe('DesktopSettingsDialog', () => {
       />,
     )
     await switchTab('MCP')
+    await waitFor(() => {
+      expect(window.arkDesktop.mcp.getClientInstallations).toHaveBeenCalledOnce()
+    })
+    expect(window.arkDesktop.mcp.addClient).not.toHaveBeenCalled()
+    expect(window.arkDesktop.mcp.removeClient).not.toHaveBeenCalled()
+    expect(window.arkDesktop.mcp.updateClient).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Start MCP server' }))
 
     expect(window.arkDesktop.mcp.start).toHaveBeenCalledOnce()
-    expect(await screen.findByLabelText('Codex setup command')).toHaveValue(
-      'codex mcp add ark -- "/path/to/Ark" --mcp',
-    )
+    expect(await screen.findByRole('group', { name: 'Codex' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Claude Code' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Grok' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Cursor' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'OpenCode' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Devin CLI' })).toBeInTheDocument()
     expect(screen.queryByText(/Sharing:|e703d7b8/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/setup command/i)).not.toBeInTheDocument()
 
-    const copyButton = screen.getByRole('button', { name: 'Copy Codex setup command' })
-    vi.useFakeTimers()
-    await act(async () => {
-      fireEvent.click(copyButton)
-      await Promise.resolve()
-    })
-
-    expect(window.arkDesktop.mcp.copySetupCommand).toHaveBeenCalledWith(
-      'codex mcp add ark -- "/path/to/Ark" --mcp',
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Codex' })).getByRole('button', { name: 'Add' }),
     )
-    expect(copyButton).toHaveTextContent('Copied')
-
-    act(() => vi.advanceTimersByTime(5_000))
-    expect(copyButton).toHaveTextContent('Copy')
+    expect(window.arkDesktop.mcp.addClient).toHaveBeenCalledWith('codex')
+    expect(await screen.findByText('Codex installed.')).toBeInTheDocument()
   })
 
   it('saves and removes an OpenRouter key through the same credentials bridge', async () => {
