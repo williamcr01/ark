@@ -126,23 +126,29 @@ export function useAgentQuestionsFlow(
   }
 
   return {
-    customDraft,
-    handleConfirmCustom,
-    handleContinueMultiple,
-    handleContinueText,
-    handleSkip: () => recordAnswer(undefined, undefined, 'skipped'),
+    drafts: {
+      custom: customDraft,
+      multiple: multipleDraft,
+      text: textDraft,
+      writingCustom,
+    },
     goToStep,
-    multipleDraft,
+    handlers: {
+      confirmCustom: handleConfirmCustom,
+      continueMultiple: handleContinueMultiple,
+      continueText: handleContinueText,
+      recordAnswer,
+      skip: () => recordAnswer(undefined, undefined, 'skipped'),
+      toggleMultiple,
+    },
     question,
-    recordAnswer,
     records,
-    setCustomDraft,
-    setTextDraft,
-    setWritingCustom,
+    setters: {
+      custom: setCustomDraft,
+      text: setTextDraft,
+      writingCustom: setWritingCustom,
+    },
     stepIndex,
-    textDraft,
-    toggleMultiple,
-    writingCustom,
   }
 }
 

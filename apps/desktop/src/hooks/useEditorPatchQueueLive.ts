@@ -5,7 +5,8 @@ import type { DeckElementPatchOperation } from '@ark/deck/patch/patch-request.ts
 import type { DeckPreviewPatchResult } from '@/hooks/useDeckPreviewSource'
 
 import type { EditorPatchSession } from './useEditorPatchSession.ts'
-import { completeLivePatchResult, insertImageFromFile } from './editor-patch-queue-live.ts'
+import { completeLivePatchResult } from './editor-patch-queue-live.ts'
+import { useEditorPatchQueueLiveActions } from './useEditorPatchQueueLiveActions.ts'
 
 type PatchOperations = (
   operations: DeckElementPatchOperation[],
@@ -40,7 +41,7 @@ export function useEditorPatchQueueLive(options: {
     selection,
     session,
   } = options
-  const { pendingReselectRef, preserveSlideIndexRef, scopeGenerationRef } = session
+  const { pendingReselectRef, preserveSlideIndexRef } = session
 
   const scheduleReselect = useCallback(() => {
     if (!selection?.elementId) {
@@ -79,73 +80,21 @@ export function useEditorPatchQueueLive(options: {
     [finishLivePatch, finishLivePatchAndClearDeferred, onAssignElementId],
   )
 
-  const handleInspectorApply = useCallback(
-    (operations: DeckElementPatchOperation[], summary: string) => {
-      if (!selection || !onPatchEditorOperations || operations.length === 0) {
-        return
-      }
-
-      preserveSlideIndexRef.current = selection.slideIndex
-      scheduleReselect()
-      void onPatchEditorOperations(operations, selection.slideIndex, summary).catch(() => {
-        pendingReselectRef.current = null
-        preserveSlideIndexRef.current = null
-      })
-    },
-    [
-      onPatchEditorOperations,
-      pendingReselectRef,
-      preserveSlideIndexRef,
-      scheduleReselect,
-      selection,
-    ],
-  )
-
-  const duplicateElement = useCallback(
-    (elementId: string, slideIndex: number, slideId: string | null) =>
-      onPatchEditorOperations?.(
-        [
-          {
-            op: 'duplicate_element',
-            elementId,
-            slideIndex,
-            ...(slideId ? { slideId } : {}),
-          },
-        ],
-        slideIndex,
-        'Duplicated element in preview',
-      ),
-    [onPatchEditorOperations],
-  )
-
-  const handleInsertImageFile = useCallback(
-    async (file: File, position?: { x: number; y: number }) => {
-      await insertImageFromFile({
-        file,
-        position,
-        scopeKey,
-        scopeGenerationRef,
-        preserveSlideIndexRef,
-        activeSlideIndex,
-        onPatchEditorOperations,
-        onSelectTool,
-      })
-    },
-    [
-      activeSlideIndex,
-      onPatchEditorOperations,
-      onSelectTool,
-      preserveSlideIndexRef,
-      scopeGenerationRef,
-      scopeKey,
-    ],
-  )
+  const actions = useEditorPatchQueueLiveActions({
+    activeSlideIndex,
+    onPatchEditorOperations,
+    onSelectTool,
+    scopeKey,
+    selection,
+    session,
+    scheduleReselect,
+  })
 
   return {
     completeLivePatch,
-    duplicateElement,
-    handleInsertImageFile,
-    handleInspectorApply,
+    duplicateElement: actions.duplicateElement,
+    handleInsertImageFile: actions.handleInsertImageFile,
+    handleInspectorApply: actions.handleInspectorApply,
     scheduleReselect,
   }
 }

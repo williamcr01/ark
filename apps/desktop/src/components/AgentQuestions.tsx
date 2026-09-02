@@ -27,9 +27,9 @@ export function AgentQuestions({
   const advanceLabel = isLast ? submitLabel : 'Continue'
 
   useEffect(() => {
-    if (!question || flow.writingCustom || question.type === 'text') return
+    if (!question || flow.drafts.writingCustom || question.type === 'text') return
     panelRef.current?.focus()
-  }, [flow.writingCustom, flow.stepIndex, question])
+  }, [flow.drafts.writingCustom, flow.stepIndex, question])
 
   if (!question) return null
 
@@ -47,11 +47,12 @@ export function AgentQuestions({
   }>
 
   const canContinueMultiple =
-    flow.multipleDraft.length > 0 || (flow.writingCustom && Boolean(flow.customDraft.trim()))
+    flow.drafts.multiple.length > 0 ||
+    (flow.drafts.writingCustom && Boolean(flow.drafts.custom.trim()))
   const onTextKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      flow.handleContinueText()
+      flow.handlers.continueText()
     }
   }
 
@@ -62,13 +63,13 @@ export function AgentQuestions({
       onKeyDown={(event) =>
         handleAgentQuestionsPanelKeyDown(event, {
           disabled,
-          writingCustom: flow.writingCustom,
+          writingCustom: flow.drafts.writingCustom,
           question,
           records: flow.records,
-          setWritingCustom: flow.setWritingCustom,
-          setCustomDraft: flow.setCustomDraft,
-          toggleMultiple: flow.toggleMultiple,
-          recordAnswer: flow.recordAnswer,
+          setWritingCustom: flow.setters.writingCustom,
+          setCustomDraft: flow.setters.custom,
+          toggleMultiple: flow.handlers.toggleMultiple,
+          recordAnswer: flow.handlers.recordAnswer,
         })
       }
       ref={panelRef}
@@ -99,27 +100,27 @@ export function AgentQuestions({
       <AgentQuestionStep
         advanceLabel={advanceLabel}
         baseId={baseId}
-        canConfirmCustom={Boolean(flow.customDraft.trim())}
+        canConfirmCustom={Boolean(flow.drafts.custom.trim())}
         canContinueMultiple={canContinueMultiple}
-        canContinueText={Boolean(flow.textDraft.trim())}
-        customDraft={flow.customDraft}
+        canContinueText={Boolean(flow.drafts.text.trim())}
+        customDraft={flow.drafts.custom}
         disabled={disabled}
         key={question.id}
-        multipleDraftSet={new Set(flow.multipleDraft)}
-        onConfirmCustom={flow.handleConfirmCustom}
-        onContinueMultiple={flow.handleContinueMultiple}
-        onContinueText={flow.handleContinueText}
-        onSelectSingle={(option) => flow.recordAnswer(option)}
-        onSkip={flow.handleSkip}
+        multipleDraftSet={new Set(flow.drafts.multiple)}
+        onConfirmCustom={flow.handlers.confirmCustom}
+        onContinueMultiple={flow.handlers.continueMultiple}
+        onContinueText={flow.handlers.continueText}
+        onSelectSingle={(option) => flow.handlers.recordAnswer(option)}
+        onSkip={flow.handlers.skip}
         onTextKeyDown={onTextKeyDown}
-        onToggleMultiple={flow.toggleMultiple}
+        onToggleMultiple={flow.handlers.toggleMultiple}
         question={question}
         records={flow.records}
-        setCustomDraft={flow.setCustomDraft}
-        setTextDraft={flow.setTextDraft}
-        setWritingCustom={flow.setWritingCustom}
-        textDraft={flow.textDraft}
-        writingCustom={flow.writingCustom}
+        setCustomDraft={flow.setters.custom}
+        setTextDraft={flow.setters.text}
+        setWritingCustom={flow.setters.writingCustom}
+        textDraft={flow.drafts.text}
+        writingCustom={flow.drafts.writingCustom}
       />
     </div>
   )

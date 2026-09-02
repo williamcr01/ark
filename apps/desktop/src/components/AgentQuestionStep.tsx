@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { AgentQuestionOptionRow } from './AgentQuestionOptionRow.tsx'
 import type { AgentQuestionStepRecord } from './agent-questions-model.ts'
 
-export type AgentQuestionStepProps = {
+type AgentQuestionStepProps = {
   advanceLabel: string
   baseId: string
   canConfirmCustom: boolean
