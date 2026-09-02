@@ -11,9 +11,13 @@ import {
   parseEditableElementsForSlide,
   stampEditableElementIds,
 } from './editable-elements.ts'
+import { parseDeckDocument } from '../document/parser.ts'
 import { applyDeckPatches } from './slide-ops.ts'
-import { parseDeckHtml } from '../document/parser.ts'
 import { validateDeckHtmlOnServer } from '../validate/timed.ts'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new DOMParser().parseFromString(html, 'text/html'), html)
+}
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

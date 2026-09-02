@@ -14,6 +14,7 @@
     "@ark/chat": "workspace:*",
     "@ark/contracts": "workspace:*",
     "@ark/deck": "workspace:*",
+    "@ark/deck-node": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "@ark/storage": "workspace:*",
     "@ark/telemetry": "workspace:*",

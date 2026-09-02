@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { JSDOM } from 'jsdom'
 import { findSlideElements } from '@ark/deck-preview/preview-slides.ts'
-import { parseDeckHtml, type DeckParseResult } from '@ark/deck/document/parser.ts'
+import { parseDeckHtml, type DeckParseResult } from '@ark/deck-node/document/parser.ts'
 import {
   THUMBNAIL_OUTPUT_HEIGHT,
   THUMBNAIL_OUTPUT_WIDTH,

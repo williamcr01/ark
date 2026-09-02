@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto'
 
 import { BrowserWindow, session } from 'electron'
 import type { PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
-import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,

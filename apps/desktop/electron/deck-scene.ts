@@ -8,7 +8,7 @@
  * or absolute positioning all arrive as the same rectangles.
  */
 
-import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
 import {
   applyScenePixels,
   buildDeckSceneExtractorScript,

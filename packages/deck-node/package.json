@@ -10,9 +10,12 @@
     "./*": "./*"
   },
   "dependencies": {
-    "@ark/deck": "workspace:*"
+    "@ark/deck": "workspace:*",
+    "@ark/telemetry": "workspace:*",
+    "jsdom": "29.1.1"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^24.12.3",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.9"

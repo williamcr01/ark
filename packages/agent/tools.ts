@@ -3,7 +3,10 @@ import { z } from 'zod'
 
 import { agentQuestionRequestSchema } from '@ark/chat/agent-questions.ts'
 import { themeProposalRequestSchema } from '@ark/chat/agent-themes.ts'
-import { evaluateDeckThemeMatch, evaluateThemeSampleHtml } from '@ark/deck/document/theme-html.ts'
+import {
+  evaluateDeckThemeMatch,
+  evaluateThemeSampleHtml,
+} from '@ark/deck-node/document/theme-html.ts'
 import type { DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import { applyDeckEdits } from '@ark/deck/patch/text-edit.ts'
 import {

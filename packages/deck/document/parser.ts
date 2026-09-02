@@ -1,12 +1,7 @@
-import { JSDOM } from 'jsdom'
-
 import type { SlideEditableElements } from '@ark/deck/document/editable.ts'
 import { parseEditableElements, resolveSlideId } from '../patch/editable-elements.ts'
 import { SLIDE_SELECTOR_CHAIN, findSlideElements } from './slides.ts'
-import { utf8ByteLength } from './utf8.ts'
 import { extractDeckTitle } from './title.ts'
-import type { Logger } from '@ark/telemetry/logger.ts'
-import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 import {
   readDeckFontSelection,
   type DeckFontSelection,
@@ -283,7 +278,7 @@ function collectAssets(doc: Document, slideElements: Element[]): DeckAssetRefere
   return assets.sort((a, b) => a.url.localeCompare(b.url))
 }
 
-const emptyParseResult: DeckParseResult = {
+export const EMPTY_DECK_PARSE_RESULT: DeckParseResult = {
   title: 'Untitled deck',
   structure: 'unknown',
   runtime: {
@@ -305,32 +300,11 @@ const emptyParseResult: DeckParseResult = {
   assets: [],
 }
 
-export type DeckParseOptions = {
-  logger?: Logger
-}
-
-export function parseDeckHtml(html: string, options: DeckParseOptions = {}): DeckParseResult {
+export function parseDeckDocument(doc: Document, html: string): DeckParseResult {
   if (!html.trim()) {
-    return emptyParseResult
+    return EMPTY_DECK_PARSE_RESULT
   }
 
-  const { result, durationMs } = measureSync(() => parseDeckHtmlCore(html))
-
-  if (options.logger) {
-    logTimedEvent(options.logger, 'deck.parse.completed', durationMs, {
-      htmlBytes: utf8ByteLength(html),
-      slideCount: result.slideCount,
-      structure: result.structure,
-      scriptCount: result.scripts.length,
-      assetCount: result.assets.length,
-    })
-  }
-
-  return result
-}
-
-function parseDeckHtmlCore(html: string): DeckParseResult {
-  const doc = new JSDOM(html).window.document
   const slideSelector = detectSlideSelector(doc)
   const slideElements = findSlideElements(doc)
 

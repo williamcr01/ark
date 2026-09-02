@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { applyDeckPatches } from '@ark/deck/patch/slide-ops.ts'
-import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
 import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')

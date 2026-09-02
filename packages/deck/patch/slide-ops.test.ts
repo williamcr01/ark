@@ -4,9 +4,14 @@ import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ARK_SLIDE_ID_ATTR } from '@ark/deck/document/metadata.ts'
+import { parseDeckDocument } from '../document/parser.ts'
 import { applyDeckPatches, createDeckDomCache, resetDeckDomCache } from './slide-ops.ts'
-import { parseDeckHtml } from '../document/parser.ts'
 import { validateDeckHtmlOnServer } from '../validate/timed.ts'
+import { JSDOM } from 'jsdom'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new JSDOM(html).window.document, html)
+}
 
 const deckJsdomParses = vi.hoisted(() => ({ count: 0 }))
 

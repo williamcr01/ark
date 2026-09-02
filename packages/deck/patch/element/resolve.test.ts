@@ -1,8 +1,13 @@
+import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
-import { parseDeckHtml } from '../../document/parser.ts'
+import { parseDeckDocument } from '../../document/parser.ts'
 import { applyDeckPatches } from '../slide-ops.ts'
 import { arkManagedDeck } from './test-decks.ts'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new JSDOM(html).window.document, html)
+}
 
 describe('element target resolution', () => {
   it('resolves path-based transient ids for nested managed elements', () => {

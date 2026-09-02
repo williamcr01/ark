@@ -113,6 +113,9 @@ importers:
       '@ark/deck-import':
         specifier: workspace:*
         version: link:../../packages/deck-import
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../../packages/deck-node
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
@@ -183,6 +186,9 @@ importers:
       '@ark/deck-export':
         specifier: workspace:*
         version: link:../../packages/deck-export
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../../packages/deck-node
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
@@ -429,6 +435,9 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../deck-node
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -622,7 +631,16 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
+      '@ark/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
+      jsdom:
+        specifier: 29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
     devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
       '@types/node':
         specifier: ^24.12.3
         version: 24.13.1
@@ -731,6 +749,9 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../deck-node
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry

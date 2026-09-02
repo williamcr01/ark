@@ -1,1 +1,7 @@
 export type { DeckParseResult } from '@ark/deck/document/parser.ts'
+export { parseDeckHtml, type DeckParseOptions } from './document/parser.ts'
+export {
+  evaluateDeckThemeMatch,
+  evaluateThemeSampleHtml,
+  readDeckThemeFromHtml,
+} from './document/theme-html.ts'
