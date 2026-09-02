@@ -27,6 +27,30 @@ export const RUNTIME_ENTRIES = [
     outfile: 'packages/editor-runtime/runtime/generated/editor-runtime.source.ts',
     exportName: 'EDITOR_RUNTIME_SOURCE',
   },
+  {
+    id: 'deck-handshake',
+    entry: 'packages/deck-preview/runtime-src/handshake/index.ts',
+    outfile: 'packages/deck-preview/runtime/generated/handshake.source.ts',
+    exportName: 'DECK_HANDSHAKE_RUNTIME_SOURCE',
+  },
+  {
+    id: 'deck-css-nav',
+    entry: 'packages/deck-preview/runtime-src/css-nav/index.ts',
+    outfile: 'packages/deck-preview/runtime/generated/css-nav.source.ts',
+    exportName: 'DECK_CSS_NAV_RUNTIME_SOURCE',
+  },
+  {
+    id: 'deck-custom-bridge',
+    entry: 'packages/deck-preview/runtime-src/custom-bridge/index.ts',
+    outfile: 'packages/deck-preview/runtime/generated/custom-bridge.source.ts',
+    exportName: 'DECK_CUSTOM_BRIDGE_RUNTIME_SOURCE',
+  },
+  {
+    id: 'deck-reveal-adapter',
+    entry: 'packages/deck-preview/runtime-src/reveal-adapter/index.ts',
+    outfile: 'packages/deck-preview/runtime/generated/reveal-adapter.source.ts',
+    exportName: 'DECK_REVEAL_ADAPTER_RUNTIME_SOURCE',
+  },
 ]
 
 export const ESBUILD_OPTIONS = {

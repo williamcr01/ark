@@ -70,6 +70,7 @@ export default defineConfig([
     '.pnpm-store/**',
     'coverage/**',
     'packages/editor-runtime/runtime/generated/**',
+    'packages/deck-preview/runtime/generated/**',
   ]),
   {
     files: ['**/*.{ts,tsx}'],
@@ -214,7 +215,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['packages/editor-runtime/runtime-src/**/*.ts'],
+    files: ['packages/*/runtime-src/**/*.ts'],
     languageOptions: {
       globals: globals.browser,
     },

@@ -1,111 +1,470 @@
-import { createHash } from 'node:crypto'
+// @ts-expect-error this package does not depend on @types/jsdom
+import { JSDOM as JsdomImport } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildDeckEditorBridgeRuntimeScript,
+  createEditorConnectAckMessage,
+  createEditorEnableMessage,
+  createEditorSelectMessage,
+  EDITOR_CONNECT_MESSAGE_TYPE,
+  EDITOR_READY_MESSAGE_TYPE,
+  EDITOR_SESSION_HANDOFF_KEY,
+} from '@ark/editor-runtime'
+import {
+  DECK_GOTO_MESSAGE_TYPE,
+  DECK_HANDSHAKE_MESSAGE_TYPE,
+  DECK_METADATA_MESSAGE_TYPE,
+  DECK_READY_MESSAGE_TYPE,
+  DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   buildDeckBridgeRuntimeScript,
   buildDeckCssNavRuntimeScript,
   buildDeckHandshakeSentinelScript,
   buildRevealNavRuntimeScript,
 } from '../index.ts'
 
-function sha256(value: string) {
-  return createHash('sha256').update(value).digest('hex')
+type JsdomWindow = Window & typeof globalThis
+type JsdomInstance = { window: JsdomWindow; serialize: () => string }
+const JSDOM = JsdomImport as new (
+  html?: string,
+  options?: {
+    pretendToBeVisual?: boolean
+    runScripts?: 'dangerously' | 'outside-only'
+    url?: string
+    beforeParse?: (window: JsdomWindow) => void
+  },
+) => JsdomInstance
+
+type RuntimeMessage = Record<string, unknown>
+
+function waitForLoad(dom: JsdomInstance) {
+  return new Promise<void>((resolve) => {
+    dom.window.addEventListener('load', () => resolve())
+  })
+}
+
+function flush(dom: JsdomInstance) {
+  return new Promise<void>((resolve) => {
+    dom.window.setTimeout(() => resolve(), 0)
+  })
+}
+
+function captureParentMessages(window: JsdomWindow, messages: RuntimeMessage[]) {
+  const original = window.postMessage.bind(window)
+  window.postMessage = ((message: unknown, targetOrigin?: string, transfer?: Transferable[]) => {
+    messages.push(message as RuntimeMessage)
+    return original(message as RuntimeMessage, targetOrigin ?? '*', transfer)
+  }) as typeof window.postMessage
 }
 
 describe('deck handshake sentinel', () => {
-  it('injects a retrying head handshake sentinel', () => {
-    expect(buildDeckHandshakeSentinelScript('hs-abc', 'http://localhost:5173')).toContain(
-      'ark:deck-handshake',
+  it('posts the handshake sentinel to a distinct parent and removes its script', async () => {
+    const messages: RuntimeMessage[] = []
+    const script = buildDeckHandshakeSentinelScript('hs-abc', 'https://ark.test')
+    expect(script).toContain('ark:deck-handshake')
+    expect(script).toContain('hs-abc')
+    expect(script).toMatch(/^\(function \(C\) \{/)
+    expect(script).not.toMatch(/^var C =/)
+    expect(script).toContain('safeSetTimeout(postHandshake')
+    expect(script).not.toContain('eval(')
+    expect(script).not.toContain('new Function')
+
+    const dom = new JSDOM(
+      `<!doctype html><html><head></head><body><script>${script}</script></body></html>`,
+      {
+        pretendToBeVisual: true,
+        runScripts: 'dangerously',
+        url: 'https://ark.test/preview',
+        beforeParse(window) {
+          const nativeSetTimeout = window.setTimeout.bind(window) as typeof window.setTimeout
+          window.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
+            nativeSetTimeout(handler, 0, ...args)) as typeof window.setTimeout
+          Object.defineProperty(window, 'parent', {
+            configurable: true,
+            value: {
+              postMessage: (message: RuntimeMessage) => {
+                messages.push(message)
+              },
+            },
+          })
+        },
+      },
     )
-    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('hs-abc')
-    // Retries cover parents that attach the handshake listener after first paint.
-    expect(buildDeckHandshakeSentinelScript('hs-abc')).toContain('safeSetTimeout(postHandshake')
+
+    await waitForLoad(dom)
+    await flush(dom)
+
+    expect(messages.length).toBeGreaterThanOrEqual(1)
+    expect(messages[0]).toEqual({
+      type: DECK_HANDSHAKE_MESSAGE_TYPE,
+      handshake: 'hs-abc',
+      protocolVersion: 1,
+    })
+    expect(dom.window.document.querySelector('script')).toBeNull()
+    expect(
+      buildDeckHandshakeSentinelScript('hs-abc', 'https://ark.test', '__arkEditorSessionV1'),
+    ).toContain('__arkEditorSessionV1')
+    expect(buildDeckHandshakeSentinelScript('hs-abc', null, '  ')).toContain(
+      '"EDITOR_SESSION_HANDOFF_KEY":""',
+    )
+    dom.window.close()
+  })
+
+  it('stamps the editor session handoff key when provided', async () => {
+    const script = buildDeckHandshakeSentinelScript(
+      'hs-session',
+      'https://ark.test',
+      '__arkEditorSessionV1',
+    )
+    const dom = new JSDOM(`<!doctype html><body><script>${script}</script></body>`, {
+      pretendToBeVisual: true,
+      runScripts: 'dangerously',
+      url: 'https://ark.test/preview',
+      beforeParse(window) {
+        Object.defineProperty(window, 'parent', {
+          configurable: true,
+          value: { postMessage: () => undefined },
+        })
+      },
+    })
+
+    await waitForLoad(dom)
+    expect((dom.window as unknown as Record<string, string>).__arkEditorSessionV1).toBe(
+      'hs-session',
+    )
+    dom.window.close()
+  })
+
+  it('keeps editor MessagePort traffic working after a following deck runtime', async () => {
+    const publicMessages: RuntimeMessage[] = []
+    const editorMessages: RuntimeMessage[] = []
+    let resolveEditorReady: (() => void) | undefined
+    const editorReady = new Promise<void>((resolve) => {
+      resolveEditorReady = resolve
+    })
+    const handshakeScript = buildDeckHandshakeSentinelScript(
+      'hs-preview',
+      'https://ark.test',
+      EDITOR_SESSION_HANDOFF_KEY,
+    )
+    const editorScript = buildDeckEditorBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+      parentOrigin: 'https://ark.test',
+    })
+    const bridgeScript = buildDeckBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+      previewMode: 'full-js',
+      parentOrigin: 'https://ark.test',
+    })
+    expect(bridgeScript).toMatch(/^\(function \(C\) \{/)
+    expect(bridgeScript).not.toMatch(/^var C =/)
+    const html = `<!doctype html><html><head>
+      <script id="handshake">${handshakeScript}</script>
+      <script id="editor">${editorScript}</script>
+    </head><body>
+      <section class="slide"><h1 data-ark-id="ark-el-title">One</h1></section>
+      <script id="bridge">${bridgeScript}</script>
+    </body></html>`
+    const errors: string[] = []
+    const dom = new JSDOM(html, {
+      pretendToBeVisual: true,
+      runScripts: 'dangerously',
+      url: 'https://ark.test/preview',
+      beforeParse(window) {
+        window.addEventListener('error', (event) => {
+          errors.push(String(event.message ?? event.error))
+        })
+        Object.defineProperty(window, 'MessageChannel', {
+          configurable: true,
+          value: MessageChannel,
+        })
+        Object.defineProperty(window, 'parent', {
+          configurable: true,
+          value: {
+            postMessage: (
+              message: RuntimeMessage,
+              _targetOrigin?: string,
+              transfer?: Transferable[],
+            ) => {
+              publicMessages.push(message)
+              if (
+                message.type !== EDITOR_CONNECT_MESSAGE_TYPE ||
+                message.handshake !== 'hs-preview'
+              ) {
+                return
+              }
+              const port = transfer?.[0]
+              if (!(port instanceof MessagePort)) {
+                return
+              }
+              port.onmessage = (event) => {
+                editorMessages.push(event.data as RuntimeMessage)
+                if (
+                  typeof event.data === 'object' &&
+                  event.data !== null &&
+                  'type' in event.data &&
+                  event.data.type === EDITOR_READY_MESSAGE_TYPE
+                ) {
+                  resolveEditorReady?.()
+                }
+              }
+              port.start()
+              port.postMessage(createEditorConnectAckMessage())
+              port.postMessage(createEditorEnableMessage(0))
+              port.postMessage(createEditorSelectMessage('ark-el-title', 0))
+            },
+          },
+        })
+      },
+    })
+
+    await waitForLoad(dom)
+    await editorReady
+    expect(errors).toEqual([])
+    expect(publicMessages.some((message) => message.type === DECK_HANDSHAKE_MESSAGE_TYPE)).toBe(
+      true,
+    )
+    expect(editorMessages.some((message) => message.type === EDITOR_READY_MESSAGE_TYPE)).toBe(true)
+    dom.window.close()
   })
 })
 
 describe('CSS-only nav shim', () => {
-  it('skips arrow-key navigation while inline text editing', () => {
+  it('responds to ark:deck-goto and emits slide-change', async () => {
+    const messages: RuntimeMessage[] = []
     const script = buildDeckCssNavRuntimeScript({
       slideSelectors: ['section.slide'],
       previewMode: 'css-only',
     })
-
+    expect(script).toMatch(/^\(function \(C\) \{/)
     expect(script).toContain('isTypingTarget')
     expect(script).toContain('data-ark-editor-text-edit')
     expect(script).toContain('data-ark-editor-selected')
+
+    const dom = new JSDOM(
+      `<!doctype html><body>
+        <section class="slide">One</section>
+        <section class="slide">Two</section>
+        <script>${script}</script>
+      </body>`,
+      {
+        pretendToBeVisual: true,
+        runScripts: 'dangerously',
+        url: 'https://ark.test/preview',
+        beforeParse(window) {
+          captureParentMessages(window, messages)
+        },
+      },
+    )
+
+    await waitForLoad(dom)
+    await flush(dom)
+
+    const slides = [...dom.window.document.querySelectorAll('section.slide')]
+    expect(slides[0]?.hasAttribute('data-ark-active')).toBe(true)
+    expect(messages.some((message) => message.type === DECK_READY_MESSAGE_TYPE)).toBe(true)
+
+    messages.length = 0
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+        source: dom.window,
+        origin: 'https://ark.test',
+      }),
+    )
+    await flush(dom)
+
+    expect(slides[1]?.hasAttribute('data-ark-active')).toBe(true)
+    expect(messages).toContainEqual({ type: DECK_SLIDE_CHANGE_MESSAGE_TYPE, index: 1 })
+    dom.window.close()
+  })
+
+  it('ignores arrow keys while inline text editing', async () => {
+    const script = buildDeckCssNavRuntimeScript({
+      slideSelectors: ['section.slide'],
+      previewMode: 'css-only',
+    })
+    const dom = new JSDOM(
+      `<!doctype html><body>
+        <section class="slide"><h1 contenteditable="true">One</h1></section>
+        <section class="slide">Two</section>
+        <script>${script}</script>
+      </body>`,
+      { pretendToBeVisual: true, runScripts: 'dangerously', url: 'https://ark.test/preview' },
+    )
+
+    await waitForLoad(dom)
+    const heading = dom.window.document.querySelector('h1')!
+    heading.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    )
+    expect(
+      dom.window.document.querySelectorAll('section.slide')[0]?.hasAttribute('data-ark-active'),
+    ).toBe(true)
+
+    heading.removeAttribute('contenteditable')
+    heading.setAttribute('data-ark-editor-selected', 'primary')
+    heading.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    )
+    expect(
+      dom.window.document.querySelectorAll('section.slide')[0]?.hasAttribute('data-ark-active'),
+    ).toBe(true)
+    dom.window.close()
+  })
+})
+
+describe('custom-deck bridge', () => {
+  it('forwards parent goto as a CustomEvent and slide-change back to the parent', async () => {
+    const messages: RuntimeMessage[] = []
+    const gotoIndexes: number[] = []
+    const script = buildDeckBridgeRuntimeScript({
+      slideSelectors: ['section.slide'],
+      previewMode: 'full-js',
+    })
+
+    const dom = new JSDOM(
+      `<!doctype html><html><body>
+        <section class="slide">One</section>
+        <section class="slide">Two</section>
+        <script>${script}</script>
+      </body></html>`,
+      {
+        pretendToBeVisual: true,
+        runScripts: 'dangerously',
+        url: 'https://ark.test/preview',
+        beforeParse(window) {
+          captureParentMessages(window, messages)
+        },
+      },
+    )
+
+    await waitForLoad(dom)
+    dom.window.document.addEventListener(DECK_GOTO_MESSAGE_TYPE, (event) => {
+      gotoIndexes.push((event as CustomEvent<{ index: number }>).detail.index)
+    })
+
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: { type: DECK_GOTO_MESSAGE_TYPE, index: 1 },
+        source: dom.window,
+        origin: 'https://ark.test',
+      }),
+    )
+    expect(gotoIndexes).toEqual([1])
+
+    messages.length = 0
+    dom.window.document.dispatchEvent(
+      new dom.window.CustomEvent(DECK_SLIDE_CHANGE_MESSAGE_TYPE, { detail: { index: 1 } }),
+    )
+    await flush(dom)
+    expect(messages).toContainEqual({ type: DECK_SLIDE_CHANGE_MESSAGE_TYPE, index: 1 })
+
+    messages.length = 0
+    dom.window.document.dispatchEvent(
+      new dom.window.CustomEvent(DECK_METADATA_MESSAGE_TYPE, {
+        detail: { metadata: { runtime: 'plain', title: 'From deck', previewMode: 'full-js' } },
+      }),
+    )
+    await flush(dom)
+    expect(messages).toContainEqual({
+      type: DECK_METADATA_MESSAGE_TYPE,
+      metadata: {
+        runtime: 'plain',
+        title: 'From deck',
+        previewMode: 'full-js',
+        protocolVersion: 1,
+      },
+    })
+    dom.window.close()
   })
 })
 
 describe('Reveal adapter', () => {
-  it('preserves Reveal deck dimensions', () => {
+  it('preserves Reveal deck dimensions and dispatches ark:deck-slide-change CustomEvents', async () => {
     const script = buildRevealNavRuntimeScript({
       slideSelectors: ['.reveal .slides > section'],
       previewMode: 'full-js',
     })
-
     expect(script).not.toContain('width: C.SLIDE_WIDTH')
     expect(script).not.toContain('height: C.SLIDE_HEIGHT')
-  })
+    expect(script).toContain('new CustomEvent(C.CHANGE')
+    expect(script).toContain('detail: { index: clamped }')
 
-  it('dispatches ark:deck-slide-change DOM events from the reveal adapter', () => {
-    const script = buildRevealNavRuntimeScript({
-      slideSelectors: ['.reveal .slides > section'],
-      previewMode: 'full-js',
+    const messages: RuntimeMessage[] = []
+    const customEvents: number[] = []
+    let current = 0
+    const revealHooks: { slideChanged: (() => void) | null } = { slideChanged: null }
+
+    const dom = new JSDOM(
+      `<!doctype html><body>
+        <div class="reveal"><div class="slides">
+          <section>One</section>
+          <section>Two</section>
+        </div></div>
+        <script>${script}</script>
+      </body>`,
+      {
+        pretendToBeVisual: true,
+        runScripts: 'dangerously',
+        url: 'https://ark.test/preview',
+        beforeParse(window) {
+          const sections = () => [...window.document.querySelectorAll('.slides > section')]
+          Object.defineProperty(window, 'Reveal', {
+            configurable: true,
+            value: {
+              initialize() {
+                return Promise.resolve()
+              },
+              getTotalSlides() {
+                return sections().length
+              },
+              getCurrentSlide() {
+                return sections()[current] ?? null
+              },
+              getSlidePastCount(slide: Element) {
+                return Math.max(0, sections().indexOf(slide))
+              },
+              getSlides() {
+                return sections()
+              },
+              getIndices(slide?: Element) {
+                const index = slide ? sections().indexOf(slide) : current
+                return { h: index, v: 0, f: 0 }
+              },
+              slide(h: number) {
+                current = h
+              },
+              sync() {},
+              on(event: string, handler: () => void) {
+                if (event === 'slidechanged') {
+                  revealHooks.slideChanged = handler
+                }
+              },
+            },
+          })
+          captureParentMessages(window, messages)
+        },
+      },
+    )
+
+    await waitForLoad(dom)
+    await Promise.resolve()
+    await flush(dom)
+    await flush(dom)
+
+    dom.window.document.addEventListener(DECK_SLIDE_CHANGE_MESSAGE_TYPE, (event) => {
+      customEvents.push((event as CustomEvent<{ index: number }>).detail.index)
     })
 
-    expect(script).toContain('document.dispatchEvent(new CustomEvent(C.CHANGE')
-    expect(script).toContain('detail: { index: clamped }')
-  })
-})
+    expect(messages.some((message) => message.type === DECK_READY_MESSAGE_TYPE)).toBe(true)
 
-describe('injected runtime string identity', () => {
-  const cssOpts = { slideSelectors: ['section.slide'] as const, previewMode: 'css-only' as const }
-  const fullOpts = {
-    slideSelectors: ['section.slide', '.reveal .slides > section'] as const,
-    previewMode: 'full-js' as const,
-    parentOrigin: 'http://localhost:5173',
-  }
-  const revealOpts = {
-    slideSelectors: ['.reveal .slides > section'] as const,
-    previewMode: 'full-js' as const,
-  }
+    current = 1
+    revealHooks.slideChanged?.()
+    await flush(dom)
 
-  it('keeps assembled handshake and runtime scripts byte-identical to the pre-split builders', () => {
-    expect(sha256(buildDeckHandshakeSentinelScript('hs-abc', 'http://localhost:5173'))).toBe(
-      '6b1c36caf9fbca6fabdab26bb15f70d10ccea88b6a5c085d36b1b60ee85f8cc0',
-    )
-    expect(sha256(buildDeckHandshakeSentinelScript('hs-abc'))).toBe(
-      '80724724ad6885a85152c9bad753a1deadf04e1dad4cec552be3edd1cab899ba',
-    )
-    expect(
-      sha256(
-        buildDeckHandshakeSentinelScript('hs-abc', 'http://localhost:5173', '__arkEditorSessionV1'),
-      ),
-    ).toBe('7c4fb64fa1bef9ef6ca7bb0829ccbc7564c74de409e5f7ebf029c1e96ee52acb')
-    expect(sha256(buildDeckHandshakeSentinelScript('hs-abc', null, '  '))).toBe(
-      '80724724ad6885a85152c9bad753a1deadf04e1dad4cec552be3edd1cab899ba',
-    )
-
-    expect(sha256(buildDeckBridgeRuntimeScript(cssOpts))).toBe(
-      'a079a591500bbad600d0988abc6ae24858a8d9983022e5b840437df47d8340d5',
-    )
-    expect(sha256(buildDeckBridgeRuntimeScript(fullOpts))).toBe(
-      '51a7fa98c74e79911d66fbff9cc2a1bc294b33c04112e27d9461ca4b902b37a3',
-    )
-    expect(sha256(buildDeckCssNavRuntimeScript(cssOpts))).toBe(
-      '109dd8058cee5c7530af6ee1f8ccf094eba7b31a30e2bbbd34c877df89777afb',
-    )
-    expect(sha256(buildDeckCssNavRuntimeScript(fullOpts))).toBe(
-      '633879c834905c84c9d483dc1af910966efeaf97f123b40395ffeab62a3ae998',
-    )
-    expect(sha256(buildRevealNavRuntimeScript(revealOpts))).toBe(
-      '5c864b266c4ea9fb653739206352d7f22c2823bb6762e32e1269d9aceaeaad76',
-    )
-    expect(
-      sha256(buildRevealNavRuntimeScript({ slideSelectors: [], previewMode: 'css-only' })),
-    ).toBe('331936a66f0899bcb39d0a3ebe4b7b0ae2b4448ea34d5d82e154760c8dc9c1dd')
-    expect(sha256(buildRevealNavRuntimeScript(fullOpts))).toBe(
-      'f20827195a54fcde93ecc63662782796209f2aad4eafbd164b4ea731658d0923',
-    )
+    expect(customEvents).toEqual([1])
+    expect(messages).toContainEqual({ type: DECK_SLIDE_CHANGE_MESSAGE_TYPE, index: 1 })
+    dom.window.close()
   })
 })

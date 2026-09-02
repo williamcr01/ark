@@ -6,13 +6,53 @@ import test from 'node:test'
 
 import { ESBUILD_OPTIONS, RUNTIME_ENTRIES, renderGeneratedModule } from './build-runtimes.mjs'
 
-test('runtime entries table registers the editor iframe bundle', () => {
-  assert.equal(RUNTIME_ENTRIES.length >= 1, true)
-  const editor = RUNTIME_ENTRIES.find((entry) => entry.id === 'editor-runtime')
-  assert.ok(editor)
-  assert.equal(editor.entry, 'packages/editor-runtime/runtime-src/index.ts')
-  assert.equal(editor.outfile, 'packages/editor-runtime/runtime/generated/editor-runtime.source.ts')
-  assert.equal(editor.exportName, 'EDITOR_RUNTIME_SOURCE')
+test('runtime entries table registers iframe bundles', () => {
+  assert.equal(RUNTIME_ENTRIES.length >= 5, true)
+  const byId = Object.fromEntries(RUNTIME_ENTRIES.map((entry) => [entry.id, entry]))
+
+  assert.equal(byId['editor-runtime']?.entry, 'packages/editor-runtime/runtime-src/index.ts')
+  assert.equal(
+    byId['editor-runtime']?.outfile,
+    'packages/editor-runtime/runtime/generated/editor-runtime.source.ts',
+  )
+  assert.equal(byId['editor-runtime']?.exportName, 'EDITOR_RUNTIME_SOURCE')
+
+  assert.equal(
+    byId['deck-handshake']?.entry,
+    'packages/deck-preview/runtime-src/handshake/index.ts',
+  )
+  assert.equal(
+    byId['deck-handshake']?.outfile,
+    'packages/deck-preview/runtime/generated/handshake.source.ts',
+  )
+  assert.equal(byId['deck-handshake']?.exportName, 'DECK_HANDSHAKE_RUNTIME_SOURCE')
+
+  assert.equal(byId['deck-css-nav']?.entry, 'packages/deck-preview/runtime-src/css-nav/index.ts')
+  assert.equal(
+    byId['deck-css-nav']?.outfile,
+    'packages/deck-preview/runtime/generated/css-nav.source.ts',
+  )
+  assert.equal(byId['deck-css-nav']?.exportName, 'DECK_CSS_NAV_RUNTIME_SOURCE')
+
+  assert.equal(
+    byId['deck-custom-bridge']?.entry,
+    'packages/deck-preview/runtime-src/custom-bridge/index.ts',
+  )
+  assert.equal(
+    byId['deck-custom-bridge']?.outfile,
+    'packages/deck-preview/runtime/generated/custom-bridge.source.ts',
+  )
+  assert.equal(byId['deck-custom-bridge']?.exportName, 'DECK_CUSTOM_BRIDGE_RUNTIME_SOURCE')
+
+  assert.equal(
+    byId['deck-reveal-adapter']?.entry,
+    'packages/deck-preview/runtime-src/reveal-adapter/index.ts',
+  )
+  assert.equal(
+    byId['deck-reveal-adapter']?.outfile,
+    'packages/deck-preview/runtime/generated/reveal-adapter.source.ts',
+  )
+  assert.equal(byId['deck-reveal-adapter']?.exportName, 'DECK_REVEAL_ADAPTER_RUNTIME_SOURCE')
 })
 
 test('esbuild options stay unminified IIFE for readable iframe source', () => {

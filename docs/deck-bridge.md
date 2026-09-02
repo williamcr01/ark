@@ -1,6 +1,6 @@
 # Ark deck runtime bridge
 
-Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `packages/deck-preview/protocol/` (re-exported from `packages/deck-preview/deck-bridge.ts`). Injected iframe scripts live in `packages/deck-preview/runtime/`.
+Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The shell and the deck runtime communicate through a small, versioned `postMessage` protocol defined in `packages/deck-preview/protocol/` (re-exported from `packages/deck-preview/deck-bridge.ts`). Injected iframe scripts are authored as TypeScript under `packages/deck-preview/runtime-src/` and assembled by `packages/deck-preview/runtime/`.
 
 The shell-side lifecycle and ownership boundaries are summarized in
 [deck-preview-orchestration.md](./deck-preview-orchestration.md). `DeckPreview`
@@ -241,9 +241,15 @@ In CSS-only preview (no approved reveal runtime script), Ark still detects `runt
 - `createDeckGotoMessage`, `createDeckReadyMessage`, etc.
 - `isDeckBridgeMessage`, `parseDeckBridgeMessage`, and per-type guards
 - `postDeckGoto(target, index)` for the shell
-- `buildDeckBridgeRuntimeScript` / `buildDeckCssNavRuntimeScript` / `buildRevealNavRuntimeScript` for preview injection
+- `buildDeckBridgeRuntimeScript` / `buildDeckCssNavRuntimeScript` / `buildRevealNavRuntimeScript` / `buildDeckHandshakeSentinelScript` for preview injection
 
 `useDeckSlideNavigation` uses these helpers and accepts optional `onDeckReady` / `onRuntimeError` callbacks.
+
+## Authoring the injected runtimes
+
+The iframe navigation runtimes are real TypeScript under `packages/deck-preview/runtime-src/` (one entry per injected script: `handshake`, `css-nav`, `custom-bridge`, `reveal-adapter`, plus `shared/` helpers). `scripts/build-runtimes.mjs` bundles each entry with esbuild into an unminified IIFE and writes `packages/deck-preview/runtime/generated/*.source.ts`. Those generated files are committed so tsc/Vite/vitest need no extra step.
+
+Edit `runtime-src/`, then run `pnpm build:runtimes` and commit the regenerated source. `pnpm build:runtimes:check` (CI quality job) and the deck-preview vitest both fail if an artifact is stale. The public builders keep their signatures: each wraps the bundled IIFE as `(function (C) { … })(hostConstants)` so injected deck runtimes do not assign a global `C` (the editor runtime still uses `var C = …`).
 
 ## Security notes
 

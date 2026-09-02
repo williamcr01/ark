@@ -34,6 +34,8 @@ test('typecheck covers every workspace tsconfig used by build', () => {
     'packages/deck-node/tsconfig.test.json',
     'packages/deck-preview/tsconfig.json',
     'packages/deck-preview/tsconfig.test.json',
+    'packages/deck-preview/tsconfig.runtime.json',
+    'packages/deck-preview/tsconfig.runtime.test.json',
     'packages/editor-runtime/tsconfig.json',
     'packages/editor-runtime/tsconfig.test.json',
     'packages/editor-runtime/tsconfig.runtime.json',

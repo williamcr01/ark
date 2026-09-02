@@ -6,7 +6,8 @@
  * bridge translates between postMessage and those events.
  *
  * Re-export barrel for existing `@ark/deck-preview/deck-bridge.ts` importers.
- * Wire format lives in `protocol/`; injected iframe scripts live in `runtime/`.
+ * Wire format lives in `protocol/`; injected iframe scripts are authored in
+ * `runtime-src/` and assembled by `runtime/`.
  */
 
 export * from './protocol/index.ts'
