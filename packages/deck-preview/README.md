@@ -6,13 +6,14 @@ carrying the shell ↔ frame conversation while it is rendered.
 Layer 3. May import `@ark/deck`, `@ark/editor-runtime`, `@ark/runtime-registry`. Browser-safe.
 The public entry is `@ark/deck-preview` (`index.ts`); deep imports remain supported.
 
-| Module              | Responsibility                                                       |
-| ------------------- | -------------------------------------------------------------------- |
-| `preview-html.ts`   | Builds the document served to the preview frame                      |
-| `preview-slides.ts` | Preview-time script stripping and runtime CSP injection              |
-| `thumbnail-html.ts` | The stripped, single-slide document thumbnails render from           |
-| `slide-patch.ts`    | Swaps changed slides inside a loaded preview instead of reloading it |
-| `csp-nonce.ts`      | Per-render nonces for the injected CSP                               |
+| Module                   | Responsibility                                                       |
+| ------------------------ | -------------------------------------------------------------------- |
+| `preview-html.ts`        | Builds the document served to the preview frame                      |
+| `preview-html-inject.ts` | CSP, handshake, script/asset injection helpers                       |
+| `preview-slides.ts`      | Preview-time script stripping and runtime CSP injection              |
+| `thumbnail-html.ts`      | The stripped, single-slide document thumbnails render from           |
+| `slide-patch.ts`         | Swaps changed slides inside a loaded preview instead of reloading it |
+| `csp-nonce.ts`           | Per-render nonces for the injected CSP                               |
 
 The parent ↔ deck navigation protocol (`ark:deck-*`) lives next to the injected iframe scripts:
 

@@ -133,7 +133,7 @@ Deck preview blocks external **fetches, resource loads, and navigations** from g
 
 ### Preview JavaScript
 
-The shell uses preview modes based on runtime detection (see `detectRuntimeMode` in `src/lib/deck/deck-runtime.ts`). The parent ↔ iframe contract is defined in `packages/deck-preview/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`packages/editor-runtime/`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
+The shell uses preview modes based on runtime detection (see `detectRuntimeMode` in `@ark/runtime-registry/deck-runtime.ts`). The parent ↔ iframe contract lives in `@ark/deck-preview` (`protocol/` and `runtime/`) and is documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`packages/editor-runtime/`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
 
 - **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for plain decks and reveal decks without approved runtime assets.
 - **Full-JS (custom)** — deck scripts run when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set. Ark injects a bridge (`postMessage` ↔ DOM `CustomEvent`); the deck owns navigation.
@@ -205,7 +205,7 @@ Deck generation uses a **multi-step agent loop** (Vercel AI SDK `streamText` + `
 | `edit_deck`   | Apply exact `oldText` → `newText` patches (each match must be unique)                                             |
 | `write_deck`  | Replace the entire deck (new decks or explicit full rewrites)                                                     |
 
-Implementation: `packages/deck/document/parser.ts`, `packages/agent/tools.ts`, `packages/agent/agent.ts`. The renderer shows tool calls/results in chat and applies deck updates returned by the internal API.
+Implementation: `packages/deck/document/parser.ts`, `packages/agent/tools.ts` (and `tools/`), `packages/agent/agent.ts` (stream/finalize in sibling modules). The renderer shows tool calls/results in chat and applies deck updates returned by the internal API.
 
 One user message → one agent run → as many tool/model steps as needed → deck update + assistant summary.
 

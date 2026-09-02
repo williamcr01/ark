@@ -9,7 +9,8 @@ Layer 0 — the bottom of the stack. Imports no other workspace package. Browser
 
 | Module                          | Responsibility                                                   |
 | ------------------------------- | ---------------------------------------------------------------- |
-| `deck-runtime-registry.ts`      | The approved asset list and URL validation                       |
+| `deck-runtime-registry.ts`      | The approved asset list; re-exports URL validation               |
+| `deck-runtime-validate.ts`      | Asset-reference collection and validation helpers                |
 | `deck-font-registry.ts`         | Approved deck fonts, PPTX typefaces, vendored clone `@font-face` |
 | `deck-runtime-manifest.ts`      | The manifest shape decks carry                                   |
 | `deck-runtime.ts`               | Runtime mode detection and CSP injection                         |

@@ -112,8 +112,8 @@ HTML never receives preload or Node access.
 
 ## Structure budgets
 
-These are **warnings** in this phase (inventory for later enforcement). `pnpm lint` reports them
-but still exits 0 for budget breaches.
+These are **errors**. `pnpm lint` fails on budget breaches (`max-lines`, `max-lines-per-function`,
+hooks-must-not-import-components, and `scripts/check-structure.mjs --strict`).
 
 | Budget                               | Limit                                                 | Where                                              |
 | ------------------------------------ | ----------------------------------------------------- | -------------------------------------------------- |
@@ -123,5 +123,5 @@ but still exits 0 for budget breaches.
 | `export function use*` return object | 10 keys                                               | `apps/desktop/src` (`scripts/check-structure.mjs`) |
 
 Hooks under `apps/desktop/src/hooks/` must not import `@/components/*` or `../components/*`
-(`no-restricted-imports`, currently a warning). `scripts/check-structure.mjs --strict` exits 1
-when the Props/hook inventory is non-empty.
+(`no-restricted-imports`). `scripts/check-structure.mjs --strict` exits 1 when the Props/hook
+inventory is non-empty.

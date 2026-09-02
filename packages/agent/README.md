@@ -8,20 +8,25 @@ the wire (`@ark/contracts`), because a job runner is handed an HTTP request shap
 HTTP response shape. Server-only. The public entry is `@ark/agent` (`index.ts`); deep imports
 remain supported.
 
-| Module            | Responsibility                                                        |
-| ----------------- | --------------------------------------------------------------------- |
-| `agent.ts`        | The multi-step loop: system prompt, tools, stop conditions, telemetry |
-| `tools.ts`        | The tool implementations the model calls                              |
-| `tool-schemas.ts` | Input schemas for those tools, shared with `@ark/mcp`                 |
-| `tool-catalog.ts` | Binds tools to an active deck for one run                             |
-| `workspace.ts`    | The agent's view of the deck it is editing                            |
-| `document.ts`     | Reading deck HTML by line, byte, or slide — what `read_deck` returns  |
-| `response.ts`     | Validating and shaping what the model produced                        |
-| `guides.ts`       | Loads `agent-guides/*.md` into the system prompt                      |
-| `prompt.ts`       | User-prompt wrapping (new-deck vs revise, selection/theme notes)      |
-| `job-runner.ts`   | Job lifecycle: queue, schedule, start, cancel, retry                  |
-| `job/`            | Generation job phases — claim, attachments, run, persist, fail        |
-| `job-wire.ts`     | Maps a job to its REST shape                                          |
+| Module              | Responsibility                                                       |
+| ------------------- | -------------------------------------------------------------------- |
+| `agent.ts`          | Composes a run: workspace, tools, stream, finalize                   |
+| `agent-stream.ts`   | Stream loop, step collection, abort checks                           |
+| `agent-steps.ts`    | Projects SDK steps into agent steps and transcript parts             |
+| `agent-progress.ts` | Thinking-progress reporter for in-flight steps                       |
+| `agent-finalize.ts` | Terminal result (deck HTML, validation, metrics)                     |
+| `tools.ts`          | Composes inspect / mutate / interact tool sets                       |
+| `tools/`            | Per-concern tool implementations                                     |
+| `tool-schemas.ts`   | Input schemas for those tools, shared with `@ark/mcp`                |
+| `tool-catalog.ts`   | Binds tools to an active deck for one run                            |
+| `workspace.ts`      | The agent's view of the deck it is editing                           |
+| `document.ts`       | Reading deck HTML by line, byte, or slide — what `read_deck` returns |
+| `response.ts`       | Validating and shaping what the model produced                       |
+| `guides.ts`         | Loads `agent-guides/*.md` into the system prompt                     |
+| `prompt.ts`         | User-prompt wrapping (new-deck vs revise, selection/theme notes)     |
+| `job-runner.ts`     | Job lifecycle: queue, schedule, start, cancel, retry                 |
+| `job/`              | Generation job phases — claim, attachments, run, persist, fail       |
+| `job-wire.ts`       | Maps a job to its REST shape                                         |
 
 A generation job is a sequence of plain functions over a `JobContext` (`job/context.ts`):
 claim the lease, resolve attachments, run the agent, persist the result, or record failure.
