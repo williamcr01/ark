@@ -151,6 +151,7 @@ describe('ChatPanel submit control', () => {
     expect(onMcpInteractionSubmit).toHaveBeenCalledWith({
       kind: 'themes',
       themeId: 'theme-2',
+      fonts: themeFonts,
     })
   })
 
