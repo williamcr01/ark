@@ -1,7 +1,7 @@
 import { CreationWorkspace } from '@/components/shell/CreationWorkspace'
 import { EditorWorkspace } from '@/components/shell/EditorWorkspace'
 import { WorkspaceAgentModal } from '@/components/shell/WorkspaceAgentModal'
-import { WorkspaceTitleBar } from '@/components/shell/WorkspaceTitleBar'
+import { AppTitleBar } from '@/components/AppTitleBar'
 import { useChatPanelLayout } from '@/hooks/useChatPanelLayout'
 import { useExternalDeckUpdates } from '@/hooks/useExternalDeckUpdates'
 import { useWorkspaceRuntime } from '@/hooks/useWorkspaceRuntime'
@@ -27,7 +27,10 @@ function WorkspaceShellLayout() {
 
   return (
     <div className="flex h-svh min-h-0 flex-col bg-[var(--ark-canvas)] text-foreground">
-      <WorkspaceTitleBar onToggleChat={layout.handleToggleChat} />
+      <AppTitleBar
+        onToggleChat={layout.handleToggleChat}
+        variant={workspaceMode === 'create' ? 'home' : 'editor'}
+      />
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden" ref={layout.mainRef}>
         {workspaceMode === 'loading' ? (
           <div
