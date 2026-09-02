@@ -40,9 +40,9 @@ describe('workspace thumbnail service', () => {
   }
 
   it('renders missing slides and stores ready PNGs in the .ark database', async () => {
-    const render = vi.fn(async (request) => ({
+    const render = vi.fn(async (request: { slideIndexes?: number[] }) => ({
       ok: true as const,
-      slides: (request.slideIndexes ?? [0, 1]).map((index) => Buffer.from(`png-${index}`)),
+      slides: (request.slideIndexes ?? [0, 1]).map((index: number) => Buffer.from(`png-${index}`)),
       slideCount: 2,
       width: 480,
       height: 270,
@@ -76,9 +76,9 @@ describe('workspace thumbnail service', () => {
   })
 
   it('renders only changed slide hashes after a document update', async () => {
-    const render = vi.fn(async (request) => ({
+    const render = vi.fn(async (request: { slideIndexes?: number[] }) => ({
       ok: true as const,
-      slides: (request.slideIndexes ?? []).map((index) => Buffer.from(`png-${index}`)),
+      slides: (request.slideIndexes ?? []).map((index: number) => Buffer.from(`png-${index}`)),
       slideCount: 2,
       width: 480,
       height: 270,

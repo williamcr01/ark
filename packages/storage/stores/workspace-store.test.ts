@@ -241,6 +241,7 @@ describe('WorkspaceStore file operations', () => {
 
     try {
       const saved = await workspaces.move(created.id, outsidePath)
+      if (!saved) throw new Error('expected move to return a workspace record')
       const recentsPath = path.join(root, 'recent-workspaces.json')
       const before = await readFile(recentsPath, 'utf8')
 

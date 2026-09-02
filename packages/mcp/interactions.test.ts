@@ -20,7 +20,9 @@ describe('MCP interactions', () => {
         kind: 'questions',
         request: {
           title: 'A few details',
-          questions: [{ id: 'audience', question: 'Who is this for?', type: 'text' }],
+          questions: [
+            { id: 'audience', question: 'Who is this for?', type: 'text', required: true },
+          ],
         },
       },
       'session-a',

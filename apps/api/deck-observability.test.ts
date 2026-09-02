@@ -69,6 +69,7 @@ describe('deck operation observability', () => {
     )
 
     expect(patched.ok).toBe(true)
+    if (!patched.ok) return
     expect(patched.validation?.valid).toBe(true)
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({

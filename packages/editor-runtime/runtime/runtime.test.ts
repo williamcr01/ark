@@ -1,4 +1,5 @@
-import { JSDOM } from 'jsdom'
+// @ts-expect-error this package does not depend on @types/jsdom
+import { JSDOM as JsdomImport } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -21,6 +22,18 @@ import {
   MAX_EDITOR_SELECTIONS,
 } from '../index.ts'
 import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
+
+type JsdomWindow = Window & typeof globalThis
+type JsdomInstance = { window: JsdomWindow; serialize: () => string }
+const JSDOM = JsdomImport as new (
+  html?: string,
+  options?: {
+    pretendToBeVisual?: boolean
+    runScripts?: 'dangerously' | 'outside-only'
+    url?: string
+    beforeParse?: (window: JsdomWindow) => void
+  },
+) => JsdomInstance
 
 type RuntimeMessage = Record<string, unknown>
 
@@ -139,7 +152,8 @@ async function loadEditorRuntime(
 
   await new Promise<void>((resolve) => dom.window.addEventListener('load', () => resolve()))
   await connected
-  shellPort?.postMessage({
+  const port = shellPort as TestMessagePort | null
+  port?.postMessage({
     type: EDITOR_ENABLE_MESSAGE_TYPE,
     slideIndex: options.slideIndex ?? 0,
     tool: 'select',
@@ -151,11 +165,11 @@ async function loadEditorRuntime(
       dom.window.setTimeout(resolve, accelerateNudgeTimer ? 0 : 450)
     })
 
-  return { dom, messages, flushNudgeTimer, shellPort: shellPort! }
+  return { dom, messages, flushNudgeTimer, shellPort: port! }
 }
 
 function pointerEvent(
-  dom: JSDOM,
+  dom: JsdomInstance,
   type: string,
   pointerId: number,
   clientX = 0,
@@ -931,7 +945,7 @@ describe('deck editor runtime script', () => {
       offsetWidth: { configurable: true, value: 200 },
       offsetHeight: { configurable: true, value: 80 },
     })
-    slide.setPointerCapture = (pointerId) => {
+    slide.setPointerCapture = (pointerId: number) => {
       capturedPointer = pointerId
     }
 
@@ -1314,7 +1328,7 @@ describe('deck editor runtime script', () => {
           )
         : rect(250, 150, 400, 80)
     Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
-    slide.setPointerCapture = (pointerId) => {
+    slide.setPointerCapture = (pointerId: number) => {
       capturedPointer = pointerId
     }
 

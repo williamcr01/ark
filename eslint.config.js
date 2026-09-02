@@ -88,6 +88,17 @@ export default defineConfig([
     },
   },
   {
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': [
+        'warn',
+        { max: 120, skipBlankLines: true, skipComments: true, IIFEs: true },
+      ],
+    },
+  },
+  {
     // React Compiler lint rules in eslint-plugin-react-hooks@7 dominate wall time
     // (often >70% of rule cost) and are only needed when the compiler is enabled.
     // Ark does not use React Compiler yet, so keep the classic hooks rules only,
@@ -116,10 +127,30 @@ export default defineConfig([
   },
   {
     files: ['apps/desktop/src/**/*.{ts,tsx}'],
+    ignores: ['apps/desktop/src/hooks/**'],
     rules: {
       'no-restricted-imports': [
         'error',
         { patterns: [...boundaryPatterns.renderer, ...apiContractPatterns] },
+      ],
+    },
+  },
+  {
+    files: ['apps/desktop/src/hooks/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            ...boundaryPatterns.renderer,
+            ...apiContractPatterns,
+            {
+              group: ['@/components/*', '../components/*'],
+              message:
+                'Hooks must not import from components. Keep UI in components and have them call hooks.',
+            },
+          ],
+        },
       ],
     },
   },

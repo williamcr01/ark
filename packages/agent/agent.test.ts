@@ -1,6 +1,8 @@
-import type { LanguageModelV3CallOptions } from '@ai-sdk/provider'
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
+
+type StreamCallOptions = Parameters<MockLanguageModelV3['doStream']>[0]
+type StreamResult = Awaited<ReturnType<MockLanguageModelV3['doStream']>>
 
 import {
   extractAgentSteps,
@@ -50,40 +52,42 @@ const mockCachedUsage = {
   },
 }
 
-const streamTextReply = (text: string) => ({
-  stream: simulateReadableStream({
-    chunks: [
-      { type: 'stream-start', warnings: [] },
-      { type: 'text-start', id: 'text-1' },
-      { type: 'text-delta', id: 'text-1', delta: text },
-      { type: 'text-end', id: 'text-1' },
-      {
-        type: 'finish',
-        finishReason: 'stop' as const,
-        usage: mockUsage,
-      },
-    ],
-  }),
-})
+const streamTextReply = (text: string): StreamResult =>
+  ({
+    stream: simulateReadableStream({
+      chunks: [
+        { type: 'stream-start', warnings: [] },
+        { type: 'text-start', id: 'text-1' },
+        { type: 'text-delta', id: 'text-1', delta: text },
+        { type: 'text-end', id: 'text-1' },
+        {
+          type: 'finish',
+          finishReason: 'stop' as const,
+          usage: mockUsage,
+        },
+      ],
+    }),
+  }) as StreamResult
 
-const streamToolCallReply = (toolCallId: string, toolName: string, input: unknown) => ({
-  stream: simulateReadableStream({
-    chunks: [
-      { type: 'stream-start' as const, warnings: [] },
-      {
-        type: 'tool-call' as const,
-        toolCallId,
-        toolName,
-        input: JSON.stringify(input),
-      },
-      {
-        type: 'finish' as const,
-        finishReason: 'tool-calls' as const,
-        usage: mockUsage,
-      },
-    ],
-  }),
-})
+const streamToolCallReply = (toolCallId: string, toolName: string, input: unknown): StreamResult =>
+  ({
+    stream: simulateReadableStream({
+      chunks: [
+        { type: 'stream-start' as const, warnings: [] },
+        {
+          type: 'tool-call' as const,
+          toolCallId,
+          toolName,
+          input: JSON.stringify(input),
+        },
+        {
+          type: 'finish' as const,
+          finishReason: 'tool-calls' as const,
+          usage: mockUsage,
+        },
+      ],
+    }),
+  }) as StreamResult
 
 describe('hasAwaitingUserToolResult', () => {
   const stop = hasAwaitingUserToolResult('propose_themes')
@@ -323,7 +327,7 @@ describe('runDeckAgent prompt caching', () => {
    * Runs a two-step loop (tool call, then summary) so per-step options are covered.
    */
   const recordingModel = () => {
-    const calls: LanguageModelV3CallOptions[] = []
+    const calls: StreamCallOptions[] = []
     const replies = [
       streamToolCallReply('call-edit', 'edit_deck', {
         edits: [{ oldText: 'Hello', newText: 'Cached' }],
@@ -341,14 +345,14 @@ describe('runDeckAgent prompt caching', () => {
 
   const anthropicCacheControl = { cacheControl: { type: 'ephemeral' } }
 
-  const cacheControlOf = (message: LanguageModelV3CallOptions['prompt'][number]) => {
+  const cacheControlOf = (message: StreamCallOptions['prompt'][number]) => {
     if (message.providerOptions?.anthropic) return message.providerOptions.anthropic
     if (!Array.isArray(message.content)) return undefined
     const last = message.content.at(-1)
     return last && 'providerOptions' in last ? last.providerOptions?.anthropic : undefined
   }
 
-  const nonSystemMessages = (prompt: LanguageModelV3CallOptions['prompt']) =>
+  const nonSystemMessages = (prompt: StreamCallOptions['prompt']) =>
     prompt.filter((message) => message.role !== 'system')
 
   it('marks Anthropic system prefix and trailing transcript on every step', async () => {
@@ -495,7 +499,7 @@ describe('runDeckAgent', () => {
             },
           ],
         }),
-      },
+      } as StreamResult,
     ]
     const model = new MockLanguageModelV3({
       doStream: async () => replies.shift()!,
@@ -612,7 +616,7 @@ describe('runDeckAgent', () => {
             },
           ],
         }),
-      },
+      } as StreamResult,
     })
 
     const result = await runDeckAgent({
@@ -668,7 +672,7 @@ describe('runDeckAgent', () => {
             { type: 'error', error: new Error('This model is no longer available.') },
           ],
         }),
-      },
+      } as StreamResult,
     })
 
     const result = await runDeckAgent({

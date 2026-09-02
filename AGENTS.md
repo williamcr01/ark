@@ -31,7 +31,7 @@ pnpm typecheck  # parallel native TypeScript check (all apps/packages)
 pnpm build      # build renderer, main, and preload
 pnpm package              # unpacked app for the current platform
 pnpm package:installers   # installers for the current platform
-pnpm lint       # run oxlint and ESLint
+pnpm lint       # oxlint, ESLint, package boundaries, structure budgets
 pnpm test       # Vitest: packages in parallel, apps serial
 ```
 
@@ -61,20 +61,6 @@ ark/
 │   ├── contracts/          #  5  HTTP API Zod schemas + OpenAPI registry
 │   ├── agent/              #  6  the generation loop, its tools, the job runner
 │   └── mcp/                #  7  Ark's deck tools exposed to external agents
-├── packages/               #  L  package                one job
-│   ├── runtime-registry/   #  0  approved runtime assets, pinned versions
-│   ├── telemetry/          #  0  logging, redaction, request ids, timing
-│   ├── deck/               #  1  the deck document model: read, patch, validate
-│   ├── ai/                 #  1  providers, models, credentials, provider options
-│   ├── deck-preview/       #  2  deck → preview document, parent ↔ frame protocol
-│   ├── editor-runtime/     #  2  manual editor protocol + injected script
-│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
-│   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
-│   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
-│   ├── storage/            #  3  records, stores, the `.ark` workspace file
-│   ├── contracts/          #  4  HTTP API Zod schemas + OpenAPI registry
-│   ├── agent/              #  5  the generation loop, its tools, the job runner
-│   └── mcp/                #  5  Ark's deck tools exposed to external agents
 ├── test/                   # cross-layer HTML fixtures (`test/fixtures/`) for tests and smoke scripts
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
 ├── agent-guides/           # always-on markdown appended to the deck agent system prompt

@@ -84,6 +84,7 @@ const stubAgentFailure = async (): Promise<RunDeckAgentResult> => ({
   ok: false,
   error: 'Stubbed agent failure for contract tests.',
   steps: [],
+  transcriptParts: [],
 })
 
 const disabledThumbnailService: ThumbnailService = {
