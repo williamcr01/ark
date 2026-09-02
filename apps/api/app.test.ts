@@ -21,6 +21,7 @@ import {
   previewSessionResponseSchema,
   simpleErrorResponseSchema,
 } from '@ark/contracts'
+import { clearModelCatalogCache } from '@ark/ai/models.ts'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
@@ -456,17 +457,53 @@ describe('shared API route contracts', () => {
   })
 
   it('returns health and models payloads that match shared contracts', async () => {
-    const healthResponse = await fetch(`${baseUrl}/api/health`)
-    const health = await healthResponse.json()
+    const previousKeys = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    }
+    delete process.env.OPENAI_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.OPENROUTER_API_KEY
+    clearModelCatalogCache()
 
-    expect(healthResponse.status).toBe(200)
-    assertApiContract(healthResponseSchema, health)
+    try {
+      const healthResponse = await fetch(`${baseUrl}/api/health`)
+      const health = await healthResponse.json()
 
-    const modelsResponse = await fetch(`${baseUrl}/api/models`)
-    const models = await modelsResponse.json()
+      expect(healthResponse.status).toBe(200)
+      assertApiContract(healthResponseSchema, health)
+      expect(health.providers).toMatchObject({
+        openai: { configured: false },
+        anthropic: { configured: false },
+        google: { configured: false },
+        openrouter: { configured: false },
+      })
 
-    expect(modelsResponse.status).toBe(200)
-    assertApiContract(modelsResponseSchema, models)
+      const modelsResponse = await fetch(`${baseUrl}/api/models`)
+      const models = await modelsResponse.json()
+
+      expect(modelsResponse.status).toBe(200)
+      assertApiContract(modelsResponseSchema, models)
+      expect(models).toMatchObject({ models: [], defaultModel: null, warnings: [] })
+      expect(models.models.every((model: { available: boolean }) => model.available)).toBe(true)
+      expect(
+        models.models.every(
+          (model: { unavailableReason?: string }) => model.unavailableReason == null,
+        ),
+      ).toBe(true)
+    } finally {
+      for (const [key, value] of Object.entries(previousKeys)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+      clearModelCatalogCache()
+    }
   })
 
   it('returns preview session payloads that match shared contracts', async () => {

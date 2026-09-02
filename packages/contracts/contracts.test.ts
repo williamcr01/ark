@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { apiErrorPayloadSchema, parseRequestBody, simpleErrorResponseSchema } from './common.ts'
+import {
+  apiErrorPayloadSchema,
+  parseRequestBody,
+  providerIdSchema,
+  simpleErrorResponseSchema,
+} from './common.ts'
 import {
   DOCUMENT_HISTORY_SOURCES,
   createDeckRequestSchema,
@@ -66,6 +71,24 @@ describe('shared API contracts', () => {
         },
       }),
     ).toMatchObject({ ok: true })
+
+    expect(providerIdSchema.parse('openrouter')).toBe('openrouter')
+    expect(providerIdSchema.safeParse('azure').success).toBe(false)
+    expect(
+      healthResponseSchema.safeParse({
+        ok: true,
+        model: 'openai:gpt-5.6-luna',
+        apiKey: { configured: false },
+        providers: {
+          openai: { configured: false },
+          azure: { configured: true },
+        },
+        preview: {
+          sandboxOrigin: 'http://localhost:5174',
+          appOrigin: 'http://localhost:5173',
+        },
+      }).success,
+    ).toBe(false)
   })
 
   it('parses models response', () => {
