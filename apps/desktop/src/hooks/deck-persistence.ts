@@ -55,6 +55,39 @@ export type DeckPersistenceController = {
   startNewDeck: () => Promise<void>
 }
 
+export type DeckPersistenceActions = Pick<
+  DeckPersistenceController,
+  | 'duplicate'
+  | 'ensureBlankDeck'
+  | 'moveTo'
+  | 'openWorkspaceFile'
+  | 'persistHtml'
+  | 'refreshActiveDeck'
+  | 'saveAs'
+  | 'selectDeck'
+  | 'startNewDeck'
+>
+
+export type DeckDocumentActions = Pick<
+  DeckPersistenceController,
+  | 'deleteActiveDeck'
+  | 'patchDeckOperations'
+  | 'renameActiveDeck'
+  | 'restoreFromHistory'
+  | 'restoreHtmlSnapshot'
+>
+
+let sharedController: DeckPersistenceController | null = null
+
+export function getDeckPersistenceController() {
+  sharedController ??= createDeckPersistenceController()
+  return sharedController
+}
+
+export function resetDeckPersistenceController() {
+  sharedController = null
+}
+
 export function createDeckPersistenceController(): DeckPersistenceController {
   let saveRequestId = 0
   let patchRequestId = 0
@@ -591,3 +624,9 @@ export function selectDeckPersistenceSnapshot(state: ReturnType<typeof useDeckSt
     saveError: state.saveError,
   }
 }
+
+export type DeckPersistenceSnapshot = ReturnType<typeof selectDeckPersistenceSnapshot>
+
+export type WorkspacePersistence = DeckPersistenceSnapshot &
+  DeckPersistenceActions &
+  DeckDocumentActions

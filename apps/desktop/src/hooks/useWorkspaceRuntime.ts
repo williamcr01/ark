@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { useShallow } from 'zustand/react/shallow'
 
 import type { DeckPreviewHandle } from '@/lib/deck/deck-preview-handle'
 import { parseInitialSlideIndex } from '@/lib/ui/app-shell-preferences'
 import { resolveWorkspaceMode, routeDeckIdFromParam } from '@/lib/ui/workspace-mode'
 import { useChatStore } from '@/state/chat-store.ts'
+import { useDeckStore } from '@/state/deck-store.ts'
 import { useEditorStore, type DeckEditHistoryEntry } from '@/state/editor-store.ts'
 
+import { selectDeckPersistenceSnapshot } from './deck-persistence.ts'
 import { useAvailableModels } from './useAvailableModels'
 import { useChatSession } from './useChatSession'
+import { useDeckDocumentActions } from './useDeckDocumentActions'
 import { useDeckEditHistory } from './useDeckEditHistory'
 import { useDeckGenerationFlow } from './useDeckGenerationFlow'
 import { useDeckPersistence } from './useDeckPersistence'
@@ -86,7 +90,10 @@ export function useWorkspaceRuntime(): WorkspaceRuntimeValue {
   const routeDeckId = routeDeckIdFromParam(routeParam)
   const initialSlideIndex = parseInitialSlideIndex(searchParams.get('slide'))
 
-  const persistence = useDeckPersistence(routeDeckId)
+  const persistenceActions = useDeckPersistence(routeDeckId)
+  const documentActions = useDeckDocumentActions()
+  const snapshot = useDeckStore(useShallow(selectDeckPersistenceSnapshot))
+  const persistence = { ...snapshot, ...documentActions, ...persistenceActions }
   const {
     deckId,
     deckTitle,

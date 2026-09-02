@@ -19,23 +19,21 @@ import type { DeckDownloadVariant } from '@/lib/deck/deck-export'
 import { newId } from '@/lib/ui/id'
 import { exportDeckHtml } from '@/lib/api/deck-api'
 
+import type { DeckDocumentActions, DeckPersistenceActions } from './deck-persistence.ts'
 import type { useChatSession } from './useChatSession'
-import type { useDeckPersistence } from './useDeckPersistence'
 import { clearStoredGenerationJob } from './useGenerationJob'
 
-type DeckPersistenceApi = ReturnType<typeof useDeckPersistence>
 type ChatSessionApi = ReturnType<typeof useChatSession>
 
-type DeckActionsDeckSlice = Pick<
-  DeckPersistenceApi,
-  | 'deckId'
-  | 'html'
-  | 'persistHtml'
-  | 'startNewDeck'
-  | 'renameActiveDeck'
-  | 'deleteActiveDeck'
-  | 'deckTitle'
->
+export type DeckActionsDeckSlice = {
+  deckId: string | null
+  html: string
+  persistHtml: DeckPersistenceActions['persistHtml']
+  startNewDeck: DeckPersistenceActions['startNewDeck']
+  renameActiveDeck: DeckDocumentActions['renameActiveDeck']
+  deleteActiveDeck: DeckDocumentActions['deleteActiveDeck']
+  deckTitle: string
+}
 
 type DeckActionsChatSlice = Pick<ChatSessionApi, 'appendMessage' | 'setMessages' | 'resetChat'>
 
