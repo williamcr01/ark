@@ -1,7 +1,7 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   EDITOR_BRIDGE_PROTOCOL_VERSION,
@@ -32,14 +32,24 @@ import {
 import { useDeckEditorBridge } from './useDeckEditorBridge'
 
 const TEST_SESSION_HANDSHAKE = 'test-editor-session'
+let testRuntimeGeneration = 0
 let testRuntimeMessages: unknown[] = []
+let testRuntimePort: MessagePort | null = null
+
+function currentTestHandshake() {
+  return `${TEST_SESSION_HANDSHAKE}-${testRuntimeGeneration}`
+}
+
+function currentTestFrameKey() {
+  return `test-frame-${testRuntimeGeneration}`
+}
 
 function EditorHarness({
   enabled = true,
   sandboxOrigin = null,
-  iframeGenerationKey = 'test-frame',
-  sessionHandshake = TEST_SESSION_HANDSHAKE,
-  forwardPublicMessages = sessionHandshake === TEST_SESSION_HANDSHAKE,
+  iframeGenerationKey = currentTestFrameKey(),
+  sessionHandshake = currentTestHandshake(),
+  forwardPublicMessages = sessionHandshake.startsWith(TEST_SESSION_HANDSHAKE),
   canPostToFrame,
   shouldAcceptInbound,
   onSelectionChange,
@@ -154,7 +164,7 @@ function TestEditorRuntimeConnection({
   sessionHandshake: string | null
 }) {
   useEffect(() => {
-    if (sessionHandshake !== TEST_SESSION_HANDSHAKE || !sandboxOrigin) {
+    if (!sessionHandshake?.startsWith(TEST_SESSION_HANDSHAKE) || !sandboxOrigin) {
       return
     }
 
@@ -166,7 +176,12 @@ function TestEditorRuntimeConnection({
 
     const channel = new MessageChannel()
     const runtimePort = channel.port1
+    const connectionGeneration = testRuntimeGeneration
+    testRuntimePort = runtimePort
     runtimePort.onmessage = (event) => {
+      if (connectionGeneration !== testRuntimeGeneration) {
+        return
+      }
       testRuntimeMessages.push(event.data)
     }
     runtimePort.start()
@@ -180,7 +195,11 @@ function TestEditorRuntimeConnection({
         return
       }
 
-      runtimePort.postMessage(event.data)
+      try {
+        runtimePort.postMessage(event.data)
+      } catch {
+        // The previous connection may already be closed during remounts.
+      }
     }
 
     window.addEventListener('message', forwardMessage)
@@ -199,6 +218,9 @@ function TestEditorRuntimeConnection({
 
     return () => {
       window.removeEventListener('message', forwardMessage)
+      if (testRuntimePort === runtimePort) {
+        testRuntimePort = null
+      }
       runtimePort.close()
     }
   }, [forwardPublicMessages, iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
@@ -217,15 +239,40 @@ function getIframeWindow() {
   return iframeWindow
 }
 
+async function waitForRuntimeConnection() {
+  await waitFor(() => {
+    expect(testRuntimePort).not.toBeNull()
+    expect(testRuntimeMessages).toContainEqual({
+      type: EDITOR_CONNECT_ACK_MESSAGE_TYPE,
+      protocolVersion: EDITOR_BRIDGE_PROTOCOL_VERSION,
+    })
+  })
+}
+
+async function renderConnected(ui: Parameters<typeof render>[0]) {
+  testRuntimePort = null
+  testRuntimeMessages = []
+  const view = render(ui)
+  await waitForRuntimeConnection()
+  return view
+}
+
 describe('useDeckEditorBridge', () => {
   const sandboxOrigin = resolveSandboxOrigin()
 
   beforeEach(() => {
+    testRuntimeGeneration += 1
+    testRuntimeMessages = []
+  })
+
+  afterEach(() => {
+    cleanup()
+    testRuntimeGeneration += 1
     testRuntimeMessages = []
   })
 
   it('accepts editor runtime messages from the active iframe only', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -347,7 +394,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('clears overlay geometry when the runtime deselects', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -406,7 +453,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('stores the full selection set from ark:editor-selection-change', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
     const primary = {
       elementId: 'ark-el-title',
@@ -442,7 +489,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('clears overlay geometry when selection identity changes', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -509,7 +556,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('ignores late geometry for a previously selected element', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -555,7 +602,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('rejects editor messages from non-active frames and hostile origins', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
 
     await act(async () => {
       window.dispatchEvent(
@@ -587,7 +634,7 @@ describe('useDeckEditorBridge', () => {
 
   it('posts validated shell messages to an opaque sandbox iframe', async () => {
     const user = userEvent.setup()
-    render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
+    await renderConnected(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
 
     await user.click(screen.getByRole('button', { name: 'Enable editor' }))
 
@@ -597,7 +644,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('ends an iframe transform when the pointer is released in the shell', async () => {
-    render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
+    await renderConnected(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
 
     act(() => {
       window.dispatchEvent(new Event('pointerup'))
@@ -609,7 +656,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('cancels an iframe transform when the shell pointer is cancelled', async () => {
-    render(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
+    await renderConnected(<EditorHarness sandboxOrigin={OPAQUE_SANDBOX_ORIGIN} />)
 
     act(() => {
       window.dispatchEvent(new Event('pointercancel'))
@@ -621,7 +668,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('surfaces bridge errors without throwing', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -638,7 +685,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('stores normalized geometry responses for the active selection', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -677,7 +724,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('keeps selection object identity when geometry repeats the same surface', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -739,7 +786,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('stores inline hover geometry, adaptive surfaces, and shortcut requests', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -804,7 +851,7 @@ describe('useDeckEditorBridge', () => {
   it('replays an active preview when the listener is registered again', async () => {
     const firstListener = vi.fn()
     const secondListener = vi.fn()
-    const { rerender } = render(
+    const { rerender } = await renderConnected(
       <EditorHarness sandboxOrigin={sandboxOrigin} transformPreviewListener={firstListener} />,
     )
     const iframeWindow = getIframeWindow()
@@ -834,7 +881,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('ignores a late transform commit for an element that is no longer selected', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
     const geometry = { x: 0.1, y: 0.2, width: 0.5, height: 0.1 }
 
@@ -893,7 +940,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('clears transform state when the runtime cancels a gesture', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
     const geometry = { x: 0.1, y: 0.2, width: 0.5, height: 0.1 }
 
@@ -928,7 +975,9 @@ describe('useDeckEditorBridge', () => {
 
   it('ignores forged editor commits and mutation requests from hostile origins', async () => {
     const onSelectionChange = vi.fn()
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} onSelectionChange={onSelectionChange} />)
+    await renderConnected(
+      <EditorHarness onSelectionChange={onSelectionChange} sandboxOrigin={sandboxOrigin} />,
+    )
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -988,7 +1037,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('drops runtime messages after the preview iframe generation changes', async () => {
-    const { rerender } = render(
+    const { rerender } = await renderConnected(
       <EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-1" />,
     )
     const iframeWindow = getIframeWindow()
@@ -1011,6 +1060,8 @@ describe('useDeckEditorBridge', () => {
 
     expect(screen.getByLabelText('Editor ready')).toHaveTextContent('pending')
 
+    testRuntimeMessages = []
+    await waitForRuntimeConnection()
     const newIframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -1079,7 +1130,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('preserves in-flight insert requests across same-iframe re-enable', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(<EditorHarness sandboxOrigin={sandboxOrigin} />)
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -1146,7 +1197,7 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('drops in-flight insert requests when the preview iframe remounts', async () => {
-    const { rerender } = render(
+    const { rerender } = await renderConnected(
       <EditorHarness sandboxOrigin={sandboxOrigin} iframeGenerationKey="frame-1" />,
     )
     const iframeWindow = getIframeWindow()
@@ -1188,8 +1239,8 @@ describe('useDeckEditorBridge', () => {
         enabled: true,
         activeSlideIndex: 0,
         sandboxOrigin,
-        iframeGenerationKey: 'test-frame',
-        sessionHandshake: TEST_SESSION_HANDSHAKE,
+        iframeGenerationKey: currentTestFrameKey(),
+        sessionHandshake: currentTestHandshake(),
       })
 
       return (
@@ -1197,10 +1248,10 @@ describe('useDeckEditorBridge', () => {
           <iframe ref={iframeRef} title="Deck preview" />
           <TestEditorRuntimeConnection
             forwardPublicMessages
-            iframeGenerationKey="test-frame"
+            iframeGenerationKey={currentTestFrameKey()}
             iframeRef={iframeRef}
             sandboxOrigin={sandboxOrigin}
-            sessionHandshake={TEST_SESSION_HANDSHAKE}
+            sessionHandshake={currentTestHandshake()}
           />
           <output aria-label="Text edit active">{bridge.textEditActive ? 'yes' : 'no'}</output>
         </div>
@@ -1208,6 +1259,7 @@ describe('useDeckEditorBridge', () => {
     }
 
     render(<TextEditHarness />)
+    await waitForRuntimeConnection()
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
@@ -1237,7 +1289,9 @@ describe('useDeckEditorBridge', () => {
 
   it('does not post when canPostToFrame returns false', async () => {
     const user = userEvent.setup()
-    render(<EditorHarness canPostToFrame={() => false} sandboxOrigin={sandboxOrigin} />)
+    await renderConnected(
+      <EditorHarness canPostToFrame={() => false} sandboxOrigin={sandboxOrigin} />,
+    )
     const iframeWindow = getIframeWindow()
     const postMessage = vi.spyOn(iframeWindow, 'postMessage')
 
@@ -1247,7 +1301,9 @@ describe('useDeckEditorBridge', () => {
   })
 
   it('ignores inbound editor messages when shouldAcceptInbound returns false', async () => {
-    render(<EditorHarness sandboxOrigin={sandboxOrigin} shouldAcceptInbound={() => false} />)
+    await renderConnected(
+      <EditorHarness sandboxOrigin={sandboxOrigin} shouldAcceptInbound={() => false} />,
+    )
     const iframeWindow = getIframeWindow()
 
     await act(async () => {
