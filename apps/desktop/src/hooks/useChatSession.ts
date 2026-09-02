@@ -36,10 +36,7 @@ export function useChatSession({
   hydrateVisibleThread(deckId)
 
   const messages = useChatStore((state) => state.messages)
-  const isLoading = useChatStore((state) => state.isLoading)
   const failedPersistIds = useChatStore((state) => state.failedPersistIds)
-  const deliveryStatus = useChatStore((state) => state.deliveryStatus)
-  const isReloadStale = useChatStore((state) => state.isReloadStale)
   const messagesDeckId = useChatStore((state) => state.messagesDeckId)
 
   useEffect(() => {
@@ -123,20 +120,16 @@ export function useChatSession({
         return undefined
       }
 
-      return deliveryStatus.get(messageId) ?? 'saved'
+      return useChatStore.getState().deliveryStatus.get(messageId) ?? 'saved'
     },
-    [deliveryStatus],
+    [],
   )
 
   const setMessages = useChatStore((state) => state.replaceMessages)
 
   return {
     appendMessage,
-    failedPersistIds,
     getMessageDeliveryStatus,
-    isLoading,
-    isReloadStale,
-    messages,
     persistMessage,
     reloadChat,
     resetChat,

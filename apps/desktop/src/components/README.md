@@ -22,3 +22,18 @@ Undo/redo and document restore stay in the editor toolbar (`DeckRestoreHistoryMe
 `element-inspector/` owns the selected-element panel. `ElementInspector` composes one section per inspector group (identity, geometry, typography, image, layer, lock) plus shared `InspectorField` primitives. Parsing, formatting, and patch builders live in `lib/editor/element-inspector.ts`. Import the panel from `components/ElementInspector.tsx` — that path is the stable re-export.
 
 Parents (`DeckPreview`, `SelectionInspectorChrome`) keep their current imports and props; these folders are an internal split only.
+
+## Chat panel composition
+
+`ChatPanel` is a thin layout shell. Call sites pass `layout` (`sidebar` | `home`) and an optional `contextSlot`. Everything else comes from zustand stores and chat hooks via `ChatPanelRuntimeProvider`.
+
+```
+ChatPanel
+  ChatTranscript          message list, live steps, delivery status
+  ChatInteractions        AgentQuestions / ThemePicker (in-panel)
+  ChatGenerationStatus    presence, MCP waiting, error banners
+  ChatQueuedSends         queued follow-ups
+  ChatComposer            prompt, attachments, model + reasoning, submit/stop
+```
+
+`WorkspaceChatPanel` was removed; `EditorWorkspace` and `CreationWorkspace` render `ChatPanel` directly.

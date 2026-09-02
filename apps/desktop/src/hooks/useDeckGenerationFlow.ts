@@ -9,7 +9,7 @@ import type {
   ThemeSelectionContext,
 } from '@ark/chat/chat.ts'
 import type { ReasoningEffort } from '@ark/contracts'
-import { useChatStore } from '@/state/chat-store.ts'
+import { useChatStore, selectFailedJobId } from '@/state/chat-store.ts'
 
 import { useGenerationJob } from './useGenerationJob'
 import {
@@ -57,17 +57,11 @@ export function useDeckGenerationFlow({
   const { messages, appendMessage, reloadChat, setMessages } = chat
 
   const {
-    activeJob,
-    activeSteps,
     cancelGeneration,
-    error: generationError,
-    failedJob,
-    isGenerating,
     retryGeneration,
     resumeStoredJob,
     setError: setGenerationError,
     startGeneration,
-    status: generationStatus,
   } = useGenerationJob({
     deckId,
     baseDocumentRevision: documentRevision,
@@ -77,10 +71,14 @@ export function useDeckGenerationFlow({
     onReloadModels: loadModels,
   })
 
+  const activeJob = useChatStore((state) => state.activeJob)
+  const isGenerating = useChatStore((state) => state.isGenerating)
+  const generationError = useChatStore((state) => state.generationError)
   const isPreviewUpdating = useChatStore((state) => state.isPreviewUpdating)
   const recoveredJobIdsRef = useRef(new Set<string>())
   const generatedHtmlRef = useRef(generatedHtml)
   const modelFailure = useChatStore((state) => state.isModelFailure)
+  const failedJobId = useChatStore(selectFailedJobId)
 
   useEffect(() => {
     generatedHtmlRef.current = generatedHtml
@@ -199,13 +197,10 @@ export function useDeckGenerationFlow({
   )
 
   return {
-    activeJobId: activeJob?.id ?? null,
-    activeSteps,
     cancelGeneration: handleCancelGeneration,
-    failedJobId: failedJob?.id ?? null,
+    failedJobId,
     generateDeck,
     generationError: modelFailure ? '' : generationError,
-    generationStatus,
     isPreviewUpdating,
     isModelFailure: modelFailure,
     isGenerating,
