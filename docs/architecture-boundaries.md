@@ -71,6 +71,10 @@ Packages are one or the other, and it is enforced:
   `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. The renderer bundles these.
   Two files opt out by name: `runtime-registry/runtime-stylesheet-disk.ts` and
   `telemetry/request-id.ts`, which needs `node:crypto`.
+  **Browser-safe packages may not import server-only packages, regardless of layer.**
+  Layer numbers alone would allow `@ark/contracts` (5) to import `@ark/storage` (4);
+  `pnpm check:boundaries` rejects that edge so the renderer cannot reach Node-only code
+  through contracts. Shared document schemas live in `@ark/deck` instead.
 - **Server-only** — `node:*` allowed, still no Express or React. `storage`, `agent`, `mcp`,
   `deck-import`. **The renderer must not import these**, which is a lint rule, not a convention.
 

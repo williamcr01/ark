@@ -8,7 +8,10 @@ import { deckResponseSchema, parseRequestBody } from '@ark/contracts'
 
 Do not import individual files such as `@ark/contracts/decks.ts` from application code — only modules inside `packages/contracts/` may import each other directly.
 
-The contracts layer depends on **Zod** and portable shared helpers only. It must not import React, Express, Node built-ins, or browser APIs.
+The contracts layer depends on **Zod** and browser-safe shared helpers only (`@ark/deck`,
+`@ark/ai`, `@ark/chat`, `@ark/runtime-registry`). It must not import React, Express, Node
+built-ins, browser APIs, or server-only packages such as `@ark/storage`. Stored-deck and
+document-history Zod schemas live in `@ark/deck` and are re-exported here.
 
 ## Covered endpoints
 

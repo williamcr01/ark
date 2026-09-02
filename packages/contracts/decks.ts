@@ -17,14 +17,14 @@ export {
   deckOriginSchema,
   deckSummarySchema,
   storedDeckSchema,
-} from '@ark/storage/records/stored-deck.ts'
-export type { DeckSummary, StoredDeck } from '@ark/storage/records/stored-deck.ts'
+} from '@ark/deck/document/stored-deck.ts'
+export type { DeckSummary, StoredDeck } from '@ark/deck/document/stored-deck.ts'
 import {
   deckOriginSchema,
   deckSummarySchema,
   storedDeckSchema,
-} from '@ark/storage/records/stored-deck.ts'
-import { documentHistorySummarySchema } from '@ark/storage/records/document-history.ts'
+} from '@ark/deck/document/stored-deck.ts'
+import { documentHistorySummarySchema } from '@ark/deck/document/document-history.ts'
 
 const deckRuntimeManifestSchema: z.ZodType<DeckRuntimeManifest> = z
   .object({
@@ -197,11 +197,11 @@ export {
   DOCUMENT_HISTORY_SOURCES,
   documentHistorySourceSchema,
   documentHistorySummarySchema,
-} from '@ark/storage/records/document-history.ts'
+} from '@ark/deck/document/document-history.ts'
 export type {
   DocumentHistorySource,
   DocumentHistorySummary,
-} from '@ark/storage/records/document-history.ts'
+} from '@ark/deck/document/document-history.ts'
 
 export const documentHistoryListResponseSchema = withRequestId({
   history: z.array(documentHistorySummarySchema),
