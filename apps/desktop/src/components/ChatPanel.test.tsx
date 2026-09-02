@@ -151,6 +151,7 @@ describe('ChatPanel submit control', () => {
     expect(onMcpInteractionSubmit).toHaveBeenCalledWith({
       kind: 'themes',
       themeId: 'theme-2',
+      fonts: themeFonts,
     })
   })
 
@@ -326,6 +327,9 @@ describe('ChatPanel submit control', () => {
 
     expect(onQuestionSubmit).toHaveBeenCalledWith(
       expect.stringContaining('Midnight Editorial (id: midnight)'),
+    )
+    expect(onQuestionSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('- Fonts: display georgia, body calibri, mono courier-new'),
     )
   })
 

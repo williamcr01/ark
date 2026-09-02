@@ -81,6 +81,9 @@ describe('AgentInteractionModal', () => {
     await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 2' }))
 
     expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('Theme 2 (id: theme-2)'))
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('- Fonts: display georgia, body calibri, mono courier-new'),
+    )
   })
 
   it('submits MCP questions without a normal agent model', async () => {
@@ -137,7 +140,7 @@ describe('AgentInteractionModal', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select Theme 1' }))
     await user.click(screen.getByRole('button', { name: 'Use this theme: Theme 1' }))
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'themes', themeId: 'theme-1' })
+    expect(onSubmit).toHaveBeenCalledWith({ kind: 'themes', themeId: 'theme-1', fonts })
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onCancel).toHaveBeenCalledOnce()

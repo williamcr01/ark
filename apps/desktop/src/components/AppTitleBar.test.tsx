@@ -226,6 +226,61 @@ describe('AppTitleBar accessibility', () => {
     expect(onExport).toHaveBeenCalledWith('pdf')
   })
 
+  it('surfaces PowerPoint export lint copy for each finding class', async () => {
+    const user = userEvent.setup()
+    renderTitleBar({
+      exportLint: [
+        {
+          code: 'font-weight-unsafe',
+          message: 'Font weights outside 400/700 will collapse to regular or bold in PowerPoint.',
+          count: 1,
+        },
+        {
+          code: 'flatten-to-picture',
+          message:
+            'Some CSS has no PowerPoint equivalent and will flatten those regions to pictures.',
+          count: 1,
+        },
+        {
+          code: 'literal-font-family',
+          message:
+            'Literal font-family values bypass --ark-font-* variables, so PowerPoint may pick a different typeface.',
+          count: 1,
+        },
+        {
+          code: 'unknown-font-id',
+          message:
+            'Unknown font ids are not in the registry and will not survive PowerPoint export.',
+          count: 1,
+        },
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Export deck' }))
+
+    expect(screen.getByText('PowerPoint export notes')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Font weights outside 400/700 will collapse to regular or bold in PowerPoint.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Some CSS has no PowerPoint equivalent and will flatten those regions to pictures.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Literal font-family values bypass --ark-font-* variables, so PowerPoint may pick a different typeface.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Unknown font ids are not in the registry and will not survive PowerPoint export.',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('disables the PDF item while an export is already running', async () => {
     const user = userEvent.setup()
     const onExport = vi.fn()

@@ -81,7 +81,11 @@ export type McpPendingInteraction = z.infer<typeof mcpPendingInteractionSchema>
 
 export const mcpInteractionAnswerSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('questions'), answers: mcpQuestionAnswersSchema }),
-  z.object({ kind: z.literal('themes'), themeId: z.string().min(1).max(64) }),
+  z.object({
+    kind: z.literal('themes'),
+    themeId: z.string().min(1).max(64),
+    fonts: themeFontPairingSchema,
+  }),
 ])
 
 export type McpInteractionAnswer = z.infer<typeof mcpInteractionAnswerSchema>

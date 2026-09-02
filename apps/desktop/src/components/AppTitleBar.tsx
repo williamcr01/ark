@@ -46,6 +46,7 @@ import {
   morphMenuTriggerMotionClassName,
 } from '@/components/ui/morph-menu'
 import type { DeckDownloadVariant, DeckExportFormat } from '@/lib/deck/deck-export'
+import type { DeckHtmlExportLintEntry } from '@/lib/deck/export-lint'
 import { DesktopSettingsDialog, type SettingsTab } from '@/components/DesktopSettingsDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/ui/utils'
@@ -103,12 +104,14 @@ function TitleBarButton({
 
 function ExportTitleBarButton({
   disabled,
+  exportLint,
   exporting,
   onDownload,
   onExport,
   showSanitizedDownload,
 }: {
   disabled?: boolean
+  exportLint: DeckHtmlExportLintEntry[]
   exporting: DeckExportFormat | false
   onDownload: (variant: DeckDownloadVariant) => void
   onExport: (format: DeckExportFormat) => void
@@ -144,7 +147,7 @@ function ExportTitleBarButton({
       </Tooltip>
       <MorphMenuContent
         align="end"
-        className="w-64"
+        className="w-72"
         side="bottom"
         triggerHeight={26}
         triggerRadius={0}
@@ -175,6 +178,17 @@ function ExportTitleBarButton({
               </div>
             </DropdownMenuItem>
           </DropdownMenuGroup>
+          {exportLint.length > 0 ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>PowerPoint export notes</DropdownMenuLabel>
+              <ul className="text-muted-foreground space-y-1.5 px-2 py-1 text-[11px] leading-snug">
+                {exportLint.map((item) => (
+                  <li key={item.code}>{item.message}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => onDownload('original')}>
@@ -343,6 +357,7 @@ export type AppTitleBarProps = {
   onDownload: (variant: DeckDownloadVariant) => void
   onExport: (format: DeckExportFormat) => void
   exportingDeck?: DeckExportFormat | false
+  exportLint?: DeckHtmlExportLintEntry[]
   onHtmlUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onPptxUpload: (event: ChangeEvent<HTMLInputElement>) => void
   onCredentialsChanged?: () => void | Promise<void>
@@ -371,6 +386,7 @@ export function AppTitleBar({
   onDownload,
   onExport,
   exportingDeck = false,
+  exportLint = [],
   onHtmlUpload,
   onPptxUpload,
   onCredentialsChanged = () => undefined,
@@ -536,6 +552,7 @@ export function AppTitleBar({
         </TitleBarButton>
         <ExportTitleBarButton
           disabled={!hasDeck}
+          exportLint={exportLint}
           exporting={exportingDeck}
           onDownload={onDownload}
           onExport={onExport}

@@ -147,12 +147,12 @@ export function AgentInteractionModal({
         {themeInteraction ? (
           <ThemePicker
             disabled={disabled && themeInteraction.source === 'agent'}
-            onSubmit={(themeId) => {
+            onSubmit={(themeId, fonts) => {
               if (themeInteraction.source === 'mcp') {
-                onMcpInteractionSubmit?.({ kind: 'themes', themeId })
+                onMcpInteractionSubmit?.({ kind: 'themes', themeId, fonts })
                 return
               }
-              onAgentQuestionSubmit?.(formatThemeChoice(themeInteraction.request, themeId))
+              onAgentQuestionSubmit?.(formatThemeChoice(themeInteraction.request, themeId, fonts))
             }}
             request={themeInteraction.request}
             submitLabel="Use this theme"

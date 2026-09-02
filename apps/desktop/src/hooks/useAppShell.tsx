@@ -34,6 +34,7 @@ import {
   getDeckPanelDefaultSizeWithChat,
 } from '@/lib/chat/chat-panel-layout'
 import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'
+import { formatPptxExportWarning, lintDeckHtmlForExport } from '@/lib/deck/export-lint'
 import {
   basenameFromPath,
   fileToBase64,
@@ -587,6 +588,7 @@ export function useAppShell() {
 
   const showSanitizedDownload = deckAnalysis.hasExecutableContent
   const hasSlides = deckAnalysis.slideCount > 0
+  const exportLint = useMemo(() => lintDeckHtmlForExport(generatedHtml).entries, [generatedHtml])
   const displayError = error || generationError
   const contextSlidesForChips = useMemo(
     () =>
@@ -668,12 +670,13 @@ export function useAppShell() {
           title: deckTitle,
         })
         if (result.ok) {
-          toast.success(
-            result.warning ? `${label} exported - ${result.warning}` : `${label} exported`,
-            {
-              id: pending,
-            },
-          )
+          const warning =
+            format === 'pptx'
+              ? formatPptxExportWarning(result.warning, lintDeckHtmlForExport(generatedHtml))
+              : result.warning
+          toast.success(warning ? `${label} exported - ${warning}` : `${label} exported`, {
+            id: pending,
+          })
         } else if (result.canceled) {
           toast.dismiss(pending)
         } else {
@@ -1211,6 +1214,7 @@ export function useAppShell() {
     handleDuplicate,
     handleExport,
     exportingDeck,
+    exportLint,
     handleHtmlUpload,
     handlePptxUpload,
     handleMove,
