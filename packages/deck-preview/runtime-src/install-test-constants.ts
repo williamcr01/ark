@@ -1,0 +1,20 @@
+Object.assign(globalThis, {
+  C: {
+    PROTOCOL_VERSION: 1,
+    HANDSHAKE_TYPE: 'ark:deck-handshake',
+    HANDSHAKE: 'test-handshake',
+    EDITOR_SESSION_HANDOFF_KEY: '',
+    GOTO: 'ark:deck-goto',
+    PATCH: 'ark:deck-patch-slides',
+    PATCH_RESULT: 'ark:deck-patch-slides-result',
+    READY: 'ark:deck-ready',
+    SLIDE_COUNT: 'ark:deck-slide-count',
+    CHANGE: 'ark:deck-slide-change',
+    METADATA: 'ark:deck-metadata',
+    ERROR: 'ark:deck-runtime-error',
+    SELECTORS: ['section.slide'],
+    PREVIEW_MODE: 'css-only',
+    NAV_KEYS: { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 },
+    PARENT_ORIGIN: '',
+  },
+})

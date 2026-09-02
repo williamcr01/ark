@@ -8,3 +8,4 @@ runtimes/**/*.min.js
 runtimes/**/LICENSE*
 runtimes/**/fonts/**
 packages/editor-runtime/runtime/generated/**
+packages/deck-preview/runtime/generated/**
