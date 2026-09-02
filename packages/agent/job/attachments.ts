@@ -62,20 +62,19 @@ export function prepareMessagesForModel(
 export async function resolveJobAttachments(ctx: JobContext): Promise<JobAttachments> {
   const currentJob = ctx.job
   let modelMessages = currentJob.request.messages
-  let attachmentInspector: DeckAttachmentInspector | undefined
   const historyAssetIds = collectAssetIdsFromMessages(currentJob.request.messages)
   const latestTurnAssetIds = currentJob.assetIds ?? []
   const allAssetIds = [...new Set([...historyAssetIds, ...latestTurnAssetIds])]
   const assetStore = ctx.stores.assetStore
 
   if (allAssetIds.length === 0 || !assetStore) {
-    return { modelMessages, attachmentInspector }
+    return { modelMessages, attachmentInspector: undefined }
   }
 
   const resolved = await resolveAssetAttachments({ assetStore }, currentJob.deckId, allAssetIds)
 
   if (!resolved.ok) {
-    return { modelMessages, attachmentInspector }
+    return { modelMessages, attachmentInspector: undefined }
   }
 
   const records = (
@@ -86,7 +85,7 @@ export async function resolveJobAttachments(ctx: JobContext): Promise<JobAttachm
     )
   ).filter((record): record is AssetRecord => Boolean(record?.deckId === currentJob.deckId))
   const recordsById = new Map(records.map((record) => [record.id, record]))
-  attachmentInspector = {
+  const attachmentInspector: DeckAttachmentInspector = {
     attachments: records.map((record) => ({
       id: record.id,
       filename: record.filename,
