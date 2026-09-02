@@ -125,6 +125,8 @@ export default defineConfig([
     ],
     rules: {
       'react-refresh/only-export-components': 'off',
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
     },
   },
   {

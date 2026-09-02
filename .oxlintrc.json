@@ -155,7 +155,9 @@
         "apps/desktop/src/components/ai-elements/**/*.{ts,tsx}"
       ],
       "rules": {
-        "react/only-export-components": "off"
+        "react/only-export-components": "off",
+        "max-lines": "off",
+        "max-lines-per-function": "off"
       },
       "plugins": ["react"]
     },
