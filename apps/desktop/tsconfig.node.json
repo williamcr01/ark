@@ -9,5 +9,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["electron", "vite.config.ts", "vite.electron.config.ts", "vite.preload.config.ts"]
+  "include": ["electron", "vite.config.ts", "vite.electron.config.ts", "vite.preload.config.ts"],
+  "exclude": ["electron/**/*.test.ts", "electron/**/*.spec.ts"]
 }

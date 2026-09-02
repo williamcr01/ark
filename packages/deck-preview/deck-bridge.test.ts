@@ -140,7 +140,10 @@ describe('deck bridge protocol', () => {
 
 describe('Reveal adapter', () => {
   it('preserves Reveal deck dimensions', () => {
-    const script = buildRevealNavRuntimeScript({ previewMode: 'full-js' })
+    const script = buildRevealNavRuntimeScript({
+      slideSelectors: ['.reveal .slides > section'],
+      previewMode: 'full-js',
+    })
 
     expect(script).not.toContain('width: C.SLIDE_WIDTH')
     expect(script).not.toContain('height: C.SLIDE_HEIGHT')

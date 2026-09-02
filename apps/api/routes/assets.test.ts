@@ -14,7 +14,8 @@ import {
 } from '@ark/contracts'
 import { createApp } from '../app.ts'
 import { resolveAssetAttachments } from '@ark/storage/records/asset-resolve.ts'
-import { createAssetStore, type AssetStore } from '@ark/storage/stores/asset-store.ts'
+import type { AssetStore } from '@ark/storage/records/asset-record.ts'
+import { createAssetStore } from '@ark/storage/stores/asset-store.ts'
 import { createDeckStore } from '@ark/storage/stores/deck-store.ts'
 import { createWorkspaceStore, type WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 

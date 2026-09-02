@@ -218,7 +218,10 @@ describe('propose_themes tool', () => {
 
   it('preserves registry fonts with sampleHtml on the live input schema', () => {
     const tools = createDeckTools(createDeckWorkspace(''))
-    const schema = tools.propose_themes!.inputSchema
+    const schema = tools.propose_themes!.inputSchema as unknown as {
+      parse: (value: unknown) => { themes: typeof themes }
+      safeParse: (value: unknown) => { success: boolean }
+    }
     const parsed = schema.parse({ title: 'Pick a visual direction', themes })
 
     expect(parsed.themes[0]?.fonts).toEqual(themes[0]?.fonts)

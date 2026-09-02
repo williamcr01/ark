@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@fixtures/*": ["../../test/fixtures/*"]
+    }
+  },
+  "include": ["./**/*.test.ts", "./**/*.spec.ts"],
+  "exclude": []
+}

@@ -23,6 +23,16 @@ const success = (nextHtml = html, changed = true): RunDeckAgentResult => ({
   validation: stubValidDeckValidation,
   steps: [],
   assistantText: changed ? 'Updated the deck.' : 'No document change needed.',
+  transcriptParts: [],
+  providerMetrics: {
+    latencyMs: 0,
+    model: 'openai:gpt-test',
+    provider: 'openai',
+    tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    finishReason: 'stop',
+    retryCount: 0,
+    errorCategory: null,
+  },
 })
 
 async function terminal(getJob: (id: string) => Promise<GenerationJob | null>, id: string) {
@@ -96,7 +106,6 @@ describe('generation job runner', () => {
       body: {
         deckId: deck.id,
         baseDocumentRevision: 1,
-        editingExistingDeck: true,
         currentHtml: deck.html,
         messages: [{ role: 'user', content: 'Update it' }],
       },
@@ -163,7 +172,6 @@ describe('generation job runner', () => {
       body: {
         deckId: deck.id,
         baseDocumentRevision: 1,
-        editingExistingDeck: true,
         currentHtml: deck.html,
         messages: [{ role: 'user', content: 'Update it' }],
       },
@@ -194,7 +202,6 @@ describe('generation job runner', () => {
       body: {
         deckId: deck.id,
         baseDocumentRevision: 1,
-        editingExistingDeck: true,
         currentHtml: deck.html,
         messages: [{ role: 'user', content: 'Update it' }],
       },
@@ -227,7 +234,6 @@ describe('generation job runner', () => {
       body: {
         deckId: deck.id,
         baseDocumentRevision: 1,
-        editingExistingDeck: true,
         currentHtml: deck.html,
         assetIds: [asset.id],
         messages: [{ role: 'user', content: 'Use the notes' }],

@@ -83,6 +83,7 @@ describe('API observability', () => {
           validation: validateDeckHtmlOnServer(sampleHtml),
           steps: [],
           assistantText: 'Done',
+          transcriptParts: [],
           providerMetrics: {
             latencyMs: 42,
             model: 'openai:gpt-4.1-mini',

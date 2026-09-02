@@ -13,26 +13,41 @@ import {
   type ChatMessagePart,
 } from './chat.ts'
 
-const toolStep = (stepIndex: number, id: string, summary: string, error = false) =>
-  [
-    {
-      type: 'tool-call',
-      toolName: 'read_deck',
-      summary,
-      stepIndex,
-      toolCallId: id,
-      input: { offset: stepIndex + 1, padding: 'x'.repeat(900) },
-    },
-    {
-      type: 'tool-result',
-      toolName: 'read_deck',
-      summary: error ? 'read failed' : `slide ${stepIndex}`,
-      stepIndex,
-      toolCallId: id,
-      output: error ? { error: 'read failed' } : { title: `Slide ${stepIndex}` },
-      isError: error,
-    },
-  ] satisfies ChatMessagePart[]
+const toolStep = (
+  stepIndex: number,
+  id: string,
+  summary: string,
+  error = false,
+): ChatMessagePart[] => {
+  const call: ChatMessagePart = {
+    type: 'tool-call',
+    toolName: 'read_deck',
+    summary,
+    stepIndex,
+    toolCallId: id,
+    input: { offset: stepIndex + 1, padding: 'x'.repeat(900) },
+  }
+  const result: ChatMessagePart = error
+    ? {
+        type: 'tool-result',
+        toolName: 'read_deck',
+        summary: 'read failed',
+        stepIndex,
+        toolCallId: id,
+        output: { error: 'read failed' },
+        isError: true,
+      }
+    : {
+        type: 'tool-result',
+        toolName: 'read_deck',
+        summary: `slide ${stepIndex}`,
+        stepIndex,
+        toolCallId: id,
+        output: { title: `Slide ${stepIndex}` },
+        isError: false,
+      }
+  return [call, result]
+}
 
 describe('agent context assembly', () => {
   it('replays under-budget turns without changing durable parts', () => {
