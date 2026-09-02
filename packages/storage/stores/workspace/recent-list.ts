@@ -13,8 +13,11 @@ import type { OpenWorkspace, RecentWorkspace, WorkspaceRow } from './types.ts'
 export class RecentList {
   private readonly recent = new Map<string, RecentWorkspace>()
   private loaded = false
+  private readonly filePath: string
 
-  constructor(private readonly filePath: string) {}
+  constructor(filePath: string) {
+    this.filePath = filePath
+  }
 
   get(id: string) {
     return this.recent.get(id)

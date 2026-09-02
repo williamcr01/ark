@@ -5,10 +5,13 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { RecentList } from './recent-list.ts'
 
 export class ThumbnailFiles {
-  constructor(
-    private readonly databaseFor: (id: string) => Promise<DatabaseSync | null>,
-    private readonly recents: RecentList,
-  ) {}
+  private readonly databaseFor: (id: string) => Promise<DatabaseSync | null>
+  private readonly recents: RecentList
+
+  constructor(databaseFor: (id: string) => Promise<DatabaseSync | null>, recents: RecentList) {
+    this.databaseFor = databaseFor
+    this.recents = recents
+  }
 
   async readThumbnail(
     id: string,

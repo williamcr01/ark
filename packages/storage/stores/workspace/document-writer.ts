@@ -29,7 +29,11 @@ export type DocumentWriterDeps = {
 }
 
 export class DocumentWriter {
-  constructor(private readonly deps: DocumentWriterDeps) {}
+  private readonly deps: DocumentWriterDeps
+
+  constructor(deps: DocumentWriterDeps) {
+    this.deps = deps
+  }
 
   async listDocumentHistory(id: string) {
     await this.deps.index()
