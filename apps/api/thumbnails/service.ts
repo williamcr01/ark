@@ -1,4 +1,3 @@
-import { THUMBNAIL_LONG_POLL_MAX_WAIT_MS } from '@ark/contracts'
 import type { DeckStore } from '@ark/storage/records/deck-record.ts'
 import {
   buildDeckRuntimeManifestFromHtml,
@@ -6,52 +5,20 @@ import {
 } from '@ark/storage/fs/deck-manifest.ts'
 import type { WorkspaceStore } from '@ark/storage/stores/workspace-store.ts'
 import type { AssetStore } from '@ark/storage/records/asset-record.ts'
-import { resolveArkAssetUrls } from '@ark/storage/records/asset-resolve.ts'
-import {
-  THUMBNAIL_MAX_SLIDES,
-  THUMBNAIL_OUTPUT_HEIGHT,
-  THUMBNAIL_OUTPUT_WIDTH,
-  THUMBNAIL_QUEUE_MAX_PENDING,
-  THUMBNAIL_RENDERER_VERSION,
-  THUMBNAIL_STATUS,
-  type ThumbnailStatus,
-} from './constants.ts'
-import { computeThumbnailSlideFingerprints } from './fingerprints.ts'
+import { THUMBNAIL_QUEUE_MAX_PENDING } from './constants.ts'
+import { inspectThumbnailCoverage, renderMissingThumbnails } from './service-render.ts'
 import type { ThumbnailRenderer } from './renderer.ts'
+import {
+  readThumbnailPng,
+  resolveThumbnailStatus,
+  type ThumbnailEnqueueInput,
+  type ThumbnailStatusResult,
+} from './service-status.ts'
 
-export type ThumbnailStatusResult = {
-  status: ThumbnailStatus
-  slides: Array<{ index: number; url: string }>
-  error?: string
-  width?: number
-  height?: number
-}
-
-export type ThumbnailEnqueueInput = {
-  deckId: string
-  documentRevision: number
-  html: string
-  manifestHash: string
-}
-
-type ThumbnailStatusInput = {
-  deckId: string
-  documentRevision: number
-  manifestHash: string
-  enqueueIfMissing?: boolean
-  html?: string
-  loadHtml?: () => Promise<string | null>
-  waitMs?: number
-  signal?: AbortSignal
-}
+export type { ThumbnailEnqueueInput, ThumbnailStatusResult } from './service-status.ts'
 
 export function thumbnailManifestHash(html: string) {
   return hashRuntimeManifest(buildDeckRuntimeManifestFromHtml(html))
-}
-
-function slideUrl(deckId: string, revision: number, index: number, hash: string) {
-  const query = new URLSearchParams({ hash })
-  return `/api/decks/${encodeURIComponent(deckId)}/thumbnails/${revision}/${index}.png?${query}`
 }
 
 export type ThumbnailService = {
@@ -85,83 +52,20 @@ export function createThumbnailService(options: {
   const key = (input: { deckId: string; documentRevision: number; manifestHash: string }) =>
     `${input.deckId}:${input.documentRevision}:${input.manifestHash}`
 
-  const inspect = async (input: ThumbnailEnqueueInput) => {
-    const fingerprints = computeThumbnailSlideFingerprints(input.html, input.manifestHash)
-    const images = await Promise.all(
-      fingerprints.slideFingerprints.map((hash) =>
-        options.workspaceStore.readThumbnail(
-          input.deckId,
-          hash,
-          THUMBNAIL_RENDERER_VERSION,
-          input.manifestHash,
-        ),
-      ),
-    )
-    return { fingerprints, images }
-  }
+  const inspect = async (input: ThumbnailEnqueueInput) =>
+    inspectThumbnailCoverage(options.workspaceStore, input)
 
-  const readyResult = (
-    input: ThumbnailEnqueueInput,
-    fingerprints: ReturnType<typeof computeThumbnailSlideFingerprints>,
-  ): ThumbnailStatusResult => ({
-    status: THUMBNAIL_STATUS.ready,
-    slides: fingerprints.slideFingerprints.map((hash, index) => ({
-      index,
-      url: slideUrl(input.deckId, input.documentRevision, index, hash),
-    })),
-    width: THUMBNAIL_OUTPUT_WIDTH,
-    height: THUMBNAIL_OUTPUT_HEIGHT,
-  })
-
-  const render = async (input: ThumbnailEnqueueInput) => {
-    const jobKey = key(input)
-    const { fingerprints, images } = await inspect(input)
-    const slideCount = fingerprints.parsed.slideCount
-    if (slideCount < 1) throw new Error('Deck has no slides to render.')
-    if (slideCount > THUMBNAIL_MAX_SLIDES) {
-      throw new Error(`Deck has ${slideCount} slides; thumbnails allow ${THUMBNAIL_MAX_SLIDES}.`)
-    }
-    await options.workspaceStore.pruneThumbnails(
-      input.deckId,
-      fingerprints.slideFingerprints,
-      THUMBNAIL_RENDERER_VERSION,
-      input.manifestHash,
-    )
-    const missing = images.flatMap((image, index) => (image ? [] : [index]))
-    if (missing.length === 0) return
-
-    const renderedHtml = await resolveArkAssetUrls(options.assetStore, input.deckId, input.html)
-    const result = await options.renderer.render({
-      html: renderedHtml,
-      deckId: input.deckId,
-      documentRevision: input.documentRevision,
-      slideIndexes: missing,
-      slideCount,
+  const render = async (input: ThumbnailEnqueueInput) =>
+    renderMissingThumbnails({
+      renderer: options.renderer,
+      deckStore: options.deckStore,
+      workspaceStore: options.workspaceStore,
+      assetStore: options.assetStore,
+      input,
+      inspect,
+      jobKey: key(input),
+      failures,
     })
-    if (!result.ok) throw new Error(result.error)
-    if (result.slideCount !== slideCount || result.slides.length !== missing.length) {
-      throw new Error('Thumbnail renderer returned an unexpected slide count.')
-    }
-
-    const current = await options.deckStore.getDeck(input.deckId)
-    if (!current || current.documentRevision !== input.documentRevision) return
-
-    await Promise.all(
-      missing.map((slideIndex, resultIndex) =>
-        options.workspaceStore.writeThumbnail(input.deckId, {
-          slideHash: fingerprints.slideFingerprints[slideIndex]!,
-          rendererVersion: THUMBNAIL_RENDERER_VERSION,
-          manifestHash: input.manifestHash,
-          mediaType: 'image/png',
-          width: result.width,
-          height: result.height,
-          image: result.slides[resultIndex]!,
-          cover: slideIndex === 0,
-        }),
-      ),
-    )
-    failures.delete(jobKey)
-  }
 
   const schedule = (input: ThumbnailEnqueueInput) => {
     const jobKey = key(input)
@@ -178,57 +82,15 @@ export function createThumbnailService(options: {
     return job
   }
 
-  const loadInput = async (input: ThumbnailStatusInput): Promise<ThumbnailEnqueueInput | null> => {
-    const html = input.html ?? (await input.loadHtml?.())
-    return html
-      ? {
-          deckId: input.deckId,
-          documentRevision: input.documentRevision,
-          html,
-          manifestHash: input.manifestHash,
-        }
-      : null
-  }
-
-  const waitFor = async (job: Promise<void> | null, input: ThumbnailStatusInput) => {
-    const waitMs = Math.min(
-      THUMBNAIL_LONG_POLL_MAX_WAIT_MS,
-      Math.max(0, Math.floor(input.waitMs ?? 0)),
-    )
-    if (!job || waitMs === 0) return
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    await Promise.race([
-      job,
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, waitMs)
-      }),
-      new Promise<void>((resolve) => {
-        if (input.signal?.aborted) resolve()
-        else input.signal?.addEventListener('abort', () => resolve(), { once: true })
-      }),
-    ])
-    if (timeout) clearTimeout(timeout)
-  }
-
-  const status = async (input: ThumbnailStatusInput): Promise<ThumbnailStatusResult> => {
-    if (!options.renderer.isAvailable()) return { status: THUMBNAIL_STATUS.disabled, slides: [] }
-    const loaded = await loadInput(input)
-    if (!loaded) return { status: THUMBNAIL_STATUS.failed, slides: [], error: 'Deck not found.' }
-    const first = await inspect(loaded)
-    if (first.images.length > 0 && first.images.every(Boolean)) {
-      return readyResult(loaded, first.fingerprints)
-    }
-    const job = input.enqueueIfMissing ? schedule(loaded) : null
-    await waitFor(job, input)
-    const second = await inspect(loaded)
-    if (second.images.length > 0 && second.images.every(Boolean)) {
-      return readyResult(loaded, second.fingerprints)
-    }
-    const error = failures.get(key(loaded))
-    return error
-      ? { status: THUMBNAIL_STATUS.failed, slides: [], error }
-      : { status: THUMBNAIL_STATUS.pending, slides: [] }
-  }
+  const status = (input: Parameters<ThumbnailService['getStatus']>[0]) =>
+    resolveThumbnailStatus({
+      input,
+      rendererAvailable: options.renderer.isAvailable(),
+      inspect,
+      schedule,
+      failures,
+      jobKey: key,
+    })
 
   return {
     isAvailable: () => options.renderer.isAvailable(),
@@ -240,19 +102,13 @@ export function createThumbnailService(options: {
     async readPng(input) {
       const deck = await options.deckStore.getDeck(input.deckId)
       if (!deck || deck.documentRevision !== input.documentRevision) return null
-      const fingerprints = computeThumbnailSlideFingerprints(deck.html, input.manifestHash)
-      const hash = fingerprints.slideFingerprints[input.slideIndex]
-      if (!hash || (input.fingerprint && input.fingerprint !== hash)) return null
-      return (
-        (
-          await options.workspaceStore.readThumbnail(
-            input.deckId,
-            hash,
-            THUMBNAIL_RENDERER_VERSION,
-            input.manifestHash,
-          )
-        )?.image ?? null
-      )
+      return readThumbnailPng(options.workspaceStore, {
+        html: deck.html,
+        manifestHash: input.manifestHash,
+        slideIndex: input.slideIndex,
+        fingerprint: input.fingerprint,
+        deckId: input.deckId,
+      })
     },
     async enqueueForDocument(deckId, documentRevision) {
       const deck = await options.deckStore.getDeck(deckId)
