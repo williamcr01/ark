@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   EditorSelectionContext,
   SlideContext,
+  ThemeSelectionContext,
 } from '@ark/chat/chat.ts'
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 import { formatModelGenerationFailure, isModelGenerationError } from '@ark/chat/generation-job.ts'
@@ -332,6 +333,7 @@ export function useDeckGenerationFlow({
         editorSelection?: EditorSelectionContext
         editorSelections?: EditorSelectionContext[]
         slideContexts?: SlideContext[]
+        themeSelection?: ThemeSelectionContext
       } = {},
     ) => {
       const prompt =
@@ -350,17 +352,20 @@ export function useDeckGenerationFlow({
         editorSelection: options.editorSelection,
         editorSelections: options.editorSelections,
       })
+      const { themeSelection: _themeSelection, ...jobSource } = options
       const jobOptions = {
-        ...options,
+        ...jobSource,
         ...selectionFields,
       }
       const messageContext =
         selectionFields.editorSelection ||
         selectionFields.editorSelections?.length ||
-        options.slideContexts?.length
+        options.slideContexts?.length ||
+        options.themeSelection
           ? {
               ...selectionFields,
               ...(options.slideContexts?.length ? { slideContexts: options.slideContexts } : {}),
+              ...(options.themeSelection ? { themeSelection: options.themeSelection } : {}),
             }
           : undefined
       const userMessage: ChatMessage = {

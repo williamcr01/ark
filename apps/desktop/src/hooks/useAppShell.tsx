@@ -1223,8 +1223,10 @@ export function useAppShell() {
         void sendQueuedNow(id)
       }}
       queuedSends={sendQueue.items.map(toQueuedChatSendPreview)}
-      onQuestionSubmit={(content) => {
-        void generateDeck(content)
+      onQuestionSubmit={(content, context) => {
+        void generateDeck(content, [], {
+          themeSelection: context?.themeSelection,
+        })
       }}
       onRetryGeneration={handleRetryGeneration}
       onRetryPersist={retryPersist}

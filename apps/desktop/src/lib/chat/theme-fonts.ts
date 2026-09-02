@@ -1,4 +1,5 @@
 import type { ThemeFontPairing } from '@ark/chat/agent-themes.ts'
+import { applyDeckThemeToDocument, type DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import {
   APPROVED_DECK_FONTS,
   buildDeckFontRootCss,
@@ -62,4 +63,11 @@ export function applyThemeFontPairingToSampleHtml(sampleHtml: string, fonts: The
   head.append(style)
 
   return `<!DOCTYPE html>\n${root.outerHTML}`
+}
+
+/** Apply the resolved theme contract to a sample for live preview. */
+export function applyDeckThemeToSampleHtml(sampleHtml: string, theme: DeckThemeSpecV1) {
+  const doc = new DOMParser().parseFromString(sampleHtml, 'text/html')
+  applyDeckThemeToDocument(doc, theme)
+  return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`
 }

@@ -5,6 +5,7 @@ import {
   usesRevealRuntimeAdapter,
 } from '@/lib/deck/deck-runtime'
 import { manifestIndicatesScriptStripping } from '@/lib/deck/deck-runtime-manifest'
+import { isInertArkThemeScript } from '@ark/deck/document/theme.ts'
 import { stripDeckScriptsForPreview } from '@/lib/deck/deck-slides'
 
 const INLINE_HANDLER_PATTERN = /^on[a-z]+$/i
@@ -36,7 +37,10 @@ function parentHasInlineHandlers(root: ParentNode | null) {
 }
 
 export function deckDocumentHasExecutableContent(doc: Document) {
-  if (doc.querySelector('script')) {
+  const hasExecutableScript = [...doc.querySelectorAll('script')].some(
+    (script) => !isInertArkThemeScript(script),
+  )
+  if (hasExecutableScript) {
     return true
   }
 

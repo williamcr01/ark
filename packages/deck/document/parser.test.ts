@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { parseDeckHtml, summarizeParsedDeck, toDeckSlideSummaries } from './parser.ts'
+import { buildThemeSampleHtml, exampleDeckThemes, serializeDeckThemeSpec } from './theme.ts'
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -183,6 +184,34 @@ describe('parseDeckHtml font markers', () => {
 
     expect(parsed.fonts.body).toBe('calibri')
     expect(parsed.fonts.display).toBeNull()
+  })
+})
+
+describe('parseDeckHtml theme metadata', () => {
+  it('reads the embedded theme and per-slide recipe markers', () => {
+    const theme = exampleDeckThemes().midnight
+    const sample = buildThemeSampleHtml(theme, { extraKind: 'data' })
+    const html = sample.replace(
+      '</head>',
+      `<script type="application/json" data-ark-theme>${serializeDeckThemeSpec(theme)}</script></head>`,
+    )
+    const parsed = parseDeckHtml(html)
+
+    expect(parsed.theme?.signature).toBe(theme.signature)
+    expect(parsed.slides.map((slide) => slide.kind)).toEqual(['cover', 'content', 'data'])
+    expect(parsed.slides.map((slide) => slide.layout)).toEqual([
+      theme.slideRecipes.cover.layout,
+      theme.slideRecipes.content.layout,
+      theme.slideRecipes.data.layout,
+    ])
+    expect(summarizeParsedDeck(parsed)).toContain(`theme ${theme.signature}`)
+    expect(summarizeParsedDeck(parsed)).toContain('[cover]')
+  })
+
+  it('leaves imported decks without theme metadata valid', () => {
+    const parsed = parseDeckHtml(plainCssDeck)
+    expect(parsed.theme).toBeNull()
+    expect(parsed.slides.every((slide) => slide.kind === null && slide.layout === null)).toBe(true)
   })
 
   it('reports no selection for a deck that declares none', () => {

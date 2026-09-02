@@ -46,6 +46,8 @@ export type PreviewHtmlOptions = {
    * The injected sentinel removes its DOM node before deck scripts execute.
    */
   handshake?: string
+  /** Which CSS-only slide to show first. Defaults to 0. */
+  initialSlideIndex?: number
 }
 
 export type PreviewDocumentResult = {
@@ -451,16 +453,18 @@ function finalizePreviewHtml(doc: Document): string {
  * Mark slide 0 visible and hide siblings before CSS-nav JS runs so the first
  * paint already shows the active slide (benchmark `preview_active_slide_ms`).
  */
-function activateInitialCssNavSlide(doc: Document) {
+function activateInitialCssNavSlide(doc: Document, slideIndex = 0) {
   const slides = findSlideElements(doc)
 
   if (slides.length === 0) {
     return
   }
 
+  const activeIndex = Math.min(Math.max(0, Math.trunc(slideIndex) || 0), slides.length - 1)
+
   for (let index = 0; index < slides.length; index += 1) {
     const slide = slides[index]!
-    const isActive = index === 0
+    const isActive = index === activeIndex
 
     if (isActive) {
       slide.removeAttribute('data-ark-hidden')
@@ -565,7 +569,7 @@ export function buildPreviewDocument(
   absolutizePreviewAssetReferences(doc.documentElement, assetOrigin)
   injectRuntimeCspMeta(doc, mode, { assetOrigin, nonce })
   appendPreviewFill(doc, { nonce, assetOrigin })
-  activateInitialCssNavSlide(doc)
+  activateInitialCssNavSlide(doc, options.initialSlideIndex)
   appendScript(
     doc,
     body,

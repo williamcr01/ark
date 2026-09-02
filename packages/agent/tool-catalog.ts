@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { THEME_SAMPLE_HTML_MAX_BYTES } from '@ark/chat/agent-themes.ts'
 import { MAX_PERSISTED_TOOL_VALUE_BYTES, type JsonValue } from '@ark/chat/chat.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
+import type { DeckThemeSpecV1 } from '@ark/deck/document/theme.ts'
 import { createDeckTools, type DeckAttachmentInspector } from './tools.ts'
 import type { DeckWorkspace } from './workspace.ts'
 
@@ -229,7 +230,9 @@ function projectProposeThemesInput(value: unknown): TranscriptProjection {
       name: typeof record.name === 'string' ? truncateString(record.name, 80) : '',
       description:
         typeof record.description === 'string' ? truncateString(record.description, 200) : '',
+      rationale: typeof record.rationale === 'string' ? truncateString(record.rationale, 200) : '',
       fonts: projectThemeFonts(record.fonts),
+      theme: normalizeTranscriptValue(record.theme, 'theme', 8_000),
       sampleHtml: page.content,
     }
   })
@@ -347,6 +350,7 @@ export function createActiveDeckTools(
   options: {
     logger?: Logger
     attachmentInspector?: DeckAttachmentInspector
+    expectedTheme?: DeckThemeSpecV1 | null
   } = {},
 ) {
   const rawTools = createDeckTools(workspace, options)

@@ -11,6 +11,12 @@ import {
   readDeckFontSelection,
   type DeckFontSelection,
 } from '@ark/runtime-registry/deck-font-registry.ts'
+import {
+  readDeckThemeFromDocument,
+  readSlideRecipe,
+  type DeckThemeSpecV1,
+  type SlideRecipeRole,
+} from './theme.ts'
 
 export type DeckStructure = 'plain' | 'reveal' | 'unknown'
 
@@ -57,6 +63,8 @@ export type ParsedDeckSlide = {
   preview: string
   outerHTML: string
   notes: string | null
+  kind: SlideRecipeRole | null
+  layout: string | null
 }
 
 export type DeckParseResult = {
@@ -64,6 +72,7 @@ export type DeckParseResult = {
   structure: DeckStructure
   runtime: DeckRuntime
   fonts: DeckFontSelection
+  theme: DeckThemeSpecV1 | null
   slideSelector: string | null
   slideCount: number
   slides: ParsedDeckSlide[]
@@ -286,6 +295,7 @@ const emptyParseResult: DeckParseResult = {
     arkRuntimeVersion: null,
   },
   fonts: { display: null, body: null, mono: null },
+  theme: null,
   slideSelector: null,
   slideCount: 0,
   slides: [],
@@ -328,6 +338,7 @@ function parseDeckHtmlCore(html: string): DeckParseResult {
     const title = extractSlideTitle(element, index)
     const preview = element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) ?? ''
     const { slideId, slideIdTransient } = resolveSlideId(element, index)
+    const recipe = readSlideRecipe(element)
 
     return {
       index,
@@ -337,6 +348,8 @@ function parseDeckHtmlCore(html: string): DeckParseResult {
       preview,
       outerHTML: element.outerHTML,
       notes: extractSlideNotes(element),
+      kind: recipe.kind,
+      layout: recipe.layout,
     }
   })
 
@@ -345,6 +358,7 @@ function parseDeckHtmlCore(html: string): DeckParseResult {
     structure: detectDeckStructure(doc, slideSelector),
     runtime: readRuntimeMarkers(doc),
     fonts: readDeckFontSelection(doc),
+    theme: readDeckThemeFromDocument(doc),
     slideSelector,
     slideCount: slides.length,
     slides,
@@ -363,7 +377,8 @@ export function summarizeParsedDeck(parsed: DeckParseResult) {
   const slideList = parsed.slides
     .map((slide) => {
       const notesSuffix = slide.notes ? ' [notes]' : ''
-      return `${slide.index}: ${slide.title}${notesSuffix}`
+      const kindSuffix = slide.kind ? ` [${slide.kind}]` : ''
+      return `${slide.index}: ${slide.title}${kindSuffix}${notesSuffix}`
     })
     .join('; ')
 
@@ -376,6 +391,10 @@ export function summarizeParsedDeck(parsed: DeckParseResult) {
     `${parsed.assets.length} asset reference(s)`,
     `${parsed.runtime.previewMode} preview`,
   ]
+
+  if (parsed.theme) {
+    parts.push(`theme ${parsed.theme.signature}`)
+  }
 
   if (parsed.slideSelector) {
     parts.push(`selector ${parsed.slideSelector}`)

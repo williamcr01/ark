@@ -5,6 +5,8 @@ import fullJsDeck from '@fixtures/full-js-deck.html?raw'
 import hostileScriptsDeck from '@fixtures/hostile-scripts-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 
+import { exampleDeckThemes, serializeDeckThemeSpec } from '@ark/deck/document/theme.ts'
+
 import {
   buildSanitizedDeckHtml,
   deckHasExecutableContent,
@@ -35,6 +37,16 @@ describe('deck-export', () => {
   it('does not treat plain CSS decks as executable', () => {
     expect(deckHasExecutableContent(plainCssDeck)).toBe(false)
     expect(previewStripsDeckScripts(plainCssDeck)).toBe(false)
+  })
+
+  it('does not treat inert theme metadata as executable content', () => {
+    const theme = exampleDeckThemes().midnight
+    const html = `<!DOCTYPE html><html><head>
+<script type="application/json" data-ark-theme>${serializeDeckThemeSpec(theme)}</script>
+</head><body><section class="slide"><h1>Cover</h1></section></body></html>`
+
+    expect(deckHasExecutableContent(html)).toBe(false)
+    expect(previewStripsDeckScripts(html)).toBe(false)
   })
 
   it('keeps inline handler stripping visible when a manifest is provided', () => {

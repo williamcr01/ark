@@ -2,8 +2,9 @@ import { CableIcon, SparklesIcon } from 'lucide-react'
 
 import type { AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
 import { formatAgentQuestionAnswers } from '@ark/chat/agent-questions.ts'
-import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
-import { formatThemeChoice } from '@ark/chat/agent-themes.ts'
+import type { ChatMessageContext } from '@ark/chat/chat.ts'
+import type { StoredThemeProposalRequest } from '@ark/chat/agent-themes.ts'
+import { formatThemeChoice, THEME_REFRESH_PROMPT } from '@ark/chat/agent-themes.ts'
 import type { McpInteractionAnswer, McpPendingInteraction } from '@ark/contracts'
 import { AgentQuestions } from '@/components/AgentQuestions'
 import { ThemePicker } from '@/components/ThemePicker'
@@ -20,10 +21,10 @@ type AgentInteractionModalProps = {
   mcpInteraction?: McpPendingInteraction | null
   agentQuestions?: AgentQuestionRequest | null
   disabled?: boolean
-  themeProposal?: ThemeProposalRequest | null
+  themeProposal?: StoredThemeProposalRequest | null
   onMcpInteractionSubmit?: (answer: McpInteractionAnswer) => void
   onMcpInteractionCancel?: () => void | Promise<void>
-  onAgentQuestionSubmit?: (content: string) => void
+  onAgentQuestionSubmit?: (content: string, context?: ChatMessageContext) => void
 }
 
 type ActiveInteraction =
@@ -36,11 +37,11 @@ type ActiveInteraction =
   | {
       source: 'mcp'
       kind: 'themes'
-      request: ThemeProposalRequest
+      request: StoredThemeProposalRequest
       clientName: string | null
     }
   | { source: 'agent'; kind: 'questions'; request: AgentQuestionRequest }
-  | { source: 'agent'; kind: 'themes'; request: ThemeProposalRequest }
+  | { source: 'agent'; kind: 'themes'; request: StoredThemeProposalRequest }
 
 export function AgentInteractionModal({
   agentQuestions = null,
@@ -147,12 +148,43 @@ export function AgentInteractionModal({
         {themeInteraction ? (
           <ThemePicker
             disabled={disabled && themeInteraction.source === 'agent'}
-            onSubmit={(themeId, fonts) => {
+            onSubmit={(result) => {
               if (themeInteraction.source === 'mcp') {
-                onMcpInteractionSubmit?.({ kind: 'themes', themeId, fonts })
+                if (result.action === 'refresh') {
+                  onMcpInteractionSubmit?.({ kind: 'themes', refresh: true })
+                  return
+                }
+                if (!result.theme) return
+                onMcpInteractionSubmit?.({
+                  kind: 'themes',
+                  themeId: result.themeId,
+                  fonts: result.fonts,
+                  theme: result.theme,
+                })
                 return
               }
-              onAgentQuestionSubmit?.(formatThemeChoice(themeInteraction.request, themeId, fonts))
+              if (result.action === 'refresh') {
+                onAgentQuestionSubmit?.(THEME_REFRESH_PROMPT)
+                return
+              }
+              onAgentQuestionSubmit?.(
+                formatThemeChoice(
+                  themeInteraction.request,
+                  result.themeId,
+                  result.fonts,
+                  result.theme,
+                ),
+                result.theme
+                  ? {
+                      themeSelection: {
+                        themeId: result.themeId,
+                        name: result.name,
+                        fonts: result.fonts,
+                        theme: result.theme,
+                      },
+                    }
+                  : undefined,
+              )
             }}
             request={themeInteraction.request}
             submitLabel="Use this theme"

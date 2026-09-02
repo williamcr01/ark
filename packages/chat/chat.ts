@@ -2,6 +2,13 @@ import type { FilePart, ModelMessage, TextPart } from 'ai'
 
 import { isValidAssetId, parseAssetIdFromUrl } from '@ark/deck/document/assets.ts'
 import { deckOriginIsUnauthored, type DeckOrigin } from '@ark/deck/document/origin.ts'
+import {
+  deckThemeFontPairingSchema,
+  formatDeckThemeSummary,
+  parseDeckThemeSpec,
+  type DeckThemeFontPairing,
+  type DeckThemeSpecV1,
+} from '@ark/deck/document/theme.ts'
 
 export type ChatMessageRole = 'user' | 'assistant'
 
@@ -146,11 +153,20 @@ export type SlideContext = {
   title?: string
 }
 
+/** Structured theme choice attached to the user turn that picks a proposal. */
+export type ThemeSelectionContext = {
+  themeId: string
+  name: string
+  fonts: DeckThemeFontPairing
+  theme: DeckThemeSpecV1
+}
+
 /** Optional context attached to a user chat turn. */
 export type ChatMessageContext = {
   editorSelection?: EditorSelectionContext
   editorSelections?: EditorSelectionContext[]
   slideContexts?: SlideContext[]
+  themeSelection?: ThemeSelectionContext
 }
 
 /**
@@ -517,6 +533,44 @@ export function normalizeEditorSelectionFields(input: {
   }
 }
 
+function parseThemeSelectionContext(
+  input: unknown,
+  path: string,
+): { ok: true; selection: ThemeSelectionContext } | { ok: false; error: string } {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, error: `${path} must be an object.` }
+  }
+  const record = input as {
+    themeId?: unknown
+    name?: unknown
+    fonts?: unknown
+    theme?: unknown
+  }
+  if (typeof record.themeId !== 'string' || !record.themeId.trim()) {
+    return { ok: false, error: `${path}.themeId must be a non-empty string.` }
+  }
+  if (typeof record.name !== 'string' || !record.name.trim()) {
+    return { ok: false, error: `${path}.name must be a non-empty string.` }
+  }
+  const fonts = deckThemeFontPairingSchema.safeParse(record.fonts)
+  if (!fonts.success) {
+    return { ok: false, error: `${path}.fonts must be an approved display/body/mono pairing.` }
+  }
+  const theme = parseDeckThemeSpec(record.theme)
+  if (!theme) {
+    return { ok: false, error: `${path}.theme must be a valid DeckThemeSpecV1.` }
+  }
+  return {
+    ok: true,
+    selection: {
+      themeId: record.themeId.trim(),
+      name: record.name.trim().slice(0, 80),
+      fonts: fonts.data,
+      theme,
+    },
+  }
+}
+
 function parseChatMessageContext(
   input: unknown,
   messageIndex: number,
@@ -536,6 +590,7 @@ function parseChatMessageContext(
     editorSelection?: unknown
     editorSelections?: unknown
     slideContexts?: unknown
+    themeSelection?: unknown
   }
   const context: ChatMessageContext = {}
 
@@ -627,10 +682,20 @@ function parseChatMessageContext(
     }
   }
 
+  if (record.themeSelection !== undefined) {
+    const parsedTheme = parseThemeSelectionContext(
+      record.themeSelection,
+      `messages[${messageIndex}].context.themeSelection`,
+    )
+    if (!parsedTheme.ok) return parsedTheme
+    context.themeSelection = parsedTheme.selection
+  }
+
   if (
     !context.editorSelection &&
     !context.editorSelections?.length &&
-    !context.slideContexts?.length
+    !context.slideContexts?.length &&
+    !context.themeSelection
   ) {
     return { ok: true }
   }
@@ -825,6 +890,12 @@ When the instruction refers to "this slide", "these slides", or attached slide c
 ${focus}`
 }
 
+function describeThemeSelection(selection: ThemeSelectionContext) {
+  return `The user selected a visual theme. Use this exact contract for the deck: name "${selection.name}" (id: ${selection.themeId}, signature ${selection.theme.signature}).
+${formatDeckThemeSummary(selection.theme)}
+Embed this spec as <script type="application/json" data-ark-theme>, materialize its --ark-* CSS variables, set data-ark-font-* markers, and classify every slide with data-ark-slide-kind and data-ark-layout matching the recipes. Do not invent a different palette or layout system.`
+}
+
 export function wrapUserPromptForAgent(
   prompt: string,
   currentHtml: string,
@@ -833,6 +904,7 @@ export function wrapUserPromptForAgent(
   slideContexts?: SlideContext[],
   deckOrigin?: DeckOrigin | null,
   editorSelections?: EditorSelectionContext[],
+  themeSelection?: ThemeSelectionContext,
 ) {
   const effectivePrompt =
     prompt.trim() ||
@@ -849,6 +921,7 @@ export function wrapUserPromptForAgent(
     : ''
   const slideNote =
     slideContexts && slideContexts.length > 0 ? `\n\n${describeSlideContexts(slideContexts)}` : ''
+  const themeNote = themeSelection ? `\n\n${describeThemeSelection(themeSelection)}` : ''
 
   // Ark creates the deck before the first message, so a blank starter deck has
   // HTML but nothing authored. Treat it as a new deck, not something to revise.
@@ -856,7 +929,7 @@ export function wrapUserPromptForAgent(
     return `The user wants to revise their Ark HTML deck.
 
 User instruction:
-${effectivePrompt}${attachmentNote}${selectionNote}${slideNote}
+${effectivePrompt}${attachmentNote}${selectionNote}${slideNote}${themeNote}
 
 The current deck is available in the job workspace. Inspect it with the available tools before editing.`
   }
@@ -867,7 +940,7 @@ The current deck is available in the job workspace. Inspect it with the availabl
 
   return `Create a new complete Ark HTML slide deck from this user request:
 
-${effectivePrompt}${attachmentNote}${blankDeckNote}
+${effectivePrompt}${attachmentNote}${blankDeckNote}${themeNote}
 
 Use the available tools to save the deck, then summarize what you built.`
 }
@@ -1000,6 +1073,7 @@ export function buildUserModelContent(
     editorSelections?: EditorSelectionContext[]
     slideContexts?: SlideContext[]
     deckOrigin?: DeckOrigin | null
+    themeSelection?: ThemeSelectionContext
   },
 ): string | Array<TextPart | FilePart> {
   const attachments = message.attachments ?? []
@@ -1015,6 +1089,7 @@ export function buildUserModelContent(
           options?.slideContexts,
           options?.deckOrigin,
           options?.editorSelections,
+          options?.themeSelection ?? message.context?.themeSelection,
         )
       : message.content
 

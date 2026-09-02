@@ -3,95 +3,80 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { exampleThemeProposal } from '@ark/chat/agent-themes.ts'
 import { ThemePicker } from '@/components/ThemePicker'
-import type { ThemeProposalRequest } from '@ark/chat/agent-themes.ts'
 
 vi.mock('@/components/MiniHtmlPreview', () => ({
-  MiniHtmlPreview: ({ title }: { title: string }) => (
-    <div data-testid="mini-html-preview">{title}</div>
+  MiniHtmlPreview: ({ title, slideIndex }: { title: string; slideIndex?: number }) => (
+    <div data-testid="mini-html-preview">{`${title}:${slideIndex ?? ''}`}</div>
   ),
 }))
 
-const sampleHtml = '<!doctype html><html><body><section class="slide"></section></body></html>'
+const request = exampleThemeProposal()
 
-const request: ThemeProposalRequest = {
-  title: 'Pick a visual direction',
-  themes: [
-    {
-      id: 'midnight',
-      name: 'Midnight Editorial',
-      description: 'Dark and sharp',
-      fonts: { display: 'georgia', body: 'calibri', mono: 'courier-new' },
-      sampleHtml,
-    },
-    {
-      id: 'sunlit',
-      name: 'Sunlit Studio',
-      description: 'Warm and airy',
-      fonts: { display: 'cambria', body: 'arial', mono: 'courier-new' },
-      sampleHtml,
-    },
-    {
-      id: 'signal',
-      name: 'Signal Grid',
-      description: 'Bold sans',
-      fonts: { display: 'arial', body: 'calibri', mono: 'courier-new' },
-      sampleHtml,
-    },
-    {
-      id: 'folio',
-      name: 'Quiet Folio',
-      description: 'Soft paper',
-      fonts: { display: 'times-new-roman', body: 'georgia', mono: 'courier-new' },
-      sampleHtml,
-    },
-  ],
-}
-
-describe('ThemePicker font roles', () => {
-  it('shows each theme pairing from the fonts contract', () => {
+describe('ThemePicker', () => {
+  it('compares themes without showing font controls on every card', () => {
     render(<ThemePicker onSubmit={vi.fn()} request={request} />)
 
     expect(screen.getByText('Georgia · Calibri · Courier New')).toBeInTheDocument()
     expect(screen.getByText('Cambria · Arial · Courier New')).toBeInTheDocument()
-    expect(screen.getByText('Arial · Calibri · Courier New')).toBeInTheDocument()
-    expect(screen.getByText('Times New Roman · Georgia · Courier New')).toBeInTheDocument()
-
-    const display = screen.getByRole('combobox', { name: 'Display font for Midnight Editorial' })
-    expect(display).toHaveValue('georgia')
-    expect(screen.getByRole('combobox', { name: 'Body font for Midnight Editorial' })).toHaveValue(
-      'calibri',
-    )
-    expect(screen.getByRole('combobox', { name: 'Mono font for Midnight Editorial' })).toHaveValue(
-      'courier-new',
-    )
-    expect(screen.getAllByRole('option', { name: 'Georgia' })).toHaveLength(12)
-    expect(screen.getAllByRole('option', { name: 'Courier New' })).toHaveLength(12)
+    expect(screen.getByText(/Cover split-title/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('combobox', { name: 'Display font for Midnight Editorial' }),
+    ).not.toBeInTheDocument()
   })
 
-  it('lets the user edit display, body, and mono then submits the pairing', async () => {
+  it('opens a detail panel with fonts, colors, and slide tabs after selection', async () => {
+    const user = userEvent.setup()
+    render(<ThemePicker onSubmit={vi.fn()} request={request} />)
+
+    await user.click(screen.getByRole('button', { name: 'Select Midnight Editorial' }))
+
+    expect(
+      screen.getByRole('combobox', { name: 'Display font for Midnight Editorial' }),
+    ).toHaveValue('georgia')
+    expect(screen.getByRole('tab', { name: 'Cover' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Content' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Data' })).toBeInTheDocument()
+    expect(screen.getByText('Midnight Editorial Cover:0')).toBeInTheDocument()
+    expect(screen.getByLabelText('Primary hex for Midnight Editorial')).toHaveValue('#c4a574')
+
+    await user.click(screen.getByRole('tab', { name: 'Content' }))
+    expect(screen.getByText('Midnight Editorial Content:1')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Data' }))
+    expect(screen.getByText('Midnight Editorial Data:2')).toBeInTheDocument()
+  })
+
+  it('submits the resolved theme after font and color overrides', async () => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()
     render(<ThemePicker onSubmit={onSubmit} request={request} />)
 
+    await user.click(screen.getByRole('button', { name: 'Select Midnight Editorial' }))
     await user.selectOptions(
       screen.getByRole('combobox', { name: 'Display font for Midnight Editorial' }),
       'cambria',
     )
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Body font for Midnight Editorial' }),
-      'arial',
-    )
-
-    expect(screen.queryByText('Georgia · Calibri · Courier New')).not.toBeInTheDocument()
-    expect(screen.getAllByText('Cambria · Arial · Courier New')).toHaveLength(2)
-
     await user.click(screen.getByRole('button', { name: 'Use this theme: Midnight Editorial' }))
 
-    expect(onSubmit).toHaveBeenCalledWith('midnight', {
-      display: 'cambria',
-      body: 'arial',
-      mono: 'courier-new',
-    })
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'select',
+        themeId: 'midnight',
+        fonts: { display: 'cambria', body: 'calibri', mono: 'courier-new' },
+        theme: expect.objectContaining({
+          fonts: { display: 'cambria', body: 'calibri', mono: 'courier-new' },
+          colors: expect.objectContaining({ canvas: '#111111' }),
+        }),
+      }),
+    )
+  })
+
+  it('can ask for different suggestions', async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    render(<ThemePicker onSubmit={onSubmit} request={request} />)
+    await user.click(screen.getByRole('button', { name: 'Suggest different options' }))
+    expect(onSubmit).toHaveBeenCalledWith({ action: 'refresh' })
   })
 })

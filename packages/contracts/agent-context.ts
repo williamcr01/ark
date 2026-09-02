@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
 import { editorSelectionFieldsSlideIndex } from '@ark/chat/chat.ts'
+import { themeFontPairingSchema } from '@ark/chat/agent-themes.ts'
+import { deckThemeSpecV1Schema } from '@ark/deck/document/theme.ts'
 
 /**
  * Manual-editor selection context (issue #83). Sent when the user has an element
@@ -119,12 +121,22 @@ export function refineSameSlideEditorSelectionFields(
   }
 }
 
+export const themeSelectionContextSchema = z.object({
+  themeId: z.string().min(1).max(64),
+  name: z.string().min(1).max(80),
+  fonts: themeFontPairingSchema,
+  theme: deckThemeSpecV1Schema,
+})
+
+export type ThemeSelectionContext = z.infer<typeof themeSelectionContextSchema>
+
 /** Optional context attached to a user chat turn (composer + persisted history). */
 export const chatMessageContextSchema = z
   .object({
     editorSelection: editorSelectionContextSchema.optional(),
     editorSelections: editorSelectionsSchema.optional(),
     slideContexts: z.array(slideContextSchema).max(MAX_SLIDE_CONTEXTS).optional(),
+    themeSelection: themeSelectionContextSchema.optional(),
   })
   .transform((value) => stripCrossSlideEditorSelectionFields(value))
 

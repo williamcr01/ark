@@ -10,6 +10,7 @@ import {
 } from '@ark/runtime-registry/deck-runtime-registry.ts'
 
 import { findSlideElements } from '../document/slides.ts'
+import { isInertArkThemeScript } from '../document/theme.ts'
 import {
   detectRuntimeModeFromDocument,
   documentAllowsDeckInitScripts,
@@ -102,11 +103,13 @@ function readRuntimeMarkers(doc: Document): DeckRuntimeMarkers {
 }
 
 function collectScripts(doc: Document): DeckScriptInfo[] {
-  return [...doc.querySelectorAll('script')].map((script) => ({
-    inline: !script.hasAttribute('src'),
-    src: script.getAttribute('src') ?? undefined,
-    type: script.getAttribute('type') ?? undefined,
-  }))
+  return [...doc.querySelectorAll('script')]
+    .filter((script) => !isInertArkThemeScript(script))
+    .map((script) => ({
+      inline: !script.hasAttribute('src'),
+      src: script.getAttribute('src') ?? undefined,
+      type: script.getAttribute('type') ?? undefined,
+    }))
 }
 
 function hasTrackingSignals(doc: Document, scripts: DeckScriptInfo[]) {
