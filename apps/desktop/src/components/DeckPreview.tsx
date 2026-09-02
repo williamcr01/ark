@@ -8,7 +8,8 @@ import {
 } from 'react'
 
 import { DeckPreviewChrome } from '@/components/DeckPreviewChrome'
-import { useDeckEditorLayer } from '@/components/DeckEditorLayer'
+import { DeckEditorLayer } from '@/components/DeckEditorLayer'
+import { useDeckEditorLayer } from '@/hooks/useDeckEditorLayer'
 import { DeckPreviewStage } from '@/components/DeckPreviewStage'
 import { DeckPreviewStrip } from '@/components/DeckPreviewStrip'
 import { PresentMode } from '@/components/PresentMode'
@@ -191,7 +192,14 @@ export function DeckPreview({
               onClearSelection: layer.bridge.clearSelection,
               onInsertImageFile: (file, position) =>
                 void layer.coordinator.handleInsertImageFile(file, position),
-              overlay: layer.overlay,
+              overlay: (
+                <DeckEditorLayer
+                  editActive={session.chrome.editChromeActive}
+                  editorBridgeEnabled={editorBridgeEnabled}
+                  layer={layer}
+                  scale={session.frame.previewFrameScale}
+                />
+              ),
               selection,
               textEditActive: layer.bridge.textEditActive,
             }}

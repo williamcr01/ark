@@ -13,8 +13,6 @@ import type { EditorSelectionInfo } from '@ark/editor-runtime'
 import { previewManualEdits } from './DeckPreview.test-edits'
 import { DeckPreview } from './DeckPreview'
 
-export { previewManualEdits } from './DeckPreview.test-edits'
-
 type LegacyDeckPreviewProps = {
   html: string
   deckId?: string | null
@@ -60,7 +58,7 @@ type LegacyDeckPreviewProps = {
   presentHandleRef?: RefObject<DeckPreviewHandle | null>
 }
 
-export function applyLegacyPreviewProps(props: LegacyDeckPreviewProps) {
+function applyLegacyPreviewProps(props: LegacyDeckPreviewProps) {
   useDeckStore.setState({
     html: props.html,
     deckId: props.deckId ?? null,
