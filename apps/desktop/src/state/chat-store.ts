@@ -3,9 +3,9 @@ import { create } from 'zustand'
 import type { AgentStep, ChatMessage } from '@ark/chat/chat.ts'
 import type { GenerationJobApi, GenerationJobStatus } from '@ark/contracts'
 import type { QueuedChatSend } from '@/lib/chat/chat-send-queue'
-import { newId } from '@/lib/ui/id'
 
-import { resolveUpdate, type StateUpdate } from './apply-update.ts'
+import { type StateUpdate } from './apply-update.ts'
+import { createChatQueueActions, createChatThreadActions } from './chat-store-actions.ts'
 
 export type MessageDeliveryStatus = 'saving' | 'saved' | 'failed'
 
@@ -114,138 +114,8 @@ const initialState = (): ChatStoreState => ({
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
   ...initialState(),
-  appendMessage: (message) => {
-    set((state) => ({ messages: [...state.messages, message] }))
-  },
-  applyReconciledMessages: (messages, failedIds) => {
-    set({
-      messages,
-      failedPersistIds: failedIds,
-      deliveryStatus: buildDeliveryStatusMap(messages, failedIds),
-    })
-  },
-  clearSends: () => {
-    set({ queuedSends: [] })
-  },
-  dequeueSend: (id) => {
-    const item = get().queuedSends.find((entry) => entry.id === id) ?? null
-    if (!item) {
-      return null
-    }
-
-    set((state) => ({
-      queuedSends: state.queuedSends.filter((entry) => entry.id !== id),
-    }))
-    return item
-  },
-  dequeueNextSend: () => {
-    const [item] = get().queuedSends
-    if (!item) {
-      return null
-    }
-
-    set((state) => ({ queuedSends: state.queuedSends.slice(1) }))
-    return item
-  },
-  dismissError: () => {
-    set({ attachmentError: '', generationError: '', workspaceError: '' })
-  },
-  enqueueSend: (item) => {
-    const queued: QueuedChatSend = {
-      ...item,
-      id: item.id ?? newId(),
-    }
-    set((state) => ({ queuedSends: [...state.queuedSends, queued] }))
-    return queued
-  },
-  hydrateThread: (patch) => {
-    set((state) => ({
-      trackedDeckId: patch.trackedDeckId,
-      messagesDeckId: patch.messagesDeckId,
-      messages: patch.messages ?? state.messages,
-      failedPersistIds: patch.failedPersistIds ?? state.failedPersistIds,
-      deliveryStatus: patch.deliveryStatus ?? state.deliveryStatus,
-      isLoading: patch.isLoading,
-      isReloadStale: patch.isReloadStale ?? false,
-    }))
-  },
-  markDeliveryStatus: (messageId, status) => {
-    set((state) => {
-      const deliveryStatus = new Map(state.deliveryStatus)
-      deliveryStatus.set(messageId, status)
-
-      let failedPersistIds = state.failedPersistIds
-      if (status === 'failed') {
-        failedPersistIds = new Set(state.failedPersistIds).add(messageId)
-      } else if (status === 'saved' && state.failedPersistIds.has(messageId)) {
-        failedPersistIds = new Set(state.failedPersistIds)
-        failedPersistIds.delete(messageId)
-      }
-
-      return { deliveryStatus, failedPersistIds }
-    })
-  },
-  moveSendToFront: (id) => {
-    const items = get().queuedSends
-    const index = items.findIndex((item) => item.id === id)
-    if (index <= 0) {
-      return
-    }
-
-    const next = [...items]
-    const [item] = next.splice(index, 1)
-    set({ queuedSends: [item, ...next] })
-  },
-  replaceMessages: (update) => {
-    set((state) => ({ messages: resolveUpdate(state.messages, update) }))
-  },
-  reset: () => {
-    set(initialState())
-  },
-  setActiveJob: (activeJob) => {
-    set({ activeJob })
-  },
-  setAttachmentError: (attachmentError) => {
-    set({ attachmentError })
-  },
-  setChatLoading: (isLoading) => {
-    set({ isLoading })
-  },
-  setFailedJob: (failedJob) => {
-    set({ failedJob })
-  },
-  setFailedPersistIds: (update) => {
-    set((state) => ({ failedPersistIds: resolveUpdate(state.failedPersistIds, update) }))
-  },
-  setGenerating: (isGenerating) => {
-    set({ isGenerating })
-  },
-  setGenerationError: (generationError) => {
-    set({ generationError })
-  },
-  setWorkspaceError: (workspaceError) => {
-    set({ workspaceError })
-  },
-  setInput: (update) => {
-    set((state) => ({ input: resolveUpdate(state.input, update) }))
-  },
-  setMessagesDeckId: (messagesDeckId) => {
-    set({ messagesDeckId })
-  },
-  setModelFailure: (isModelFailure) => {
-    set({ isModelFailure })
-  },
-  setPreviewUpdating: (update) => {
-    set((state) => ({ isPreviewUpdating: resolveUpdate(state.isPreviewUpdating, update) }))
-  },
-  setReloadStale: (isReloadStale) => {
-    set({ isReloadStale })
-  },
-  updateSendText: (id, text) => {
-    set((state) => ({
-      queuedSends: state.queuedSends.map((item) => (item.id === id ? { ...item, text } : item)),
-    }))
-  },
+  ...createChatQueueActions(set, get),
+  ...createChatThreadActions(set, initialState),
 }))
 
 const EMPTY_AGENT_STEPS: AgentStep[] = []

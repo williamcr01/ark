@@ -1,27 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 
 import {
-  createEditorAssignIdMessage,
-  createEditorCancelTextEditMessage,
-  createEditorClearSelectionMessage,
-  createEditorConfigureMessage,
-  createEditorConnectAckMessage,
-  createEditorDisableMessage,
-  createEditorEnableMessage,
-  createEditorRequestGeometryMessage,
-  createEditorSelectMessage,
-  createEditorSetToolMessage,
-  createEditorStartTextEditMessage,
   createEditorTransformCancelMessage,
   createEditorTransformEndMessage,
-  isEditorConnectMessage,
-  isEditorRuntimeMessage,
   type EditorRuntimeMessage,
   type EditorShellMessage,
-  type EditorTool,
   type EditorTransformPreviewMessage,
 } from '@ark/editor-runtime'
-import { isAllowedBridgeMessageOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
+
+import { useEditorBridgeCommands, type EditorBridgeCommands } from './useEditorBridgeCommands.ts'
+import { useEditorBridgeConnect } from './useEditorBridgeConnect.ts'
+
+export type { EditorBridgeCommands }
 
 export type UseEditorBridgePortOptions = {
   enabled: boolean
@@ -31,24 +21,6 @@ export type UseEditorBridgePortOptions = {
   sessionHandshake?: string | null
   canPostToFrame?: () => boolean
   shouldAcceptInbound?: () => boolean
-}
-
-export type EditorBridgeCommands = {
-  enableEditor: (slideIndex?: number, tool?: EditorTool, scale?: number) => boolean
-  configureEditor: (scale: number) => boolean
-  disableEditor: () => boolean
-  selectElement: (elementId: string, slideIndex?: number) => boolean
-  clearSelection: () => boolean
-  requestGeometry: (elementId: string, slideIndex?: number) => boolean
-  startTextEdit: (elementId: string, slideIndex?: number) => boolean
-  cancelTextEdit: () => boolean
-  setTool: (tool: EditorTool) => boolean
-  assignElementId: (
-    fromElementId: string,
-    toElementId: string,
-    slideIndex: number,
-    managed?: boolean,
-  ) => boolean
 }
 
 export function useEditorBridgePort(
@@ -156,121 +128,19 @@ export function useEditorBridgePort(
     transformPreviewListenerRef.current?.(preview)
   }, [])
 
-  const commands: EditorBridgeCommands = {
-    enableEditor: useCallback(
-      (slideIndex = activeSlideIndex, tool: EditorTool = 'select', scale?: number) =>
-        postToFrame(createEditorEnableMessage(slideIndex, tool, scale)),
-      [activeSlideIndex, postToFrame],
-    ),
-    configureEditor: useCallback(
-      (scale: number) => postToFrame(createEditorConfigureMessage(scale)),
-      [postToFrame],
-    ),
-    disableEditor: useCallback(() => postToFrame(createEditorDisableMessage()), [postToFrame]),
-    selectElement: useCallback(
-      (elementId: string, slideIndex = activeSlideIndex) =>
-        postToFrame(createEditorSelectMessage(elementId, slideIndex)),
-      [activeSlideIndex, postToFrame],
-    ),
-    clearSelection: useCallback(
-      () => postToFrame(createEditorClearSelectionMessage()),
-      [postToFrame],
-    ),
-    requestGeometry: useCallback(
-      (elementId: string, slideIndex = activeSlideIndex) =>
-        postToFrame(createEditorRequestGeometryMessage(elementId, slideIndex)),
-      [activeSlideIndex, postToFrame],
-    ),
-    startTextEdit: useCallback(
-      (elementId: string, slideIndex = activeSlideIndex) =>
-        postToFrame(createEditorStartTextEditMessage(elementId, slideIndex)),
-      [activeSlideIndex, postToFrame],
-    ),
-    cancelTextEdit: useCallback(
-      () => postToFrame(createEditorCancelTextEditMessage()),
-      [postToFrame],
-    ),
-    setTool: useCallback(
-      (tool: EditorTool) => postToFrame(createEditorSetToolMessage(tool)),
-      [postToFrame],
-    ),
-    assignElementId: useCallback(
-      (fromElementId: string, toElementId: string, slideIndex: number, managed?: boolean) =>
-        postToFrame(createEditorAssignIdMessage(fromElementId, toElementId, slideIndex, managed)),
-      [postToFrame],
-    ),
-  }
+  const commands = useEditorBridgeCommands(postToFrame, activeSlideIndex)
 
-  useLayoutEffect(() => {
-    const expectedHandshake = sessionHandshake?.trim()
-
-    if (!expectedHandshake) {
-      return
-    }
-
-    const messageGeneration = iframeGenerationRef.current
-
-    const handleConnect = (event: MessageEvent) => {
-      if (messageGeneration !== iframeGenerationRef.current) {
-        return
-      }
-
-      const iframeWindow = iframeRef.current?.contentWindow
-
-      if (!iframeWindow || event.source !== iframeWindow) {
-        return
-      }
-
-      if (!isAllowedBridgeMessageOrigin(event.origin, sandboxOrigin)) {
-        return
-      }
-
-      if (!isEditorConnectMessage(event.data) || event.data.handshake !== expectedHandshake) {
-        return
-      }
-
-      const port = event.ports[0]
-
-      if (!port) {
-        return
-      }
-
-      if (editorPortRef.current) {
-        port.close()
-        return
-      }
-
-      editorPortRef.current = port
-      port.onmessage = (portEvent) => {
-        if (
-          messageGeneration !== iframeGenerationRef.current ||
-          !isEditorRuntimeMessage(portEvent.data)
-        ) {
-          return
-        }
-
-        runtimeMessageHandlerRef.current(portEvent.data)
-      }
-      port.start()
-      port.postMessage(createEditorConnectAckMessage())
-
-      const queued = queuedShellMessagesRef.current
-      queuedShellMessagesRef.current = []
-
-      if (!canPostToFrameRef.current || canPostToFrameRef.current()) {
-        queued.forEach((message) => port.postMessage(message))
-      }
-    }
-
-    window.addEventListener('message', handleConnect)
-
-    return () => {
-      window.removeEventListener('message', handleConnect)
-      editorPortRef.current?.close()
-      editorPortRef.current = null
-      queuedShellMessagesRef.current = []
-    }
-  }, [iframeGenerationKey, iframeRef, sandboxOrigin, sessionHandshake])
+  useEditorBridgeConnect({
+    iframeRef,
+    sandboxOrigin,
+    sessionHandshake,
+    iframeGenerationKey,
+    iframeGenerationRef,
+    editorPortRef,
+    queuedShellMessagesRef,
+    canPostToFrameRef,
+    runtimeMessageHandlerRef,
+  })
 
   return {
     commands,

@@ -17,7 +17,7 @@ type PatchOperations = (
   summary: string,
 ) => Promise<DeckPreviewPatchResult | undefined>
 
-type UseDeckEditorPatchCoordinatorOptions = {
+export type UseDeckEditorPatchCoordinatorOptions = {
   activeSlideIndex: number
   canRedo: boolean
   canUndo: boolean
