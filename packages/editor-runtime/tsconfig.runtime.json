@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.runtime.tsbuildinfo",
+    "target": "es2017",
+    "lib": ["ES2017", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["./runtime-src/**/*.ts"],
+  "exclude": [
+    "./runtime-src/**/*.test.ts",
+    "./runtime-src/**/*.spec.ts",
+    "./runtime-src/install-test-constants.ts"
+  ]
+}
