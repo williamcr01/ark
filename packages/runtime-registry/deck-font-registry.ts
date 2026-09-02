@@ -223,87 +223,87 @@ export const METRIC_CLONE_FONT_FACES: readonly MetricCloneFontFace[] = [
   },
   {
     family: 'Liberation Sans',
-    path: 'liberation-sans/LiberationSans-Regular.ttf',
+    path: 'liberation-sans/LiberationSans-Regular.woff2',
     weight: 400,
     style: 'normal',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Sans',
-    path: 'liberation-sans/LiberationSans-Italic.ttf',
+    path: 'liberation-sans/LiberationSans-Italic.woff2',
     weight: 400,
     style: 'italic',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Sans',
-    path: 'liberation-sans/LiberationSans-Bold.ttf',
+    path: 'liberation-sans/LiberationSans-Bold.woff2',
     weight: 700,
     style: 'normal',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Sans',
-    path: 'liberation-sans/LiberationSans-BoldItalic.ttf',
+    path: 'liberation-sans/LiberationSans-BoldItalic.woff2',
     weight: 700,
     style: 'italic',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Serif',
-    path: 'liberation-serif/LiberationSerif-Regular.ttf',
+    path: 'liberation-serif/LiberationSerif-Regular.woff2',
     weight: 400,
     style: 'normal',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Serif',
-    path: 'liberation-serif/LiberationSerif-Italic.ttf',
+    path: 'liberation-serif/LiberationSerif-Italic.woff2',
     weight: 400,
     style: 'italic',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Serif',
-    path: 'liberation-serif/LiberationSerif-Bold.ttf',
+    path: 'liberation-serif/LiberationSerif-Bold.woff2',
     weight: 700,
     style: 'normal',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Serif',
-    path: 'liberation-serif/LiberationSerif-BoldItalic.ttf',
+    path: 'liberation-serif/LiberationSerif-BoldItalic.woff2',
     weight: 700,
     style: 'italic',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Mono',
-    path: 'liberation-mono/LiberationMono-Regular.ttf',
+    path: 'liberation-mono/LiberationMono-Regular.woff2',
     weight: 400,
     style: 'normal',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Mono',
-    path: 'liberation-mono/LiberationMono-Italic.ttf',
+    path: 'liberation-mono/LiberationMono-Italic.woff2',
     weight: 400,
     style: 'italic',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Mono',
-    path: 'liberation-mono/LiberationMono-Bold.ttf',
+    path: 'liberation-mono/LiberationMono-Bold.woff2',
     weight: 700,
     style: 'normal',
-    format: 'truetype',
+    format: 'woff2',
   },
   {
     family: 'Liberation Mono',
-    path: 'liberation-mono/LiberationMono-BoldItalic.ttf',
+    path: 'liberation-mono/LiberationMono-BoldItalic.woff2',
     weight: 700,
     style: 'italic',
-    format: 'truetype',
+    format: 'woff2',
   },
 ]
 
@@ -315,11 +315,13 @@ export function buildMetricCloneFontAssetUrl(path: string) {
 export function buildMetricCloneFontFaceCss() {
   return METRIC_CLONE_FONT_FACES.map((face) => {
     const url = buildMetricCloneFontAssetUrl(face.path)
+    const local =
+      face.family.startsWith('Liberation ') ? `local(${JSON.stringify(face.family)}), ` : ''
 
     return [
       '@font-face {',
       `  font-family: ${JSON.stringify(face.family)};`,
-      `  src: url("${url}") format("${face.format}");`,
+      `  src: ${local}url("${url}") format("${face.format}");`,
       `  font-weight: ${face.weight};`,
       `  font-style: ${face.style};`,
       '  font-display: swap;',
@@ -392,10 +394,11 @@ export function resolveDeckFont(selection: DeckFontSelection, role: DeckFontRole
 }
 
 /**
- * The `:root` block a deck declares, plus `@font-face` rules for the vendored
- * metric clones. Generated rather than hand-written so a deck's stacks always
- * match what the exporter will look up, and so preview/PDF can load the clones
- * on machines that do not have the Office typefaces.
+ * The `:root` block a deck declares. Generated rather than hand-written so a
+ * deck's stacks always match what the exporter will look up.
+ *
+ * Vendored `@font-face` rules are injected at preview/thumbnail time only — not
+ * baked into stored deck HTML — so user documents do not carry Ark-internal URLs.
  */
 export function buildDeckFontRootCss(selection: Partial<DeckFontSelection> = {}) {
   const declarations = DECK_FONT_ROLES.map((role) => {
@@ -403,7 +406,7 @@ export function buildDeckFontRootCss(selection: Partial<DeckFontSelection> = {})
     return `  ${DECK_FONT_CSS_VARS[role]}: ${font.cssStack};`
   })
 
-  return `${buildMetricCloneFontFaceCss()}\n\n:root {\n${declarations.join('\n')}\n}`
+  return `:root {\n${declarations.join('\n')}\n}`
 }
 
 const GENERIC_FAMILY_FALLBACKS: Record<string, string> = {

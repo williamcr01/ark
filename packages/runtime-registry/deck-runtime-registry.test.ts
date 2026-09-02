@@ -136,7 +136,7 @@ describe('approved runtime registry', () => {
     expect(getApprovedRuntimeAssetUrls({ runtimeMode: 'static', kind: 'font' })).toEqual(
       expect.arrayContaining([
         '/api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2',
-        '/api/runtimes/deck-fonts/1.0.0/liberation-sans/LiberationSans-Regular.ttf',
+        '/api/runtimes/deck-fonts/1.0.0/liberation-sans/LiberationSans-Regular.woff2',
       ]),
     )
     expect(

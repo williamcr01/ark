@@ -98,7 +98,7 @@ describe('sandbox-origin', () => {
       /font-src[^;]*http:\/\/localhost:5173\/api\/runtimes\/deck-fonts\/1\.0\.0\/carlito\/carlito-latin-400-normal\.woff2/,
     )
     expect(buildSandboxResponseCsp('http://localhost:5173')).toContain(
-      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/liberation-sans/LiberationSans-Regular.ttf',
+      'http://localhost:5173/api/runtimes/deck-fonts/1.0.0/liberation-sans/LiberationSans-Regular.woff2',
     )
   })
 

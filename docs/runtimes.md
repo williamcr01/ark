@@ -116,7 +116,7 @@ Example:
 /api/runtimes/deck-fonts/1.0.0/carlito/carlito-latin-400-normal.woff2
 ```
 
-`deck-fonts` is a font catalog, not a presentation library: decks must not set `data-ark-runtime-lib="deck-fonts"`. Preview injects `@font-face` rules (and `buildDeckFontRootCss` emits them into stored HTML) so metric clones load from these URLs. Sandbox CSP `font-src` allowlists the approved files, which preview absolutizes to the app origin like other runtime assets.
+`deck-fonts` is a font catalog, not a presentation library: decks must not set `data-ark-runtime-lib="deck-fonts"`. Preview and thumbnail fallback inject `@font-face` rules so metric clones load from these URLs; stored deck HTML only declares `:root` font variables via `buildDeckFontRootCss`. Sandbox CSP `font-src` allowlists the approved files, which preview absolutizes to the app origin like other runtime assets.
 
 Validation checks:
 

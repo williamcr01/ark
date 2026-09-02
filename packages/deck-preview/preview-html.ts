@@ -209,28 +209,21 @@ function injectRuntimeCspMeta(
   head.insertBefore(meta, head.firstChild)
 }
 
-function absolutizeApprovedRuntimeAssetAttribute(value: string, assetOrigin?: string | null) {
-  if (!assetOrigin?.trim()) {
-    return value
-  }
+let cachedApprovedRuntimeAssetUrls: readonly string[] | null = null
 
-  for (const assetUrl of getApprovedRuntimeAssetUrls()) {
-    if (value === assetUrl) {
-      return toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin }) ?? value
-    }
-  }
-
-  return value
+function getCachedApprovedRuntimeAssetUrls() {
+  return cachedApprovedRuntimeAssetUrls ?? (cachedApprovedRuntimeAssetUrls = getApprovedRuntimeAssetUrls())
 }
 
-function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string | null) {
+/** Rewrite approved runtime asset URLs inside text (for injected CSS). */
+export function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string | null) {
   if (!assetOrigin?.trim()) {
     return value
   }
 
   let output = value
 
-  for (const assetUrl of getApprovedRuntimeAssetUrls()) {
+  for (const assetUrl of getCachedApprovedRuntimeAssetUrls()) {
     const absoluteUrl = toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin })
 
     if (!absoluteUrl) {
@@ -243,6 +236,20 @@ function absolutizeApprovedRuntimeAssetText(value: string, assetOrigin?: string 
   }
 
   return output
+}
+
+function absolutizeApprovedRuntimeAssetAttribute(value: string, assetOrigin?: string | null) {
+  if (!assetOrigin?.trim()) {
+    return value
+  }
+
+  for (const assetUrl of getCachedApprovedRuntimeAssetUrls()) {
+    if (value === assetUrl) {
+      return toAbsoluteRuntimeAssetSource(assetUrl, { assetOrigin }) ?? value
+    }
+  }
+
+  return value
 }
 
 /**

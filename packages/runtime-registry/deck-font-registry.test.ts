@@ -107,11 +107,17 @@ describe('buildDeckFontRootCss', () => {
     expect(buildDeckFontRootCss()).toBe(buildDeckFontRootCss(DEFAULT_DECK_FONT_IDS))
   })
 
-  it('emits @font-face rules that load vendored clones, not Office typeface names', () => {
+  it('declares only :root variables, not vendored @font-face rules', () => {
     const css = buildDeckFontRootCss()
-    const faces = buildMetricCloneFontFaceCss()
 
-    expect(css.startsWith(faces)).toBe(true)
+    expect(css.startsWith(':root {')).toBe(true)
+    expect(css).not.toContain('@font-face')
+  })
+})
+
+describe('buildMetricCloneFontFaceCss', () => {
+  it('emits @font-face rules that load vendored clones, not Office typeface names', () => {
+    const css = buildMetricCloneFontFaceCss()
 
     for (const face of METRIC_CLONE_FONT_FACES) {
       const url = buildMetricCloneFontAssetUrl(face.path)

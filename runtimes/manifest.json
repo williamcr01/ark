@@ -9,16 +9,31 @@
       "source": "https://github.com/hakimel/reveal.js",
       "previewMode": "css-only",
       "allowsDeckScripts": false,
-      "allowedGlobals": ["Reveal"],
+      "allowedGlobals": [
+        "Reveal"
+      ],
       "markers": {
-        "arkRuntime": ["reveal"],
-        "arkDeck": ["reveal"],
-        "arkRuntimeLib": ["reveal.js"]
+        "arkRuntime": [
+          "reveal"
+        ],
+        "arkDeck": [
+          "reveal"
+        ],
+        "arkRuntimeLib": [
+          "reveal.js"
+        ]
       },
-      "structureHints": [".reveal .slides > section"],
+      "structureHints": [
+        ".reveal .slides > section"
+      ],
       "requiredAssets": {
-        "css": ["reveal.css", "theme/white.css"],
-        "js": ["reveal.js"]
+        "css": [
+          "reveal.css",
+          "theme/white.css"
+        ],
+        "js": [
+          "reveal.js"
+        ]
       },
       "assets": [
         {
@@ -133,13 +148,21 @@
       "source": "https://github.com/chartjs/Chart.js",
       "previewMode": "full-js",
       "allowsDeckScripts": true,
-      "allowedGlobals": ["Chart"],
+      "allowedGlobals": [
+        "Chart"
+      ],
       "markers": {
-        "arkRuntime": ["chart"],
-        "arkRuntimeLib": ["chart.js"]
+        "arkRuntime": [
+          "chart"
+        ],
+        "arkRuntimeLib": [
+          "chart.js"
+        ]
       },
       "requiredAssets": {
-        "js": ["chart.umd.min.js"]
+        "js": [
+          "chart.umd.min.js"
+        ]
       },
       "assets": [
         {
@@ -246,87 +269,87 @@
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-mono/LiberationMono-Bold.ttf",
+          "path": "liberation-mono/LiberationMono-Bold.woff2",
           "kind": "font",
-          "sha256": "bd62a0672d0b9b6710b01df434c80ad54fa5f0835207eb7b17b7a761463067bb",
-          "size": 307996,
+          "sha256": "b082b6e35faab2a5a95d08a165cccc297d655592633b01a0f0dc88ab64be7481",
+          "size": 123176,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-mono/LiberationMono-BoldItalic.ttf",
+          "path": "liberation-mono/LiberationMono-BoldItalic.woff2",
           "kind": "font",
-          "sha256": "79451f3c09fe25116098853b7a2ca6e2436220ccc11af022979adbcf195be130",
-          "size": 284068,
+          "sha256": "e9072b8357f8bb731f64a09b0d0ae866a602919f352486b825298539ab33d70a",
+          "size": 117112,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-mono/LiberationMono-Italic.ttf",
+          "path": "liberation-mono/LiberationMono-Italic.woff2",
           "kind": "font",
-          "sha256": "605c01c711b44480a7508d349dfbf3264e81fa43d69e61cfa7d10b86e764c4d1",
-          "size": 281536,
+          "sha256": "49adbe6b97abb52dc954adb9c2ade02abf74b2231dcff1a89cb82b6186536bbb",
+          "size": 114788,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-mono/LiberationMono-Regular.ttf",
+          "path": "liberation-mono/LiberationMono-Regular.woff2",
           "kind": "font",
-          "sha256": "f2b83c763e8afd21709333370bed4774337fae82267937e2b5aea7e2fbd922c1",
-          "size": 319508,
+          "sha256": "6f07214fe4b412ba40eea4a0403765647c3581c83b41c5584819f54b55ccc14e",
+          "size": 126008,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-sans/LiberationSans-Bold.ttf",
+          "path": "liberation-sans/LiberationSans-Bold.woff2",
           "kind": "font",
-          "sha256": "788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173",
-          "size": 414456,
+          "sha256": "3d76b4fa411adb469b4aba15c4615b258078db44b2ca3818a46768cea36e02a9",
+          "size": 148296,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-sans/LiberationSans-BoldItalic.ttf",
+          "path": "liberation-sans/LiberationSans-BoldItalic.woff2",
           "kind": "font",
-          "sha256": "698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee",
-          "size": 408996,
+          "sha256": "90d86afcb286288eda87880ffb678e8e41fde79ac330f56d03a474ab59acc269",
+          "size": 151052,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-sans/LiberationSans-Italic.ttf",
+          "path": "liberation-sans/LiberationSans-Italic.woff2",
           "kind": "font",
-          "sha256": "e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0",
-          "size": 415816,
+          "sha256": "4c99d43be3ca6a4f5e162c58e52c55725e3516a7133e80704e43e8e2fe7ae7bd",
+          "size": 153304,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-sans/LiberationSans-Regular.ttf",
+          "path": "liberation-sans/LiberationSans-Regular.woff2",
           "kind": "font",
-          "sha256": "76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8",
-          "size": 410712,
+          "sha256": "96354f9eccff91c022e39f790d287a66d33091c381beb014075255a0ba618a74",
+          "size": 146772,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-serif/LiberationSerif-Bold.ttf",
+          "path": "liberation-serif/LiberationSerif-Bold.woff2",
           "kind": "font",
-          "sha256": "d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce",
-          "size": 370096,
+          "sha256": "5ac1297c46dd2af44e82c2a567ba0d90133fc3160fa410e3b074c65e931699e7",
+          "size": 140992,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-serif/LiberationSerif-BoldItalic.ttf",
+          "path": "liberation-serif/LiberationSerif-BoldItalic.woff2",
           "kind": "font",
-          "sha256": "f17db8af71e24d2066b587546021d4f0b296be389512b658dec3c09affeb11a7",
-          "size": 376772,
+          "sha256": "1d37b19a948d283b14d05e37971e4852d1026f644e15a4ac0f570d9b2c9fb6cd",
+          "size": 147368,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-serif/LiberationSerif-Italic.ttf",
+          "path": "liberation-serif/LiberationSerif-Italic.woff2",
           "kind": "font",
-          "sha256": "0e3dea9f8d613e006ccfa62201f33e265d19167bd0907725c3e145368b04fc2e",
-          "size": 375632,
+          "sha256": "5ad457961a8605c74b8b23e63a580a02d451940480db7e011aba45afe3705b48",
+          "size": 147536,
           "license": "OFL-1.1"
         },
         {
-          "path": "liberation-serif/LiberationSerif-Regular.ttf",
+          "path": "liberation-serif/LiberationSerif-Regular.woff2",
           "kind": "font",
-          "sha256": "058ea80864aef09a23f45cbec2bb5400bc3dfbdea01c3f10538a21fcb497fb74",
-          "size": 393576,
+          "sha256": "7e492e71a58452920f6ab6be52e14f50a8b5963c2097370231df205b71936d15",
+          "size": 146548,
           "license": "OFL-1.1"
         }
       ]
