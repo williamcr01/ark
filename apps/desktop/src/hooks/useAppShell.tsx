@@ -22,6 +22,11 @@ import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useAppearance } from '@/hooks/useAppearance'
 import { useReasoningEffort, type ReasoningEffort } from '@/hooks/useReasoningEffort'
 import { useChatSession } from '@/hooks/useChatSession'
+import {
+  useChatSendQueue,
+  useFlushQueuedChatSends,
+  type ChatSendQueueItem,
+} from '@/hooks/useChatSendQueue'
 import { useDeckActions } from '@/hooks/useDeckActions'
 import { useMcpInteraction } from '@/hooks/useMcpInteraction'
 import { useDeckEditHistory } from '@/hooks/useDeckEditHistory'
@@ -44,6 +49,7 @@ import {
 } from '@/lib/deck/deck-io'
 import { findPendingAgentQuestions } from '@/lib/chat/agent-questions'
 import { findPendingThemeProposal } from '@/lib/chat/agent-themes'
+import { toQueuedChatSendPreview } from '@/lib/chat/chat-send-queue'
 import { getDesktopSettings } from '@/lib/ui/desktop-settings'
 import type {
   DeckElementPatchOperation,
@@ -366,6 +372,40 @@ export function useAppShell() {
     ),
   })
 
+  const sendQueue = useChatSendQueue()
+  const clearSendQueue = sendQueue.clear
+  const dispatchQueuedSend = useCallback(
+    async (item: ChatSendQueueItem) => {
+      await generateDeck(item.text, item.attachments, {
+        assetIds: item.assetIds,
+        deckId: item.deckId,
+        editorSelection: item.editorSelection,
+        editorSelections: item.editorSelections,
+        slideContexts: item.slideContexts,
+      })
+    },
+    [generateDeck],
+  )
+  const { sendNow: sendQueuedNow, sendAll: sendQueuedAll } = useFlushQueuedChatSends(
+    sendQueue,
+    isGenerating,
+    dispatchQueuedSend,
+  )
+  const prevRouteDeckIdRef = useRef(routeDeckId)
+  useEffect(() => {
+    const previous = prevRouteDeckIdRef.current
+    prevRouteDeckIdRef.current = routeDeckId
+    if (previous === routeDeckId) {
+      return
+    }
+    // Creating the blank workspace navigates `/` → `/decks/:id`. Keep follow-ups
+    // queued against that in-flight first turn.
+    if (previous == null && routeDeckId) {
+      return
+    }
+    clearSendQueue()
+  }, [clearSendQueue, routeDeckId])
+
   const normalAgentQuestions =
     agentInteractionsInModal && !isCreationWorkspace ? findPendingAgentQuestions(messages) : null
   const normalThemeProposal =
@@ -667,9 +707,10 @@ export function useAppShell() {
     if (isCreationWorkspace) {
       return
     }
+    clearSendQueue()
     await newDeckAction()
     navigate('/')
-  }, [isCreationWorkspace, navigate, newDeckAction])
+  }, [clearSendQueue, isCreationWorkspace, navigate, newDeckAction])
 
   const [exportingDeck, setExportingDeck] = useState<DeckExportFormat | false>(false)
   const handleExport = useCallback(
@@ -862,7 +903,7 @@ export function useAppShell() {
     const hasAttachments = message.files.length > 0
     const hasContent = Boolean(message.text.trim() || hasAttachments)
 
-    if (!hasContent || !canGenerate || isGenerating) {
+    if (!hasContent || !canGenerate) {
       return
     }
 
@@ -901,12 +942,26 @@ export function useAppShell() {
       resolvedContextSlides.length > 0
         ? buildSlideContexts(resolvedContextSlides, deckAnalysis.slides)
         : undefined
-    await generateDeck(message.text, attachments, {
+    const jobOptions = {
       assetIds,
       deckId: workspaceId,
       ...selectionFields,
       ...(slideContexts?.length ? { slideContexts } : {}),
-    })
+    }
+
+    if (isGenerating) {
+      sendQueue.enqueue({
+        text: message.text,
+        attachments,
+        assetIds,
+        deckId: workspaceId,
+        ...selectionFields,
+        ...(slideContexts?.length ? { slideContexts } : {}),
+      })
+      return
+    }
+
+    await generateDeck(message.text, attachments, jobOptions)
   }
 
   const recordManualEdit = useCallback(
@@ -1158,6 +1213,15 @@ export function useAppShell() {
       onInputChange={setInput}
       onModelSelect={handleModelSelect}
       onPromptSubmit={handlePromptSubmit}
+      onQueuedSendAll={() => {
+        void sendQueuedAll()
+      }}
+      onQueuedSendDismiss={sendQueue.dismiss}
+      onQueuedSendEdit={sendQueue.updateText}
+      onQueuedSendNow={(id) => {
+        void sendQueuedNow(id)
+      }}
+      queuedSends={sendQueue.items.map(toQueuedChatSendPreview)}
       onQuestionSubmit={(content) => {
         void generateDeck(content)
       }}
