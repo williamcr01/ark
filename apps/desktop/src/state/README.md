@@ -6,7 +6,19 @@ Zustand stores in this folder are the shared state layer for the desktop rendere
 
 - **Stores** hold domain state and synchronous reducers. Components and hooks subscribe with selectors (`useDeckStore((s) => s.html)`).
 - **Hooks** under `src/hooks/` own async orchestration: API calls, job polling, bridge sessions, timers, and chat/job session side effects. They read and write stores.
-- Workspace orchestration hooks (`useWorkspaceRuntime`, `useWorkspaceFileActions`, `useManualEditCommits`, `usePromptSubmit`, `useChatContextSlides`, `useExternalDeckUpdates`, `useChatPanelLayout`) live next to those session hooks. They may import stores, `@/lib/**`, and other hooks — never `@/components/*`. Shell components under `src/components/shell/` call them and build `DeckPreview` / `ChatPanel` / `AppTitleBar` props locally.
+- Workspace orchestration hooks (`useWorkspaceRuntime`, `useWorkspaceFileActions`, `useManualEditCommits`, `usePromptSubmit`, `useChatContextSlides`, `useExternalDeckUpdates`, `useChatPanelLayout`) live next to those session hooks. They may import stores, `@/lib/**`, and other hooks — never `@/components/*`. Shell components under `src/components/shell/` call them for workspace chrome. `ChatPanel` reads chat/model/shell stores and those hooks itself.
+
+## Chat panel composition
+
+`ChatPanel` is a layout shell (`layout`, `contextSlot`). Transcript, composer, and generation status are not passed as props.
+
+- `ChatPanelRuntimeProvider` (`components/chat/chat-panel-runtime.tsx`) wires `usePromptSubmit`, `useMcpInteraction`, appearance, and workspace runtime actions once.
+- `ChatTranscript` renders the message list, live agent steps, and delivery status from `chat-store`.
+- `ChatInteractions` hosts in-transcript `AgentQuestions` / `ThemePicker` (and MCP when the pending interaction is in-panel).
+- `ChatGenerationStatus` shows presence, MCP waiting copy, and floating error/warning banners.
+- `ChatQueuedSends` / `ChatComposer` own the send queue, prompt, attachments, and model/reasoning pickers.
+
+Plain state (`messages`, `input`, `isGenerating`, job progress, queued sends) is selected from `chat-store`, `models-store`, and `shell-store`. Actions stay in `usePromptSubmit`, `useChatSession`, `useDeckGenerationFlow`, and `useMcpInteraction`.
 
 ## Rules
 
