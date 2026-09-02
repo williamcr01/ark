@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from './timed.ts'
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

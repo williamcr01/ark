@@ -23,7 +23,10 @@ import {
   readDeckHtmlSlice,
   readDeckSlideHtml,
 } from './document.ts'
-import { validateDeckHtmlOnServer, type DeckValidationReport } from '@ark/deck/validate/timed.ts'
+import {
+  validateDeckHtmlOnServer,
+  type DeckValidationReport,
+} from '@ark/deck-node/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import { type DeckWorkspace, setDeckWorkspaceHtml } from './workspace.ts'
 

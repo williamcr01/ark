@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ARK_SLIDE_ID_ATTR } from '@ark/deck/document/metadata.ts'
 import { parseDeckDocument } from '../document/parser.ts'
 import { applyDeckPatches, createDeckDomCache, resetDeckDomCache } from './slide-ops.ts'
-import { validateDeckHtmlOnServer } from '../validate/timed.ts'
+import { validateDeckHtml } from '../validate/document.ts'
 import { JSDOM } from 'jsdom'
 
 function parseDeckHtml(html: string) {
@@ -60,7 +60,7 @@ const deckWithNotes = `<!DOCTYPE html>
 </html>`
 
 function expectValidDeck(html: string) {
-  const validation = validateDeckHtmlOnServer(html)
+  const validation = validateDeckHtml(html, (source) => new JSDOM(source).window.document)
   expect(validation.valid).toBe(true)
   return validation
 }

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { applyDeckPatches } from '@ark/deck/patch/slide-ops.ts'
 import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import { createLogger, type StructuredLogEntry } from '@ark/telemetry/logger.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')

@@ -4,7 +4,7 @@ import {
   type DeckRuntimeManifest,
 } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 
 export function hashRuntimeManifest(manifest: DeckRuntimeManifest) {

@@ -1,6 +1,6 @@
 import type { DeckValidationReport } from '@ark/deck/validate/document.ts'
 
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 
 export const extractHtmlDocument = (text: string) => {
   const withoutFence = text

@@ -5,3 +5,8 @@ export {
   evaluateThemeSampleHtml,
   readDeckThemeFromHtml,
 } from './document/theme-html.ts'
+export {
+  validateDeckDocumentOnServer,
+  validateDeckHtmlOnServer,
+  type DeckValidationOptions,
+} from './validate/timed.ts'

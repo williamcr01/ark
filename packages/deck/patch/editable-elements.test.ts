@@ -13,7 +13,7 @@ import {
 } from './editable-elements.ts'
 import { parseDeckDocument } from '../document/parser.ts'
 import { applyDeckPatches } from './slide-ops.ts'
-import { validateDeckHtmlOnServer } from '../validate/timed.ts'
+import { validateDeckHtml } from '../validate/document.ts'
 
 function parseDeckHtml(html: string) {
   return parseDeckDocument(new DOMParser().parseFromString(html, 'text/html'), html)
@@ -339,7 +339,11 @@ describe('parseEditableElements', () => {
         }),
       ]),
     )
-    expect(validateDeckHtmlOnServer(hostileEditableDeck).valid).toBe(false)
+    expect(
+      validateDeckHtml(hostileEditableDeck, (source) =>
+        new DOMParser().parseFromString(source, 'text/html'),
+      ).valid,
+    ).toBe(false)
   })
 
   it('reports duplicate stable ids as ambiguous patch targets', () => {

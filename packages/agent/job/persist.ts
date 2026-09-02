@@ -6,7 +6,7 @@ import type {
   GenerationJobObservability,
   GenerationJobStatus,
 } from '@ark/chat/generation-job.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import {
   persistAssistantGenerationMessage,
   persistInitialDeckChatHistory,

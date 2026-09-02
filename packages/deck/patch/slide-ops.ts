@@ -11,13 +11,14 @@ import {
   isTextReplacePatchOperation,
   summarizePatchOperation,
 } from '@ark/deck/patch/patch-request.ts'
-import type { DeckValidationReport } from '@ark/deck/validate/timed.ts'
+import { utf8ByteLength } from '../document/utf8.ts'
+import { validateDeckDocument, type DeckValidationReport } from '../validate/document.ts'
 import { applyDeckEdits } from './text-edit.ts'
 import { applyElementPatch, stabilizeElementPatchOperations } from './element-patch.ts'
 import { stampEditableElementIds } from './editable-elements.ts'
 import { createDeckJsdom } from './jsdom-inline-style.ts'
-import { validateDeckDocumentOnServer } from '../validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
+import { logTimedEvent, measureSync } from '@ark/telemetry/timing.ts'
 
 export type ApplyDeckPatchesOptions = {
   activeSlideIndex?: number
@@ -642,11 +643,17 @@ export function applyDeckPatches(
   const liveDom = getLiveDom()
   if (liveDom) {
     workingHtml = serializeDeckHtml(liveDom)
-    validation = validateDeckDocumentOnServer(
-      liveDom.window.document,
-      workingHtml,
-      options.logger ? { logger: options.logger } : undefined,
+    const { result, durationMs } = measureSync(() =>
+      validateDeckDocument(liveDom.window.document, workingHtml),
     )
+    if (options.logger) {
+      logTimedEvent(options.logger, 'deck.validation.completed', durationMs, {
+        htmlBytes: utf8ByteLength(workingHtml),
+        valid: result.valid,
+        issueCount: result.issues.length,
+      })
+    }
+    validation = result
     cache.set(workingHtml, liveDom)
   } else {
     flushDom()

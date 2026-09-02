@@ -15,7 +15,7 @@ import {
   type WorkspaceRow,
   type WorkspaceStore,
 } from '@ark/storage/stores/workspace-store.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 

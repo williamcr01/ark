@@ -19,7 +19,7 @@ import { wrapUserPromptForAgent } from './prompt.ts'
 import { createDeckWorkspace } from './workspace.ts'
 import { type DeckAttachmentInspector } from './tools.ts'
 import { extractHtmlDocument, finalizeGeneratedDeck } from './response.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import type { Logger } from '@ark/telemetry/logger.ts'
 import {
   createActiveDeckTools,
