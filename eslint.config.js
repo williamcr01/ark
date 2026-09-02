@@ -69,6 +69,7 @@ export default defineConfig([
     'runtimes/**',
     '.pnpm-store/**',
     'coverage/**',
+    'packages/editor-runtime/runtime/generated/**',
   ]),
   {
     files: ['**/*.{ts,tsx}'],
@@ -179,6 +180,12 @@ export default defineConfig([
           paths: environmentOnlyPaths,
         },
       ],
+    },
+  },
+  {
+    files: ['packages/editor-runtime/runtime-src/**/*.ts'],
+    languageOptions: {
+      globals: globals.browser,
     },
   },
   eslintConfigPrettier,

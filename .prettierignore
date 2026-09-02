@@ -7,3 +7,4 @@ runtimes/**/*.css
 runtimes/**/*.min.js
 runtimes/**/LICENSE*
 runtimes/**/fonts/**
+packages/editor-runtime/runtime/generated/**
