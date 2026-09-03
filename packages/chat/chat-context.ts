@@ -3,13 +3,12 @@ import type { ModelMessage } from 'ai'
 import {
   MAX_MODEL_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
-  buildUserModelContent,
-  type ApiChatMessage,
   type ChatMessagePart,
-  type EditorSelectionContext,
   type JsonValue,
-  type SlideContext,
-} from './chat.ts'
+} from './messages.ts'
+import type { ApiChatMessage } from './api-projection.ts'
+import type { EditorSelectionContext, SlideContext } from './context.ts'
+import { buildUserModelContent, type WrapUserPrompt } from './model-messages.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
@@ -383,6 +382,7 @@ export function assembleDeckAgentContext({
   slideContexts,
   deckOrigin,
   projectionLimits,
+  wrapUserPrompt,
 }: {
   messages: ApiChatMessage[]
   currentHtml: string
@@ -391,6 +391,7 @@ export function assembleDeckAgentContext({
   slideContexts?: SlideContext[]
   deckOrigin?: DeckOrigin | null
   projectionLimits?: { maxAssistantTurnBytes?: number }
+  wrapUserPrompt?: WrapUserPrompt
 }): { modelMessages: ModelMessage[]; metadata: DeckAgentContextMetadata } {
   let omittedStepCount = 0
   let bytesBefore = 0
@@ -412,7 +413,7 @@ export function assembleDeckAgentContext({
     modelMessages.push({
       role: 'user',
       content: buildUserModelContent(last, {
-        wrapForAgent: true,
+        wrapUserPrompt,
         currentHtml,
         editorSelection,
         editorSelections,
@@ -434,6 +435,7 @@ export function buildAgentModelMessages(
   slideContexts?: SlideContext[],
   deckOrigin?: DeckOrigin | null,
   editorSelections?: EditorSelectionContext[],
+  wrapUserPrompt?: WrapUserPrompt,
 ) {
   return assembleDeckAgentContext({
     messages,
@@ -442,5 +444,6 @@ export function buildAgentModelMessages(
     editorSelections,
     slideContexts,
     deckOrigin,
+    wrapUserPrompt,
   }).modelMessages
 }

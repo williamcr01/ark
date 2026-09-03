@@ -4,11 +4,13 @@
 version. Nothing outside this package decides what is approved.
 
 Layer 0 — the bottom of the stack. Imports no other workspace package. Browser-safe, except
-`runtime-stylesheet-disk.ts`, whose name marks it as the Node-side reader.
+`runtime-stylesheet-disk.ts`, whose name marks it as the Node-side reader. The public entry is
+`@ark/runtime-registry` (`index.ts`); deep imports remain supported.
 
 | Module                          | Responsibility                                                   |
 | ------------------------------- | ---------------------------------------------------------------- |
-| `deck-runtime-registry.ts`      | The approved asset list and URL validation                       |
+| `deck-runtime-registry.ts`      | The approved asset list; re-exports URL validation               |
+| `deck-runtime-validate.ts`      | Asset-reference collection and validation helpers                |
 | `deck-font-registry.ts`         | Approved deck fonts, PPTX typefaces, vendored clone `@font-face` |
 | `deck-runtime-manifest.ts`      | The manifest shape decks carry                                   |
 | `deck-runtime.ts`               | Runtime mode detection and CSP injection                         |

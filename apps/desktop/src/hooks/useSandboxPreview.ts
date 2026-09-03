@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { previewSessionResponseSchema, fetchApiJsonOrThrow } from '@ark/contracts'
-import {
-  buildSandboxRenderUrl,
-  resolveAppOrigin,
-  resolveSandboxOrigin,
-} from '@ark/runtime-registry/sandbox-origin.ts'
+import { resolveAppOrigin, resolveSandboxOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
+
+import { EMPTY_PREVIEW_SESSION, type PreviewSessionSnapshot } from './sandbox-preview-session.ts'
+import { runSandboxPreviewEffect } from './sandbox-preview-effect.ts'
 
 export type SandboxPreviewState = {
   previewUrl: string | null
@@ -17,26 +15,6 @@ export type SandboxPreviewState = {
   error: string | null
   sessionToken: string | null
   handshake: string | null
-}
-
-const PREVIEW_SESSION_COALESCE_MS = 100
-
-type PreviewSessionSnapshot = {
-  previewUrl: string | null
-  sandboxOrigin: string | null
-  sessionToken: string | null
-  handshake: string | null
-  html: string
-  reloadRevision: number
-}
-
-const EMPTY_PREVIEW_SESSION: PreviewSessionSnapshot = {
-  previewUrl: null,
-  sandboxOrigin: null,
-  sessionToken: null,
-  handshake: null,
-  html: '',
-  reloadRevision: 0,
 }
 
 export function useSandboxPreview(
@@ -69,159 +47,25 @@ export function useSandboxPreview(
   // react-doctor-disable-next-line react-doctor/no-fetch-in-effect -- one-shot preview-session fetch with AbortController + request-id staleness guards; project has no data-fetching library (rule's documented suppression)
   // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect -- post-await setters are guarded by requestIdRef/abort checks so stale effect runs are ignored before any state write
   useEffect(() => {
-    let effectActive = true
-
-    function clearPendingTimer() {
-      if (pendingTimerRef.current !== null) {
-        window.clearTimeout(pendingTimerRef.current)
-        pendingTimerRef.current = null
-      }
-    }
-
-    function abortActiveRequest() {
-      const activeRequest = activeRequestRef.current
-
-      if (!activeRequest) {
-        return
-      }
-
-      requestIdRef.current += 1
-      activeRequest.controller.abort()
-      activeRequestRef.current = null
-    }
-
-    function settleIdleState() {
-      void Promise.resolve().then(() => {
-        if (!effectActive) {
-          return
-        }
-
-        setIsLoading(false)
-        setError(null)
-      })
-    }
-
-    function latestSessionMatches() {
-      const session = previewSessionRef.current
-
-      return (
-        session.previewUrl !== null &&
-        session.html === html &&
-        session.reloadRevision === reloadRevision
-      )
-    }
-
-    async function createPreviewSession(requestHtml: string, requestReloadRevision: number) {
-      const requestId = requestIdRef.current + 1
-      requestIdRef.current = requestId
-      const controller = new AbortController()
-      activeRequestRef.current = { requestId, controller }
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const response = await fetch('/api/preview-sessions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            html: requestHtml,
-            ...(deckId ? { deckId } : {}),
-            editorBridge: true,
-          }),
-          signal: controller.signal,
-        })
-
-        const payload = await fetchApiJsonOrThrow(response, previewSessionResponseSchema, {
-          fallbackMessage: 'Failed to create preview session.',
-        })
-
-        if (requestIdRef.current !== requestId) {
-          return
-        }
-
-        setPreviewSession({
-          previewUrl: buildSandboxRenderUrl(payload.token, {
-            sandboxOrigin: payload.sandboxOrigin || sandboxOrigin,
-            appOrigin,
-          }),
-          sandboxOrigin: payload.sandboxOrigin || sandboxOrigin,
-          sessionToken: payload.token,
-          handshake: payload.handshake,
-          html: requestHtml,
-          reloadRevision: requestReloadRevision,
-        })
-      } catch (caught) {
-        if (controller.signal.aborted || requestIdRef.current !== requestId) {
-          return
-        }
-
-        const message =
-          caught instanceof Error ? caught.message : 'Failed to create preview session.'
-
-        setError(message)
-      } finally {
-        if (activeRequestRef.current?.requestId === requestId) {
-          activeRequestRef.current = null
-        }
-
-        setIsLoading((current) => (requestIdRef.current === requestId ? false : current))
-      }
-    }
-
-    clearPendingTimer()
-
-    if (!shouldLoad || !html.trim()) {
-      observedHtmlRef.current = html
-      lastHtmlChangeAtRef.current = null
-      abortActiveRequest()
-      settleIdleState()
-      return () => {
-        effectActive = false
-      }
-    }
-
-    if (latestSessionMatches()) {
-      abortActiveRequest()
-      settleIdleState()
-      return () => {
-        effectActive = false
-      }
-    }
-
-    const previousObservedHtml = observedHtmlRef.current
-    const htmlChanged = previousObservedHtml !== html
-    const now = Date.now()
-    const isRapidHtmlChange =
-      htmlChanged &&
-      lastHtmlChangeAtRef.current !== null &&
-      now - lastHtmlChangeAtRef.current < PREVIEW_SESSION_COALESCE_MS
-
-    observedHtmlRef.current = html
-
-    if (htmlChanged) {
-      lastHtmlChangeAtRef.current = now
-    }
-
-    abortActiveRequest()
-    setIsLoading(true)
-    setError(null)
-
-    if (isRapidHtmlChange) {
-      pendingTimerRef.current = window.setTimeout(() => {
-        pendingTimerRef.current = null
-        void createPreviewSession(html, reloadRevision)
-      }, PREVIEW_SESSION_COALESCE_MS)
-    } else {
-      void createPreviewSession(html, reloadRevision)
-    }
-
-    return () => {
-      effectActive = false
-      clearPendingTimer()
-      abortActiveRequest()
-    }
+    return runSandboxPreviewEffect({
+      html,
+      reloadRevision,
+      shouldLoad,
+      deckId,
+      sandboxOrigin,
+      appOrigin,
+      refs: {
+        requestIdRef,
+        activeRequestRef,
+        pendingTimerRef,
+        observedHtmlRef,
+        lastHtmlChangeAtRef,
+        previewSessionRef,
+      },
+      setIsLoading,
+      setError,
+      setPreviewSession,
+    })
   }, [appOrigin, deckId, html, reloadRevision, sandboxOrigin, shouldLoad])
 
   if (!shouldLoad) {
@@ -237,8 +81,6 @@ export function useSandboxPreview(
     }
   }
 
-  // HTML-only mismatch: keep the last successful URL/token/handshake so the
-  // bridge stays armed for the content still on screen while the refresh runs.
   const isStale =
     previewSession.previewUrl !== null &&
     (previewSession.html !== html || previewSession.reloadRevision !== reloadRevision)
@@ -267,7 +109,6 @@ export function fingerprintPreviewHtml(html: string): string {
     hash = Math.imul(hash, 16777619)
   }
 
-  // Mix in length so empty/short strings still differ from collisions.
   hash ^= html.length
   return (hash >>> 0).toString(36)
 }

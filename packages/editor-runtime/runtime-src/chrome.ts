@@ -1,0 +1,449 @@
+import './constants.ts'
+import {
+  getSlideCoordinateElement,
+  getSlideLogicalHeight,
+  getSlideLogicalWidth,
+  normalizeRect,
+  normalizeSlideBounds,
+  readZIndex,
+} from './geometry.ts'
+import { finishNudge } from './keyboard.ts'
+import { postError, postToParent } from './port.ts'
+import { buildSelection, resolveElementId } from './selection.ts'
+import { runtime } from './state.ts'
+import { detectSurface } from './surface.ts'
+import type { NormalizedRect, TransformCache } from './types.ts'
+
+export function clearMarquee() {
+  if (runtime.marqueeElement && runtime.marqueeElement.parentElement) {
+    runtime.marqueeElement.parentElement.removeChild(runtime.marqueeElement)
+  }
+
+  runtime.marqueeElement = null
+}
+
+export function clearResizeHandles() {
+  for (var i = 0; i < runtime.resizeHandles.length; i++) {
+    if (runtime.resizeHandles[i]!.parentElement) {
+      runtime.resizeHandles[i]!.parentElement!.removeChild(runtime.resizeHandles[i]!)
+    }
+  }
+
+  runtime.resizeHandles = []
+}
+
+export function clearGuides() {
+  for (var i = 0; i < runtime.guideElements.length; i++) {
+    // ensureGuide writes by axis index (x=0, y=1); a y-only snap leaves a hole at 0.
+    if (!runtime.guideElements[i]) {
+      continue
+    }
+
+    runtime.guideElements[i]!.style.display = 'none'
+  }
+}
+
+export function destroyGuides() {
+  for (var i = 0; i < runtime.guideElements.length; i++) {
+    if (!runtime.guideElements[i]) {
+      continue
+    }
+
+    if (runtime.guideElements[i]!.parentElement) {
+      runtime.guideElements[i]!.parentElement!.removeChild(runtime.guideElements[i]!)
+    }
+  }
+
+  runtime.guideElements = []
+}
+
+export function ensureGuide(slide: HTMLElement, axis: string) {
+  var index = axis === 'x' ? 0 : 1
+  var guide = runtime.guideElements[index]
+
+  if (!guide) {
+    guide = document.createElement('div')
+    guide.setAttribute('data-ark-editor-guide', 'true')
+    guide.style.position = 'absolute'
+    guide.style.pointerEvents = 'none'
+    guide.style.background = '#ef4444'
+    guide.style.zIndex = '10001'
+    runtime.guideElements[index] = guide
+  }
+
+  if (guide.parentElement !== getSlideCoordinateElement(slide)) {
+    getSlideCoordinateElement(slide).appendChild(guide)
+  }
+
+  guide.style.display = 'block'
+  return guide
+}
+
+export function clearHoverCursor() {
+  if (runtime.hoveredElement) {
+    runtime.hoveredElement.removeAttribute('data-ark-editor-movable')
+  }
+
+  runtime.hoveredElement = null
+}
+
+export function setHoverCursor(element: HTMLElement | null) {
+  if (runtime.hoveredElement === element) {
+    return false
+  }
+
+  clearHoverCursor()
+  runtime.hoveredElement = element
+
+  if (runtime.hoveredElement && runtime.hoveredElement.getAttribute(C.LOCKED_ATTR) !== 'true') {
+    runtime.hoveredElement.setAttribute('data-ark-editor-movable', 'true')
+  }
+
+  return true
+}
+
+export function ensureEditorStyle() {
+  if (runtime.editorStyle && runtime.editorStyle.parentElement) {
+    return
+  }
+
+  runtime.editorStyle = document.createElement('style')
+  runtime.editorStyle.setAttribute('data-ark-editor', 'true')
+  runtime.editorStyle.textContent =
+    '[data-ark-editor-movable="true"],[data-ark-editor-movable="true"] *{cursor:move!important}'
+  ;(document.head || document.documentElement).appendChild(runtime.editorStyle)
+}
+
+export function clearEditorOverlays() {
+  clearMarquee()
+  clearResizeHandles()
+  destroyGuides()
+}
+
+export function updateResizeHandles(
+  element: HTMLElement,
+  slide: HTMLElement,
+  geometry?: NormalizedRect,
+  cache?: TransformCache | null,
+) {
+  if (!element || !slide || element.getAttribute(C.LOCKED_ATTR) === 'true') {
+    clearResizeHandles()
+    return
+  }
+
+  var rect = geometry || normalizeRect(element, slide)
+  var overlayRoot = getSlideCoordinateElement(slide)
+  var handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+  var cursors: Record<string, string> = {
+    nw: 'nwse-resize',
+    n: 'ns-resize',
+    ne: 'nesw-resize',
+    e: 'ew-resize',
+    se: 'nwse-resize',
+    s: 'ns-resize',
+    sw: 'nesw-resize',
+    w: 'ew-resize',
+  }
+  var slideWidth = (cache && cache.logicalSlideWidth) || getSlideLogicalWidth(slide)
+  var slideHeight = (cache && cache.logicalSlideHeight) || getSlideLogicalHeight(slide)
+
+  if (
+    runtime.resizeHandles.length !== handles.length ||
+    runtime.resizeHandles[0].parentElement !== overlayRoot
+  ) {
+    clearResizeHandles()
+
+    for (var i = 0; i < handles.length; i++) {
+      var handle = document.createElement('div')
+      var dot = document.createElement('div')
+      handle.setAttribute('data-ark-editor-handle', handles[i])
+      handle.style.position = 'absolute'
+      handle.style.zIndex = '10000'
+      handle.style.pointerEvents = 'auto'
+      handle.style.boxSizing = 'border-box'
+      handle.style.cursor = cursors[handles[i]]
+      dot.style.position = 'absolute'
+      dot.style.left = '50%'
+      dot.style.top = '50%'
+      dot.style.transform = 'translate(-50%, -50%)'
+      dot.style.background = '#ffffff'
+      dot.style.border = 1 / runtime.editorScale + 'px solid #6b7280'
+      dot.style.borderRadius = '50%'
+      dot.style.boxShadow = '0 1px ' + 3 / runtime.editorScale + 'px rgba(0, 0, 0, 0.45)'
+      dot.style.pointerEvents = 'none'
+      handle.appendChild(dot)
+      overlayRoot.appendChild(handle)
+      runtime.resizeHandles.push(handle)
+    }
+  }
+
+  for (var j = 0; j < runtime.resizeHandles.length; j++) {
+    var hitSize = 18 / runtime.editorScale
+    var visualSize = 10 / runtime.editorScale
+    runtime.resizeHandles[j].style.width = hitSize + 'px'
+    runtime.resizeHandles[j].style.height = hitSize + 'px'
+    var dot = runtime.resizeHandles[j].firstChild as HTMLDivElement
+    dot.style.width = visualSize + 'px'
+    dot.style.height = visualSize + 'px'
+    dot.style.borderWidth = 1 / runtime.editorScale + 'px'
+    positionResizeHandle(runtime.resizeHandles[j], handles[j], rect, slideWidth, slideHeight)
+  }
+}
+
+export function positionResizeHandle(
+  handle: HTMLElement,
+  kind: string,
+  rect: NormalizedRect,
+  slideWidth: number,
+  slideHeight: number,
+) {
+  var left = rect.x * slideWidth
+  var top = rect.y * slideHeight
+  var width = rect.width * slideWidth
+  var height = rect.height * slideHeight
+  var size = 18 / runtime.editorScale
+
+  if (kind.indexOf('n') !== -1) {
+    handle.style.top = top - size / 2 + 'px'
+  } else if (kind.indexOf('s') !== -1) {
+    handle.style.top = top + height - size / 2 + 'px'
+  } else {
+    handle.style.top = top + height / 2 - size / 2 + 'px'
+  }
+
+  if (kind.indexOf('w') !== -1) {
+    handle.style.left = left - size / 2 + 'px'
+  } else if (kind.indexOf('e') !== -1) {
+    handle.style.left = left + width - size / 2 + 'px'
+  } else {
+    handle.style.left = left + width / 2 - size / 2 + 'px'
+  }
+}
+
+export function refreshSelectionChrome(
+  element: HTMLElement | null,
+  slide: HTMLElement | null,
+  slideIndex: number,
+) {
+  if (
+    runtime.selectedElements.length !== 1 ||
+    !element ||
+    element.getAttribute(C.LOCKED_ATTR) === 'true'
+  ) {
+    clearResizeHandles()
+  } else {
+    updateResizeHandles(element, slide!)
+  }
+
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    postGeometryForElement(runtime.selectedElements[i], slide!, slideIndex)
+  }
+
+  if (!runtime.selectedElements.length && element) {
+    postGeometryForElement(element, slide!, slideIndex)
+  }
+}
+
+export function clearSelectionStyles() {
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    runtime.selectedElements[i].removeAttribute('data-ark-editor-selected')
+  }
+
+  runtime.selectedElements = []
+  runtime.selectedElement = null
+}
+
+export function isSelectionMember(element: HTMLElement) {
+  return runtime.selectedElements.indexOf(element) !== -1
+}
+
+export function isNestedInSelection(element: HTMLElement) {
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    if (
+      runtime.selectedElements[i] !== element &&
+      (runtime.selectedElements[i].contains(element) ||
+        element.contains(runtime.selectedElements[i]))
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export function isSelectionUnsafe() {
+  if (!runtime.selectedElements.length) {
+    return false
+  }
+
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    if (runtime.selectedElements[i].getAttribute(C.LOCKED_ATTR) === 'true') {
+      return true
+    }
+
+    if (isNestedInSelection(runtime.selectedElements[i])) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export function setSelectedElements(
+  elements: HTMLElement[] | null,
+  primary: HTMLElement | null,
+  slide: HTMLElement | null,
+  slideIndex: number,
+) {
+  if (runtime.nudgeState && (!primary || runtime.nudgeState!.element !== primary)) {
+    finishNudge()
+  }
+
+  clearSelectionStyles()
+  runtime.selectedElements = elements ? elements.slice() : []
+  runtime.selectedElement = primary || null
+
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    runtime.selectedElements[i].setAttribute(
+      'data-ark-editor-selected',
+      runtime.selectedElements[i] === runtime.selectedElement ? 'primary' : '',
+    )
+  }
+
+  if (runtime.selectedElement && slide) {
+    refreshSelectionChrome(runtime.selectedElement, slide, slideIndex)
+  } else {
+    clearEditorOverlays()
+  }
+}
+
+export function setSelectedElement(
+  element: HTMLElement | null,
+  slide: HTMLElement | null,
+  slideIndex: number,
+) {
+  setSelectedElements(element ? [element] : [], element, slide, slideIndex)
+}
+
+export function toggleSelectedElement(
+  element: HTMLElement,
+  slide: HTMLElement,
+  slideIndex: number,
+) {
+  if (!element || !slide) {
+    return
+  }
+
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    if (!slide.contains(runtime.selectedElements[i])) {
+      // Stale members from another slide: reject the add and keep the current set.
+      return
+    }
+  }
+
+  if (isSelectionMember(element)) {
+    var remaining = []
+
+    for (var j = 0; j < runtime.selectedElements.length; j++) {
+      if (runtime.selectedElements[j] !== element) {
+        remaining.push(runtime.selectedElements[j])
+      }
+    }
+
+    var nextPrimary =
+      element === runtime.selectedElement
+        ? remaining[remaining.length - 1] || null
+        : runtime.selectedElement
+    setSelectedElements(remaining, nextPrimary, slide, slideIndex)
+    return
+  }
+
+  if (runtime.selectedElements.length >= C.MAX_SELECTIONS) {
+    postError('You can select up to 32 elements.', 'selection-cap')
+    return
+  }
+
+  setSelectedElements(runtime.selectedElements.concat([element]), element, slide, slideIndex)
+}
+
+export function postSelection(
+  element: HTMLElement | null,
+  slide: HTMLElement | null,
+  slideIndex: number,
+) {
+  if (!element || !runtime.selectedElement) {
+    postToParent({ type: C.SELECTION_CHANGE, selection: null })
+    return
+  }
+
+  var infos = []
+
+  for (var i = 0; i < runtime.selectedElements.length; i++) {
+    infos.push(buildSelection(runtime.selectedElements[i], slide!, slideIndex))
+  }
+
+  postToParent({
+    type: C.SELECTION_CHANGE,
+    selection: buildSelection(runtime.selectedElement, slide!, slideIndex),
+    selections: infos,
+  })
+}
+
+export function findElementById(
+  elementId: string,
+  slide: HTMLElement,
+  slideIndex: number,
+): HTMLElement | null {
+  void slideIndex
+  var byAttr = slide.querySelector(
+    '[' + C.ELEMENT_ID_ATTR + '="' + elementId.replace(/"/g, '') + '"]',
+  )
+
+  if (byAttr) {
+    return byAttr as HTMLElement
+  }
+
+  if (elementId.indexOf(C.TRANSIENT_PREFIX) !== 0) {
+    return null
+  }
+
+  var suffix = elementId.slice(C.TRANSIENT_PREFIX.length)
+  var dashIndex = suffix.indexOf('-')
+
+  if (dashIndex === -1) {
+    return null
+  }
+
+  var path = suffix.slice(dashIndex + 1)
+
+  var indices = path.split('.').map(function (part) {
+    return Number.parseInt(part, 10)
+  })
+  var current = slide
+
+  for (var i = 0; i < indices.length; i++) {
+    if (!current || !current.children || !current.children[indices[i]]) {
+      return null
+    }
+
+    current = current.children[indices[i]] as HTMLElement
+  }
+
+  return current
+}
+
+export function postGeometryForElement(
+  element: HTMLElement,
+  slide: HTMLElement,
+  slideIndex: number,
+) {
+  postToParent({
+    type: C.GEOMETRY,
+    elementId: resolveElementId(element, slide, slideIndex),
+    slideIndex: slideIndex,
+    geometry: normalizeRect(element, slide),
+    zIndex: readZIndex(element),
+    slideBounds: normalizeSlideBounds(slide),
+    surface: detectSurface(element, slide),
+  })
+}

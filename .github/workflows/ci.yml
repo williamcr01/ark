@@ -98,6 +98,8 @@ jobs:
         run: pnpm run audit
       - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
         run: pnpm openapi:check
+      - if: needs.changes.result == 'success' && needs.changes.outputs.run_ci == 'true'
+        run: pnpm build:runtimes:check
 
   build:
     needs: changes

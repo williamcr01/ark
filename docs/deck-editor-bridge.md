@@ -4,13 +4,13 @@ Ark previews decks inside a sandboxed iframe (`sandbox="allow-scripts"`). The sh
 
 See [deck-preview-orchestration.md](./deck-preview-orchestration.md) for the
 shell-side ownership and state-transition table. The private editor port stays
-inside `useDeckEditorBridge`; extracted source and shortcut hooks cannot post
+inside `useEditorBridgePort`; extracted source and shortcut hooks cannot post
 bridge messages or authorize persistence.
 
 Authenticated editor events are persisted by
-`useDeckEditorPatchCoordinator`. That hook owns event deduplication, transform
+`useEditorPatchQueue` and `useEditorDragCommit` (composed by `useDeckEditorPatchCoordinator`). Those hooks own event deduplication, transform
 baselines, pending-transform serialization, stable-ID reselection, and
-live-patch rollback, but receives events only after `useDeckEditorBridge` has
+live-patch rollback, but receive events only after `useDeckEditorBridge` has
 accepted them through the private port. Server-side element patch validation
 remains authoritative.
 
@@ -243,7 +243,7 @@ After acknowledgement, the shell ignores public `ark:editor-*` runtime payloads 
 ### Stale-frame and forged messages
 
 - **Capability channel:** routine editor traffic is accepted only on the authenticated per-preview port.
-- **Generation guard:** `useDeckEditorBridge` tags each iframe load with `iframeGenerationKey`, closes the prior port, and drops stale messages.
+- **Generation guard:** `useEditorBridgePort` tags each iframe load with `iframeGenerationKey`, closes the prior port, and drops stale messages.
 - **Source/origin guards:** public bootstrap messages not originating from the current preview `contentWindow` and configured sandbox origin are dropped.
 - **Shape guard:** only payloads passing `isEditorRuntimeMessage` / `isEditorShellMessage` are handled; unknown `ark:editor-*` types are ignored.
 - **Authoritative patch guard:** the API resolves targets against persisted source HTML and rechecks editable metadata, unsafe tags, locks, allowed attributes/styles, and numeric bounds.
@@ -317,20 +317,29 @@ Transforms, inserts, duplicates, deletes, inspector changes, and layer changes f
 
 ## Shell integration
 
-| Component / module                                         | Role                                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `apps/desktop/src/components/DeckPreview.tsx`              | Always-on edit chrome, text commit orchestration, overlay, keyboard shortcuts |
-| `apps/desktop/src/hooks/useDeckEditorBridge.ts`            | Authenticated port bootstrap, runtime listener, and shell command helpers     |
-| `apps/desktop/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                                    |
-| `apps/desktop/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                                 |
-| `apps/desktop/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                                        |
-| `apps/desktop/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel                 |
-| `apps/desktop/src/lib/deck-text-edit.ts`                   | `isTextEditableSelection` guard for inline text                               |
-| `packages/deck-preview/preview-html.ts`                    | Injects editor runtime when `editorBridge: true`                              |
-| `packages/deck/patch/element-patch.ts`                     | Server-side patch application and validation                                  |
-| `packages/deck/patch/editable-elements.ts`                 | Editable metadata parsing (#74)                                               |
+| Component / module                                         | Role                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------- |
+| `apps/desktop/src/components/DeckPreview.tsx`              | Compose frame, editor layer, and chrome                       |
+| `apps/desktop/src/hooks/useEditorBridgePort.ts`            | Authenticated port bootstrap and shell command helpers        |
+| `apps/desktop/src/hooks/useEditorBridgeMessages.ts`        | Runtime message dispatch into overlay state                   |
+| `apps/desktop/src/hooks/useDeckPersistence.ts`             | `patchDeckOperations`, `refreshActiveDeck`                    |
+| `apps/desktop/src/App.tsx`                                 | `handleCommitTextEdit` → `replace_text` patch                 |
+| `apps/desktop/src/components/EditorSelectionOverlay.tsx`   | Selection box from normalized geometry                        |
+| `apps/desktop/src/components/SelectionInspectorChrome.tsx` | Selection-anchored settings button + floating inspector panel |
+| `apps/desktop/src/lib/editor/deck-text-edit.ts`            | `isTextEditableSelection` guard for inline text               |
+| `packages/deck-preview/preview-html.ts`                    | Injects editor runtime when `editorBridge: true`              |
+| `packages/deck/patch/element-patch.ts`                     | Server-side patch application and validation                  |
+| `packages/deck/patch/editable-elements.ts`                 | Editable metadata parsing (#74)                               |
 
 Preview sessions record `editorBridge` so the sandbox host serves HTML with the editor script only when requested (`POST /api/preview-sessions` with `editorBridge: true`).
+
+## Authoring the injected runtime
+
+The iframe editor is real TypeScript under `packages/editor-runtime/runtime-src/` (one module per former source chunk: `state`, `port`, `selection`, `surface`, `geometry`, `chrome`, `text-edit`, `transform`, `adopt`, `snap`, `pointer`, `keyboard`, `lifecycle`). `scripts/build-runtimes.mjs` bundles the `index.ts` entry with esbuild into an unminified IIFE and writes `packages/editor-runtime/runtime/generated/editor-runtime.source.ts`. That generated file is committed so tsc/Vite/vitest need no extra step.
+
+Edit `runtime-src/`, then run `pnpm build:runtimes` and commit the regenerated source. `pnpm build:runtimes:check` (CI quality job) and the editor-runtime vitest both fail if the artifact is stale. `buildDeckEditorBridgeRuntimeScript(options)` keeps its public signature: it prepends `var C = …` (host constants) and then the bundled IIFE.
+
+To register another iframe runtime later (for example deck-preview), add one row to `RUNTIME_ENTRIES` in `scripts/build-runtimes.mjs`.
 
 ## Extension guidance
 
@@ -339,7 +348,7 @@ To add a new `ark:editor-*` message safely:
 1. **Type union** — Add the constant, payload interface, and entry in `EDITOR_SHELL_MESSAGE_TYPES` or `EDITOR_RUNTIME_MESSAGE_TYPES` in `packages/editor-runtime/`.
 2. **Validator** — Implement `isEditorFooMessage` with strict field checks; register it in `isEditorShellMessage` or `isEditorRuntimeMessage`.
 3. **Factory** — Add `createEditorFooMessage` for tests and shell callers.
-4. **Runtime handler** — Update `buildDeckEditorBridgeRuntimeScript` to emit or consume the message on the established port.
+4. **Runtime handler** — Handle the message in `packages/editor-runtime/runtime-src/` (then `pnpm build:runtimes`). `buildDeckEditorBridgeRuntimeScript` still prepends host constants onto that bundle.
 5. **Hook handler** — Handle the message in `useDeckEditorBridge` (or a dedicated hook) with port and generation guards.
 6. **Persistence** — Map commit-style messages to `DeckPatchOperation` types in `packages/deck/patch/patch-request.ts` and `packages/deck/patch/element-patch.ts`; never write deck HTML from the client alone.
 7. **Tests** — Add validator tests in `packages/editor-runtime/protocol/protocol.test.ts`; add hook/integration tests in `apps/desktop/src/hooks/useDeckEditorBridge.test.tsx`. For security-sensitive messages, add hostile fixtures per #81 that assert rejected origins, sources, and malformed payloads have no side effects.

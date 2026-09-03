@@ -2,8 +2,10 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
+import { useChatStore } from '@/state/chat-store.ts'
 import { getTestLocalStorage } from '@/test/storage'
 import { renderWithRouter } from '@/test/render-with-router'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 const mediaState = vi.hoisted(() => ({ isDesktop: true }))
 const chatPanelProps = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }))
@@ -133,12 +135,42 @@ vi.mock('@/components/DeckPreview', async () => {
   }
 })
 
-vi.mock('@/components/ChatPanel', () => ({
-  ChatPanel: (props: Record<string, unknown>) => {
-    chatPanelProps.calls.push(props)
-    return <div data-testid="chat-panel" />
-  },
-}))
+vi.mock('@/components/ChatPanel', async () => {
+  const { usePromptSubmit } = await import('@/hooks/usePromptSubmit')
+  const { useWorkspaceRuntimeContext } = await import('@/hooks/workspace-runtime-context')
+  const { useChatStore } = await import('@/state/chat-store.ts')
+  const { useShellStore } = await import('@/state/shell-store.ts')
+
+  return {
+    ChatPanel: (props: Record<string, unknown>) => {
+      const prompt = usePromptSubmit()
+      const { generation, models } = useWorkspaceRuntimeContext()
+      const input = useChatStore((state) => state.input)
+      const setInput = useChatStore((state) => state.setInput)
+      const attachmentError = useChatStore((state) => state.attachmentError)
+      const agentInteractionsInModal = useShellStore((state) => state.agentInteractionsInModal)
+      const layout = typeof props.layout === 'string' ? props.layout : 'sidebar'
+      chatPanelProps.calls.push({
+        ...props,
+        attachmentError,
+        generationState: {
+          canGenerate: models.canGenerate,
+          isGenerating: generation.isGenerating,
+        },
+        input,
+        interactiveToolsInModal: agentInteractionsInModal && layout !== 'home',
+        onInputChange: setInput,
+        onPromptSubmit: prompt.handlePromptSubmit,
+        onQueuedSendAll: prompt.sendQueuedAll,
+        onQueuedSendDismiss: prompt.dismissQueuedSend,
+        onQueuedSendEdit: prompt.updateQueuedText,
+        onQueuedSendNow: prompt.sendQueuedNow,
+        queuedSends: prompt.queuedSends,
+      })
+      return <div data-testid="chat-panel" />
+    },
+  }
+})
 
 const { default: App } = await import('./App')
 
@@ -243,6 +275,7 @@ describe('App chat panel layout', () => {
         ],
       },
     ]
+    useChatStore.setState({ messages: chatSessionState.messages as ChatMessage[] })
 
     renderWithRouter(<App />)
 

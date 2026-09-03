@@ -6,8 +6,9 @@ import { McpSettingsSection } from '@/components/McpSettingsSection'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { AppearancePreference } from '@/hooks/useAppearance'
+import type { SettingsTab } from '@/lib/ui/settings-tab'
 
-export type SettingsTab = 'general' | 'mcp' | 'providers'
+export type { SettingsTab }
 
 const EMPTY_CATALOG_WARNINGS: string[] = []
 

@@ -82,8 +82,8 @@ describe('thumbnail API routes', () => {
   }
 
   it('returns pending then ready thumbnails and serves png bytes', async () => {
-    let resolveRender: ((value: unknown) => void) | null = null
-    const renderGate = new Promise((resolve) => {
+    let resolveRender = () => {}
+    const renderGate = new Promise<void>((resolve) => {
       resolveRender = resolve
     })
 
@@ -125,7 +125,7 @@ describe('thumbnail API routes', () => {
     assertApiContract(deckThumbnailsResponseSchema, pending)
     expect(pending.status).toBe('pending')
 
-    resolveRender?.(null)
+    resolveRender()
 
     let ready: { status: string; slides: Array<{ url: string }> } | null = null
     await vi.waitFor(

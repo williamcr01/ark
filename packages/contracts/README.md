@@ -6,9 +6,12 @@
 import { deckResponseSchema, parseRequestBody } from '@ark/contracts'
 ```
 
-Do not import individual files such as `@ark/contracts/decks.ts` from application code — only modules inside `packages/contracts/` may import each other directly.
+Do not import individual files such as `@ark/contracts/decks.ts` from application code — only modules inside `packages/contracts/` may import each other directly. Deep imports remain supported in this change; collapsing them is a follow-up.
 
-The contracts layer depends on **Zod** and portable shared helpers only. It must not import React, Express, Node built-ins, or browser APIs.
+The contracts layer depends on **Zod** and browser-safe shared helpers only (`@ark/deck`,
+`@ark/ai`, `@ark/chat`, `@ark/runtime-registry`). It must not import React, Express, Node
+built-ins, browser APIs, or server-only packages such as `@ark/storage`. Stored-deck and
+document-history Zod schemas live in `@ark/deck` and are re-exported here.
 
 ## Covered endpoints
 
@@ -31,7 +34,7 @@ Shared client helpers (`fetchApiJsonOrThrow`, `parseRequestBody`, `assertApiCont
 
 ## OpenAPI
 
-`packages/contracts/openapi-registry.ts` registers every route above against the Zod contracts. `pnpm openapi:generate` writes `openapi/ark.openapi.json`; CI runs `pnpm openapi:check` to prevent drift. Generation job `assetIds` appear on `POST /api/generation-jobs` only — poll responses use `generationJobApiSchema`, which omits request-only fields.
+`packages/contracts/openapi-registry.ts` is the composer: it creates the shared `OpenAPIRegistry` and calls `openapi-registry/*.ts` path registrars (decks, generation, workspaces, and the rest). `pnpm openapi:generate` writes `openapi/ark.openapi.json`; CI runs `pnpm openapi:check` to prevent drift. Generation job `assetIds` appear on `POST /api/generation-jobs` only — poll responses use `generationJobApiSchema`, which omits request-only fields.
 
 For cross-language clients and regeneration workflow, see [docs/openapi.md](../docs/openapi.md).
 
@@ -50,7 +53,7 @@ Route behavior is checked against these schemas in three layers:
 ### Updating contracts when endpoints change
 
 1. **Change the Zod schema** in the appropriate `packages/contracts/*.ts` module (and export it from `index.ts` if it is new).
-2. **Register the route** in `packages/contracts/openapi-registry.ts` when the HTTP surface changes.
+2. **Register the route** in the matching `packages/contracts/openapi-registry/*.ts` module (wired from `openapi-registry.ts`) when the HTTP surface changes.
 3. **Regenerate OpenAPI** — run `pnpm openapi:generate` and commit `openapi/ark.openapi.json`.
 4. **Update route tests** — extend `apps/api/api-contract.test.ts` (or a focused route test such as `apps/api/routes/assets.test.ts`) with a success or validation-error case that calls `assertApiContract` against the new or changed schema.
 5. **Run** `pnpm test` and `pnpm openapi:check` locally before pushing.

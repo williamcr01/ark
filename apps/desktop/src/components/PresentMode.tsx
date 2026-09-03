@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeftIcon, ChevronRightIcon, ShieldAlertIcon, XIcon } from 'lucide-react'
 
@@ -7,11 +6,9 @@ import { Button } from '@/components/ui/button'
 import { type ElementSize } from '@/lib/deck/deck-preview'
 import { previewCompromiseCopy } from '@/lib/ui/preview-compromise-copy'
 import type { PreviewBridgeCompromiseReason } from '@/hooks/usePreviewBridgeSession'
+import { usePresentModeController } from '@/hooks/usePresentModeController'
 import { cn } from '@/lib/ui/utils'
 
-const CONTROLS_IDLE_MS = 2500
-const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const PRESENT_MODE_BACKDROP = (
   <div aria-hidden className="pointer-events-auto fixed inset-0 z-[40] bg-[#000]" />
 )
@@ -104,66 +101,6 @@ type PresentModeProps = {
   onViewportSizeChange?: (size: ElementSize) => void
 }
 
-function readElementSize(element: HTMLElement | null): ElementSize {
-  if (!element) {
-    return { width: 0, height: 0 }
-  }
-
-  const { width, height } = element.getBoundingClientRect()
-  return { width, height }
-}
-
-function useElementSize<T extends HTMLElement>(onSizeChange?: (size: ElementSize) => void) {
-  const elementRef = useRef<T>(null)
-  const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
-  const onSizeChangeRef = useRef(onSizeChange)
-
-  useEffect(() => {
-    onSizeChangeRef.current = onSizeChange
-  }, [onSizeChange])
-
-  useLayoutEffect(() => {
-    const element = elementRef.current
-
-    if (!element) {
-      return
-    }
-
-    const updateSize = () => {
-      const next = readElementSize(element)
-
-      // Skip 0×0 first layout so overlay present keeps the window-seeded size.
-      if (next.width <= 0 || next.height <= 0) {
-        return
-      }
-
-      onSizeChangeRef.current?.(next)
-
-      setSize((current) => {
-        if (
-          Math.abs(current.width - next.width) < 0.5 &&
-          Math.abs(current.height - next.height) < 0.5
-        ) {
-          return current
-        }
-
-        return next
-      })
-    }
-
-    updateSize()
-
-    const resizeObserver = new ResizeObserver(updateSize)
-    resizeObserver.observe(element)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [])
-
-  return [elementRef, size] as const
-}
-
 export function PresentMode({
   activeSlideIndex,
   previewCompromised,
@@ -173,218 +110,14 @@ export function PresentMode({
   onExit,
   onViewportSizeChange,
 }: PresentModeProps) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const idleTimerRef = useRef<number | null>(null)
-  const currentSlideIndexRef = useRef(activeSlideIndex)
-  const hasExitedRef = useRef(false)
-  const hadFullscreenRef = useRef(false)
-  // Viewport size is reported to the parent event-driven from the ResizeObserver
-  // (the child owns that external subscription), not through an effect.
-  const handleViewportSizeChange = useCallback(
-    (size: ElementSize) => {
-      onViewportSizeChange?.(size)
-    },
-    [onViewportSizeChange],
-  )
-  const [viewportRef] = useElementSize<HTMLDivElement>(handleViewportSizeChange)
-  const setPresenterRoot = useCallback(
-    (node: HTMLDivElement | null) => {
-      rootRef.current = node
-      viewportRef.current = node
-    },
-    [viewportRef],
-  )
-  const [controlsVisible, setControlsVisible] = useState(true)
-
-  const clearIdleTimer = useCallback(() => {
-    if (idleTimerRef.current === null) {
-      return
-    }
-
-    window.clearTimeout(idleTimerRef.current)
-    idleTimerRef.current = null
-  }, [])
-
-  const scheduleControlsHide = useCallback(() => {
-    clearIdleTimer()
-
-    idleTimerRef.current = window.setTimeout(() => {
-      setControlsVisible(false)
-      idleTimerRef.current = null
-    }, CONTROLS_IDLE_MS)
-  }, [clearIdleTimer])
-
-  const showControls = useCallback(() => {
-    setControlsVisible(true)
-    scheduleControlsHide()
-  }, [scheduleControlsHide])
-
-  const finishExit = useCallback(() => {
-    if (hasExitedRef.current) {
-      return
-    }
-
-    hasExitedRef.current = true
-    clearIdleTimer()
-    onExit(currentSlideIndexRef.current)
-  }, [clearIdleTimer, onExit])
-
-  useEffect(() => {
-    currentSlideIndexRef.current = activeSlideIndex
-  }, [activeSlideIndex])
-
-  useEffect(() => {
-    scheduleControlsHide()
-
-    return () => {
-      clearIdleTimer()
-    }
-  }, [clearIdleTimer, scheduleControlsHide])
-
-  useEffect(() => {
-    window.addEventListener('keydown', showControls)
-    window.addEventListener('mousemove', showControls)
-    window.addEventListener('touchstart', showControls, { passive: true })
-
-    return () => {
-      window.removeEventListener('keydown', showControls)
-      window.removeEventListener('mousemove', showControls)
-      window.removeEventListener('touchstart', showControls)
-    }
-  }, [showControls])
-
-  useEffect(() => {
-    const root = rootRef.current
-    const fullscreenTarget = document.documentElement
-
-    if (!root) {
-      return
-    }
-
-    root.focus({ preventScroll: true })
-
-    const handleFullscreenChange = () => {
-      if (document.fullscreenElement === fullscreenTarget) {
-        hadFullscreenRef.current = true
-        return
-      }
-
-      if (hadFullscreenRef.current) {
-        hadFullscreenRef.current = false
-        finishExit()
-      }
-    }
-
-    const requestFullscreen = async () => {
-      if (!fullscreenTarget.requestFullscreen) {
-        return
-      }
-
-      try {
-        await fullscreenTarget.requestFullscreen()
-        hadFullscreenRef.current = document.fullscreenElement === fullscreenTarget
-      } catch {
-        // Overlay present is the intentional desktop fallback; do not toast.
-      }
-    }
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    void requestFullscreen()
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
-    }
-  }, [finishExit])
-
-  useEffect(() => {
-    const root = rootRef.current
-
-    if (!root) {
-      return
-    }
-
-    const handleTabTrap = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') {
-        return
-      }
-
-      const focusable = [...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter(
-        (element) => !element.hasAttribute('disabled'),
-      )
-
-      if (focusable.length === 0) {
-        event.preventDefault()
-        root.focus()
-        return
-      }
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      const active = document.activeElement
-      const focusInside = active instanceof Node && root.contains(active)
-
-      if (event.shiftKey) {
-        if (!focusInside || active === first || active === root) {
-          event.preventDefault()
-          last.focus()
-        }
-        return
-      }
-
-      if (!focusInside || active === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    window.addEventListener('keydown', handleTabTrap, true)
-
-    return () => {
-      window.removeEventListener('keydown', handleTabTrap, true)
-    }
-  }, [])
-
-  const exitPresentMode = useCallback(() => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => {
-        finishExit()
-      })
-      return
-    }
-
-    finishExit()
-  }, [finishExit])
-
-  const goToPresentSlide = useCallback(
-    (index: number) => {
-      if (index < 0 || index >= slideCount) {
-        return
-      }
-
-      currentSlideIndexRef.current = index
-      onGoToSlide(index)
-      showControls()
-    },
-    [onGoToSlide, showControls, slideCount],
-  )
-
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') {
-        return
-      }
-
-      event.preventDefault()
-      event.stopPropagation()
-      exitPresentMode()
-    }
-
-    window.addEventListener('keydown', handleEscape, true)
-
-    return () => {
-      window.removeEventListener('keydown', handleEscape, true)
-    }
-  }, [exitPresentMode])
+  const { controlsVisible, exitPresentMode, goToPresentSlide, setPresenterRoot, showControls } =
+    usePresentModeController({
+      activeSlideIndex,
+      onExit,
+      onGoToSlide,
+      onViewportSizeChange,
+      slideCount,
+    })
 
   const canGoPrevious = activeSlideIndex > 0
   const canGoNext = activeSlideIndex < slideCount - 1

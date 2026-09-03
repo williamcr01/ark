@@ -1,17 +1,38 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { type ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { useChatStore } from '@/state/chat-store.ts'
+import { useDeckStore } from '@/state/deck-store.ts'
+import { useEditorStore } from '@/state/editor-store.ts'
+import type { EditorTool } from '@ark/editor-runtime'
+import type { ImageFitMode } from '@ark/deck/document/image.ts'
 
-import { EditModeToolbar } from './EditModeToolbar'
+import { EditModeToolbar, type EditModeToolbarActions } from './EditModeToolbar'
 
 vi.mock('@/lib/api/deck-api', () => ({
   listDocumentHistory: vi.fn().mockResolvedValue([]),
 }))
 
-const DEFAULT_STATE: NonNullable<ComponentProps<typeof EditModeToolbar>['state']> = {
+const toolbarEdits = vi.hoisted(() => ({
+  canUndo: false,
+  canRedo: false,
+  handleUndoEdit: (() => undefined) as () => void,
+  handleRedoEdit: (() => undefined) as () => void,
+  handleCommitTextEdit: vi.fn(),
+  handlePatchEditorOperations: vi.fn(),
+  handleReorderSlide: vi.fn(),
+  handleRestoreDocumentHistory: vi.fn(),
+  undoSlideIndex: null as number | null,
+  redoSlideIndex: null as number | null,
+}))
+
+vi.mock('@/hooks/useManualEditCommits', () => ({
+  useManualEditCommits: () => toolbarEdits,
+}))
+
+const DEFAULT_STATE = {
   canEditText: false,
   canRedo: false,
   canUndo: false,
@@ -25,28 +46,60 @@ const DEFAULT_STATE: NonNullable<ComponentProps<typeof EditModeToolbar>['state']
   textEditActive: false,
 }
 
-function renderToolbar(overrides: Partial<ComponentProps<typeof EditModeToolbar>> = {}) {
-  const onToolChange = vi.fn()
+type ToolbarRenderOverrides = {
+  activeTool?: EditorTool
+  state?: Partial<typeof DEFAULT_STATE> & { selectionUnsafe?: boolean }
+  imageAlt?: string
+  imageFit?: ImageFitMode
+  onDuplicate?: () => void
+  onPickImage?: () => void
+  onRestoreHistory?: (revision: number) => Promise<void>
+  onUndo?: () => void
+  onRedo?: () => void
+  onToolChange?: (tool: EditorTool) => void
+  deckId?: string | null
+}
+
+function renderToolbar(overrides: ToolbarRenderOverrides = {}) {
+  const onToolChange = overrides.onToolChange ?? vi.fn()
+  const state = { ...DEFAULT_STATE, ...overrides.state }
+  useDeckStore.setState({
+    deckId: overrides.deckId ?? 'deck-1',
+    isPatching: state.isSaving,
+    isSaving: false,
+  })
+  useChatStore.setState({ isGenerating: state.isGenerating })
+  useEditorStore.setState({
+    selectedTool: overrides.activeTool ?? 'select',
+    textEditActive: state.textEditActive,
+  })
+  toolbarEdits.canUndo = state.canUndo
+  toolbarEdits.canRedo = state.canRedo
+  toolbarEdits.handleUndoEdit = overrides.onUndo ?? vi.fn()
+  toolbarEdits.handleRedoEdit = overrides.onRedo ?? vi.fn()
+
+  const actions: EditModeToolbarActions = {
+    onDuplicate: overrides.onDuplicate,
+    onPickImage: overrides.onPickImage,
+    onRestoreHistory: overrides.onRestoreHistory,
+    onToolChange,
+  }
 
   render(
     <TooltipProvider>
       <EditModeToolbar
-        activeTool="select"
+        actions={actions}
+        imageAlt={overrides.imageAlt}
+        imageFit={overrides.imageFit}
         state={{
-          canEditText: false,
-          canRedo: false,
-          canUndo: false,
-          hasDeck: true,
-          hasSelection: false,
-          isGenerating: false,
-          isSaving: false,
-          selectedImage: false,
-          selectionLocked: false,
-          selectionManaged: false,
-          textEditActive: false,
+          canEditText: state.canEditText,
+          hasDeck: state.hasDeck,
+          hasSelection: state.hasSelection,
+          selectedImage: state.selectedImage,
+          selectionLocked: state.selectionLocked,
+          selectionManaged: state.selectionManaged,
+          selectionUnsafe: state.selectionUnsafe,
         }}
-        onToolChange={onToolChange}
-        {...overrides}
       />
     </TooltipProvider>,
   )

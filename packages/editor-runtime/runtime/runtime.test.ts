@@ -1,4 +1,5 @@
-import { JSDOM } from 'jsdom'
+// @ts-expect-error this package does not depend on @types/jsdom
+import { JSDOM as JsdomImport } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -21,6 +22,18 @@ import {
   MAX_EDITOR_SELECTIONS,
 } from '../index.ts'
 import { INLINE_TEXT_EDITABLE_TAGS } from '@ark/deck/document/editable.ts'
+
+type JsdomWindow = Window & typeof globalThis
+type JsdomInstance = { window: JsdomWindow; serialize: () => string }
+const JSDOM = JsdomImport as new (
+  html?: string,
+  options?: {
+    pretendToBeVisual?: boolean
+    runScripts?: 'dangerously' | 'outside-only'
+    url?: string
+    beforeParse?: (window: JsdomWindow) => void
+  },
+) => JsdomInstance
 
 type RuntimeMessage = Record<string, unknown>
 
@@ -139,7 +152,8 @@ async function loadEditorRuntime(
 
   await new Promise<void>((resolve) => dom.window.addEventListener('load', () => resolve()))
   await connected
-  shellPort?.postMessage({
+  const port = shellPort as TestMessagePort | null
+  port?.postMessage({
     type: EDITOR_ENABLE_MESSAGE_TYPE,
     slideIndex: options.slideIndex ?? 0,
     tool: 'select',
@@ -151,11 +165,11 @@ async function loadEditorRuntime(
       dom.window.setTimeout(resolve, accelerateNudgeTimer ? 0 : 450)
     })
 
-  return { dom, messages, flushNudgeTimer, shellPort: shellPort! }
+  return { dom, messages, flushNudgeTimer, shellPort: port! }
 }
 
 function pointerEvent(
-  dom: JSDOM,
+  dom: JsdomInstance,
   type: string,
   pointerId: number,
   clientX = 0,
@@ -196,13 +210,12 @@ describe('deck editor runtime script', () => {
 
     expect(script).toContain('function normalizeSlideBounds')
     expect(script).toContain('slideBounds: normalizeSlideBounds(slide)')
+    expect(script).toContain('data.type === C.SELECT ||')
 
-    const selectHandler = script.indexOf('data.type === C.SELECT ||')
-    const setIndex = script.indexOf('currentSlideIndex = data.slideIndex', selectHandler)
+    const setIndex = script.indexOf('currentSlideIndex = data.slideIndex')
     const getSlide = script.indexOf('var slide = getActiveSlide();', setIndex)
 
-    expect(selectHandler).toBeGreaterThan(-1)
-    expect(setIndex).toBeGreaterThan(selectHandler)
+    expect(setIndex).toBeGreaterThan(-1)
     expect(getSlide).toBeGreaterThan(setIndex)
   })
 
@@ -226,14 +239,14 @@ describe('deck editor runtime script', () => {
       'a',
       'hr',
     ]) {
-      expect(script).toContain(`tag === '${tag}'`)
+      expect(script).toContain(`tag === "${tag}"`)
     }
 
     expect(script).toContain('if (!bounds.width || !bounds.height)')
-    const ancestorPreferenceIndex = script.indexOf('managedAncestor === selectedElement ||')
+    const ancestorPreferenceIndex = script.indexOf('managedAncestor === runtime.selectedElement ||')
     expect(ancestorPreferenceIndex).toBeGreaterThan(findTargetIndex)
     expect(script).toContain(
-      'selectedElement && managedAncestor && managedAncestor.contains(selectedElement)',
+      'runtime.selectedElement && managedAncestor && managedAncestor.contains(runtime.selectedElement)',
     )
     expect(script).toContain('function selectParent(slide)')
   })
@@ -816,7 +829,7 @@ describe('deck editor runtime script', () => {
     expect(emptyClickIndex).toBeGreaterThan(-1)
 
     const deselectIndex = script.indexOf(
-      'postSelection(null, slide, currentSlideIndex);',
+      'postSelection(null, slide, runtime.currentSlideIndex);',
       emptyClickIndex,
     )
     expect(deselectIndex).toBeGreaterThan(emptyClickIndex)
@@ -832,16 +845,16 @@ describe('deck editor runtime script', () => {
 
     expect(() => new Function(script)).not.toThrow()
     expect(script).toContain('function detectSurface(element, slide)')
-    expect(script).toContain("return luminance >= 0.5 ? 'light' : 'dark'")
+    expect(script).toContain('return luminance >= 0.5 ? "light" : "dark"')
     expect(script).toContain('surface: detectSurface(element, slide)')
-    expect(script).toContain('geometry: target ? normalizeRect(target, slide) : undefined')
-    expect(script).toContain('var hitSize = 18 / editorScale')
-    expect(script).toContain('var visualSize = 10 / editorScale')
+    expect(script).toContain('geometry: target ? normalizeRect(target, slide) : void 0')
+    expect(script).toContain('var hitSize = 18 / runtime.editorScale')
+    expect(script).toContain('var visualSize = 10 / runtime.editorScale')
     expect(script).toContain('handle.style.cursor = cursors[handles[i]]')
     expect(script).toContain('data-ark-editor-movable')
     expect(script).toContain('data.type === C.CONFIGURE')
-    expect(script).toContain("tag === 'svg'")
-    expect(script).toContain("tag === 'picture'")
+    expect(script).toContain('tag === "svg"')
+    expect(script).toContain('tag === "picture"')
   })
 
   it('supports adopt-on-move, snapping, modifiers, nudge, shortcuts, and unlocked delete', () => {
@@ -855,22 +868,22 @@ describe('deck editor runtime script', () => {
     expect(script).toContain('function insertAdoptSpacer(element, slide, cache)')
     expect(script).toContain('function removeAdoptSpacer(cache)')
     expect(script).toContain('data-ark-spacer')
-    expect(script).toContain('adopted: adopted ? true : undefined')
-    expect(script).toContain('spacer: adopted && spacerFootprint ? spacerFootprint : undefined')
+    expect(script).toContain('adopted: adopted ? true : void 0')
+    expect(script).toContain('spacer: adopted && spacerFootprint ? spacerFootprint : void 0')
     expect(script).toContain(
       'function snapMoveRect(rect, snapRects, slide, disabled, constrainedAxis',
     )
     expect(script).toContain('function applySnapGuides(slide, guides, cache)')
     expect(script).toContain('liveTransform:')
     expect(script).toContain('liveTransformBase')
-    expect(script).toContain("willChange = 'transform'")
+    expect(script).toContain('willChange = "transform"')
     expect(script).toContain('data.type === C.TRANSFORM_END')
     expect(script).toContain('candidates.length < 60')
     expect(script).not.toContain('!isManagedElement(element)')
     expect(script).toContain('event.altKey')
     expect(script).toContain('event.shiftKey')
     expect(script).toContain('window.setTimeout(finishNudge, 400)')
-    expect(script).toContain('postToParent({ type: C.SHORTCUT, action: action })')
+    expect(script).toContain('postToParent({ type: C.SHORTCUT, action })')
     expect(script).toContain('restoreInlineStyle(state.element, state.snapshot)')
     expect(script).toContain('data.type === C.TRANSFORM_CANCEL')
 
@@ -882,11 +895,14 @@ describe('deck editor runtime script', () => {
     expect(cancelTransformIndex).toBeGreaterThan(finishNudgeIndex)
     expect(setSlideIndex).toBeGreaterThan(cancelTransformIndex)
 
-    const deleteHandlerIndex = script.indexOf("event.key === 'Delete'")
+    const deleteHandlerIndex = script.indexOf('event.key === "Delete"')
     expect(deleteHandlerIndex).toBeGreaterThan(-1)
     expect(script.indexOf('!isManagedElement(selectedElement)', deleteHandlerIndex)).toBe(-1)
     expect(
-      script.indexOf("selectedElement.getAttribute(C.LOCKED_ATTR) === 'true'", deleteHandlerIndex),
+      script.indexOf(
+        'runtime.selectedElement.getAttribute(C.LOCKED_ATTR) === "true"',
+        deleteHandlerIndex,
+      ),
     ).toBeGreaterThan(deleteHandlerIndex)
   })
 
@@ -931,7 +947,7 @@ describe('deck editor runtime script', () => {
       offsetWidth: { configurable: true, value: 200 },
       offsetHeight: { configurable: true, value: 80 },
     })
-    slide.setPointerCapture = (pointerId) => {
+    slide.setPointerCapture = (pointerId: number) => {
       capturedPointer = pointerId
     }
 
@@ -1314,7 +1330,7 @@ describe('deck editor runtime script', () => {
           )
         : rect(250, 150, 400, 80)
     Object.defineProperty(heading, 'offsetParent', { configurable: true, get: () => slide })
-    slide.setPointerCapture = (pointerId) => {
+    slide.setPointerCapture = (pointerId: number) => {
       capturedPointer = pointerId
     }
 

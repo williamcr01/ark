@@ -1,4 +1,4 @@
-import type { ChatAttachment } from '@ark/chat/chat.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
 import { isValidAssetId } from '@ark/deck/document/assets.ts'
 import { isValidDeckId } from '@ark/deck/document/id.ts'
 import { type AssetStore } from './asset-record.ts'

@@ -11,12 +11,12 @@ import {
   deckThemeSpecV1Schema,
   hexColorSchema,
   isInertArkThemeScript,
+  inspectThemeSample,
   matchDeckToTheme,
   parseDeckThemeSpec,
   readDeckThemeFromDocument,
   serializeDeckThemeSpec,
 } from './theme.ts'
-import { evaluateDeckThemeMatch, evaluateThemeSampleHtml } from './theme-html.ts'
 
 const recipes = {
   cover: { layout: 'split-title', rules: ['Display title left, supporting line right.'] },
@@ -107,19 +107,23 @@ describe('deck theme spec', () => {
   it('accepts a three-slide sample that follows the spec', () => {
     const theme = darkTheme()
     const html = buildThemeSampleHtml(theme, { extraKind: 'data' })
-    expect(evaluateThemeSampleHtml(html, theme)).toEqual([])
+    expect(inspectThemeSample(new JSDOM(html).window.document, theme)).toEqual([])
   })
 
   it('rejects samples missing archetypes or using hardcoded mismatching colors', () => {
     const theme = darkTheme()
     const missing = buildThemeSampleHtml(theme).replace('data-ark-slide-kind="cover"', '')
     expect(
-      evaluateThemeSampleHtml(missing, theme).some((issue) => issue.code === 'sample_missing_kind'),
+      inspectThemeSample(new JSDOM(missing).window.document, theme).some(
+        (issue) => issue.code === 'sample_missing_kind',
+      ),
     ).toBe(true)
 
     const mismatched = buildThemeSampleHtml(theme).replaceAll('#111111', '#0000ff')
     expect(
-      evaluateThemeSampleHtml(mismatched, theme).some((issue) => issue.code === 'sample_color'),
+      inspectThemeSample(new JSDOM(mismatched).window.document, theme).some(
+        (issue) => issue.code === 'sample_color',
+      ),
     ).toBe(true)
   })
 
@@ -148,7 +152,7 @@ describe('deck theme spec', () => {
 <section class="slide" data-ark-slide-kind="closing" data-ark-layout="centered-close"><h2>End</h2></section>
 </body></html>`
 
-    expect(evaluateDeckThemeMatch(html, theme)).toEqual([])
+    expect(matchDeckToTheme(new JSDOM(html).window.document, theme)).toEqual([])
 
     const drifted = html.replaceAll('two-column', 'stacked-blocks')
     expect(

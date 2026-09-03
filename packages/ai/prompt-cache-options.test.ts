@@ -101,8 +101,10 @@ describe('applyAnthropicConversationCacheBreakpoints', () => {
       { role: 'assistant' as const, content: 'two' },
     ]
     applyAnthropicConversationCacheBreakpoints(original)
-    expect(original[0].providerOptions).toBeUndefined()
-    expect(original[1].providerOptions).toBeUndefined()
+    expect(original).toEqual([
+      { role: 'user', content: 'one' },
+      { role: 'assistant', content: 'two' },
+    ])
   })
 
   it('skips system messages when choosing the trailing breakpoint', () => {

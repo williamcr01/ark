@@ -44,6 +44,9 @@ importers:
       concurrently:
         specifier: ^10.0.3
         version: 10.0.3
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       eslint:
         specifier: ^10.3.0
         version: 10.4.1(jiti@2.7.0)
@@ -113,6 +116,9 @@ importers:
       '@ark/deck-import':
         specifier: workspace:*
         version: link:../../packages/deck-import
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../../packages/deck-node
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
@@ -183,6 +189,9 @@ importers:
       '@ark/deck-export':
         specifier: workspace:*
         version: link:../../packages/deck-export
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../../packages/deck-node
       '@ark/deck-preview':
         specifier: workspace:*
         version: link:../../packages/deck-preview
@@ -294,6 +303,9 @@ importers:
       use-stick-to-bottom:
         specifier: ^1.1.6
         version: 1.1.6(react@19.2.7)
+      zustand:
+        specifier: 5.0.15
+        version: 5.0.15(@types/react@19.2.17)(react@19.2.7)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.0
@@ -429,6 +441,9 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../deck-node
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -525,9 +540,6 @@ importers:
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
-      '@ark/storage':
-        specifier: workspace:*
-        version: link:../storage
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -544,12 +556,6 @@ importers:
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
-      '@ark/telemetry':
-        specifier: workspace:*
-        version: link:../telemetry
-      jsdom:
-        specifier: 29.1.1
-        version: 29.1.1(@noble/hashes@2.2.0)
       nanoid:
         specifier: 5.1.16
         version: 5.1.16
@@ -563,6 +569,9 @@ importers:
       '@types/node':
         specifier: ^24.12.3
         version: 24.13.1
+      jsdom:
+        specifier: 29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -606,6 +615,31 @@ importers:
       jszip:
         specifier: 3.10.1
         version: 3.10.1
+    devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.13.1
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/deck-node:
+    dependencies:
+      '@ark/deck':
+        specifier: workspace:*
+        version: link:../deck
+      '@ark/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
+      jsdom:
+        specifier: 29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
     devDependencies:
       '@types/jsdom':
         specifier: ^28.0.3
@@ -700,9 +734,15 @@ importers:
 
   packages/runtime-registry:
     devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
       '@types/node':
         specifier: ^24.12.3
         version: 24.13.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -718,6 +758,9 @@ importers:
       '@ark/deck':
         specifier: workspace:*
         version: link:../deck
+      '@ark/deck-node':
+        specifier: workspace:*
+        version: link:../deck-node
       '@ark/runtime-registry':
         specifier: workspace:*
         version: link:../runtime-registry
@@ -6232,6 +6275,24 @@ packages:
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
+  zustand@5.0.15:
+    resolution: {integrity: sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -12216,5 +12277,10 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.4.3: {}
+
+  zustand@5.0.15(@types/react@19.2.17)(react@19.2.7):
+    optionalDependencies:
+      '@types/react': 19.2.17
+      react: 19.2.7
 
   zwitch@2.0.4: {}

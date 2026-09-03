@@ -8,7 +8,7 @@ import {
   type ThumbnailHtmlOptions,
 } from '@ark/deck-preview/thumbnail-html.ts'
 import { startRevealThumbnailStylesPreload } from '@ark/runtime-registry/runtime-stylesheet-content.ts'
-import { detectRuntimeModeFromDocument } from './deck-runtime'
+import { detectRuntimeModeFromDocument } from '@ark/runtime-registry/deck-runtime.ts'
 
 export { findSlideElements, stripDeckScriptsForPreview }
 

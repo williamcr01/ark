@@ -7,7 +7,7 @@ import { importPptxRequestSchema, parseRequestBody, type ApiErrorCode } from '@a
 import { importPptxToHtml, isPptxImportError } from '@ark/deck-import'
 import { buildDeckRuntimeManifestFromValidation } from '@ark/storage/fs/deck-manifest.ts'
 import { type DeckStore } from '@ark/storage/records/deck-record.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import { getRequestLogger } from '../observability/index.ts'
 import { getApiErrorFromUnknown, sendApiError, sendDeckValidationError } from './shared.ts'
 

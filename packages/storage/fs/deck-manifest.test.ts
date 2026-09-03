@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { buildDeckRuntimeManifestFromHtml } from './deck-manifest.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import { manifestIndicatesScriptStripping } from '@ark/runtime-registry/deck-runtime-manifest.ts'
 import { detectRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
 

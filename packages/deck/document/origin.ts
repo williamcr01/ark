@@ -14,7 +14,7 @@
  *
  * Adding a value (e.g. `template`) means: extend `DECK_ORIGINS`, decide what
  * `deckOriginIsUnauthored` should return for it, and give it a branch in
- * `wrapUserPromptForAgent`. Persistence needs no migration — the column stores
+ * `wrapUserPromptForAgent` in `@ark/agent/prompt.ts`. Persistence needs no migration — the column stores
  * the string, and unknown values fall back to `DEFAULT_DECK_ORIGIN`.
  */
 export const DECK_ORIGINS = ['blank', 'authored'] as const

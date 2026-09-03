@@ -4,6 +4,8 @@ import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 
 import { configureVitestRuntimeStylesheets } from '@ark/runtime-registry/runtime-stylesheet-disk.ts'
+import { resetDeckPersistenceController } from '@/hooks/deck-persistence'
+import { resetAllStores } from '@/state'
 import { resetDesktopSettingsForTests } from '@/lib/ui/desktop-settings'
 import { getTestLocalStorage, installTestLocalStorage } from './storage'
 
@@ -145,16 +147,22 @@ if (isJsdomEnvironment) {
         onHistoryAction: vi.fn().mockReturnValue(() => undefined),
       },
     }
+    resetAllStores()
+    resetDeckPersistenceController()
   })
 
   afterEach(() => {
+    cleanup()
     getTestLocalStorage().clear()
     resetDesktopSettingsForTests()
-    cleanup()
+    resetAllStores()
+    resetDeckPersistenceController()
     vi.clearAllMocks()
   })
 } else {
   afterEach(() => {
+    resetAllStores()
+    resetDeckPersistenceController()
     vi.clearAllMocks()
   })
 }

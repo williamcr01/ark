@@ -2,15 +2,14 @@ import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 
 import type { EditorNormalizedRect, EditorSurface } from '@ark/editor-runtime'
 import { normalizedRectToStagePixels } from '@/lib/editor/editor-overlay-geometry'
-import { cn } from '@/lib/ui/utils'
+import { EditorSelectionOverlayBoxes } from './EditorSelectionOverlayBoxes.tsx'
+import {
+  writeEditorOverlayCompanions,
+  writeEditorOverlayNode,
+  type EditorOverlayCompanion,
+} from './editor-selection-overlay-write.ts'
 
-export type EditorOverlayCompanion = {
-  elementId: string
-  geometry: EditorNormalizedRect
-  slideBounds?: EditorNormalizedRect | null
-  locked?: boolean
-  surface?: EditorSurface
-}
+export type { EditorOverlayCompanion }
 
 export type EditorSelectionOverlayProps = {
   geometry: EditorNormalizedRect | null
@@ -31,17 +30,6 @@ export type EditorSelectionOverlayHandle = {
     slideBounds?: EditorNormalizedRect | null,
   ) => void
   clearTransformPreview: () => void
-}
-
-function selectionBoxClassName(locked: boolean, surface: EditorSurface, isEditing: boolean) {
-  return cn(
-    'pointer-events-none absolute left-0 top-0 rounded-sm border-2 transition-colors',
-    locked
-      ? 'border-amber-500/70 bg-amber-500/5'
-      : surface === 'dark'
-        ? cn('border-white shadow-[0_0_0_1px_#000]', isEditing && 'bg-white/10')
-        : cn('border-black shadow-[0_0_0_1px_#fff]', isEditing && 'bg-black/10'),
-  )
 }
 
 const EMPTY_COMPANIONS: EditorOverlayCompanion[] = []
@@ -75,63 +63,19 @@ export const EditorSelectionOverlay = forwardRef<
     slideBounds?: EditorNormalizedRect | null
   } | null>(null)
 
-  const writeNode = (
-    node: HTMLElement | null,
-    nextGeometry: EditorNormalizedRect | null,
-    nextSlideBounds?: EditorNormalizedRect | null,
-  ) => {
-    if (!node || !nextGeometry || scaleRef.current <= 0) {
-      return
-    }
-
-    const rect = normalizedRectToStagePixels(
-      nextGeometry,
-      scaleRef.current,
-      nextSlideBounds ?? undefined,
-    )
-    node.style.left = `${rect.left}px`
-    node.style.top = `${rect.top}px`
-    node.style.width = `${rect.width}px`
-    node.style.height = `${rect.height}px`
-  }
-
-  const writeCompanions = (deltaX: number, deltaY: number) => {
-    const root = companionRootRef.current
-
-    if (!root) {
-      return
-    }
-
-    const nodes = root.querySelectorAll<HTMLElement>('[data-editor-companion]')
-
-    nodes.forEach((node, index) => {
-      const companion = committedCompanionsRef.current[index]
-
-      if (!companion) {
-        return
-      }
-
-      writeNode(
-        node,
-        {
-          ...companion.geometry,
-          x: companion.geometry.x + deltaX,
-          y: companion.geometry.y + deltaY,
-        },
-        companion.slideBounds ?? committedSlideBoundsRef.current,
-      )
-    })
-  }
-
   const writeGeometry = (
     nextGeometry: EditorNormalizedRect | null,
     nextSlideBounds?: EditorNormalizedRect | null,
   ) => {
-    writeNode(selectionBoxRef.current, nextGeometry, nextSlideBounds)
-    const committed = committedGeometryRef.current
-    const deltaX = committed && nextGeometry ? nextGeometry.x - committed.x : 0
-    const deltaY = committed && nextGeometry ? nextGeometry.y - committed.y : 0
-    writeCompanions(deltaX, deltaY)
+    writeEditorOverlayNode(selectionBoxRef.current, nextGeometry, scaleRef.current, nextSlideBounds)
+    writeEditorOverlayCompanions(
+      companionRootRef.current,
+      committedCompanionsRef.current,
+      scaleRef.current,
+      committedGeometryRef.current,
+      committedSlideBoundsRef.current,
+      nextGeometry,
+    )
   }
 
   useImperativeHandle(
@@ -180,48 +124,21 @@ export const EditorSelectionOverlay = forwardRef<
     : undefined
 
   return (
-    <>
-      {showHover ? (
-        <div
-          aria-hidden
-          className={cn(
-            'pointer-events-none absolute left-0 top-0 rounded-sm border',
-            hoverSurface === 'dark'
-              ? 'border-white/60 shadow-[0_0_0_1px_#000]'
-              : 'border-black/60 shadow-[0_0_0_1px_#fff]',
-          )}
-          style={normalizedRectToStagePixels(hoverGeometry, scale, hoverSlideBounds ?? undefined)}
-        />
-      ) : null}
-      {geometry ? (
-        <div
-          aria-hidden
-          className={selectionBoxClassName(locked, surface, isEditing)}
-          data-editor-primary-selection=""
-          ref={selectionBoxRef}
-          style={selectionStyle}
-        />
-      ) : null}
-      {companionGeometries.length > 0 ? (
-        <div aria-hidden ref={companionRootRef}>
-          {companionGeometries.map((companion) => (
-            <div
-              className={selectionBoxClassName(
-                companion.locked ?? false,
-                companion.surface ?? surface,
-                false,
-              )}
-              data-editor-companion={companion.elementId}
-              key={companion.elementId}
-              style={normalizedRectToStagePixels(
-                companion.geometry,
-                scale,
-                companion.slideBounds ?? slideBounds ?? undefined,
-              )}
-            />
-          ))}
-        </div>
-      ) : null}
-    </>
+    <EditorSelectionOverlayBoxes
+      companionGeometries={companionGeometries}
+      companionRootRef={companionRootRef}
+      geometry={geometry}
+      hoverGeometry={hoverGeometry}
+      hoverSlideBounds={hoverSlideBounds}
+      hoverSurface={hoverSurface}
+      isEditing={isEditing}
+      locked={locked}
+      scale={scale}
+      selectionBoxRef={selectionBoxRef}
+      selectionStyle={selectionStyle}
+      showHover={Boolean(showHover)}
+      slideBounds={slideBounds}
+      surface={surface}
+    />
   )
 })

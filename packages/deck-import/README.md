@@ -4,6 +4,7 @@
 
 Layer 2. May import `@ark/deck` and `@ark/runtime-registry`. **Server-only:** it reads OOXML zips
 with JSZip and jsdom, so the renderer must not import it. The local API owns the HTTP surface.
+The public entry is `@ark/deck-import` (`index.ts`); deep imports remain supported.
 
 Conversion stays on the machine. There is no commercial cloud convert. Round-trip identity with
 PPTX export is not required.
@@ -11,7 +12,8 @@ PPTX export is not required.
 | Module             | Responsibility                                             |
 | ------------------ | ---------------------------------------------------------- |
 | `detect.ts`        | Legacy `.ppt` and password-protected packages fail clearly |
-| `parse-ooxml.ts`   | Slides, notes, shapes, pictures, charts, theme colors      |
+| `parse-ooxml.ts`   | Presentation entry: parts, notes, background, theme        |
+| `parse-ooxml/`     | OOXML concerns — context/theme/media, shapes, charts       |
 | `emit-html.ts`     | Positioned HTML, Chart.js, and SVG plates for unmappables  |
 | `import-pptx.ts`   | Public `importPptxToHtml` entry                            |
 | `pptx-fixtures.ts` | Minimal OOXML builders for tests                           |

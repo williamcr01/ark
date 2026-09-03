@@ -1,4 +1,4 @@
-import type { EditorSelectionContext } from '@ark/chat/chat.ts'
+import type { EditorSelectionContext } from '@ark/chat/context.ts'
 import { MAX_EDITOR_SELECTIONS, type EditorSelectionInfo } from '@ark/editor-runtime'
 
 const MAX_TEXT_PREVIEW_LENGTH = 280

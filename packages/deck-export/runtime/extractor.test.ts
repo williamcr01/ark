@@ -1,5 +1,17 @@
-import { JSDOM } from 'jsdom'
+// @ts-expect-error this package does not depend on @types/jsdom
+import { JSDOM as JsdomImport } from 'jsdom'
 import { describe, expect, it } from 'vitest'
+
+type JsdomWindow = Window & typeof globalThis
+const JSDOM = JsdomImport as new (
+  html?: string,
+  options?: {
+    pretendToBeVisual?: boolean
+    runScripts?: 'dangerously' | 'outside-only'
+    url?: string
+    beforeParse?: (window: JsdomWindow) => void
+  },
+) => { window: JsdomWindow; serialize: () => string }
 
 import type { SceneSlide, SceneTextNode } from '../scene.ts'
 import { buildDeckSceneExtractorScript, DECK_SCENE_EXTRACTOR_GLOBAL } from './script.ts'

@@ -1,18 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { EditorSelectionInfo } from '@ark/editor-runtime'
 
 import {
+  applyInspectorOperations,
   buildGeometryFieldOperation,
+  buildImageFitOperations,
+  buildLockToggleOperation,
+  buildReorderElementOperation,
   buildResetImageAspectOperation,
   cssColorToHex,
+  formatImageNaturalSize,
+  formatLineHeightValue,
   formatPercentValue,
+  formatPxValue,
   getInspectorDisabledReason,
   getInspectorElementKind,
   getInspectorKindLabel,
+  lockToggleSummary,
   normalizeFontWeight,
   normalizeTextAlign,
+  parseClampedPxInput,
   parsePercentInput,
+  reorderElementSummary,
   showImageSection,
   showTextSection,
 } from './element-inspector'
@@ -231,5 +241,50 @@ describe('text style normalization', () => {
     expect(cssColorToHex('#abcdef')).toBe('#abcdef')
     expect(cssColorToHex('#abc')).toBe('#aabbcc')
     expect(cssColorToHex('oklch(0.5 0.1 200)')).toBeNull()
+  })
+})
+
+describe('inspector formatting and patch builders', () => {
+  it('clamps px inputs and formats display values', () => {
+    expect(parseClampedPxInput('32', 4, 400)).toBe(32)
+    expect(parseClampedPxInput('0.5', 4, 400)).toBe(4)
+    expect(parseClampedPxInput('999', 4, 400)).toBe(400)
+    expect(parseClampedPxInput('abc', 4, 400)).toBeNull()
+    expect(parseClampedPxInput('0', 4, 400)).toBeNull()
+    expect(formatPxValue(24.04)).toBe('24')
+    expect(formatLineHeightValue(32.44)).toBe('32.4')
+    expect(formatLineHeightValue(null)).toBe('')
+    expect(formatImageNaturalSize({ width: 800, height: 400 })).toBe('800 × 400 px')
+    expect(formatImageNaturalSize(null)).toBe('Unknown')
+  })
+
+  it('builds image fit, reorder, and lock operations with summaries', () => {
+    const selection = makeSelection()
+
+    expect(buildImageFitOperations(selection, 'cover')).toEqual([
+      expect.objectContaining({ op: 'set_inline_style', style: { 'object-fit': 'cover' } }),
+      expect.objectContaining({ op: 'set_attrs', attrs: { 'data-ark-fit': 'cover' } }),
+    ])
+    expect(buildReorderElementOperation(selection, 'front')).toMatchObject({
+      op: 'reorder_element',
+      direction: 'front',
+    })
+    expect(reorderElementSummary('back')).toBe('Sent element backward')
+    expect(buildLockToggleOperation(selection)).toMatchObject({ op: 'lock_element' })
+    expect(buildLockToggleOperation(makeSelection({ locked: true }))).toMatchObject({
+      op: 'unlock_element',
+    })
+    expect(lockToggleSummary(false)).toBe('Locked element')
+    expect(lockToggleSummary(true)).toBe('Unlocked element')
+  })
+
+  it('skips empty inspector apply batches', () => {
+    const onApply = vi.fn()
+    applyInspectorOperations(onApply, [], 'noop')
+    expect(onApply).not.toHaveBeenCalled()
+
+    const operation = buildLockToggleOperation(makeSelection())
+    applyInspectorOperations(onApply, [operation], 'Locked element')
+    expect(onApply).toHaveBeenCalledWith([operation], 'Locked element')
   })
 })

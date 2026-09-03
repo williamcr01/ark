@@ -5,9 +5,9 @@ import { chatMessageContextSchema } from './agent-context.ts'
 import {
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_TOOL_VALUE_BYTES,
-  parseChatAttachments,
-} from '@ark/chat/chat.ts'
-import type { JsonValue } from '@ark/chat/chat.ts'
+} from '@ark/chat/messages.ts'
+import { parseChatAttachments } from '@ark/chat/attachments.ts'
+import type { JsonValue } from '@ark/chat/messages.ts'
 
 export const chatThreadStatusSchema = z.enum(['active', 'archived'])
 

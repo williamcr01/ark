@@ -15,8 +15,8 @@ import { fileURLToPath } from 'node:url'
 
 import type { DeckPatchOperation } from '@ark/deck/patch/patch-request.ts'
 
-import { applyDeckPatches } from '../packages/deck/patch/slide-ops.ts'
-import { validateDeckHtmlOnServer } from '../packages/deck/validate/timed.ts'
+import { applyDeckPatches } from '../packages/deck-node/patch/slide-ops.ts'
+import { validateDeckHtmlOnServer } from '../packages/deck-node/validate/timed.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 

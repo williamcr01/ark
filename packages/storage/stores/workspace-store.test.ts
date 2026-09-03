@@ -12,7 +12,7 @@ import { createWorkspaceStore, type WorkspaceStore } from './workspace-store.ts'
 import {
   DOCUMENT_HISTORY_MAX_BYTES,
   DOCUMENT_HISTORY_MAX_ENTRIES,
-} from '../records/document-history.ts'
+} from '@ark/deck/document/document-history.ts'
 import { garbageCollectUnreferencedAssets } from './workspace/assets.ts'
 import { evictDocumentHistory } from './workspace/history.ts'
 
@@ -241,6 +241,7 @@ describe('WorkspaceStore file operations', () => {
 
     try {
       const saved = await workspaces.move(created.id, outsidePath)
+      if (!saved) throw new Error('expected move to return a workspace record')
       const recentsPath = path.join(root, 'recent-workspaces.json')
       const before = await readFile(recentsPath, 'utf8')
 

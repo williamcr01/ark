@@ -3,9 +3,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { applyDeckPatches } from '@ark/deck/patch/slide-ops.ts'
-import { parseDeckHtml } from '@ark/deck/document/parser.ts'
-import { validateDeckHtmlOnServer } from '@ark/deck/validate/timed.ts'
+import { applyDeckPatches } from '@ark/deck-node/patch/slide-ops.ts'
+import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
+import { validateDeckHtmlOnServer } from '@ark/deck-node/validate/timed.ts'
 import { createLogger, type StructuredLogEntry } from '@ark/telemetry/logger.ts'
 
 const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test/fixtures')
@@ -69,6 +69,7 @@ describe('deck operation observability', () => {
     )
 
     expect(patched.ok).toBe(true)
+    if (!patched.ok) return
     expect(patched.validation?.valid).toBe(true)
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({

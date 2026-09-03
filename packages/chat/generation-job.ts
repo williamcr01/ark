@@ -2,13 +2,9 @@ import { z } from 'zod'
 
 import { UUID_V4_PATTERN } from '@ark/deck/document/id.ts'
 import type { ProviderTokenUsage } from '@ark/ai/provider-token-usage.ts'
-import type {
-  AgentStep,
-  ApiChatMessage,
-  ChatMessagePart,
-  EditorSelectionContext,
-  SlideContext,
-} from './chat.ts'
+import type { AgentStep, ChatMessagePart } from './messages.ts'
+import type { ApiChatMessage } from './api-projection.ts'
+import type { EditorSelectionContext, SlideContext } from './context.ts'
 import type { DeckOrigin } from '@ark/deck/document/origin.ts'
 
 export type GenerationJobStatus =

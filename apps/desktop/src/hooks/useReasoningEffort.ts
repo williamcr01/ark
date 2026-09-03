@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import { REASONING_EFFORT_LABELS, type ReasoningEffort } from '@ark/contracts'
 
 import type { AvailableModel } from '@/hooks/useAvailableModels'
-import { getDesktopSettings, updateDesktopSettings } from '@/lib/ui/desktop-settings'
+import { useShellStore } from '@/state/shell-store.ts'
 
 export type { ReasoningEffort }
 
@@ -33,9 +33,11 @@ export function resolveEffortForModel(
 }
 
 export function useReasoningEffort(selectedModel: string, models: AvailableModel[]) {
-  const [effortByModel, setEffortByModel] = useState<Record<string, ReasoningEffort>>(
-    () => getDesktopSettings().reasoningEffortByModel,
-  )
+  useState(() => {
+    useShellStore.getState().syncFromDesktopSettings()
+    return true
+  })
+  const effortByModel = useShellStore((state) => state.reasoningEffortByModel)
 
   const getReasoningEffort = useCallback(
     (modelId: string) =>
@@ -53,11 +55,10 @@ export function useReasoningEffort(selectedModel: string, models: AvailableModel
         return
       }
 
-      const next = { ...effortByModel, [modelId]: effort }
-      setEffortByModel(next)
-      void updateDesktopSettings({ reasoningEffortByModel: next })
+      const next = { ...useShellStore.getState().reasoningEffortByModel, [modelId]: effort }
+      useShellStore.getState().setReasoningEffortByModel(next)
     },
-    [effortByModel, selectedModel],
+    [selectedModel],
   )
 
   return { getReasoningEffort, reasoningEffort, setReasoningEffort }

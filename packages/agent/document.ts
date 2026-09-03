@@ -1,10 +1,9 @@
 import {
-  parseDeckHtml,
   summarizeParsedDeck,
   toDeckSlideSummaries,
-  type DeckParseOptions,
   type DeckParseResult,
 } from '@ark/deck/document/parser.ts'
+import { parseDeckHtml, type DeckParseOptions } from '@ark/deck-node/document/parser.ts'
 
 export { syncDeckHtmlTitle } from '@ark/deck/document/title.ts'
 

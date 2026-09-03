@@ -14,7 +14,7 @@ import {
   type EditorTransformPreviewMessage,
 } from '@ark/editor-runtime'
 
-import { DeckPreview } from './DeckPreview'
+import { PreviewTestHost as DeckPreview } from './DeckPreview.test-harness'
 
 function renderDeckPreview(props: ComponentProps<typeof DeckPreview>) {
   return render(
@@ -120,6 +120,11 @@ const useDeckThumbnailsMock = vi.hoisted(() =>
   })),
 )
 const editorBridgeOptionsMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/hooks/useManualEditCommits', async () => {
+  const { previewManualEdits } = await import('./DeckPreview.test-edits')
+  return { useManualEditCommits: () => previewManualEdits }
+})
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
   useDeckEditorBridge: (...args: unknown[]) => {

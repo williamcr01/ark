@@ -128,7 +128,7 @@ The shell sends `ark:deck-goto` with a linear index; the reveal adapter maps it 
 
 ## Preview and Present mode
 
-Approved reveal decks with all required markers and assets use **full-JS preview** via Ark's reveal adapter (`buildRevealNavRuntimeScript`):
+Approved reveal decks with all required markers and assets use **full-JS preview** via Ark's reveal adapter (`buildRevealNavRuntimeScript`, authored in `packages/deck-preview/runtime-src/reveal-adapter/` — edit that TypeScript and run `pnpm build:runtimes`):
 
 - Preserves the approved `reveal.js` script tag
 - Absolutizes `/api/runtimes/...` URLs to the app origin for sandbox fetch

@@ -7,11 +7,13 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
+    ".": "./index.ts",
     "./*": "./*"
   },
   "dependencies": {
     "@ark/chat": "workspace:*",
     "@ark/deck": "workspace:*",
+    "@ark/deck-node": "workspace:*",
     "@ark/runtime-registry": "workspace:*",
     "@ark/telemetry": "workspace:*",
     "nanoid": "^5.1.16",

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { QueuedChatSend } from '@/lib/chat/chat-send-queue'
-import { newId } from '@/lib/ui/id'
+import { useChatStore } from '@/state/chat-store.ts'
 
 export type ChatSendQueueItem = QueuedChatSend
 
@@ -17,67 +17,14 @@ export type UseChatSendQueueResult = {
 }
 
 export function useChatSendQueue(): UseChatSendQueueResult {
-  const [items, setItems] = useState<ChatSendQueueItem[]>([])
-  const itemsRef = useRef<ChatSendQueueItem[]>([])
-
-  const enqueue = useCallback((item: Omit<ChatSendQueueItem, 'id'> & { id?: string }) => {
-    const queued: ChatSendQueueItem = {
-      ...item,
-      id: item.id ?? newId(),
-    }
-    itemsRef.current = [...itemsRef.current, queued]
-    setItems(itemsRef.current)
-    return queued
-  }, [])
-
-  const dismiss = useCallback((id: string) => {
-    itemsRef.current = itemsRef.current.filter((item) => item.id !== id)
-    setItems(itemsRef.current)
-  }, [])
-
-  const updateText = useCallback((id: string, text: string) => {
-    itemsRef.current = itemsRef.current.map((item) => (item.id === id ? { ...item, text } : item))
-    setItems(itemsRef.current)
-  }, [])
-
-  const moveToFront = useCallback((id: string) => {
-    const index = itemsRef.current.findIndex((item) => item.id === id)
-    if (index <= 0) {
-      return
-    }
-
-    const next = [...itemsRef.current]
-    const [item] = next.splice(index, 1)
-    itemsRef.current = [item, ...next]
-    setItems(itemsRef.current)
-  }, [])
-
-  const take = useCallback((id: string) => {
-    const item = itemsRef.current.find((entry) => entry.id === id) ?? null
-    if (!item) {
-      return null
-    }
-
-    itemsRef.current = itemsRef.current.filter((entry) => entry.id !== id)
-    setItems(itemsRef.current)
-    return item
-  }, [])
-
-  const takeNext = useCallback(() => {
-    const item = itemsRef.current[0]
-    if (!item) {
-      return null
-    }
-
-    itemsRef.current = itemsRef.current.slice(1)
-    setItems(itemsRef.current)
-    return item
-  }, [])
-
-  const clear = useCallback(() => {
-    itemsRef.current = []
-    setItems(itemsRef.current)
-  }, [])
+  const items = useChatStore((state) => state.queuedSends)
+  const enqueue = useChatStore((state) => state.enqueueSend)
+  const dismiss = useChatStore((state) => state.dequeueSend)
+  const updateText = useChatStore((state) => state.updateSendText)
+  const moveToFront = useChatStore((state) => state.moveSendToFront)
+  const take = useChatStore((state) => state.dequeueSend)
+  const takeNext = useChatStore((state) => state.dequeueNextSend)
+  const clear = useChatStore((state) => state.clearSends)
 
   return useMemo(
     () => ({

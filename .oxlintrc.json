@@ -110,7 +110,12 @@
         "typescript/no-wrapper-object-types": "error",
         "typescript/prefer-as-const": "error",
         "typescript/prefer-namespace-keyword": "error",
-        "typescript/triple-slash-reference": "error"
+        "typescript/triple-slash-reference": "error",
+        "max-lines": ["error", { "max": 500, "skipBlankLines": true, "skipComments": true }],
+        "max-lines-per-function": [
+          "error",
+          { "max": 120, "skipBlankLines": true, "skipComments": true, "IIFEs": true }
+        ]
       },
       "plugins": ["typescript"],
       "env": {
@@ -150,9 +155,18 @@
         "apps/desktop/src/components/ai-elements/**/*.{ts,tsx}"
       ],
       "rules": {
-        "react/only-export-components": "off"
+        "react/only-export-components": "off",
+        "max-lines": "off",
+        "max-lines-per-function": "off"
       },
       "plugins": ["react"]
+    },
+    {
+      "files": ["**/*.{test,spec}.{ts,tsx}"],
+      "rules": {
+        "max-lines": "off",
+        "max-lines-per-function": "off"
+      }
     },
     {
       "files": ["apps/desktop/src/**/*.{ts,tsx}"],
@@ -178,9 +192,50 @@
                   "@ark/storage",
                   "@ark/storage/*",
                   "@ark/deck-import",
-                  "@ark/deck-import/*"
+                  "@ark/deck-import/*",
+                  "@ark/deck-node",
+                  "@ark/deck-node/*"
                 ],
                 "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/desktop/src/hooks/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/api/**", "@ark/api", "@ark/api/*"],
+                "message": "Frontend code must not import from apps/api. Use workspace packages instead."
+              },
+              {
+                "group": ["@ark/contracts/*", "**/packages/contracts/!(index)*"],
+                "message": "Import API contracts from @ark/contracts only."
+              },
+              {
+                "group": [
+                  "@ark/agent",
+                  "@ark/agent/*",
+                  "@ark/mcp",
+                  "@ark/mcp/*",
+                  "@ark/storage",
+                  "@ark/storage/*",
+                  "@ark/deck-import",
+                  "@ark/deck-import/*",
+                  "@ark/deck-node",
+                  "@ark/deck-node/*"
+                ],
+                "message": "Frontend code must not import server-only packages. Shared vocabulary is re-exported from @ark/contracts."
+              },
+              {
+                "group": ["@/components/*", "../components/*"],
+                "message": "Hooks must not import from components. Keep UI in components and have them call hooks."
               }
             ]
           }
@@ -263,6 +318,7 @@
         "packages/mcp/**/*.ts",
         "packages/storage/**/*.ts",
         "packages/deck-import/**/*.ts",
+        "packages/deck-node/**/*.ts",
         "packages/telemetry/request-id.ts",
         "packages/**/*-disk.ts",
         "packages/contracts/**/*.ts",

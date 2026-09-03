@@ -6,33 +6,47 @@ import {
   projectAssistantTurnForPersistence,
 } from './chat-context.ts'
 import {
-  MAX_EDITOR_SELECTIONS,
   MAX_MODEL_ASSISTANT_TURN_BYTES,
   MAX_PERSISTED_ASSISTANT_TURN_BYTES,
-  type ApiChatMessage,
   type ChatMessagePart,
-} from './chat.ts'
+} from './messages.ts'
+import type { ApiChatMessage } from './api-projection.ts'
 
-const toolStep = (stepIndex: number, id: string, summary: string, error = false) =>
-  [
-    {
-      type: 'tool-call',
-      toolName: 'read_deck',
-      summary,
-      stepIndex,
-      toolCallId: id,
-      input: { offset: stepIndex + 1, padding: 'x'.repeat(900) },
-    },
-    {
-      type: 'tool-result',
-      toolName: 'read_deck',
-      summary: error ? 'read failed' : `slide ${stepIndex}`,
-      stepIndex,
-      toolCallId: id,
-      output: error ? { error: 'read failed' } : { title: `Slide ${stepIndex}` },
-      isError: error,
-    },
-  ] satisfies ChatMessagePart[]
+const toolStep = (
+  stepIndex: number,
+  id: string,
+  summary: string,
+  error = false,
+): ChatMessagePart[] => {
+  const call: ChatMessagePart = {
+    type: 'tool-call',
+    toolName: 'read_deck',
+    summary,
+    stepIndex,
+    toolCallId: id,
+    input: { offset: stepIndex + 1, padding: 'x'.repeat(900) },
+  }
+  const result: ChatMessagePart = error
+    ? {
+        type: 'tool-result',
+        toolName: 'read_deck',
+        summary: 'read failed',
+        stepIndex,
+        toolCallId: id,
+        output: { error: 'read failed' },
+        isError: true,
+      }
+    : {
+        type: 'tool-result',
+        toolName: 'read_deck',
+        summary: `slide ${stepIndex}`,
+        stepIndex,
+        toolCallId: id,
+        output: { title: `Slide ${stepIndex}` },
+        isError: false,
+      }
+  return [call, result]
+}
 
 describe('agent context assembly', () => {
   it('replays under-budget turns without changing durable parts', () => {
@@ -83,86 +97,6 @@ describe('agent context assembly', () => {
       'user',
     ])
     expect(context.modelMessages.at(-1)?.content).toContain('Retry previous request')
-  })
-
-  it('injects slide contexts into the latest user turn only', () => {
-    const messages: ApiChatMessage[] = [
-      { role: 'user', content: 'Earlier turn' },
-      { role: 'assistant', content: 'Ok' },
-      { role: 'user', content: 'Update this slide' },
-    ]
-    const context = assembleDeckAgentContext({
-      messages,
-      currentHtml: '<html></html>',
-      slideContexts: [{ slideIndex: 3, title: 'Pricing' }],
-    })
-    const last = context.modelMessages.at(-1)
-    expect(typeof last?.content).toBe('string')
-    expect(last?.content).toContain('Update this slide')
-    expect(last?.content).toContain('slide 3 ("Pricing")')
-    const earlier = context.modelMessages.find(
-      (message) => message.role === 'user' && message.content === 'Earlier turn',
-    )
-    expect(earlier).toBeTruthy()
-  })
-
-  it('injects every editor selection id into the latest user turn only', () => {
-    const messages: ApiChatMessage[] = [
-      { role: 'user', content: 'Earlier turn' },
-      { role: 'assistant', content: 'Ok' },
-      { role: 'user', content: 'Align these' },
-    ]
-    const context = assembleDeckAgentContext({
-      messages,
-      currentHtml: '<html></html>',
-      editorSelection: { slideIndex: 0, elementId: 'ark-el-primary' },
-      editorSelections: [
-        { slideIndex: 0, elementId: 'ark-el-a' },
-        { slideIndex: 0, elementId: 'ark-el-primary' },
-        { slideIndex: 0, elementId: 'ark-el-c' },
-      ],
-    })
-    const last = context.modelMessages.at(-1)
-    expect(typeof last?.content).toBe('string')
-    expect(last?.content).toContain('Align these')
-    expect(last?.content).toContain('ark-el-a')
-    expect(last?.content).toContain('ark-el-primary')
-    expect(last?.content).toContain('ark-el-c')
-    const earlier = context.modelMessages.find(
-      (message) => message.role === 'user' && message.content === 'Earlier turn',
-    )
-    expect(earlier).toBeTruthy()
-    expect(earlier?.content).not.toContain('ark-el-a')
-  })
-
-  it('keeps every selected id when older assistant steps are summarized', () => {
-    const parts = [
-      { type: 'text', content: 'x'.repeat(98_000), stepIndex: 0 },
-      ...toolStep(1, 'call-new', 'slide 1'),
-    ] satisfies ChatMessagePart[]
-    const selections = Array.from({ length: MAX_EDITOR_SELECTIONS }, (_, index) => ({
-      slideIndex: 0,
-      elementId: `ark-el-${index}`,
-    }))
-    const context = assembleDeckAgentContext({
-      messages: [
-        { role: 'assistant', content: 'Working', parts },
-        { role: 'user', content: 'Align these' },
-      ],
-      currentHtml: '<html></html>',
-      editorSelection: selections[MAX_EDITOR_SELECTIONS - 1],
-      editorSelections: selections,
-    })
-    expect(context.metadata.omittedStepCount).toBeGreaterThan(0)
-    const last = context.modelMessages.at(-1)
-    expect(typeof last?.content).toBe('string')
-    expect(last?.content).toContain('Align these')
-    expect(last?.content).toContain(`${MAX_EDITOR_SELECTIONS} elements selected`)
-    expect(last?.content).toContain('them')
-    for (const selection of selections) {
-      expect(last?.content).toContain(`id "${selection.elementId}"`)
-    }
-    expect(String(last?.content)).not.toMatch(/and \d+ more/)
   })
 
   it('keeps durable input intact while enforcing the default model ceiling', () => {

@@ -59,8 +59,8 @@ describe('DeckRestoreHistoryMenu', () => {
 
     await user.click(screen.getByRole('button', { name: 'Restore version' }))
 
-    await waitFor(() => expect(listDocumentHistory).toHaveBeenCalledWith(expect.any(String)))
-    expect(screen.getByRole('button', { name: /Revision 2/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Revision 2/ })).toBeInTheDocument()
+    expect(listDocumentHistory).toHaveBeenCalledWith(expect.any(String))
     expect(screen.queryByText(/<section/)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Revision 1/ }))

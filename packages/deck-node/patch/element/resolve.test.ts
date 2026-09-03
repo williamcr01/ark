@@ -1,0 +1,109 @@
+import { JSDOM } from 'jsdom'
+import { describe, expect, it } from 'vitest'
+
+import { parseDeckDocument } from '@ark/deck/document/parser.ts'
+import { applyDeckPatches } from '../slide-ops.ts'
+import { arkManagedDeck } from '@ark/deck/patch/element/test-decks.ts'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new JSDOM(html).window.document, html)
+}
+
+describe('element target resolution', () => {
+  it('resolves path-based transient ids for nested managed elements', () => {
+    const nestedDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Nested</title></head>
+<body>
+  <section class="slide">
+    <div class="wrapper">
+      <p data-ark-managed="true" style="position: absolute; left: 20px; top: 30px;">Nested copy</p>
+    </div>
+  </section>
+</body>
+</html>`
+    const elementId = parseDeckHtml(nestedDeck).editableElements[0]?.elements.find(
+      (element) => element.tagName === 'p' && element.textPreview === 'Nested copy',
+    )?.id
+
+    expect(elementId).toBe('transient-el-0-0.0')
+
+    const result = applyDeckPatches(nestedDeck, [
+      {
+        op: 'replace_text',
+        slideIndex: 0,
+        elementId: elementId!,
+        text: 'Updated nested copy',
+      },
+    ])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    expect(result.html).toContain('<p')
+    expect(result.html).toContain('Updated nested copy</p>')
+    expect(parseDeckHtml(result.html).editableElements[0]?.elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tagName: 'p',
+          textPreview: 'Updated nested copy',
+        }),
+      ]),
+    )
+  })
+
+  it('rejects missing and ambiguous element ids', () => {
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        { op: 'replace_text', elementId: 'ark-el-missing', text: 'Nope' },
+      ]),
+    ).toMatchObject({ ok: false })
+
+    const duplicateIdDeck = arkManagedDeck.replace(
+      '<h2 data-ark-id="ark-el-title-2"',
+      '<h2 data-ark-id="ark-el-title"',
+    )
+
+    expect(
+      applyDeckPatches(duplicateIdDeck, [
+        { op: 'replace_text', elementId: 'ark-el-title', text: 'Ambiguous' },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
+  })
+
+  it('rejects malformed ids', () => {
+    expect(
+      applyDeckPatches(arkManagedDeck, [
+        {
+          op: 'replace_text',
+          slideIndex: 0,
+          elementId: 'bad"\nselector',
+          text: 'Nope',
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('was not found') })
+  })
+
+  it('reports duplicate stable ids as ambiguous patch targets', () => {
+    const duplicateDeck = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Duplicate ids</title></head>
+<body>
+  <section class="slide">
+    <h1 data-ark-id="dup-id" data-ark-editable="true">First</h1>
+  </section>
+  <section class="slide">
+    <h2 data-ark-id="dup-id" data-ark-editable="true">Second</h2>
+  </section>
+</body>
+</html>`
+
+    expect(
+      applyDeckPatches(duplicateDeck, [
+        { op: 'replace_text', elementId: 'dup-id', text: 'Ambiguous' },
+      ]),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
+  })
+})

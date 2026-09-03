@@ -5,6 +5,7 @@ which LLM providers exist, how to authenticate to them, and how to translate Ark
 provider options lives here — and nothing else does.
 
 Layer 1. May import `@ark/telemetry`. Must not import `@ark/contracts` or anything above it.
+The public entry is `@ark/ai` (`index.ts`); deep imports remain supported.
 
 | Module                    | Responsibility                                              |
 | ------------------------- | ----------------------------------------------------------- |

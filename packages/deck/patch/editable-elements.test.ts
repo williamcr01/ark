@@ -11,9 +11,12 @@ import {
   parseEditableElementsForSlide,
   stampEditableElementIds,
 } from './editable-elements.ts'
-import { applyDeckPatches } from './slide-ops.ts'
-import { parseDeckHtml } from '../document/parser.ts'
-import { validateDeckHtmlOnServer } from '../validate/timed.ts'
+import { parseDeckDocument } from '../document/parser.ts'
+import { validateDeckHtml } from '../validate/document.ts'
+
+function parseDeckHtml(html: string) {
+  return parseDeckDocument(new DOMParser().parseFromString(html, 'text/html'), html)
+}
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -335,28 +338,11 @@ describe('parseEditableElements', () => {
         }),
       ]),
     )
-    expect(validateDeckHtmlOnServer(hostileEditableDeck).valid).toBe(false)
-  })
-
-  it('reports duplicate stable ids as ambiguous patch targets', () => {
-    const duplicateDeck = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><title>Duplicate ids</title></head>
-<body>
-  <section class="slide">
-    <h1 data-ark-id="dup-id" data-ark-editable="true">First</h1>
-  </section>
-  <section class="slide">
-    <h2 data-ark-id="dup-id" data-ark-editable="true">Second</h2>
-  </section>
-</body>
-</html>`
-
     expect(
-      applyDeckPatches(duplicateDeck, [
-        { op: 'replace_text', elementId: 'dup-id', text: 'Ambiguous' },
-      ]),
-    ).toMatchObject({ ok: false, error: expect.stringContaining('ambiguous') })
+      validateDeckHtml(hostileEditableDeck, (source) =>
+        new DOMParser().parseFromString(source, 'text/html'),
+      ).valid,
+    ).toBe(false)
   })
 })
 

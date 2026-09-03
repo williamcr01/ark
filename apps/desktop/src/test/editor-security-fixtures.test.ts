@@ -20,7 +20,7 @@ import {
 import hostileEditorPostmessageDeck from '@fixtures/hostile-editor-postmessage-deck.html?raw'
 import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import { getPreviewHtml } from '@/lib/deck/deck-preview'
-import { detectRuntimeMode } from '@/lib/deck/deck-runtime'
+import { detectRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
 
 const malformedEditorPayloads: unknown[] = [
   {

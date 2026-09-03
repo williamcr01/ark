@@ -9,7 +9,7 @@ import {
   DECK_RUNTIME_ERROR_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
   DECK_SLIDE_COUNT_MESSAGE_TYPE,
-} from '@ark/deck-preview/deck-bridge.ts'
+} from '@ark/deck-preview'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,

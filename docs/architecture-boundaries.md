@@ -18,6 +18,7 @@ only. Boundary violations fail `pnpm lint`.
 | 2     | `@ark/chat`             | The conversation model: messages, steps, jobs, agent protocols |
 | 2     | `@ark/deck-export`      | Slide → scene model for PowerPoint export                      |
 | 2     | `@ark/deck-import`      | PowerPoint (`.pptx`) → Ark HTML deck (server-only)             |
+| 2     | `@ark/deck-node`        | JSDOM HTML parse/validate/patch apply (server-only)            |
 | 3     | `@ark/deck-preview`     | Deck → preview document, and the parent ↔ frame protocol       |
 | 4     | `@ark/storage`          | Persistence: records, stores, the `.ark` workspace file        |
 | 5     | `@ark/contracts`        | The local HTTP API's Zod schemas and OpenAPI registry          |
@@ -27,7 +28,7 @@ only. Boundary violations fail `pnpm lint`.
 ```text
 runtime-registry, telemetry
   └► deck, ai
-       └► editor-runtime, chat, deck-export, deck-import
+       └► editor-runtime, chat, deck-export, deck-import, deck-node
             └► deck-preview
                  └► storage
                       └► contracts
@@ -71,8 +72,13 @@ Packages are one or the other, and it is enforced:
   `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. The renderer bundles these.
   Two files opt out by name: `runtime-registry/runtime-stylesheet-disk.ts` and
   `telemetry/request-id.ts`, which needs `node:crypto`.
+  **Browser-safe packages may not import server-only packages, regardless of layer.**
+  Layer numbers alone would allow `@ark/contracts` (5) to import `@ark/storage` (4);
+  `pnpm check:boundaries` rejects that edge so the renderer cannot reach Node-only code
+  through contracts. Shared document schemas live in `@ark/deck` instead.
 - **Server-only** — `node:*` allowed, still no Express or React. `storage`, `agent`, `mcp`,
-  `deck-import`. **The renderer must not import these**, which is a lint rule, not a convention.
+  `deck-import`, `deck-node`. **The renderer must not import these**, which is a lint rule, not a
+  convention.
 
 Shared vocabulary a lower layer needs is defined in that lower layer and re-exported upward, so a
 consumer's import path does not change. `@ark/contracts` re-exports the provider and reasoning
@@ -103,3 +109,19 @@ public deployment surfaces.
 
 The preload bridge exposes only credential, settings, MCP, file-dialog, and update operations. Deck
 HTML never receives preload or Node access.
+
+## Structure budgets
+
+These are **errors**. `pnpm lint` fails on budget breaches (`max-lines`, `max-lines-per-function`,
+hooks-must-not-import-components, and `scripts/check-structure.mjs --strict`).
+
+| Budget                               | Limit                                                 | Where                                              |
+| ------------------------------------ | ----------------------------------------------------- | -------------------------------------------------- |
+| File length                          | 500 lines (`skipBlankLines`, `skipComments`)          | `**/*.{ts,tsx}` except tests (`max-lines`)         |
+| Function length                      | 120 lines (`skipBlankLines`, `skipComments`, `IIFEs`) | same (`max-lines-per-function`)                    |
+| Exported `*Props`                    | 12 fields                                             | `apps/desktop/src` (`scripts/check-structure.mjs`) |
+| `export function use*` return object | 10 keys                                               | `apps/desktop/src` (`scripts/check-structure.mjs`) |
+
+Hooks under `apps/desktop/src/hooks/` must not import `@/components/*` or `../components/*`
+(`no-restricted-imports`). `scripts/check-structure.mjs --strict` exits 1 when the Props/hook
+inventory is non-empty.

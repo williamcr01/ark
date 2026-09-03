@@ -18,7 +18,7 @@ const apiContractPatterns = [
  * They may import `node:*`; the renderer may not import them. Everything else under `packages/`
  * is browser-safe and stays free of Node built-ins so the renderer can bundle it.
  */
-const SERVER_ONLY_PACKAGES = ['agent', 'mcp', 'storage', 'deck-import']
+const SERVER_ONLY_PACKAGES = ['agent', 'mcp', 'storage', 'deck-import', 'deck-node']
 
 const serverOnlyPackageFiles = SERVER_ONLY_PACKAGES.map((name) => `packages/${name}/**/*.ts`)
 
@@ -69,6 +69,8 @@ export default defineConfig([
     'runtimes/**',
     '.pnpm-store/**',
     'coverage/**',
+    'packages/editor-runtime/runtime/generated/**',
+    'packages/deck-preview/runtime/generated/**',
   ]),
   {
     files: ['**/*.{ts,tsx}'],
@@ -84,6 +86,17 @@ export default defineConfig([
           caughtErrorsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
         },
+      ],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': [
+        'error',
+        { max: 120, skipBlankLines: true, skipComments: true, IIFEs: true },
       ],
     },
   },
@@ -112,14 +125,36 @@ export default defineConfig([
     ],
     rules: {
       'react-refresh/only-export-components': 'off',
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
     },
   },
   {
     files: ['apps/desktop/src/**/*.{ts,tsx}'],
+    ignores: ['apps/desktop/src/hooks/**'],
     rules: {
       'no-restricted-imports': [
         'error',
         { patterns: [...boundaryPatterns.renderer, ...apiContractPatterns] },
+      ],
+    },
+  },
+  {
+    files: ['apps/desktop/src/hooks/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...boundaryPatterns.renderer,
+            ...apiContractPatterns,
+            {
+              group: ['@/components/*', '../components/*'],
+              message:
+                'Hooks must not import from components. Keep UI in components and have them call hooks.',
+            },
+          ],
+        },
       ],
     },
   },
@@ -179,6 +214,15 @@ export default defineConfig([
           paths: environmentOnlyPaths,
         },
       ],
+    },
+  },
+  {
+    files: ['packages/*/runtime-src/**/*.ts'],
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      'no-var': 'off',
     },
   },
   eslintConfigPrettier,

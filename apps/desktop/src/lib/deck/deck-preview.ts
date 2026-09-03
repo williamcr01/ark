@@ -23,7 +23,7 @@ export {
   DECK_GOTO_MESSAGE_TYPE,
   DECK_SLIDE_CHANGE_EVENT,
   DECK_SLIDE_CHANGE_MESSAGE_TYPE,
-} from '@ark/deck-preview/deck-bridge.ts'
+} from '@ark/deck-preview'
 
 export const PREVIEW_FRAME_WIDTH = ARK_SLIDE_REFERENCE_WIDTH
 export const PREVIEW_FRAME_HEIGHT = ARK_SLIDE_REFERENCE_HEIGHT
@@ -69,8 +69,12 @@ export function getPreviewFrameStyle(scale: number): CSSProperties {
   }
 }
 
-export type { DeckRuntimeMode } from '@/lib/deck/deck-runtime'
-export { detectRuntimeMode, getPreviewSandbox, getThumbnailSandbox } from '@/lib/deck/deck-runtime'
+export type { DeckRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
+export {
+  detectRuntimeMode,
+  getPreviewSandbox,
+  getThumbnailSandbox,
+} from '@ark/runtime-registry/deck-runtime.ts'
 
 export function getPreviewHtml(html: string, options: PreviewHtmlOptions = {}) {
   return buildPreviewHtml(html, {

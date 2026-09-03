@@ -10,6 +10,7 @@ import plainCssDeck from '@fixtures/plain-css-deck.html?raw'
 import revealRegistryDeck from '@fixtures/reveal-registry-deck.html?raw'
 import revealChartDeck from '@fixtures/reveal-chart-deck.html?raw'
 import { analyzeDeckInBrowser } from '@/lib/deck/deck-analysis'
+import { useEditorStore } from '@/state/editor-store.ts'
 import {
   type EditorNormalizedRect,
   type EditorTransformCommitMessage,
@@ -21,7 +22,8 @@ import {
   PREVIEW_FRAME_WIDTH,
 } from '@/lib/deck/deck-preview'
 
-import { DeckPreview, type DeckPreviewHandle } from './DeckPreview'
+import { type DeckPreviewHandle } from './DeckPreview'
+import { PreviewTestHost as DeckPreview } from './DeckPreview.test-harness'
 
 function renderDeckPreview(props: ComponentProps<typeof DeckPreview>) {
   return render(
@@ -44,6 +46,16 @@ const editorBridgeMock = vi.hoisted(() => ({
     editableKind: string | null
     textPreview: string | null
   } | null,
+  selections: [] as Array<{
+    elementId: string
+    slideIndex: number
+    slideId: string | null
+    tagName: string
+    locked: boolean
+    managed: boolean
+    editableKind: string | null
+    textPreview: string | null
+  }>,
   geometry: null as EditorNormalizedRect | null,
   slideBounds: null as EditorNormalizedRect | null,
   selectionZIndex: null,
@@ -113,6 +125,11 @@ const useDeckThumbnailsMock = vi.hoisted(() =>
   })),
 )
 const editorBridgeOptionsMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/hooks/useManualEditCommits', async () => {
+  const { previewManualEdits } = await import('./DeckPreview.test-edits')
+  return { useManualEditCommits: () => previewManualEdits }
+})
 
 vi.mock('@/hooks/useDeckEditorBridge', () => ({
   useDeckEditorBridge: (...args: unknown[]) => {
@@ -612,8 +629,6 @@ describe('DeckPreview script divergence UI', () => {
   })
 
   it('reports editor selection to the shell while edit chrome is active', () => {
-    const onEditorSelectionChange = vi.fn()
-
     editorBridgeMock.selection = {
       elementId: 'ark-el-1',
       slideIndex: 0,
@@ -628,24 +643,25 @@ describe('DeckPreview script divergence UI', () => {
     const { rerender } = renderDeckPreview({
       ...plainDeckProps,
       state: { ...plainDeckProps.state, editorBridgeEnabled: true },
-      onEditorSelectionChange,
     })
 
-    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(
+    expect(useEditorStore.getState().editorSelection).toEqual(
       expect.objectContaining({ elementId: 'ark-el-1' }),
-      [expect.objectContaining({ elementId: 'ark-el-1' })],
     )
+    expect(useEditorStore.getState().editorSelections).toEqual([
+      expect.objectContaining({ elementId: 'ark-el-1' }),
+    ])
 
     rerender(
       <TooltipProvider>
         <DeckPreview
           {...plainDeckProps}
           state={{ ...plainDeckProps.state, editorBridgeEnabled: true, isGenerating: true }}
-          onEditorSelectionChange={onEditorSelectionChange}
         />
       </TooltipProvider>,
     )
-    expect(onEditorSelectionChange).toHaveBeenLastCalledWith(null, [])
+    expect(useEditorStore.getState().editorSelection).toBeNull()
+    expect(useEditorStore.getState().editorSelections).toEqual([])
   })
 
   it('enables the editor bridge when the edit-mode iframe loads', async () => {

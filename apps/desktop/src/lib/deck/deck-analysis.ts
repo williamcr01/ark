@@ -1,6 +1,6 @@
 import type { DeckRuntimeManifest } from '@ark/runtime-registry/deck-runtime-manifest.ts'
-import type { DeckRuntimeMode } from '@/lib/deck/deck-runtime'
-import { documentAllowsDeckInitScripts } from '@/lib/deck/deck-runtime'
+import type { DeckRuntimeMode } from '@ark/runtime-registry/deck-runtime.ts'
+import { documentAllowsDeckInitScripts } from '@ark/runtime-registry/deck-runtime.ts'
 import {
   buildDeckRuntimeManifestFromBrowserDocument,
   manifestIndicatesScriptStripping,

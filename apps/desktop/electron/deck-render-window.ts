@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto'
 
 import { BrowserWindow, session } from 'electron'
 import type { PreviewSessionStore } from '@ark/storage/stores/preview-sessions.ts'
-import { parseDeckHtml } from '@ark/deck/document/parser.ts'
+import { parseDeckHtml } from '@ark/deck-node/document/parser.ts'
 import {
   ARK_SLIDE_REFERENCE_HEIGHT,
   ARK_SLIDE_REFERENCE_WIDTH,
@@ -195,6 +195,33 @@ export type DeckRenderWindowSession = {
  * `run`. Throws on any render failure; the window, its session partition, and
  * the preview-session token are always torn down.
  */
+function lockDeckRenderSession(config: DeckRenderWindowConfig, partition: string) {
+  const renderSession = session.fromPartition(partition)
+  renderSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false)
+  })
+  renderSession.webRequest.onBeforeRequest((details, callback) => {
+    try {
+      const url = new URL(details.url)
+      callback({
+        cancel:
+          url.protocol === 'http:' || url.protocol === 'https:'
+            ? url.origin !== config.apiOrigin
+            : !['data:', 'blob:', 'devtools:'].includes(url.protocol),
+      })
+    } catch {
+      callback({ cancel: true })
+    }
+  })
+  renderSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    if (details.url.startsWith(`${config.apiOrigin}/api/thumbnail-render/`)) {
+      details.requestHeaders[THUMBNAIL_RENDER_SECRET_HEADER] = config.renderSecret
+    }
+    callback({ requestHeaders: details.requestHeaders })
+  })
+  return renderSession
+}
+
 export async function withDeckRenderWindow<T>(
   config: DeckRenderWindowConfig,
   request: { html: string; slideCount?: number; slideIndexes?: number[]; signal?: AbortSignal },
@@ -236,29 +263,7 @@ export async function withDeckRenderWindow<T>(
     })
 
     const partition = `ark-deck-render-${randomUUID()}`
-    const renderSession = session.fromPartition(partition)
-    renderSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-      callback(false)
-    })
-    renderSession.webRequest.onBeforeRequest((details, callback) => {
-      try {
-        const url = new URL(details.url)
-        callback({
-          cancel:
-            url.protocol === 'http:' || url.protocol === 'https:'
-              ? url.origin !== config.apiOrigin
-              : !['data:', 'blob:', 'devtools:'].includes(url.protocol),
-        })
-      } catch {
-        callback({ cancel: true })
-      }
-    })
-    renderSession.webRequest.onBeforeSendHeaders((details, callback) => {
-      if (details.url.startsWith(`${config.apiOrigin}/api/thumbnail-render/`)) {
-        details.requestHeaders[THUMBNAIL_RENDER_SECRET_HEADER] = config.renderSecret
-      }
-      callback({ requestHeaders: details.requestHeaders })
-    })
+    lockDeckRenderSession(config, partition)
 
     window = new BrowserWindow({
       show: false,

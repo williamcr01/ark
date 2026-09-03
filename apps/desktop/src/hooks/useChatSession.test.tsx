@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { clearChatSession, readChatSession, writeChatSession } from '@/lib/chat/chat-session'
 import { useChatSession } from '@/hooks/useChatSession'
+import { useChatStore } from '@/state/chat-store.ts'
 
 describe('useChatSession', () => {
   afterEach(() => {
@@ -33,13 +34,13 @@ describe('useChatSession', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+    renderHook(() => useChatSession({ deckId: 'deck-1' }))
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
+      expect(useChatStore.getState().isLoading).toBe(false)
     })
 
-    expect(result.current.messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
+    expect(useChatStore.getState().messages).toEqual([{ id: 'm1', role: 'user', content: 'hello' }])
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/decks/deck-1/chat'),
       expect.any(Object),
@@ -92,19 +93,19 @@ describe('useChatSession', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result, rerender } = renderHook(
+    const { rerender } = renderHook(
       ({ deckId }: { deckId: string | null }) => useChatSession({ deckId }),
       { initialProps: { deckId: 'deck-1' as string | null } },
     )
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe('deck one')
+      expect(useChatStore.getState().messages[0]?.content).toBe('deck one')
     })
 
     rerender({ deckId: 'deck-2' })
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe('deck two')
+      expect(useChatStore.getState().messages[0]?.content).toBe('deck two')
     })
   })
 
@@ -167,19 +168,19 @@ describe('useChatSession', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result, rerender } = renderHook(
+    const { rerender } = renderHook(
       ({ deckId }: { deckId: string | null }) => useChatSession({ deckId }),
       { initialProps: { deckId: 'deck-1' as string | null } },
     )
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe('deck one')
+      expect(useChatStore.getState().messages[0]?.content).toBe('deck one')
     })
 
     rerender({ deckId: 'deck-2' })
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe('deck two cached')
+      expect(useChatStore.getState().messages[0]?.content).toBe('deck two cached')
     })
     expect(readChatSession('deck-2')?.messages[0]?.content).toBe('deck two cached')
 
@@ -188,7 +189,7 @@ describe('useChatSession', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe('deck two server')
+      expect(useChatStore.getState().messages[0]?.content).toBe('deck two server')
     })
   })
 
@@ -237,7 +238,7 @@ describe('useChatSession', () => {
     rerender({ deckId: 'deck-new' })
 
     await waitFor(() => {
-      expect(result.current.messages).toEqual([
+      expect(useChatStore.getState().messages).toEqual([
         { id: 'm-user', role: 'user', content: 'make slides' },
         { id: 'job-1', role: 'assistant', content: 'Generated the deck.' },
       ])
@@ -250,10 +251,10 @@ describe('useChatSession', () => {
       updatedAt: new Date().toISOString(),
     })
 
-    const { result } = renderHook(() => useChatSession({ deckId: null }))
+    renderHook(() => useChatSession({ deckId: null }))
 
-    expect(result.current.messages).toHaveLength(1)
-    expect(result.current.messages[0]?.content).toBe('hello')
+    expect(useChatStore.getState().messages).toHaveLength(1)
+    expect(useChatStore.getState().messages[0]?.content).toBe('hello')
   })
 
   it('clears persisted state when reset', async () => {
@@ -275,10 +276,10 @@ describe('useChatSession', () => {
       await result.current.resetChat()
     })
 
-    expect(result.current.messages).toEqual([])
+    expect(useChatStore.getState().messages).toEqual([])
 
-    const { result: freshResult } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
-    expect(freshResult.current.messages).toEqual([])
+    renderHook(() => useChatSession({ deckId: 'deck-1' }))
+    expect(useChatStore.getState().messages).toEqual([])
   })
 
   it('starts a fresh unsaved chat without clearing the previous deck chat', async () => {
@@ -313,7 +314,7 @@ describe('useChatSession', () => {
     )
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe('saved deck prompt')
+      expect(useChatStore.getState().messages[0]?.content).toBe('saved deck prompt')
     })
 
     await act(async () => {
@@ -321,7 +322,7 @@ describe('useChatSession', () => {
       rerender({ deckId: null })
     })
 
-    expect(result.current.messages).toEqual([])
+    expect(useChatStore.getState().messages).toEqual([])
     expect(readChatSession(null)?.messages).toEqual([])
     expect(readChatSession('deck-1')?.messages).toEqual([
       { id: 'm1', role: 'user', content: 'saved deck prompt' },
@@ -379,7 +380,7 @@ describe('useChatSession', () => {
       await result.current.reloadChat('deck-new')
     })
 
-    expect(result.current.messages).toEqual([
+    expect(useChatStore.getState().messages).toEqual([
       { id: 'm-user', role: 'user', content: 'make slides' },
       { id: 'm-assistant', role: 'assistant', content: 'Generated the deck.' },
     ])
@@ -434,7 +435,7 @@ describe('useChatSession', () => {
         body: expect.stringContaining('Loaded deck.html into the preview.'),
       }),
     )
-    expect(result.current.messages).toEqual([
+    expect(useChatStore.getState().messages).toEqual([
       {
         id: '00000000-0000-4000-8000-000000000201',
         role: 'assistant',
@@ -466,7 +467,7 @@ describe('useChatSession', () => {
     const { result } = renderHook(() => useChatSession({ deckId: 'deck-1', onPersistFailure }))
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
+      expect(useChatStore.getState().isLoading).toBe(false)
     })
 
     await act(async () => {
@@ -477,10 +478,10 @@ describe('useChatSession', () => {
       })
     })
 
-    expect(result.current.messages).toEqual([
+    expect(useChatStore.getState().messages).toEqual([
       { id: '00000000-0000-4000-8000-000000000101', role: 'user', content: 'hello' },
     ])
-    expect(result.current.failedPersistIds).toEqual(
+    expect(useChatStore.getState().failedPersistIds).toEqual(
       new Set(['00000000-0000-4000-8000-000000000101']),
     )
     expect(result.current.getMessageDeliveryStatus('00000000-0000-4000-8000-000000000101')).toBe(
@@ -532,7 +533,7 @@ describe('useChatSession', () => {
     const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
+      expect(useChatStore.getState().isLoading).toBe(false)
     })
 
     await act(async () => {
@@ -543,14 +544,14 @@ describe('useChatSession', () => {
       })
     })
 
-    expect(result.current.failedPersistIds.size).toBe(1)
+    expect(useChatStore.getState().failedPersistIds.size).toBe(1)
 
     await act(async () => {
       await result.current.retryPersist('00000000-0000-4000-8000-000000000101')
     })
 
     expect(appendAttempts).toBe(2)
-    expect(result.current.failedPersistIds.size).toBe(0)
+    expect(useChatStore.getState().failedPersistIds.size).toBe(0)
     expect(result.current.getMessageDeliveryStatus('00000000-0000-4000-8000-000000000101')).toBe(
       'saved',
     )
@@ -600,24 +601,24 @@ describe('useChatSession', () => {
     const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
+      expect(useChatStore.getState().isLoading).toBe(false)
     })
 
-    expect(result.current.messages).toEqual([
+    expect(useChatStore.getState().messages).toEqual([
       { id: 'm1', role: 'user', content: 'synced' },
       { id: 'm2', role: 'user', content: 'unsynced' },
     ])
-    expect(result.current.failedPersistIds).toEqual(new Set(['m2']))
+    expect(useChatStore.getState().failedPersistIds).toEqual(new Set(['m2']))
 
     await act(async () => {
       await result.current.reloadChat('deck-1')
     })
 
-    expect(result.current.messages).toEqual([
+    expect(useChatStore.getState().messages).toEqual([
       { id: 'm1', role: 'user', content: 'synced' },
       { id: 'm2', role: 'user', content: 'unsynced' },
     ])
-    expect(result.current.failedPersistIds).toEqual(new Set(['m2']))
+    expect(useChatStore.getState().failedPersistIds).toEqual(new Set(['m2']))
   })
 
   it('does not resurrect stale cached messages cleared on the server', async () => {
@@ -639,14 +640,14 @@ describe('useChatSession', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const { result } = renderHook(() => useChatSession({ deckId: 'deck-1' }))
+    renderHook(() => useChatSession({ deckId: 'deck-1' }))
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
+      expect(useChatStore.getState().isLoading).toBe(false)
     })
 
-    expect(result.current.messages).toEqual([])
-    expect(result.current.failedPersistIds).toEqual(new Set())
+    expect(useChatStore.getState().messages).toEqual([])
+    expect(useChatStore.getState().failedPersistIds).toEqual(new Set())
   })
 
   it('surfaces reset failures through the callback', async () => {
@@ -672,7 +673,7 @@ describe('useChatSession', () => {
     const { result } = renderHook(() => useChatSession({ deckId: 'deck-1', onResetFailure }))
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
+      expect(useChatStore.getState().isLoading).toBe(false)
     })
 
     await act(async () => {
@@ -680,7 +681,7 @@ describe('useChatSession', () => {
       expect(succeeded).toBe(false)
     })
 
-    expect(result.current.messages).toEqual([])
+    expect(useChatStore.getState().messages).toEqual([])
     expect(onResetFailure).toHaveBeenCalledTimes(1)
   })
 })

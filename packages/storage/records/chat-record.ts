@@ -1,4 +1,6 @@
-import type { ChatAttachment, ChatMessageContext, ChatMessagePart } from '@ark/chat/chat.ts'
+import type { ChatMessagePart } from '@ark/chat/messages.ts'
+import type { ChatAttachment } from '@ark/chat/attachments.ts'
+import type { ChatMessageContext } from '@ark/chat/context.ts'
 import { isValidDeckId } from './deck-record.ts'
 
 export type ChatThreadStatus = 'active' | 'archived'

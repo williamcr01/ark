@@ -31,7 +31,7 @@ pnpm typecheck  # parallel native TypeScript check (all apps/packages)
 pnpm build      # build renderer, main, and preload
 pnpm package              # unpacked app for the current platform
 pnpm package:installers   # installers for the current platform
-pnpm lint       # run oxlint and ESLint
+pnpm lint       # oxlint, ESLint, package boundaries, structure budgets
 pnpm test       # Vitest: packages in parallel, apps serial
 ```
 
@@ -55,26 +55,13 @@ ark/
 │   ├── editor-runtime/     #  2  manual editor protocol + injected script
 │   ├── deck-export/        #  2  slide → scene model for PowerPoint export
 │   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
+│   ├── deck-node/          #  2  JSDOM HTML parse/validate/patch (server-only)
 │   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
 │   ├── deck-preview/       #  3  deck → preview document, parent ↔ frame protocol
 │   ├── storage/            #  4  records, stores, the `.ark` workspace file
 │   ├── contracts/          #  5  HTTP API Zod schemas + OpenAPI registry
 │   ├── agent/              #  6  the generation loop, its tools, the job runner
 │   └── mcp/                #  7  Ark's deck tools exposed to external agents
-├── packages/               #  L  package                one job
-│   ├── runtime-registry/   #  0  approved runtime assets, pinned versions
-│   ├── telemetry/          #  0  logging, redaction, request ids, timing
-│   ├── deck/               #  1  the deck document model: read, patch, validate
-│   ├── ai/                 #  1  providers, models, credentials, provider options
-│   ├── deck-preview/       #  2  deck → preview document, parent ↔ frame protocol
-│   ├── editor-runtime/     #  2  manual editor protocol + injected script
-│   ├── deck-export/        #  2  slide → scene model for PowerPoint export
-│   ├── deck-import/        #  2  PowerPoint (.pptx) → Ark HTML (server-only)
-│   ├── chat/               #  2  messages, agent steps, jobs, agent protocols
-│   ├── storage/            #  3  records, stores, the `.ark` workspace file
-│   ├── contracts/          #  4  HTTP API Zod schemas + OpenAPI registry
-│   ├── agent/              #  5  the generation loop, its tools, the job runner
-│   └── mcp/                #  5  Ark's deck tools exposed to external agents
 ├── test/                   # cross-layer HTML fixtures (`test/fixtures/`) for tests and smoke scripts
 ├── runtimes/               # vendored approved runtime assets (e.g. reveal.js) + manifest
 ├── agent-guides/           # always-on markdown appended to the deck agent system prompt
@@ -99,7 +86,7 @@ strictly lower layer, every workspace dependency must be both declared and used,
 - **Browser-safe packages** (no `node:*`, no Express, no React): `runtime-registry`, `telemetry`,
   `deck`, `ai`, `editor-runtime`, `deck-export`, `chat`, `deck-preview`, `contracts`. Two files opt out by name:
   `runtime-stylesheet-disk.ts` and `telemetry/request-id.ts`.
-- **Server-only packages**: `storage`, `agent`, `mcp`, `deck-import`. `apps/desktop/src` must not import them.
+- **Server-only packages**: `storage`, `agent`, `mcp`, `deck-import`, `deck-node`. `apps/desktop/src` must not import them.
 - `apps/desktop/src` (the renderer) may import browser-safe packages only — never `apps/api`.
 - `apps/desktop/electron` (the trusted main process) owns and may import `@ark/api` and
   `@ark/sandbox`.
@@ -118,6 +105,7 @@ module there.
 - Colocate component styles (CSS modules or co-located `.css` files) — match existing patterns in the file you edit.
 - Keep the shell thin: presentation rendering lives in HTML files, not in React components.
 - Prefer extracting reusable logic into hooks under `src/hooks/`.
+- Domain state lives in `src/state/` (zustand stores: state + synchronous reducers only). Effects, API calls, and orchestration stay in `src/hooks/`. Hooks must not import `@/components/*`; shell UI under `src/components/shell/` calls orchestration hooks and builds large component props locally.
 - Run `pnpm lint` after substantive changes.
 - Always run `pnpm format` before committing; CI enforces `pnpm format:check`.
 - CI runs `quality` (lockfile/lint/format/audit/openapi), `build`, `test`, and `smoke` on every push to `main` and on pull requests (`.github/workflows/ci.yml`, Linux runner).
@@ -145,7 +133,7 @@ Deck preview blocks external **fetches, resource loads, and navigations** from g
 
 ### Preview JavaScript
 
-The shell uses preview modes based on runtime detection (see `detectRuntimeMode` in `src/lib/deck/deck-runtime.ts`). The parent ↔ iframe contract is defined in `packages/deck-preview/deck-bridge.ts` and documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`packages/editor-runtime/`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
+The shell uses preview modes based on runtime detection (see `detectRuntimeMode` in `@ark/runtime-registry/deck-runtime.ts`). The parent ↔ iframe contract lives in `@ark/deck-preview` (`protocol/` and `runtime/`) and is documented in [docs/deck-bridge.md](docs/deck-bridge.md). Manual editing uses a separate editor bridge (`packages/editor-runtime/`) documented in [docs/deck-editor-bridge.md](docs/deck-editor-bridge.md).
 
 - **CSS-only** — deck scripts are stripped; Ark injects a navigation shim. Default for plain decks and reveal decks without approved runtime assets.
 - **Full-JS (custom)** — deck scripts run when `data-ark-deck="nav"` or `data-ark-preview="full-js"` is set. Ark injects a bridge (`postMessage` ↔ DOM `CustomEvent`); the deck owns navigation.
@@ -217,7 +205,7 @@ Deck generation uses a **multi-step agent loop** (Vercel AI SDK `streamText` + `
 | `edit_deck`   | Apply exact `oldText` → `newText` patches (each match must be unique)                                             |
 | `write_deck`  | Replace the entire deck (new decks or explicit full rewrites)                                                     |
 
-Implementation: `packages/deck/document/parser.ts`, `packages/agent/tools.ts`, `packages/agent/agent.ts`. The renderer shows tool calls/results in chat and applies deck updates returned by the internal API.
+Implementation: `packages/deck/document/parser.ts`, `packages/agent/tools.ts` (and `tools/`), `packages/agent/agent.ts` (stream/finalize in sibling modules). The renderer shows tool calls/results in chat and applies deck updates returned by the internal API.
 
 One user message → one agent run → as many tool/model steps as needed → deck update + assistant summary.
 

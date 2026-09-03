@@ -4,7 +4,7 @@ import {
   parseThemeChoiceId,
   type StoredThemeProposalRequest,
 } from '@ark/chat/agent-themes.ts'
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 export function getThemeProposalRequest(message: ChatMessage): StoredThemeProposalRequest | null {
   if (message.role !== 'assistant') return null

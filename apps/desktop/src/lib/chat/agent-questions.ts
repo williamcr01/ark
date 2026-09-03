@@ -1,5 +1,5 @@
 import { agentQuestionRequestSchema, type AgentQuestionRequest } from '@ark/chat/agent-questions.ts'
-import type { ChatMessage } from '@ark/chat/chat.ts'
+import type { ChatMessage } from '@ark/chat/messages.ts'
 
 export function getAskUserRequest(message: ChatMessage): AgentQuestionRequest | null {
   if (message.role !== 'assistant') return null

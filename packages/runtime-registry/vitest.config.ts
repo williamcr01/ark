@@ -1,10 +1,6 @@
 import path from 'node:path'
-import { defineConfig } from 'vitest/config'
+import { packageVitestConfig } from '../../vitest.shared.ts'
 
-export default defineConfig({
-  test: {
-    environment: 'node',
-    include: ['**/*.{test,spec}.ts'],
-    setupFiles: [path.resolve(__dirname, './vitest.setup.ts')],
-  },
+export default packageVitestConfig(import.meta.dirname, {
+  setupFiles: [path.resolve(import.meta.dirname, './vitest.setup.ts')],
 })
