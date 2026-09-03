@@ -163,10 +163,15 @@ export function inspectExtractedScene(scene: DeckScene, expectedSlides = 2) {
     const failure = slide.warnings.find((warning) => warning.code === 'extract-failed')
     if (failure) return fail(failure.message)
 
-    const text = slide.nodes
-      .filter((node) => node.kind === 'text')
-      .flatMap((node) => (node.kind === 'text' ? node.paragraphs : []))
-      .flatMap((paragraph) => paragraph.runs)
+    const text = []
+    for (const node of slide.nodes) {
+      if (node.kind !== 'text') {
+        continue
+      }
+      for (const paragraph of node.paragraphs) {
+        text.push(...paragraph.runs)
+      }
+    }
 
     if (text.length === 0) return fail(`Scene slide ${slide.index} recovered no text runs.`)
 

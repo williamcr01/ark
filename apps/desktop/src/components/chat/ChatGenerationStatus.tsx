@@ -71,6 +71,29 @@ function ChatMcpWaitingBanner() {
   )
 }
 
+function visibleChatAlerts(input: {
+  attachmentError: string
+  dismissedAlertKeys: Set<string>
+  error: string
+  isModelFailure: boolean
+  modelWarnings: string[]
+  modelsError: string
+}) {
+  const isDismissed = (alertId: ChatAlertId, content: string) =>
+    input.dismissedAlertKeys.has(alertDismissKey(alertId, content))
+  const modelWarningsKey = input.modelWarnings.join('\n')
+  return {
+    modelWarningsKey,
+    showAttachmentError:
+      Boolean(input.attachmentError) && !isDismissed('attachment', input.attachmentError),
+    showGenerationError:
+      !input.isModelFailure && Boolean(input.error) && !isDismissed('generation', input.error),
+    showModelWarnings:
+      input.modelWarnings.length > 0 && !isDismissed('model-warnings', modelWarningsKey),
+    showModelsError: Boolean(input.modelsError) && !isDismissed('models', input.modelsError),
+  }
+}
+
 function ChatStatusAlerts() {
   const { retryGeneration } = useChatPanelRuntime()
   const workspaceError = useChatStore((state) => state.workspaceError)
@@ -82,22 +105,24 @@ function ChatStatusAlerts() {
   const modelWarnings = useModelsStore((state) => state.warnings)
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(() => new Set())
   const error = workspaceError || (isModelFailure ? '' : generationError)
-  const modelWarningsKey = modelWarnings.join('\n')
-
-  const isAlertDismissed = (alertId: ChatAlertId, content: string) =>
-    dismissedAlertKeys.has(alertDismissKey(alertId, content))
+  const {
+    modelWarningsKey,
+    showAttachmentError,
+    showGenerationError,
+    showModelWarnings,
+    showModelsError,
+  } = visibleChatAlerts({
+    attachmentError,
+    dismissedAlertKeys,
+    error,
+    isModelFailure,
+    modelWarnings,
+    modelsError,
+  })
 
   const dismissAlert = (alertId: ChatAlertId, content: string) => {
     setDismissedAlertKeys((current) => new Set(current).add(alertDismissKey(alertId, content)))
   }
-
-  const showGenerationError =
-    !isModelFailure && Boolean(error) && !isAlertDismissed('generation', error)
-  const showAttachmentError =
-    Boolean(attachmentError) && !isAlertDismissed('attachment', attachmentError)
-  const showModelsError = Boolean(modelsError) && !isAlertDismissed('models', modelsError)
-  const showModelWarnings =
-    modelWarnings.length > 0 && !isAlertDismissed('model-warnings', modelWarningsKey)
 
   if (!showGenerationError && !showAttachmentError && !showModelsError && !showModelWarnings) {
     return null

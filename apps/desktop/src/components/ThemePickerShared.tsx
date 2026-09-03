@@ -146,10 +146,10 @@ export function ThemePickerCustomize({
       {selectedSpec ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {DECK_THEME_COLOR_ROLES.map((role) => (
-            <label className="flex min-w-0 flex-col gap-0.5" key={role}>
-              <span className="text-muted-foreground text-[10px] leading-none">
+            <fieldset className="flex min-w-0 flex-col gap-0.5" key={role}>
+              <legend className="text-muted-foreground text-[10px] leading-none">
                 {COLOR_LABELS[role]}
-              </span>
+              </legend>
               <span className="flex items-center gap-1">
                 <input
                   aria-label={`${COLOR_LABELS[role]} color for ${selected.name}`}
@@ -167,7 +167,7 @@ export function ThemePickerCustomize({
                   value={selectedSpec.colors[role]}
                 />
               </span>
-            </label>
+            </fieldset>
           ))}
         </div>
       ) : null}

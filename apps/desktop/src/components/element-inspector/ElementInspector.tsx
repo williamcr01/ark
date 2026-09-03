@@ -27,6 +27,23 @@ export type ElementInspectorProps = {
   onApplyOperations?: (operations: DeckElementPatchOperation[], summary: string) => void
 }
 
+function inspectorView(selection: EditorSelectionInfo, isSaving: boolean, textEditActive: boolean) {
+  const kind = getInspectorElementKind(selection)
+  const disabledReason = getInspectorDisabledReason(selection)
+  const busy = isSaving || textEditActive
+  const canModify = disabledReason === null && !busy
+  return {
+    busy,
+    canModify,
+    canModifyGeometry: canModify && selection.managed && selection.geometryEditable === true,
+    canModifyLayer: canModify && selection.managed,
+    disabledReason,
+    kind,
+    textAlign: selection.textStyle ? normalizeTextAlign(selection.textStyle.textAlign) : 'left',
+    textStyle: selection.textStyle ?? null,
+  }
+}
+
 export function ElementInspector({
   selection,
   geometry,
@@ -41,58 +58,51 @@ export function ElementInspector({
     return null
   }
 
-  const kind = getInspectorElementKind(selection)
-  const disabledReason = getInspectorDisabledReason(selection)
-  const busy = isSaving || textEditActive || !onApplyOperations
-  const canModify = disabledReason === null && !busy
-  const canModifyGeometry = canModify && selection.managed && selection.geometryEditable === true
-  const canModifyLayer = canModify && selection.managed
-  const textStyle = selection.textStyle ?? null
-  const textAlign = textStyle ? normalizeTextAlign(textStyle.textAlign) : 'left'
+  const view = inspectorView(selection, isSaving, !onApplyOperations || textEditActive)
   const resetAspectOperation = geometry ? buildResetImageAspectOperation(selection, geometry) : null
 
   return (
     <div className="flex max-h-[min(70vh,28rem)] w-60 flex-col overflow-y-auto rounded-lg bg-[var(--ark-titlebar)] shadow-md ring-1 ring-foreground/10">
       <InspectorHeader selection={selection} />
       <div className="flex flex-col gap-4 px-3 py-3">
-        {disabledReason ? (
+        {view.disabledReason ? (
           <p
             className="rounded-sm border border-[var(--ark-warning)]/30 bg-[var(--ark-warning)]/10 px-2 py-1.5 text-[11px] leading-snug text-[var(--ark-warning)]"
             role="note"
           >
-            {disabledReason}
+            {view.disabledReason}
           </p>
         ) : null}
 
-        <IdentitySection kind={kind} selection={selection} />
+        <IdentitySection kind={view.kind} selection={selection} />
         <GeometrySection
-          canModifyGeometry={canModifyGeometry}
+          canModifyGeometry={view.canModifyGeometry}
           geometry={geometry}
           onCommitField={actions.commitGeometryField}
         />
         <LayerSection
-          canModifyLayer={canModifyLayer}
+          canModifyLayer={view.canModifyLayer}
           onReorder={actions.commitReorder}
           zIndex={zIndex}
         />
 
-        {showTextSection(selection) && textStyle ? (
+        {showTextSection(selection) && view.textStyle ? (
           <TypographySection
-            canModify={canModify}
+            canModify={view.canModify}
             colorValue={actions.colorValue}
             onCommitColor={actions.commitColor}
             onCommitFontSize={actions.commitFontSize}
             onCommitLineHeight={actions.commitLineHeight}
             onCommitStyle={actions.commitStyle}
-            textAlign={textAlign}
-            textStyle={textStyle}
+            textAlign={view.textAlign}
+            textStyle={view.textStyle}
           />
         ) : null}
 
         {showImageSection(selection) ? (
           <ImageSection
             altText={selection.textPreview ?? ''}
-            canModify={canModify}
+            canModify={view.canModify}
             imageFit={selection.imageFit ?? 'contain'}
             naturalSize={selection.imageNaturalSize ?? null}
             onCommitAlt={actions.commitAlt}
@@ -107,7 +117,7 @@ export function ElementInspector({
         ) : null}
 
         <LockSection
-          busy={busy}
+          busy={view.busy}
           locked={selection.locked}
           onToggleLock={actions.commitLockToggle}
         />

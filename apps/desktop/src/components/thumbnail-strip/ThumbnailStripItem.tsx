@@ -1,8 +1,6 @@
 import type { KeyboardEvent } from 'react'
 
-import { Skeleton } from '@/components/ui/skeleton'
 import type { ThumbnailDragProps } from '@/hooks/useThumbnailDragReorder'
-import { PREVIEW_FRAME_ASPECT_RATIO } from '@/lib/deck/deck-preview'
 import {
   computePreviewOffset,
   INITIAL_EAGER_THUMBNAILS,
@@ -35,20 +33,6 @@ type ThumbnailStripItemArgs = {
   orientation: ThumbnailOrientation
   reorderDestination: number | null
   showDropPreview: boolean
-}
-
-export function ThumbnailStripSkeletons({ orientation }: { orientation: ThumbnailOrientation }) {
-  return Array.from({ length: INITIAL_EAGER_THUMBNAILS }, (_, index) => (
-    <div className="relative rounded-sm" key={index}>
-      <Skeleton
-        className={cn(
-          'block shrink-0 rounded-sm motion-reduce:animate-none',
-          orientation === 'vertical' ? 'w-full' : 'w-[152px]',
-        )}
-        style={{ aspectRatio: PREVIEW_FRAME_ASPECT_RATIO }}
-      />
-    </div>
-  ))
 }
 
 export function ThumbnailStripItem({

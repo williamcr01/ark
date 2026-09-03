@@ -45,6 +45,35 @@ type EditModeToolbarProps = {
   actions: EditModeToolbarActions
 }
 
+function toolbarCapabilities(
+  state: EditModeToolbarProps['state'],
+  flags: {
+    canRedo: boolean
+    canUndo: boolean
+    isGenerating: boolean
+    isSaving: boolean
+    textEditActive: boolean
+  },
+) {
+  const selectionUnsafe = state.selectionUnsafe ?? false
+  const toolbarDisabled = !state.hasDeck || flags.isGenerating || flags.isSaving
+  const canModifySelection =
+    state.hasSelection &&
+    !state.selectionLocked &&
+    !selectionUnsafe &&
+    !toolbarDisabled &&
+    !flags.textEditActive
+  return {
+    canModifySelection,
+    canReorderSelection: canModifySelection && state.selectionManaged,
+    canUseTools: state.hasDeck && !flags.isGenerating && !flags.isSaving,
+    redoDisabled: !flags.canRedo || toolbarDisabled || flags.textEditActive,
+    selectionUnsafe,
+    toolbarDisabled,
+    undoDisabled: !flags.canUndo || toolbarDisabled || flags.textEditActive,
+  }
+}
+
 export function EditModeToolbar({
   state,
   imageAlt = '',
@@ -63,28 +92,28 @@ export function EditModeToolbar({
     onToolChange,
     onRestoreHistory,
   } = actions
-  const {
-    canEditText,
-    hasDeck,
-    hasSelection,
-    selectedImage,
-    selectionLocked,
-    selectionManaged,
-    selectionUnsafe = false,
-  } = state
+  const { canEditText, hasDeck, hasSelection, selectedImage, selectionLocked } = state
   const deckId = useDeckStore((store) => store.deckId)
   const isSaving = useDeckStore((store) => store.isPatching || store.isSaving)
   const isGenerating = useChatStore((store) => store.isGenerating)
   const activeTool = useEditorStore((store) => store.selectedTool)
   const textEditActive = useEditorStore((store) => store.textEditActive)
   const edits = useManualEditCommits()
-  const toolbarDisabled = !hasDeck || isGenerating || isSaving
-  const canModifySelection =
-    hasSelection && !selectionLocked && !selectionUnsafe && !toolbarDisabled && !textEditActive
-  const canReorderSelection = canModifySelection && selectionManaged
-  const canUseTools = hasDeck && !isGenerating && !isSaving
-  const undoDisabled = !edits.canUndo || toolbarDisabled || textEditActive
-  const redoDisabled = !edits.canRedo || toolbarDisabled || textEditActive
+  const {
+    canModifySelection,
+    canReorderSelection,
+    canUseTools,
+    redoDisabled,
+    selectionUnsafe,
+    toolbarDisabled,
+    undoDisabled,
+  } = toolbarCapabilities(state, {
+    canRedo: edits.canRedo,
+    canUndo: edits.canUndo,
+    isGenerating,
+    isSaving,
+    textEditActive,
+  })
 
   return (
     <div

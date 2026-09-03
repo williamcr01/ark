@@ -1,4 +1,4 @@
-import { useCallback, useRef, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react'
 
 import type { EditorRuntimeMessage, EditorSelectionInfo } from '@ark/editor-runtime'
 
@@ -46,7 +46,9 @@ export function useDeckEditorBridge(
   }, [])
   const port = useEditorBridgePort(iframeRef, options, dispatchRuntimeMessage)
   const messages = useEditorBridgeMessages(port, options)
-  runtimeHandlerRef.current = messages.handleRuntimeMessage
+  useLayoutEffect(() => {
+    runtimeHandlerRef.current = messages.handleRuntimeMessage
+  }, [messages.handleRuntimeMessage])
 
   return assembleDeckEditorBridge(port, messages)
 }

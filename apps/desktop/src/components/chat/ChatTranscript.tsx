@@ -4,12 +4,10 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import {
-  ChatHistoryContext,
-  ChatMessageAttachments,
-  ChatMessageDeliveryStatus,
-  ChatMessageParts,
-} from '@/components/chat/ChatMessageParts'
+import { ChatHistoryContext } from '@/components/chat/ChatHistoryContext'
+import { ChatMessageAttachments } from '@/components/chat/ChatMessageAttachments'
+import { ChatMessageDeliveryStatus } from '@/components/chat/ChatMessageDeliveryStatus'
+import { ChatMessageParts } from '@/components/chat/ChatMessageParts'
 import { useChatPanelRuntime } from '@/components/chat/chat-panel-runtime'
 import { shouldShowLiveAssistant } from '@/lib/chat/chat-message-parts'
 import { findAskUserAnswerAfter, isAskUserAnswerMessage } from '@/lib/chat/agent-questions'

@@ -18,7 +18,10 @@ import {
 } from '@/lib/deck/thumbnail-strip'
 import { cn } from '@/lib/ui/utils'
 
-import { ThumbnailStripItem, ThumbnailStripSkeletons } from './ThumbnailStripItem'
+import { ThumbnailStripItem } from './ThumbnailStripItem'
+import { ThumbnailStripSkeletons } from './ThumbnailStripSkeletons'
+
+const EMPTY_CONTEXT_SLIDE_INDEXES: number[] = []
 
 type SlideThumbnailStripProps = {
   activeIndex: number
@@ -95,7 +98,7 @@ function ThumbnailStripFrame({
 export function SlideThumbnailStrip({
   activeIndex,
   contentEnabled = true,
-  contextSlideIndexes = [],
+  contextSlideIndexes = EMPTY_CONTEXT_SLIDE_INDEXES,
   id,
   isLoading = false,
   isOpen,

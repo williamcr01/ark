@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 
 import type { EditorRuntimeMessage, EditorSelectionInfo, EditorTool } from '@ark/editor-runtime'
 import { useEditorStore } from '@/state/editor-store.ts'
@@ -27,21 +27,45 @@ type PortSlice = {
   shouldAcceptInboundRef: MutableRefObject<(() => boolean) | undefined>
 }
 
+function nextEnabledEditorState(current: DeckEditorBridgeState): DeckEditorBridgeState {
+  return {
+    ...INITIAL_EDITOR_BRIDGE_STATE,
+    editorError: null,
+    editorReady: current.editorReady,
+    lastInsertRequest: current.lastInsertRequest,
+    lastDeleteRequest: current.lastDeleteRequest,
+    lastShortcutRequest: current.lastShortcutRequest,
+    transformCommit: current.transformCommit,
+    transformCancelSequence: current.transformCancelSequence,
+    lastTextCommit: current.lastTextCommit,
+  }
+}
+
 export function useEditorBridgeMessages(port: PortSlice, options: UseEditorBridgeMessagesOptions) {
   const { iframeGenerationKey = '', onSelectionChange, onEditorError } = options
   const [state, setState] = useState<DeckEditorBridgeState>(INITIAL_EDITOR_BRIDGE_STATE)
   const [trackedGenerationKey, setTrackedGenerationKey] = useState(iframeGenerationKey)
   const stateRef = useRef(state)
   const selectionIdentityRef = useRef<SelectionIdentity>(null)
-  stateRef.current = state
+  const previousGenerationKeyRef = useRef(iframeGenerationKey)
 
   if (trackedGenerationKey !== iframeGenerationKey) {
     setTrackedGenerationKey(iframeGenerationKey)
-    port.publishTransformPreview(null)
-    selectionIdentityRef.current = null
-    stateRef.current = INITIAL_EDITOR_BRIDGE_STATE
     setState(INITIAL_EDITOR_BRIDGE_STATE)
   }
+
+  useLayoutEffect(() => {
+    stateRef.current = state
+  }, [state])
+
+  useLayoutEffect(() => {
+    if (previousGenerationKeyRef.current === iframeGenerationKey) {
+      return
+    }
+    previousGenerationKeyRef.current = iframeGenerationKey
+    selectionIdentityRef.current = null
+    port.publishTransformPreview(null)
+  }, [iframeGenerationKey, port])
 
   const handleRuntimeMessage = useCallback(
     (data: EditorRuntimeMessage) => {
@@ -82,21 +106,9 @@ export function useEditorBridgeMessages(port: PortSlice, options: UseEditorBridg
     (slideIndex?: number, tool: EditorTool = 'select', scale?: number) => {
       port.publishTransformPreview(null)
       selectionIdentityRef.current = null
-      setState((current) => {
-        const next = {
-          ...INITIAL_EDITOR_BRIDGE_STATE,
-          editorError: null,
-          editorReady: current.editorReady,
-          lastInsertRequest: current.lastInsertRequest,
-          lastDeleteRequest: current.lastDeleteRequest,
-          lastShortcutRequest: current.lastShortcutRequest,
-          transformCommit: current.transformCommit,
-          transformCancelSequence: current.transformCancelSequence,
-          lastTextCommit: current.lastTextCommit,
-        }
-        stateRef.current = next
-        return next
-      })
+      const next = nextEnabledEditorState(stateRef.current)
+      stateRef.current = next
+      setState(next)
       onSelectionChange?.(null, [])
       return port.commands.enableEditor(slideIndex, tool, scale)
     },

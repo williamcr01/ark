@@ -1,26 +1,17 @@
-import { BoxSelectIcon, PresentationIcon } from 'lucide-react'
-
 import type { EditorSelectionInfo } from '@ark/editor-runtime'
-import {
-  Attachment,
-  AttachmentInfo,
-  AttachmentPresence,
-  AttachmentPreview,
-  AttachmentRemove,
-  Attachments,
-} from '@/components/ai-elements/attachments'
+import { AttachmentPresence, Attachments } from '@/components/ai-elements/attachments'
 import { cn } from '@/lib/ui/utils'
 
-export type ContextChipElement = {
-  slideIndex: number
-  kind?: string
-  textPreview?: string | null
-}
+import {
+  ContextElementChip,
+  ContextSlideChips,
+  type ContextChipElement,
+  type ContextChipSlide,
+} from './ChatContextChipItems.tsx'
 
-export type ContextChipSlide = {
-  slideIndex: number
-  title?: string
-}
+export type { ContextChipElement, ContextChipSlide }
+
+const EMPTY_CONTEXT_SLIDES: ContextChipSlide[] = []
 
 export type ContextChipListProps = {
   element?: ContextChipElement | null
@@ -40,14 +31,10 @@ export type ContextChipListProps = {
   nested?: boolean
 }
 
-function formatSlideChipLabel(slide: ContextChipSlide): string {
-  return `Slide ${slide.slideIndex + 1}${slide.title ? ` — ${slide.title}` : ''}`
-}
-
 export function ContextChipList({
   element = null,
   elementCount,
-  slides = [],
+  slides = EMPTY_CONTEXT_SLIDES,
   onClearElement,
   onRemoveSlide,
   onClearSlides,
@@ -56,88 +43,21 @@ export function ContextChipList({
   nested = false,
 }: ContextChipListProps) {
   const resolvedElementCount = elementCount ?? (element ? 1 : 0)
-  const elementLabel = resolvedElementCount === 1 ? 'element' : 'elements'
-
   if (resolvedElementCount === 0 && slides.length === 0) {
     return null
   }
 
-  const clearAllSlides = () => {
-    if (onClearSlides) {
-      onClearSlides()
-      return
-    }
-
-    slides.forEach((slide) => onRemoveSlide?.(slide.slideIndex))
-  }
-
   const dismissible = Boolean(onClearElement || onRemoveSlide || onClearSlides)
-
   const items = (
     <AttachmentPresence>
       {resolvedElementCount > 0 ? (
-        <Attachment
-          data={{
-            type: 'source-document',
-            id: 'context-elements',
-            sourceId: 'context-elements',
-            title: `${resolvedElementCount} ${elementLabel}`,
-            mediaType: 'text/plain',
-          }}
-          onRemove={onClearElement}
-        >
-          <AttachmentPreview
-            fallbackIcon={<BoxSelectIcon className="size-3 text-muted-foreground" />}
-          />
-          <AttachmentInfo />
-          {onClearElement ? (
-            <AttachmentRemove label={`Remove selected ${elementLabel} from chat context`} />
-          ) : null}
-        </Attachment>
+        <ContextElementChip elementCount={resolvedElementCount} onClearElement={onClearElement} />
       ) : null}
-
-      {slides.length > 1 ? (
-        <Attachment
-          data={{
-            type: 'source-document',
-            id: 'context-slides',
-            sourceId: 'context-slides',
-            title: `${slides.length} slides`,
-            mediaType: 'text/html',
-          }}
-          onRemove={onRemoveSlide || onClearSlides ? clearAllSlides : undefined}
-        >
-          <AttachmentPreview
-            fallbackIcon={<PresentationIcon className="size-3 text-muted-foreground" />}
-          />
-          <AttachmentInfo />
-          {onRemoveSlide || onClearSlides ? (
-            <AttachmentRemove label="Remove attached slides from chat context" />
-          ) : null}
-        </Attachment>
-      ) : (
-        slides.map((slide) => (
-          <Attachment
-            data={{
-              type: 'source-document',
-              id: `context-slide-${slide.slideIndex}`,
-              sourceId: `context-slide-${slide.slideIndex}`,
-              title: formatSlideChipLabel(slide),
-              mediaType: 'text/html',
-            }}
-            key={slide.slideIndex}
-            onRemove={onRemoveSlide ? () => onRemoveSlide(slide.slideIndex) : undefined}
-          >
-            <AttachmentPreview
-              fallbackIcon={<PresentationIcon className="size-3 text-muted-foreground" />}
-            />
-            <AttachmentInfo />
-            {onRemoveSlide ? (
-              <AttachmentRemove label={`Remove slide ${slide.slideIndex + 1} from chat context`} />
-            ) : null}
-          </Attachment>
-        ))
-      )}
+      <ContextSlideChips
+        onClearSlides={onClearSlides}
+        onRemoveSlide={onRemoveSlide}
+        slides={slides}
+      />
       {!dismissible ? <span className="sr-only">Read-only chat context</span> : null}
     </AttachmentPresence>
   )
@@ -160,7 +80,6 @@ export type ChatContextChipsProps = {
   onClearEditorSelection: () => void
   onRemoveSlide: (slideIndex: number) => void
   onClearSlides?: () => void
-  /** Render items into a parent attachments row (composer). */
   nested?: boolean
 }
 

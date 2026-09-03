@@ -114,13 +114,11 @@ function createRestoreHtmlSnapshot(session: PersistenceSession) {
 
       try {
         const deck = await updateDeck(deckId, nextHtml, store().documentRevision!)
-
-        if (sessionId !== session.saveRequestId || requestId !== session.patchRequestId) {
-          return undefined
+        if (sessionId === session.saveRequestId && requestId === session.patchRequestId) {
+          store().applySavedDeck(deck, { replaceHtml: true })
+          return deck
         }
-
-        store().applySavedDeck(deck, { replaceHtml: true })
-        return deck
+        return undefined
       } catch (error) {
         if (sessionId !== session.saveRequestId || requestId !== session.patchRequestId) {
           return undefined
@@ -167,13 +165,11 @@ function createPatchDeckOperations(session: PersistenceSession) {
           activeSlideIndex,
           expectedDocumentRevision: store().documentRevision!,
         })
-
-        if (sessionId !== session.saveRequestId || requestId !== session.patchRequestId) {
-          return undefined
+        if (sessionId === session.saveRequestId && requestId === session.patchRequestId) {
+          const suggestedSlideIndex = applyPatchedDeck(patchResult)
+          return { ...patchResult, suggestedSlideIndex, beforeHtml }
         }
-
-        const suggestedSlideIndex = applyPatchedDeck(patchResult)
-        return { ...patchResult, suggestedSlideIndex, beforeHtml }
+        return undefined
       } catch (error) {
         if (sessionId !== session.saveRequestId || requestId !== session.patchRequestId) {
           return undefined
@@ -223,13 +219,11 @@ function createRestoreFromHistory(
           revision: historyRevision,
           expectedDocumentRevision,
         })
-
-        if (sessionId !== session.saveRequestId || requestId !== session.patchRequestId) {
-          return undefined
+        if (sessionId === session.saveRequestId && requestId === session.patchRequestId) {
+          store().setActiveDeck(deck)
+          return deck
         }
-
-        store().setActiveDeck(deck)
-        return deck
+        return undefined
       } catch (error) {
         if (sessionId !== session.saveRequestId || requestId !== session.patchRequestId) {
           return undefined
