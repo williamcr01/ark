@@ -44,6 +44,33 @@ export type UseEditorPatchQueueOptions = {
   textEditActive: boolean
 }
 
+function patchQueueSelection(input: {
+  editChromeActive: boolean
+  selection: EditorSelectionInfo | null
+  selectionSet: EditorSelectionInfo[]
+  textEditActive: boolean
+}) {
+  const selectionBlockReason = getSelectionSetBlockReason(input.selectionSet)
+  const selectedImage = Boolean(
+    input.selection &&
+    !input.selection.locked &&
+    (input.selection.editableKind === 'image' || input.selection.tagName === 'img'),
+  )
+  return {
+    canEditSelectedText:
+      input.editChromeActive &&
+      input.selectionSet.length === 1 &&
+      isTextEditableSelection(input.selection),
+    canModifySelection:
+      input.selection !== null &&
+      !selectionBlockReason &&
+      input.editChromeActive &&
+      !input.textEditActive,
+    selectedImage,
+    selectedImageAlt: selectedImage ? (input.selection?.textPreview ?? '') : '',
+  }
+}
+
 export function useEditorPatchQueue({
   activeSlideIndex,
   canRedo,
@@ -75,19 +102,14 @@ export function useEditorPatchQueue({
     () => (selections.length > 0 ? selections : selection ? [selection] : []),
     [selection, selections],
   )
-  const selectionBlockReason = getSelectionSetBlockReason(selectionSet)
-  const canEditSelectedText =
-    editChromeActive && selectionSet.length === 1 && isTextEditableSelection(selection)
-  const canModifySelection =
-    selection !== null && !selectionBlockReason && editChromeActive && !textEditActive
-  const selectedImage = Boolean(
-    selection &&
-    !selection.locked &&
-    (selection.editableKind === 'image' || selection.tagName === 'img'),
-  )
-  const selectedImageAlt = selectedImage ? (selection?.textPreview ?? '') : ''
+  const flags = patchQueueSelection({
+    editChromeActive,
+    selection,
+    selectionSet,
+    textEditActive,
+  })
   const selectedImageFit: ImageFitMode =
-    selectedImage &&
+    flags.selectedImage &&
     imageFitOverride !== null &&
     imageFitOverride.scopeKey === scopeKey &&
     imageFitOverride.elementId === selection?.elementId
@@ -107,7 +129,7 @@ export function useEditorPatchQueue({
   })
   const mutations = useEditorPatchQueueMutations({
     activeSlideIndex,
-    canModifySelection,
+    canModifySelection: flags.canModifySelection,
     canRedo,
     canUndo,
     duplicateElement: live.duplicateElement,
@@ -119,7 +141,7 @@ export function useEditorPatchQueue({
     preserveRedoSlideIndex,
     preserveUndoSlideIndex,
     scheduleReselect: live.scheduleReselect,
-    selectedImage,
+    selectedImage: flags.selectedImage,
     selection,
     selectionSet,
     session,
@@ -129,7 +151,7 @@ export function useEditorPatchQueue({
   })
 
   return {
-    canEditSelectedText,
+    canEditSelectedText: flags.canEditSelectedText,
     handleInsertImageFile: live.handleInsertImageFile,
     handleInspectorApply: live.handleInspectorApply,
     handleRedo: mutations.handleRedo,
@@ -140,8 +162,8 @@ export function useEditorPatchQueue({
       scheduleReselect: live.scheduleReselect,
       selectionSet,
     },
-    selectedImage,
-    selectedImageAlt,
+    selectedImage: flags.selectedImage,
+    selectedImageAlt: flags.selectedImageAlt,
     selectedImageFit,
     selectionActions: {
       delete: mutations.handleDeleteSelection,

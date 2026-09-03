@@ -232,8 +232,10 @@ export async function mergeOpenCodeArk(
   env: NodeJS.ProcessEnv,
   executableArgs: string[],
 ): Promise<{ status: 'ok'; filePath: string } | { status: 'corrupt'; error: string }> {
-  const resolved = await resolveOpenCodeConfigPath(homedir, env)
-  const existing = await readOpenCodeConfig(homedir, env)
+  const [resolved, existing] = await Promise.all([
+    resolveOpenCodeConfigPath(homedir, env),
+    readOpenCodeConfig(homedir, env),
+  ])
   if (existing.kind === 'corrupt') return { status: 'corrupt', error: existing.error }
   if (existing.kind === 'ok' && openCodeArkInvocation(existing.value) === 'corrupt') {
     return {
@@ -255,8 +257,10 @@ export async function removeOpenCodeArk(
   homedir: string,
   env: NodeJS.ProcessEnv,
 ): Promise<{ status: 'ok' | 'missing'; filePath: string } | { status: 'corrupt'; error: string }> {
-  const existing = await readOpenCodeConfig(homedir, env)
-  const resolved = await resolveOpenCodeConfigPath(homedir, env)
+  const [existing, resolved] = await Promise.all([
+    readOpenCodeConfig(homedir, env),
+    resolveOpenCodeConfigPath(homedir, env),
+  ])
   if (existing.kind === 'missing') return { status: 'missing', filePath: resolved.filePath }
   if (existing.kind === 'corrupt') return { status: 'corrupt', error: existing.error }
   if (openCodeArkInvocation(existing.value) === 'corrupt') {

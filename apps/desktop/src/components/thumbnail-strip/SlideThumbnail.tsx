@@ -3,14 +3,11 @@ import { MessageSquarePlusIcon } from 'lucide-react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import {
-  getThumbnailSandbox,
-  PREVIEW_FRAME_ASPECT_RATIO,
-  PREVIEW_FRAME_HEIGHT,
-  PREVIEW_FRAME_WIDTH,
-} from '@/lib/deck/deck-preview'
+import { PREVIEW_FRAME_ASPECT_RATIO } from '@/lib/deck/deck-preview'
 import type { ThumbnailOrientation } from '@/lib/deck/thumbnail-strip'
 import { cn } from '@/lib/ui/utils'
+
+import { ThumbnailFallback } from './ThumbnailFallback'
 
 type SlideThumbnailProps = {
   active: boolean
@@ -78,20 +75,12 @@ function ThumbnailMedia({
           <Skeleton className="absolute inset-0 rounded-none" />
         )}
       </div>
-      {mountContent && !imageReady && srcDoc ? (
-        <iframe
-          aria-hidden
-          className="pointer-events-none absolute left-0 top-0 z-0 block rounded-sm border-0 bg-white"
-          sandbox={getThumbnailSandbox()}
+      {mountContent ? (
+        <ThumbnailFallback
+          imageReady={imageReady}
+          index={index}
           srcDoc={srcDoc}
-          style={{
-            width: PREVIEW_FRAME_WIDTH,
-            height: PREVIEW_FRAME_HEIGHT,
-            transform: 'scale(var(--ark-thumb-scale))',
-            transformOrigin: 'top left',
-          }}
-          tabIndex={-1}
-          title={thumbnailUrl ? `Loading slide ${index + 1}` : `Slide ${index + 1} thumbnail`}
+          thumbnailUrl={thumbnailUrl}
         />
       ) : null}
     </>
@@ -182,7 +171,6 @@ export const SlideThumbnail = memo(function SlideThumbnail({
     }
 
     const element = containerRef.current
-
     if (!element) {
       return
     }
@@ -195,7 +183,6 @@ export const SlideThumbnail = memo(function SlideThumbnail({
     )
 
     observer.observe(element)
-
     return () => {
       observer.disconnect()
     }

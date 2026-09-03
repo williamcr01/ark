@@ -145,6 +145,7 @@ function useDeckEditorLayerSelectionSync(input: LayerEffectsInput) {
         ? selections
         : [{ elementId: selectedElementId, slideIndex: selectedSlideIndex }]
     for (const target of targets) {
+      // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent -- iframe editor owns live geometry; the parent cannot subscribe, so we re-query on viewport/selection changes (rule's documented external-subscription exception)
       requestGeometry(target.elementId, target.slideIndex)
     }
   }, [

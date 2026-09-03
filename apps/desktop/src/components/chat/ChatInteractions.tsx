@@ -1,25 +1,16 @@
-import { AgentQuestions } from '@/components/AgentQuestions'
-import { ThemePicker } from '@/components/ThemePicker'
+import { ChatQuestionsPanel } from '@/components/chat/ChatQuestionsPanel.tsx'
+import { ChatThemesPanel } from '@/components/chat/ChatThemesPanel.tsx'
 import { useChatInteractionLock } from '@/components/chat/chat-interaction-lock'
-import { useChatPanelRuntime } from '@/components/chat/chat-panel-runtime'
 import { cn } from '@/lib/ui/utils'
 import { useChatStore } from '@/state/chat-store.ts'
-import { formatAgentQuestionAnswers } from '@ark/chat/agent-questions.ts'
-import { formatThemeChoice, THEME_REFRESH_PROMPT } from '@ark/chat/agent-themes.ts'
 
 export function ChatInteractions() {
-  const { generateDeck, canGenerate, mcp } = useChatPanelRuntime()
   const isGenerating = useChatStore((state) => state.isGenerating)
-  const { layout, activeQuestions, activeThemes, mcpInteraction } = useChatInteractionLock()
+  const { layout, canGenerate, activeQuestions, activeThemes, mcpInteraction } =
+    useChatInteractionLock()
   const isHome = layout === 'home'
-  const onMcpInteractionSubmit = mcp.respondToMcpInteraction
-  const questionHandler =
-    activeQuestions &&
-    (mcpInteraction?.kind === 'questions' ? onMcpInteractionSubmit : generateDeck)
-  const themeHandler =
-    activeThemes && (mcpInteraction?.kind === 'themes' ? onMcpInteractionSubmit : generateDeck)
 
-  if (!questionHandler && !themeHandler) {
+  if (!activeQuestions && !activeThemes) {
     return null
   }
 
@@ -32,60 +23,21 @@ export function ChatInteractions() {
       )}
     >
       <div className="flex flex-col gap-4">
-        {activeQuestions && questionHandler ? (
-          <AgentQuestions
-            disabled={isGenerating || (!mcpInteraction && !canGenerate)}
-            onSubmit={(answers) => {
-              if (mcpInteraction?.kind === 'questions') {
-                void onMcpInteractionSubmit({ kind: 'questions', answers })
-                return
-              }
-              void generateDeck(formatAgentQuestionAnswers(activeQuestions, answers), [])
-            }}
+        {activeQuestions ? (
+          <ChatQuestionsPanel
+            canGenerate={canGenerate}
+            isGenerating={isGenerating}
+            mcpInteraction={mcpInteraction}
             request={activeQuestions}
-            submitLabel="Send answers"
           />
         ) : null}
-        {activeThemes && themeHandler ? (
-          <ThemePicker
-            disabled={isGenerating || (!mcpInteraction && !canGenerate)}
-            onSubmit={(result) => {
-              if (mcpInteraction?.kind === 'themes') {
-                if (result.action === 'refresh') {
-                  void onMcpInteractionSubmit({ kind: 'themes', refresh: true })
-                  return
-                }
-                if (!result.theme) return
-                void onMcpInteractionSubmit({
-                  kind: 'themes',
-                  themeId: result.themeId,
-                  fonts: result.fonts,
-                  theme: result.theme,
-                })
-                return
-              }
-              if (result.action === 'refresh') {
-                void generateDeck(THEME_REFRESH_PROMPT, [])
-                return
-              }
-              void generateDeck(
-                formatThemeChoice(activeThemes, result.themeId, result.fonts, result.theme),
-                [],
-                result.theme
-                  ? {
-                      themeSelection: {
-                        themeId: result.themeId,
-                        name: result.name,
-                        fonts: result.fonts,
-                        theme: result.theme,
-                      },
-                    }
-                  : undefined,
-              )
-            }}
+        {activeThemes ? (
+          <ChatThemesPanel
+            canGenerate={canGenerate}
+            isGenerating={isGenerating}
+            isHome={isHome}
+            mcpInteraction={mcpInteraction}
             request={activeThemes}
-            size={isHome ? 'lg' : 'sm'}
-            submitLabel="Use this theme"
           />
         ) : null}
       </div>

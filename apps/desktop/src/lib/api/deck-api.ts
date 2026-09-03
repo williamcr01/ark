@@ -26,6 +26,10 @@ export type PatchDeckOptions = Pick<
   operations: DeckPatchOperation[]
 }
 
+function recentListPath(id: string) {
+  return `/api/workspaces/${encodeURIComponent(id)}/recent`
+}
+
 async function readDeckResponse(response: Response) {
   const data = await fetchApiJsonOrThrow(response, deckResponseSchema, {
     fallbackMessage: 'Could not load the deck.',
@@ -143,7 +147,8 @@ export const openWorkspace = (path: string) => postWorkspace('/api/workspaces/op
 export const locateWorkspace = (id: string, path: string) =>
   postWorkspace(`/api/workspaces/${encodeURIComponent(id)}/locate`, { path })
 export async function removeRecentWorkspace(id: string) {
-  const response = await fetch(`/api/workspaces/${encodeURIComponent(id)}/recent`, {
+  // react-doctor-disable-next-line react-doctor/tenant-static-proxy-risk -- local Electron loopback DELETE of a recent-file list entry; id is a local deck id, not a tenant prefix for a static/CDN/object-store (rule's documented suppression)
+  const response = await fetch(recentListPath(id), {
     method: 'DELETE',
   })
   if (!response.ok && response.status !== 204) throw new Error('Could not remove recent workspace.')

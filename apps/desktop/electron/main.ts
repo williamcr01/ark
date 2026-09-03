@@ -78,20 +78,24 @@ async function runDesktopSmoke(input: {
     '<section class="slide"><div class="card"><h2>Second slide</h2><ul><li>First point</li><li>Second point</li></ul></div></section>',
     '</body></html>',
   ].join('')
-  const thumbnail = await thumbnailRenderer.render({ html: smokeDeckHtml })
-  const exportedPdf = await generateDeckExport({
-    format: 'pdf',
-    html: smokeDeckHtml,
-    title: 'Ark desktop smoke',
-  })
-  const exportReport = await inspectExportedPdf(exportedPdf.output)
-  const exportedPptx = await generateDeckExport({
-    format: 'pptx',
-    html: smokeDeckHtml,
-    title: 'Ark desktop smoke',
-  })
-  const pptxReport = await inspectExportedPptx(exportedPptx.output)
-  const scene = await extractDeckScene(deckRenderConfig, { html: smokeDeckHtml })
+  const [thumbnail, exportedPdf, exportedPptx, scene] = await Promise.all([
+    thumbnailRenderer.render({ html: smokeDeckHtml }),
+    generateDeckExport({
+      format: 'pdf',
+      html: smokeDeckHtml,
+      title: 'Ark desktop smoke',
+    }),
+    generateDeckExport({
+      format: 'pptx',
+      html: smokeDeckHtml,
+      title: 'Ark desktop smoke',
+    }),
+    extractDeckScene(deckRenderConfig, { html: smokeDeckHtml }),
+  ])
+  const [exportReport, pptxReport] = await Promise.all([
+    inspectExportedPdf(exportedPdf.output),
+    inspectExportedPptx(exportedPptx.output),
+  ])
   const sceneReport = inspectExtractedScene(scene)
 
   if (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { mapPreservedSlideIndexFromHtml } from '@ark/deck-preview/slide-patch.ts'
 import { resolveAppOrigin } from '@ark/runtime-registry/sandbox-origin.ts'
@@ -16,9 +16,9 @@ export function useSlideIndex(
   } = {},
 ) {
   const { initialSlideIndex = 0, reloadRevision = 0, sandboxOrigin = null, onSlideChange } = options
-  const seededInitialRef = useRef(false)
-  if (!seededInitialRef.current) {
-    seededInitialRef.current = true
+  const [hasSeededInitial, setHasSeededInitial] = useState(false)
+  if (!hasSeededInitial) {
+    setHasSeededInitial(true)
     useEditorStore.getState().setActiveSlideIndex(clampSlideIndex(initialSlideIndex, slideCount))
   }
   const activeSlideIndex = useEditorStore((state) => state.activeSlideIndex)
@@ -28,7 +28,9 @@ export function useSlideIndex(
   const activeSlideIndexRef = useRef(activeSlideIndex)
   const pendingFrameSyncIndexRef = useRef<number | null>(null)
   const onSlideChangeRef = useRef(onSlideChange)
-  onSlideChangeRef.current = onSlideChange
+  useLayoutEffect(() => {
+    onSlideChangeRef.current = onSlideChange
+  })
 
   const commitSlideIndex = useCallback(
     (index: number, boundSlideCount = slideCount) => {

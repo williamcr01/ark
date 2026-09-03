@@ -16,7 +16,7 @@ import { TitleBarFileInputs } from './TitleBarFileInputs'
 import { TitleBarFileMenu, TitleBarImportButtons } from './TitleBarFileMenu'
 import { TitleBarNavTabs } from './TitleBarNavTabs'
 import { TitleBarSettingsButton } from './TitleBarSettingsButton'
-import { TitleBarViewToggles } from './TitleBarViewToggles'
+import { TitleBarChatToggle, TitleBarStripToggle } from './TitleBarViewToggles'
 import type { AppTitleBarNav } from './title-bar-types'
 
 export function EditorTitleBar({
@@ -38,13 +38,10 @@ export function EditorTitleBar({
       />
       {model.hasSlides ? (
         <ButtonGroup className="shrink-0">
-          <TitleBarViewToggles
+          <TitleBarStripToggle
             hasSlides={model.hasSlides}
-            isChatOpen={model.isChatOpen}
             isStripOpen={model.isStripOpen}
-            onToggleChat={model.handleToggleChat}
             onToggleStrip={model.handleToggleStrip}
-            showStrip
           />
         </ButtonGroup>
       ) : null}
@@ -98,14 +95,7 @@ export function EditorTitleBar({
             onUploadClick={model.files.importDeck.handleUploadClick}
           />
         </TitleBarDeckActions>
-        <TitleBarViewToggles
-          hasSlides={model.hasSlides}
-          isChatOpen={model.isChatOpen}
-          isStripOpen={model.isStripOpen}
-          onToggleChat={model.handleToggleChat}
-          onToggleStrip={model.handleToggleStrip}
-          showChat
-        />
+        <TitleBarChatToggle isChatOpen={model.isChatOpen} onToggleChat={model.handleToggleChat} />
       </ButtonGroup>
     </>
   )
